@@ -67,7 +67,6 @@ import {
   HLT_SERVICE,
   HLT_SERVICE_TONE,
   HLT_SEV_META,
-  HLT_SYNC,
   HLT_TONE,
   HLT_VERDICT,
   hltAcceptedMeta,
@@ -774,7 +773,7 @@ export default function PortalV2HealthPage() {
           </div>
         </div>
 
-        {/* ── Sync & hybrid + stale object inventory — proto 3010-3053 ───── */}
+        {/* ── Stale object inventory — proto 3010-3053 ───── */}
         <div
           style={{
             display: "grid",
@@ -783,104 +782,6 @@ export default function PortalV2HealthPage() {
             alignItems: "start",
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "baseline",
-                justifyContent: "space-between",
-                gap: 10,
-                flexWrap: "wrap",
-              }}
-            >
-              <span style={SECTION_LABEL}>Directory sync &amp; hybrid</span>
-              <span style={SECTION_NOTE}>Read on the sync server, not from the cloud</span>
-            </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 0,
-                border: "1px solid rgba(30,41,59,.9)",
-                borderRadius: 12,
-                background: "rgba(15,23,42,.4)",
-                overflow: "hidden",
-              }}
-              data-testid="pv2-hlt-sync"
-            >
-              {HLT_SYNC.map((s) => {
-                const c = HLT_TONE[s.tone];
-                return (
-                  <div
-                    key={s.stage}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      padding: "10px 14px",
-                      borderBottom: "1px solid rgba(30,41,59,.8)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        flex: "0 0 6px",
-                        width: 6,
-                        height: 6,
-                        borderRadius: "50%",
-                        background: c,
-                        marginTop: 6,
-                      }}
-                    />
-                    <div
-                      style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 3 }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 8,
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#e2e8f0" }}>
-                          {s.stage}
-                        </span>
-                        <span
-                          style={{
-                            flex: "0 0 auto",
-                            padding: "3px 8px",
-                            borderRadius: 4,
-                            border: `1px solid ${c}55`,
-                            background: `${c}14`,
-                            fontSize: "10px",
-                            fontWeight: 700,
-                            letterSpacing: ".04em",
-                            color: c,
-                            whiteSpace: "nowrap",
-                            fontFamily: MONO,
-                          }}
-                        >
-                          {s.state}
-                        </span>
-                      </div>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "#94a3b8",
-                          lineHeight: 1.5,
-                          textWrap: "pretty",
-                        }}
-                      >
-                        {s.detail}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
           <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
             <div
               style={{

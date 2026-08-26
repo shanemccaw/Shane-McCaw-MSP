@@ -999,13 +999,6 @@
       "textContains": "red because the direction changed, not because the number is high"
     },
     {
-      "name": "H8 -- the sync table reports state read on the server itself.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-hlt-sync']",
-      "state": "visible",
-      "textContains": "Connect Health agent"
-    },
-    {
       "name": "H9 -- the stale-object inventory renders all nine classes.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-objects']",
