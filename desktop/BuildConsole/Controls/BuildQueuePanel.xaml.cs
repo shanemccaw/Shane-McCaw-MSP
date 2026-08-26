@@ -1431,6 +1431,21 @@ namespace BuildConsole.Controls
                 };
                 return dot;
             }
+            else if (node.Item != null && BuildConsoleSettings.Load().PausedBuildIds.Contains(node.Item.Id))
+            {
+                var peach = (Brush)Application.Current.FindResource("PeachBrush");
+                var dot = new Ellipse
+                {
+                    Width = QueueGraphDotRadius * 2 + 2,
+                    Height = QueueGraphDotRadius * 2 + 2,
+                    Fill = peach,
+                    Stroke = mantle,
+                    StrokeThickness = 2,
+                    ToolTip = $"⏸ Build {node.DisplayRef} (PAUSED)\nPaused by user",
+                    Effect = new DropShadowEffect { Color = Color.FromRgb(0xFA, 0xB3, 0x87), BlurRadius = 8, ShadowDepth = 0, Opacity = 0.8 }
+                };
+                return dot;
+            }
             else if (node.IsBlocked)
             {
                 string blockerText = string.Join(", ", node.BlockedBy.Select(FormatIssueRef));
@@ -1677,7 +1692,7 @@ namespace BuildConsole.Controls
             {
                 statusPill = new Border
                 {
-                    Background = new SolidColorBrush(Color.FromRgb(0x3E, 0x2C, 0x1A)),
+                    Background = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
                     BorderBrush = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(4),
@@ -1688,7 +1703,7 @@ namespace BuildConsole.Controls
                     Text = "⏸ PAUSED",
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)),
                     VerticalAlignment = VerticalAlignment.Center
                 };
             }
@@ -1854,7 +1869,7 @@ namespace BuildConsole.Controls
                 Text = item.Title,
                 FontSize = 11.5,
                 FontWeight = FontWeights.Normal,
-                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                Foreground = isPaused ? (Brush)Application.Current.FindResource("PeachBrush") : (Brush)Application.Current.FindResource("TextBrush"),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(1, 2, 1, 0)
             };
@@ -2069,14 +2084,14 @@ namespace BuildConsole.Controls
             else if (item.Status == "queued")
             {
                 bool isItemPaused = BuildConsoleSettings.Load().PausedBuildIds.Contains(item.Id);
-                var miPauseBuild = new MenuItem { Header = isItemPaused ? "▶ Unpause Build" : "⏸ Pause Build" };
+                var miPauseBuild = new MenuItem { Header = isItemPaused ? "▶ Allow Build" : "⏸ Pause Build" };
                 miPauseBuild.Click += async (_, _) =>
                 {
                     var settings = BuildConsoleSettings.Load();
                     if (settings.PausedBuildIds.Contains(item.Id))
                     {
                         settings.PausedBuildIds.Remove(item.Id);
-                        ActivityLog.Log("build-queue", $"Unpaused build queue item #{item.Id} ({item.Title})");
+                        ActivityLog.Log("build-queue", $"Allowed build queue item #{item.Id} ({item.Title}) to run");
                     }
                     else
                     {
