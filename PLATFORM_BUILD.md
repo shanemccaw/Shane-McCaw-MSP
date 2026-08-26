@@ -426,3 +426,4 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 | 2026-08-26 | ⏳ IN FLIGHT | Compliance: wire confirmed-real CMP_AREA_LINKS cards to their checks, assign orphaned compliance:audit-log-retention to core:premier (manual migration), honest no-data for confirmed-zero-backing cards (Git #1338) | Investigation in progress. |
 | 2026-08-26 | ⏳ IN FLIGHT | Shared honest "no scan data" component (NoScanDataState) + retrofit into Overview (Git #1339) | Building the one reusable no-scan-data component. |
 | 2026-08-26 | ⏳ IN FLIGHT | Health: wire Stale Object Inventory (summary + itemized drill-down) to real checks, 2 line items via new appgov:* checks beyond #1260 (Git #1340) | Investigation in progress. |
+| 2026-08-26 | ⏳ IN FLIGHT | Investigate remediationLive.ts progress claims on genuinely un-scanned tenant vs #1329 reset (Git #1344) | Investigation in progress. |
