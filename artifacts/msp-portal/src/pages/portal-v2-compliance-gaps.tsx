@@ -56,7 +56,11 @@ function Chevron({ deg }: { deg: number }) {
   );
 }
 
-const OWNER_OPTIONS = ["General Counsel", "Controller", "Dan Whitlock", "Priya Raman", "Shane McCaw"].map((v) => ({ value: v, label: v }));
+// Generic role labels only — the fictional Halden employees (Dan Whitlock,
+// Priya Raman) were removed so the accept-decision form never suggests an
+// invented person as the accountable name on a real customer's page (Git #1342).
+// There is no tenant people/RACI source to populate real names from yet.
+const OWNER_OPTIONS = ["General Counsel", "Controller", "IT Director", "Data Protection Officer"].map((v) => ({ value: v, label: v }));
 const REVIEW_OPTIONS = ["3 months", "6 months", "12 months"].map((v) => ({ value: v, label: v }));
 
 export default function PortalV2ComplianceGapsPage() {
@@ -102,7 +106,7 @@ export default function PortalV2ComplianceGapsPage() {
       fields: [
         { id: "gap", label: "The gap", value: f.title, wide: true },
         { id: "obligation", label: "Obligation it touches", value: f.obligation, wide: true },
-        { id: "owner", label: "Accountable name", kind: "select", options: OWNER_OPTIONS, value: "Priya Raman" },
+        { id: "owner", label: "Accountable name", kind: "select", options: OWNER_OPTIONS, value: "General Counsel" },
         { id: "rationale", label: "Why this is the right position", kind: "textarea", wide: true, value: "" },
         { id: "control", label: "Compensating control", kind: "textarea", wide: true, value: "" },
         { id: "review", label: "Review in", kind: "select", options: REVIEW_OPTIONS, value: "12 months" },
