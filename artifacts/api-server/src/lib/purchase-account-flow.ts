@@ -19,6 +19,9 @@
  *                                gate on
  *   attachPasswordToAccount    — bcrypt(12) attach; never overwrites an
  *                                existing credential through a checkout session
+ *   resolvePortalHandoffUser   — (#1313, Phase 4) whether this session may mint
+ *                                a portal auto-login token, and for whom — only
+ *                                ever the account created through this session
  *
  * The assessment route file is deliberately NOT rewritten to delegate here in
  * this phase — it fronts a live paid funnel with no existing automated test
@@ -85,6 +88,14 @@ export interface PaidPurchaseSession {
   company: string | null;
   industry: string | null;
   tenantId: string | null;
+  /**
+   * Git #1313 — the users.id whose password was attached THROUGH this
+   * session's own flow (attachPasswordToAccount `ok` outcome), null until
+   * then. The portal-handoff gate keys on this, never on an email lookup: a
+   * signup-exchange token is a full no-MFA-challenge login, so it may only
+   * ever be minted for the account this very session created.
+   */
+  accountUserId: number | null;
 }
 
 export type SessionResolution =
@@ -114,6 +125,7 @@ export async function resolvePaidPurchaseSession(rawSessionId: unknown): Promise
       company: checkoutSessionsTable.company,
       industry: checkoutSessionsTable.industry,
       tenantId: checkoutSessionsTable.tenantId,
+      accountUserId: checkoutSessionsTable.accountUserId,
     })
     .from(checkoutSessionsTable)
     .where(
@@ -141,6 +153,7 @@ export async function resolvePaidPurchaseSession(rawSessionId: unknown): Promise
       company: row.company,
       industry: row.industry,
       tenantId: row.tenantId,
+      accountUserId: row.accountUserId,
     },
   };
 }
@@ -356,5 +369,64 @@ export async function attachPasswordToAccount(
   const passwordHash = await bcrypt.hash(password, 12);
   await db.update(usersTable).set({ passwordHash }).where(eq(usersTable.id, user.id));
 
+  // Git #1313 — the durable "this session completed account creation for THIS
+  // user" fact the portal-handoff endpoint gates on. Recorded only on the `ok`
+  // outcome: an `already_set` account was never created through this session,
+  // so it must never become handoff-eligible from here.
+  await db
+    .update(checkoutSessionsTable)
+    .set({ accountUserId: user.id })
+    .where(eq(checkoutSessionsTable.id, session.id));
+
   return { outcome: "ok", userId: user.id, provisioned };
+}
+
+export type PortalHandoffEligibility =
+  | { outcome: "account_not_completed" }
+  | { outcome: "email_not_verified" }
+  | { outcome: "account_missing" }
+  | { outcome: "email_mismatch" }
+  | { outcome: "password_not_set" }
+  | { outcome: "ok"; userId: number };
+
+/**
+ * Git #1313 (Epic #1309 Phase 4) — whether this session may mint a portal
+ * auto-login (signup-exchange) token right now, and for whom.
+ *
+ * The gate chain, hardest fact first:
+ *  - `accountUserId` must be recorded on the session — the account's password
+ *    was attached through THIS session's own flow. A pre-existing account is
+ *    never reachable this way (signup-exchange issues a full session with no
+ *    MFA challenge, so minting for any other account would turn a leaked
+ *    session UUID + mailbox access into an MFA bypass).
+ *  - the session's mailbox must still be PROVEN (verified code, address
+ *    unchanged) — the same re-check every other step in this flow makes on
+ *    every call rather than trusting its earlier self.
+ *  - that user row must still exist, still carry the session's own verified
+ *    address (an account whose email was changed after creation is no longer
+ *    provably the buyer's), and still have its password set.
+ */
+export async function resolvePortalHandoffUser(session: PaidPurchaseSession): Promise<PortalHandoffEligibility> {
+  if (session.accountUserId == null) return { outcome: "account_not_completed" };
+
+  const email = await getVerifiedEmail(session);
+  if (!email) return { outcome: "email_not_verified" };
+
+  const [user] = await db
+    .select({ id: usersTable.id, email: usersTable.email, passwordHash: usersTable.passwordHash })
+    .from(usersTable)
+    .where(eq(usersTable.id, session.accountUserId))
+    .limit(1);
+
+  if (!user) return { outcome: "account_missing" };
+  if (user.email !== email) {
+    log.warn(
+      { sessionId: session.id, userId: user.id },
+      "portal handoff: REFUSED — the completed account no longer carries the session's verified address",
+    );
+    return { outcome: "email_mismatch" };
+  }
+  if (!user.passwordHash) return { outcome: "password_not_set" };
+
+  return { outcome: "ok", userId: user.id };
 }

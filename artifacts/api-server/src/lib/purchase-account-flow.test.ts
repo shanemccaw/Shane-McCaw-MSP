@@ -31,6 +31,7 @@ import {
   checkVerificationCode,
   getVerifiedEmail,
   attachPasswordToAccount,
+  resolvePortalHandoffUser,
   generateSixDigitCode,
   maskEmail,
   MAX_CODE_ATTEMPTS,
@@ -335,6 +336,76 @@ describe("attachPasswordToAccount", () => {
 
     const rows = await db.select({ id: usersTable.id }).from(usersTable).where(eq(usersTable.email, email));
     expect(rows).toHaveLength(1);
+  });
+});
+
+// ── Git #1313 (Epic #1309 Phase 4) — the portal-handoff gate ──────────────────
+
+describe("portal handoff — only the account this session created is ever mintable", () => {
+  /** Run the full happy-path account creation for a fresh session; returns the re-resolved session + userId. */
+  async function completeAccountCreation(email: string) {
+    const session = await resolveOrThrow(await createSession({ email }));
+    const { code } = await issueVerificationCode(session);
+    await checkVerificationCode(session.id, code);
+    const attached = await attachPasswordToAccount(session, "correct horse battery", { provisionIfMissing: true });
+    if (attached.outcome !== "ok") throw new Error(`expected ok, got ${attached.outcome}`);
+    return { session: await resolveOrThrow(session.id), userId: attached.userId };
+  }
+
+  it("attachPasswordToAccount's ok outcome records account_user_id on the session", async () => {
+    const { session, userId } = await completeAccountCreation(testEmail("handoff-record"));
+    expect(session.accountUserId).toBe(userId);
+  });
+
+  it("already_set records NOTHING — a pre-existing account never becomes handoff-eligible", async () => {
+    const email = testEmail("handoff-preexisting");
+    await completeAccountCreation(email);
+
+    // A second purchase session for the same (now password-carrying) account.
+    const second = await resolveOrThrow(await createSession({ email }));
+    const { code } = await issueVerificationCode(second);
+    await checkVerificationCode(second.id, code);
+    const r = await attachPasswordToAccount(second, "a different password", { provisionIfMissing: true });
+    expect(r.outcome).toBe("already_set");
+
+    const reread = await resolveOrThrow(second.id);
+    expect(reread.accountUserId).toBeNull();
+    expect(await resolvePortalHandoffUser(reread)).toEqual({ outcome: "account_not_completed" });
+  });
+
+  it("refuses before the account stage has completed", async () => {
+    const session = await resolveOrThrow(await createSession());
+    expect(await resolvePortalHandoffUser(session)).toEqual({ outcome: "account_not_completed" });
+  });
+
+  it("resolves the session's own completed account", async () => {
+    const { session, userId } = await completeAccountCreation(testEmail("handoff-ok"));
+    expect(await resolvePortalHandoffUser(session)).toEqual({ outcome: "ok", userId });
+  });
+
+  it("REFUSES when the session's email changed after the account completed", async () => {
+    const { session } = await completeAccountCreation(testEmail("handoff-hijack"));
+    await db
+      .update(checkoutSessionsTable)
+      .set({ email: testEmail("handoff-hijack-new") })
+      .where(eq(checkoutSessionsTable.id, session.id));
+    const reread = await resolveOrThrow(session.id);
+    expect(await resolvePortalHandoffUser(reread)).toEqual({ outcome: "email_not_verified" });
+  });
+
+  it("REFUSES when the account's own email no longer matches the verified address", async () => {
+    const { session, userId } = await completeAccountCreation(testEmail("handoff-drift"));
+    await db
+      .update(usersTable)
+      .set({ email: testEmail("handoff-drift-moved") })
+      .where(eq(usersTable.id, userId));
+    expect(await resolvePortalHandoffUser(session)).toEqual({ outcome: "email_mismatch" });
+  });
+
+  it("REFUSES an account whose password has been cleared since", async () => {
+    const { session, userId } = await completeAccountCreation(testEmail("handoff-nopw"));
+    await db.update(usersTable).set({ passwordHash: null }).where(eq(usersTable.id, userId));
+    expect(await resolvePortalHandoffUser(session)).toEqual({ outcome: "password_not_set" });
   });
 });
 

@@ -3466,6 +3466,18 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
   // route refuses (see lib/read-consent-flow.ts's fail-closed mapping).
   consentSkippedAt: timestamp("consent_skipped_at", { withTimezone: true }),
 
+  // ── Account completed through this session (Git #1313, Epic #1309 Phase 4) ─
+  // The users.id whose password was attached THROUGH this session's own
+  // account-creation flow (set by attachPasswordToAccount's `ok` outcome only —
+  // never for `already_set`). This is the durable fact the portal-handoff
+  // endpoint gates on: /auth/signup-exchange trades a signup token for a FULL
+  // session with no MFA challenge, so a token may only ever be minted for the
+  // account this very session created — a pre-existing account (whose MFA/
+  // password predate this purchase) must sign in through the portal's own
+  // door. Null = this session never completed account creation (or the row
+  // predates the column).
+  accountUserId: integer("account_user_id").references(() => usersTable.id),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

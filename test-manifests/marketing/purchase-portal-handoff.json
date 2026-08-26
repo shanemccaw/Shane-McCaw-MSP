@@ -1,0 +1,64 @@
+{
+  "feature": "Purchase-session -> portal auto-login handoff (Git #1313, Epic #1309 Phase 4): POST /api/public/purchase/portal-handoff mints a fresh single-use, 2-minute signup-exchange token for the account created THROUGH the session's own flow — and refuses everything else (invalid/unknown/unpaid sessions, sessions that never completed account creation).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "",
+
+  "notes": [
+    "WHAT THIS COVERS: the #1313 backend mechanism only — no UI is wired to this route yet (Buy.tsx wiring is Phase 8, #1309). The session minted per run is the genuine PUBLIC intake (POST /api/public/checkout-session), same accepted side effect as marketing/read-consent-flow.json's CREATE; it expires in 24h and is never paid, so no account or token is ever created by this manifest.",
+    "WHAT CANNOT BE ASSERTED HERE, honestly: the paid + completed-account happy path (mint succeeds, portalUrl carries ?signupToken=...). Reaching it requires a real Stripe-paid session plus the emailed six-digit code — the same architectural wall marketing/read-consent-flow.json and auth/signup-exchange.json carve out. That path, and every eligibility refusal on a PAID session (account_not_completed, email_not_verified, email_mismatch, password_not_set, and the already_set never-records rule), is covered by integration tests against real local Postgres in artifacts/api-server/src/lib/purchase-account-flow.test.ts ('portal handoff' describe block).",
+    "The EXCHANGE side of the handoff (POST /api/auth/signup-exchange trading the minted token for a real session, single-use guard included) is covered by test-manifests/auth/signup-exchange.json — this manifest deliberately does not duplicate it.",
+    "PRODUCT SLUG architect-essentials-retainer is a real catalog row, confirmed by marketing/read-consent-flow.json against the live services table.",
+    "RAN via shaneapp://runTest at authoring time (2026-08-25): 1/5 passed. The CREATE step passed for real; the four portal-handoff steps failed with 404 Cannot POST /api/public/purchase/portal-handoff — the dev api-server on :8080 is serving a build that predates this route (undeployed worktree code, the same expected honest result auth/signup-exchange.json records for its own seed route). Re-run after the next dev-server cycle rebuilds api-server to get the real green."
+  ],
+
+  "apiTests": [
+    {
+      "name": "GUARD — no sessionId in the body: 400 before any DB read",
+      "method": "POST",
+      "path": "/api/public/purchase/portal-handoff",
+      "headers": { "Content-Type": "application/json" },
+      "body": {},
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "sessionId is required" }
+    },
+    {
+      "name": "GUARD — a non-UUID sessionId: 400 session_invalid from the shared paid-session resolver",
+      "method": "POST",
+      "path": "/api/public/purchase/portal-handoff",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "not-a-uuid" },
+      "expect": { "status": 400, "jsonPath": "$.error", "value": "session_invalid" }
+    },
+    {
+      "name": "GUARD — a well-formed UUID with no session behind it: 404 session_expired, indistinguishable from a real-but-expired one",
+      "method": "POST",
+      "path": "/api/public/purchase/portal-handoff",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "00000000-0000-4000-8000-000000000000" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    },
+    {
+      "name": "CREATE — mint a real (pending, unpaid) purchase session via the genuine public intake; extract sessionId",
+      "method": "POST",
+      "path": "/api/public/checkout-session",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "productSlug": "architect-essentials-retainer",
+        "fullName": "Portal Handoff Probe",
+        "email": "portal-handoff-probe@testbed.local",
+        "company": "Portal Handoff Testbed",
+        "industry": "technology",
+        "seats": 1
+      },
+      "expect": { "status": 200, "jsonPath": "$.sessionId", "exists": true },
+      "extract": { "as": "handoffSessionId", "jsonPath": "$.sessionId" }
+    },
+    {
+      "name": "PAID GATE — the real unpaid session is refused 409 payment_required: the client's stage machine is not the authority, and no token row is ever minted for an unpaid order",
+      "method": "POST",
+      "path": "/api/public/purchase/portal-handoff",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "{{handoffSessionId}}" },
+      "expect": { "status": 409, "jsonPath": "$.error", "value": "payment_required" }
+    }
+  ]
+}

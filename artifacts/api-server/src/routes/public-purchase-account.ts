@@ -19,6 +19,8 @@
  *   POST /api/public/purchase/mfa/totp/verify-setup    complete TOTP enrollment
  *   POST /api/public/purchase/mfa/passkey/registration-options
  *   POST /api/public/purchase/mfa/passkey/verify-registration
+ *   POST /api/public/purchase/portal-handoff             (#1313, Phase 4) mint a
+ *        fresh single-use auto-login token at the COMPLETED account stage
  *
  * All are unauthenticated and keyed on the checkout-session UUID — the same
  * bearer the payment routes already trust — and every one of them re-enforces
@@ -86,6 +88,7 @@ import {
   checkVerificationCode,
   getVerifiedEmail,
   attachPasswordToAccount,
+  resolvePortalHandoffUser,
   maskEmail,
   type PaidPurchaseSession,
 } from "../lib/purchase-account-flow.ts";
@@ -397,6 +400,89 @@ router.get("/public/purchase/account-status", statusLimiter, async (req: Request
     emailVerified: Boolean(verifiedEmail),
     passwordSet,
     mfaEnrolled,
+  });
+});
+
+// ── POST /api/public/purchase/portal-handoff ──────────────────────────────────
+//
+// Git #1313 (Epic #1309 Phase 4) — the shared handoff mechanism: mint a fresh
+// single-use, 2-minute signup-exchange token for the account THIS session
+// created, and return the portal URL that carries it. The portal's own boot
+// effect (msp-portal auth-context.tsx, Git #636) trades it for a real, ordinary
+// session the instant the tab lands — the same table and exchange route the
+// assessment funnel already uses, not a parallel session model.
+//
+// Why this exists when set-password already returns a portalUrl+token: Shane's
+// product flow (#1309) runs MFA enrollment AFTER the password step, and the
+// token lives 2 minutes — by the time TOTP/passkey enrollment finishes, the
+// set-password token is dead. This endpoint is callable at the moment the
+// account stage actually completes (and again by a refreshed/resumed tab), so
+// Buy.tsx (Phase 8) and each product's landing phase (5/6/7) share one door.
+// Destination routing per product is deliberately NOT here — Phases 5/6/7 own
+// where the tab lands; this phase only delivers the buyer in authenticated.
+//
+// The gate is resolvePortalHandoffUser (see its header): only the account whose
+// password was set through this very session is ever mintable — never a
+// pre-existing account, because /auth/signup-exchange issues a full session
+// with NO MFA challenge, and this must not become an MFA-bypass door.
+
+const handoffLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: isDev ? 200 : 20,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Please wait a few minutes and try again." },
+});
+
+const handoffSchema = z.object({ sessionId: z.string() });
+
+router.post("/public/purchase/portal-handoff", handoffLimiter, async (req: Request, res: Response) => {
+  const parsed = handoffSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "sessionId is required" });
+    return;
+  }
+
+  const session = await requirePaidSession(parsed.data.sessionId, res);
+  if (!session) return;
+
+  const eligibility = await resolvePortalHandoffUser(session);
+  if (eligibility.outcome !== "ok") {
+    log.warn(
+      { sessionId: session.id, outcome: eligibility.outcome },
+      "portal handoff: refused — session is not handoff-eligible",
+    );
+    res.status(409).json({ error: eligibility.outcome });
+    return;
+  }
+
+  // Same single-use, short-lived shape set-password mints (and #636 before it):
+  // 32 CSPRNG bytes, 2-minute TTL, consumed atomically by /auth/signup-exchange.
+  const signupToken = randomBytes(32).toString("hex");
+  await db.insert(signupExchangeTokensTable).values({
+    token: signupToken,
+    userId: eligibility.userId,
+    expiresAt: new Date(Date.now() + 2 * 60 * 1000),
+  });
+
+  await createAuditLog({
+    actorUserId: eligibility.userId,
+    actorName: "public:purchase-flow",
+    actorRole: "client",
+    actionType: "purchase_flow_portal_handoff_issued",
+    entityType: "user",
+    entityId: String(eligibility.userId),
+    // The token itself is never logged or audited — only that one was issued.
+    metadata: { checkoutSessionId: session.id, productSlug: session.productSlug },
+  });
+
+  log.info(
+    { sessionId: session.id, userId: eligibility.userId, productSlug: session.productSlug },
+    "portal handoff: single-use auto-login token minted for the session's own completed account",
+  );
+  res.json({
+    ok: true,
+    portalUrl: `${getMspPortalLandingUrl()}?signupToken=${encodeURIComponent(signupToken)}`,
   });
 });
 

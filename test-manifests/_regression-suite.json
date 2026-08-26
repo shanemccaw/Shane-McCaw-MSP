@@ -24,6 +24,7 @@
     "marketing/free-scan-page.json",
     "marketing/buy-page.json",
     "marketing/read-consent-flow.json",
+    "marketing/purchase-portal-handoff.json",
     "marketing/change-record-page.json",
     "copilot-readiness/assessment-monitoring-rescan.json",
     "copilot-readiness/email-auth-setup.json",
