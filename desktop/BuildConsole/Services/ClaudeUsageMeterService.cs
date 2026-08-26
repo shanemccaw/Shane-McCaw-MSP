@@ -617,6 +617,20 @@ namespace BuildConsole.Services
             if (string.IsNullOrWhiteSpace(label)) return GetNextWeeklyResetTarget(now);
             string lower = label.ToLowerInvariant();
 
+            // 0. Relative time: "Resets in 1 hr 27 min", "in 45 min", "in 2 hours", "Resets in 1h 27m"
+            var relativeMatch = Regex.Match(lower, @"(?:resets?\s+)?in\s+(?:(\d+)\s*(?:hrs?|hours?|h))?\s*(?:(\d+)\s*(?:mins?|minutes?|m))?", RegexOptions.IgnoreCase);
+            if (relativeMatch.Success && (relativeMatch.Groups[1].Success || relativeMatch.Groups[2].Success))
+            {
+                int hours = 0;
+                int minutes = 0;
+                if (relativeMatch.Groups[1].Success) hours = int.Parse(relativeMatch.Groups[1].Value);
+                if (relativeMatch.Groups[2].Success) minutes = int.Parse(relativeMatch.Groups[2].Value);
+                if (hours > 0 || minutes > 0)
+                {
+                    return now.AddHours(hours).AddMinutes(minutes);
+                }
+            }
+
             // 1. Month Date + Time: "Aug 23, 9pm (America/New_York)" / "Aug 23, 7:50pm" / "August 23 21:00 (UTC)"
             var fullDateMatch = Regex.Match(lower, @"([a-z]{3,9})\s+(\d{1,2}),?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?");
             if (fullDateMatch.Success && MonthNames.TryGetValue(fullDateMatch.Groups[1].Value, out int month))
@@ -909,7 +923,7 @@ namespace BuildConsole.Services
             public bool HasLoginText { get; set; }
             public int BodyTextLength { get; set; }
             public string ResetLabel { get; set; } = string.Empty;
-            public (string now, string max, string text, string label)[] Meters { get; set; } = Array.Empty<(string, string, string, string)>();
+            public (string now, string max, string text, string label, string resetText)[] Meters { get; set; } = Array.Empty<(string, string, string, string, string)>();
             public int WaitedMs { get; set; }
 
             public bool AuthWall => HasPasswordField || (HasLoginText && MeterCount == 0);
@@ -962,11 +976,18 @@ namespace BuildConsole.Services
             var el = els[i];
             var container = el.closest('div, section, li') || el;
             var heading = (container.innerText || container.textContent || '').trim();
+            var resetText = '';
+            var resetNode = Array.from(container.querySelectorAll('p, span, div, time, li'))
+                .find(n => /reset/i.test(n.innerText || n.textContent || ''));
+            if (resetNode) {
+                resetText = (resetNode.innerText || resetNode.textContent || '').trim();
+            }
             meters.push({
                 valuenow: el.getAttribute('aria-valuenow') || '',
                 valuemax: el.getAttribute('aria-valuemax') || '',
                 valuetext: el.getAttribute('aria-valuetext') || '',
-                label: heading.substring(0, 100)
+                label: heading.substring(0, 100),
+                resetText: resetText
             });
         }
         var resetLabel = '';
@@ -1007,14 +1028,15 @@ namespace BuildConsole.Services
 
             if (root.Value.TryGetProperty("meters", out var meters) && meters.ValueKind == JsonValueKind.Array)
             {
-                var list = new List<(string, string, string, string)>();
+                var list = new List<(string, string, string, string, string)>();
                 foreach (var m in meters.EnumerateArray())
                 {
                     list.Add((
                         m.TryGetProperty("valuenow", out var vn) ? (vn.GetString() ?? string.Empty) : string.Empty,
                         m.TryGetProperty("valuemax", out var vm) ? (vm.GetString() ?? string.Empty) : string.Empty,
                         m.TryGetProperty("valuetext", out var vt) ? (vt.GetString() ?? string.Empty) : string.Empty,
-                        m.TryGetProperty("label", out var vl) ? (vl.GetString() ?? string.Empty) : string.Empty));
+                        m.TryGetProperty("label", out var vl) ? (vl.GetString() ?? string.Empty) : string.Empty,
+                        m.TryGetProperty("resetText", out var rt) ? (rt.GetString() ?? string.Empty) : string.Empty));
                 }
                 probe.Meters = list.ToArray();
                 probe.MeterCount = list.Count;
@@ -1034,22 +1056,24 @@ namespace BuildConsole.Services
             string weeklyResetLabel = string.Empty;
 
             // 1. First attempt exact match on label
-            foreach (var (now, max, text, label) in probe.Meters)
+            foreach (var (now, max, text, label, resetText) in probe.Meters)
             {
                 int? pct = ComputePercent(now, max, text);
                 if (pct == null) continue;
+
+                string resolvedReset = string.IsNullOrWhiteSpace(resetText) ? probe.ResetLabel : resetText;
 
                 if (Regex.IsMatch(label, @"current\s+session", RegexOptions.IgnoreCase))
                 {
                     sessionPercent = pct;
                     sessionValueText = text;
-                    sessionResetLabel = probe.ResetLabel;
+                    sessionResetLabel = resolvedReset;
                 }
                 else if (Regex.IsMatch(label, @"all\s+models?", RegexOptions.IgnoreCase))
                 {
                     weeklyPercent = pct;
                     weeklyValueText = text;
-                    weeklyResetLabel = probe.ResetLabel;
+                    weeklyResetLabel = resolvedReset;
                 }
             }
 
@@ -1057,22 +1081,24 @@ namespace BuildConsole.Services
             if (sessionPercent == null || weeklyPercent == null)
             {
                 int idx = 0;
-                foreach (var (now, max, text, label) in probe.Meters)
+                foreach (var (now, max, text, label, resetText) in probe.Meters)
                 {
                     int? pct = ComputePercent(now, max, text);
                     if (pct == null) continue;
+
+                    string resolvedReset = string.IsNullOrWhiteSpace(resetText) ? probe.ResetLabel : resetText;
 
                     if (idx == 0 && sessionPercent == null)
                     {
                         sessionPercent = pct;
                         sessionValueText = text;
-                        sessionResetLabel = probe.ResetLabel;
+                        sessionResetLabel = resolvedReset;
                     }
                     else if (weeklyPercent == null)
                     {
                         weeklyPercent = pct;
                         weeklyValueText = text;
-                        weeklyResetLabel = probe.ResetLabel;
+                        weeklyResetLabel = resolvedReset;
                     }
                     idx++;
                 }
@@ -1094,9 +1120,9 @@ namespace BuildConsole.Services
             var sb = new StringBuilder();
             for (int i = 0; i < probe.Meters.Length; i++)
             {
-                var (now, max, text, label) = probe.Meters[i];
+                var (now, max, text, label, resetText) = probe.Meters[i];
                 if (i > 0) sb.Append("; ");
-                sb.Append($"[{i}] valuenow=\"{now}\" valuemax=\"{max}\" valuetext=\"{Trim(text)}\" label=\"{Trim(label)}\"");
+                sb.Append($"[{i}] valuenow=\"{now}\" valuemax=\"{max}\" valuetext=\"{Trim(text)}\" label=\"{Trim(label)}\" resetText=\"{Trim(resetText)}\"");
             }
             return sb.Length == 0 ? "(none)" : sb.ToString();
         }
