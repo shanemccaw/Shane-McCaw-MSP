@@ -910,9 +910,9 @@ namespace BuildConsole
                                 {
                                     Color accent = scb.Color;
                                     Color baseCanvas = Color.FromRgb(0x02, 0x06, 0x17);
-                                    byte r = (byte)(0.07 * accent.R + 0.93 * baseCanvas.R);
-                                    byte g = (byte)(0.07 * accent.G + 0.93 * baseCanvas.G);
-                                    byte b = (byte)(0.07 * accent.B + 0.93 * baseCanvas.B);
+                                    byte r = (byte)(0.13 * accent.R + 0.87 * baseCanvas.R);
+                                    byte g = (byte)(0.13 * accent.G + 0.87 * baseCanvas.G);
+                                    byte b = (byte)(0.13 * accent.B + 0.87 * baseCanvas.B);
                                     vm.ChatBackground = new SolidColorBrush(Color.FromRgb(r, g, b));
                                     vm.ChatBorder = new SolidColorBrush(Color.FromArgb(0x59, accent.R, accent.G, accent.B));
                                 }
@@ -1208,9 +1208,9 @@ namespace BuildConsole
                 {
                     Color accent = scb.Color;
                     Color baseCanvas = Color.FromRgb(0x02, 0x06, 0x17);
-                    byte r = (byte)(0.07 * accent.R + 0.93 * baseCanvas.R);
-                    byte g = (byte)(0.07 * accent.G + 0.93 * baseCanvas.G);
-                    byte b = (byte)(0.07 * accent.B + 0.93 * baseCanvas.B);
+                    byte r = (byte)(0.13 * accent.R + 0.87 * baseCanvas.R);
+                    byte g = (byte)(0.13 * accent.G + 0.87 * baseCanvas.G);
+                    byte b = (byte)(0.13 * accent.B + 0.87 * baseCanvas.B);
                     vm.ChatBackground = new SolidColorBrush(Color.FromRgb(r, g, b));
                     vm.ChatBorder = new SolidColorBrush(Color.FromArgb(0x59, accent.R, accent.G, accent.B));
                 }
