@@ -47,6 +47,7 @@ import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
+import { useHltObjectsLive } from "@/components/portal-v2/useHltObjectsLive";
 import { PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
 import {
   HLT_ACCEPTED,
@@ -62,7 +63,6 @@ import {
   HLT_HERO_STATS,
   HLT_MC_COUNT,
   HLT_OBJECTS,
-  HLT_OBJECT_TOTAL,
   HLT_PROV,
   HLT_SERVICE,
   HLT_SERVICE_TONE,
@@ -74,6 +74,9 @@ import {
   hltAcceptedStripSuffix,
   hltDriftOwner,
   hltDriftRows,
+  hltHeroStatsWithObjectTotal,
+  hltObjectTotalFor,
+  hltObjectsWithLive,
   hltTrendGeometry,
   type HltFinding,
   type HltServiceTone,
@@ -203,6 +206,18 @@ export default function PortalV2HealthPage() {
   // `hltAcceptedStripSuffix`'s header for why that stands in for "most recent".
   const healthPillarFindings = live.pillars.find((p) => p.key === "health")?.findings ?? [];
   const acceptedStripSuffix = hltAcceptedStripSuffix(healthPillarFindings[0]?.title);
+
+  // Stale object inventory summary card + itemized drill-down (Git #1340).
+  // 3 of the 5 itemized rows have a real, semantically-verified check behind
+  // them; see hltDashboardData.ts's hltObjectsWithLive for the full mapping
+  // and the 2 rows that stayed fixture after verification found a mismatch.
+  // The hero's "Stale objects" stat and this section's own total are computed
+  // from the SAME liveObjects array, so they can never drift from each other.
+  const objectsLive = useHltObjectsLive();
+  const liveObjects = hltObjectsWithLive(HLT_OBJECTS, objectsLive.live);
+  const objectTotal = hltObjectTotalFor(liveObjects);
+  const objectsDataState: "live" | "fixture" = liveObjects === HLT_OBJECTS ? "fixture" : "live";
+  const heroStats = hltHeroStatsWithObjectTotal(HLT_HERO_STATS, objectTotal);
 
   // The "Service health & incoming changes" panel has a real per-item feed —
   // this tenant's own synced Message Center posts (portal-message-center.ts,
@@ -694,7 +709,7 @@ export default function PortalV2HealthPage() {
               </div>
             </div>
 
-            {HLT_HERO_STATS.map((s) => (
+            {heroStats.map((s) => (
               <div
                 key={s.label}
                 style={{
@@ -749,6 +764,11 @@ export default function PortalV2HealthPage() {
                 <span style={{ position: "relative", fontSize: "10.5px", color: "#64748b" }}>
                   {s.sub}
                 </span>
+                {s.label === "Stale objects" && (
+                  <span data-testid="pv2-hlt-objects-source" style={PV2_SOURCE_CLIP}>
+                    {objectsDataState}
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -872,7 +892,7 @@ export default function PortalV2HealthPage() {
               }}
             >
               <span style={SECTION_LABEL}>Stale object inventory</span>
-              <span style={SECTION_NOTE}>{HLT_OBJECT_TOTAL} objects · 9 classes</span>
+              <span style={SECTION_NOTE}>{objectTotal} objects · 9 classes</span>
             </div>
             <div
               style={{
@@ -886,7 +906,7 @@ export default function PortalV2HealthPage() {
               }}
               data-testid="pv2-hlt-objects"
             >
-              {HLT_OBJECTS.map((o) => {
+              {liveObjects.map((o, i) => {
                 const c = HLT_TONE[o.tone];
                 return (
                   <div
@@ -923,6 +943,7 @@ export default function PortalV2HealthPage() {
                       </span>
                     </div>
                     <span
+                      data-testid={`pv2-hlt-object-count-${i}`}
                       style={{
                         fontSize: "15px",
                         fontWeight: 800,

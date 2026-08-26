@@ -114,7 +114,7 @@ export const HLT_SYNC: readonly { stage: string; state: string; tone: HltTone; d
 
 /* ── Stale object inventory — HLT_OBJECTS (13002-13012) ───────────────────── */
 
-export const HLT_OBJECTS: readonly {
+export interface HltObject {
   type: string;
   count: number;
   oldest: string;
@@ -122,7 +122,9 @@ export const HLT_OBJECTS: readonly {
   note: string;
   tone: HltTone;
   fixKey: string;
-}[] = [
+}
+
+export const HLT_OBJECTS: readonly HltObject[] = [
   { type: "Stale device records", count: 31, oldest: "412 days since last sign-in", where: "Entra ID", note: "No cleanup rule exists, so device records accumulate indefinitely.", tone: "amber", fixKey: "hlt-stale-devices" },
   { type: "Duplicate device records", count: 9, oldest: "2 records for the same hardware ID", where: "Entra ID + Intune", note: "Re-enrolled devices that left the old record behind. Compliance reporting counts both.", tone: "amber", fixKey: "hlt-duplicate-devices" },
   { type: "App registrations with no owner", count: 61, oldest: "created 4 years ago", where: "Entra ID", note: "When a credential expires there is nobody to notify, which is how a reporting job failed silently for 8 days.", tone: "red", fixKey: "hlt-app-owners" },
@@ -138,7 +140,87 @@ export const HLT_OBJECTS: readonly {
 ];
 
 /** `hltObjectTotal` (13024) — summed, and it is the "78" the hero stat prints. */
-export const HLT_OBJECT_TOTAL = HLT_OBJECTS.reduce((a, o) => a + o.count, 0);
+export function hltObjectTotalFor(objects: readonly { count: number }[]): number {
+  return objects.reduce((a, o) => a + o.count, 0);
+}
+
+export const HLT_OBJECT_TOTAL = hltObjectTotalFor(HLT_OBJECTS);
+
+/**
+ * Overlay real counts onto the itemized inventory's rows 1-5 (Git #1340,
+ * following Shane's own comment scoping the drill-down's 5 line items to
+ * #1260's checks plus 2 additional `appgov:*` checks). Investigated all 5
+ * against the real check each maps to and only 3 survive semantic
+ * verification — a count matching the fixture row's LABEL is not the same as
+ * a count matching what the row actually CLAIMS, same standard #1233's OAuth
+ * evidence page wiring already applied:
+ *
+ *   - "Stale device records"        -> intune.staleDeviceRecordCount
+ *     (devices:stale-duplicate-records) — matches exactly.
+ *   - "Duplicate device records"    -> intune.duplicateDeviceRecordCount
+ *     (same check, the duplicate-hardware-ID half) — matches exactly.
+ *   - "Credentials already expired" -> governance.expiredPasswordCredentialCount
+ *     + governance.expiredKeyCredentialCount (appgov:cert-secret-expiration,
+ *     #541) — matches exactly; the fixture row does not split by credential
+ *     type, so the two real halves are summed.
+ *   - "App registrations with no owner" -> NOT WIRED. Shane's comment proposed
+ *     appgov:stale-app-registrations, but that check (#551, "Aging App
+ *     Registrations") counts `createdDateTime` AGE bands (over 180/365 days),
+ *     with NO ownership expand at all in its stored properties — it cannot
+ *     answer "does this registration have an owner" no matter how it's read.
+ *     A real "ownerless app registration" check does not exist anywhere in
+ *     the catalog today (the one ownerless-* check that does exist,
+ *     `governance:ownerless-groups`, is GROUPS, a different Graph resource).
+ *     Stays fixture.
+ *   - "Credentials expiring in 30 days" -> NOT WIRED. #541's own migration
+ *     file states plainly that `evalClause`'s day-operators are anchored
+ *     backward from now only (`olderThanDays`/`newerThanDays`), so the check
+ *     can express "already expired" but has no forward-looking window — a
+ *     genuine "expiring within N days" signal does not exist yet (that
+ *     migration calls it an explicit follow-up needing a new operator and a
+ *     product decision on N). Stays fixture.
+ *
+ * A null/unresolved field leaves that row on its fixture value — same
+ * partial-overlay contract `securityOauthPageWithLive` and
+ * `adpWorkloadsWithLive` use. Returns the SAME array reference when nothing
+ * resolved, so a caller can tell "live" from "fixture" with `===`.
+ */
+export function hltObjectsWithLive(
+  objects: readonly HltObject[],
+  live: { staleDeviceRecordCount: number | null; duplicateDeviceRecordCount: number | null; expiredCredentialCount: number | null },
+): readonly HltObject[] {
+  if (live.staleDeviceRecordCount == null && live.duplicateDeviceRecordCount == null && live.expiredCredentialCount == null) {
+    return objects;
+  }
+  return objects.map((o) => {
+    if (o.type === "Stale device records" && live.staleDeviceRecordCount != null) {
+      return { ...o, count: live.staleDeviceRecordCount };
+    }
+    if (o.type === "Duplicate device records" && live.duplicateDeviceRecordCount != null) {
+      return { ...o, count: live.duplicateDeviceRecordCount };
+    }
+    if (o.type === "Credentials already expired" && live.expiredCredentialCount != null) {
+      return { ...o, count: live.expiredCredentialCount };
+    }
+    return o;
+  });
+}
+
+/**
+ * Overlay the hero's "Stale objects" stat with a live-aware total (Git
+ * #1340). `total` should come from `hltObjectTotalFor(hltObjectsWithLive(...))`
+ * so the hero card and the itemized list below it always agree — the same
+ * "same underlying data" requirement #1340 called out by name. Only 3 of 9
+ * object classes have any live backing (see `hltObjectsWithLive`), so this is
+ * always a PARTIAL live total when anything is live at all, never a fully
+ * live 166 — that partial-ness is inherent to the data, not a bug.
+ */
+export function hltHeroStatsWithObjectTotal(
+  stats: typeof HLT_HERO_STATS,
+  total: number,
+): typeof HLT_HERO_STATS {
+  return stats.map((s) => (s.label === "Stale objects" ? { ...s, value: String(total) } : s));
+}
 
 /* ── Configuration drift — HLT_DRIFT (14835-14888) ────────────────────────── */
 

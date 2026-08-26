@@ -47,8 +47,17 @@ import {
   hltAcceptedStripSuffix,
   hltDriftOwner,
   hltDriftRows,
+  hltHeroStatsWithObjectTotal,
+  hltObjectTotalFor,
+  hltObjectsWithLive,
   hltTrendGeometry,
 } from "./hltDashboardData";
+
+// Mirrors useHltObjectsLive.ts's HLT_OBJECTS_LIVE_EMPTY shape without
+// importing that hook module — it pulls in @/lib/auth-context, which needs a
+// path-alias resolver this plain node:test runner (unlike the other portal-v2
+// data-file tests it sits beside) does not have configured.
+const NO_LIVE = { staleDeviceRecordCount: null, duplicateDeviceRecordCount: null, expiredCredentialCount: null };
 
 describe("Health hero", () => {
   it("scores 66 with a RED delta — debt is trending the wrong way", () => {
@@ -295,6 +304,61 @@ describe("Health playbooks and cross-pillar routing", () => {
     ]);
     // Plus the one on the object inventory, which belongs to Security's OAuth page.
     assert.equal(playbookFor("oauth-dormant").title, "Apply the recommended change");
+  });
+});
+
+describe("Stale object inventory — live overlay (Git #1340)", () => {
+  it("returns the SAME array reference when nothing resolved live", () => {
+    assert.equal(hltObjectsWithLive(HLT_OBJECTS, NO_LIVE), HLT_OBJECTS);
+  });
+
+  it("overlays only the 3 rows with a real, semantically-verified check", () => {
+    const live = hltObjectsWithLive(HLT_OBJECTS, {
+      staleDeviceRecordCount: 5,
+      duplicateDeviceRecordCount: 2,
+      expiredCredentialCount: 7,
+    });
+    assert.notEqual(live, HLT_OBJECTS);
+    const byType = Object.fromEntries(live.map((o) => [o.type, o.count]));
+    assert.equal(byType["Stale device records"], 5);
+    assert.equal(byType["Duplicate device records"], 2);
+    assert.equal(byType["Credentials already expired"], 7);
+    // The two rows that failed semantic verification (name-match, not a real
+    // signal for what the row claims) stay on their fixture counts.
+    assert.equal(byType["App registrations with no owner"], 61);
+    assert.equal(byType["Credentials expiring in 30 days"], 3);
+    // Every other class is untouched.
+    assert.equal(byType["Service principals with no sign-in"], 14);
+    assert.equal(byType["Empty security groups"], 18);
+    assert.equal(byType["Unassigned Intune profiles"], 6);
+    assert.equal(byType["Disabled accounts never removed"], 23);
+  });
+
+  it("overlays partially when only some fields resolve", () => {
+    const live = hltObjectsWithLive(HLT_OBJECTS, { ...NO_LIVE, staleDeviceRecordCount: 40 });
+    assert.notEqual(live, HLT_OBJECTS);
+    const byType = Object.fromEntries(live.map((o) => [o.type, o.count]));
+    assert.equal(byType["Stale device records"], 40);
+    assert.equal(byType["Duplicate device records"], 9); // fixture, unresolved
+  });
+
+  it("hltObjectTotalFor sums whatever array it's given — fixture or overlaid", () => {
+    assert.equal(hltObjectTotalFor(HLT_OBJECTS), HLT_OBJECT_TOTAL);
+    const live = hltObjectsWithLive(HLT_OBJECTS, {
+      staleDeviceRecordCount: 0,
+      duplicateDeviceRecordCount: 0,
+      expiredCredentialCount: 0,
+    });
+    // 166 minus the fixture values of the 3 overlaid rows (31 + 9 + 1), all zeroed.
+    assert.equal(hltObjectTotalFor(live), HLT_OBJECT_TOTAL - 31 - 9 - 1);
+  });
+
+  it("hltHeroStatsWithObjectTotal only ever touches the Stale objects stat", () => {
+    const stats = hltHeroStatsWithObjectTotal(HLT_HERO_STATS, 200);
+    assert.equal(stats[0].value, HLT_HERO_STATS[0].value); // Directory sync untouched
+    assert.equal(stats[1].value, "200");
+    assert.equal(stats[1].sub, HLT_HERO_STATS[1].sub); // sub-label untouched
+    assert.equal(stats[2].value, HLT_HERO_STATS[2].value); // Config drift untouched
   });
 });
 
