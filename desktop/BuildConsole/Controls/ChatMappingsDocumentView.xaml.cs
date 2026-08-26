@@ -97,6 +97,8 @@ namespace BuildConsole.Controls
                             AssociatedIssuesString = GetNullableStr(row, "associated_issues") ?? ""
                         };
                         item.LastSavedEpicId = item.EpicId;
+                        // Link the EpicComboItem reference so the editable ComboBox shows the correct display name
+                        item.LinkedEpic = _epicsList.FirstOrDefault(ep => ep.Id == item.EpicId);
                         _allChats.Add(item);
                     }
                 }
@@ -180,10 +182,12 @@ namespace BuildConsole.Controls
             if (_api == null || cb == null) return;
             if (cb.DataContext is ChatMappingItem item)
             {
-                int? newEpicId = (int?)cb.SelectedValue;
+                var selected = cb.SelectedItem as EpicComboItem;
+                int? newEpicId = selected?.Id;
                 if (item.EpicId == newEpicId && item.LastSavedEpicId == newEpicId) return;
 
                 item.EpicId = newEpicId;
+                item.LinkedEpic = selected;
                 item.LastSavedEpicId = newEpicId;
                 TxtStatus.Text = "Saving epic association...";
 
@@ -345,6 +349,14 @@ namespace BuildConsole.Controls
         {
             get => _epicId;
             set { _epicId = value; OnPropertyChanged(nameof(EpicId)); }
+        }
+
+        private EpicComboItem? _linkedEpic;
+        /// <summary>The full EpicComboItem bound to the editable ComboBox SelectedItem so the display name shows correctly.</summary>
+        public EpicComboItem? LinkedEpic
+        {
+            get => _linkedEpic;
+            set { _linkedEpic = value; EpicId = value?.Id; OnPropertyChanged(nameof(LinkedEpic)); }
         }
 
         private string _associatedIssuesString = string.Empty;

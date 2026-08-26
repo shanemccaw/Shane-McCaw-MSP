@@ -89,9 +89,8 @@
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <ComboBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType={x:Type UserControl}}, Path=EpicsList}"
-                                      SelectedValuePath="Id"
                                       DisplayMemberPath="DisplayName"
-                                      SelectedValue="{Binding EpicId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      SelectedItem="{Binding LinkedEpic, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       SelectionChanged="EpicComboBox_SelectionChanged"
                                       DropDownClosed="EpicComboBox_DropDownClosed"
                                       LostFocus="EpicComboBox_LostFocus"
