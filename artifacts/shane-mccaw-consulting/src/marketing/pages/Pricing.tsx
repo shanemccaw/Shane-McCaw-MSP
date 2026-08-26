@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "wouter";
 import { MarketingLayout } from "../components/MarketingLayout";
 import { useCatalog, type MonitoringTier } from "../../hooks/useCatalog";
+import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
 import {
   useServices,
   resolvePublicServicePriceCents,
@@ -117,12 +118,14 @@ const SOW_CATEGORY_TEXT = [
   { name: "Copilot", fg: "#fbbf24", gets: "Readiness remediation, deployment, adoption and governance programmes" },
 ];
 
-const STEPS: { n: string; title: string; body: string; hot?: boolean; arrow?: boolean }[] = [
-  { n: "1", title: "Run the free scan", body: "Read-only Graph scan. 158 checks, all six pillars.", hot: true, arrow: true },
-  { n: "2", title: "Get a priced SOW", body: "Findings become named phases with fixed prices.", arrow: true },
-  { n: "3", title: "Select your scopes", body: "Keep, defer or drop each phase before signing.", arrow: true },
-  { n: "4", title: "Sign, pay, onboard", body: "Account, portal and remediation window in one pass.", arrow: false },
-];
+function buildSteps(checkCount: number): { n: string; title: string; body: string; hot?: boolean; arrow?: boolean }[] {
+  return [
+    { n: "1", title: "Run the free scan", body: `Read-only Graph scan. ${checkCount} checks, all six pillars.`, hot: true, arrow: true },
+    { n: "2", title: "Get a priced SOW", body: "Findings become named phases with fixed prices.", arrow: true },
+    { n: "3", title: "Select your scopes", body: "Keep, defer or drop each phase before signing.", arrow: true },
+    { n: "4", title: "Sign, pay, onboard", body: "Account, portal and remediation window in one pass.", arrow: false },
+  ];
+}
 
 const QUICK_START_MIN = Math.min(...PACKS.map((p) => p.price));
 const QUICK_START_MAX = Math.max(...PACKS.map((p) => p.price));
@@ -130,6 +133,8 @@ const QUICK_START_MAX = Math.max(...PACKS.map((p) => p.price));
 export default function Pricing() {
   const { monitoringTiers, loading: monLoading } = useCatalog();
   const { services: retainerServices, loading: retLoading } = useServices("retainer");
+  const checkCount = useSignalCheckCount();
+  const STEPS = buildSteps(checkCount);
 
   const retainerTiers = retainerServices
     .filter(isFixedHourlyRetainer)
@@ -163,7 +168,7 @@ export default function Pricing() {
       : "…";
 
   const LADDER = [
-    { key: "scan", name: "Free tenant scan", price: "$0", note: "Read-only · 158 checks · findings are yours either way", hot: true, green: true },
+    { key: "scan", name: "Free tenant scan", price: "$0", note: `Read-only · ${checkCount} checks · findings are yours either way`, hot: true, green: true },
     { key: "pack", name: "Quick-Start Packs", price: `$${QUICK_START_MIN}–$${QUICK_START_MAX}`, note: "One-off · fixed price on the card · dry run before it applies" },
     { key: "monitor", name: "Monitoring", price: monitoringFromLabel, note: "Per seat bracket · Foundation, Growth or Premier" },
     { key: "retainer", name: "Architect retainer", price: retLoading ? "…" : retainerRangeLabel, note: "By hours · 8, 16 or 30 a month · no seat gating" },

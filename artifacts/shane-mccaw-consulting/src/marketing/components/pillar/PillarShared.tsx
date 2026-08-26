@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "wouter";
+import { useSignalCheckCount } from "../../../hooks/useSignalCheckCount";
 
 // Shared building blocks for the six pillar pages (Part 4), recreated from the
 // Marketing Pillar - <name>.dc.html design references. Every pillar page follows the
@@ -229,14 +230,18 @@ export function PillarPeerStrip({
 // The four-step "From Scan to Scoped Work" closing CTA. Steps are identical across all
 // six pillars (and their blue "hot" styling is fixed regardless of page colour); only
 // the top gradient tint (`accent`, the page colour at 5%) and the intro copy differ.
-const STEPS = [
-  { n: "1", title: "Run the free scan", body: "Read-only Graph scan. 158 checks, all six pillars.", hot: true },
-  { n: "2", title: "Get a priced SOW", body: "Findings become named phases with fixed prices.", hot: false },
-  { n: "3", title: "Select your scopes", body: "Keep, defer or drop each phase before signing.", hot: false },
-  { n: "4", title: "Sign, pay, onboard", body: "Account, portal and remediation window in one pass.", hot: false },
-];
+function buildSteps(checkCount: number) {
+  return [
+    { n: "1", title: "Run the free scan", body: `Read-only Graph scan. ${checkCount} checks, all six pillars.`, hot: true },
+    { n: "2", title: "Get a priced SOW", body: "Findings become named phases with fixed prices.", hot: false },
+    { n: "3", title: "Select your scopes", body: "Keep, defer or drop each phase before signing.", hot: false },
+    { n: "4", title: "Sign, pay, onboard", body: "Account, portal and remediation window in one pass.", hot: false },
+  ];
+}
 
 export function ScanToScopedWork({ accent, intro }: { accent: string; intro: React.ReactNode }) {
+  const checkCount = useSignalCheckCount();
+  const STEPS = buildSteps(checkCount);
   return (
     <section
       style={{

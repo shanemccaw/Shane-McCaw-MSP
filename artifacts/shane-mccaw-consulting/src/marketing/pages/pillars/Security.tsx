@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { MarketingLayout } from "../../components/MarketingLayout";
 import { ArrowRight, PillarPeerStrip, ScanToScopedWork } from "../../components/pillar/PillarShared";
 import { useCatalog, type MonitoringTier } from "../../../hooks/useCatalog";
+import { useSignalCheckCount } from "../../../hooks/useSignalCheckCount";
 
 // Route /pillars/security — recreated from Design/design_handoff_marketing/
 // Marketing Pillar - Security.dc.html. Colour #8b5cf6, watermark padlock. Copy verbatim; the
@@ -105,6 +106,7 @@ function money(n: number): string {
 
 export default function PillarSecurity() {
   const { monitoringTiers, loading: monLoading } = useCatalog();
+  const checkCount = useSignalCheckCount();
   const cheapestMonitoringPrice = (() => {
     let min: number | null = null;
     monitoringTiers.forEach((row) => {
@@ -181,7 +183,7 @@ export default function PillarSecurity() {
               </Link>
             </div>
             <div style={{ display: "flex", gap: "14px", flexWrap: "wrap" }}>
-              {["Read-only Graph scan", "158 checks", "No agent installed"].map((t) => (
+              {["Read-only Graph scan", `${checkCount} checks`, "No agent installed"].map((t) => (
                 <span key={t} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", color: "#64748b" }}>
                   <span style={{ width: "5px", height: "5px", borderRadius: "999px", background: "#34d399" }} />
                   {t}
@@ -421,7 +423,7 @@ export default function PillarSecurity() {
             </div>
             <div style={{ flex: "1 1 260px", display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 }}>
               {[
-                ["158 checks", "in the free scan — a point-in-time read of all six pillars."],
+                [`${checkCount} checks`, "in the free scan — a point-in-time read of all six pillars."],
                 ["129 checks", "re-run continuously on Monitoring Growth, with one-click runbooks when one fails."],
                 ["6 engines", "drift, security, health, SLA, scope creep and sales offer — each watching a different way tenants go wrong."],
               ].map(([n, body]) => (

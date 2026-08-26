@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link } from "wouter";
 import { Nav } from "../components/Nav";
 import { Footer } from "../components/Footer";
+import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
 
 // Route /scan — recreated from Design/design_handoff_marketing/Marketing Free Scan.dc.html.
 // The site's primary conversion path: a consent screen, a live-looking six-sector acquisition
@@ -206,7 +207,6 @@ const CHECKS = [
   "Evaluating service health signals",
   "Compiling readiness signal",
 ];
-const SIGNALS = 158;
 
 // The six wheel sectors, index-ordered from the top and clockwise, matching the wheel geometry
 // (k=0 top). Each carries its pillar colour, its screen position within the 1000×700 stage, its
@@ -444,7 +444,7 @@ const CL = (p: number, a: number, b: number) => Math.max(0, Math.min(1, (p - a) 
 
 // Six-sector wheel geometry: each sector grows from the hub to the rim on its own staggered slice
 // of the scan (t = 0→1), and its three finding cues fade in as it fills.
-function wheelVals(t: number, vw: number, vh: number, rm: boolean, paused: boolean): WheelVals {
+function wheelVals(t: number, vw: number, vh: number, rm: boolean, paused: boolean, signals: number): WheelVals {
   // the scanner owns the viewport: fit it to whichever axis is tighter
   const sc = Math.min(1, (vw - 80) / 1060, (vh - 168) / 700);
   const PT = (rad: number, ang: number) => {
@@ -453,7 +453,7 @@ function wheelVals(t: number, vw: number, vh: number, rm: boolean, paused: boole
   };
   const R1 = 104;
   const R2 = 214;
-  const r: WheelVals = { sc, count: Math.round(SIGNALS * t), spin: !rm && !paused, w: [], d: [], c: [] };
+  const r: WheelVals = { sc, count: Math.round(signals * t), spin: !rm && !paused, w: [], d: [], c: [] };
   for (let k = 0; k < 6; k++) {
     const pp = CL(t, k * 0.05, k * 0.05 + 0.74);
     const a1 = k * 60 - 30;
@@ -767,6 +767,7 @@ const sevBorder = (sev: Finding["severity"]) =>
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 export default function FreeScan() {
+  const signals = useSignalCheckCount();
   const [phase, setPhase] = useState<Phase>("start");
   const [domain, setDomain] = useState("");
   const [email, setEmail] = useState("");
@@ -832,14 +833,14 @@ export default function FreeScan() {
   const scanDomain = domain.trim() || "yourcompany.com";
   const scanEmail = email.trim() || "you@yourcompany.com";
   const done = Math.min(step, SCAN_STEPS.length);
-  const r = wheelVals(done / SCAN_STEPS.length, vw, vh, rm, paused);
+  const r = wheelVals(done / SCAN_STEPS.length, vw, vh, rm, paused, signals);
   const pulseAnim = rm || paused ? "none" : "pulseDot 1100ms ease-in-out infinite";
   const scanLabel = paused
     ? "Scan paused — nothing is running against your tenant"
     : done >= SCAN_STEPS.length
     ? "Acquisition complete — compiling readiness signal"
     : CHECKS[Math.min(CHECKS.length - 1, Math.floor((done / SCAN_STEPS.length) * CHECKS.length))];
-  const scanCount = Math.round(SIGNALS * (done / SCAN_STEPS.length)) + " of 150+ signals evaluated";
+  const scanCount = Math.round(signals * (done / SCAN_STEPS.length)) + " of 150+ signals evaluated";
 
   return (
     <div

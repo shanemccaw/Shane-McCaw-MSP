@@ -1,6 +1,7 @@
 import React from "react";
 import { Link } from "wouter";
 import { MarketingLayout } from "../../components/MarketingLayout";
+import { useSignalCheckCount } from "../../../hooks/useSignalCheckCount";
 
 // Shared skeleton for the six same-shaped workload deep-dive pages (Copilot, SharePoint, Teams,
 // Power Platform, Migration, M365 Health). Recreated verbatim from the
@@ -669,14 +670,18 @@ function DeepDivePillRow({
 // The closing "From Scan to Scoped Work" band — the same four scan steps on every page (verbatim),
 // with a per-page intro paragraph. The hot (first) step is always the brand blue, regardless of the
 // page's own accent (matches the design's shared stepCss).
-const SCAN_STEPS: { n: string; title: string; body: string }[] = [
-  { n: "1", title: "Run the free scan", body: "Read-only Graph scan. 158 checks, all six pillars." },
-  { n: "2", title: "Get a priced SOW", body: "Findings become named phases with fixed prices." },
-  { n: "3", title: "Select your scopes", body: "Keep, defer or drop each phase before signing." },
-  { n: "4", title: "Sign, pay, onboard", body: "Account, portal and remediation window in one pass." },
-];
+function buildScanSteps(checkCount: number): { n: string; title: string; body: string }[] {
+  return [
+    { n: "1", title: "Run the free scan", body: `Read-only Graph scan. ${checkCount} checks, all six pillars.` },
+    { n: "2", title: "Get a priced SOW", body: "Findings become named phases with fixed prices." },
+    { n: "3", title: "Select your scopes", body: "Keep, defer or drop each phase before signing." },
+    { n: "4", title: "Sign, pay, onboard", body: "Account, portal and remediation window in one pass." },
+  ];
+}
 
 function ScanToScopedWork({ intro }: { intro: string }) {
+  const checkCount = useSignalCheckCount();
+  const SCAN_STEPS = buildScanSteps(checkCount);
   return (
     <section style={{ padding: "32px 32px 56px", borderTop: "1px solid rgba(255,255,255,.06)" }}>
       <div style={{ maxWidth: "760px", margin: "0 auto 26px", textAlign: "center" }}>

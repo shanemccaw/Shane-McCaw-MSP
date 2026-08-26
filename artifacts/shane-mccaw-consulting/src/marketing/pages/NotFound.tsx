@@ -12,7 +12,10 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { MarketingLayout } from "../components/MarketingLayout";
-import { SITE_INDEX } from "../../data/siteIndex";
+import { buildSiteIndex } from "../../data/siteIndex";
+import { useCatalog, type MonitoringTier } from "../../hooks/useCatalog";
+import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
+import { PACKS } from "../data/quickStartPacks";
 
 // Route /* catch-all — recreated from Design/404-export/Marketing 404.dc.html (Git #1318).
 // Copy for the H1 and good-news/bad-news subhead is fixed per the handoff; do not reword it.
@@ -30,12 +33,35 @@ const READOUT: { label: string; icon: React.ComponentType<{ size?: number; color
   { label: "Health", icon: Activity, color: "#22c55e", ok: true },
 ];
 
-const COMMON: { tag: string; label: string; meta: string; href: string }[] = [
-  { tag: "Start here", label: "Free tenant scan", meta: "Read-only · 12 minutes", href: "/scan" },
-  { tag: "Pricing", label: "Every price on one page", meta: "From $149", href: "/pricing" },
-  { tag: "Quick fix", label: "Quick-Start Packs", meta: "Fixed price", href: "/quick-start" },
-  { tag: "Ongoing", label: "Tenant monitoring", meta: "From $180/mo", href: "/monitoring" },
-];
+// Live pricing — byte-identical formula to Pricing.tsx's own ppuOf/floorOf/surchargeOf/money
+// (the only function that computes an actual monitoring Stripe charge), so this figure can never
+// drift from what /pricing and /monitoring show. Quick-Start's floor reads the same fixture
+// Pricing.tsx's QUICK_START_MIN derives from, per the Git #1305/#1351 no-hardcoded-price rule.
+interface MonitoringTypeAttributes {
+  seatCountFloor?: number;
+  pricePerUserMonth?: string;
+  flatMonthlySurcharge?: string | null;
+}
+function mTa(row: MonitoringTier): MonitoringTypeAttributes {
+  return (row.typeAttributes ?? {}) as MonitoringTypeAttributes;
+}
+function ppuOf(row: MonitoringTier): number {
+  const n = parseFloat(mTa(row).pricePerUserMonth ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function floorOf(row: MonitoringTier): number {
+  const n = Number(mTa(row).seatCountFloor ?? row.seatMin ?? 1);
+  return isNaN(n) || n < 1 ? 1 : Math.trunc(n);
+}
+function surchargeOf(row: MonitoringTier): number {
+  const n = parseFloat(mTa(row).flatMonthlySurcharge ?? "");
+  return isNaN(n) ? 0 : n;
+}
+function money(n: number): string {
+  return "$" + n.toLocaleString(undefined, { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 });
+}
+
+const QUICK_START_MIN = Math.min(...PACKS.map((p) => p.price));
 
 const PILLS: { label: string; href: string }[] = [
   { label: "Copilot readiness", href: "/solutions/copilot" },
@@ -80,6 +106,30 @@ export default function NotFound() {
   const [location] = useLocation();
   const [query, setQuery] = useState("");
   const [reportState, setReportState] = useState<"idle" | "sent">("idle");
+  const { monitoringTiers, loading: monLoading } = useCatalog();
+  const checkCount = useSignalCheckCount();
+  const SITE_INDEX = useMemo(() => buildSiteIndex(checkCount), [checkCount]);
+
+  const cheapestMonitoringPrice = (() => {
+    let min: number | null = null;
+    monitoringTiers.forEach((row) => {
+      const p = ppuOf(row) * floorOf(row) + surchargeOf(row);
+      if (min === null || p < min) min = p;
+    });
+    return min;
+  })();
+  const monitoringMetaLabel = monLoading
+    ? "…"
+    : cheapestMonitoringPrice != null
+      ? `From ${money(cheapestMonitoringPrice)}/mo`
+      : "…";
+
+  const COMMON: { tag: string; label: string; meta: string; href: string }[] = [
+    { tag: "Start here", label: "Free tenant scan", meta: "Read-only · 12 minutes", href: "/scan" },
+    { tag: "Pricing", label: "Every price on one page", meta: `From $${QUICK_START_MIN}`, href: "/pricing" },
+    { tag: "Quick fix", label: "Quick-Start Packs", meta: "Fixed price", href: "/quick-start" },
+    { tag: "Ongoing", label: "Tenant monitoring", meta: monitoringMetaLabel, href: "/monitoring" },
+  ];
 
   const q = query.trim().toLowerCase();
   const results = useMemo(() => {
@@ -87,7 +137,7 @@ export default function NotFound() {
     return SITE_INDEX.filter((d) =>
       `${d.label} ${d.blurb} ${d.keys}`.toLowerCase().includes(q),
     );
-  }, [q]);
+  }, [q, SITE_INDEX]);
 
   const empty = q.length > 0 && results.length === 0;
   const countLabel = q

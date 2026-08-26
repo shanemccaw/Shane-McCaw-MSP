@@ -33,10 +33,11 @@ export interface SiteIndexEntry {
   keys: string;
 }
 
-export const SITE_INDEX: SiteIndexEntry[] = [
+export function buildSiteIndex(checkCount: number): SiteIndexEntry[] {
+  return [
   {
     label: "Free tenant scan",
-    blurb: "158 read-only checks across all six pillars",
+    blurb: `${checkCount} read-only checks across all six pillars`,
     href: "/scan",
     icon: Search,
     color: "#60a5fa",
@@ -186,4 +187,5 @@ export const SITE_INDEX: SiteIndexEntry[] = [
     color: "#94a3b8",
     keys: "all projects catalogue solutions services list",
   },
-];
+  ];
+}

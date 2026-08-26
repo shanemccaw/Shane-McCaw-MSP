@@ -8,6 +8,7 @@ import {
   type PublicService,
 } from "../../hooks/useServices";
 import { PACKS } from "../data/quickStartPacks";
+import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
 
 // Route / — recreated from Design/design_handoff_marketing/Marketing Home.dc.html.
 // Colours, spacing and copy are the design's own, verbatim (copy is final — README:
@@ -223,13 +224,15 @@ function fmtPriceCents(cents: number | null): string | null {
   return "$" + (cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-const STATS: { v: string; l: string }[] = [
-  { v: "NASA", l: "current Lead M365 Architect" },
-  { v: "30 yrs", l: "in the Microsoft ecosystem" },
-  { v: "158", l: "checks across six pillars" },
-  { v: "33", l: "fixed-price remediation projects" },
-  { v: "15", l: `Quick-Start Packs from $${QUICK_START_MIN}` },
-];
+function buildStats(checkCount: number): { v: string; l: string }[] {
+  return [
+    { v: "NASA", l: "current Lead M365 Architect" },
+    { v: "30 yrs", l: "in the Microsoft ecosystem" },
+    { v: String(checkCount), l: "checks across six pillars" },
+    { v: "33", l: "fixed-price remediation projects" },
+    { v: "15", l: `Quick-Start Packs from $${QUICK_START_MIN}` },
+  ];
+}
 
 const DIVES: { label: string; href: string }[] = [
   { label: "Copilot & AI", href: "/solutions/copilot" },
@@ -354,12 +357,14 @@ function doorIcon(key: DoorKey) {
   }
 }
 
-const STEPS: { n: string; title: string; body: string; hot?: boolean; arrow: boolean }[] = [
-  { n: "1", title: "Run the free scan", body: "Read-only Graph scan. 158 checks, all six pillars.", hot: true, arrow: true },
-  { n: "2", title: "Get a priced SOW", body: "Findings become named phases with fixed prices.", arrow: true },
-  { n: "3", title: "Select your scopes", body: "Keep, defer or drop each phase before signing.", arrow: true },
-  { n: "4", title: "Sign, pay, onboard", body: "Account, portal and remediation window in one pass.", arrow: false },
-];
+function buildSteps(checkCount: number): { n: string; title: string; body: string; hot?: boolean; arrow: boolean }[] {
+  return [
+    { n: "1", title: "Run the free scan", body: `Read-only Graph scan. ${checkCount} checks, all six pillars.`, hot: true, arrow: true },
+    { n: "2", title: "Get a priced SOW", body: "Findings become named phases with fixed prices.", arrow: true },
+    { n: "3", title: "Select your scopes", body: "Keep, defer or drop each phase before signing.", arrow: true },
+    { n: "4", title: "Sign, pay, onboard", body: "Account, portal and remediation window in one pass.", arrow: false },
+  ];
+}
 
 // The right-arrow used by CTAs and the process steps.
 function arrowIcon(size = 15) {
@@ -385,6 +390,9 @@ const GRADIENT_CTA = "linear-gradient(90deg,#3b82f6,#8b5cf6)";
 export default function Home() {
   const { monitoringTiers, loading: monLoading } = useCatalog();
   const { services: retainerServices, loading: retLoading } = useServices("retainer");
+  const checkCount = useSignalCheckCount();
+  const STATS = buildStats(checkCount);
+  const STEPS = buildSteps(checkCount);
 
   const cheapestMonitoringPrice = (() => {
     let min: number | null = null;
