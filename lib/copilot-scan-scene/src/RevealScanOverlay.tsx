@@ -28,7 +28,7 @@
 
 import { useEffect, useState } from "react";
 
-import { SCANNING_PILLAR_CHIP, type JourneyPillarView } from "./journeyModel.ts";
+import { SCANNING_PILLAR_CHIP, type ScanScenePillarView } from "./sceneModel.ts";
 import { OVERLAY_FADE_MS, useOverlayFade } from "./journeyMotion.ts";
 import { BRAND, INK, PILLARS, PILLAR_KEYS, RADIUS, TABULAR, type PillarKey } from "./journeyTokens.ts";
 import {
@@ -152,7 +152,7 @@ export function RevealScanOverlay({
   open: boolean;
   /** "Halden Materials · 1,240 seats", already formatted by `tenantStrip()`. */
   tenantLabel: string;
-  pillars: readonly JourneyPillarView[];
+  pillars: readonly ScanScenePillarView[];
   /** 0 → 1 across the whole run. */
   progress: number;
   checksDone: number;

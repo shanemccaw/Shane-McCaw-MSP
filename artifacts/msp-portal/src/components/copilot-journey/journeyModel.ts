@@ -48,6 +48,10 @@ import {
   classifyLiveCheckSeverity,
   type LiveCheckResult,
 } from "../copilot-assessment/telemetryComparison.ts";
+// Scene 0's "actively scanning" sentinel now has its single source of truth in
+// the shared package (Git #1357), so this chip projection and the overlay that
+// pulses on it stay on one string and can never drift apart.
+import { SCANNING_PILLAR_CHIP } from "@workspace/copilot-scan-scene/sceneModel";
 
 /* ------------------------------------------------------------------ *
  * Wire shapes — the subset of each payload this journey reads.
@@ -508,7 +512,7 @@ export const UNEVALUATED_PILLAR_CHIP = "This pillar was not evaluated in your sc
  * either, an empty finding list here is not evidence of anything — showing
  * `CLEAN_PILLAR_HEADLINE` for it was this issue's confirmed live bug.
  */
-export const SCANNING_PILLAR_CHIP = "Scan in progress — evaluating this pillar now.";
+export { SCANNING_PILLAR_CHIP };
 
 /**
  * The wire's evaluation verdict, or the honest reconstruction of it for a

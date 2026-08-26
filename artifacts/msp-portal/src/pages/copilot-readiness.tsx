@@ -39,14 +39,14 @@ import { useVersionInfo } from "@/hooks/useVersionInfo";
 import { JourneySvgDefs, PreviewBadge } from "@/components/copilot-journey/JourneyPrimitives";
 import { RevealAdoptionScene } from "@/components/copilot-journey/RevealAdoptionScene";
 import { RevealFullPicture } from "@/components/copilot-journey/RevealFullPicture";
-import { RevealNoScanGate } from "@/components/copilot-journey/RevealNoScanGate";
+import { RevealNoScanGate } from "@workspace/copilot-scan-scene";
 import {
   PILLAR_WIDE_MIN_PX,
   RevealPillarScene,
 } from "@/components/copilot-journey/RevealPillarScene";
 import { RevealProgressRail } from "@/components/copilot-journey/RevealProgressRail";
 import { RevealReconsentGate } from "@/components/copilot-journey/RevealReconsentGate";
-import { RevealScanOverlay } from "@/components/copilot-journey/RevealScanOverlay";
+import { RevealScanOverlay } from "@workspace/copilot-scan-scene";
 import { RevealVerdict } from "@/components/copilot-journey/RevealVerdict";
 import { tenantStrip } from "@/components/copilot-journey/journeyModel.ts";
 import {
@@ -62,8 +62,7 @@ import {
   PREVIEW_SIGNAL_COUNT,
   previewJourneyView,
 } from "@/components/copilot-journey/journeyPreviewFixture.ts";
-import { shouldBlockNeverScanned } from "@/components/copilot-journey/neverScannedGate.ts";
-import { decideAutoScan } from "@/components/copilot-journey/revealAutoScan.ts";
+import { shouldBlockNeverScanned, decideAutoScan } from "@workspace/copilot-scan-scene";
 import { activeSceneIndex, sceneProgress } from "@/components/copilot-journey/revealMath.ts";
 import {
   useCopilotJourney,

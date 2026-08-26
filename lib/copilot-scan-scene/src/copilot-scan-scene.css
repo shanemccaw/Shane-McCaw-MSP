@@ -1,0 +1,52 @@
+/* ============================================================================
+ * Copilot scan scene (Scene 0) — the minimal keyframes and scoped base styles
+ * the two overlays (RevealScanOverlay, RevealNoScanGate) need, packaged for
+ * cross-app import.
+ *
+ * The full Copilot Readiness journey stylesheet lives in
+ * `artifacts/msp-portal/.../copilot-journey.css` (doc-body prose, print rules,
+ * the checkout/document-viewer chrome — none of which Scene 0 uses). That file
+ * is a superset of what is here, so the msp-portal consumers keep importing it
+ * and see identical styling; this trimmed sheet exists so an app that only
+ * mounts Scene 0 (e.g. the marketing Free Scan, Epic #1352 Phase 6) can style
+ * the scene without pulling the whole journey.
+ *
+ * Keyframes are `cj-*` prefixed and the page rules are scoped to `.cj-dark`, so
+ * registering this globally is safe: nothing else uses that namespace.
+ * ========================================================================== */
+
+/* Dark surface the scene sits on. */
+.cj-dark {
+  margin: 0;
+  background: #020617;
+  color: #f1f5f9;
+  font-family: Inter, "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cj-dark a { color: #60a5fa; text-decoration: none; }
+.cj-dark a:hover { color: #93c5fd; }
+
+.cj-dark ::-webkit-scrollbar { width: 8px; height: 8px; }
+.cj-dark ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 99px; }
+.cj-dark ::-webkit-scrollbar-track { background: transparent; }
+
+/* The live dot beside the streaming check name during the scan, and the
+   FindingChip's "actively scanning" pulse marker. */
+@keyframes cj-pulse-dot {
+  0%, 100% { opacity: .35; }
+  50% { opacity: 1; }
+}
+
+/* Reduced motion: drop the decorative pulse and collapse transitions. The
+   sheen and count-ups are handled in JS (RevealScanOverlay branches on
+   `reduced`), so this block only silences the decorative CSS. */
+@media (prefers-reduced-motion: reduce) {
+  .cj-dark [style*="cj-pulse-dot"] {
+    animation: none !important;
+  }
+
+  .cj-dark * {
+    transition-duration: 1ms !important;
+  }
+}

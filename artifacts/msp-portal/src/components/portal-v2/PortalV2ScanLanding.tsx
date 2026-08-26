@@ -37,12 +37,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
 
-import { RevealNoScanGate } from "@/components/copilot-journey/RevealNoScanGate";
-import { RevealScanOverlay } from "@/components/copilot-journey/RevealScanOverlay";
+import {
+  RevealNoScanGate,
+  RevealScanOverlay,
+  OVERLAY_FADE_MS,
+  decideAutoScan,
+  shouldBlockNeverScanned,
+} from "@workspace/copilot-scan-scene";
 import { tenantStrip } from "@/components/copilot-journey/journeyModel.ts";
-import { OVERLAY_FADE_MS } from "@/components/copilot-journey/journeyMotion.ts";
-import { decideAutoScan } from "@/components/copilot-journey/revealAutoScan.ts";
-import { shouldBlockNeverScanned } from "@/components/copilot-journey/neverScannedGate.ts";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
 import "@/components/copilot-journey/copilot-journey.css";
 

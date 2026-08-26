@@ -55,6 +55,7 @@
     "@types/react-grid-layout": "^2.1.0",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
+    "@workspace/copilot-scan-scene": "workspace:*",
     "@workspace/dashboard-canvas": "workspace:*",
     "@workspace/debug-console": "workspace:*",
     "@workspace/json-viewer": "workspace:*",

@@ -961,6 +961,9 @@ importers:
       '@workspace/api-client-react':
         specifier: workspace:*
         version: link:../../lib/api-client-react
+      '@workspace/copilot-scan-scene':
+        specifier: workspace:*
+        version: link:../../lib/copilot-scan-scene
       '@workspace/dashboard-canvas':
         specifier: workspace:*
         version: link:../../lib/dashboard-canvas
@@ -1466,6 +1469,22 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 3.25.76
+
+  lib/copilot-scan-scene:
+    dependencies:
+      lucide-react:
+        specifier: 'catalog:'
+        version: 0.545.0(react@19.1.0)
+    devDependencies:
+      '@types/react':
+        specifier: ^19.2.0
+        version: 19.2.14
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.3(@types/react@19.2.14)
+      tsx:
+        specifier: 'catalog:'
+        version: 4.21.0
 
   lib/dashboard-canvas:
     dependencies:
