@@ -35,6 +35,13 @@ namespace BuildConsole.Services
         /// <summary>Fully-formed status-bar text, e.g. "Claude: 87% used — resets in 1d 4h 12m", "Claude: 45% used", or "Claude: --".</summary>
         public string DisplayText { get; set; } = "Claude: --";
         public string ToolTip { get; set; } = string.Empty;
+        
+        // Weekly (All Models) status fields
+        public int? WeeklyPercent { get; set; }
+        public DateTime? WeeklyResetTarget { get; set; }
+        public string WeeklyDisplayText { get; set; } = "Claude Weekly: --";
+        public string WeeklyToolTip { get; set; } = string.Empty;
+
         public DateTime? LastPoll { get; set; }
     }
 
@@ -83,6 +90,11 @@ namespace BuildConsole.Services
         private DateTime? _resetTarget;
         private DateTime? _lastPoll;
         private ClaudeUsageMeterState _lastState = ClaudeUsageMeterState.Unavailable;
+
+        private int? _weeklyPercent;
+        private DateTime? _weeklyResetTarget;
+        private DateTime? _weeklyProjectedFullTarget;
+        private double _weeklyProjectedRatePerHour;
 
         // ── projected "time until 100%" (real observed growth rate, current window only) ──
         private DateTime? _projectedFullTarget;
@@ -143,23 +155,30 @@ namespace BuildConsole.Services
                 var (cliSuccess, cliOutput, cliError) = await RunClaudeCliUsageAsync();
                 if (cliSuccess && !string.IsNullOrWhiteSpace(cliOutput))
                 {
-                    var (parsedPercent, parsedReset) = ParseCliUsageOutput(cliOutput);
-                    if (parsedPercent.HasValue)
+                    var (parsedSessionPercent, parsedSessionReset, parsedWeeklyPercent, parsedWeeklyReset) = ParseCliUsageOutput(cliOutput);
+                    if (parsedSessionPercent.HasValue || parsedWeeklyPercent.HasValue)
                     {
-                        _percent = parsedPercent.Value;
-                        _resetTarget = ParseResetTarget(parsedReset);
+                        _percent = parsedSessionPercent;
+                        _resetTarget = ParseResetTarget(parsedSessionReset);
+                        _weeklyPercent = parsedWeeklyPercent;
+                        _weeklyResetTarget = ParseResetTarget(parsedWeeklyReset);
                         _lastPoll = DateTime.Now;
 
                         ActivityLog.Log(Channel,
-                            $"OK[cli] — {_percent}% used (All Models tier); reset label=\"{Trim(parsedReset)}\" → target {(_resetTarget.HasValue ? _resetTarget.Value.ToString("ddd yyyy-MM-dd HH:mm") : "unparsed")}.");
+                            $"OK[cli] — Session: {_percent}% used (reset target={(_resetTarget.HasValue ? _resetTarget.Value.ToString("ddd HH:mm") : "unparsed")}), " +
+                            $"Weekly: {_weeklyPercent}% used (reset target={(_weeklyResetTarget.HasValue ? _weeklyResetTarget.Value.ToString("ddd HH:mm") : "unparsed")}).");
 
-                        UpdateProjection(_percent.Value, _resetTarget, _lastPoll.Value);
+                        if (_percent.HasValue)
+                            UpdateProjection(_percent.Value, _resetTarget, _lastPoll.Value);
+                        if (_weeklyPercent.HasValue)
+                            UpdateWeeklyProjection(_weeklyPercent.Value, _weeklyResetTarget, _lastPoll.Value);
+
                         Emit(ClaudeUsageMeterState.Ok);
                         return;
                     }
                     else
                     {
-                        ActivityLog.Log(Channel, $"CLI returned output but no 'All Models' meter could be parsed. Output: {Trim(cliOutput)}");
+                        ActivityLog.Log(Channel, $"CLI returned output but no usage meters could be parsed. Output: {Trim(cliOutput)}");
                     }
                 }
                 else
@@ -216,20 +235,27 @@ namespace BuildConsole.Services
                 }
 
                 var reading = ExtractReading(probe);
-                if (reading.Percent == null)
+                if (reading.SessionPercent == null && reading.WeeklyPercent == null)
                 {
                     ActivityLog.Log(Channel, $"FAIL[meter-malformed] — found {probe.MeterCount} meter(s) but none had parseable values: {DescribeMeters(probe)}");
                     SetUnavailable("meter present but value unreadable");
                     return;
                 }
 
-                _percent = reading.Percent;
-                _resetTarget = ParseResetTarget(reading.ResetLabel);
+                _percent = reading.SessionPercent;
+                _resetTarget = ParseResetTarget(reading.SessionResetLabel);
+                _weeklyPercent = reading.WeeklyPercent;
+                _weeklyResetTarget = ParseResetTarget(reading.WeeklyResetLabel);
 
                 ActivityLog.Log(Channel,
-                    $"OK[read] — {_percent}% used (from {probe.MeterCount} meter(s); winning valuetext=\"{Trim(reading.ValueText)}\"); reset label=\"{Trim(reading.ResetLabel)}\" → target {(_resetTarget.HasValue ? _resetTarget.Value.ToString("ddd yyyy-MM-dd HH:mm") : "unparsed")}.");
+                    $"OK[read] — Session: {_percent}% (valuetext=\"{reading.SessionValueText}\"), " +
+                    $"Weekly: {_weeklyPercent}% (valuetext=\"{reading.WeeklyValueText}\").");
 
-                UpdateProjection(_percent.Value, _resetTarget, _lastPoll.Value);
+                if (_percent.HasValue)
+                    UpdateProjection(_percent.Value, _resetTarget, _lastPoll.Value);
+                if (_weeklyPercent.HasValue)
+                    UpdateWeeklyProjection(_weeklyPercent.Value, _weeklyResetTarget, _lastPoll.Value);
+
                 Emit(ClaudeUsageMeterState.Ok);
             }
             catch (Exception ex)
@@ -248,8 +274,9 @@ namespace BuildConsole.Services
         {
             if (_lastState != ClaudeUsageMeterState.Ok) return;
 
-            bool resetCountdownShown = _percent.HasValue && _percent.Value >= CountdownThresholdPercent && _resetTarget.HasValue;
-            bool projectionShown = _projectedFullTarget.HasValue;
+            bool resetCountdownShown = (_percent.HasValue && _percent.Value >= CountdownThresholdPercent && _resetTarget.HasValue) ||
+                                       (_weeklyPercent.HasValue && _weeklyPercent.Value >= CountdownThresholdPercent && _weeklyResetTarget.HasValue);
+            bool projectionShown = _projectedFullTarget.HasValue || _weeklyProjectedFullTarget.HasValue;
             if (resetCountdownShown || projectionShown)
                 Emit(ClaudeUsageMeterState.Ok);
         }
@@ -260,6 +287,10 @@ namespace BuildConsole.Services
             _resetTarget = null;
             _projectedFullTarget = null;
             _projectedRatePerHour = 0;
+            _weeklyPercent = null;
+            _weeklyResetTarget = null;
+            _weeklyProjectedFullTarget = null;
+            _weeklyProjectedRatePerHour = 0;
             Emit(state, reason);
         }
 
@@ -347,53 +378,111 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Parses the output of `claude -p /usage`, explicitly extracting the **All Models** tier
-        /// and ignoring "Current session" and "Fable" progress bars.
+        /// Parses the output of `claude -p /usage`, extracting both the **Current session**
+        /// and the **All Models** tiers.
         ///
         /// Output example:
         /// "Current session: 7% used · resets Aug 23, 7:50pm (America/New_York)
         ///  Current week (all models): 99% used · resets Aug 23, 9pm (America/New_York)
         ///  Current week (Fable): 15% used · resets Aug 23, 9pm (America/New_York)"
         /// </summary>
-        internal static (int? percent, string resetLabel) ParseCliUsageOutput(string output)
+        internal static (int? sessionPercent, string sessionReset, int? weeklyPercent, string weeklyReset) ParseCliUsageOutput(string output)
         {
-            if (string.IsNullOrWhiteSpace(output)) return (null, string.Empty);
+            if (string.IsNullOrWhiteSpace(output)) return (null, string.Empty, null, string.Empty);
 
-            // Priority 1: Specifically targeted "All models" / "all models" line
-            var allModelsMatch = Regex.Match(
-                output,
-                @"(?:all\s+models?)[^:\r\n]*:\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?",
-                RegexOptions.IgnoreCase);
+            int? sessionPercent = null;
+            string sessionReset = string.Empty;
+            int? weeklyPercent = null;
+            string weeklyReset = string.Empty;
 
-            if (allModelsMatch.Success && double.TryParse(allModelsMatch.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pAll))
-            {
-                string reset = allModelsMatch.Groups[2].Success ? allModelsMatch.Groups[2].Value.Trim() : string.Empty;
-                return (Clamp(pAll), reset);
-            }
-
-            // Priority 2: Any line that is NOT "current session" and NOT "fable"
             var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
             foreach (var line in lines)
             {
-                if (Regex.IsMatch(line, @"current\s+session|fable", RegexOptions.IgnoreCase)) continue;
-
-                var lineMatch = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
-                if (lineMatch.Success && double.TryParse(lineMatch.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pLine))
+                // 1. Current Session
+                if (Regex.IsMatch(line, @"current\s+session", RegexOptions.IgnoreCase))
                 {
-                    string reset = lineMatch.Groups[2].Success ? lineMatch.Groups[2].Value.Trim() : string.Empty;
-                    return (Clamp(pLine), reset);
+                    var match = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
+                    if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
+                    {
+                        sessionPercent = Clamp(p);
+                        sessionReset = match.Groups[2].Success ? match.Groups[2].Value.Trim() : string.Empty;
+                    }
+                }
+                // 2. All Models (Weekly)
+                else if (Regex.IsMatch(line, @"all\s+models?", RegexOptions.IgnoreCase))
+                {
+                    var match = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
+                    if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
+                    {
+                        weeklyPercent = Clamp(p);
+                        weeklyReset = match.Groups[2].Success ? match.Groups[2].Value.Trim() : string.Empty;
+                    }
                 }
             }
 
-            // Priority 3: General fallback
-            var fallbackMatch = Regex.Match(output, @"(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
-            if (fallbackMatch.Success && double.TryParse(fallbackMatch.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pFall))
+            // Fallbacks: if we didn't find specific labels, let's look through all matches
+            if (sessionPercent == null)
             {
-                string reset = fallbackMatch.Groups[2].Success ? fallbackMatch.Groups[2].Value.Trim() : string.Empty;
-                return (Clamp(pFall), reset);
+                // First line if any
+                foreach (var line in lines)
+                {
+                    if (Regex.IsMatch(line, @"session", RegexOptions.IgnoreCase))
+                    {
+                        var match = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
+                        if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
+                        {
+                            sessionPercent = Clamp(p);
+                            sessionReset = match.Groups[2].Success ? match.Groups[2].Value.Trim() : string.Empty;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (weeklyPercent == null)
+            {
+                foreach (var line in lines)
+                {
+                    if (Regex.IsMatch(line, @"all\s+models|week", RegexOptions.IgnoreCase))
+                    {
+                        var match = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
+                        if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
+                        {
+                            weeklyPercent = Clamp(p);
+                            weeklyReset = match.Groups[2].Success ? match.Groups[2].Value.Trim() : string.Empty;
+                            break;
+                        }
+                    }
+                }
             }
 
-            return (null, string.Empty);
+            // Absolute general fallback
+            if (sessionPercent == null || weeklyPercent == null)
+            {
+                var matches = Regex.Matches(output, @"(?:([a-zA-Z\s()]+):)?\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n·]+))?", RegexOptions.IgnoreCase);
+                int foundCount = 0;
+                foreach (Match m in matches)
+                {
+                    if (!m.Success) continue;
+                    if (double.TryParse(m.Groups[2].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
+                    {
+                        int val = Clamp(p);
+                        string reset = m.Groups[3].Value.Trim();
+                        if (foundCount == 0 && sessionPercent == null)
+                        {
+                            sessionPercent = val;
+                            sessionReset = reset;
+                        }
+                        else if (weeklyPercent == null)
+                        {
+                            weeklyPercent = val;
+                            weeklyReset = reset;
+                        }
+                        foundCount++;
+                    }
+                }
+            }
+
+            return (sessionPercent, sessionReset, weeklyPercent, weeklyReset);
         }
 
         // ── time-until-100% projection ──────────────────────────────────────
@@ -430,6 +519,41 @@ namespace BuildConsole.Services
                 _projectedFullTarget = null;
                 _projectedRatePerHour = 0;
                 ActivityLog.Log(Channel, $"projection update failed: {ex.Message}");
+            }
+        }
+
+        private void UpdateWeeklyProjection(int percent, DateTime? resetTarget, DateTime pollMoment)
+        {
+            try
+            {
+                var sample = new UsageSample { At = pollMoment, Percent = percent, ResetTarget = resetTarget };
+                bool stored = WeeklyUsageHistoryStore.Append(sample);
+                ActivityLog.Log(Channel,
+                    $"weekly data-point {(stored ? "stored" : "NOT stored")}: {percent}% at {pollMoment:yyyy-MM-dd HH:mm:ss}"
+                    + (resetTarget.HasValue ? $" (weekly reset target {resetTarget.Value:ddd HH:mm})" : " (weekly reset target unparsed)") + ".");
+
+                var projection = UsageProjection.Compute(WeeklyUsageHistoryStore.ReadAll(), pollMoment);
+                if (projection.HasProjection && projection.TimeTo100.HasValue)
+                {
+                    _weeklyProjectedFullTarget = pollMoment + projection.TimeTo100.Value;
+                    _weeklyProjectedRatePerHour = projection.RatePerHour;
+                    ActivityLog.Log(Channel,
+                        $"weekly projection: ~{FormatCountdown(projection.TimeTo100.Value)} to 100% "
+                        + $"(weekly rate {projection.RatePerHour:0.00}%/hr over {projection.WindowSampleCount} current-window points; "
+                        + $"weekly projected 100% at {_weeklyProjectedFullTarget.Value:ddd yyyy-MM-dd HH:mm}).");
+                }
+                else
+                {
+                    _weeklyProjectedFullTarget = null;
+                    _weeklyProjectedRatePerHour = 0;
+                    ActivityLog.Log(Channel, $"weekly projection withheld: {projection.Reason}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _weeklyProjectedFullTarget = null;
+                _weeklyProjectedRatePerHour = 0;
+                ActivityLog.Log(Channel, $"weekly projection update failed: {ex.Message}");
             }
         }
 
@@ -668,9 +792,13 @@ namespace BuildConsole.Services
                 State = state,
                 Percent = _percent,
                 ResetTarget = _resetTarget,
+                WeeklyPercent = _weeklyPercent,
+                WeeklyResetTarget = _weeklyResetTarget,
                 LastPoll = _lastPoll,
                 DisplayText = BuildDisplayText(state),
                 ToolTip = BuildToolTip(state, reason),
+                WeeklyDisplayText = BuildWeeklyDisplayText(state),
+                WeeklyToolTip = BuildWeeklyToolTip(state, reason),
             };
             StatusChanged?.Invoke(status);
         }
@@ -701,13 +829,13 @@ namespace BuildConsole.Services
         private string BuildToolTip(ClaudeUsageMeterState state, string? reason)
         {
             var tip = new StringBuilder();
-            tip.Append("Claude usage meter (All Models tier)");
+            tip.Append("Claude usage meter (Current Session)");
             tip.Append(state switch
             {
                 ClaudeUsageMeterState.Polling => "\nChecking Claude usage via CLI (claude -p /usage)…",
                 ClaudeUsageMeterState.Unavailable => $"\nUnavailable{(string.IsNullOrEmpty(reason) ? "" : $" ({reason})")} — is claude CLI logged in?",
                 ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(reason) ? "" : $": {reason}")}",
-                _ => _percent.HasValue ? $"\n{_percent.Value}% of the All Models window used" : "",
+                _ => _percent.HasValue ? $"\n{_percent.Value}% of the Current Session window used" : "",
             });
             var target = _resetTarget ?? GetNextWeeklyResetTarget();
             tip.Append($"\nResets: {target:ddd MMM d, h:mm tt}");
@@ -717,13 +845,59 @@ namespace BuildConsole.Services
             return tip.ToString();
         }
 
+        private string BuildWeeklyDisplayText(ClaudeUsageMeterState state)
+        {
+            if (!_weeklyPercent.HasValue) return "Claude Weekly: --";
+
+            string text = $"Claude Weekly: {_weeklyPercent.Value}% used";
+            if (_weeklyPercent.Value >= CountdownThresholdPercent)
+            {
+                var target = _weeklyResetTarget ?? GetNextWeeklyResetTarget();
+                var remaining = target - DateTime.Now;
+                if (remaining > TimeSpan.Zero)
+                    text += $" — resets in {FormatCountdown(remaining)}";
+            }
+
+            if (_weeklyProjectedFullTarget.HasValue)
+            {
+                var toFull = _weeklyProjectedFullTarget.Value - DateTime.Now;
+                if (toFull > TimeSpan.Zero)
+                    text += $" · ~{FormatCountdown(toFull)} to 100%";
+            }
+
+            return text;
+        }
+
+        private string BuildWeeklyToolTip(ClaudeUsageMeterState state, string? reason)
+        {
+            var tip = new StringBuilder();
+            tip.Append("Claude usage meter (All Models tier)");
+            tip.Append(state switch
+            {
+                ClaudeUsageMeterState.Polling => "\nChecking Claude usage via CLI (claude -p /usage)…",
+                ClaudeUsageMeterState.Unavailable => $"\nUnavailable{(string.IsNullOrEmpty(reason) ? "" : $" ({reason})")} — is claude CLI logged in?",
+                ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(reason) ? "" : $": {reason}")}",
+                _ => _weeklyPercent.HasValue ? $"\n{_weeklyPercent.Value}% of the All Models window used" : "",
+            });
+            var target = _weeklyResetTarget ?? GetNextWeeklyResetTarget();
+            tip.Append($"\nResets: {target:ddd MMM d, h:mm tt}");
+            if (_weeklyProjectedFullTarget.HasValue)
+                tip.Append($"\nProjected 100%: {_weeklyProjectedFullTarget.Value:ddd MMM d, h:mm tt} (~{_weeklyProjectedRatePerHour:0.0}%/hr at the current rate)");
+            tip.Append(_lastPoll.HasValue ? $"\nLast checked: {_lastPoll:HH:mm:ss}" : "\nLast checked: —");
+            return tip.ToString();
+        }
+
         // ── WebView2 fallback plumbing ──────────────────────────────────────
 
-        private class MeterReading
+        private class PageUsageReading
         {
-            public int? Percent { get; set; }
-            public string ValueText { get; set; } = string.Empty;
-            public string ResetLabel { get; set; } = string.Empty;
+            public int? SessionPercent { get; set; }
+            public string SessionValueText { get; set; } = string.Empty;
+            public string SessionResetLabel { get; set; } = string.Empty;
+
+            public int? WeeklyPercent { get; set; }
+            public string WeeklyValueText { get; set; } = string.Empty;
+            public string WeeklyResetLabel { get; set; } = string.Empty;
         }
 
         private class PageProbe
@@ -849,32 +1023,70 @@ namespace BuildConsole.Services
             return probe;
         }
 
-        private static MeterReading ExtractReading(PageProbe probe)
+        private static PageUsageReading ExtractReading(PageProbe probe)
         {
-            int? best = null;
-            string bestText = string.Empty;
+            int? sessionPercent = null;
+            string sessionValueText = string.Empty;
+            string sessionResetLabel = string.Empty;
 
-            // Prioritize "All models"
+            int? weeklyPercent = null;
+            string weeklyValueText = string.Empty;
+            string weeklyResetLabel = string.Empty;
+
+            // 1. First attempt exact match on label
             foreach (var (now, max, text, label) in probe.Meters)
             {
-                if (Regex.IsMatch(label, @"current\s+session|fable", RegexOptions.IgnoreCase)) continue;
-
                 int? pct = ComputePercent(now, max, text);
                 if (pct == null) continue;
 
-                if (Regex.IsMatch(label, @"all\s+models?", RegexOptions.IgnoreCase))
+                if (Regex.IsMatch(label, @"current\s+session", RegexOptions.IgnoreCase))
                 {
-                    return new MeterReading { Percent = pct, ValueText = text, ResetLabel = probe.ResetLabel };
+                    sessionPercent = pct;
+                    sessionValueText = text;
+                    sessionResetLabel = probe.ResetLabel;
                 }
-
-                if (best == null || pct.Value > best.Value)
+                else if (Regex.IsMatch(label, @"all\s+models?", RegexOptions.IgnoreCase))
                 {
-                    best = pct;
-                    bestText = text;
+                    weeklyPercent = pct;
+                    weeklyValueText = text;
+                    weeklyResetLabel = probe.ResetLabel;
                 }
             }
 
-            return new MeterReading { Percent = best, ValueText = bestText, ResetLabel = probe.ResetLabel };
+            // 2. Fallbacks
+            if (sessionPercent == null || weeklyPercent == null)
+            {
+                int idx = 0;
+                foreach (var (now, max, text, label) in probe.Meters)
+                {
+                    int? pct = ComputePercent(now, max, text);
+                    if (pct == null) continue;
+
+                    if (idx == 0 && sessionPercent == null)
+                    {
+                        sessionPercent = pct;
+                        sessionValueText = text;
+                        sessionResetLabel = probe.ResetLabel;
+                    }
+                    else if (weeklyPercent == null)
+                    {
+                        weeklyPercent = pct;
+                        weeklyValueText = text;
+                        weeklyResetLabel = probe.ResetLabel;
+                    }
+                    idx++;
+                }
+            }
+
+            return new PageUsageReading
+            {
+                SessionPercent = sessionPercent,
+                SessionValueText = sessionValueText,
+                SessionResetLabel = sessionResetLabel,
+                WeeklyPercent = weeklyPercent,
+                WeeklyValueText = weeklyValueText,
+                WeeklyResetLabel = weeklyResetLabel
+            };
         }
 
         private static string DescribeMeters(PageProbe probe)

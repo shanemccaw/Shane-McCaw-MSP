@@ -491,7 +491,9 @@
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- replit watcher (Git #902) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
-                                <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter -->
+                                <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter (Current Session) -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- Claude Weekly usage meter (All Models) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- Claude online status (status.anthropic.com) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
@@ -601,8 +603,25 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="13"/>
-                <!-- Claude Service Health Status (source: status.anthropic.com) -->
+                <!-- Claude Weekly usage meter -->
                 <StatusBarItem Grid.Column="14">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="WeeklyUsageDot" Width="8" Height="8"
+                                 Fill="{StaticResource Surface2Brush}"
+                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="WeeklyUsageStatusText" Text="Claude Weekly: --" VerticalAlignment="Center"/>
+                        <Button x:Name="BtnWeeklyUsageRefresh"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Refresh Claude weekly usage now"
+                                Padding="4,0,0,0"
+                                Margin="4,0,0,0"
+                                Content="↻"
+                                Click="BtnWeeklyUsageRefresh_Click"/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="15"/>
+                <!-- Claude Service Health Status (source: status.anthropic.com) -->
+                <StatusBarItem Grid.Column="16">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="ClaudeOnlineDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -619,8 +638,8 @@
                                 Click="BtnClaudeOnlineRefresh_Click"/>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="15"/>
-                <StatusBarItem Grid.Column="16" Padding="6,0,10,0">
+                <Separator Grid.Column="17"/>
+                <StatusBarItem Grid.Column="18" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>

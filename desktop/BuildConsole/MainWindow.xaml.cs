@@ -1239,15 +1239,40 @@ namespace BuildConsole
                 // I'm on." Only chat tabs carry a BoardChat as their Tag
                 // (OpenChatTab); anything else (a browser tab, a file
                 // viewer) clears the section.
-                if (EditorTabs.SelectedItem is TabItem { Tag: BuildConsole.Services.BoardChat chat })
+                if (EditorTabs.SelectedItem is TabItem selectedTab && selectedTab.Tag is BuildConsole.Services.BoardChat chat)
                 {
                     // Git #910 — the real GitHub epic number now goes along with the
                     // internal epicId/title, so BuildQueuePanel can fetch real sub-issues.
-                    var epicGithubNumber = chat.EpicId.HasValue ? LeftSidebar.GetEpicGithubNumber(chat.EpicId.Value) : null;
-                    BuildQueuePanel.SetActiveChatEpic(
-                        chat.EpicId,
-                        epicGithubNumber,
-                        chat.EpicId.HasValue ? LeftSidebar.GetEpicTitle(chat.EpicId.Value) : null);
+                    int? epicId = chat.EpicId;
+                    int? epicGithubNumber = chat.EpicId.HasValue ? LeftSidebar.GetEpicGithubNumber(chat.EpicId.Value) : null;
+                    string? epicTitle = chat.EpicId.HasValue ? LeftSidebar.GetEpicTitle(chat.EpicId.Value) : null;
+
+                    // If it does not have a parent EpicId, check if this chat is for the Epic itself!
+                    if (!chat.EpicId.HasValue)
+                    {
+                        int? tabGithubNumber = null;
+                        if (_chatTabs.TryGetValue(selectedTab, out var tabState))
+                        {
+                            tabGithubNumber = tabState.GithubNumber;
+                        }
+                        if (!tabGithubNumber.HasValue)
+                        {
+                            tabGithubNumber = chat.IssueGithubNumber;
+                        }
+
+                        if (tabGithubNumber.HasValue)
+                        {
+                            var selfEpic = LeftSidebar.GetEpicByGithubNumber(tabGithubNumber.Value);
+                            if (selfEpic != null)
+                            {
+                                epicId = selfEpic.Id;
+                                epicGithubNumber = selfEpic.GithubNumber;
+                                epicTitle = selfEpic.Title;
+                            }
+                        }
+                    }
+
+                    BuildQueuePanel.SetActiveChatEpic(epicId, epicGithubNumber, epicTitle);
                     // Shane: "I should be able to look at the Git Board Tree
                     // View and know exactly what Epic I'm working" — same
                     // signal, so the Git Board highlight tracks whichever
@@ -3084,6 +3109,7 @@ namespace BuildConsole
         {
             if (_usageMeter == null) return;
             BtnUsageRefresh.IsEnabled = false;
+            BtnWeeklyUsageRefresh.IsEnabled = false;
             try
             {
                 await _usageMeter.ManualRefreshAsync();
@@ -3091,6 +3117,23 @@ namespace BuildConsole
             finally
             {
                 BtnUsageRefresh.IsEnabled = true;
+                BtnWeeklyUsageRefresh.IsEnabled = true;
+            }
+        }
+
+        private async void BtnWeeklyUsageRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            if (_usageMeter == null) return;
+            BtnUsageRefresh.IsEnabled = false;
+            BtnWeeklyUsageRefresh.IsEnabled = false;
+            try
+            {
+                await _usageMeter.ManualRefreshAsync();
+            }
+            finally
+            {
+                BtnUsageRefresh.IsEnabled = true;
+                BtnWeeklyUsageRefresh.IsEnabled = true;
             }
         }
 
@@ -3103,7 +3146,7 @@ namespace BuildConsole
                 return;
             }
 
-            UsageDot.Fill = status.State switch
+            Brush dotBrush = status.State switch
             {
                 BuildConsole.Services.ClaudeUsageMeterState.Ok => DotReady,
                 BuildConsole.Services.ClaudeUsageMeterState.Polling => DotLoading,
@@ -3111,8 +3154,13 @@ namespace BuildConsole
                 _ => (Brush)FindResource("Surface2Brush"), // Unavailable — muted
             };
 
+            UsageDot.Fill = dotBrush;
             UsageStatusText.Text = status.DisplayText;
             UsageStatusText.ToolTip = status.ToolTip;
+
+            WeeklyUsageDot.Fill = dotBrush;
+            WeeklyUsageStatusText.Text = status.WeeklyDisplayText;
+            WeeklyUsageStatusText.ToolTip = status.WeeklyToolTip;
 
             // Feed the SAME real meter reading into the startup splash's "Claude usage"
             // row (no-op once that row has already settled — the meter keeps polling for
