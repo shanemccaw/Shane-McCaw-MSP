@@ -1,24 +1,22 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useState, useEffect, type FormEvent } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useAuth } from "@/lib/auth-context";
 import { useMspSlug, getStoredSlug, storeSlug } from "@/lib/slug-context";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { cn } from "@/lib/utils";
-import {
-  Loader2,
-  Lock,
-  KeyRound,
-  Smartphone,
-  Mail,
-  User,
-  ShieldCheck,
-} from "lucide-react";
+import { Loader2, ShieldCheck, KeyRound } from "lucide-react";
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -72,241 +70,16 @@ function useTenantBranding(slug: string | null): TenantBranding | null {
   return branding;
 }
 
-// ── Copy map (verbatim from design handoff) ───────────────────────────────────
-// Only steps with a real backing auth call get a COPY entry — the design's
-// code-entry password-reset steps (resetCode/resetNew) have no backend
-// counterpart on this page (see ForgotPasswordCard below), so they're not
-// reproduced here.
-
-const COPY = {
-  signin: {
-    eyebrow: "Customer portal",
-    heading: "Sign in to your portal",
-    subheading: "One place for your tenant’s findings, runbooks and change records.",
-    quip: "Your tenant score doesn’t improve while you’re standing out here.",
-  },
-  mfa: {
-    eyebrow: "Two-factor",
-    heading: "Confirm it’s you",
-    subheading: "Six digits from your authenticator app finishes the sign-in.",
-    quip: "We flag tenants that skip MFA. Would be awkward to skip our own.",
-  },
-  resetEmail: {
-    eyebrow: "Password reset",
-    heading: "Reset your password",
-    subheading: "Tell us your email address and we’ll send you a reset link.",
-    quip: "Forgetting a password is not a governance finding. Reusing one is.",
-  },
-};
-
-const ENGINES = [
-  { name: "Drift Engine", watches: "config changes", color: "#60a5fa" },
-  { name: "Security Engine", watches: "MFA, CA, OAuth apps", color: "#a78bfa" },
-  { name: "Health Engine", watches: "service incidents", color: "#22c55e" },
-  { name: "SLA Engine", watches: "response times", color: "#22d3ee" },
-  { name: "Scope Creep Engine", watches: "work outside the SOW", color: "#fbbf24" },
-  { name: "Sales Offer Engine", watches: "licence and renewal fit", color: "#2dd4bf" },
-];
-
-const FACTS = [
-  { label: "Checks per scan", value: "158", note: "across six pillars", tone: "#f8fafc" },
-  { label: "Scan cadence", value: "Hourly", note: "every day, no gaps", tone: "#f8fafc" },
-  { label: "Access model", value: "Read-only", note: "writes need approval", tone: "#2dd4bf" },
-  { label: "Change records", value: "Every write", note: "logged and reversible", tone: "#a78bfa" },
-];
-
-// ── Shared shell ──────────────────────────────────────────────────────────────
-
-function LoginShell({
-  brandMark,
-  children,
-}: {
-  brandMark: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div className="min-h-screen grid min-[1020px]:grid-cols-[1.02fr_0.98fr] bg-[#020617] text-[#f8fafc]">
-      <div className="relative flex flex-col overflow-hidden px-6 py-8 sm:px-11 sm:py-9">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(circle 760px at 18% 42%, rgba(139,92,246,.16), rgba(2,6,23,0) 62%), radial-gradient(circle 620px at 6% -12%, rgba(0,120,212,.10), rgba(2,6,23,0) 60%)",
-          }}
-        />
-        <Lock
-          aria-hidden="true"
-          className="pointer-events-none absolute left-1/2 top-1/2 size-[300px] -translate-x-1/2 -translate-y-1/2 opacity-[0.07]"
-          style={{ filter: "drop-shadow(0 0 40px rgba(139,92,246,.55))" }}
-          strokeWidth={0.7}
-          color="#a78bfa"
-        />
-
-        <div className="relative flex items-center gap-2.5">{brandMark}</div>
-
-        <div className="relative flex flex-1 items-center">
-          <div
-            className="mx-auto my-6 flex w-full max-w-[436px] flex-col overflow-hidden rounded-2xl border p-6 pb-6 backdrop-blur-sm"
-            style={{
-              background:
-                "linear-gradient(160deg, rgba(139,92,246,.10), rgba(11,21,36,.62) 55%, rgba(11,21,36,.44))",
-              borderColor: "rgba(139,92,246,.22)",
-              boxShadow: "0 0 70px rgba(139,92,246,.13), inset 0 1px 0 rgba(148,163,184,.07)",
-            }}
-          >
-            {children}
-          </div>
-        </div>
-      </div>
-
-      <aside
-        className="relative hidden min-[1020px]:flex flex-col justify-center gap-4 overflow-hidden border-l px-10 py-9"
-        style={{
-          background: "linear-gradient(160deg, #04121f, #071324 52%, #020617)",
-          borderColor: "rgba(148,163,184,.08)",
-        }}
-      >
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(circle 620px at 82% 8%, rgba(0,180,216,.16), rgba(2,6,23,0) 62%), radial-gradient(circle 520px at 20% 96%, rgba(45,212,191,.09), rgba(2,6,23,0) 60%)",
-          }}
-        />
-
-        <div className="relative mx-auto flex w-full max-w-[420px] flex-col gap-3.5">
-          <div className="flex flex-col gap-1">
-            <span className="text-[9.5px] font-extrabold uppercase tracking-[0.2em] text-[#64748b]">
-              Behind this login
-            </span>
-            <p className="m-0 text-base font-bold leading-snug tracking-tight text-[#f8fafc]">
-              Six engines have been watching your tenant while you were out.
-            </p>
-            <p className="m-0 text-[12.5px] leading-relaxed text-[#94a3b8]">
-              We won&#8217;t pretend to know your numbers from out here. Sign in and they&#8217;re
-              the first thing you see.
-            </p>
-          </div>
-
-          <div
-            className="flex flex-col gap-px rounded-2xl border p-4"
-            style={{ background: "rgba(11,21,36,.66)", borderColor: "rgba(30,41,59,.9)" }}
-          >
-            <div className="mb-2 flex items-center gap-2.5">
-              <span
-                className="size-[7px] rounded-full bg-[#2dd4bf] motion-safe:animate-pulse motion-reduce:animate-none"
-                style={{ boxShadow: "0 0 0 3px rgba(45,212,191,.16)" }}
-              />
-              <span className="text-[9.5px] font-extrabold uppercase tracking-[0.14em] text-[#2dd4bf]">
-                All engines operational
-              </span>
-              <span className="ml-auto font-mono text-[10px] font-bold text-[#475569]">
-                HOURLY
-              </span>
-            </div>
-            {ENGINES.map((e) => (
-              <div
-                key={e.name}
-                className="flex items-center gap-2.5 border-t py-1.5"
-                style={{ borderColor: "rgba(30,41,59,.6)" }}
-              >
-                <span
-                  className="flex size-[26px] shrink-0 items-center justify-center rounded-lg border"
-                  style={{ background: `${e.color}1A`, borderColor: `${e.color}33` }}
-                >
-                  <ShieldCheck className="size-3.5" style={{ color: e.color }} />
-                </span>
-                <span className="min-w-0 flex-1 text-xs font-semibold text-[#cbd5e1]">
-                  {e.name}
-                </span>
-                <span className="shrink-0 text-[10.5px] text-[#64748b]">{e.watches}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2.5">
-            {FACTS.map((f) => (
-              <div
-                key={f.label}
-                className="flex flex-col gap-0.5 rounded-2xl border p-3.5"
-                style={{ background: "rgba(11,21,36,.6)", borderColor: "rgba(30,41,59,.9)" }}
-              >
-                <span className="text-[9.5px] font-bold uppercase tracking-[0.12em] text-[#64748b]">
-                  {f.label}
-                </span>
-                <span
-                  className="text-xl font-extrabold tracking-tight"
-                  style={{ color: f.tone }}
-                >
-                  {f.value}
-                </span>
-                <span className="text-[10.5px] text-[#64748b]">{f.note}</span>
-              </div>
-            ))}
-          </div>
-
-          <p className="m-0 text-[11px] leading-relaxed text-[#475569]">
-            Platform figures, not yours. Your score, findings and runbooks load after sign-in.
-          </p>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
-function StepHeader({
-  eyebrow,
-  heading,
-  subheading,
-  quip,
-}: {
-  eyebrow: string;
-  heading: string;
-  subheading: string;
-  quip: string;
-}) {
-  return (
-    <>
-      <span className="mb-3.5 inline-flex items-center gap-1.5 text-[9.5px] font-extrabold uppercase tracking-[0.16em] text-[#a78bfa]">
-        <span
-          className="size-1.5 rounded-full bg-[#a78bfa] motion-safe:animate-pulse motion-reduce:animate-none"
-          style={{ boxShadow: "0 0 0 3px rgba(139,92,246,.18)" }}
-        />
-        {eyebrow}
-      </span>
-      <h1 className="m-0 mb-2 text-[27px] font-extrabold leading-tight tracking-tight text-[#f8fafc]">
-        {heading}
-      </h1>
-      <p className="m-0 mb-3.5 text-[13.5px] leading-relaxed text-[#94a3b8]">{subheading}</p>
-      <p
-        className="m-0 mb-5 border-l-2 pl-2.5 text-xs leading-relaxed text-[#64748b]"
-        style={{ borderColor: "rgba(139,92,246,.4)" }}
-      >
-        {quip}
-      </p>
-    </>
-  );
-}
-
-const inputClass =
-  "h-auto rounded-md border bg-[#071324] px-3.5 py-2.5 text-[13.5px] font-medium text-[#f8fafc] shadow-none placeholder:text-[#475569] focus-visible:ring-0";
-const inputStyle = { borderColor: "rgba(148,163,184,.18)" } as const;
-
-const primaryButtonClass =
-  "w-full rounded-md border-0 bg-[#0078D4] py-3 text-[13.5px] font-bold text-white hover:bg-[#005A9E] motion-reduce:transition-none";
-
 // ── MFA challenge step ────────────────────────────────────────────────────────
 
 function MfaChallenge({
   mfaToken,
   methods,
-  userLabel,
   onSuccess,
   onCancel,
 }: {
   mfaToken: string;
   methods: string[];
-  userLabel: string;
   onSuccess: () => void;
   onCancel: () => void;
 }) {
@@ -355,98 +128,64 @@ function MfaChallenge({
 
   const hasTotp = methods.includes("totp");
 
-  const initials = ((userLabel.trim()[0] || "S") + (userLabel.split("@")[1]?.[0] || "m")).toUpperCase();
-
-  const userBadge = (
-    <div
-      className="flex items-center gap-2.5 rounded-md border p-2.5"
-      style={{ background: "#0b1524", borderColor: "rgba(30,41,59,.9)" }}
-    >
-      <div
-        className="flex size-[30px] shrink-0 items-center justify-center rounded-md text-[11px] font-extrabold text-white"
-        style={{ background: "linear-gradient(135deg,#0078D4,#00B4D8)" }}
-      >
-        {initials}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col leading-tight">
-        <span className="truncate text-[12.5px] font-bold text-[#f8fafc]">{userLabel}</span>
-        <span className="text-[10.5px] text-[#64748b]">Password accepted</span>
-      </div>
-      <button
-        type="button"
-        onClick={onCancel}
-        className="shrink-0 whitespace-nowrap rounded-md border px-2.5 py-1 text-[10.5px] font-bold text-[#94a3b8] transition-colors hover:border-[rgba(148,163,184,.4)] hover:text-[#f8fafc] motion-reduce:transition-none"
-        style={{ borderColor: "rgba(148,163,184,.16)" }}
-      >
-        Change
-      </button>
-    </div>
-  );
-
   if (showBypass) {
     return (
-      <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
-        <div className="flex items-center gap-2">
-          <KeyRound className="size-4 text-[#a78bfa]" />
-          <span className="text-lg font-semibold">Emergency bypass code</span>
-        </div>
-        <p className="text-sm text-[#94a3b8]">
-          Enter the single-use emergency bypass code your administrator gave you. It allows one
-          sign-in without MFA and cannot be reused.
-        </p>
-        <form onSubmit={onSubmitBypass} className="flex flex-col gap-4">
-          {bypassError && (
-            <Alert variant="destructive">
-              <AlertDescription>{bypassError}</AlertDescription>
-            </Alert>
-          )}
-          <div className="space-y-1.5">
-            <Label htmlFor="bypass-code" className="text-[11px] font-bold tracking-wide text-[#94a3b8]">
-              Bypass code
-            </Label>
-            <Input
-              id="bypass-code"
-              type="text"
-              autoComplete="off"
-              placeholder="EMERGENCY-XXXX-XXXX-XXXX-XXXX"
-              className={cn(inputClass, "text-center font-mono tracking-wide")}
-              style={inputStyle}
-              value={bypassCode}
-              onChange={(e) => setBypassCode(e.target.value)}
-            />
+      <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+        <CardHeader className="space-y-1 pb-4">
+          <div className="flex items-center gap-2">
+            <KeyRound className="size-4 text-primary" />
+            <CardTitle className="text-lg">Emergency bypass code</CardTitle>
           </div>
-          <Button
-            type="submit"
-            className={primaryButtonClass}
-            disabled={bypassSubmitting || !bypassCode.trim()}
-          >
-            {bypassSubmitting && <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />}
-            {bypassSubmitting ? "Verifying…" : "Use bypass code"}
-          </Button>
-          <button
-            type="button"
-            className="w-full text-center text-sm text-[#94a3b8] hover:text-[#f8fafc]"
-            onClick={() => {
-              setShowBypass(false);
-              setBypassError(null);
-            }}
-          >
-            Back to two-factor verification
-          </button>
-        </form>
-      </div>
+          <CardDescription>
+            Enter the single-use emergency bypass code your administrator gave you. It allows one
+            sign-in without MFA and cannot be reused.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={onSubmitBypass} className="space-y-4">
+            {bypassError && (
+              <Alert variant="destructive">
+                <AlertDescription>{bypassError}</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="bypass-code">Bypass code</Label>
+              <Input
+                id="bypass-code"
+                type="text"
+                autoComplete="off"
+                placeholder="EMERGENCY-XXXX-XXXX-XXXX-XXXX"
+                className="text-center font-mono tracking-wide"
+                value={bypassCode}
+                onChange={(e) => setBypassCode(e.target.value)}
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={bypassSubmitting || !bypassCode.trim()}>
+              {bypassSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {bypassSubmitting ? "Verifying…" : "Use bypass code"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-muted-foreground text-sm"
+              onClick={() => {
+                setShowBypass(false);
+                setBypassError(null);
+              }}
+            >
+              Back to two-factor verification
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     );
   }
 
   const {
     register,
     handleSubmit,
-    watch,
-    formState: { isSubmitting },
+    formState: { errors, isSubmitting },
   } = useForm<TotpForm>({ resolver: zodResolver(totpSchema) });
-  const codeInputRef = useRef<HTMLInputElement | null>(null);
-  const { ref: codeFieldRef, ...codeField } = register("code");
-  const code = (watch("code") ?? "").replace(/\D/g, "").slice(0, 6);
 
   async function onSubmitTotp(data: TotpForm) {
     setError(null);
@@ -477,103 +216,94 @@ function MfaChallenge({
   }
 
   if (hasTotp) {
-    const boxChars = code.padEnd(6, " ").slice(0, 6).split("");
     return (
-      <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
-        <div className="flex items-center gap-2 text-[#22d3ee]">
-          <Smartphone className="size-4" />
-          <span className="text-[10.5px] font-bold uppercase tracking-widest text-[#64748b]">
-            Authenticator app
-          </span>
-        </div>
-        {userBadge}
-        <form onSubmit={handleSubmit(onSubmitTotp)} className="flex flex-col gap-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <div
-            className="relative cursor-text"
-            onClick={() => codeInputRef.current?.focus()}
-          >
-            <div className="flex gap-2.5">
-              {boxChars.map((ch, i) => (
-                <span
-                  key={i}
-                  className="flex h-12 flex-1 items-center justify-center rounded-md border font-mono text-lg font-bold"
-                  style={{
-                    background: "#071324",
-                    borderColor: ch.trim() ? "#0078D4" : "rgba(148,163,184,.16)",
-                    color: ch.trim() ? "#f8fafc" : "#334155",
-                  }}
-                >
-                  {ch.trim() || "–"}
-                </span>
-              ))}
-            </div>
-            <input
-              {...codeField}
-              ref={(el) => {
-                codeFieldRef(el);
-                codeInputRef.current = el;
-              }}
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              aria-label="Six-digit verification code"
-              className="absolute inset-0 h-full w-full cursor-text border-none bg-transparent opacity-0"
-            />
+      <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+        <CardHeader className="space-y-1 pb-4">
+          <div className="flex items-center gap-2">
+            <KeyRound className="size-4 text-primary" />
+            <CardTitle className="text-lg">Two-factor verification</CardTitle>
           </div>
-
-          <Button type="submit" className={primaryButtonClass} disabled={isSubmitting}>
-            {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />}
-            {isSubmitting ? "Verifying…" : "Verify and Sign In"}
-          </Button>
-          <p className="m-0 text-[11.5px] leading-relaxed text-[#64748b]">
-            Six digits from your authenticator app. No access to it?{" "}
+          <CardDescription>
+            Enter the 6-digit code from your authenticator app.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmitTotp)} className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="code">Authenticator code</Label>
+              <Input
+                id="code"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="123456"
+                maxLength={6}
+                className="text-center text-xl tracking-[0.4em] font-mono"
+                {...register("code")}
+              />
+              {errors.code && (
+                <p className="text-xs text-destructive">{errors.code.message}</p>
+              )}
+            </div>
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {isSubmitting ? "Verifying…" : "Verify"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-muted-foreground text-sm"
+              onClick={onCancel}
+            >
+              Back to sign in
+            </Button>
             <button
               type="button"
-              className="font-semibold text-[#60a5fa] hover:text-[#93c5fd]"
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline"
               onClick={() => setShowBypass(true)}
             >
-              Use an emergency bypass code
+              Lost your device? Use an emergency bypass code
             </button>
-            .
-          </p>
-        </form>
-      </div>
+          </form>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
-      {userBadge}
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      <p className="text-sm text-[#94a3b8]">
-        Your account requires MFA. Available methods: {methods.join(", ")}.
-      </p>
-      <Button
-        variant="outline"
-        className="w-full border-[rgba(148,163,184,.16)] bg-transparent text-[#94a3b8] hover:text-[#f8fafc]"
-        onClick={onCancel}
-      >
-        Back to sign in
-      </Button>
-      <button
-        type="button"
-        className="w-full text-center text-xs text-[#94a3b8] underline hover:text-[#f8fafc]"
-        onClick={() => setShowBypass(true)}
-      >
-        Lost your device? Use an emergency bypass code
-      </button>
-    </div>
+    <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+      <CardHeader className="pb-4">
+        <CardTitle className="text-lg">Two-factor verification</CardTitle>
+        <CardDescription>
+          Your account requires MFA. Available methods: {methods.join(", ")}.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <p className="text-sm text-muted-foreground">
+          Please contact your administrator if you need assistance completing MFA.
+        </p>
+        <Button variant="outline" className="w-full" onClick={onCancel}>
+          Back to sign in
+        </Button>
+        <button
+          type="button"
+          className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline"
+          onClick={() => setShowBypass(true)}
+        >
+          Lost your device? Use an emergency bypass code
+        </button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -605,61 +335,58 @@ function ForgotPasswordCard({ onCancel }: { onCancel: () => void }) {
 
   if (sent) {
     return (
-      <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-1 duration-200 motion-reduce:animate-none">
-        <div
-          className="flex items-center gap-2.5 rounded-md border p-2.5"
-          style={{ background: "rgba(0,180,216,.07)", borderColor: "rgba(0,180,216,.26)" }}
-        >
-          <Mail className="size-3.5 shrink-0 text-[#22d3ee]" />
-          <span className="text-[12.5px] font-bold text-[#f8fafc]">Check your email</span>
-        </div>
-        <p className="text-sm text-[#94a3b8]">
-          If an account exists for that email, we've sent a link to reset your password.
-        </p>
-        <Button
-          variant="outline"
-          className="w-full border-[rgba(148,163,184,.16)] bg-transparent text-[#94a3b8] hover:text-[#f8fafc]"
-          onClick={onCancel}
-        >
-          Back to sign in
-        </Button>
-      </div>
+      <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Check your email</CardTitle>
+          <CardDescription>
+            If an account exists for that email, we've sent a link to reset your password.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button variant="outline" className="w-full" onClick={onCancel}>
+            Back to sign in
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="forgot-email" className="text-[11px] font-bold tracking-wide text-[#94a3b8]">
-          Email address
-        </Label>
-        <div className="relative">
-          <Mail className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#475569]" />
-          <Input
-            id="forgot-email"
-            type="email"
-            autoComplete="email"
-            placeholder="you@company.com"
-            className={cn(inputClass, "pl-9")}
-            style={inputStyle}
-            {...register("email")}
-          />
-        </div>
-        {errors.email && <p className="text-xs text-[#fb7185]">{errors.email.message}</p>}
-      </div>
-      <Button type="submit" className={primaryButtonClass} disabled={isSubmitting}>
-        {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />}
-        {isSubmitting ? "Sending…" : "Email Me a Reset Link"}
-      </Button>
-      <button
-        type="button"
-        className="w-full rounded-md border py-2.5 text-xs font-semibold text-[#94a3b8] transition-colors hover:border-[rgba(148,163,184,.4)] hover:text-[#f8fafc] motion-reduce:transition-none"
-        style={{ borderColor: "rgba(148,163,184,.16)" }}
-        onClick={onCancel}
-      >
-        Back to sign in
-      </button>
-    </form>
+    <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+      <CardHeader className="space-y-1 pb-4">
+        <CardTitle className="text-lg">Reset your password</CardTitle>
+        <CardDescription>Enter your email and we'll send you a reset link.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="forgot-email">Email</Label>
+            <Input
+              id="forgot-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              {...register("email")}
+            />
+            {errors.email && (
+              <p className="text-xs text-destructive">{errors.email.message}</p>
+            )}
+          </div>
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+            {isSubmitting ? "Sending…" : "Send reset link"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full text-muted-foreground text-sm"
+            onClick={onCancel}
+          >
+            Back to sign in
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -685,10 +412,7 @@ export default function LoginPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-    watch,
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
-
-  const emailValue = watch("email");
 
   // If already authenticated, redirect to landing page.
   // In slug-scoped context navigate("/identity") auto-resolves to
@@ -761,172 +485,147 @@ export default function LoginPage() {
     }
   }
 
-  // Brand mark — shows MSP logo/name when a tenant slug is present, otherwise
-  // the generic platform mark. Sits in the same top-left slot the design
-  // reserves for a static "Shane McCaw" wordmark.
-  const brandMark = branding ? (
-    <>
+  // Branded header — shows MSP logo/name when a tenant slug is present
+  const brandedHeader = branding ? (
+    <div className="flex flex-col items-center gap-2 text-sidebar-foreground">
       {branding.logoUrl ? (
-        <img src={branding.logoUrl} alt={`${branding.name} logo`} className="h-8 w-auto object-contain" />
+        <img
+          src={branding.logoUrl}
+          alt={`${branding.name} logo`}
+          className="h-10 w-auto object-contain"
+        />
       ) : (
-        <div
-          className="flex size-8 shrink-0 items-center justify-center rounded-[9px] text-[13px] font-extrabold tracking-tight text-white"
-          style={{ background: `linear-gradient(135deg, ${branding.primaryColor ?? "#0078D4"}, #00B4D8)` }}
-        >
-          {branding.name.slice(0, 2).toUpperCase()}
-        </div>
+        <ShieldCheck
+          className="size-10"
+          style={{ color: branding.primaryColor ?? "var(--sidebar-primary)" }}
+        />
       )}
-      <div className="flex flex-col leading-tight">
-        <span className="text-[13.5px] font-bold tracking-tight text-[#f8fafc]">{branding.name}</span>
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-[#64748b]">
-          Powered by Shane McCaw Consulting
-        </span>
-      </div>
-    </>
+      <h1 className="text-xl font-semibold tracking-tight">{branding.name}</h1>
+      <p className="text-sm text-sidebar-foreground/60">Powered by Shane McCaw Consulting</p>
+    </div>
   ) : (
-    <>
-      <div
-        className="flex size-8 shrink-0 items-center justify-center rounded-[9px] text-[13px] font-extrabold tracking-tight text-white"
-        style={{ background: "linear-gradient(135deg,#0078D4,#00B4D8)" }}
-      >
-        SM
-      </div>
-      <div className="flex flex-col leading-tight">
-        <span className="text-[13.5px] font-bold tracking-tight text-[#f8fafc]">Shane McCaw</span>
-        <span className="text-[10px] font-semibold uppercase tracking-widest text-[#64748b]">
-          Tenant Monitoring
-        </span>
-      </div>
-    </>
-  );
-
-  const footer = (
-    <div className="mt-5 flex flex-col gap-2.5 border-t pt-4" style={{ borderColor: "rgba(30,41,59,.8)" }}>
-      <div className="flex items-start gap-2 text-[11.5px] leading-relaxed text-[#64748b]">
-        <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-[#2dd4bf]" />
-        <span className="min-w-0 flex-1">
-          Read-only by default. Every write we make is logged in your change record.
-        </span>
-      </div>
-      <div className="flex flex-wrap items-center gap-3.5 pl-[21px] text-[11.5px]">
-        <span className="font-semibold text-[#94a3b8]">Access is provisioned by your administrator</span>
-        <span className="h-[11px] w-px" style={{ background: "rgba(148,163,184,.22)" }} />
-        <a href="/portal/trust" className="font-semibold text-[#94a3b8] underline hover:text-[#f8fafc]">
-          Trust &amp; Privacy
-        </a>
-      </div>
+    <div className="flex flex-col items-center gap-2 text-sidebar-foreground">
+      <ShieldCheck className="size-10 text-sidebar-primary" />
+      <h1 className="text-xl font-semibold tracking-tight">MSP Platform</h1>
+      <p className="text-sm text-sidebar-foreground/60">Powered by Shane McCaw Consulting</p>
     </div>
   );
 
   if (showForgotPassword) {
     return (
-      <LoginShell brandMark={brandMark}>
-        <StepHeader {...COPY.resetEmail} />
-        <ForgotPasswordCard onCancel={() => setShowForgotPassword(false)} />
-        {footer}
-      </LoginShell>
+      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+        <div className="w-full max-w-sm space-y-6">
+          {brandedHeader}
+          <ForgotPasswordCard onCancel={() => setShowForgotPassword(false)} />
+          <p className="text-center text-xs text-sidebar-foreground/40">
+            Access is provisioned by your administrator
+          </p>
+        </div>
+      </div>
     );
   }
 
   if (mfaState) {
     return (
-      <LoginShell brandMark={brandMark}>
-        <StepHeader {...COPY.mfa} />
-        <MfaChallenge
-          mfaToken={mfaState.mfaToken}
-          methods={mfaState.methods}
-          userLabel={emailValue || ""}
-          onSuccess={() => {
-            if (ctxSlug) {
-              navigate(defaultLanding);
-            } else {
-              const slug = tenantSlug ?? getStoredSlug();
-              navigate(slug ? `/${slug}${defaultLanding}` : "/");
-            }
-          }}
-          onCancel={() => setMfaState(null)}
-        />
-        {footer}
-      </LoginShell>
+      <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+        <div className="w-full max-w-sm space-y-6">
+          {brandedHeader}
+          <MfaChallenge
+            mfaToken={mfaState.mfaToken}
+            methods={mfaState.methods}
+            onSuccess={() => {
+              if (ctxSlug) {
+                navigate(defaultLanding);
+              } else {
+                const slug = tenantSlug ?? getStoredSlug();
+                navigate(slug ? `/${slug}${defaultLanding}` : "/");
+              }
+            }}
+            onCancel={() => setMfaState(null)}
+          />
+          <p className="text-center text-xs text-sidebar-foreground/40">
+            Access is provisioned by your administrator
+          </p>
+        </div>
+      </div>
     );
   }
 
   return (
-    <LoginShell brandMark={brandMark}>
-      <StepHeader {...COPY.signin} />
+    <div className="min-h-screen flex items-center justify-center bg-sidebar p-4">
+      <div className="w-full max-w-sm space-y-6">
+        {brandedHeader}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-3.5">
-        {serverError && (
-          <Alert variant="destructive">
-            <AlertDescription>{serverError}</AlertDescription>
-          </Alert>
-        )}
+        <Card className="border-sidebar-border bg-card/95 backdrop-blur">
+          <CardHeader className="space-y-1 pb-4">
+            <CardTitle className="text-lg">Sign in</CardTitle>
+            <CardDescription>Enter your credentials to access the portal</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              {serverError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{serverError}</AlertDescription>
+                </Alert>
+              )}
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="email" className="text-[11px] font-bold tracking-wide text-[#94a3b8]">
-            Email
-          </Label>
-          <div className="relative">
-            <User className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#475569]" />
-            <Input
-              id="email"
-              type="email"
-              autoComplete="email"
-              placeholder="you@company.com"
-              className={cn(inputClass, "pl-9")}
-              style={inputStyle}
-              data-testid="login-email"
-              {...register("email")}
-            />
-          </div>
-          {errors.email && <p className="text-xs text-[#fb7185]">{errors.email.message}</p>}
+              <div className="space-y-1.5">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  {...register("email")}
+                />
+                {errors.email && (
+                  <p className="text-xs text-destructive">{errors.email.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="password">Password</Label>
+                  <button
+                    type="button"
+                    className="text-xs text-muted-foreground hover:text-foreground underline"
+                    onClick={() => setShowForgotPassword(true)}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="current-password"
+                  {...register("password")}
+                />
+                {errors.password && (
+                  <p className="text-xs text-destructive">{errors.password.message}</p>
+                )}
+              </div>
+
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isSubmitting}
+                data-testid="login-submit"
+              >
+                {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+                {isSubmitting ? "Signing in…" : "Sign in"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        <div className="text-center text-xs text-sidebar-foreground/40 space-x-3">
+          <span>Access is provisioned by your administrator</span>
+          <span>·</span>
+          <a href="/portal/trust" className="hover:text-sidebar-foreground/70 underline">
+            Trust &amp; Privacy
+          </a>
         </div>
-
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="password" className="text-[11px] font-bold tracking-wide text-[#94a3b8]">
-            Password
-          </Label>
-          <div className="relative">
-            <Lock className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#475569]" />
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              className={cn(inputClass, "pl-9")}
-              style={inputStyle}
-              data-testid="login-password"
-              {...register("password")}
-            />
-          </div>
-          {errors.password && <p className="text-xs text-[#fb7185]">{errors.password.message}</p>}
-        </div>
-
-        <div className="flex items-center justify-end">
-          <button
-            type="button"
-            data-testid="login-forgot-password"
-            className="text-xs font-semibold text-[#60a5fa] hover:text-[#93c5fd]"
-            onClick={() => setShowForgotPassword(true)}
-          >
-            Forgot password
-          </button>
-        </div>
-
-        <Button
-          type="submit"
-          className={primaryButtonClass}
-          disabled={isSubmitting}
-          data-testid="login-submit"
-        >
-          {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin motion-reduce:animate-none" />}
-          {isSubmitting ? "Signing in…" : "Sign In"}
-        </Button>
-        <p className="m-0 -mt-0.5 text-[11px] leading-relaxed text-[#475569]">
-          Nothing is being scanned yet. That part starts on the other side of this button.
-        </p>
-      </form>
-
-      {footer}
-    </LoginShell>
+      </div>
+    </div>
   );
 }

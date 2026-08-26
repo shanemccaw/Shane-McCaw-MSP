@@ -6,7 +6,6 @@
     "auth/verification-code-flow.json",
     "auth/password-reset-guard.json",
     "auth/signup-exchange.json",
-    "auth/login-page-restyle.json",
     "chat/escalation.json",
     "chat/escalation-push.json",
     "portal/customer-requests.json",
@@ -27,8 +26,8 @@
     "marketing/read-consent-flow.json",
     "marketing/purchase-portal-handoff.json",
     "marketing/change-record-page.json",
-    "marketing/404-page.json",
     "marketing/service-status.json",
+    "marketing/404-page.json",
     "copilot-readiness/assessment-monitoring-rescan.json",
     "copilot-readiness/email-auth-setup.json",
     "copilot-readiness/live-document-pdf-export.json",
@@ -78,11 +77,11 @@
     "portal/portal-v2-security-plan.json",
     "portal/portal-v2-pii.json",
     "portal/account-settings.json",
-    "portal/sign-in-help.json",
     "portal/portal-v2-sops.json",
     "portal/security-drilldowns.json",
     "portal/compliance-drilldowns.json",
     "portal/governance-area-drilldowns.json",
+    "portal/governance-area-cards.json",
     "portal/shell-systems.json"
   ]
 }

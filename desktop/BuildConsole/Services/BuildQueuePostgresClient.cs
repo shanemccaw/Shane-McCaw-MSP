@@ -319,6 +319,7 @@ namespace BuildConsole.Services
                 await using (var findCmd = new NpgsqlCommand(@"
                     SELECT id FROM bt_build_queue
                      WHERE github_number = @num
+                       AND status <> 'running'
                      ORDER BY created_at DESC
                      LIMIT 1", conn))
                 {

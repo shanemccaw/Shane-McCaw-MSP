@@ -395,11 +395,37 @@ namespace BuildConsole.Services
             if (!IsActive) return true;
             if (!string.IsNullOrEmpty(chat.ConversationId) && IsChatInProgress(chat.ConversationId)) return true;
             if (_issueToMilestone.Count == 0) return true;
-            int? num = chat.IssueGithubNumber
-                ?? (chat.EpicId.HasValue && _epicById.TryGetValue(chat.EpicId.Value, out var epic) ? epic.GithubNumber : null);
-            if (num is null || num.Value <= 0) return false; // unlinked -> off-milestone
-            if (_issueToMilestone.TryGetValue(num.Value, out var ms))
-                return ms == _state.ActiveMilestoneNumber;
+
+            // Get all candidate issue numbers for this chat
+            var candidates = new System.Collections.Generic.List<int>();
+            if (chat.IssueGithubNumber.HasValue) candidates.Add(chat.IssueGithubNumber.Value);
+            if (chat.EpicId.HasValue && _epicById.TryGetValue(chat.EpicId.Value, out var epic) && epic.GithubNumber.HasValue)
+            {
+                candidates.Add(epic.GithubNumber.Value);
+            }
+            if (chat.AssociatedIssueNumbers != null)
+            {
+                candidates.AddRange(chat.AssociatedIssueNumbers);
+            }
+
+            foreach (var num in candidates)
+            {
+                if (num <= 0) continue;
+                if (_issueToMilestone.TryGetValue(num, out var ms) && ms == _state.ActiveMilestoneNumber)
+                {
+                    return true;
+                }
+                // If it's a sub-issue, check if its parent epic is in the active milestone
+                var issue = _issues.FirstOrDefault(i => i.Number == num);
+                if (issue != null && issue.ParentNumber.HasValue)
+                {
+                    if (_issueToMilestone.TryGetValue(issue.ParentNumber.Value, out var pms) && pms == _state.ActiveMilestoneNumber)
+                    {
+                        return true;
+                    }
+                }
+            }
+
             return false;
         }
 

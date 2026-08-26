@@ -98,6 +98,29 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     smartBands: RISK_COUNT_BANDS,
   },
   {
+    // Git #1337 -- identity:privileged-mfa-gap (#1288) maps TWO numeric fields
+    // (privilegedMfaGapCount, memberMfaGapCount) off the same
+    // userRegistrationDetails response identity:mfa-registration reads. The
+    // generic pickMappedValueField auto-picker would be ambiguous between them
+    // (both share "mfa"/"gap" tokens with this checkKey), so this is a
+    // needs_aggregation case (dashboard-resolvers.ts) that explicitly reads
+    // memberMfaGapCount -- per the check's own test comment, it is every
+    // unregistered Member account (admin and non-admin alike, guests
+    // excluded), i.e. the real "users without MFA" count the Security page's
+    // MFA Gaps card claims.
+    key: "identity.mfaGapCount",
+    label: "Users Without MFA",
+    valueType: "count",
+    shape: "scalar",
+    sourceType: "monitor_profile",
+    sourceKey: "identity:privileged-mfa-gap",
+    scope: "customer",
+    status: "needs_aggregation",
+    smartEligible: true,
+    smartDefaultTarget: 0,
+    smartBands: RISK_COUNT_BANDS,
+  },
+  {
     key: "identity.passwordlessUserCount",
     label: "Passwordless Adoption",
     valueType: "percentage-eligible",

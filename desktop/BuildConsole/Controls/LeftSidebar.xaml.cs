@@ -2277,8 +2277,10 @@ namespace BuildConsole.Controls
                 .Where(c => BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
                 .Where(c => showArchivedOnly ? c.Archived : !c.Archived)
                 .ToList();
-            var byEpic = focusChats.Where(c => c.EpicId.HasValue).GroupBy(c => c.EpicId!.Value);
-            var unlinked = focusChats.Where(c => !c.EpicId.HasValue).ToList();
+            var chatsWithEpic = focusChats.Select(c => new { Chat = c, Epic = GetEpicForChat(c) }).ToList();
+            var byEpic = chatsWithEpic.Where(x => x.Epic != null).GroupBy(x => x.Epic!.Id, x => x.Chat);
+            var unlinked = chatsWithEpic.Where(x => x.Epic == null).Select(x => x.Chat).ToList();
+
 
             // Closed-epic filtering — mirror the Git Board's #839 convention
             // ("done done get out of my view": closed items drop out of the
@@ -2795,8 +2797,8 @@ namespace BuildConsole.Controls
             card.MouseLeftButtonUp += (s, e) =>
             {
                 if (string.IsNullOrEmpty(chat.ClaudeUrl)) return;
-                int? gh = chat.IssueGithubNumber
-                    ?? (chat.EpicId.HasValue && _chatEpicById.TryGetValue(chat.EpicId.Value, out var ep) ? ep.GithubNumber : null);
+                var resolvedEpic = GetEpicForChat(chat);
+                int? gh = chat.IssueGithubNumber ?? resolvedEpic?.GithubNumber;
                 ChatSelected?.Invoke(this, (chat, gh));
             };
             card.MouseEnter += (s, e) => card.Background = GetBrush("Surface0Brush");
@@ -3221,6 +3223,56 @@ namespace BuildConsole.Controls
             return _chatEpicById.Values.FirstOrDefault(e => e.GithubNumber == githubNumber);
         }
 
+        public BuildConsole.Services.BoardEpic? GetEpicForChat(BoardChat chat)
+        {
+            if (chat == null) return null;
+
+            // 1. If EpicId is directly set
+            if (chat.EpicId.HasValue && _chatEpicById.TryGetValue(chat.EpicId.Value, out var epicDirect))
+            {
+                return epicDirect;
+            }
+
+            // 2. Check if IssueGithubNumber is an Epic
+            if (chat.IssueGithubNumber.HasValue)
+            {
+                var epic = GetEpicByGithubNumber(chat.IssueGithubNumber.Value);
+                if (epic != null) return epic;
+
+                // If it's a sub-issue, check if that sub-issue has a parent Epic in the issues list
+                var issue = _lastBoardIssues.FirstOrDefault(i => i.Number == chat.IssueGithubNumber.Value);
+                if (issue != null && issue.ParentNumber.HasValue)
+                {
+                    epic = GetEpicByGithubNumber(issue.ParentNumber.Value);
+                    if (epic != null) return epic;
+                }
+            }
+
+            // 3. Check if any of AssociatedIssueNumbers is an Epic or a sub-issue under an Epic
+            if (chat.AssociatedIssueNumbers != null)
+            {
+                // First check if any number is directly an Epic
+                foreach (var num in chat.AssociatedIssueNumbers)
+                {
+                    var epic = GetEpicByGithubNumber(num);
+                    if (epic != null) return epic;
+                }
+
+                // If not, check if any number is a sub-issue of an Epic
+                foreach (var num in chat.AssociatedIssueNumbers)
+                {
+                    var issue = _lastBoardIssues.FirstOrDefault(i => i.Number == num);
+                    if (issue != null && issue.ParentNumber.HasValue)
+                    {
+                        var epic = GetEpicByGithubNumber(issue.ParentNumber.Value);
+                        if (epic != null) return epic;
+                    }
+                }
+            }
+
+            return null;
+        }
+
         /// <summary>
         /// Git #851 — Shane: "When clicking on an In-Flight Still Open
         /// issue, it should open the chat that is associated to that
@@ -3248,8 +3300,8 @@ namespace BuildConsole.Controls
         {
             if (e.NewValue is TreeViewItem tvi && tvi.Tag is BoardChat chat && !string.IsNullOrEmpty(chat.ClaudeUrl))
             {
-                int? githubNumber = chat.IssueGithubNumber
-                    ?? (chat.EpicId.HasValue && _chatEpicById.TryGetValue(chat.EpicId.Value, out var epic) ? epic.GithubNumber : null);
+                var resolvedEpic = GetEpicForChat(chat);
+                int? githubNumber = chat.IssueGithubNumber ?? resolvedEpic?.GithubNumber;
                 ChatSelected?.Invoke(this, (chat, githubNumber));
             }
         }

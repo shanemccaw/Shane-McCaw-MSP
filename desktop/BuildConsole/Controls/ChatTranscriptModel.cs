@@ -198,6 +198,12 @@ namespace BuildConsole.Controls
         /// <summary>Whether there's any original prompt text to reveal — drives the header reveal button's visibility.</summary>
         public bool HasInstructions => !string.IsNullOrWhiteSpace(OriginalInstructions);
 
+        private Brush? _chatBackground;
+        public Brush? ChatBackground { get => _chatBackground; set => SetProperty(ref _chatBackground, value); }
+
+        private Brush? _chatBorder;
+        public Brush? ChatBorder { get => _chatBorder; set => SetProperty(ref _chatBorder, value); }
+
         // Pill — brushes are set directly by BuildWatchWindow's state-transition code
         // (FindResource against Resources/ChatPaneBrushes.xaml), mirroring how the
         // pre-redesign code directly assigned Border/TextBlock brushes for each state.

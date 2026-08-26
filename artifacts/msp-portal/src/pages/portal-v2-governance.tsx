@@ -59,9 +59,10 @@ import {
   GOV_AREA_LINKS,
   GOV_CLUSTERS,
   GOV_HERO,
-  govAreaGeometry,
+  govAreaLiveGeometry,
   type GovAreaLink,
 } from "@/components/portal-v2/govDashboardData";
+import { useGovAreaLinksLive, type GovAreaLive } from "@/components/portal-v2/useGovAreaLinksLive";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 const BLUE = "#3B82F6";
@@ -133,6 +134,11 @@ export default function PortalV2GovernancePage() {
   // the scan strip's four values with a real, wired source.
   const scanStatus = useScanStatus();
   const lastScan = lastScanLabel(scanStatus.data?.lastScanAt ?? null, scanStatus.loaded);
+
+  // STEP: the area-card grid's per-card score, delta and sparkline are the real
+  // per-check scan values now, not the `GOV_AREA_LINKS` fixture (#1333). Ten
+  // cards have a confirmed backing check; the rest render an honest "—".
+  const areaLive = useGovAreaLinksLive();
 
   // Honest-null contract (same as the Overview and the other pillar heroes):
   // overlay the REAL engine score when the tenant is scored, fall back to the
@@ -683,7 +689,7 @@ export default function PortalV2GovernancePage() {
                     }}
                   >
                     {cluster.tiles.map((a) => (
-                      <AreaTile key={a.key} tile={a} />
+                      <AreaTile key={a.key} tile={a} live={areaLive.byKey[a.key] ?? null} />
                     ))}
                   </div>
                 </div>
@@ -702,12 +708,20 @@ export default function PortalV2GovernancePage() {
  * The earlier revision this page was built from rendered a plain score/label
  * card. The current design gives the tile the same anatomy as Compliance's area
  * card: a status-coloured icon and a four-bar sparkline in the top-right, a
- * tier-scaled delta chip that always prints (`±0` when flat), a 6px status dot,
- * and a status label that is NOT uppercased. Severity still drives size and
- * flex-grow through `TIER`.
+ * tier-scaled delta chip, a 6px status dot, and a status label that is NOT
+ * uppercased. Severity still drives size and flex-grow through `TIER`.
+ *
+ * The numbers are REAL now (#1333): `live` carries this card's latest scan value,
+ * its previous-scan delta and derived severity. A card with no live data (no
+ * backing check, or an unscanned tenant) renders the honest no-data state — a
+ * muted "—" with no delta and no sparkline — straight out of `govAreaLiveGeometry`.
  */
-function AreaTile({ tile }: { tile: GovAreaLink }) {
-  const { meta, deltaText, deltaColor, sparkBars } = govAreaGeometry(tile);
+function AreaTile({ tile, live }: { tile: GovAreaLink; live: GovAreaLive | null }) {
+  const { meta, deltaText, deltaColor, sparkBars, valueText, hasData } = govAreaLiveGeometry({
+    value: live?.value ?? null,
+    prevValue: live?.prevValue ?? null,
+    status: live?.status ?? null,
+  });
   const t = TIER[meta.tier];
   const Glyph = AREA_ICON[tile.icon as keyof typeof AREA_ICON];
 
@@ -781,23 +795,26 @@ function AreaTile({ tile }: { tile: GovAreaLink }) {
           style={{
             fontSize: t.score,
             fontWeight: 800,
-            color: "#f8fafc",
+            color: hasData ? "#f8fafc" : "#475569",
             letterSpacing: "-.02em",
             fontFamily: MONO,
           }}
+          data-testid={`pv2-gov-area-value-${tile.key}`}
         >
-          {tile.score}
+          {valueText}
         </span>
-        <span
-          style={{
-            fontSize: Math.max(t.label - 1, 9),
-            fontWeight: 700,
-            color: deltaColor,
-            fontFamily: MONO,
-          }}
-        >
-          {deltaText}
-        </span>
+        {deltaText !== null && (
+          <span
+            style={{
+              fontSize: Math.max(t.label - 1, 9),
+              fontWeight: 700,
+              color: deltaColor,
+              fontFamily: MONO,
+            }}
+          >
+            {deltaText}
+          </span>
+        )}
       </div>
       <span
         style={{

@@ -57,6 +57,9 @@ import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import { useSecAreaLinksLive } from "@/components/portal-v2/useSecAreaLinksLive";
+import { useCaBaselineLive } from "@/components/portal-v2/useCaBaselineLive";
+import { caBandsWithRowsLive } from "@/components/portal-v2/secCaModel";
+import { CA_STATUS_META } from "@/components/portal-v2/secCaData";
 import { useScanStatus } from "@/lib/scan-status-context";
 import { lastScanLabel } from "@/components/portal-v2/overviewModel";
 import {
@@ -148,16 +151,38 @@ export default function PortalV2SecurityPage() {
   const lastScan = lastScanLabel(scanStatus.data?.lastScanAt ?? null, scanStatus.loaded);
   const criticalCount = live.findingCounts.critical;
 
-  // Git #1258: OAuth Apps + Email Security category scores overlaid onto the
-  // fixture when real — MFA Gaps/Conditional Access/Legacy Auth stay fixture
-  // (see useSecAreaLinksLive.ts for which checks were confirmed to match).
+  // Git #1258/#1337: OAuth Apps, Email Security, MFA Gaps and Legacy Auth
+  // category scores overlaid onto the fixture when real (see
+  // useSecAreaLinksLive.ts for which checks were confirmed to match).
   const areaLinksLive = useSecAreaLinksLive();
+
+  // Conditional Access (#1337): reuses `useCaBaselineLive` (#1232) directly —
+  // no new resolve metric needed. The card's "N baseline policies missing"
+  // score is the real count of baseline rows whose live-overlaid status is
+  // "Missing", the same count the CA drill-down's "Missing" stat card shows.
+  const caLive = useCaBaselineLive();
+  const caRowsAreLive = caLive.loaded && caLive.policies !== null;
+  const caMissingCount = caRowsAreLive
+    ? caBandsWithRowsLive(caLive.policies!, caLive.hasEntraP2)
+        .flatMap((b) => b.rows)
+        .filter((r) => r.statusLabel === CA_STATUS_META.missing.label).length
+    : null;
+
   const secAreaLinks: readonly SecAreaLink[] = SEC_AREA_LINKS.map((a) => {
     if (a.key === "security-oauth" && areaLinksLive.live.oauthFlaggedGrantCount != null) {
       return { ...a, score: areaLinksLive.live.oauthFlaggedGrantCount };
     }
     if (a.key === "security-email" && areaLinksLive.live.emailAuthFindingCount != null) {
       return { ...a, score: areaLinksLive.live.emailAuthFindingCount };
+    }
+    if (a.key === "security-mfa" && areaLinksLive.live.mfaGapCount != null) {
+      return { ...a, score: areaLinksLive.live.mfaGapCount };
+    }
+    if (a.key === "security-legacy-auth" && areaLinksLive.live.legacyAuthCount != null) {
+      return { ...a, score: areaLinksLive.live.legacyAuthCount };
+    }
+    if (a.key === "security-ca" && caMissingCount != null) {
+      return { ...a, score: caMissingCount };
     }
     return a;
   });

@@ -1,19 +1,17 @@
 {
-  "feature": "Customer Portal v2 -- the Document Library (/portal-v2/documents), the fourth of the design handoff's five systems and the first non-pillar page in the v2 build. Recreated from 'Customer Portal Shell.dc.html': the isDocuments section (proto 5470-5679), the right slide-out filter drawer (5645-5679) and the derivation behind both (11487-11930). 33 documents -- 9 owned with full bodies (DOC-01..09) and 24 catalogue entries (DOC-10..33) -- of a stated library total of 84. The fixture (components/portal-v2/docLibraryData.ts) was EXTRACTED mechanically from the prototype rather than retyped; the derived behaviour (components/portal-v2/docLibraryModel.ts) was transcribed by hand and is what these steps and the unit test both aim at.",
+  "feature": "Customer Portal v2 -- the Document Library (/portal-v2/documents), the fourth of the design handoff's five systems and the first non-pillar page in the v2 build. Recreated from 'Customer Portal Shell.dc.html': the isDocuments section (proto 5470-5679), the right slide-out filter drawer (5645-5679) and the derivation behind both (11487-11930). Git #1346 removed the 24-document design-forward catalogue (DOC-10..33) from what the customer sees -- the page now renders only the 9 owned documents (DOC-01..09), which are the real deliverables that exist as a product today. The fixture (components/portal-v2/docLibraryData.ts) was EXTRACTED mechanically from the prototype rather than retyped; the derived behaviour (components/portal-v2/docLibraryModel.ts) was transcribed by hand and is what these steps and the unit test both aim at.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "1d5c7fcc",
+  "lastVerifiedAgainstCommit": "PENDING-GIT-1346",
 
   "notes": [
-    "Git #1238: DOC-01..09's expanded body content (headline/facts/sections in the old fixture) is now the REAL live report body, ported from `DocumentBody.tsx`'s LIVE_BODY registry -- the same components `/copilot-readiness/documents` mounts, reused directly (not copy-pasted) via `useCopilotJourney()` + `withLiveDocuments()` + `<DocumentBody>`, matched to each owned row by title. Only the report BODY was ported, not that page's chrome (sidebar, pager, export menu) -- the Document Library keeps its own shell exactly as before. This manifest's DL7/DL8 were updated accordingly: they no longer assert the old fixture's literal headline/fact-card copy for DOC-01, since that content is real and tenant-scan-dependent now, not a static string. DOC-10..33 (the catalogue) are UNCHANGED -- still fixture, per the note below.",
-    "WHAT IS REAL TODAY (Shane, 2026-08-19, correcting the scope after this page was built): 'for documents it's only the 9 in Copilot Readiness right now. The others were for future design.' The NINE owned documents (DOC-01..09) are real deliverables -- the Copilot Readiness Assessment's output plus the Gate Clearance plan and its SOW. The TWENTY-FOUR catalogue entries (DOC-10..33) are DESIGN-FORWARD: documents the platform intends to sell, not offerings that can be bought and generated today. The page is deliberately NOT changed on the back of that -- it is a faithful recreation of a design that shows 33, and the catalogue copy is what makes it read as a library. What this note exists to stop is the wiring pass treating DOC_CATALOG as 24 purchasable SKUs. The cart, the 'Add to your library' form and the $ totals asserted in DL18-DL20 are DESIGN BEHAVIOUR against a fixture, not a live commerce path, and must not be connected to checkout or entitlement until the products behind them exist.",
-    "SCOPE: the Document Library page only. It is a FIXTURE page -- there is no /api/portal/documents endpoint yet, so there is deliberately no API assertion here beyond the login that every /portal-v2/* probe needs. That is an honest statement of coverage, not an omission: the numbers on screen come from docLibraryData.ts, and the wiring pass that replaces it with real tenant data is where an endpoint assertion becomes possible.",
-    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute. A probe that goes straight to the page without the five login steps below hits the login screen and every assertion fails for a reason that has nothing to do with the page -- that exact mistake was made and corrected during this build. If these steps go red, check the login landed before reading anything else into it.",
+    "Git #1346 -- hide, don't disclose. Shane: the ~24 documents beyond what a customer actually owns were shown with disclosure copy ('This library shows X of Y documents. The remainder cover workloads not in your tenant...') that read as a browsable catalogue rather than what it was -- the same 'hide, don't disclose' precedent as #1341's Directory Sync panel. This build filters `ALL_DOCS` in docLibraryModel.ts down to the owned nine, removes the Availability facet (In your library / Available to add) that existed only to distinguish owned from catalogue rows, and removes the cart / 'Add to your library' / price-block UI along with it, since none of it is reachable once there are no unowned rows to add. The footer's 'X of Y documents' sentence and the filter drawer's 'The rest are written the same way... and can be added at any time' sentence are both gone.",
+    "Git #1238 (unchanged by #1346): DOC-01..09's expanded body content is the REAL live report body, ported from `DocumentBody.tsx`'s LIVE_BODY registry -- the same components `/copilot-readiness/documents` mounts, reused directly via `useCopilotJourney()` + `withLiveDocuments()` + `<DocumentBody>`, matched to each owned row by title.",
+    "SCOPE: the Document Library page only. It is a FIXTURE page for its metadata (title/pillar/type/audience/offering) -- there is no /api/portal/documents endpoint yet, so there is deliberately no API assertion here beyond the login that every /portal-v2/* probe needs.",
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute. A probe that goes straight to the page without the five login steps below hits the login screen and every assertion fails for a reason that has nothing to do with the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/documents. App.tsx declares '/portal-v2/documents' BEFORE '/portal-v2/:pillar' so the param route cannot swallow it.",
-    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these steps only exercise the new page once this commit is deployed to the dev server.",
-    "DL18-DL22 ARE THE POINT OF THIS MANIFEST. A faceted search whose option counts are computed WITH their own group applied looks entirely normal until you tick one box and every sibling in that group reads 0. DL20 ticks Security and DL22 then asserts Governance still reads 4 -- the count it would return if Security were not ticked. Nothing else in the suite catches that, and no visual pass catches it either.",
-    "ROW ORDER IS NOT ASSERTED BY SELECTOR ORDINAL EXCEPT AT DL27-DL31. Under no filter, all four sorts happen to put DOC-01 first (it is owned, Cross-pillar, a Report, and DOC-01), so a first-row assertion on the unfiltered list would pass under every sort and prove nothing. Filtering to 'Available to add' first makes the sorts genuinely diverge -- num puts DOC-10 first, pillar puts DOC-33 first, type puts DOC-23 first -- which is what DL29/DL30/DL31 assert. Full ordering across all 33 rows is covered by src/components/portal-v2/docLibraryModel.test.ts (34 assertions), not here.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed account portal-v2-pillars.json drives.",
-    "RUN GREEN 2026-08-19: 60/60 against the deployed dev server at commit 1d5c7fcc (deployed via desktop/BuildConsole/trigger-deploy-and-wait.ps1, 5065900c4 -> 1d5c7fcc6, 47.7s). Real text observed on screen, read back out of the result envelope rather than assumed: the Security pillar count read '6' and, with Security ticked, Governance still read '4' (DL27, the facet-count rule); the Availability count narrowed to '5' in the same breath (DL28); and the first catalogue row was 'Conditional Access Baseline' under Number, 'Board Briefing Pack' under Pillar and 'Copilot Licence Business Case' under Type -- three distinct answers from the same 24 rows, which is what makes DL40/DL42/DL44 evidence that the sort actually sorts rather than steps that would pass on any ordering."
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- these steps only exercise the page once this commit is deployed to the dev server.",
+    "DL18-DL21 ARE THE POINT OF THIS MANIFEST NOW. A faceted search whose option counts are computed WITH their own group applied looks entirely normal until you tick one box and every sibling in that group reads 0. DL19 ticks Security (1 of the 9 owned documents) and DL21 then asserts Governance still reads its own unfiltered count of 1 -- the count it would return if Security were not ticked. Full ordering across all 9 rows under every sort is covered by src/components/portal-v2/docLibraryModel.test.ts, not here, since under no filter every sort happens to put DOC-01 first among only 9 rows (it is owned, Cross-pillar, and a Report) and there is no longer a catalogue subset to filter into that would make the sorts visibly diverge in the UI.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD -- the same testbed account portal-v2-pillars.json drives."
   ],
 
   "apiTests": [
@@ -62,308 +60,226 @@
       "critical": true
     },
     {
-      "name": "DL2 -- the result label reads 'All 33 documents' unfiltered (docResultLabel, proto 17782). 33 is the merged count of 9 owned + 24 catalogue, so a fixture that lost rows shows up here first.",
+      "name": "DL2 -- Git #1346: the result label reads 'All 9 documents' unfiltered (docResultLabel), not 'All 33' -- the catalogue is no longer merged into ALL_DOCS.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-bar']",
-      "textContains": "All 33 documents"
+      "textContains": "All 9 documents",
+      "critical": true
     },
     {
-      "name": "DL3 -- the unfiltered note breaks the 33 down as owned vs available (docFilterNote, 17783).",
+      "name": "DL3 -- Git #1346: the old owned/available breakdown ('9 owned · 24 available to add') is gone entirely -- there is nothing to disclose about a hidden catalogue any more.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-bar']",
-      "textContains": "9 owned"
+      "textContains": "available to add",
+      "state": "absent"
     },
     {
-      "name": "DL4 -- ...and the other half of the same string.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-bar']",
-      "textContains": "24 available to add"
-    },
-    {
-      "name": "DL5 -- DOC-01's row exists.",
+      "name": "DL4 -- DOC-01's row exists.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-row-DOC-01']",
       "state": "visible"
     },
     {
-      "name": "DL6 -- DOC-01 is EXPANDED on arrival. docOpenKey defaults to 'own-0' (proto 11783): the library opens on the Copilot readiness report rather than a wall of collapsed rows.",
+      "name": "DL5 -- DOC-01 is EXPANDED on arrival. docOpenKey defaults to 'own-0' (proto 11783): the library opens on the Copilot readiness report rather than a wall of collapsed rows.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-open-DOC-01']",
       "state": "visible"
     },
     {
-      "name": "DL7 -- Git #1238: DOC-01's expanded body is now the REAL live Copilot Readiness report body, ported from DocumentBody.tsx's LIVE_BODY registry (same component the /copilot-readiness/documents reader mounts) -- not the docLibraryData.ts fixture's headline/facts/sections. Content varies per tenant scan (and the roll-up report's narrative is a real, metered server-side AI call), so only presence of the ported body's wrapper is asserted here -- not literal copy, which the old fixture-based DL7/DL8 asserted and which is exactly what this build replaced.",
+      "name": "DL6 -- Git #1238: DOC-01's expanded body is the REAL live Copilot Readiness report body, ported from DocumentBody.tsx's LIVE_BODY registry -- not the docLibraryData.ts fixture's headline/facts/sections. Content varies per tenant scan, so only presence of the ported body's wrapper is asserted here.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-body-DOC-01']",
       "state": "present",
       "critical": true
     },
     {
-      "name": "DL8 -- the row's own Cover (unaffected by this build -- still docLibraryData.ts metadata, not report body content) states the same real title DOC-01's live body is matched against by title in journeyTokens.ts's JOURNEY_LIVE_DOCUMENTS, so the two stay in sync.",
+      "name": "DL7 -- the row's own Cover states the same real title DOC-01's live body is matched against by title in journeyTokens.ts's JOURNEY_LIVE_DOCUMENTS.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-open-DOC-01']",
       "textContains": "Copilot Readiness, Safety & Enablement Report"
     },
     {
-      "name": "DL9 -- the amber out-of-date band appears on DOC-01 and carries the composed staleNote (proto 11872: freshNote + ' — this issue no longer matches what the tenant looks like now.').",
+      "name": "DL8 -- the amber out-of-date band appears on DOC-01 and carries the composed staleNote (proto 11872: freshNote + ' — this issue no longer matches what the tenant looks like now.').",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-stale-DOC-01']",
       "textContains": "Telemetry moved since 3 Aug"
     },
     {
-      "name": "DL10 -- the 'where this lives in the portal' block renders, which is what stops the document being a dead end.",
+      "name": "DL9 -- the 'where this lives in the portal' block renders, which is what stops the document being a dead end.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-open-DOC-01']",
       "textContains": "Where this document lives in the portal"
     },
     {
-      "name": "DL11 -- all 33 rows render, not a truncated first page: DOC-33 is present.",
+      "name": "DL10 -- Git #1346: DOC-33 (a catalogue document) no longer exists on the page at all -- the row is gone, not merely filtered.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-row-DOC-33']",
-      "state": "present"
+      "state": "absent",
+      "critical": true
     },
     {
-      "name": "DL12 -- the footer states the partial-library gap out loud (docFooterNote, 17784).",
+      "name": "DL11 -- Git #1346: the footer's old 'This library shows X of Y documents' disclosure sentence is gone.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-footer']",
-      "textContains": "This library shows 33 of 84 documents"
-    },
-
-    {
-      "name": "DL13 -- open a CATALOGUE document. Owned and unowned expand into two structurally different bodies from the same row.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-row-DOC-10']"
-    },
-    {
-      "name": "DL14 -- the unowned body leads on the pitch headline, not on a document headline.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-open-DOC-10']",
-      "textContains": "Nine policies, written against the 4 you are missing"
-    },
-    {
-      "name": "DL15 -- and carries the provenance claim the whole library rests on.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-open-DOC-10']",
-      "textContains": "Built from your tenant, not a template"
-    },
-    {
-      "name": "DL16 -- the price block shows the real catalogue price for DOC-10.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-open-DOC-10']",
-      "textContains": "$340"
-    },
-    {
-      "name": "DL17 -- ONE ROW OPEN AT A TIME. Opening DOC-10 closed DOC-01; docOpenKey is a single key, not a set.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-open-DOC-01']",
       "state": "absent"
     },
     {
-      "name": "DL18 -- add DOC-10 to the cart from the expanded price block.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-add-big-DOC-10']"
-    },
-    {
-      "name": "DL19 -- the cart strip appears with the singular label and the summed total (docCartLabel, 17796).",
+      "name": "DL12 -- the Export your library as PDF action is untouched by the catalogue removal.",
       "action": "expect",
-      "selector": "[data-testid='pv2-doc-cart']",
-      "textContains": "1 document selected"
-    },
-    {
-      "name": "DL20 -- ...and the total, which is summed from the catalogue rather than restated.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-cart']",
-      "textContains": "$340"
+      "selector": "[data-testid='pv2-doc-export-all']",
+      "state": "visible"
     },
 
     {
-      "name": "DL21 -- open the filter drawer.",
+      "name": "DL13 -- open the filter drawer.",
       "action": "click",
       "selector": "[data-testid='pv2-doc-filter-open']"
     },
     {
-      "name": "DL22 -- the right slide-out drawer renders.",
+      "name": "DL14 -- the right slide-out drawer renders.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-filter-drawer']",
       "state": "visible",
       "critical": true
     },
     {
-      "name": "DL23 -- the drawer header quotes the real library total, not the shown count (docOwnedLabel, 17781).",
+      "name": "DL15 -- Git #1346: the drawer subtitle states the real owned count with no catalogue framing -- not '9 of 84 documents are in your library. The rest are written the same way... and can be added at any time.'",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-filter-drawer']",
-      "textContains": "9 of 84 documents are in your library"
+      "textContains": "9 documents in your library"
     },
     {
-      "name": "DL24 -- the Pillar group's Security option carries its real unfiltered count of 6.",
+      "name": "DL16 -- Git #1346: the drawer no longer offers an Availability facet -- there is nothing left to distinguish 'in your library' from 'available to add'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-facet-avail-In-your-library']",
+      "state": "absent"
+    },
+    {
+      "name": "DL17 -- the search placeholder now searches the real 9-document library, not the design figure of 84.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-search']",
+      "state": "visible"
+    },
+    {
+      "name": "DL18 -- the Pillar group's Security option carries its real unfiltered count of 1 (only DOC-02 is Security).",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-count-pillar-Security']",
-      "textContains": "6"
+      "textContains": "1"
     },
     {
-      "name": "DL25 -- tick Security.",
+      "name": "DL19 -- tick Security.",
       "action": "click",
       "selector": "[data-testid='pv2-doc-facet-pillar-Security']"
     },
     {
-      "name": "DL26 -- the apply button reflects the new result count (docFilterApplyLabel, 17789).",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-filter-apply']",
-      "textContains": "Show 6 documents"
-    },
-    {
-      "name": "DL27 -- THE FACET-COUNT RULE. With Security ticked, Governance still reads 4 -- the count it would return if Security were not ticked -- because a group's counts are computed with its OWN group skipped. Counting with the group included would show 0 here and turn the drawer into a filter that can only narrow.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-count-pillar-Governance']",
-      "textContains": "4"
-    },
-    {
-      "name": "DL28 -- the skip is one group deep, not a blanket exemption: Availability counts DO narrow to the 6 Security documents, of which 5 are available to add.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-count-avail-Available-to-add']",
-      "textContains": "5"
-    },
-    {
-      "name": "DL29 -- apply, which closes the drawer.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-filter-apply']"
-    },
-    {
-      "name": "DL30 -- the applied facet becomes a removable chip in the sticky bar.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-chip-pillar-Security']",
-      "state": "visible"
-    },
-    {
-      "name": "DL31 -- the header switches to the filtered count.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-bar']",
-      "textContains": "6 of 33 documents"
-    },
-    {
-      "name": "DL32 -- ...and the owned/available breakdown is replaced by the word 'filtered'.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-bar']",
-      "textContains": "filtered"
-    },
-    {
-      "name": "DL33 -- the filter really filters: DOC-01 is Cross-pillar and is gone from the list.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-row-DOC-01']",
-      "state": "absent"
-    },
-    {
-      "name": "DL34 -- while DOC-10, which is Security, survives it.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-row-DOC-10']",
-      "state": "visible"
-    },
-    {
-      "name": "DL35 -- remove the chip.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-chip-pillar-Security']"
-    },
-    {
-      "name": "DL36 -- and the library is whole again.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-bar']",
-      "textContains": "All 33 documents"
-    },
-
-    {
-      "name": "DL37 -- SORT SETUP. Filter to the catalogue only, because under no filter every sort puts DOC-01 first and a first-row assertion would prove nothing. Open the drawer.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-filter-open']"
-    },
-    {
-      "name": "DL38 -- tick 'Available to add'.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-facet-avail-Available-to-add']"
-    },
-    {
-      "name": "DL39 -- close the drawer.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-filter-apply']"
-    },
-    {
-      "name": "DL40 -- under the default Number sort the first catalogue row is DOC-10.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-rows'] > div:first-child",
-      "textContains": "Conditional Access Baseline"
-    },
-    {
-      "name": "DL41 -- switch to the Pillar sort.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-sort-pillar']"
-    },
-    {
-      "name": "DL42 -- Cross-pillar sorts first, so DOC-33 takes the top row. A sort that silently did nothing would still be showing DOC-10 here.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-rows'] > div:first-child",
-      "textContains": "Board Briefing Pack"
-    },
-    {
-      "name": "DL43 -- switch to the Type sort.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-sort-type']"
-    },
-    {
-      "name": "DL44 -- Report sorts first, and the lowest-numbered catalogue Report is DOC-23 -- a third distinct answer from the same 24 rows.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-doc-rows'] > div:first-child",
-      "textContains": "Copilot Licence Business Case"
-    },
-
-    {
-      "name": "DL45 -- search narrows to a single document by number.",
-      "action": "click",
-      "selector": "[data-testid='pv2-doc-filter-open']"
-    },
-    {
-      "name": "DL46 -- the drawer's search placeholder searches the REAL library of 84, not the 33 on screen.",
-      "action": "input",
-      "selector": "[data-testid='pv2-doc-search']",
-      "value": "DOC-14"
-    },
-    {
-      "name": "DL47 -- one result, and the apply button says so in the singular.",
+      "name": "DL20 -- the apply button reflects the new result count (docFilterApplyLabel).",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-filter-apply']",
       "textContains": "Show 1 document"
     },
     {
-      "name": "DL48 -- close the drawer.",
+      "name": "DL21 -- THE FACET-COUNT RULE. With Security ticked, Governance still reads its own unfiltered count of 1 -- the count it would return if Security were not ticked -- because a group's counts are computed with its OWN group skipped. Counting with the group included would show 0 here and turn the drawer into a filter that can only narrow.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-count-pillar-Governance']",
+      "textContains": "1"
+    },
+    {
+      "name": "DL22 -- apply, which closes the drawer.",
       "action": "click",
       "selector": "[data-testid='pv2-doc-filter-apply']"
     },
     {
-      "name": "DL49 -- the search term appears as its own removable chip alongside the facet chip.",
+      "name": "DL23 -- the applied facet becomes a removable chip in the sticky bar.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-chip-pillar-Security']",
+      "state": "visible"
+    },
+    {
+      "name": "DL24 -- the header switches to the filtered count.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-bar']",
+      "textContains": "1 of 9 documents"
+    },
+    {
+      "name": "DL25 -- ...and shows the word 'filtered' rather than any owned/available breakdown.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-bar']",
+      "textContains": "filtered"
+    },
+    {
+      "name": "DL26 -- the filter really filters: DOC-01 is Cross-pillar and is gone from the list.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-row-DOC-01']",
+      "state": "absent"
+    },
+    {
+      "name": "DL27 -- while DOC-02, which is Security, survives it.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-row-DOC-02']",
+      "state": "visible"
+    },
+    {
+      "name": "DL28 -- remove the chip.",
+      "action": "click",
+      "selector": "[data-testid='pv2-doc-chip-pillar-Security']"
+    },
+    {
+      "name": "DL29 -- and the library is whole again.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-bar']",
+      "textContains": "All 9 documents"
+    },
+
+    {
+      "name": "DL30 -- search narrows to a single document by number.",
+      "action": "click",
+      "selector": "[data-testid='pv2-doc-filter-open']"
+    },
+    {
+      "name": "DL31 -- search for DOC-05.",
+      "action": "input",
+      "selector": "[data-testid='pv2-doc-search']",
+      "value": "DOC-05"
+    },
+    {
+      "name": "DL32 -- one result, and the apply button says so in the singular.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-filter-apply']",
+      "textContains": "Show 1 document"
+    },
+    {
+      "name": "DL33 -- close the drawer.",
+      "action": "click",
+      "selector": "[data-testid='pv2-doc-filter-apply']"
+    },
+    {
+      "name": "DL34 -- the search term appears as its own removable chip.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-chip-query']",
       "state": "visible"
     },
 
     {
-      "name": "DL50 -- the Library nav group exists in the shell sidebar (prototype 7244-7246), added only now that its page does.",
+      "name": "DL35 -- the Library nav group exists in the shell sidebar (prototype 7244-7246).",
       "action": "expect",
       "selector": "[data-testid='pv2-nav-documents']",
       "state": "visible"
     },
     {
-      "name": "DL51 -- and it navigates back to the Library from a pillar page.",
+      "name": "DL36 -- and it navigates back to the Library from a pillar page.",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2/security"
     },
     {
-      "name": "DL52 -- click the nav row.",
+      "name": "DL37 -- click the nav row.",
       "action": "click",
       "selector": "[data-testid='pv2-nav-documents']"
     },
     {
-      "name": "DL53 -- back on the Library, with filters reset by the remount -- all 33 again.",
+      "name": "DL38 -- back on the Library, with filters reset by the remount -- all 9 again.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-bar']",
-      "textContains": "All 33 documents"
+      "textContains": "All 9 documents"
     }
   ]
 }

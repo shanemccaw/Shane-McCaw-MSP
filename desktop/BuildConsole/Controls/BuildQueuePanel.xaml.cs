@@ -1178,26 +1178,78 @@ namespace BuildConsole.Controls
             // above), so a header only needs to fire once per transition INTO a
             // non-null BuildSet — restart/ungrouped nodes never re-trigger it.
             string? lastRenderedSet = null;
+            StackPanel? currentSetPanel = null;
             foreach (var node in _currentGraphNodes)
             {
                 if (node.BuildSet != lastRenderedSet)
                 {
                     if (node.BuildSet != null)
-                        QueueCardsHost.Children.Add(BuildBuildSetHeader(node.BuildSet));
+                    {
+                        var setContainer = new Border
+                        {
+                            BorderBrush = (Brush)Application.Current.FindResource("MauveBrush"),
+                            BorderThickness = new Thickness(1),
+                            CornerRadius = new CornerRadius(6),
+                            Background = new SolidColorBrush(Color.FromArgb(0x0A, 0xCB, 0xA6, 0xF7)),
+                            Margin = new Thickness(0, 8, 0, 8),
+                            Padding = new Thickness(8, 6, 8, 6),
+                            HorizontalAlignment = HorizontalAlignment.Stretch
+                        };
+                        var setPanel = new StackPanel { Orientation = Orientation.Vertical };
+                        setContainer.Child = setPanel;
+
+                        var accentBrush = GetBuildSetBrush(node.BuildSet);
+                        var headerLabel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 2, 2, 6) };
+                        headerLabel.Children.Add(new TextBlock
+                        {
+                            Text = "▤ ",
+                            FontSize = 11,
+                            Foreground = accentBrush,
+                            VerticalAlignment = VerticalAlignment.Center
+                        });
+                        headerLabel.Children.Add(new TextBlock
+                        {
+                            Text = node.BuildSet.ToUpper(),
+                            FontSize = 11,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = accentBrush,
+                            VerticalAlignment = VerticalAlignment.Center,
+                            ToolTip = $"Build Set \"{node.BuildSet}\" — merges + restarts together as one wave"
+                        });
+                        setPanel.Children.Add(headerLabel);
+
+                        QueueCardsHost.Children.Add(setContainer);
+                        currentSetPanel = setPanel;
+                    }
+                    else
+                    {
+                        currentSetPanel = null;
+                    }
                     lastRenderedSet = node.BuildSet;
                 }
 
+                Border? cardElement = null;
                 if (node.Status == "restart" && node.RestartItem != null)
                 {
-                    var restartCard = BuildRestartCard(node.RestartItem);
-                    node.CardElement = restartCard;
-                    QueueCardsHost.Children.Add(restartCard);
+                    cardElement = BuildRestartCard(node.RestartItem);
                 }
                 else if (node.Item != null)
                 {
-                    var card = BuildQueueCard(node);
-                    node.CardElement = card;
-                    QueueCardsHost.Children.Add(card);
+                    cardElement = BuildQueueCard(node);
+                }
+
+                if (cardElement != null)
+                {
+                    node.CardElement = cardElement;
+                    if (currentSetPanel != null)
+                    {
+                        cardElement.Margin = new Thickness(0, 2, 0, 2);
+                        currentSetPanel.Children.Add(cardElement);
+                    }
+                    else
+                    {
+                        QueueCardsHost.Children.Add(cardElement);
+                    }
                 }
             }
 
@@ -1518,12 +1570,51 @@ namespace BuildConsole.Controls
         /// Purely visual — carries no QueueGraphNode, so it plays no part in blocked-by
         /// connector math; RedrawQueueGraph positions connectors off the real cards only,
         /// via TranslatePoint, which naturally accounts for the extra height this adds.</summary>
+        public static Brush GetBuildSetBrush(string buildSetName)
+        {
+            if (string.IsNullOrWhiteSpace(buildSetName))
+                return (Brush)Application.Current.FindResource("MauveBrush");
+
+            string[] resourceKeys = {
+                "MauveBrush",
+                "BlueBrush",
+                "LavenderBrush",
+                "SapphireBrush",
+                "TealBrush",
+                "SkyBrush",
+                "GreenBrush",
+                "PeachBrush",
+                "YellowBrush",
+                "MaroonBrush"
+            };
+
+            int hash = 0;
+            foreach (char c in buildSetName)
+            {
+                hash = (hash * 31) + c;
+            }
+            int index = Math.Abs(hash) % resourceKeys.Length;
+
+            return (Brush)Application.Current.FindResource(resourceKeys[index]);
+        }
+
+        /// <summary>Group header card for a stack of builds sharing the same --buildSet name.
+        /// Purely visual — carries no QueueGraphNode, so it plays no part in blocked-by
+        /// connector math; RedrawQueueGraph positions connectors off the real cards only,
+        /// via TranslatePoint, which naturally accounts for the extra height this adds.</summary>
         private Border BuildBuildSetHeader(string buildSetName)
         {
+            var accentBrush = GetBuildSetBrush(buildSetName);
+            Color accentColor = Color.FromRgb(0xCB, 0xA6, 0xF7); // Mauve fallback
+            if (accentBrush is SolidColorBrush scb)
+            {
+                accentColor = scb.Color;
+            }
+
             var header = new Border
             {
-                Background = new SolidColorBrush(Color.FromArgb(0x22, 0xCB, 0xA6, 0xF7)),
-                BorderBrush = (Brush)Application.Current.FindResource("MauveBrush"),
+                Background = new SolidColorBrush(Color.FromArgb(0x22, accentColor.R, accentColor.G, accentColor.B)),
+                BorderBrush = accentBrush,
                 BorderThickness = new Thickness(1, 1, 1, 0),
                 CornerRadius = new CornerRadius(4, 4, 0, 0),
                 Padding = new Thickness(8, 4, 8, 3),
@@ -1534,7 +1625,7 @@ namespace BuildConsole.Controls
             {
                 Text = "▤ ",
                 FontSize = 11,
-                Foreground = (Brush)Application.Current.FindResource("MauveBrush"),
+                Foreground = accentBrush,
                 VerticalAlignment = VerticalAlignment.Center
             });
             row.Children.Add(new TextBlock
@@ -1542,7 +1633,7 @@ namespace BuildConsole.Controls
                 Text = buildSetName,
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = (Brush)Application.Current.FindResource("MauveBrush"),
+                Foreground = accentBrush,
                 TextWrapping = TextWrapping.Wrap,
                 ToolTip = $"Build Set \"{buildSetName}\" — merges + restarts together as one wave"
             });

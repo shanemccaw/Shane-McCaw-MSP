@@ -7,7 +7,6 @@ import { SlugProvider, getStoredSlug, storeSlug } from "@/lib/slug-context";
 import { SessionExpiryModal } from "@/components/session-expiry-modal";
 import { useGetPortalTenant } from "@workspace/api-client-react";
 import LoginPage from "@/pages/login";
-import PortalSignInHelpPage from "@/pages/portal-sign-in-help";
 import PortalIdentityInterstitialPage from "@/pages/portal-identity-interstitial";
 import DashboardPage from "@/pages/dashboard";
 import CustomersPage from "@/pages/customers";
@@ -403,13 +402,6 @@ function SlugInnerSwitch() {
             redirects to the dashboard if the user is already authenticated.
             This avoids a blank screen while the boot refresh is in flight. */}
         <LoginPage />
-      </Route>
-
-      {/* Sign-in Help (Git #1349) — public, no auth required. The user is
-          locked out and unauthenticated, so this page (and its ShaneBot
-          ticket-creation POST) must not require the session they're recovering. */}
-      <Route path="/login/help">
-        <PortalSignInHelpPage />
       </Route>
 
       {/* Agreement gate page — auth-required but not gated itself */}

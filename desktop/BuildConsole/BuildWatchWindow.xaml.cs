@@ -128,6 +128,7 @@ namespace BuildConsole
             public string? Effort;
             public string? SessionId;
             public List<int>? BlockedByNumbers;
+            public string? BuildSet;
             public SlotState State = SlotState.Empty;
             /// <summary>True while a Running slot is actually the #943 "VERIFYING…" hold (queue said failed with the -2 sentinel).</summary>
             public bool Verifying;
@@ -1156,6 +1157,7 @@ namespace BuildConsole
             slot.Effort = item.Effort;
             slot.SessionId = item.SessionId;
             slot.BlockedByNumbers = item.BlockedByNumbers;
+            slot.BuildSet = item.BuildSet;
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
             slot.Verifying = false;
@@ -1171,6 +1173,25 @@ namespace BuildConsole
             slot.StatusLine = null;
 
             var vm = slot.Pane.ViewModel;
+            if (!string.IsNullOrEmpty(slot.BuildSet))
+            {
+                var accentBrush = Controls.BuildQueuePanel.GetBuildSetBrush(slot.BuildSet);
+                if (accentBrush is SolidColorBrush scb)
+                {
+                    Color accent = scb.Color;
+                    Color baseCanvas = Color.FromRgb(0x02, 0x06, 0x17);
+                    byte r = (byte)(0.07 * accent.R + 0.93 * baseCanvas.R);
+                    byte g = (byte)(0.07 * accent.G + 0.93 * baseCanvas.G);
+                    byte b = (byte)(0.07 * accent.B + 0.93 * baseCanvas.B);
+                    vm.ChatBackground = new SolidColorBrush(Color.FromRgb(r, g, b));
+                    vm.ChatBorder = new SolidColorBrush(Color.FromArgb(0x59, accent.R, accent.G, accent.B));
+                }
+            }
+            else
+            {
+                vm.ChatBackground = null;
+                vm.ChatBorder = null;
+            }
             vm.Turns.Clear();
             vm.Draft = "";
             vm.SessionLabel = slot.Title;
@@ -1233,6 +1254,7 @@ namespace BuildConsole
             slot.QueueItemId = 0;
             slot.GithubNumber = null;
             slot.Title = "";
+            slot.BuildSet = null;
             slot.State = SlotState.Empty;
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
@@ -1252,6 +1274,8 @@ namespace BuildConsole
             slot.InAssistantRun = false;
 
             var vm = slot.Pane.ViewModel;
+            vm.ChatBackground = null;
+            vm.ChatBorder = null;
             vm.Turns.Clear();
             vm.Draft = "";
             vm.Mode = ComposerMode.ReadOnlyRunning;

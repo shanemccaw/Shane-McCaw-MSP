@@ -16,37 +16,27 @@
  * explicitly — "counts are computed excluding the facet's own group so the
  * numbers behave like a real faceted search."
  *
- * ── WHAT IS REAL TODAY, and what is design-forward ─────────────────────────
+ * ── WHAT IS REAL TODAY, and what is scoped out ─────────────────────────────
  * Shane, 2026-08-19, correcting the scope of this page after it was built:
  * "for documents it's only the 9 in Copilot Readiness right now. The others
  * were for future design."
  *
- * So of the 33 documents this page renders:
- *  • The NINE OWNED documents (DOC-01..09) are real deliverables. They are the
- *    Copilot Readiness Assessment's own output, plus the Gate Clearance plan
- *    and its Statement of Work. Those exist as a product today.
- *  • The TWENTY-FOUR CATALOGUE entries (DOC-10..33) are DESIGN-FORWARD. They
- *    describe documents the platform intends to sell, not offerings that can
- *    be bought and generated today. The prototype writes them out in full
- *    because the page has to be designed against a populated catalogue, not
- *    because those 24 products are live.
- *
- * The page is deliberately NOT changed on the back of that. It is a faithful
- * recreation of the design, the design shows 33, and the catalogue's own copy
- * is what makes the library read as a library rather than a folder of nine
- * files. What this note exists to stop is the NEXT step: when this fixture is
- * swapped for real tenant data, `DOC_CATALOG` must not be wired to a checkout,
- * an order pipeline or an entitlement as though those 24 were purchasable SKUs.
- * Nine have deliverables behind them. The other 24 need the product to exist
- * first. See also `DOC_LIB_TOTAL = 84`, which is a design figure in exactly the
- * same way and for the same reason.
+ * Git #1346 finished that correction: the 24 catalogue entries (DOC-10..33)
+ * described documents the platform intends to sell, not offerings a customer
+ * can browse today, and showing them as a disclosed "X of Y documents"
+ * catalogue read as browsable inventory rather than what it was — Shane's own
+ * words, "hide, don't disclose" (the same precedent as #1341's Directory Sync
+ * panel). The Document Library now renders only the NINE OWNED documents
+ * (DOC-01..09): the Copilot Readiness Assessment's own output, plus the Gate
+ * Clearance plan and its Statement of Work — the only deliverables that exist
+ * as a product today. `DOC_CATALOG` and `DOC_LIB_TOTAL` stay in
+ * `docLibraryData.ts` as the design-forward fixture they always were; this
+ * model just no longer merges them into what the customer sees.
  */
 
 import {
-  DOC_CATALOG,
   DOC_LIB,
   DOC_OWNED_META,
-  type DocCatalogEntry,
   type DocFact,
   type DocLibEntry,
   type DocSection,
@@ -54,7 +44,7 @@ import {
 
 export type DocSortKey = "num" | "library" | "pillar" | "type";
 
-/** One row in the merged list — owned and catalogue share this shape. */
+/** One row — every row is owned, per #1346's removal of the catalogue. */
 export interface DocRow {
   key: string;
   num: string;
@@ -64,7 +54,6 @@ export interface DocRow {
   audience: string;
   offering: string;
   owned: boolean;
-  /** Owned only. */
   fresh?: string;
   freshNote?: string;
   issued?: string;
@@ -74,14 +63,6 @@ export interface DocRow {
   facts?: DocFact[];
   sections?: DocSection[];
   links?: { label: string; to: string }[];
-  /** Catalogue only. */
-  price?: number;
-  priceLabel?: string;
-  priceSub?: string;
-  blurbHead?: string;
-  blurb?: string;
-  contains?: string[];
-  builtFrom?: string;
 }
 
 /**
@@ -107,29 +88,19 @@ const OWNED: DocRow[] = DOC_LIB.map((d: DocLibEntry, i) => {
   };
 });
 
-/** `catalogDocs` (11776) — the catalogue's own num IS its key. */
-const CATALOGUE: DocRow[] = DOC_CATALOG.map((c: DocCatalogEntry) => ({
-  ...c,
-  key: c.num,
-  owned: false,
-}));
-
-export const ALL_DOCS: readonly DocRow[] = [...OWNED, ...CATALOGUE];
+/** Git #1346 — the library renders only what the customer owns; the
+ *  catalogue is no longer merged in for browsing. */
+export const ALL_DOCS: readonly DocRow[] = OWNED;
 export const DOC_OWNED_COUNT = OWNED.length;
 
-/** `facetDefs` (11784-11790). Order and values are the drawer's order. */
+/** `facetDefs` (11784-11790), minus the Availability group — Git #1346
+ *  removed it along with the catalogue rows it distinguished from. */
 export const DOC_FACET_DEFS: readonly {
   key: string;
   label: string;
   values: string[];
   get: (d: DocRow) => string;
 }[] = [
-  {
-    key: "avail",
-    label: "Availability",
-    values: ["In your library", "Available to add"],
-    get: (d) => (d.owned ? "In your library" : "Available to add"),
-  },
   {
     key: "pillar",
     label: "Pillar",
@@ -234,22 +205,8 @@ export const DOC_SORT_OPTIONS: readonly { key: DocSortKey; label: string }[] = [
   { key: "type", label: "Type" },
 ];
 
-/** `docCartTotal` (11912) — catalogue prices only; owned documents have none. */
-export function docCartTotal(cart: readonly string[]): number {
-  return cart.reduce((sum, k) => {
-    const d = CATALOGUE.find((x) => x.key === k);
-    return sum + (d?.price ?? 0);
-  }, 0);
-}
-
-/**
- * The row's state column (11838-11840). Owned documents report freshness;
- * catalogue documents report a price, or "On request" when they have none.
- */
+/** The row's state column (11838-11840) — owned documents only, per #1346. */
 export function docStateFor(d: DocRow): { label: string; tone: string } {
-  if (!d.owned) {
-    return { label: d.price ? `$${d.price}` : "On request", tone: "#64748b" };
-  }
   if (d.fresh === "stale") return { label: "Regenerate", tone: "#fbbf24" };
   if (d.fresh === "signed") return { label: "Signed", tone: "#94a3b8" };
   return { label: "Current", tone: "#4ade80" };
@@ -266,19 +223,6 @@ export function docResultLabel(shownCount: number): string {
   return shownCount === ALL_DOCS.length
     ? `All ${ALL_DOCS.length} documents`
     : `${shownCount} of ${ALL_DOCS.length} documents`;
-}
-
-export function docFilterNote(active: boolean): string {
-  return active
-    ? "filtered"
-    : `${DOC_OWNED_COUNT} owned · ${ALL_DOCS.length - DOC_OWNED_COUNT} available to add`;
-}
-
-export function docCartLabel(cart: readonly string[]): string {
-  const total = docCartTotal(cart);
-  return `${cart.length} ${cart.length === 1 ? "document" : "documents"} selected${
-    total ? ` · $${total}` : ""
-  }`;
 }
 
 export function docFilterApplyLabel(shownCount: number): string {

@@ -194,6 +194,7 @@ namespace BuildConsole.Services
       model: flags.model || null,
       effort: flags.effort || null,
       cwd: flags.cwd || null,
+      buildSet: flags.buildSet || null,
       githubNumber: effectiveNumber,
       localBuild: localBuild,
       gitBlockers: gitBlockers,

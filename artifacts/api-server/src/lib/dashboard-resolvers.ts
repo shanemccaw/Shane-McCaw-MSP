@@ -842,6 +842,17 @@ async function resolveMonitorAggregation(def: MetricDef, tenantId: string): Prom
       return scalar(def, openFindings, { checkedFields: checked });
     }
 
+    // MFA gap count (Git #1337): identity:privileged-mfa-gap maps both
+    // privilegedMfaGapCount and memberMfaGapCount. memberMfaGapCount is every
+    // unregistered Member account (admin and non-admin alike, guests
+    // excluded) -- the real "users without MFA" count, read explicitly here
+    // rather than left to pickMappedValueField's token-overlap heuristic,
+    // which is ambiguous between the two fields for this metric/check key pair.
+    case "identity.mfaGapCount": {
+      const v = firstNumber(props, ["memberMfaGapCount"]);
+      return v == null ? notAvailable(def, "unshaped", "memberMfaGapCount not present") : scalar(def, v);
+    }
+
     // Secure score scalar: percentage of currentScore / maxScore.
     case "security.secureScore": {
       const current = firstNumber(props, ["currentScore", "secureScore", "current", "secureScoreCurrent"]);

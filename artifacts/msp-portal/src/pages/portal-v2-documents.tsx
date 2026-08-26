@@ -46,7 +46,7 @@ import { Link, useLocation } from "wouter";
 import { useAuth } from "@/lib/auth-context";
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
-import { DOC_LIB_TOTAL, DOC_PILLAR_COLOUR } from "@/components/portal-v2/docLibraryData";
+import { DOC_PILLAR_COLOUR } from "@/components/portal-v2/docLibraryData";
 import { DocumentBody } from "@/components/copilot-journey/DocumentBody";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
 import { withLiveDocuments, type JourneyDocumentView, type JourneyView } from "@/components/copilot-journey/journeyModel.ts";
@@ -56,12 +56,9 @@ import {
   DOC_FACET_DEFS,
   DOC_OWNED_COUNT,
   DOC_SORT_OPTIONS,
-  docCartLabel,
-  docCartTotal,
   docFacetActive,
   docFacetGroups,
   docFilterApplyLabel,
-  docFilterNote,
   docMetaLine,
   docResultLabel,
   docShown,
@@ -97,7 +94,6 @@ export default function PortalV2DocumentsPage() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<DocSortKey>("num");
   const [facets, setFacets] = useState<DocFacetState>({});
-  const [cart, setCart] = useState<string[]>([]);
   const [filterOpen, setFilterOpen] = useState(false);
   // `docOpenKey` defaults to 'own-0' (11783): the library opens with the
   // Copilot readiness report already expanded, rather than a wall of rows.
@@ -145,7 +141,6 @@ export default function PortalV2DocumentsPage() {
   const shown = docShown(query, facets, sort);
   const active = docFacetActive(query, facets);
   const groups = docFacetGroups(query, facets);
-  const cartTotal = docCartTotal(cart);
 
   const toggleFacet = (groupKey: string, value: string) =>
     setFacets((f) => {
@@ -160,9 +155,6 @@ export default function PortalV2DocumentsPage() {
     setFacets({});
     setQuery("");
   };
-
-  const toggleCart = (key: string) =>
-    setCart((c) => (c.indexOf(key) >= 0 ? c.filter((k) => k !== key) : [...c, key]));
 
   const askShaneBot = (topic: string) =>
     openForm({
@@ -182,37 +174,6 @@ export default function PortalV2DocumentsPage() {
       doneTitle: "Sent",
       doneNote:
         "ShaneBot has the document and your tenant context. The reply appears in your chat panel.",
-    });
-
-  /** `docCartReview` (17798-17809). */
-  const reviewCart = () =>
-    openForm({
-      kicker: "Document library",
-      title: `Add ${cart.length} ${cart.length === 1 ? "document" : "documents"} to your library`,
-      intro:
-        "Each document is generated against your tenant telemetry on release, not written from a template. They arrive in your library within one working day and regenerate for as long as monitoring is active.",
-      submitLabel: cartTotal ? `Add for $${cartTotal}` : "Request these documents",
-      fields: [
-        {
-          id: "po",
-          label: "Purchase order or reference",
-          required: false,
-          placeholder: "Optional — appears on the invoice",
-        },
-        {
-          id: "bill",
-          label: "Billing",
-          kind: "select",
-          options: [
-            { value: "monthly", label: "Add to the current monthly invoice" },
-            { value: "separate", label: "Invoice separately" },
-          ],
-          value: "monthly",
-        },
-        { id: "notify", label: "Notify when generated", placeholder: "name@tenant.com", wide: true },
-      ],
-      doneNote:
-        "Ordered. Each document is generated against your current telemetry and lands in your library, and the charge appears on your next invoice.",
     });
 
   /** `docExportAll` (17810-17820). */
@@ -342,10 +303,9 @@ export default function PortalV2DocumentsPage() {
                 <span style={EYEBROW}>Document library</span>
                 <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0" }}>
                   {docResultLabel(shown.length)}
-                  <span style={{ fontWeight: 500, color: "#64748b" }}>
-                    {" "}
-                    · {docFilterNote(active)}
-                  </span>
+                  {active && (
+                    <span style={{ fontWeight: 500, color: "#64748b" }}> · filtered</span>
+                  )}
                 </span>
               </div>
               <div
@@ -452,59 +412,6 @@ export default function PortalV2DocumentsPage() {
             )}
           </div>
 
-          {/* ── Cart strip — proto 5498-5505 ───────────────────────────── */}
-          {cart.length > 0 && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                flexWrap: "wrap",
-                padding: "10px 26px",
-                borderBottom: "1px solid rgba(0,120,212,.3)",
-                background: "rgba(0,120,212,.09)",
-              }}
-              data-testid="pv2-doc-cart"
-            >
-              <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#bfdbfe" }}>
-                {docCartLabel(cart)}
-              </span>
-              <button
-                onClick={reviewCart}
-                data-testid="pv2-doc-cart-review"
-                style={{
-                  padding: "7px 13px",
-                  borderRadius: 6,
-                  border: "1px solid rgba(0,120,212,.55)",
-                  background: "rgba(0,120,212,.22)",
-                  color: "#dbeafe",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                Add to your library
-              </button>
-              <button
-                onClick={() => setCart([])}
-                style={{
-                  padding: "7px 11px",
-                  borderRadius: 6,
-                  border: "1px solid rgba(148,163,184,.22)",
-                  background: "transparent",
-                  color: "#94a3b8",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                }}
-              >
-                Clear
-              </button>
-            </div>
-          )}
-
           {/* ── Rows — proto 5507-5634 ─────────────────────────────────── */}
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }} data-testid="pv2-doc-rows">
             {shown.map((d) => (
@@ -512,9 +419,7 @@ export default function PortalV2DocumentsPage() {
                 key={d.key}
                 d={d}
                 open={openKey === d.key}
-                inCart={cart.indexOf(d.key) >= 0}
                 onToggle={() => setOpenKey(openKey === d.key ? null : d.key)}
-                onCart={() => toggleCart(d.key)}
                 onRegenerate={() => regenerate(d)}
                 onShare={() => shareExport(d)}
                 onAsk={askShaneBot}
@@ -538,16 +443,6 @@ export default function PortalV2DocumentsPage() {
                 alignItems: "flex-start",
               }}
             >
-              {/* The footer says out loud that the library is partial — the
-                  README calls this out as deliberate. */}
-              <span
-                style={{ fontSize: "11.5px", color: "#64748b", lineHeight: 1.6, maxWidth: "70ch" }}
-                data-testid="pv2-doc-footer"
-              >
-                This library shows {ALL_DOCS.length} of {DOC_LIB_TOTAL} documents. The remainder
-                cover workloads not in your tenant, or offerings you have not scoped — filter by
-                offering to see what a scope would add.
-              </span>
               <button
                 onClick={exportAll}
                 data-testid="pv2-doc-export-all"
@@ -625,8 +520,8 @@ export default function PortalV2DocumentsPage() {
                 <span
                   style={{ fontSize: "12px", color: "#94a3b8", lineHeight: 1.5, textWrap: "pretty" }}
                 >
-                  {DOC_OWNED_COUNT} of {DOC_LIB_TOTAL} documents are in your library. The rest are
-                  written the same way, from your telemetry, and can be added at any time.
+                  {DOC_OWNED_COUNT} {DOC_OWNED_COUNT === 1 ? "document" : "documents"} in your
+                  library.
                 </span>
               </div>
               <button
@@ -656,11 +551,10 @@ export default function PortalV2DocumentsPage() {
             <div
               style={{ flex: "0 0 auto", padding: "13px 20px", borderBottom: "1px solid rgba(30,41,59,.9)" }}
             >
-              {/* The placeholder says 84, not 33 — it searches the real catalogue. */}
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={`Search ${DOC_LIB_TOTAL} documents…`}
+                placeholder={`Search ${ALL_DOCS.length} documents…`}
                 aria-label="Search documents"
                 data-testid="pv2-doc-search"
                 style={{
@@ -857,9 +751,7 @@ function coverColour(d: DocRow): string {
 function DocumentRow({
   d,
   open,
-  inCart,
   onToggle,
-  onCart,
   onRegenerate,
   onShare,
   onAsk,
@@ -874,9 +766,7 @@ function DocumentRow({
 }: {
   d: DocRow;
   open: boolean;
-  inCart: boolean;
   onToggle: () => void;
-  onCart: () => void;
   onRegenerate: () => void;
   onShare: () => void;
   onAsk: (topic: string) => void;
@@ -1010,32 +900,9 @@ function DocumentRow({
         >
           {state.label}
         </span>
-        {!d.owned && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onCart();
-            }}
-            data-testid={`pv2-doc-add-${d.num}`}
-            style={{
-              flex: "0 0 auto",
-              padding: "5px 11px",
-              borderRadius: 6,
-              border: `1px solid ${inCart ? "rgba(0,120,212,.6)" : "rgba(148,163,184,.25)"}`,
-              background: inCart ? "rgba(0,120,212,.2)" : "transparent",
-              color: inCart ? "#dbeafe" : "#94a3b8",
-              fontSize: "10.5px",
-              fontWeight: 700,
-              cursor: "pointer",
-              fontFamily: "inherit",
-            }}
-          >
-            {inCart ? "In cart" : "Add"}
-          </button>
-        )}
       </div>
 
-      {open && d.owned && (
+      {open && (
         <div
           style={{
             display: "flex",
@@ -1215,181 +1082,6 @@ function DocumentRow({
         </div>
       )}
 
-      {open && !d.owned && (
-        <div
-          style={{
-            display: "flex",
-            gap: 24,
-            alignItems: "flex-start",
-            padding: "4px 26px 32px 46px",
-            flexWrap: "wrap",
-          }}
-          data-testid={`pv2-doc-open-${d.num}`}
-        >
-          <Cover d={d} c={c} subtitle="Not in your library" titleColour="#e2e8f0" />
-          <div
-            style={{
-              flex: 1,
-              minWidth: 280,
-              display: "flex",
-              flexDirection: "column",
-              gap: 16,
-              maxWidth: 800,
-            }}
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: "19px",
-                  fontWeight: 800,
-                  letterSpacing: "-.02em",
-                  color: "#f1f5f9",
-                  lineHeight: 1.3,
-                  textWrap: "pretty",
-                }}
-              >
-                {d.blurbHead}
-              </h2>
-              <span
-                style={{
-                  fontSize: "13.5px",
-                  color: "#cbd5e1",
-                  lineHeight: 1.65,
-                  maxWidth: "74ch",
-                  textWrap: "pretty",
-                }}
-              >
-                {d.blurb}
-              </span>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 9,
-                paddingTop: 15,
-                borderTop: "1px solid rgba(30,41,59,.85)",
-              }}
-            >
-              <span style={SECTION_EYEBROW}>What it contains</span>
-              {(d.contains ?? []).map((ct) => (
-                <div key={ct} style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
-                  <span
-                    style={{
-                      flex: "0 0 5px",
-                      width: 5,
-                      height: 5,
-                      borderRadius: "50%",
-                      background: `${c}99`,
-                      marginTop: 7,
-                    }}
-                  />
-                  <span
-                    style={{
-                      fontSize: "12.5px",
-                      color: "#94a3b8",
-                      lineHeight: 1.6,
-                      textWrap: "pretty",
-                    }}
-                  >
-                    {ct}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                padding: "14px 16px",
-                border: "1px solid rgba(30,41,59,.9)",
-                borderRadius: 12,
-                background: "rgba(15,23,42,.45)",
-              }}
-            >
-              {/* The provenance claim the whole library rests on. */}
-              <span style={SECTION_EYEBROW}>Built from your tenant, not a template</span>
-              <span
-                style={{ fontSize: "12px", color: "#94a3b8", lineHeight: 1.6, maxWidth: "74ch" }}
-              >
-                {d.builtFrom}
-              </span>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                flexWrap: "wrap",
-                padding: "14px 16px",
-                border: "1px solid rgba(0,120,212,.35)",
-                borderRadius: 12,
-                background: "rgba(0,120,212,.07)",
-              }}
-            >
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                <span
-                  style={{
-                    fontSize: d.priceLabel ? "13px" : "19px",
-                    fontWeight: 800,
-                    color: "#f1f5f9",
-                    lineHeight: 1.2,
-                    ...(d.priceLabel ? null : { fontFamily: MONO }),
-                  }}
-                >
-                  {d.priceLabel ?? `$${d.price}`}
-                </span>
-                <span style={{ fontSize: "10.5px", color: "#64748b" }}>
-                  {d.priceSub ??
-                    "One-off. Regenerates from your telemetry for as long as monitoring is active."}
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  marginLeft: "auto",
-                }}
-              >
-                <button
-                  onClick={onCart}
-                  data-testid={`pv2-doc-add-big-${d.num}`}
-                  style={{
-                    padding: "9px 15px",
-                    borderRadius: 7,
-                    border: "1px solid rgba(0,120,212,.55)",
-                    background: inCart ? "rgba(0,120,212,.3)" : "rgba(0,120,212,.18)",
-                    color: "#dbeafe",
-                    fontSize: "11.5px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  {inCart ? "In cart — remove" : d.price ? "Add to your library" : "Request this document"}
-                </button>
-                <button
-                  onClick={() =>
-                    onAsk(
-                      `Would ${d.title} actually help our tenant, given what the assessment found? Be blunt if it would not.`,
-                    )
-                  }
-                  style={ASK_BTN}
-                >
-                  Does this apply to us?
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

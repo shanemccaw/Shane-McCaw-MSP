@@ -1,10 +1,11 @@
 /**
- * useSecAreaLinksLive.ts — real-data seam for two of the Security page's
- * `SEC_AREA_LINKS` category cards (Git #1258).
+ * useSecAreaLinksLive.ts — real-data seam for four of the Security page's
+ * five `SEC_AREA_LINKS` category cards (Git #1258, extended by #1337).
  *
  * `secDashboardData.ts` documents ALL FIVE `SEC_AREA_LINKS` scores as fixture
  * ("no per-category score feed exists server-side"). #1258 found two of the
- * five already have a real, correctly-shaped check behind them:
+ * five already have a real, correctly-shaped check behind them, and #1337
+ * added a third:
  *
  *   - "OAuth Apps"      -> governance.riskyPermissionGrantCount
  *     (appgov:risky-permission-grants, registered by #1233 — tenant-wide
@@ -14,9 +15,19 @@
  *     (exchange:dkim-spf-dmarc-status, registered by #1258 — count of
  *     SPF/DMARC/DKIM-at-default-selectors NOT configured, the same concept
  *     the fixture's "3 open findings" claims).
+ *   - "MFA Gaps"        -> identity.mfaGapCount
+ *     (identity:privileged-mfa-gap, registered by #1337 — real count of
+ *     Member accounts without a registered MFA method, the same concept the
+ *     fixture's "8 users without MFA" claims).
+ *   - "Legacy Auth"     -> identity.legacyAuthCount
+ *     (identity:legacy-auth-usage, registered by #1337 — the metric already
+ *     existed in the registry from earlier work but was never overlaid onto
+ *     this card).
  *
- * MFA Gaps, Conditional Access, and Legacy Auth stay fixture — no live check
- * was confirmed to match those cards' specific claims as part of this issue.
+ * Conditional Access stays out of this hook — #1337 confirmed
+ * `useCaBaselineLive` (#1232) is directly reusable for that card's "N
+ * baseline policies missing" claim (see portal-v2-security.tsx), so it does
+ * not need a `/api/dashboard/resolve` metric of its own.
  *
  * Same generic customer-safe batch resolver pattern as
  * `useSecEvidenceOauthLive.ts` (#1233) — `POST /api/dashboard/resolve`, best-
@@ -27,16 +38,25 @@ import { useEffect, useState } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { resolvedValue, type ResolvedMetric } from "@/components/health-suite/useTopicHealthLive";
 
-const METRIC_KEYS = ["governance.riskyPermissionGrantCount", "security.emailAuthFindingCount"] as const;
+const METRIC_KEYS = [
+  "governance.riskyPermissionGrantCount",
+  "security.emailAuthFindingCount",
+  "identity.mfaGapCount",
+  "identity.legacyAuthCount",
+] as const;
 
 export interface SecAreaLinksLiveCounts {
   oauthFlaggedGrantCount: number | null;
   emailAuthFindingCount: number | null;
+  mfaGapCount: number | null;
+  legacyAuthCount: number | null;
 }
 
 export const SEC_AREA_LINKS_LIVE_EMPTY: SecAreaLinksLiveCounts = {
   oauthFlaggedGrantCount: null,
   emailAuthFindingCount: null,
+  mfaGapCount: null,
+  legacyAuthCount: null,
 };
 
 export interface SecAreaLinksLiveState {
@@ -82,6 +102,8 @@ export function useSecAreaLinksLive(enabled = true): SecAreaLinksLiveState {
   const live: SecAreaLinksLiveCounts = {
     oauthFlaggedGrantCount: resolvedValue(metrics["governance.riskyPermissionGrantCount"]),
     emailAuthFindingCount: resolvedValue(metrics["security.emailAuthFindingCount"]),
+    mfaGapCount: resolvedValue(metrics["identity.mfaGapCount"]),
+    legacyAuthCount: resolvedValue(metrics["identity.legacyAuthCount"]),
   };
 
   return { live, loaded };

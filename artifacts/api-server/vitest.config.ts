@@ -187,6 +187,7 @@ export default defineConfig({
       "src/lib/license-sku-ledger.test.ts",
       "src/lib/sow-monitoring-addon.test.ts",
       "src/lib/sla-uptime.test.ts",
+      "src/routes/public-status-daily-history.test.ts",
       "src/routes/dashboard-data.test.ts",
       "src/routes/dashboard-templates.test.ts",
       "src/routes/dashboard-overrides.test.ts",
@@ -244,6 +245,10 @@ export default defineConfig({
       "src/lib/__tests__/sharepoint-sharing.test.ts",
       "src/lib/__tests__/overshared-items.test.ts",
       "src/lib/__tests__/portal-oversharing-sites.test.ts",
+      // #1333 — the Governance area-card grid's card→check mapping and its
+      // value/previous-scan-delta/severity derivation (ten confirmed-real cards;
+      // External Sharing Drift + the Devices cards stay honest no-data).
+      "src/lib/portal-governance-areas.test.ts",
       "src/lib/chat-content-blocks.test.ts",
       "src/lib/shanebot-persona.test.ts",
       "src/lib/shanebot-engine.test.ts",

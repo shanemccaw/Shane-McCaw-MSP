@@ -284,7 +284,9 @@
             StatusLineTemplate="{StaticResource StatusLineTemplate}"/>
     </UserControl.Resources>
 
-    <Border Background="{StaticResource ChatPane.Canvas}" BorderBrush="{StaticResource ChatPane.Border}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
+    <Border Background="{Binding ChatBackground, FallbackValue={StaticResource ChatPane.Canvas}, TargetNullValue={StaticResource ChatPane.Canvas}}" 
+            BorderBrush="{Binding ChatBorder, FallbackValue={StaticResource ChatPane.Border}, TargetNullValue={StaticResource ChatPane.Border}}" 
+            BorderThickness="1" CornerRadius="8" ClipToBounds="True">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>

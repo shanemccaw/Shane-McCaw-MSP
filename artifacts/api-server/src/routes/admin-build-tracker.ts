@@ -1465,7 +1465,12 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
       const [existing] = await db
         .select({ id: btBuildQueueTable.id })
         .from(btBuildQueueTable)
-        .where(eq(btBuildQueueTable.githubNumber, resolvedGithubNumber))
+        .where(
+          and(
+            eq(btBuildQueueTable.githubNumber, resolvedGithubNumber),
+            ne(btBuildQueueTable.status, "running")
+          )
+        )
         .orderBy(desc(btBuildQueueTable.createdAt))
         .limit(1);
       if (existing) {

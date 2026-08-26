@@ -4,29 +4,30 @@
  * The fixture itself was extracted mechanically rather than retyped, so these
  * assertions are aimed at the two things extraction cannot protect: the DERIVED
  * behaviour transcribed by hand from the prototype's logic (11771-11930), and
- * the joins between the three arrays — the positional OWNED_META zip, the facet
- * value lists, and the pillar colour map — where a fixture can be perfectly
- * transcribed and still not line up.
+ * the joins between the DOC_LIB/OWNED_META arrays and the facet value lists and
+ * pillar colour map, where a fixture can be perfectly transcribed and still not
+ * line up.
  *
- * The facet-count tests are the ones that matter most. A faceted search whose
- * counts include their own group looks completely normal until you tick a box
- * and every sibling reads zero, and no visual pass catches that.
+ * Git #1346 removed the 24-document catalogue from what the customer sees —
+ * showing it as a disclosed "X of Y documents" browsable inventory was the
+ * thing to fix, not a shape the tests should keep pinning. `ALL_DOCS` is now
+ * the nine owned documents only; the facet-count tests below are still the
+ * ones that matter most, since a faceted search whose counts include their own
+ * group looks completely normal until you tick a box and every sibling reads
+ * zero, and no visual pass catches that.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { DOC_LIB_TOTAL, DOC_PILLAR_COLOUR } from "./docLibraryData";
+import { DOC_PILLAR_COLOUR } from "./docLibraryData";
 import {
   ALL_DOCS,
   DOC_FACET_DEFS,
   DOC_OWNED_COUNT,
   DOC_SORT_OPTIONS,
-  docCartLabel,
-  docCartTotal,
   docFacetActive,
   docFacetGroups,
   docFilterApplyLabel,
-  docFilterNote,
   docMetaLine,
   docPasses,
   docResultLabel,
@@ -44,52 +45,26 @@ const countOf = (key: string, value: string, facets: DocFacetState = NONE, query
   groupOf(key, facets, query).items.find((i) => i.value === value)!.count;
 
 describe("library shape", () => {
-  it("shows 33 documents of a stated library of 84", () => {
-    // The footer and the search placeholder both quote 84 while the list shows
-    // 33. That gap is deliberate — the README calls it out — so it is pinned
-    // rather than reconciled.
-    assert.equal(ALL_DOCS.length, 33);
-    assert.equal(DOC_LIB_TOTAL, 84);
-    assert.ok(DOC_LIB_TOTAL > ALL_DOCS.length);
-  });
-
-  it("splits 9 owned from 24 catalogue", () => {
+  it("renders only the nine owned documents — the catalogue is not merged in", () => {
+    assert.equal(ALL_DOCS.length, 9);
     assert.equal(DOC_OWNED_COUNT, 9);
-    assert.equal(ALL_DOCS.filter((d) => d.owned).length, 9);
-    assert.equal(ALL_DOCS.filter((d) => !d.owned).length, 24);
+    assert.ok(ALL_DOCS.every((d) => d.owned));
   });
 
-  it("numbers DOC-01 to DOC-33 with no gaps or duplicates", () => {
+  it("numbers DOC-01 to DOC-09 with no gaps or duplicates", () => {
     assert.deepEqual(
       docShown("", NONE, "num").map((d) => d.num),
-      Array.from({ length: 33 }, (_, i) => `DOC-${String(i + 1).padStart(2, "0")}`),
+      Array.from({ length: 9 }, (_, i) => `DOC-${String(i + 1).padStart(2, "0")}`),
     );
-    assert.equal(new Set(ALL_DOCS.map((d) => d.key)).size, 33);
+    assert.equal(new Set(ALL_DOCS.map((d) => d.key)).size, 9);
   });
 
-  it("owns DOC-01 to DOC-09 and offers DOC-10 upward", () => {
-    // The split is positional, not flagged per row, so a shifted array would
-    // put an owned document in the catalogue with a price on it.
-    assert.deepEqual(
-      ALL_DOCS.filter((d) => d.owned).map((d) => d.num),
-      ["DOC-01", "DOC-02", "DOC-03", "DOC-04", "DOC-05", "DOC-06", "DOC-07", "DOC-08", "DOC-09"],
-    );
-    assert.ok(ALL_DOCS.filter((d) => !d.owned).every((d) => d.num >= "DOC-10"));
-  });
-
-  it("gives every owned document a body and every catalogue document a pitch", () => {
+  it("gives every owned document a body", () => {
     for (const d of ALL_DOCS) {
-      if (d.owned) {
-        assert.ok(d.headline, `${d.num} headline`);
-        assert.ok(d.standfirst, `${d.num} standfirst`);
-        assert.ok((d.facts ?? []).length > 0, `${d.num} facts`);
-        assert.ok((d.sections ?? []).length > 0, `${d.num} sections`);
-      } else {
-        assert.ok(d.blurbHead, `${d.num} blurbHead`);
-        assert.ok(d.blurb, `${d.num} blurb`);
-        assert.ok((d.contains ?? []).length > 0, `${d.num} contains`);
-        assert.ok(d.builtFrom, `${d.num} builtFrom`);
-      }
+      assert.ok(d.headline, `${d.num} headline`);
+      assert.ok(d.standfirst, `${d.num} standfirst`);
+      assert.ok((d.facts ?? []).length > 0, `${d.num} facts`);
+      assert.ok((d.sections ?? []).length > 0, `${d.num} sections`);
     }
   });
 });
@@ -127,22 +102,16 @@ describe("the OWNED_META positional zip", () => {
 });
 
 describe("facet definitions cover the data", () => {
+  it("has no Availability facet — the owned/catalogue split it tracked is gone", () => {
+    assert.ok(!DOC_FACET_DEFS.some((g) => g.key === "avail"));
+  });
+
   it("lists every value present in the library", () => {
     // A document whose pillar is not in the Pillar list is unreachable by that
     // facet, and there is no visual symptom — the row just never appears.
     for (const g of DOC_FACET_DEFS) {
       for (const v of new Set(ALL_DOCS.map((d) => g.get(d)))) {
         assert.ok(g.values.includes(v), `${g.label} is missing "${v}"`);
-      }
-    }
-  });
-
-  it("has no facet value that matches nothing", () => {
-    // The reverse check: a value in the drawer that no document carries is a
-    // permanently-zero row, which reads as a bug to whoever ticks it.
-    for (const g of DOC_FACET_DEFS) {
-      for (const v of g.values) {
-        assert.ok(countOf(g.key, v) > 0, `${g.label} / ${v} matches nothing`);
       }
     }
   });
@@ -161,29 +130,18 @@ describe("facet counts exclude their own group", () => {
     // Counting with the group INCLUDED would zero every sibling here, turning
     // the drawer into a filter that can only ever narrow.
     assert.ok(countOf("pillar", "Governance", SECURITY) > 0);
-    assert.ok(countOf("pillar", "Compliance", SECURITY) > 0);
     assert.equal(countOf("pillar", "Security", SECURITY), countOf("pillar", "Security"));
-  });
-
-  it("still narrows OTHER groups by the ticked pillar", () => {
-    // The skip is one group deep, not a blanket exemption: Availability counts
-    // must reflect the Security filter.
-    const all = countOf("avail", "Available to add");
-    const sec = countOf("avail", "Available to add", SECURITY);
-    assert.ok(sec < all);
-    assert.equal(sec, ALL_DOCS.filter((d) => !d.owned && d.pillar === "Security").length);
   });
 
   it("adds up: ticking two pillars returns the sum of each alone", () => {
     const a = docShown("", { pillar: ["Security"] }, "num").length;
-    const b = docShown("", { pillar: ["Adoption"] }, "num").length;
-    assert.equal(docShown("", { pillar: ["Security", "Adoption"] }, "num").length, a + b);
+    const b = docShown("", { pillar: ["Cross-pillar"] }, "num").length;
+    assert.equal(docShown("", { pillar: ["Security", "Cross-pillar"] }, "num").length, a + b);
   });
 
   it("intersects across groups", () => {
-    const rows = docShown("", { pillar: ["Security"], avail: ["In your library"] }, "num");
-    assert.ok(rows.length > 0);
-    assert.ok(rows.every((d) => d.owned && d.pillar === "Security"));
+    const rows = docShown("", { pillar: ["Security"], type: ["Report"] }, "num");
+    assert.ok(rows.every((d) => d.pillar === "Security" && d.type === "Report"));
   });
 });
 
@@ -197,12 +155,11 @@ describe("search", () => {
       docShown("doc-05", NONE, "num").map((d) => d.num),
       ["DOC-05"],
     );
-    assert.ok(docShown("licensing", NONE, "num").length > 0);
     assert.ok(docShown("Contract", NONE, "num").some((d) => d.num === "DOC-09"));
   });
 
   it("ignores surrounding whitespace and an empty term", () => {
-    assert.equal(docShown("   ", NONE, "num").length, 33);
+    assert.equal(docShown("   ", NONE, "num").length, 9);
     assert.deepEqual(
       docShown("  DOC-05  ", NONE, "num").map((d) => d.num),
       ["DOC-05"],
@@ -213,10 +170,6 @@ describe("search", () => {
     // Search is over the row's own metadata line, not the copy — a term that
     // only appears inside a section must not match.
     assert.equal(docPasses(byNum("DOC-01"), "standfirst", NONE), false);
-  });
-
-  it("narrows the facet counts too", () => {
-    assert.equal(countOf("avail", "In your library", NONE, "DOC-05"), 1);
   });
 });
 
@@ -232,32 +185,9 @@ describe("sorting", () => {
     );
   });
 
-  it("puts owned documents first under 'library'", () => {
-    const rows = docShown("", NONE, "library");
-    assert.ok(rows.slice(0, 9).every((d) => d.owned));
-    assert.ok(!rows.slice(9).some((d) => d.owned));
-    // ...and tie-breaks on number within each half.
-    const owned = rows.slice(0, 9).map((d) => d.num);
-    assert.deepEqual(owned, owned.slice().sort());
-  });
-
-  it("orders pillars Cross-pillar first, Health last, in contiguous runs", () => {
-    const seen = docShown("", NONE, "pillar").map((d) => d.pillar);
-    assert.equal(seen[0], "Cross-pillar");
-    assert.equal(seen[seen.length - 1], "Health");
-    assert.equal(new Set(seen).size, seen.filter((p, i) => p !== seen[i - 1]).length);
-  });
-
-  it("orders types Report first, Contract last, in contiguous runs", () => {
-    const seen = docShown("", NONE, "type").map((d) => d.type);
-    assert.equal(seen[0], "Report");
-    assert.equal(seen[seen.length - 1], "Contract");
-    assert.equal(new Set(seen).size, seen.filter((t, i) => t !== seen[i - 1]).length);
-  });
-
-  it("returns the same 33 rows under every sort", () => {
+  it("returns the same 9 rows under every sort", () => {
     for (const o of DOC_SORT_OPTIONS) {
-      assert.equal(new Set(docShown("", NONE, o.key).map((d) => d.num)).size, 33, o.key);
+      assert.equal(new Set(docShown("", NONE, o.key).map((d) => d.num)).size, 9, o.key);
     }
   });
 });
@@ -268,54 +198,12 @@ describe("the row's state column", () => {
     assert.deepEqual(docStateFor(byNum("DOC-09")), { label: "Signed", tone: "#94a3b8" });
     assert.deepEqual(docStateFor(byNum("DOC-02")), { label: "Current", tone: "#4ade80" });
   });
-
-  it("reads the price, or 'On request' when a catalogue document has none", () => {
-    // Exactly one catalogue document is priceless: DOC-31 is included when the
-    // offering is scoped, so it must not render as "$0".
-    const priceless = ALL_DOCS.filter((d) => !d.owned && !d.price);
-    assert.deepEqual(
-      priceless.map((d) => d.num),
-      ["DOC-31"],
-    );
-    assert.deepEqual(docStateFor(priceless[0]), { label: "On request", tone: "#64748b" });
-    assert.match(docStateFor(byNum("DOC-10")).label, /^\$\d+$/);
-  });
-});
-
-describe("the cart", () => {
-  it("sums catalogue prices", () => {
-    const two = ALL_DOCS.filter((d) => !d.owned && d.price).slice(0, 2);
-    assert.equal(
-      docCartTotal(two.map((d) => d.key)),
-      (two[0].price ?? 0) + (two[1].price ?? 0),
-    );
-  });
-
-  it("contributes nothing for an owned key or the priceless document", () => {
-    // Owned rows have no Add button, but the total must not produce NaN if a
-    // key ever reaches it, and DOC-31 legitimately adds zero.
-    assert.equal(docCartTotal(["own-0"]), 0);
-    assert.equal(docCartTotal(["DOC-31"]), 0);
-    assert.equal(docCartTotal([]), 0);
-  });
-
-  it("labels one document singular and hides a zero total", () => {
-    assert.equal(docCartLabel(["DOC-31"]), "1 document selected");
-    const priced = ALL_DOCS.find((d) => !d.owned && d.price)!;
-    assert.equal(docCartLabel([priced.key]), `1 document selected · $${priced.price}`);
-    assert.equal(docCartLabel([priced.key, "DOC-31"]), `2 documents selected · $${priced.price}`);
-  });
 });
 
 describe("header strings", () => {
-  it("says 'All 33' unfiltered and 'n of 33' filtered", () => {
-    assert.equal(docResultLabel(33), "All 33 documents");
-    assert.equal(docResultLabel(4), "4 of 33 documents");
-  });
-
-  it("swaps the owned/available breakdown for the word 'filtered'", () => {
-    assert.equal(docFilterNote(false), "9 owned · 24 available to add");
-    assert.equal(docFilterNote(true), "filtered");
+  it("says 'All 9' unfiltered and 'n of 9' filtered", () => {
+    assert.equal(docResultLabel(9), "All 9 documents");
+    assert.equal(docResultLabel(4), "4 of 9 documents");
   });
 
   it("treats a search term as an active filter", () => {
@@ -329,7 +217,7 @@ describe("header strings", () => {
 
   it("pluralises the drawer's apply button", () => {
     assert.equal(docFilterApplyLabel(1), "Show 1 document");
-    assert.equal(docFilterApplyLabel(33), "Show 33 documents");
+    assert.equal(docFilterApplyLabel(9), "Show 9 documents");
     assert.equal(docFilterApplyLabel(0), "Show 0 documents");
   });
 

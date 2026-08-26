@@ -13,10 +13,17 @@
  * stated gap). `GOV_HERO.score/delta/history/statusLabel/stats` below are now only
  * FALLBACKS used before the payload loads / on an unscored tenant.
  *
- * Still fixture, and a GENUINE GAP (no real backing): the 14 `GOV_AREA_LINKS`
- * granular per-sub-area scores/prevScores/status — there is no per-sub-area score
- * model server-side, so the cluster grid stays the design's composition. Wiring
- * it is real backend design work, not a fixture swap (see WIRING_PLAN.md §2).
+ * The 14 `GOV_AREA_LINKS` per-sub-area scores/prevScores/status shipped as a
+ * fixture too — confident fake numbers on a never-scanned tenant (#1330). That
+ * is now wired (#1333): ten of the cards have a real, active `monitor_checks`
+ * check behind them, read live per-card (value + previous-scan delta + derived
+ * severity) via `useGovAreaLinksLive` off `GET /api/portal/governance/areas`.
+ * The `score`/`prevScore`/`status` fields below are no longer rendered as
+ * confident numbers — a card shows its REAL live value or an honest "—". The
+ * four cards with no backing check today render that no-data state
+ * unconditionally: "External Sharing Drift" (a scan-to-scan drift check, blocked
+ * on #1287) and the three "Devices …" cards (no confirmed check — pending
+ * Shane's call, see `lib/portal-governance-areas.ts`).
  */
 
 import { trendGeometry } from "./DriftTrend";
@@ -67,6 +74,20 @@ export const GOV_STATUS_META: Readonly<
   },
 };
 
+/**
+ * The card wash/colour/label for a card with NO live scan data (#1333) — a card
+ * whose check has never collected for this tenant, or one of the four cards with
+ * no backing check at all. Rendered as a muted slate tile at the smallest tier
+ * with an honest "No scan data available" label and a "—" in place of a score,
+ * so it never reads as a real zero or a fabricated number.
+ */
+export const GOV_NODATA_META: { c: string; label: string; tier: "small"; wash: string } = {
+  c: "#64748b",
+  label: "No scan data available",
+  tier: "small",
+  wash: "linear-gradient(160deg, rgba(100,116,139,.08), rgba(15,23,42,.45))",
+};
+
 /** Cluster order — line 11990. */
 export const GOV_CLUSTERS: readonly string[] = [
   "Sharing & Collaboration",
@@ -81,7 +102,7 @@ export const GOV_AREA_LINKS: readonly GovAreaLink[] = [
   { key: "governance-public-teams", label: "Public Teams", score: 4, prevScore: 4, sub: "joinable by anyone", icon: "users", cluster: "Sharing & Collaboration", weight: "medium", status: "red" },
   { key: "governance-sharing-drift", label: "External Sharing Drift", score: 3, prevScore: 1, sub: "new shares since last scan", icon: "git-commit", cluster: "Sharing & Collaboration", weight: "small", status: "red" },
   { key: "governance-channels", label: "Channel Governance", score: 12, prevScore: 15, sub: "private/shared flagged", icon: "shield-check", cluster: "Sharing & Collaboration", weight: "small", status: "yellow" },
-  { key: "governance-guests", label: "Guest Access Governance", score: 34, prevScore: 21, sub: "guests, up from 21", icon: "users", cluster: "Identity & Ownership", weight: "large", status: "yellow" },
+  { key: "governance-guests", label: "Guest Access Governance", score: 34, prevScore: 21, sub: "guests", icon: "users", cluster: "Identity & Ownership", weight: "large", status: "yellow" },
   { key: "governance-group-owners", label: "Group Ownership Governance", score: 26, prevScore: 26, sub: "groups need an owner", icon: "key", cluster: "Identity & Ownership", weight: "medium", status: "red" },
   { key: "governance-team-owners", label: "Team Ownership Governance", score: 6, prevScore: 8, sub: "teams need an owner", icon: "key", cluster: "Identity & Ownership", weight: "small", status: "yellow" },
   { key: "governance-orphaned-groups", label: "Orphaned Groups", score: 11, prevScore: 9, sub: "no active members", icon: "users", cluster: "Identity & Ownership", weight: "small", status: "red" },
@@ -155,30 +176,69 @@ export function govTrendGeometry() {
   return trendGeometry(GOV_HERO.history);
 }
 
+/** The live per-card values a tile renders from (#1333) — real scan data, or a null value for no-data. */
+export interface GovAreaLiveView {
+  /** The latest scan's count, or null when the card has no live data. */
+  readonly value: number | null;
+  /** The previous scan's count, or null when there is no prior scan to delta against. */
+  readonly prevValue: number | null;
+  /** The derived severity, or null on no-data. */
+  readonly status: GovAreaStatus | null;
+}
+
 /**
  * Per-card derived values for the area tiles — the current design's card builder
- * (`Customer Portal Shell.dc.html` 13847-13878). The earlier revision rendered a
- * plain card; the current one carries a tier-scaled delta chip that always prints
- * (`±0` when flat, coloured by direction unless the area is green) and a four-bar
- * sparkline interpolated from `prevScore → score`. Structurally identical to
- * Compliance's `cmpAreaGeometry`; kept in the Governance module so the card's
- * numbers stay in one place per the fixture rule.
+ * (`Customer Portal Shell.dc.html` 13847-13878): a status-coloured icon, a
+ * tier-scaled delta chip, and a four-bar sparkline interpolated from
+ * `prevValue → value`. Structurally identical to Compliance's `cmpAreaGeometry`;
+ * kept in the Governance module so the card's numbers stay in one place per the
+ * fixture rule.
+ *
+ * Now driven by REAL live values (#1333), so it also handles the two states the
+ * fixture never had:
+ *   • no live data → the muted `GOV_NODATA_META` tile, a "—" value, no delta, no
+ *     sparkline (`hasData:false`);
+ *   • a first scan with no prior collection → a real value with `deltaText:null`
+ *     (no fabricated `±0`) and a flat sparkline.
+ * The delta chip is muted on a green area rather than coloured, and prints `±0`
+ * only when a genuine prior scan is flat.
  */
-export function govAreaGeometry(tile: GovAreaLink) {
-  const meta = GOV_STATUS_META[tile.status];
-  const delta = tile.score - tile.prevScore;
+export function govAreaLiveGeometry(view: GovAreaLiveView) {
+  if (view.value === null || view.status === null) {
+    return {
+      hasData: false as const,
+      meta: GOV_NODATA_META,
+      valueText: "—",
+      deltaText: null as string | null,
+      deltaColor: "#64748b",
+      sparkBars: [] as { height: number; opacity: number }[],
+    };
+  }
+
+  const meta = GOV_STATUS_META[view.status];
+  const value = view.value;
+  const hasPrev = view.prevValue !== null;
+  const delta = hasPrev ? value - (view.prevValue as number) : 0;
   const deltaColor =
-    tile.status === "green" ? "#64748b" : delta > 0 ? "#f87171" : delta < 0 ? "#34d399" : "#64748b";
-  const deltaText = delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : "±0";
-  const sparkVals = Array.from(
-    { length: 4 },
-    (_, i) => tile.prevScore + (tile.score - tile.prevScore) * (i / 3),
-  );
+    view.status === "green" ? "#64748b" : delta > 0 ? "#f87171" : delta < 0 ? "#34d399" : "#64748b";
+  const deltaText = hasPrev ? (delta > 0 ? `+${delta}` : delta < 0 ? `${delta}` : "±0") : null;
+  const sparkVals = hasPrev
+    ? Array.from({ length: 4 }, (_, i) => (view.prevValue as number) + (value - (view.prevValue as number)) * (i / 3))
+    : Array.from({ length: 4 }, () => value);
   const sMin = Math.min(...sparkVals);
   const sMax = Math.max(...sparkVals, sMin + 1);
   const sparkBars = sparkVals.map((v, i) => ({
     height: Math.max(3, Math.round(((v - sMin) / (sMax - sMin)) * 16)),
     opacity: i === 3 ? 1 : 0.4,
   }));
-  return { meta, deltaText, deltaColor, sparkBars };
+  return { hasData: true as const, meta, valueText: String(value), deltaText, deltaColor, sparkBars };
+}
+
+/**
+ * The fixture-data adapter kept for `govDashboardData.test.ts` — the design's own
+ * `score`/`prevScore`/`status` run through the same geometry the live path uses.
+ * The page itself renders from `govAreaLiveGeometry` with real scan data.
+ */
+export function govAreaGeometry(tile: GovAreaLink) {
+  return govAreaLiveGeometry({ value: tile.score, prevValue: tile.prevScore, status: tile.status });
 }

@@ -3436,10 +3436,77 @@ namespace BuildConsole
             };
             cm.Items.Add(miOpenExplorer);
 
+            cm.Items.Add(new Separator());
+
+            // 8. Pop Out Tab
+            var miPopOut = new MenuItem { Header = "↗️ Pop Out Window" };
+            miPopOut.Click += (s, e) => PopOutTab(tabItem, CurrentOwner());
+            cm.Items.Add(miPopOut);
+
             if (tabItem.Header is FrameworkElement feHeader)
             {
                 feHeader.ContextMenu = cm;
             }
+        }
+
+        private void PopOutTab(TabItem tabItem, TabControl ownerTab)
+        {
+            if (tabItem == null) return;
+
+            // Extract the Content of the tab
+            var content = tabItem.Content as UIElement;
+            if (content == null) return;
+
+            // Remove it from the tab
+            tabItem.Content = null;
+
+            // Get the title string from the tab header
+            string title = "Popped Out Window";
+            if (tabItem.Header is string strHeader)
+            {
+                title = strHeader;
+            }
+            else if (tabItem.Header is Panel headerPanel)
+            {
+                var textBlocks = headerPanel.Children.OfType<TextBlock>().ToList();
+                if (textBlocks.Count > 1)
+                {
+                    title = textBlocks[1].Text;
+                }
+                else if (textBlocks.Count > 0)
+                {
+                    title = textBlocks[0].Text;
+                }
+            }
+
+            // Create a new window to host the content
+            var popWindow = new Window
+            {
+                Title = title,
+                Width = 950,
+                Height = 680,
+                WindowStartupLocation = WindowStartupLocation.CenterScreen,
+                Background = (Brush)FindResource("BaseBrush"),
+                Content = content
+            };
+
+            // Close/Remove the tab item from the TabControl
+            ownerTab.Items.Remove(tabItem);
+
+            // When closing the popout window, restore the content back as a tab
+            popWindow.Closed += (s, e) =>
+            {
+                if (this.IsLoaded)
+                {
+                    popWindow.Content = null; // Unparent content from the popped-out window
+                    tabItem.Content = content; // Re-assign content back to the tab item
+
+                    ownerTab.Items.Add(tabItem);
+                    ownerTab.SelectedItem = tabItem;
+                }
+            };
+
+            popWindow.Show();
         }
 
         public void RenameTab(TabItem tabItem)
