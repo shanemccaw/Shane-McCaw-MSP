@@ -18,6 +18,7 @@ import Retainers from "./marketing/pages/Retainers";
 import Pricing from "./marketing/pages/Pricing";
 import Buy from "./marketing/pages/Buy";
 import ChangeRecord from "./marketing/pages/ChangeRecord";
+import Status from "./marketing/pages/Status";
 
 import PillarGovernance from "./marketing/pages/pillars/Governance";
 import PillarSecurity from "./marketing/pages/pillars/Security";
@@ -116,6 +117,9 @@ export default function App() {
         {/* Checkout and post-purchase */}
         <Route path="/buy" component={Buy} />
         <Route path="/records/:id" component={ChangeRecord} />
+
+        {/* Trust / status */}
+        <Route path="/status" component={Status} />
 
         {/* ═══════════════════════════════════════════════════════════════════
             MARKETING ROUTE INSERTION POINT — ADD NEW MARKETING ROUTES ABOVE.

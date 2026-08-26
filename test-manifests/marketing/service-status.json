@@ -1,0 +1,64 @@
+{
+  "feature": "Service Status page (/status) + /api/status (Git #1350) — public marketing status page over REAL data: overall platform state, 90-day incident history, Microsoft 365 rolling-90-day uptime, and a real platform-wide daily-history strip. Honest 'not yet recorded'/'not yet measured' where no real source exists (per-component daily bars, SLA actuals). Footer 'Service status' link added.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "04476f73db26652803584583518e35e8ebd262fd",
+  "notes": [
+    "Git #1350. The page (artifacts/shane-mccaw-consulting/src/marketing/pages/Status.tsx) renders inside the",
+    "real Nav/Footer marketing shell and reads only GET /api/status (public-status.ts) — it does NOT depend on",
+    "the portal being up, which is the whole point of a status page. Auto-refreshes every 60s.",
+    "",
+    "REAL, wired data asserted here:",
+    "  - $.status: overall platform state enum (operational|degraded|outage), derived live in public-status.ts.",
+    "  - $.incidents: last 90 days of platform_incidents (real table).",
+    "  - $.m365Uptime: rolling-90-day time-weighted M365 uptime per workload, exposed on the public route this",
+    "    build (reads m365_service_health_samples via sla-uptime.ts — math NOT reimplemented). available:false",
+    "    with a reason when the tenant has no consented samples yet (honest, not fabricated).",
+    "  - $.dailyHistory: real platform-WIDE 90-day daily strip, each day coloured by the worst real incident",
+    "    that overlapped it (no fabricated per-component series).",
+    "",
+    "HONEST no-data on the page (no real source found — deliberately NOT fabricated): per-component daily bars",
+    "(shown as identities + 'History pending'), 'Our SLA, measured' actuals ('Not yet measured'), scheduled",
+    "maintenance ('none scheduled'). The email subscribe box was omitted (no real subscribe backend; platform",
+    "email is Graph-only).",
+    "",
+    "The uiSteps assert STABLE always-rendered copy (the verbatim refresh sentence + section headings) rather",
+    "than the dynamic h1/state text, and confirm the footer 'Service status' link is present. Deployed-origin",
+    "caveat (same class as the other marketing manifests): {{DEPLOY_URL}} only reflects this commit once the",
+    "marketing site + api-server are redeployed."
+  ],
+  "apiTests": [
+    {
+      "name": "GET /api/status is public (no auth) and returns the overall platform state enum",
+      "method": "GET",
+      "path": "/api/status",
+      "expect": { "status": 200, "jsonPath": "$.status", "exists": true }
+    },
+    {
+      "name": "GET /api/status includes the 90-day incident history array",
+      "method": "GET",
+      "path": "/api/status",
+      "expect": { "status": 200, "jsonPath": "$.incidents", "exists": true }
+    },
+    {
+      "name": "GET /api/status exposes the M365 90-day uptime section (Git #1350 public exposure of sla-uptime.ts)",
+      "method": "GET",
+      "path": "/api/status",
+      "expect": { "status": 200, "jsonPath": "$.m365Uptime", "exists": true }
+    },
+    {
+      "name": "GET /api/status exposes the real platform-wide daily-history strip",
+      "method": "GET",
+      "path": "/api/status",
+      "expect": { "status": 200, "jsonPath": "$.dailyHistory", "exists": true }
+    }
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/status" },
+    { "action": "expect", "selector": "[data-testid='status-page']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='status-overall']", "state": "visible" },
+    { "action": "expect", "selector": "body", "state": "visible", "textContains": "This page refreshes every 60 seconds" },
+    { "action": "expect", "selector": "body", "state": "visible", "textContains": "Incident history" },
+    { "action": "expect", "selector": "body", "state": "visible", "textContains": "Microsoft 365 uptime" },
+    { "action": "expect", "selector": "footer", "state": "visible", "textContains": "Service status" }
+  ]
+}

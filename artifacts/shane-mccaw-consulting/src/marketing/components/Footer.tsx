@@ -300,6 +300,9 @@ export function Footer() {
                 <a onClick={() => setSbOpen(true)} style={{ fontSize: "13px", color: "#64748b" }}>
                   Contact
                 </a>
+                <Link href="/status" style={{ fontSize: "13px", color: "#64748b" }}>
+                  Service status
+                </Link>
               </div>
             </div>
           </div>

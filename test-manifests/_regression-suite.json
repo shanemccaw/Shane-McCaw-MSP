@@ -27,6 +27,7 @@
     "marketing/purchase-portal-handoff.json",
     "marketing/change-record-page.json",
     "marketing/404-page.json",
+    "marketing/service-status.json",
     "copilot-readiness/assessment-monitoring-rescan.json",
     "copilot-readiness/email-auth-setup.json",
     "copilot-readiness/live-document-pdf-export.json",
