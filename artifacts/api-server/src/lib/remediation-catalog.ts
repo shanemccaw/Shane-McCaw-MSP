@@ -71,7 +71,7 @@ export const MICROREM_TEMPLATE_BY_SLUG: Record<string, string | null> = {
  * in one place.
  *
  * The first five are the public Quick-Start Write Packs that are #1172's named
- * scope. The remaining seven are the other sellable config-pack products, wired
+ * scope. The remaining eight are the other sellable config-pack products, wired
  * here for a complete testing surface (their slug → pack key is the regular
  * `<x>-pack-v1` → `<x>-v1` rule, but declared explicitly rather than derived
  * because Quick-Start itself breaks that rule).
@@ -90,6 +90,7 @@ export const PACK_KEY_BY_SERVICE_SLUG: Record<string, string> = {
   "device-compliance-pack-v1": "device-compliance-v1",
   "email-security-pack-v1": "email-security-v1",
   "identity-hygiene-pack-v1": "identity-hygiene-v1",
+  "mfa-enforcement-pack-v1": "mfa-enforcement-v1",
   "privileged-access-pack-v1": "privileged-access-v1",
 };
 

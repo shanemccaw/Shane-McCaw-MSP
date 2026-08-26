@@ -76,4 +76,14 @@ describe("remediation-catalog wiring (Git #1172)", () => {
   it("resolvePackKeyForService returns undefined for a non-pack service", () => {
     expect(resolvePackKeyForService({ slug: "remediate-revoke-sessions", category: "micro_remediation" })).toBeUndefined();
   });
+
+  it("wires the MFA Enforcement Pack to its config pack (Git #1182)", () => {
+    expect(PACK_KEY_BY_SERVICE_SLUG["mfa-enforcement-pack-v1"]).toBe("mfa-enforcement-v1");
+    const r = resolveServiceExecutable({
+      slug: "mfa-enforcement-pack-v1",
+      category: "config_pack",
+      typeAttributes: { packKey: "mfa-enforcement-v1", wiredAt: "2026-08-26" },
+    });
+    expect(r).toEqual({ kind: "config_pack", packKey: "mfa-enforcement-v1" });
+  });
 });
