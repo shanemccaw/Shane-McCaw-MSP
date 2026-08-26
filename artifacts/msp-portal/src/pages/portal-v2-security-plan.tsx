@@ -32,6 +32,8 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
+import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import { type SecPlanRow } from "@/components/portal-v2/securityPlanData";
 import { useSecurityPlan } from "@/components/portal-v2/securityPlanLive";
 import {
@@ -77,6 +79,39 @@ export default function PortalV2SecurityPlanPage() {
   const go = (to: string) => {
     if (LIVE_ROUTES.has(to)) navigate(to);
   };
+
+  // While the real read is in flight, render an honest loading skeleton — never
+  // the design fixture (Git #1343). The seeded plan is a verbatim copy of the
+  // fixture, so showing it here then swapping to real data would flicker a
+  // confident-but-fake plan; a stable skeleton is the honest state. The source
+  // marker stays in the DOM reading "loading" so the manifest can assert it.
+  if (dataState === "loading") {
+    return (
+      <PortalV2Shell eyebrow="Governance" title="Security Plan">
+        <div
+          data-testid="pv2-sp-page"
+          style={{
+            maxWidth: 1180,
+            margin: "0 auto",
+            padding: "26px 28px 60px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+            boxSizing: "border-box",
+          }}
+        >
+          <span data-testid="pv2-sp-source" style={PV2_SOURCE_CLIP}>
+            {dataState}
+          </span>
+          <PortalV2LoadingState
+            rows={6}
+            label="Loading your security plan…"
+            testId="pv2-sp-loading"
+          />
+        </div>
+      </PortalV2Shell>
+    );
+  }
 
   return (
     <PortalV2Shell eyebrow="Governance" title="Security Plan">

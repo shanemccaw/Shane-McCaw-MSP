@@ -34,6 +34,7 @@
 import type { ReactNode } from "react";
 import { useRoute } from "wouter";
 
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
   aiTone,
@@ -2542,14 +2543,23 @@ export default function PortalV2ChangeControlPage() {
               </button>
             )}
             <div style={css("display:flex;flex-direction:column;gap:16px;min-width:0")}>
-              <StatsBand ctrl={ctrl} />
-              {s.view === "briefing" && <BriefingView ctrl={ctrl} />}
-              {s.view === "register" && <RegisterView ctrl={ctrl} />}
-              {s.view === "catalogue" && <CatalogueView ctrl={ctrl} />}
-              {s.view === "calendar" && <CalendarView ctrl={ctrl} />}
-              {s.view === "review" && <ReviewView ctrl={ctrl} />}
-              {s.view === "record" && <RecordView ctrl={ctrl} />}
-              {s.view === "settings" && <SettingsView ctrl={ctrl} />}
+              {ctrl.dataState === "loading" ? (
+                // Real change-control read in flight: honest skeleton, never the
+                // design's fixture CRs (CR-0142 et al.) that would flicker to the
+                // tenant's real register once the read lands (Git #1343).
+                <PortalV2LoadingState rows={8} label="Loading your change control record…" testId="pv2-cc-loading" />
+              ) : (
+                <>
+                  <StatsBand ctrl={ctrl} />
+                  {s.view === "briefing" && <BriefingView ctrl={ctrl} />}
+                  {s.view === "register" && <RegisterView ctrl={ctrl} />}
+                  {s.view === "catalogue" && <CatalogueView ctrl={ctrl} />}
+                  {s.view === "calendar" && <CalendarView ctrl={ctrl} />}
+                  {s.view === "review" && <ReviewView ctrl={ctrl} />}
+                  {s.view === "record" && <RecordView ctrl={ctrl} />}
+                  {s.view === "settings" && <SettingsView ctrl={ctrl} />}
+                </>
+              )}
             </div>
           </div>
         </div>

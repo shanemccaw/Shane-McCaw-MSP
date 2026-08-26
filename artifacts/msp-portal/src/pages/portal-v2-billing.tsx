@@ -36,6 +36,7 @@ import { Link } from "wouter";
 import { useBillingLive } from "@/components/portal-v2/billingLive";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
   BILL_ADDONS_KICKER,
@@ -348,6 +349,14 @@ export default function PortalV2BillingPage() {
             <span data-testid="pv2-bill-receipts-source" style={PV2_SOURCE_CLIP}>
               {live.dataState}
             </span>
+            {live.dataState === "loading" ? (
+              // Real invoice read in flight: honest skeleton, never the design's
+              // fixture receipt rows that would flicker to the tenant's real
+              // invoices once the read lands (Git #1343).
+              <div style={{ border: "1px solid rgba(30,41,59,.9)", borderRadius: 12, background: "rgba(15,23,42,.4)" }}>
+                <PortalV2LoadingState rows={4} showLabel={false} testId="pv2-bill-receipts-loading" />
+              </div>
+            ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid rgba(30,41,59,.9)", borderRadius: 12, background: "rgba(15,23,42,.4)", overflow: "hidden" }}>
               {receipts.map((r) => (
                 <div key={r.ref} style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 15px", borderBottom: "1px solid rgba(30,41,59,.8)", flexWrap: "wrap" }}>
@@ -379,6 +388,7 @@ export default function PortalV2BillingPage() {
                 </div>
               ))}
             </div>
+            )}
           </div>
 
           {/* Footer — proto 2512-2516 */}
