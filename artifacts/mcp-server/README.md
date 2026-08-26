@@ -177,6 +177,25 @@ Rules that hold for every tool:
   `audit: { access: "write", ... }` on its ToolDef; apiFetch refuses
   mutating methods from tools that don't.
 
+## execute_write_pack (Phase 5 — Git #1324)
+
+Full config-pack execution as a write tool: wraps the real
+`POST /admin/config-packs/:packKey/run` (api-server
+routes/admin-config-pack-run.ts → lib/config-pack-orchestrator.ts — the
+same engine the purchase flow fires; no second execution path). The pack is
+materialized into a real Workflow Definition + published Version and fired
+through the standard Workflow Engine, so the run appears on the Workflow
+Runs page and performs REAL Graph writes against the customer's real
+connected tenant. `planOnly: true` previews the real materialized plan
+(step order, gate position, `operatorVariables`) without executing
+anything. Declared `audit: { access: "write" }`, so every call is
+write-ahead audited per Phase 6 above. The engine's own v1 guard currently
+refuses non-testbed customers (`customer_not_testbed`) and is surfaced
+verbatim; when purchase-triggered automation (#1316) lifts that guard the
+tool inherits it automatically. Manual verification harness:
+`node scripts/execute-write-pack-check.mjs --pack <key> --customer <id>`
+(plan preview; add `--fire` to REALLY execute — real Graph writes).
+
 ## Running / registering
 
 - Registered in the repo root `.mcp.json` as `shane-msp` — any Claude Code
