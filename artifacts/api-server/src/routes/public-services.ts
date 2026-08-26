@@ -13,10 +13,18 @@ import { z } from "zod";
 import { resolveCatalogPricing, isServiceFree } from "../lib/catalog-pricing";
 import { buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
 import { ensureAssessmentFunnelLead } from "../lib/crm-pipeline";
+import { ensureLeadForEmail } from "../lib/lead-intent";
 import { pushMarketingLeadToEngageBay } from "../lib/engagebay-marketing-lead";
 import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
+import { REQUIRED_MT_SCOPES } from "../lib/graph";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
+
+// The free diagnostic scan (marketing /scan) is a growth-funnel entry point:
+// it captures a lead before Microsoft consent and discloses the read app's real
+// scopes on its consent screen. Both live under the growth channel.
+const freeScanLog = logger.child({ channel: "growth.marketing" });
 
 // Strips associatedDocuments down to only the customer-visible entries, and to
 // only the fields a public response needs (title + category) — docType is an
@@ -208,6 +216,53 @@ router.post("/public/checkout-session", async (req: Request, res: Response) => {
   void pushMarketingLeadToEngageBay({ email, name: fullName, company, source: "assessment_funnel" });
 
   res.json({ sessionId: row.id });
+});
+
+// ── POST /api/public/free-scan/start ──────────────────────────────────────────
+// The marketing free scan's start form (name / company / work email). Fired the
+// moment the visitor clicks "Review access and continue" — BEFORE they reach
+// Microsoft's consent screen — so an abandoned consent still leaves a real,
+// remarketable lead (the same reason checkout-session captures one at creation).
+// Only the work email is required for function; the tenant domain is derived
+// from it client-side, so no separate domain field is collected.
+//
+// Also returns the read app registration's real scope list, so the consent
+// screen discloses exactly what will be requested — generated from
+// REQUIRED_MT_SCOPES (the manifest mirror, #1130/#1311) rather than a
+// hand-maintained copy on the marketing site that could silently drift.
+const freeScanStartSchema = z.object({
+  email: z.string().email("A valid work email is required"),
+  name: z.string().trim().max(200).optional(),
+  company: z.string().trim().max(200).optional(),
+  ga4ClientId: z.string().trim().max(200).optional(),
+});
+
+router.post("/public/free-scan/start", (req: Request, res: Response) => {
+  const parsed = freeScanStartSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request" });
+    return;
+  }
+  const { email, name, company, ga4ClientId } = parsed.data;
+
+  // Fire-and-forget, non-fatal: a Zoho outage must never stop the visitor from
+  // reaching the consent screen. ensureLeadForEmail is idempotent per email —
+  // the same real Zoho bridge CopilotAssessmentLanding uses (#457). Source is
+  // "assessment": the free scan is the top of the free-assessment funnel (its
+  // consent session is created against a free assessment product), same bucket
+  // the checkout-session lead capture already uses.
+  void ensureLeadForEmail(email, {
+    name: name || undefined,
+    company: company || undefined,
+    source: "assessment",
+    ga4ClientId,
+  });
+  freeScanLog.info(
+    { hasName: !!name, hasCompany: !!company },
+    "free-scan: lead captured at start form",
+  );
+
+  res.json({ ok: true, scopes: REQUIRED_MT_SCOPES });
 });
 
 // ── GET /api/public/checkout-session/:id ──────────────────────────────────────

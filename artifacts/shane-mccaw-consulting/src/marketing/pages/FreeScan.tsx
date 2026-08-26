@@ -3,23 +3,40 @@ import { Link } from "wouter";
 import { Nav } from "../components/Nav";
 import { Footer } from "../components/Footer";
 import { useSignalCheckCount } from "../../hooks/useSignalCheckCount";
+import { logger } from "../../lib/logger";
 
-// Route /scan — recreated from Design/design_handoff_marketing/Marketing Free Scan.dc.html.
-// The site's primary conversion path: a consent screen, a live-looking six-sector acquisition
-// wheel, then results with findings by severity. Colours, spacing, motion and copy are the
-// design's own — copy is final and reproduced verbatim.
+// Consent + lead capture are the server's `auth`/`growth` work (#1361); the client call sites are
+// mirrored onto the same channel so the logs read together.
+const authLog = logger.child({ channel: "auth" });
+
+// Route /scan — recreated from Design/free-scan-consent-export/Marketing Free Scan.dc.html.
+// The site's primary conversion path: a start form, a real read-only consent gate, a live-looking
+// six-sector acquisition wheel, then results with findings by severity. Colours, spacing, motion
+// and copy are the design's own — copy is final and reproduced verbatim.
 //
 // This page manages its own chrome rather than using MarketingLayout: the design shows the full
-// Nav only on the start screen and swaps to a slim consent breadcrumb once the scan begins, so the
-// outer shell is rebuilt here around those two states. The Footer is shared.
+// Nav only on the start screen and swaps to a slim consent breadcrumb once the visitor moves past
+// it, so the outer shell is rebuilt here around those states. The Footer is shared.
 //
-// SIMULATED, per the handoff README's "Out of scope" list: the scan is driven entirely by the
-// timers below — no Graph call is made. Every number on the results screen (findings, evidence,
-// the licence-waste figures, the monitoring quote) is authored demo data, kept in the FIXTURE
-// block below in one place so it can be swapped for a real read-only Graph app registration and
-// the tenant's own seat-count pricing later. Do not treat any of it as live.
+// REAL, per Git #1361 — the consent gate is not a mock:
+//   - The start form captures a real lead (name/company/work email) via
+//     POST /api/public/free-scan/start → ensureLeadForEmail, fired BEFORE consent so an
+//     abandoned grant still keeps the lead.
+//   - grantRead() opens Microsoft's own consent screen in a popup against the real read-only app
+//     registration (the #1311 session-keyed read-consent mechanism: checkout-session →
+//     read-consent-url → callback) and polls consent-status until the grant lands, then resumes at
+//     scanning. Declining / closing the window returns to the start form with the form intact.
+//   - The consent screen's scopes card and "not requested" list are generated from the read app's
+//     real scope list (REQUIRED_MT_SCOPES, returned by the start endpoint) so they cannot drift
+//     from what Microsoft actually asks for.
+//
+// STILL SIMULATED, per the handoff README's "Out of scope" list: the scan animation and every
+// number on the results screen (findings, evidence, the licence-waste figures, the monitoring
+// quote) are authored demo data, kept in the FIXTURE block below in one place so they can be
+// swapped for a real Graph read + the tenant's own seat-count pricing later. Do not treat the
+// scanning/results numbers as live — only the consent + lead capture are.
 
-type Phase = "start" | "scanning" | "results";
+type Phase = "start" | "consent" | "granting" | "scanning" | "results";
 
 interface WheelVals {
   sc: number;
@@ -439,6 +456,54 @@ const QUOTE_BASIS =
 // ?product=monitoring&scanned=1 is the flow the handoff README documents for exactly this case.
 const CHECKOUT_HREF = "/buy?product=monitoring&scanned=1";
 
+// ── Read-consent screen data (Git #1361) ─────────────────────────────────────
+// The real catalog slug the consent-bearing checkout session is created against — a FREE
+// assessment, so there is no payment gate; the session only carries the OAuth `state` that binds
+// the tenant's grant to this scan. Read consent for an assessment product is REQUIRED
+// (lib/read-consent-flow.ts), which is exactly what the scan needs.
+const FREE_SCAN_PRODUCT_SLUG = "license-waste-audit-free";
+
+// Plain-English reason per read scope (design copy, final). These are DISPLAY reasons only — the
+// list actually shown is intersected with the read app's real REQUIRED_MT_SCOPES (fetched from
+// /api/public/free-scan/start), so the card can never advertise a scope the registration does not
+// request. If a curated scope leaves the manifest, it drops from the card — the code wins, per the
+// README ("If it drifts, the whole screen becomes a liability").
+const READ_SCOPE_REASONS: { scope: string; why: string }[] = [
+  { scope: "Organization.Read.All", why: "Tenant profile, verified domains and the licence counts your seat numbers come from." },
+  { scope: "Directory.Read.All", why: "Users, groups, directory roles and guests — who exists and what they hold." },
+  { scope: "Policy.Read.All", why: "Conditional Access, authentication methods and whether legacy auth is still open." },
+  { scope: "Sites.Read.All", why: "Site collections and sharing settings, to find anonymous links and external exposure. Site metadata only." },
+  { scope: "Reports.Read.All", why: "Usage and activity aggregates behind adoption findings. Counts, not content." },
+  { scope: "AuditLog.Read.All", why: "Recent configuration changes, so drift and unreviewed changes can be identified." },
+];
+
+// The counter-list — each entry names a sensitive scope this registration does NOT hold. Shown
+// only while the real scope list genuinely lacks it (asserted against the fetched array), so the
+// "we can't do this" promise can never outlive the manifest that made it true. The write check is
+// on ".ReadWrite" only: read scopes carry ".All" (Directory.Read.All …), so ".All" is not a
+// write signal.
+const NOT_REQUESTED: { label: string; absentToken: string }[] = [
+  { label: "Mail.Read — no mailbox, message or attachment is ever read", absentToken: "Mail.Read" },
+  { label: "Files.Read — file names and sharing state only, never file contents", absentToken: "Files.Read" },
+  { label: "Chat.Read — no Teams message or meeting recording is opened", absentToken: "Chat.Read" },
+  { label: "Any .ReadWrite or .All write scope — this registration cannot change a single setting", absentToken: ".ReadWrite" },
+];
+
+// Given the read app's real scopes, the (curated ∩ real) list the consent card renders. Falls back
+// to the full curated set if the fetch has not landed yet — that set was verified against the
+// manifest in code, so it is a safe default, not a drift.
+function scopesToShow(realScopes: string[]): { scope: string; why: string }[] {
+  if (!realScopes.length) return READ_SCOPE_REASONS;
+  return READ_SCOPE_REASONS.filter((r) => realScopes.includes(r.scope));
+}
+
+// A not-requested item is shown only if the real scope list truly lacks its token.
+function notRequestedToShow(realScopes: string[]): string[] {
+  return NOT_REQUESTED.filter(
+    (nr) => !realScopes.some((s) => (nr.absentToken === ".ReadWrite" ? s.includes(".ReadWrite") : s === nr.absentToken)),
+  ).map((nr) => nr.label);
+}
+
 // ── Geometry ─────────────────────────────────────────────────────────────────
 const CL = (p: number, a: number, b: number) => Math.max(0, Math.min(1, (p - a) / (b - a)));
 
@@ -642,7 +707,9 @@ function ScannerWheel({ r }: { r: WheelVals }) {
 // ── The consent breadcrumb shown once the scan begins ────────────────────────
 function ConsentBreadcrumb({ phase }: { phase: Phase }) {
   const labels = ["Consent", "Scan", "Results", "Review", "Remediate"];
-  const at = phase === "results" ? 2 : 1;
+  // Consent is the current step through both the disclosure screen and the granting interstitial;
+  // Scan is current once the wheel is running; Results once findings are shown.
+  const at = phase === "results" ? 2 : phase === "consent" || phase === "granting" ? 0 : 1;
   return (
     <div
       style={{
@@ -769,9 +836,18 @@ const sevBorder = (sev: Finding["severity"]) =>
 export default function FreeScan() {
   const signals = useSignalCheckCount();
   const [phase, setPhase] = useState<Phase>("start");
-  const [domain, setDomain] = useState("");
+  // Lead-capture fields. The tenant domain is derived from the work email (email.split('@')[1]),
+  // never asked for separately — see the note under the email field.
+  const [name, setName] = useState("");
+  const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
   const [consent, setConsent] = useState(false);
+  // The read app's real scopes, fetched with the lead capture on the start form. Empty until it
+  // lands; the consent card falls back to the curated (manifest-verified) set meanwhile.
+  const [realScopes, setRealScopes] = useState<string[]>([]);
+  // Surfaced on the start form if a connection attempt could not even start (e.g. pop-up blocked).
+  // A plain decline just returns to the form silently — never an error page.
+  const [connectError, setConnectError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [, setElapsed] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -782,6 +858,11 @@ export default function FreeScan() {
   const stepsRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resultsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The granting interstitial's own timer — the pending consent-status poll. Cleared on unmount
+  // alongside the scan intervals so leaving mid-consent never fires a scan on an unmounted tree.
+  const grantTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const popupRef = useRef<Window | null>(null);
+  const unmountedRef = useRef(false);
   // The interval closures need the live paused value; a ref keeps them in sync with the state.
   const pausedRef = useRef(false);
 
@@ -794,10 +875,17 @@ export default function FreeScan() {
     setRm(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
     window.addEventListener("resize", onResize);
     return () => {
+      unmountedRef.current = true;
       window.removeEventListener("resize", onResize);
       if (stepsRef.current) clearInterval(stepsRef.current);
       if (clockRef.current) clearInterval(clockRef.current);
       if (resultsTimerRef.current) clearTimeout(resultsTimerRef.current);
+      if (grantTimerRef.current) clearTimeout(grantTimerRef.current);
+      try {
+        popupRef.current?.close();
+      } catch {
+        /* already closed */
+      }
     };
   }, []);
 
@@ -807,8 +895,8 @@ export default function FreeScan() {
     setPaused(next);
   };
 
-  const startScan = () => {
-    if (!consent) return;
+  // Starts the (simulated) scan animation — called once the real read consent has landed.
+  const runScan = () => {
     setPhase("scanning");
     setStep(0);
     setElapsed(0);
@@ -830,7 +918,159 @@ export default function FreeScan() {
     }, 1000);
   };
 
-  const scanDomain = domain.trim() || "yourcompany.com";
+  const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
+
+  // Start form → consent screen. Captures the lead (name/company/work email) via the real Zoho
+  // bridge BEFORE Microsoft consent, so an abandoned grant still keeps it, and fetches the read
+  // app's real scopes to disclose on the next screen. Non-fatal if the capture request fails.
+  const startFreeScan = () => {
+    if (!consent || !emailValid) return;
+    setConnectError(null);
+    setPhase("consent");
+    void (async () => {
+      try {
+        const res = await fetch("/api/public/free-scan/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(),
+            name: name.trim() || undefined,
+            company: company.trim() || undefined,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { scopes?: string[] };
+        if (res.ok && Array.isArray(data.scopes)) setRealScopes(data.scopes);
+        authLog.info({}, "free-scan: start form submitted, lead captured");
+      } catch (err) {
+        // The consent screen simply falls back to the curated (manifest-verified) scope list.
+        authLog.warn(
+          { err: err instanceof Error ? err.message : String(err) },
+          "free-scan: lead capture request failed",
+        );
+      }
+    })();
+  };
+
+  const backToStart = () => setPhase("start");
+
+  // Polls consent-status until the read grant lands, resolving false once the popup has closed
+  // without one (two grace polls, matching Buy.tsx — the self-closing success page races the
+  // callback's DB write). The pending timer lives in grantTimerRef so unmount can cancel it.
+  const waitForConsent = (sessionId: string, popup: Window | null): Promise<boolean> =>
+    new Promise((resolve) => {
+      let closedPolls = 0;
+      const tick = async () => {
+        if (unmountedRef.current) {
+          resolve(false);
+          return;
+        }
+        let landed = false;
+        try {
+          const res = await fetch(`/api/public/flow/consent-status?sessionId=${encodeURIComponent(sessionId)}`);
+          if (res.ok) {
+            const s = (await res.json()) as { tenantConnected?: boolean; sessionStatus?: string };
+            landed = !!s.tenantConnected && (s.sessionStatus === "consented" || s.sessionStatus === "paid");
+          }
+        } catch {
+          /* transient — keep polling */
+        }
+        if (landed) {
+          resolve(true);
+          return;
+        }
+        if (popup?.closed) {
+          closedPolls += 1;
+          if (closedPolls >= 2) {
+            resolve(false);
+            return;
+          }
+        }
+        grantTimerRef.current = setTimeout(() => void tick(), 3000);
+      };
+      void tick();
+    });
+
+  // The one real integration point (#1361). Opens Microsoft's own consent screen in a popup
+  // against the real read-only app registration (session-keyed read consent, #1311) and, once the
+  // grant lands, resumes at scanning. A decline / closed window returns to the start form with the
+  // form intact — never an error page.
+  const grantRead = () => {
+    if (!emailValid) {
+      setPhase("start");
+      setConnectError("Enter a valid work email to connect.");
+      return;
+    }
+    // Open synchronously inside the click gesture so pop-up blockers allow it; the URL is set once
+    // the session and consent-URL mint return.
+    const popup = window.open("", "smc-consent", "width=620,height=760,menubar=no,toolbar=no");
+    popupRef.current = popup;
+    setConnectError(null);
+    setPhase("granting");
+    void (async () => {
+      try {
+        const derivedDomain = (email.split("@")[1] || "").trim() || "yourcompany.com";
+        const sessionRes = await fetch("/api/public/checkout-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productSlug: FREE_SCAN_PRODUCT_SLUG,
+            fullName: name.trim() || email.split("@")[0] || "Free scan",
+            email: email.trim(),
+            company: company.trim() || derivedDomain,
+            industry: "Unknown",
+          }),
+        });
+        const sessionData = (await sessionRes.json().catch(() => ({}))) as { sessionId?: string; portalUrl?: string };
+        if (sessionRes.status === 409 && sessionData.portalUrl) {
+          // A returning customer with a real account already exists — send them to the portal.
+          window.location.href = sessionData.portalUrl;
+          return;
+        }
+        if (!sessionRes.ok || !sessionData.sessionId) {
+          throw new Error("Could not start the Microsoft connection. Please try again.");
+        }
+        const sessionId = sessionData.sessionId;
+        const urlRes = await fetch(`/api/public/flow/read-consent-url?sessionId=${encodeURIComponent(sessionId)}`);
+        const urlData = (await urlRes.json().catch(() => ({}))) as { url?: string };
+        if (!urlRes.ok || !urlData.url) {
+          throw new Error("Could not start the Microsoft connection. Please try again.");
+        }
+        if (!popup || popup.closed) {
+          throw new Error("Your browser blocked the Microsoft consent window — allow pop-ups for this site and try again.");
+        }
+        popup.location.href = urlData.url;
+        authLog.info({}, "free-scan: read consent popup opened");
+        const landed = await waitForConsent(sessionId, popup);
+        try {
+          popup.close();
+        } catch {
+          /* already closed itself */
+        }
+        if (unmountedRef.current) return;
+        if (!landed) {
+          // Declined / closed before approval — back to the form, no error page.
+          setPhase("start");
+          authLog.info({}, "free-scan: read consent not completed — returned to start");
+          return;
+        }
+        authLog.info({}, "free-scan: read consent granted — starting scan");
+        runScan();
+      } catch (err) {
+        try {
+          popup?.close();
+        } catch {
+          /* ignore */
+        }
+        if (unmountedRef.current) return;
+        const message = err instanceof Error ? err.message : "The Microsoft connection failed. Please try again.";
+        setPhase("start");
+        setConnectError(message);
+        authLog.warn({ err: message }, "free-scan: read consent connect failed");
+      }
+    })();
+  };
+
+  const scanDomain = (email.split("@")[1] || "").trim() || "yourcompany.com";
   const scanEmail = email.trim() || "you@yourcompany.com";
   const done = Math.min(step, SCAN_STEPS.length);
   const r = wheelVals(done / SCAN_STEPS.length, vw, vh, rm, paused, signals);
@@ -855,6 +1095,7 @@ export default function FreeScan() {
     >
       <style>{`
         @keyframes pulseDot{0%,100%{opacity:.35}50%{opacity:1}}
+        @keyframes fsSpin{to{transform:rotate(360deg)}}
         .fs-glass{position:relative;overflow:hidden}
         .fs-glass:before{content:"";position:absolute;inset:0;background-image:repeating-linear-gradient(45deg,rgba(148,163,184,.06) 0 6px,transparent 6px 12px);pointer-events:none}
       `}</style>
@@ -975,13 +1216,13 @@ export default function FreeScan() {
                       marginBottom: 6,
                     }}
                   >
-                    Your Microsoft 365 domain
+                    Your name
                   </label>
                   <input
-                    value={domain}
-                    onChange={(e) => setDomain(e.target.value)}
-                    placeholder="yourcompany.com"
-                    data-testid="freescan-domain"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Jane Whitfield"
+                    data-testid="freescan-name"
                     style={{
                       width: "100%",
                       padding: "11px 13px",
@@ -1005,7 +1246,37 @@ export default function FreeScan() {
                       marginBottom: 6,
                     }}
                   >
-                    Work email for your results
+                    Company
+                  </label>
+                  <input
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    placeholder="Whitfield Manufacturing"
+                    data-testid="freescan-company"
+                    style={{
+                      width: "100%",
+                      padding: "11px 13px",
+                      borderRadius: 10,
+                      border: "1px solid rgba(30,41,59,.9)",
+                      background: "#020617",
+                      color: "#e2e8f0",
+                      fontSize: 13.5,
+                      fontFamily: "inherit",
+                      marginBottom: 12,
+                    }}
+                  />
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: ".08em",
+                      color: "#64748b",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Work email address
                   </label>
                   <input
                     value={email}
@@ -1021,9 +1292,12 @@ export default function FreeScan() {
                       color: "#e2e8f0",
                       fontSize: 13.5,
                       fontFamily: "inherit",
-                      marginBottom: 16,
+                      marginBottom: 8,
                     }}
                   />
+                  <p style={{ fontSize: 10.5, color: "#475569", lineHeight: 1.55, margin: "0 0 16px" }}>
+                    We read the tenant behind this address, so your results go to the domain we scan.
+                  </p>
                   <label
                     onClick={() => setConsent((c) => !c)}
                     data-testid="freescan-consent"
@@ -1057,8 +1331,17 @@ export default function FreeScan() {
                       tenant.
                     </span>
                   </label>
+                  {connectError && (
+                    <p
+                      data-testid="freescan-connect-error"
+                      style={{ fontSize: 11.5, color: "#f87171", lineHeight: 1.55, margin: "0 0 12px" }}
+                    >
+                      {connectError}
+                    </p>
+                  )}
                   <button
-                    onClick={startScan}
+                    onClick={startFreeScan}
+                    disabled={!(consent && emailValid)}
                     data-testid="freescan-start"
                     style={{
                       width: "100%",
@@ -1068,16 +1351,17 @@ export default function FreeScan() {
                       fontSize: 14,
                       fontWeight: 700,
                       fontFamily: "inherit",
-                      cursor: consent ? "pointer" : "not-allowed",
-                      color: consent ? "#fff" : "#64748b",
-                      background: consent ? "linear-gradient(90deg,#3b82f6,#8b5cf6)" : "rgba(255,255,255,.05)",
+                      cursor: consent && emailValid ? "pointer" : "not-allowed",
+                      color: consent && emailValid ? "#fff" : "#64748b",
+                      background:
+                        consent && emailValid ? "linear-gradient(90deg,#3b82f6,#8b5cf6)" : "rgba(255,255,255,.05)",
                     }}
                   >
-                    Connect and start the scan
+                    Review access and continue
                   </button>
                   <p style={{ fontSize: 10.5, color: "#475569", lineHeight: 1.6, margin: "12px 0 0" }}>
-                    Read-only means read-only: no setting is changed, no file is opened, no user is emailed. You can
-                    revoke access from your tenant at any time.
+                    Next you’ll see exactly which read permissions the scan asks for, before Microsoft’s consent
+                    screen opens. Nothing is read until you approve it.
                   </p>
                 </div>
               </div>
@@ -1108,6 +1392,215 @@ export default function FreeScan() {
               </div>
             </section>
           </>
+        )}
+
+        {/* ── CONSENT ───────────────────────────────────────────────────── */}
+        {phase === "consent" && (
+          <div
+            data-testid="freescan-consent-screen"
+            style={{
+              maxWidth: 720,
+              margin: "0 auto",
+              padding: "48px 32px 90px",
+              display: "flex",
+              flexDirection: "column",
+              gap: 22,
+            }}
+          >
+            <span
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                background: "rgba(59,130,246,.12)",
+                border: "1px solid rgba(59,130,246,.32)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#60a5fa",
+              }}
+            >
+              {iconEye(21)}
+            </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <span
+                style={{
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: ".2em",
+                  textTransform: "uppercase",
+                  color: "#60a5fa",
+                }}
+              >
+                Step 1 of 2 · before anything is read
+              </span>
+              <h1
+                data-testid="freescan-consent-heading"
+                style={{
+                  margin: 0,
+                  fontSize: "clamp(24px,3vw,32px)",
+                  fontWeight: 800,
+                  letterSpacing: "-.03em",
+                  lineHeight: 1.16,
+                  color: "#f8fafc",
+                  textWrap: "pretty",
+                }}
+              >
+                This scan needs read access. It never asks for more.
+              </h1>
+              <p style={{ margin: 0, fontSize: 14.5, lineHeight: 1.68, color: "#94a3b8", maxWidth: "60ch" }}>
+                Consent is granted in Microsoft’s own screen against a read-only app registration on {scanDomain}.
+                There is no write scope in this registration to grant later — applying a fix is a second, separate
+                consent you would approve on its own.
+              </p>
+            </div>
+
+            <div
+              style={{
+                border: "1px solid rgba(30,41,59,.95)",
+                borderRadius: 16,
+                background: "#0b1524",
+                padding: 20,
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  letterSpacing: ".16em",
+                  textTransform: "uppercase",
+                  color: "#64748b",
+                }}
+              >
+                The read app registration asks for
+              </span>
+              {scopesToShow(realScopes).map((rs) => (
+                <span key={rs.scope} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+                  <span style={{ color: "#60a5fa", flex: "none", display: "flex", marginTop: 2 }}>{iconEye(14)}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <span
+                      style={{
+                        display: "block",
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        color: "#f8fafc",
+                        fontFamily: "Menlo,Consolas,monospace",
+                      }}
+                    >
+                      {rs.scope}
+                    </span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "#94a3b8", lineHeight: 1.55, marginTop: 3 }}>
+                      {rs.why}
+                    </span>
+                  </span>
+                </span>
+              ))}
+            </div>
+
+            <div
+              style={{
+                border: "1px solid rgba(52,211,153,.24)",
+                borderRadius: 16,
+                background: "rgba(52,211,153,.05)",
+                padding: "18px 20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 11,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  letterSpacing: ".16em",
+                  textTransform: "uppercase",
+                  color: "#34d399",
+                }}
+              >
+                Not requested, and not grantable here
+              </span>
+              {notRequestedToShow(realScopes).map((nr) => (
+                <span key={nr} style={{ display: "flex", gap: 10, alignItems: "baseline" }}>
+                  <span style={{ flex: "none", color: "#34d399", fontSize: 12, fontWeight: 700 }}>×</span>
+                  <span style={{ minWidth: 0, fontSize: 12, color: "#cbd5e1", lineHeight: 1.55 }}>{nr}</span>
+                </span>
+              ))}
+            </div>
+
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                onClick={grantRead}
+                data-testid="freescan-grant"
+                style={{
+                  padding: "12px 24px",
+                  border: 0,
+                  borderRadius: 11,
+                  fontFamily: "inherit",
+                  fontSize: 14,
+                  fontWeight: 700,
+                  color: "#fff",
+                  background: "linear-gradient(90deg,#3b82f6,#8b5cf6)",
+                  cursor: "pointer",
+                }}
+              >
+                Grant read-only access
+              </button>
+              <button
+                onClick={backToStart}
+                data-testid="freescan-consent-back"
+                style={{
+                  padding: "12px 22px",
+                  borderRadius: 11,
+                  fontFamily: "inherit",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: "#cbd5e1",
+                  background: "transparent",
+                  border: "1px solid rgba(148,163,184,.25)",
+                  cursor: "pointer",
+                }}
+              >
+                Back
+              </button>
+              <span style={{ fontSize: 11.5, color: "#64748b", maxWidth: "38ch", lineHeight: 1.55 }}>
+                Revocable from your tenant at any time, and revoking it stops the scan mid-run.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* ── GRANTING ──────────────────────────────────────────────────── */}
+        {phase === "granting" && (
+          <div
+            data-testid="freescan-granting"
+            style={{
+              maxWidth: 560,
+              margin: "0 auto",
+              padding: "120px 32px 160px",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 16,
+            }}
+          >
+            <span
+              style={{
+                width: 26,
+                height: 26,
+                borderRadius: "50%",
+                border: "2px solid rgba(96,165,250,.25)",
+                borderTopColor: "#60a5fa",
+                animation: rm ? "none" : "fsSpin 900ms linear infinite",
+              }}
+            />
+            <span style={{ fontSize: 14, fontWeight: 600, color: "#cbd5e1" }}>Waiting for Microsoft consent</span>
+            <span style={{ fontSize: 11.5, color: "#64748b", textAlign: "center", lineHeight: 1.6, maxWidth: "44ch" }}>
+              Microsoft is confirming the read-only grant on {scanDomain}. The scan starts the moment it returns.
+            </span>
+          </div>
         )}
 
         {/* ── SCANNING ──────────────────────────────────────────────────── */}

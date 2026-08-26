@@ -128,7 +128,7 @@ export async function findLeadByEmail(email: string): Promise<{ id: number } | n
  */
 export async function ensureLeadForEmail(
   email: string,
-  opts: { name?: string; company?: string; source: "quiz" | "portal_login"; ga4ClientId?: string },
+  opts: { name?: string; company?: string; source: "quiz" | "portal_login" | "assessment"; ga4ClientId?: string },
 ): Promise<number> {
   try {
     // Self-contained — ensureLeadStagingForEmail never throws, so a Zoho outage
