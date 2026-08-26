@@ -1943,6 +1943,10 @@ router.get("/admin/customers/:customerId/sharepoint-consent", requireAdmin, asyn
 //     used to aim a write-consent link at an arbitrary tenant: the tenant is
 //     whichever one that session's own Global Admin already approved, resolved
 //     server-side, never supplied by the caller.
+//   - The WRITE-consent mint is additionally product-type gated (#1312): only a
+//     session whose ordered product is write-consent eligible — resolved from
+//     the services row, never the caller — can mint one. See the gate's own
+//     header below.
 //   - No PII is returned by any of them.
 
 /** The checkout session a public flow route is acting for, once validated. */
@@ -1950,6 +1954,7 @@ type FlowSession = {
   id: string;
   status: string;
   tenantId: string | null;
+  productSlug: string;
 };
 
 /**
@@ -1970,6 +1975,7 @@ async function resolveFlowSession(
       id: checkoutSessionsTable.id,
       status: checkoutSessionsTable.status,
       tenantId: checkoutSessionsTable.tenantId,
+      productSlug: checkoutSessionsTable.productSlug,
     })
     .from(checkoutSessionsTable)
     .where(
@@ -2098,11 +2104,82 @@ router.get("/public/flow/consent-status", async (req: Request, res: Response) =>
 // granted — it just happens as a side effect of GET /consent/callback's own
 // `graph` stamp above, not through a second public route here.
 
+// ── Write-consent product-type gate (Git #1312) ────────────────────────────────
+//
+// Which PURCHASED PRODUCTS may ever put the write app's (MT_APP_WRITE_CLIENT_ID)
+// admin-consent screen in front of a buyer. Deny-by-default allowlist resolved
+// from the session's own services row — never from anything the caller sends —
+// so a front-end bug or a hand-crafted request cannot aim the write app at a
+// product whose flow ends at read consent. Per #1309's product-specific flows:
+//
+//   - Quick-Start Packs      → ELIGIBLE. `services.category = 'config_pack'` is
+//     the one reliable pack discriminator: 7 of the 12 sellable pack rows carry
+//     a NULL service_type (confirmed against the live catalog), and
+//     lib/remediation-catalog.ts keys the sellable-pack universe on exactly
+//     this category. Packs are the flow that genuinely NEEDS write consent —
+//     their fulfillment executes real Graph writes via
+//     config-pack-orchestrator.ts.
+//   - Assessment products    → ELIGIBLE. The #432 Compliance-decision
+//     `delegate_write` path this route originally served (AssessmentFlow.tsx is
+//     its only pre-#1312 caller) — kept working unchanged.
+//   - Monitoring ('monitoring_tier') and Retainer ('retainer') → NEVER. Their
+//     #1309 flows end at read consent (required for Monitoring, skippable for
+//     Retainer); neither has any write-back fulfillment. They are excluded by
+//     the deny-default, not by name — do not add them here.
+//
+// An unknown slug, or a session slug that names no services row at all (e.g.
+// the portal SOW cart's constant "sow-cart", which deliberately resolves no
+// service), fails CLOSED.
+function isWriteConsentEligibleProduct(service: { category: string | null; serviceType: string | null }): boolean {
+  return service.category === "config_pack" || service.serviceType === "assessment";
+}
+
+/**
+ * Resolve the session's ordered product and enforce the write-consent
+ * product-type gate. Responds 403 and returns false when the product may not
+ * trigger a write-consent prompt, BEFORE any single-use token is minted — an
+ * ineligible session never even creates a consent_invite_tokens row, so there
+ * is no state the fixed write callback could ever accept for it.
+ */
+async function requireWriteConsentEligibleProduct(
+  session: FlowSession,
+  res: Response,
+): Promise<boolean> {
+  const slug = session.productSlug?.trim();
+  const [svc] = slug
+    ? await db
+        .select({ category: servicesTable.category, serviceType: servicesTable.serviceType })
+        .from(servicesTable)
+        .where(eq(servicesTable.slug, slug))
+        .limit(1)
+    : [];
+
+  if (!svc || !isWriteConsentEligibleProduct(svc)) {
+    log.warn(
+      {
+        sessionId: session.id,
+        productSlug: slug || null,
+        category: svc?.category ?? null,
+        serviceType: svc?.serviceType ?? null,
+      },
+      "public flow: write-consent URL REFUSED — product type is not write-consent eligible (Packs and assessments only; Monitoring/Retainer never)",
+    );
+    res.status(403).json({ error: "write_consent_not_available_for_product" });
+    return false;
+  }
+  return true;
+}
+
 // ── GET /api/public/flow/write-consent-url ─────────────────────────────────────
-// Path 2 of the #432 Compliance decision: the customer lets us add the app
-// registration to the Compliance Center group on their behalf, which needs the
-// separate write-scoped App Registration (MT_APP_WRITE_CLIENT_ID). Same
-// mechanism as /admin/customers/:id/write-consent/start.
+// The generalized write-consent URL mint for a checkout session (#1312, Phase 3
+// of #1309): originally path 2 of the #432 Compliance decision, now also the
+// route Buy.tsx's Pack purchase flow calls for its "pay → read consent → write
+// consent → dry-run → execute" chain. Needs the separate write-scoped App
+// Registration (MT_APP_WRITE_CLIENT_ID). Same mechanism as
+// /admin/customers/:id/write-consent/start — which, with the callback it
+// shares, stays completely unchanged. Product-type gated (see above): only an
+// eligible product's session can mint a URL here, checked server-side against
+// the catalog row, never trusted from the caller.
 
 router.get("/public/flow/write-consent-url", async (req: Request, res: Response) => {
   if (!process.env.MT_APP_WRITE_CLIENT_ID) {
@@ -2111,6 +2188,10 @@ router.get("/public/flow/write-consent-url", async (req: Request, res: Response)
   }
   const session = await resolveFlowSession(req.query.sessionId, res);
   if (!session) return;
+  // Product gate FIRST — a Monitoring/Retainer buyer gets a definitive "not
+  // available for this product", never a "grant read consent first" that
+  // implies retrying could ever succeed.
+  if (!(await requireWriteConsentEligibleProduct(session, res))) return;
   const tenant = await resolveConsentedTenant(session, res);
   if (!tenant) return;
 

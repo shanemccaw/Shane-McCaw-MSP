@@ -227,8 +227,11 @@ import {
 
 describe("graph.ts — multi-tenant helpers", () => {
   describe("REQUIRED_MT_SCOPES", () => {
-    it("contains exactly 28 scopes", () => {
-      expect(REQUIRED_MT_SCOPES).toHaveLength(28);
+    it("contains exactly 31 scopes", () => {
+      // 28 → 31 when #1130 added the read-app Graph scopes for Global Reader
+      // role provisioning (commit 81370dba3) without updating this count —
+      // the suite sat red at baseline until repaired here (#1312).
+      expect(REQUIRED_MT_SCOPES).toHaveLength(31);
     });
 
     it("includes all required scopes", () => {
@@ -854,5 +857,129 @@ describe("consent route handlers", () => {
 
       expect(store.statusCode).toBe(404);
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// #1312 (Epic #1309 Phase 3) — write-consent product-type gate on the public
+// session-keyed mint. The security property under test: ONLY a session whose
+// ordered product is a Quick-Start Pack (services.category 'config_pack') or an
+// assessment (the pre-existing #432 path) can mint a write-consent URL;
+// Monitoring and Retainer are refused server-side BEFORE any single-use token
+// is inserted, regardless of what the caller asks for. Resolution is from the
+// services row the session's own productSlug names — never caller input.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe("GET /public/flow/write-consent-url — product-type gate (#1312)", () => {
+  const SESSION_ID = "123e4567-e89b-42d3-a456-426614174000";
+
+  /** Select-queue rows, in the exact order the route consumes them. */
+  const sessionRow = (over: Record<string, unknown> = {}) => ({
+    id: SESSION_ID,
+    status: "consented",
+    tenantId: "tenant-abc",
+    productSlug: "entra-id-quickstart-v1",
+    ...over,
+  });
+  const consentedTenantRow = () => ({
+    id: 7,
+    tenantId: "tenant-abc",
+    consent: { graph: { status: "granted" } },
+  });
+
+  async function callRoute(queue: unknown[][]): Promise<MockResStore> {
+    dbSelectQueue = queue;
+    const { res, store } = mockRes();
+    const req = mockReq({ headers: {}, query: { sessionId: SESSION_ID } });
+    const handler = getHandler(consentRouter, "get", "/public/flow/write-consent-url");
+    expect(handler).not.toBeNull();
+    await handler!(req, res, (() => {}) as NextFunction);
+    return store;
+  }
+
+  beforeEach(() => {
+    process.env.MT_APP_WRITE_CLIENT_ID = "write-client-id";
+    mockInsert.mockClear();
+    mockSelect.mockClear();
+    dbSelectQueue = [];
+  });
+
+  it("mints a write-consent URL for a Quick-Start Pack (category config_pack, NULL service_type)", async () => {
+    // 7 of the 12 sellable pack rows carry service_type NULL in the live
+    // catalog — category is the discriminator that must carry the decision.
+    const store = await callRoute([
+      [sessionRow({ productSlug: "break-glass-access-pack-v1" })],
+      [{ category: "config_pack", serviceType: null }],
+      [consentedTenantRow()],
+    ]);
+
+    expect(store.statusCode).toBe(200);
+    const body = store.jsonBody as { consentUrl: string };
+    // The WRITE app registration, not the read one — and the wc.-prefixed
+    // popup state carrying the resolved customerId, aimed at the one fixed
+    // write callback the admin flow registered.
+    expect(body.consentUrl).toContain("client_id=write-client-id");
+    expect(body.consentUrl).toContain("state=wc.7.");
+    expect(body.consentUrl).toContain(encodeURIComponent("/api/admin/write-consent/callback"));
+    // A single-use consent_invite_tokens row was minted.
+    expect(mockInsert).toHaveBeenCalled();
+  });
+
+  it("still mints for an assessment product — the pre-#1312 #432 path, unchanged", async () => {
+    const store = await callRoute([
+      [sessionRow({ productSlug: "copilot-readiness-assessment" })],
+      [{ category: "assessment", serviceType: "assessment" }],
+      [consentedTenantRow()],
+    ]);
+
+    expect(store.statusCode).toBe(200);
+    expect((store.jsonBody as { consentUrl: string }).consentUrl).toContain("client_id=write-client-id");
+  });
+
+  it("REFUSES a Monitoring session with 403 and mints no token", async () => {
+    const store = await callRoute([
+      [sessionRow({ productSlug: "monitoring-foundation-smb" })],
+      [{ category: "monitoring", serviceType: "monitoring_tier" }],
+      // No third row: the route must never reach resolveConsentedTenant.
+    ]);
+
+    expect(store.statusCode).toBe(403);
+    expect((store.jsonBody as { error: string }).error).toBe("write_consent_not_available_for_product");
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("REFUSES a Retainer session with 403 and mints no token", async () => {
+    const store = await callRoute([
+      [sessionRow({ productSlug: "architect-enterprise-retainer" })],
+      [{ category: "retainer", serviceType: "retainer" }],
+    ]);
+
+    expect(store.statusCode).toBe(403);
+    expect((store.jsonBody as { error: string }).error).toBe("write_consent_not_available_for_product");
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("fails CLOSED when the session's slug names no services row (e.g. sow-cart)", async () => {
+    const store = await callRoute([
+      [sessionRow({ productSlug: "sow-cart" })],
+      [], // no services row resolves this slug
+    ]);
+
+    expect(store.statusCode).toBe(403);
+    expect(mockInsert).not.toHaveBeenCalled();
+  });
+
+  it("refuses an ineligible product BEFORE read-consent state is even considered", async () => {
+    // A Monitoring session that never granted read consent still gets the
+    // definitive product refusal (403), not read_consent_required (409) —
+    // nothing about retrying a Monitoring purchase can ever make it eligible.
+    const store = await callRoute([
+      [sessionRow({ productSlug: "monitoring-growth-smb", tenantId: null, status: "pending" })],
+      [{ category: "monitoring", serviceType: "monitoring_tier" }],
+    ]);
+
+    expect(store.statusCode).toBe(403);
+    expect((store.jsonBody as { error: string }).error).toBe("write_consent_not_available_for_product");
+    expect(mockInsert).not.toHaveBeenCalled();
   });
 });
