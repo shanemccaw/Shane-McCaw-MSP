@@ -1689,6 +1689,7 @@ namespace BuildConsole
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // URL Address Box
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Go
             navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Keep-alive play/pause (only if offerKeepAlive)
+            navBar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Fill Login
 
             var btnBack = new Button
             {
@@ -1813,6 +1814,17 @@ namespace BuildConsole
                 navBar.Children.Add(btnKeepAlive);
             }
 
+            // Fill Login button — always visible so you can manually trigger the autofill overlay
+            // (click handler is wired below, after autofillOverlay and populateAutofillOverlay are declared)
+            var btnFillLogin = new Button
+            {
+                Content = new TextBlock { Text = "\uE72E", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 12 },
+                Style = (Style)FindResource("IconButton"),
+                Width = 28, Height = 28, Margin = new Thickness(0, 4, 4, 4), ToolTip = "Fill Login — show autofill profile picker"
+            };
+            Grid.SetColumn(btnFillLogin, 6);
+            navBar.Children.Add(btnFillLogin);
+
 
             wv.SourceChanged += (s, e) =>
             {
@@ -1871,7 +1883,16 @@ namespace BuildConsole
 
             string escapeJs(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", "\\r").Replace("\n", "\\n");
 
-            Action populateAutofillOverlay = () =>
+            Action populateAutofillOverlay = () => { listContainer.Children.Clear(); };
+            // Wire up Fill Login button click now that overlay and populateAutofillOverlay are in scope
+            btnFillLogin.Click += (s, e) =>
+            {
+                populateAutofillOverlay();
+                autofillOverlay.Visibility = autofillOverlay.Visibility == Visibility.Visible
+                    ? Visibility.Collapsed
+                    : Visibility.Visible;
+            };
+            populateAutofillOverlay = () =>
             {
                 listContainer.Children.Clear();
                 var settings = BuildConsoleSettings.Load();
@@ -2040,27 +2061,15 @@ namespace BuildConsole
                 
                 try
                 {
-                    var host = wv.Source.Host;
-                    bool isLocal = host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-                                   host.Equals("127.0.0.1") ||
-                                   host.Equals("[::1]");
-                                   
-                    if (isLocal)
-                    {
-                        string checkScript = @"
+                    string checkScript = @"
 (function() {
     return document.querySelector('input[type=""password""]') !== null;
 })();";
-                        string result = await wv.ExecuteScriptAsync(checkScript);
-                        if (string.Equals(result, "true", StringComparison.OrdinalIgnoreCase))
-                        {
-                            populateAutofillOverlay();
-                            autofillOverlay.Visibility = Visibility.Visible;
-                        }
-                        else
-                        {
-                            autofillOverlay.Visibility = Visibility.Collapsed;
-                        }
+                    string result = await wv.ExecuteScriptAsync(checkScript);
+                    if (string.Equals(result, "true", StringComparison.OrdinalIgnoreCase))
+                    {
+                        populateAutofillOverlay();
+                        autofillOverlay.Visibility = Visibility.Visible;
                     }
                     else
                     {
@@ -2121,15 +2130,8 @@ namespace BuildConsole
                         {
                             try
                             {
-                                var host = wv.Source.Host;
-                                bool isLocal = host.Equals("localhost", StringComparison.OrdinalIgnoreCase) ||
-                                               host.Equals("127.0.0.1") ||
-                                               host.Equals("[::1]");
-                                if (isLocal)
-                                {
-                                    populateAutofillOverlay();
-                                    autofillOverlay.Visibility = Visibility.Visible;
-                                }
+                                populateAutofillOverlay();
+                                autofillOverlay.Visibility = Visibility.Visible;
                             }
                             catch { }
                         }
