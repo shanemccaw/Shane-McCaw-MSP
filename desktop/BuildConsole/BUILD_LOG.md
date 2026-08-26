@@ -168,6 +168,8 @@ See [CLAUDE.md](../../CLAUDE.md) for the exact instructions, including which ses
 | 2026-08-26 | ✅ DONE — Build Queue: exclude running builds from deduplication / overwrite by adding a `status <> 'running'` filter (in both `BuildQueuePostgresClient.cs` and `admin-build-tracker.ts`) so active running builds are not overwritten or reset to queued when a new build request with the same issue number is received. | `ef6941657` |
 | 2026-08-26 | ✅ DONE — Build Watch: unique background colors for builds in a buildSet. Extracted a static `GetBuildSetBrush` helper in `BuildQueuePanel.xaml.cs` that maps a buildSet name deterministically to one of the theme's 10 cool Catppuccin accent brushes. Updated `BuildQueuePanel.xaml.cs` to apply this brush to buildSet header cards, headers, and text labels. Updated `BuildWatchWindow.xaml.cs` to propagate `BuildSet` on occupied slots, and when present, blend 7% of the accent brush's color with the base dark canvas color (`#020617`) and set it on `ChatPaneViewModel.ChatBackground`, with a 35% opacity tinted border on `ChatPaneViewModel.ChatBorder`. Wired these properties into `ChatSessionPane.xaml` root border styling. | `3b669dc8d` |
 | 2026-08-26 | ✅ DONE — Build Watch: fix buildSet color synchronization and replication by ensuring buildSet is extracted from JSON/body and persisted during queue insertion/update on the Express API server, and propagated back to client-side continuation/reply builds. Also added dynamic color/brush updates on poll ticks in the Build Watch slots to immediately reflect color when resolved. | `dd601248d` |
+| 2026-08-26 | ⏳ IN FLIGHT — Build Queue: use the Whammy blocked critter for blocked queue items | pending |
+
 
 
 
