@@ -44,6 +44,7 @@ const REQUIRED_WRITE_APP_PERMISSIONS = [
   "Application.ReadWrite.All",
   "Group.Create",
   "RoleManagement.ReadWrite.Directory",
+  "User.ReadWrite.All", // #1328
 ];
 
 async function tokenFor(tenant, clientId, clientSecret) {

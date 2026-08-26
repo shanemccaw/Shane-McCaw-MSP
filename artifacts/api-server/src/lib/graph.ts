@@ -144,6 +144,16 @@ export const REQUIRED_WRITE_APP_PERMISSIONS: readonly string[] = [
   // only mirrors the manifest for the assessment consent screen, it does not
   // grant anything by itself.
   "RoleManagement.ReadWrite.Directory",
+  // Create, restore, and manage user objects — every baseline action template
+  // that touches a user needs this: action.restore-deleted-user (undelete a
+  // removed account), action.admin-set-password (force-reset a credential),
+  // and any revokeSignInSessions-backed remediation (kills a compromised
+  // user's active sessions). Without it those templates always 403 with
+  // Authorization_RequestDenied in production, even after Shane manually
+  // grants the permission in Entra, because a fresh tenant's write-consent
+  // grant is driven by THIS array (#1328 — found via #1317's real 403 and
+  // confirmed against #1323's revokeSignInSessions test).
+  "User.ReadWrite.All",
 ];
 
 export function graphCredentialsPresent(): boolean {
