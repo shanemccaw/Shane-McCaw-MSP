@@ -445,3 +445,4 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 
 | 2026-08-26 | ⏳ IN FLIGHT | Extract Scene 0 (RevealScanOverlay, RevealNoScanGate, decideAutoScan, shouldBlockNeverScanned) into shared lib/ package + refactor consumers (Git #1357) | Investigation done. Building shared package. |
 | 2026-08-26 | ⏳ IN FLIGHT | Git #1362 one-time data correction: backfill bt_epics with the real open GitHub epics (#1093 Marketing Website, #1095 Admin Panel, #1352 Free Scan) missing from the local build-tracker table so their chats resolve out of "Unlinked" | Building migration. |
+| 2026-08-26 | ⏳ IN FLIGHT | Security overview strip: verify/complete wiring of remaining 3 of 5 SEC_AREA_LINKS cards (Conditional Access, MFA Gaps, Legacy Auth) to real checks (Git #1337) | Investigation in progress. |
