@@ -1778,6 +1778,22 @@ namespace BuildConsole.Controls
         private static readonly TimeSpan BlockedEnrichMinInterval = TimeSpan.FromMinutes(3);
         private HashSet<int>? _knownBlockedIssueNumbers;
 
+        /// <summary>
+        /// Git #1367 — persistent last-known blocked_by result (open issue number ->
+        /// its still-open blocker), kept ACROSS board rebuilds. Root cause of the
+        /// disappearing-Blocked-badge bug: the board's GraphQL fetch carries no
+        /// issue-dependency data, so every <see cref="BuildBoardFromGitHub"/> rebuilds
+        /// its <see cref="GitIssue"/> objects with IsBlocked=false, and the only thing
+        /// that sets it true — <see cref="EnrichBlockedStatusAsync"/> — is throttled to
+        /// <see cref="BlockedEnrichMinInterval"/>. Any board rebuild inside that throttle
+        /// window (an unrelated issue's GraphQL signature changing across this busy repo)
+        /// therefore repainted the badge away until Shane's next manual refresh reset the
+        /// throttle. MapBucket now reseeds each fresh GitIssue from this cache so the badge
+        /// stays stable between refreshes; EnrichBlockedStatusAsync rebuilds it
+        /// authoritatively from the real REST result each time it actually runs.
+        /// </summary>
+        private readonly Dictionary<int, (int? Number, string? Title)> _blockedStatusCache = new();
+
         private async System.Threading.Tasks.Task EnrichBlockedStatusAsync(string pat)
         {
             if (DateTime.UtcNow - _lastBlockedEnrichUtc < BlockedEnrichMinInterval) return;
@@ -1799,7 +1815,15 @@ namespace BuildConsole.Controls
                 {
                     var blocker = await client.GetOpenBlockedByAsync(issue.IssueNumber);
                     bool wasBlocked = _knownBlockedIssueNumbers != null && _knownBlockedIssueNumbers.Contains(issue.IssueNumber);
-                    issue.IsBlocked = blocker != null || issue.IsBlocked;
+                    // Git #1367 — this REST result is authoritative: the issue is
+                    // blocked iff it still has an open blocked_by dependency right now.
+                    // (Previously OR'd with the incoming issue.IsBlocked, which now
+                    // arrives pre-seeded true from _blockedStatusCache and would have
+                    // made a remotely-unblocked issue stick as blocked forever and
+                    // suppressed the unblock detection below.) A transient fetch failure
+                    // throws into the catch and leaves the seeded value untouched, so the
+                    // badge survives a hiccup rather than flickering off.
+                    issue.IsBlocked = blocker != null;
                     issue.BlockedByNumber = blocker?.Number;
                     issue.BlockedByTitle = blocker?.Title;
 
@@ -1823,6 +1847,15 @@ namespace BuildConsole.Controls
             }));
 
             _knownBlockedIssueNumbers = openIssues.Where(i => i.IsBlocked).Select(i => i.IssueNumber).ToHashSet();
+
+            // Git #1367 — refresh the cross-rebuild cache from this authoritative pass
+            // so any board rebuild that lands inside the next throttle window reseeds the
+            // badge (see _blockedStatusCache / MapBucket). Rebuilt from scratch each run,
+            // so a remotely-unblocked issue correctly drops out and the cache never
+            // accumulates stale entries.
+            _blockedStatusCache.Clear();
+            foreach (var i in openIssues.Where(i => i.IsBlocked))
+                _blockedStatusCache[i.IssueNumber] = (i.BlockedByNumber, i.BlockedByTitle);
 
             RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
 
@@ -2008,6 +2041,14 @@ namespace BuildConsole.Controls
                 var epic = new GitEpic { Title = title, ColorHex = colorHex };
                 foreach (var it in src.OrderByDescending(i => i.Number))
                 {
+                    // Git #1367 — reseed blocked state from the persistent cache so the
+                    // Blocked badge survives a board rebuild between the throttled
+                    // EnrichBlockedStatusAsync passes. The GraphQL fetch carries no
+                    // issue-dependency data (it.IsBlocked is always false here), so
+                    // without this reseed the badge vanished on any rebuild that landed
+                    // inside the enrich throttle window and only came back on Shane's
+                    // next manual refresh (which resets that throttle).
+                    bool cachedBlocked = _blockedStatusCache.TryGetValue(it.Number, out var cachedBlk);
                     epic.Issues.Add(new GitIssue
                     {
                         IssueNumber = it.Number,
@@ -2016,7 +2057,9 @@ namespace BuildConsole.Controls
                         Priority = it.IsTodo ? "HIGH" : "MED",
                         Status = it.IsClosed ? "CLOSED" : "OPEN",
                         IsComplete = it.IsComplete,
-                        IsBlocked = it.IsBlocked,
+                        IsBlocked = it.IsBlocked || cachedBlocked,
+                        BlockedByNumber = cachedBlocked ? cachedBlk.Number : (int?)null,
+                        BlockedByTitle = cachedBlocked ? cachedBlk.Title : null,
                         IsInFlight = it.HasInFlightLabel,
                         SqlPath = DeriveSqlPath(it.Body),
                         Body = it.Body,
@@ -4414,6 +4457,7 @@ namespace BuildConsole.Controls
                     return;
                 }
                 _lastInProgressSignature = null;
+                _lastBlockedEnrichUtc = DateTime.MinValue; // Git #1367 — reflect the just-set block on the next board build instead of waiting out the enrich throttle
                 PopulateGitTrackerBoard();
             };
             cm.Items.Add(miSetBlockedBy);
@@ -4441,6 +4485,7 @@ namespace BuildConsole.Controls
                         return;
                     }
                     _lastInProgressSignature = null;
+                    _lastBlockedEnrichUtc = DateTime.MinValue; // Git #1367 — clear the badge on the next board build instead of waiting out the enrich throttle
                     PopulateGitTrackerBoard();
                 };
                 cm.Items.Add(miUnblock);
