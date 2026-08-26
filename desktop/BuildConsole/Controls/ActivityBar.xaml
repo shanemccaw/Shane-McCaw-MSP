@@ -80,6 +80,14 @@
                     </Grid>
                 </RadioButton>
 
+                <RadioButton x:Name="BtnGraphApi"
+                             GroupName="ActivityBar"
+                             Style="{StaticResource ActivityBarButton}"
+                             Checked="Btn_Checked" Tag="GraphApi"
+                             ToolTip="Microsoft Graph API Panel">
+                    <TextBlock Text="&#xE9A1;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource BlueBrush}"/>
+                </RadioButton>
+
                 <!-- Separator -->
                 <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
 

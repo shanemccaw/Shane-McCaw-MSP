@@ -45,7 +45,7 @@ import {
   tenantsTable,
 } from "@workspace/db";
 import { eq, and, desc, inArray } from "drizzle-orm";
-import { requireAdmin } from "../middlewares/requireAuth";
+import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import {
   resolveBaselineTemplateRequest,
@@ -360,7 +360,7 @@ router.post("/admin/write-actions/:templateId/preview", requireAdmin, async (req
 
 // ── Execute: REAL tenant-mutating write, confirmed:true required ─────────────────
 
-router.post("/admin/write-actions/:templateId/execute", requireAdmin, async (req: Request, res: Response) => {
+router.post("/admin/write-actions/:templateId/execute", requireAdminOrIngestToken(), async (req: Request, res: Response) => {
   try {
     const templateId = req.params.templateId as string;
     const body = req.body as { customerId?: number; variables?: Record<string, string>; confirmed?: boolean };

@@ -505,6 +505,7 @@ namespace BuildConsole
             // list now; a click opens (or focuses) the native Settings tab scrolled
             // to that section (same opens-or-focuses infra as the #921 detail tabs).
             LeftSidebar.SettingsCategoryRequested += (s, category) => OpenSettingsTab(category);
+            LeftSidebar.GraphApiSelected += (s, args) => OpenGraphApiTab(args);
             _buildTailTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _buildTailTimer.Tick += async (_, _) => await PollChatTabBuildStateAsync();
             _buildTailTimer.Start();
@@ -3748,6 +3749,72 @@ namespace BuildConsole
             EditorTabs.SelectedItem = newTab;
             
             ActiveDocTitleText.Text = " - Chat Mappings";
+        }
+
+        public void OpenGraphApiTab(Controls.GraphApiSelectionArgs args)
+        {
+            TabItem? targetTab = null;
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string tagPath && tagPath == "graph_api")
+                {
+                    targetTab = item;
+                    break;
+                }
+            }
+
+            Controls.GraphApiDocumentView viewer;
+
+            if (targetTab == null)
+            {
+                var headerPanel = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                var iconBlock = new TextBlock { Text = "🔌", FontSize = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+                var titleBlock = new TextBlock { Text = "Microsoft Graph", FontSize = 13, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush") };
+                var closeBtn = new Button { Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10, Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0), ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center };
+
+                headerPanel.Children.Add(iconBlock);
+                headerPanel.Children.Add(titleBlock);
+                headerPanel.Children.Add(closeBtn);
+
+                viewer = new Controls.GraphApiDocumentView();
+                viewer.Initialize(_buildTrackerApi);
+
+                targetTab = new TabItem
+                {
+                    Header = headerPanel,
+                    Content = viewer,
+                    Tag = "graph_api"
+                };
+
+                AttachTabContextMenu(targetTab, EditorTabs);
+                AttachTabDragHandlers(targetTab);
+
+                closeBtn.Click += (s, e) => CloseTab(targetTab);
+
+                EditorTabs.Items.Add(targetTab);
+            }
+            else
+            {
+                viewer = (Controls.GraphApiDocumentView)targetTab.Content;
+            }
+
+            EditorTabs.SelectedItem = targetTab;
+            viewer.LoadApiEndpoint(
+                args.Type,
+                args.Key,
+                args.Label,
+                args.Description,
+                args.Endpoint,
+                args.Method,
+                args.RequiredVariables,
+                args.BodyTemplate
+            );
+
+            ActiveDocTitleText.Text = " - Graph API: " + args.Key;
         }
 
         public void OpenFileTab(string filePath)

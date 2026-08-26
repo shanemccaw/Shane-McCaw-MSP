@@ -10,6 +10,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using BuildConsole.Services;
+using System.Text.Json;
 
 namespace BuildConsole.Controls
 {
@@ -150,8 +151,34 @@ namespace BuildConsole.Controls
         public bool Critical { get; set; }
     }
 
+    public class GraphApiSelectionArgs : EventArgs
+    {
+        public GraphApiEndpointType Type { get; set; }
+        public string Key { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string Endpoint { get; set; } = string.Empty;
+        public string Method { get; set; } = string.Empty;
+        public List<string> RequiredVariables { get; set; } = new();
+        public string? BodyTemplate { get; set; }
+    }
+
+    public class GraphApiTreeItemData
+    {
+        public GraphApiEndpointType Type { get; set; }
+        public string Key { get; set; } = string.Empty;
+        public string Label { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string Endpoint { get; set; } = string.Empty;
+        public string Method { get; set; } = string.Empty;
+        public List<string> RequiredVariables { get; set; } = new();
+        public string? BodyTemplate { get; set; }
+    }
+
     public partial class LeftSidebar : UserControl
     {
+        public event EventHandler<GraphApiSelectionArgs>? GraphApiSelected;
+
         private string _currentView = "Chats";
         private const string RootWorkspacePath = @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
 
@@ -1330,8 +1357,9 @@ namespace BuildConsole.Controls
             IssuesView.Visibility     = view == "Issues"     ? Visibility.Visible : Visibility.Collapsed;
             SettingsView.Visibility   = view == "Settings"   ? Visibility.Visible : Visibility.Collapsed;
             AutomationView.Visibility = view == "Automation" ? Visibility.Visible : Visibility.Collapsed;
+            GraphApiView.Visibility   = view == "GraphApi"   ? Visibility.Visible : Visibility.Collapsed;
 
-            HeaderTitle.Text = view == "Automation" ? "UI AUTOMATION" : (view == "Issues" ? "GIT BOARD" : view.ToUpperInvariant());
+            HeaderTitle.Text = view == "Automation" ? "UI AUTOMATION" : (view == "Issues" ? "GIT BOARD" : (view == "GraphApi" ? "GRAPH API PANEL" : view.ToUpperInvariant()));
 
             // Adjust the New button tooltip to match the active view
             BtnNewItem.ToolTip = view switch
@@ -1367,6 +1395,10 @@ namespace BuildConsole.Controls
             else if (view == "Automation")
             {
                 PopulateManifestsList();
+            }
+            else if (view == "GraphApi")
+            {
+                PopulateGraphApiTree();
             }
         }
 
@@ -5628,6 +5660,242 @@ namespace BuildConsole.Controls
                 if (tree.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem tvi)
                     tvi.IsExpanded = false;
             }
+        }
+
+        // ── MICROSOFT GRAPH API PANEL ───────────────────────────────────────
+        private List<GraphApiTreeItemData> _allReadOnlyApis = new();
+        private List<GraphApiTreeItemData> _allWriteApis = new();
+
+        public async void PopulateGraphApiTree()
+        {
+            if (_api == null) return;
+
+            try
+            {
+                // Fetch Read-Only monitor checks from monitor_checks
+                var checksSql = "SELECT key, label, description, endpoint, method, required_variables FROM monitor_checks WHERE status = 'active' ORDER BY key;";
+                var checksResults = await LocalSqlExecutor.ExecuteAsync(_api, checksSql);
+
+                var roApis = new List<GraphApiTreeItemData>();
+                if (checksResults != null && checksResults.Count > 0 && checksResults[0].Success)
+                {
+                    foreach (var row in checksResults[0].Rows)
+                    {
+                        var key = GetStr(row, "key");
+                        var label = GetStr(row, "label");
+                        var desc = GetStr(row, "description");
+                        var endpoint = GetStr(row, "endpoint");
+                        var method = GetStr(row, "method");
+                        var requiredVarsJson = row.TryGetValue("required_variables", out var val) ? val : default;
+                        var vars = new List<string>();
+                        if (requiredVarsJson.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var item in requiredVarsJson.EnumerateArray())
+                            {
+                                vars.Add(item.GetString() ?? "");
+                            }
+                        }
+
+                        roApis.Add(new GraphApiTreeItemData
+                        {
+                            Type = GraphApiEndpointType.ReadOnly,
+                            Key = key,
+                            Label = label,
+                            Description = desc,
+                            Endpoint = endpoint,
+                            Method = method,
+                            RequiredVariables = vars
+                        });
+                    }
+                }
+
+                // Fetch Write Action templates from baseline_action_templates
+                var writesSql = "SELECT template_id, label, description, category, endpoint, method, required_variables, body_template FROM baseline_action_templates WHERE status = 'active' ORDER BY template_id;";
+                var writesResults = await LocalSqlExecutor.ExecuteAsync(_api, writesSql);
+
+                var wrApis = new List<GraphApiTreeItemData>();
+                if (writesResults != null && writesResults.Count > 0 && writesResults[0].Success)
+                {
+                    foreach (var row in writesResults[0].Rows)
+                    {
+                        var templateId = GetStr(row, "template_id");
+                        var label = GetStr(row, "label");
+                        var desc = GetStr(row, "description");
+                        var endpoint = GetStr(row, "endpoint");
+                        var method = GetStr(row, "method");
+                        var bodyTemplate = "";
+                        if (row.TryGetValue("body_template", out var bodyEl) && bodyEl.ValueKind == JsonValueKind.Object)
+                        {
+                            bodyTemplate = JsonSerializer.Serialize(bodyEl, new JsonSerializerOptions { WriteIndented = true });
+                        }
+
+                        var requiredVarsJson = row.TryGetValue("required_variables", out var val) ? val : default;
+                        var vars = new List<string>();
+                        if (requiredVarsJson.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var item in requiredVarsJson.EnumerateArray())
+                            {
+                                vars.Add(item.GetString() ?? "");
+                            }
+                        }
+
+                        wrApis.Add(new GraphApiTreeItemData
+                        {
+                            Type = GraphApiEndpointType.Write,
+                            Key = templateId,
+                            Label = label,
+                            Description = desc,
+                            Endpoint = endpoint,
+                            Method = method,
+                            RequiredVariables = vars,
+                            BodyTemplate = bodyTemplate
+                        });
+                    }
+                }
+
+                _allReadOnlyApis = roApis;
+                _allWriteApis = wrApis;
+
+                Dispatcher.Invoke(RenderGraphApiTree);
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    GraphApiTree.Items.Clear();
+                    GraphApiTree.Items.Add(new TreeViewItem { Header = $"Error loading APIs: {ex.Message}", Foreground = (Brush)FindResource("RedBrush") });
+                });
+            }
+        }
+
+        private void RenderGraphApiTree()
+        {
+            GraphApiTree.Items.Clear();
+
+            var filter = GraphApiSearchBox.Text.Trim();
+            var isFiltered = !string.IsNullOrEmpty(filter);
+
+            // Filter lists
+            var roFiltered = _allReadOnlyApis.Where(a => 
+                !isFiltered || 
+                a.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) || 
+                a.Label.Contains(filter, StringComparison.OrdinalIgnoreCase) || 
+                a.Endpoint.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+
+            var wrFiltered = _allWriteApis.Where(a => 
+                !isFiltered || 
+                a.Key.Contains(filter, StringComparison.OrdinalIgnoreCase) || 
+                a.Label.Contains(filter, StringComparison.OrdinalIgnoreCase) || 
+                a.Endpoint.Contains(filter, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+
+            // 1. Read-Only APIs Root
+            var readOnlyRoot = new TreeViewItem
+            {
+                Header = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children = {
+                        new TextBlock { Text = "📖 ", VerticalAlignment = VerticalAlignment.Center },
+                        new TextBlock { Text = "Read-Only Graph APIs", FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("Subtext1Brush"), VerticalAlignment = VerticalAlignment.Center },
+                        new Border {
+                            Background = (Brush)FindResource("Surface0Brush"), CornerRadius = new CornerRadius(3), Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(6, 0, 0, 0),
+                            Child = new TextBlock { Text = roFiltered.Count.ToString(), FontSize = 9, Foreground = (Brush)FindResource("Subtext0Brush") }
+                        }
+                    }
+                },
+                IsExpanded = isFiltered
+            };
+
+            foreach (var item in roFiltered)
+            {
+                var tvi = new TreeViewItem
+                {
+                    Header = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Children = {
+                            new Border {
+                                Background = new SolidColorBrush(Color.FromArgb(0x33, 0x89, 0xD1, 0x17)), BorderBrush = (Brush)FindResource("SapphireBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(0, 0, 6, 0),
+                                Child = new TextBlock { Text = item.Method, FontSize = 8.5, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("SapphireBrush") }
+                            },
+                            new TextBlock { Text = $"{item.Key} ({item.Label})", FontSize = 11, Foreground = (Brush)FindResource("TextBrush"), TextTrimming = TextTrimming.CharacterEllipsis }
+                        }
+                    },
+                    Tag = item
+                };
+                readOnlyRoot.Items.Add(tvi);
+            }
+
+            // 2. Write APIs Root
+            var writeRoot = new TreeViewItem
+            {
+                Header = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Children = {
+                        new TextBlock { Text = "✍️ ", VerticalAlignment = VerticalAlignment.Center },
+                        new TextBlock { Text = "Write Graph APIs", FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("Subtext1Brush"), VerticalAlignment = VerticalAlignment.Center },
+                        new Border {
+                            Background = (Brush)FindResource("Surface0Brush"), CornerRadius = new CornerRadius(3), Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(6, 0, 0, 0),
+                            Child = new TextBlock { Text = wrFiltered.Count.ToString(), FontSize = 9, Foreground = (Brush)FindResource("Subtext0Brush") }
+                        }
+                    }
+                },
+                IsExpanded = isFiltered
+            };
+
+            foreach (var item in wrFiltered)
+            {
+                var tvi = new TreeViewItem
+                {
+                    Header = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Children = {
+                            new Border {
+                                Background = new SolidColorBrush(Color.FromArgb(0x33, 0xE6, 0x45, 0x45)), BorderBrush = (Brush)FindResource("RedBrush"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(3), Padding = new Thickness(4, 1, 4, 1), Margin = new Thickness(0, 0, 6, 0),
+                                Child = new TextBlock { Text = item.Method, FontSize = 8.5, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("RedBrush") }
+                            },
+                            new TextBlock { Text = $"{item.Key} ({item.Label})", FontSize = 11, Foreground = (Brush)FindResource("TextBrush"), TextTrimming = TextTrimming.CharacterEllipsis }
+                        }
+                    },
+                    Tag = item
+                };
+                writeRoot.Items.Add(tvi);
+            }
+
+            GraphApiTree.Items.Add(readOnlyRoot);
+            GraphApiTree.Items.Add(writeRoot);
+        }
+
+        private void GraphApiSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            RenderGraphApiTree();
+        }
+
+        private void GraphApiTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+        {
+            if (e.NewValue is TreeViewItem tvi && tvi.Tag is GraphApiTreeItemData item)
+            {
+                GraphApiSelected?.Invoke(this, new GraphApiSelectionArgs
+                {
+                    Type = item.Type,
+                    Key = item.Key,
+                    Label = item.Label,
+                    Description = item.Description,
+                    Endpoint = item.Endpoint,
+                    Method = item.Method,
+                    RequiredVariables = item.RequiredVariables,
+                    BodyTemplate = item.BodyTemplate
+                });
+            }
+        }
+
+        private static string GetStr(Dictionary<string, JsonElement> row, string field)
+        {
+            return row.TryGetValue(field, out var val) && val.ValueKind == JsonValueKind.String ? val.GetString() ?? "" : "";
         }
     }
 }

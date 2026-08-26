@@ -752,6 +752,43 @@
                 </Popup>
             </Grid>
 
+            <!-- ══════════════════════════════════
+                 MICROSOFT GRAPH API VIEW
+                 ══════════════════════════════════ -->
+            <Grid x:Name="GraphApiView" Visibility="Collapsed">
+                <DockPanel Margin="10,8">
+                    <!-- Search box -->
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <TextBox x:Name="GraphApiSearchBox"
+                                 Height="26" Padding="6,4" FontSize="12"
+                                 VerticalContentAlignment="Center"
+                                 Background="{StaticResource Surface0Brush}"
+                                 TextChanged="GraphApiSearchBox_TextChanged"/>
+                        <TextBlock IsHitTestVisible="False"
+                                   Text="Search APIs..."
+                                   FontSize="12" Margin="8,0,0,0"
+                                   VerticalAlignment="Center" HorizontalAlignment="Left"
+                                   Foreground="{StaticResource Subtext1Brush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=GraphApiSearchBox}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+
+                    <TreeView x:Name="GraphApiTree"
+                              BorderThickness="0" Padding="0,2"
+                              Background="{StaticResource BaseBrush}"
+                              SelectedItemChanged="GraphApiTree_SelectedItemChanged"/>
+                </DockPanel>
+            </Grid>
+
         </DockPanel>
     </Border>
 </UserControl>
