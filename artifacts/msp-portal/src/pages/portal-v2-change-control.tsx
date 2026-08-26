@@ -34,6 +34,7 @@
 import type { ReactNode } from "react";
 import { useRoute } from "wouter";
 
+import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
@@ -1317,6 +1318,29 @@ function openPromoteForm(ctrl: CcController) {
 
 function CalendarView({ ctrl }: { ctrl: CcController }) {
   const { s } = ctrl;
+  // The freeze calendar has NO backing table — a grep of lib/db/src/schema/msp.ts
+  // finds no freeze-window table, so `ctrl.freezes()` only ever returns the
+  // design's fixture freezes ("ERP go-live freeze", owner "Priya Raman · Halden
+  // Materials IT Director", etc). Rendering that fictional worked example on a
+  // real, scoped tenant leaks invented people/events/dates as fact — the same
+  // class of leak #1342 fixed on the Ownership page. So on a LIVE tenant we show
+  // the platform's honest no-data state instead; the fixture worked example
+  // stays only in fixture/demo mode, exactly as the register itself does
+  // (Git #1364). Building a real freeze-window table is separate future work.
+  if (ctrl.dataState === "live") {
+    return (
+      <div style={css("display:flex;flex-direction:column;gap:20px")} data-testid="cc-view-calendar">
+        <div style={css("display:flex;flex-direction:column;gap:5px;max-width:88ch")}>
+          <span style={css("font-size:14px;font-weight:800;color:#f8fafc;letter-spacing:-.01em")}>Your freeze calendar</span>
+        </div>
+        <NoScanDataState
+          testId="cc-calendar-no-data"
+          label="No freeze calendar data available"
+          detail="Change freezes aren't tracked for your tenant yet. No example calendar is shown."
+        />
+      </div>
+    );
+  }
   const freezeRows = ctrl.freezes();
   const cal = buildCalendar(s.calMonth, freezeRows, s.calDay, ctrl.calEvents());
 
@@ -1499,6 +1523,26 @@ function openFreezeCancelForm(ctrl: CcController, fi: number) {
 /* ── Review: the change review (CAB) ───────────────────────────────────────── */
 
 function ReviewView({ ctrl }: { ctrl: CcController }) {
+  // The change review (CAB) has NO backing table — `CC_CAB` (next meeting,
+  // attendees "Priya Raman · Dana Whitlock · Marcus Bell", last review decisions)
+  // and `ctrl.agenda()` only ever return the design's fixtures. On a real, scoped
+  // tenant that fictional agenda/roster is a leak, so we show the honest no-data
+  // state on LIVE and keep the worked example in fixture/demo mode only
+  // (Git #1364). A real CAB/agenda table is separate future work.
+  if (ctrl.dataState === "live") {
+    return (
+      <div style={css("display:flex;flex-direction:column;gap:16px")} data-testid="cc-view-review">
+        <div style={css("display:flex;flex-direction:column;gap:4px")}>
+          <span style={css("font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#60a5fa")}>Next change review</span>
+        </div>
+        <NoScanDataState
+          testId="cc-review-no-data"
+          label="No change review data available"
+          detail="Change reviews and their agenda aren't tracked for your tenant yet. No example review is shown."
+        />
+      </div>
+    );
+  }
   const agenda = ctrl.agenda();
   return (
     <div style={css("display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;align-items:start")} data-testid="cc-view-review">
@@ -2262,6 +2306,15 @@ const NOTIF_GRID = "minmax(200px,1.6fr) minmax(130px,1fr) minmax(150px,1fr) minm
 function SettingsView({ ctrl }: { ctrl: CcController }) {
   const notif = ctrl.notif();
   const FZ = CC_FREEZE;
+  // The notification rules and the freeze itself have NO backing table — `notif`
+  // only ever returns the design's fixture rules (all to "Priya Raman"), and the
+  // "Active freeze" field below is `CC_FREEZE` ("ERP go-live freeze"), fictional
+  // to the Halden worked example. On a real, scoped tenant both are a leak, so on
+  // LIVE they show the honest no-data state / an em dash rather than invented
+  // people and events (Git #1364). The change-control POLICY copy itself (the
+  // request-and-two-signatures statement, the change window, separation of
+  // duties) is a genuine, tenant-agnostic policy statement and stays.
+  const isLive = ctrl.dataState === "live";
   return (
     <div style={css("display:flex;flex-direction:column;gap:20px")} data-testid="cc-view-settings">
       <div style={css("display:flex;flex-direction:column;gap:12px;padding:16px 18px;border:1px solid rgba(0,120,212,.28);border-radius:12px;background:#0b1524")}>
@@ -2283,7 +2336,7 @@ function SettingsView({ ctrl }: { ctrl: CcController }) {
           </div>
           <div style={css("display:flex;flex-direction:column;gap:3px;min-width:0")}>
             <span style={css("font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569")}>Active freeze</span>
-            <span style={css(valCss())}>{FZ.label} · {FZ.range}</span>
+            <span style={css(valCss())} data-testid="cc-settings-active-freeze">{isLive ? "No freeze declared for your tenant." : FZ.label + " · " + FZ.range}</span>
           </div>
           <div style={css("display:flex;flex-direction:column;gap:3px;min-width:0")}>
             <span style={css("font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569")}>Emergency changes</span>
@@ -2297,6 +2350,15 @@ function SettingsView({ ctrl }: { ctrl: CcController }) {
           <span style={css("font-size:14px;font-weight:800;color:#f8fafc;letter-spacing:-.01em")}>Notifications</span>
           <span style={css("font-size:11.5px;color:#64748b;line-height:1.55")}>Who hears about this, on what channel, and how long before it matters.</span>
         </div>
+        {isLive ? (
+          <div style={css("border:1px solid rgba(30,41,59,.9);border-radius:11px;background:#0b1524")}>
+            <NoScanDataState
+              testId="cc-notif-no-data"
+              label="No notification rules available"
+              detail="Notification rules aren't tracked for your tenant yet. No example rules are shown."
+            />
+          </div>
+        ) : (
         <div style={css("border:1px solid rgba(30,41,59,.9);border-radius:11px;background:#0b1524;overflow-x:auto")}>
           {notif.map((n, ni) => (
             <div key={n.event} style={css("display:grid;grid-template-columns:" + NOTIF_GRID + ";gap:12px;align-items:center;padding:11px 14px;border-bottom:1px solid rgba(30,41,59,.55);min-width:840px;opacity:" + (n.on ? "1" : ".6"))}>
@@ -2312,6 +2374,7 @@ function SettingsView({ ctrl }: { ctrl: CcController }) {
             </div>
           ))}
         </div>
+        )}
       </div>
     </div>
   );
