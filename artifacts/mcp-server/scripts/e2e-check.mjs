@@ -114,6 +114,27 @@ try {
       ? whoText.slice(0, 200)
       : `operator=${whoJson?.operator?.email} customers=${whoJson?.liveCustomerCount}`,
   );
+
+  // Git #1325: both calls above must have landed in the real audit trail
+  // (msp_audit_logs — the same table GET /api/msp/audit reads).
+  const { loadEnvLocal } = await import("../src/env.ts");
+  loadEnvLocal();
+  const { default: pg } = await import("pg");
+  const dbc = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  await dbc.connect();
+  const { rows: auditRows } = await dbc.query(
+    `SELECT action_type, outcome FROM msp_audit_logs
+      WHERE action_type IN ('mcp.tool.platform_health', 'mcp.tool.whoami')
+        AND occurred_at > now() - interval '2 minutes'
+      ORDER BY occurred_at DESC LIMIT 10`,
+  );
+  await dbc.end();
+  check(
+    "audit rows landed for both calls (Git #1325)",
+    auditRows.some((r) => r.action_type === "mcp.tool.platform_health" && r.outcome === "success") &&
+      auditRows.some((r) => r.action_type === "mcp.tool.whoami" && r.outcome === "success"),
+    auditRows.map((r) => `${r.action_type}:${r.outcome}`).join(", ") || "no rows",
+  );
 } catch (err) {
   check("e2e run", false, err instanceof Error ? err.message : String(err));
 } finally {

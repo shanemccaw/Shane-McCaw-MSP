@@ -1,6 +1,7 @@
 import type { ZodRawShape } from "zod";
 import type { McpServer, ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { ApiError } from "../api-client.ts";
+import { auditedToolCall, type ToolAuditSpec } from "../audit.ts";
 import { logger } from "../logger.ts";
 
 /**
@@ -24,6 +25,15 @@ export interface ToolDef {
   description: string;
   /** zod raw shape for the tool's arguments; omit for no-argument tools. */
   inputSchema?: ZodRawShape;
+  /**
+   * Audit posture (Git #1325). Omit for read/query tools — every call is
+   * still audited into msp_audit_logs (best-effort, post-call). Declare
+   * { access: "write" } on any tool that mutates real tenant/platform
+   * state: its audit is then write-ahead and FAIL-CLOSED (no persisted
+   * attempt row → the handler never runs), and api-client refuses mutating
+   * HTTP methods from tools without this declaration. See ../audit.ts.
+   */
+  audit?: ToolAuditSpec;
   handler: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
@@ -32,7 +42,9 @@ export function registerTools(server: McpServer, tools: ToolDef[]): void {
     const wrapped = async (args: Record<string, unknown>) => {
       const startedAt = Date.now();
       try {
-        const result = await tool.handler(args ?? {});
+        // Every call runs through the mandatory audit flow (Git #1325);
+        // handlers stay oblivious — the registry is the enforcement point.
+        const result = await auditedToolCall(tool, args ?? {}, () => tool.handler(args ?? {}));
         logger.info({ tool: tool.name, ms: Date.now() - startedAt }, "tool call ok");
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],

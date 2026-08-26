@@ -41,7 +41,9 @@ indistinguishable from Shane logging in — so every tool call flows through
 the real middleware stack (role gates, per-request log enrichment with
 mspId/customerId, audit actor attribution) with **no parallel auth mechanism
 and no api-server modifications**. Tools never talk to the DB directly; the
-only direct DB touch in this package is the one identity lookup at startup.
+only direct DB touches in this package are the one identity lookup at
+startup and the mandatory audit-trail writes (see "Mandatory audit logging"
+below for why those are deliberately not routed through the api-server).
 
 ### Error surfacing
 
@@ -59,6 +61,49 @@ only direct DB touch in this package is the one identity lookup at startup.
 Handlers return raw JSON-serializable data; the registry stringifies it into
 the MCP text content. Handlers never build MCP envelopes and never fabricate
 fields the API didn't return.
+
+## Mandatory audit logging (Phase 6 — Git #1325)
+
+Every tool call this server executes lands as a real row in
+`msp_audit_logs` — the **same** trail the api-server's own routes write and
+the same one `GET /api/msp/audit` (api-server/src/routes/msp-audit-log.ts)
+reads. Nothing parallel: filter with `actionType=mcp.tool` on the existing
+surface. Each row records the actor (Shane's real users row), the MSP, the
+target tenant (`customer_id`), `action_type` = `mcp.tool.<name>`, outcome,
+timestamp, and jsonb metadata carrying the **full tool parameters
+verbatim**, the real (size-capped) result or error, duration, and the actual
+API calls the tool made (`metadata.apiCalls`). Audit lines also go to stderr
+under the platform taxonomy's own `audit` channel (src/logger.ts).
+
+- **Read tools** — the default; no declaration needed. One best-effort row
+  after the call; an audit failure is logged loudly but never breaks a read.
+- **Write tools** must declare their posture on the ToolDef:
+
+  ```ts
+  audit: { access: "write", tenantArg: "customerId", entityType: "change_request", entityIdArg: "crId" }
+  ```
+
+  Their audit is **write-ahead and fail-closed**: an attempt row (outcome
+  `partial`, `metadata.phase: "attempt"`) is durably inserted BEFORE the
+  handler runs — if that insert fails, the tool is refused (`AUDIT REFUSAL`
+  isError; no audit, no write). After the handler settles the same row is
+  finalized to `success`/`failure` with the real result/error. A row left at
+  `partial`/`attempt` means the process died mid-call: attempted, completion
+  unknown — an honest record, never a silent gap.
+- **Structural enforcement, not convention**: `apiFetch` refuses
+  POST/PATCH/PUT/DELETE unless the running tool declared
+  `access: "write"` and its attempt row is persisted (src/audit.ts
+  `guardApiMutation`). A Phase 4/5 tool that forgets the declaration is
+  blocked at runtime, not silently under-audited.
+- Phase 4/5 tools can also call `recordAuditEvent()` /
+  `finalizeAuditEvent()` (src/audit.ts) directly for extra per-entity rows
+  inside one call — they inherit the call's correlation id automatically, so
+  the trail groups them with the parent tool call.
+- The audit write goes **direct to the local Postgres**, not through the
+  api-server, on purpose: the trail must capture attempts and failures even
+  when the api-server is down or dies mid-call (exactly the moments a safety
+  net exists for), and an HTTP "write my audit log" endpoint would be a
+  spoofable surface the platform doesn't need.
 
 ## Adding a tool (Phase 2–5)
 
@@ -90,9 +135,10 @@ Rules that hold for every tool:
   answers presented as live.
 - Let errors throw. The registry surfaces them honestly.
 - Write tools (Phase 4+) operate on **real production tenants** per Shane's
-  explicit decision on #1319 — mandatory audit logging is its own phase and
-  the primary safety net. Until that audit phase lands, do not add write
-  tools casually.
+  explicit decision on #1319 — mandatory audit logging (Git #1325, above) is
+  the primary safety net. Any tool that mutates state MUST declare
+  `audit: { access: "write", ... }` on its ToolDef; apiFetch refuses
+  mutating methods from tools that don't.
 
 ## Running / registering
 
@@ -116,4 +162,10 @@ point at Staging to operate there), `MCP_OPERATOR_EMAIL` (default
 - `pnpm --dir artifacts/mcp-server e2e` — spawns the real server, does the
   real MCP handshake over stdio, and calls both tools against the live local
   api-server + Postgres (no mocks). `whoami` passing means the minted token
-  was accepted by a real `requireAdmin` route.
+  was accepted by a real `requireAdmin` route. Also asserts both calls
+  landed as rows in `msp_audit_logs` (Git #1325).
+- `node artifacts/mcp-server/scripts/audit-check.mjs` — exercises the
+  mandatory audit flow through the REAL registry against the REAL local
+  Postgres: write-ahead + finalize on success, failure finalization, the
+  undeclared-mutation block, and the fail-closed refusal when the audit
+  trail is unreachable.

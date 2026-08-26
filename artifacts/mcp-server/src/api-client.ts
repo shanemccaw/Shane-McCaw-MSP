@@ -1,5 +1,6 @@
 import { apiBaseUrl } from "./env.ts";
 import { getAccessToken } from "./auth.ts";
+import { guardApiMutation, noteApiCall } from "./audit.ts";
 
 /**
  * A non-2xx answer from the api-server, carrying the real status code and the
@@ -54,6 +55,11 @@ export async function apiFetch<T = unknown>(
 ): Promise<T> {
   const { method = "GET", query, body, auth = true } = options;
 
+  // Mandatory-audit gate (Git #1325): mutating methods are refused unless the
+  // running tool declared audit: { access: "write" } and its write-ahead
+  // audit row is already persisted. Reads pass through untouched.
+  guardApiMutation(method, path);
+
   const url = new URL(apiBaseUrl() + path);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
@@ -64,6 +70,10 @@ export async function apiFetch<T = unknown>(
   const headers: Record<string, string> = {};
   if (auth) headers["authorization"] = `Bearer ${await getAccessToken()}`;
   if (body !== undefined) headers["content-type"] = "application/json";
+
+  // Recorded into the call's audit metadata (apiCalls) — status filled in
+  // below, so even a network-failed attempt leaves a trace.
+  const note = noteApiCall(method, path);
 
   let res: Response;
   try {
@@ -77,6 +87,8 @@ export async function apiFetch<T = unknown>(
       `api-server unreachable at ${apiBaseUrl()} (${err instanceof Error ? err.message : String(err)}) — is the local dev api-server running?`,
     );
   }
+
+  if (note) note.status = res.status;
 
   const contentType = res.headers.get("content-type") ?? "";
   const payload: unknown = contentType.includes("application/json")
