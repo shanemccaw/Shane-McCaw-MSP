@@ -330,6 +330,11 @@ export default defineConfig({
       // verified-address pinning, provision-if-missing, never-overwrite),
       // run against the real local Postgres.
       "src/lib/purchase-account-flow.test.ts",
+      // #1307 — the generalized Buy.tsx payment-intent/payment-confirmed pair
+      // (monitoring tier × seats, fixed retainer tiers, summed real packs),
+      // priced against the REAL local catalog rows with only the Stripe SDK
+      // and outbound side effects mocked.
+      "src/routes/public-purchase-payment.test.ts",
     ],
     coverage: {
       provider: "v8",
