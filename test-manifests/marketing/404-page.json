@@ -1,7 +1,7 @@
 {
   "feature": "Marketing 404 page rebuild (Git #1318, Design/404-export) — real destination grid (19 live routes, reconciled against App.tsx rather than the handoff README's own undercounted '18'), live client-side search over the site index, and a public fire-and-forget broken-link report. Copy for the H1 and good-news/bad-news subhead is fixed per the handoff and asserted verbatim below. Verified locally via a production build (`vite build` + `vite preview`) driven headlessly with playwright-core: unmatched paths return a real HTTP 404 (confirmed via curl, not asserted here since uiSteps don't inspect transport-level status codes), known routes and static assets stay 200, requestedUrl reflects the real path via useLocation().pathname, search filtering and the empty state both work, and the report button shows its inline confirmation with zero console errors.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "PENDING",
+  "lastVerifiedAgainstCommit": "a97c77a0a",
   "notes": [
     "Public marketing page, no auth required — the page itself has zero API/auth dependency to render; only clicking 'Report this broken link' touches the network (POST /api/public/broken-link-report), and it shows its confirmation regardless of whether that call succeeds (fire-and-forget, per the handoff's explicit note that a 404 must render even when the backend is down).",
     "N1 — H1 and good-news/bad-news subhead copy is fixed per the handoff; asserted verbatim, not paraphrased.",
