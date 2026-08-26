@@ -119,6 +119,20 @@
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>
+
+                <!-- Actions -->
+                <DataGridTemplateColumn Header="Actions" Width="100">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="🗑️ Delete" 
+                                    Style="{StaticResource IconButton}" 
+                                    Foreground="{StaticResource RedBrush}" 
+                                    Click="BtnDeleteChat_Click"
+                                    HorizontalAlignment="Center" 
+                                    VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
     </Grid>

@@ -256,6 +256,40 @@ namespace BuildConsole.Controls
             }
         }
 
+        private async void BtnDeleteChat_Click(object sender, RoutedEventArgs e)
+        {
+            if (_api == null) return;
+            if (sender is Button btn && btn.DataContext is ChatMappingItem item)
+            {
+                var result = MessageBox.Show(
+                    $"Are you sure you want to delete the mapping for chat \"{item.Title}\"?\nThis will remove it from the database entirely.", 
+                    "Confirm Delete", 
+                    MessageBoxButton.YesNo, 
+                    MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes) return;
+
+                TxtStatus.Text = "Deleting chat mapping...";
+
+                try
+                {
+                    await _api.ExecuteSqlAsync($"DELETE FROM bt_chat_issues WHERE chat_id = {item.Id}; DELETE FROM bt_chats WHERE id = {item.Id};");
+                    _allChats.Remove(item);
+                    ApplyFilter();
+                    TxtStatus.Text = "Chat mapping deleted successfully.";
+                    ToastEngine.Success("Delete Chat", $"Deleted chat \"{item.Title}\".");
+                    if (Application.Current.MainWindow is MainWindow mw)
+                    {
+                        mw.LeftSidebar.PopulateChatsTree();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TxtStatus.Text = $"Delete failed: {ex.Message}";
+                    ToastEngine.Error("Delete Chat", $"Failed to delete chat: {ex.Message}");
+                }
+            }
+        }
+
         // Helpers for json row parsing
         private static int GetInt(Dictionary<string, JsonElement> row, string field)
         {
