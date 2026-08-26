@@ -415,3 +415,4 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 | 2026-08-25 | ⏳ IN FLIGHT | MCP mandatory audit logging on every write-tool call into msp_audit_logs (Git #1325) | |
 | 2026-08-25 | ⏳ IN FLIGHT | MCP server: create_account tool wrapping #1310's purchase-account-flow (Git #1321) | |
 | 2026-08-25 | ⏳ IN FLIGHT | Phase 3 of #1302: wire real payment component into Buy.tsx paying stage (Git #1308) | |
+| 2026-08-25 | ⏳ IN FLIGHT | MCP execute_write_pack tool: full config-pack execution through config-pack-orchestrator (Epic #1319 Phase 5) (Git #1324) | |
