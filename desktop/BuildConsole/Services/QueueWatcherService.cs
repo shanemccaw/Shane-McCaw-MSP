@@ -1064,28 +1064,54 @@ namespace BuildConsole.Services
             }
         }
 
-        /// <summary>Types a real chat message into the running build's stdin (delivered as a stream-json user message, so an @path or any character passes through unmangled). Interruption is supported precisely because stdin stays open for the whole run — sending mid-task reaches the live process at once.</summary>
-        public void SendInput(int id, string text)
+        /// <summary>
+        /// Types a real chat message into the running build's stdin (delivered as a
+        /// stream-json user message, so an @path or any character passes through
+        /// unmangled). Interruption is supported precisely because stdin stays open for
+        /// the whole run — sending mid-task reaches the live process at once.
+        ///
+        /// Git #1327 — returns <c>true</c> only when the message was genuinely written to
+        /// a live owned stdin. It returns <c>false</c> (rather than silently swallowing the
+        /// message, the old behavior) whenever it CANNOT deliver: no interactive process
+        /// owns this id, the process already exited, or the write itself throws (the pipe
+        /// was closed out from under it — most commonly by the 15s idle auto-finalize
+        /// closing stdin just as the user types a nudge into a "stuck"/waiting build).
+        /// The Build Watch caller uses that false to fall back to a --resume continuation
+        /// so the typed guidance still reaches the real session instead of vanishing while
+        /// the UI optimistically shows it as sent.
+        /// </summary>
+        public bool SendInput(int id, string text)
         {
             if (!_running.TryGetValue(id, out var entry) || !entry.Interactive)
             {
-                ActivityLog.Log("interactive-build", $"input ignored — no interactive process owns queue #{id}");
-                return;
+                ActivityLog.Log("interactive-build", $"live stdin unavailable — no interactive process owns queue #{id} (caller will resume the session instead)");
+                return false;
             }
             if (entry.Process.HasExited)
             {
-                ActivityLog.Log("interactive-build", $"input ignored — process for queue #{id} already exited");
-                return;
+                ActivityLog.Log("interactive-build", $"live stdin unavailable — process for queue #{id} already exited (caller will resume the session instead)");
+                return false;
             }
 
-            bool wasWorking = false;
+            // Cancel any pending idle auto-finalize FIRST, before touching stdin: a nudge
+            // arriving inside the 15s idle window must keep the pipe open rather than race
+            // the timer that closes it. (The write below can still fail if the timer had
+            // already fired — that path returns false and the caller resumes.)
+            bool wasWorking;
             lock (_gate)
             {
                 wasWorking = entry.State == InteractiveInputState.Working;
+                CancelAutoFinalize(entry);
             }
 
             try { WriteUserMessage(entry, text); }
-            catch (Exception ex) { ActivityLog.Log("interactive-build", $"input failed for queue #{id}: {ex.Message}"); return; }
+            catch (Exception ex)
+            {
+                // Pipe closed/broken (auto-finalize already closed stdin, or the process
+                // is mid-exit). Do NOT drop the message — signal the caller to resume.
+                ActivityLog.Log("interactive-build", $"live stdin write failed for queue #{id}: {ex.Message} (caller will resume the session instead)");
+                return false;
+            }
 
             lock (_gate)
             {
@@ -1105,12 +1131,15 @@ namespace BuildConsole.Services
                 }
                 catch (Exception ex)
                 {
+                    // The user message already landed; a failed interrupt only means it
+                    // waits for the current turn to end. Non-fatal — still a real delivery.
                     ActivityLog.Log("interactive-build", $"mid-task interrupt failed for queue #{id}: {ex.Message}");
                 }
             }
 
             var preview = text.Length > 80 ? text.Substring(0, 80) + "…" : text;
             ActivityLog.Log("interactive-build", $"input sent to {entry.Title} (queue #{id}): {preview.Replace("\r", " ").Replace("\n", " ")}");
+            return true;
         }
 
         /// <summary>

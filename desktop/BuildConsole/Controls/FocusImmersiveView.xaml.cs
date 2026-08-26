@@ -943,9 +943,19 @@ namespace BuildConsole.Controls
             if (!_watcher.OwnsInteractive(_selectedBuildId.Value)) return;
             try
             {
-                _watcher.SendInput(_selectedBuildId.Value, text!);
-                ChatInput.Clear();
-                ActivityLog.Log("focus-mode", $"immersive: sent chat into build #{_selectedBuildId} ({text!.Length} chars)");
+                // Git #1327 — SendInput returns false if the message didn't reach a live stdin
+                // (pipe closed by the 15s idle auto-finalize, or the process is mid-exit). This
+                // immersive view has no --resume continuation path, so on failure DON'T clear the
+                // box — keep the text so it isn't silently lost, and tell the user where to resume.
+                if (_watcher.SendInput(_selectedBuildId.Value, text!))
+                {
+                    ChatInput.Clear();
+                    ActivityLog.Log("focus-mode", $"immersive: sent chat into build #{_selectedBuildId} ({text!.Length} chars)");
+                }
+                else
+                {
+                    ActivityLog.Log("focus-mode", $"immersive: send not delivered to build #{_selectedBuildId} (stdin closed / build finished) — kept text; resume it from Build Watch");
+                }
             }
             catch (Exception ex)
             {

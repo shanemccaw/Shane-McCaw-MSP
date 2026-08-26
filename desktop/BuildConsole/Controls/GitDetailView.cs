@@ -2043,10 +2043,14 @@ namespace BuildConsole.Controls
 
             if (watcher == null) return;
 
+            // Git #1327 — only treat it as a live stdin send if SendInput actually delivered
+            // to an open pipe. It can fail (returning false) even when still owned and not-yet
+            // HasExited — e.g. the 15s idle auto-finalize closed stdin as the user typed. On
+            // false, fall through to the --resume continuation so the guidance still lands
+            // instead of being silently dropped while shown as sent.
             bool isLive = watcher.OwnsInteractive(_buildPaneItemId) && !watcher.HasExited(_buildPaneItemId, out _);
-            if (isLive)
+            if (isLive && watcher.SendInput(_buildPaneItemId, text))
             {
-                watcher.SendInput(_buildPaneItemId, text);
                 _buildPane?.ViewModel.Turns.Add(new UserMessageTurn(text));
                 return;
             }

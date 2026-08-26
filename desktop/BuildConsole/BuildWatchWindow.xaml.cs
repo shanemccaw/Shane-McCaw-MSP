@@ -1559,10 +1559,17 @@ namespace BuildConsole
             if (string.IsNullOrWhiteSpace(text)) return;
             AddUserMessage(slot, text);
 
-            // 1. If the interactive process is actively running and alive, send straight to stdin
-            if (_watcher != null && _watcher.OwnsInteractive(slot.QueueItemId) && !_watcher.HasExited(slot.QueueItemId, out _))
+            // 1. If the interactive process is actively running and alive, send straight to stdin.
+            //    Git #1327 — SendInput now returns whether the message genuinely reached a live
+            //    stdin. It can fail even while we still "own" the id and HasExited hasn't flipped
+            //    yet — most often when the 15s idle auto-finalize closed the pipe the instant
+            //    before Shane typed a nudge into a waiting/"stuck" build. In that case DON'T
+            //    pretend it was delivered (the old code swallowed the write exception, leaving the
+            //    message shown-but-lost); fall through to the --resume continuation below so the
+            //    guidance still lands on the real session.
+            if (_watcher != null && _watcher.OwnsInteractive(slot.QueueItemId) && !_watcher.HasExited(slot.QueueItemId, out _)
+                && _watcher.SendInput(slot.QueueItemId, text))
             {
-                _watcher.SendInput(slot.QueueItemId, text);
                 // Reflect immediately: back to working; force a re-apply next poll.
                 slot.State = SlotState.Running;
                 slot.CompletedAtUtc = null;
@@ -1580,7 +1587,8 @@ namespace BuildConsole
                 return;
             }
 
-            // 2. The process has exited (Done / Failed / Stale) or was not owned as interactive.
+            // 2. The process has exited (Done / Failed / Stale), wasn't owned as interactive, OR
+            // a live stdin send just failed (pipe closed by auto-finalize / mid-exit — Git #1327).
             // Resume / continue the session seamlessly with Shane's directions!
             string? sessionId = slot.SessionId ?? _watcher?.GetSessionId(slot.QueueItemId);
             ActivityLog.Log("build-watch", $"Sending continuation/follow-up to queue #{slot.QueueItemId} (session: {sessionId ?? "fresh"}): {text}");
