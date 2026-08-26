@@ -1,5 +1,12 @@
 # Platform Build Log
 
+> ## ⚠️ FROZEN — superseded 2026-08-26 (Git #1267 / #1371)
+> This single shared file is **no longer written to.** Session bookends now live in
+> **[`build-journal/`](build-journal/)** — one file per issue (`build-journal/<id>.md`),
+> one writer per file — so concurrent sessions can never clobber each other's rows.
+> Every row below is preserved as history; add nothing new here. See
+> [`build-journal/README.md`](build-journal/README.md) and [CLAUDE.md](CLAUDE.md).
+
 Append-only log of work sessions. Each session adds exactly one row, in two edits:
 
 1. **At session start** (before any real work): append a row with status `⏳ IN FLIGHT — {step name}`, commit it immediately as its own standalone commit.

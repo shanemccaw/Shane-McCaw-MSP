@@ -1,5 +1,13 @@
 # BuildConsole Build Log
 
+> ## ⚠️ FROZEN — superseded 2026-08-26 (Git #1267 / #1371)
+> This single shared file is **no longer written to.** Session bookends now live in
+> the repo-root **[`build-journal/`](../../build-journal/)** — one file per issue
+> (`build-journal/<id>.md`), one writer per file — with no product-vs-BuildConsole
+> split (record which side you touched in the file's `Scope:` line instead).
+> Every row below is preserved as history; add nothing new here. See
+> [`build-journal/README.md`](../../build-journal/README.md) and [CLAUDE.md](../../CLAUDE.md).
+
 Append-only log of work sessions whose work is entirely within `desktop/BuildConsole/` (this WPF app). Each session adds exactly one row, in two edits:
 
 1. **At session start** (before any real work): append a row with status `⏳ IN FLIGHT — {step name}`, commit it immediately as its own standalone commit.

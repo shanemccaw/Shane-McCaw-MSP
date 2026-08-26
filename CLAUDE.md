@@ -42,31 +42,50 @@ Design source: Design/design_handoff_customer_portal/
 
 ## Mandatory session bookends
 
-This project tracks every work session in [PLATFORM_BUILD.md](PLATFORM_BUILD.md), so that even a session that crashes or gets abandoned mid-way leaves proof an attempt was made.
+This project tracks every work session in a **per-issue bookend file** under
+[`build-journal/`](build-journal/), so that even a session that crashes or gets
+abandoned mid-way leaves proof an attempt was made.
 
-**Which file to bookend in:** a session whose work is entirely within `desktop/BuildConsole/` (Shane's own WPF tool, not customer-facing product) bookends in [desktop/BuildConsole/BUILD_LOG.md](desktop/BuildConsole/BUILD_LOG.md) instead of the root file. A session touching the actual product — anything outside `desktop/BuildConsole/` — continues bookending in the root PLATFORM_BUILD.md as today. A session touching both bookends in both files, one row per file for its respective piece of work. Everything below (row format, timing, Shared File Write Discipline) applies identically to whichever file a given piece of work targets.
+**One file per issue. One writer per file. No shared append, ever.** Each session
+writes `build-journal/<id>.md` — `<id>` is the GitHub issue number (e.g.
+`build-journal/1371.md`), or the base-26 letter id for `--notGit` local work. Because
+no two sessions write the same file, concurrent sessions can never clobber each
+other's bookend rows — the Git #1267 collision class is structurally gone. The old
+single shared files (`PLATFORM_BUILD.md`, `desktop/BuildConsole/BUILD_LOG.md`) are
+**frozen archives**; do not append to them. There is **no product-vs-BuildConsole
+split** anymore — everything bookends in `build-journal/`; note which side you touched
+in the file's `Scope:` line. See [`build-journal/README.md`](build-journal/README.md)
+for the full format; a session touching several issues writes one file per issue.
 
 ### Step 1 — first thing the session does, before any other work
 
-Append a new row to the table in the applicable file (PLATFORM_BUILD.md and/or desktop/BuildConsole/BUILD_LOG.md, per above) for the step you're about to do, with status:
+Create `build-journal/<id>.md` for the work you're about to do, with `Status: ⏳ IN
+FLIGHT` and an opening `Log` line (use the template in `build-journal/README.md`):
 
 ```
-⏳ IN FLIGHT — {step name}
+- **Status:** ⏳ IN FLIGHT
+- **Scope:** platform | buildconsole | both
 ```
 
-Commit that single-line change immediately, as its own small standalone commit — not bundled with the real work that follows.
+Commit that single new file immediately, as its own small standalone commit — not
+bundled with the real work that follows. A plain `git add build-journal/<id>.md &&
+git commit` is safe: this file is yours alone, so no re-read/CAS discipline is needed.
 
 ### Last step — after all real work is done, tested, and typechecked
 
-Update that same row's status to:
+Flip that file's status to:
 
 ```
-✅ DONE — {step name}
+- **Status:** ✅ DONE
 ```
 
-and fill in the real commit hash of the work itself. Commit that update — either as part of the final commit or immediately after it.
+fill in the real commit hash(es) of the work, and append a `✅ DONE — …` log line
+recording what shipped and the honest verification result. Commit that update —
+either as part of the final commit or immediately after it.
 
-If the work is abandoned, fails, or the session ends before this step, the row is left as `⏳ IN FLIGHT`. Do not go back and clean up or delete stale IN FLIGHT rows from other sessions — they are the record.
+If the work is abandoned, fails, or the session ends before this step, the file is
+left at `⏳ IN FLIGHT` — that is the record. Do not go back and clean up or delete
+other sessions' stale IN FLIGHT files.
 
 ## Mandatory: comment on the GitHub issue before finishing
 
@@ -144,6 +163,45 @@ If that list is empty, or every issue in it is closed/`complete`-labeled, you're
 If it's still genuinely blocked (the dependency is still open and not `complete`), say so and stop again rather than guessing forward.
 
 Shane's BuildConsole desktop app (`desktop/BuildConsole/`) reads both the label and the real dependency to show a blocked build nested under whatever it's waiting on, in a red box — and flags it a different color the moment that dependency clears, so he knows to go start it again without having to remember himself.
+
+## Mandatory worktree isolation (Git #1371 / #1372)
+
+**Every build session works in its own isolated git worktree — never directly in the
+shared checkout the dev server runs from.** This is now automatic and mandatory, not a
+per-prompt request.
+
+**Why:** up to ~8 concurrent sessions used to share one checkout with no coordination.
+One session mid-edit (staged/uncommitted) while another commits, resets, or checks out
+led to real, repeated data loss — working-tree reverts, staged-index bleed, whole
+features silently deleted (Git #1267's thread documents six live recurrences in one
+night). An isolated worktree per session removes the shared mutable state entirely.
+
+**For a BuildConsole-launched build (the normal case): you don't have to do anything.**
+BuildConsole provisions a fresh worktree off `origin/main` and launches you inside it
+automatically (gated by the Settings toggle **"Enforce worktree isolation"**, default
+ON). Your `node_modules` + `lib/*/dist` are **junctioned** from the main checkout, not
+re-installed — one shared copy, zero extra downloads even on a slow connection (#1372).
+Just work and commit normally in your cwd. On completion BuildConsole merges your
+committed changes into the dev-server checkout and cleans up your worktree for you.
+
+**Getting work onto `origin/main` is still your job** (the dev-server merge-back only
+makes the *local* dev server run your code). Commit in your worktree, then push to main
+— rebasing onto the current `origin/main` and retrying if the push is rejected, since
+main moves under concurrent load.
+
+**For a session NOT launched by BuildConsole** (a direct `claude` invocation, or the
+toggle is off), provision your own at the very start, before any edit:
+
+```
+node scripts/dev-server/provision-worktree.mjs <id> --link   # C:\wt\<id>, off origin/main, deps junctioned
+# ...work + commit in C:\wt\<id>, push to origin/main as usual...
+node scripts/dev-server/request-restart.mjs --agent <id>     # merge into the dev-server checkout + restart
+node scripts/dev-server/cleanup-worktree.mjs <id>            # remove the worktree + its junctions + branch
+```
+
+The provisioner registers the worktree so the cleanup sweep (`cleanup-worktree.mjs
+--sweep`, also the BuildConsole Home "🧹 Clean" button) never removes a live one while
+its owning process is alive. See `scripts/dev-server/README.md` for the full mechanism.
 
 ## Build-prompt header convention (queued builds)
 
@@ -423,18 +481,26 @@ phase - not only when explicitly asked.
 
 ## Shared File Write Discipline
 
-PLATFORM_BUILD.md, desktop/BuildConsole/BUILD_LOG.md (and any other shared,
-frequently-appended-to file) are written to by many independent Claude Code
-sessions. Before your FINAL commit to such a file (e.g. flipping your
-bookend row from IN FLIGHT to DONE), always:
+**Bookends no longer need this** — they live in per-issue `build-journal/<id>.md`
+files (see "Mandatory session bookends"), each written by exactly one session, so
+there is nothing to collide over. `PLATFORM_BUILD.md` and
+`desktop/BuildConsole/BUILD_LOG.md` are frozen; don't write to them at all.
 
-1. `git pull --rebase origin main` to get the current remote state.
+The discipline below still applies to any file that genuinely remains shared and
+append-target across sessions — e.g. `test-manifests/_regression-suite.json`, or a
+common source file two sessions edit at once. Before your FINAL commit to such a
+file, always:
+
+1. `git fetch origin main` (or `git pull --rebase origin main`) to get the current remote state.
 2. Re-apply/re-append your own change against that now-current content -
    do not assume the file still looks like it did when your session started.
 3. Commit and push.
 4. If the push is rejected (someone else landed in the same instant),
-   pull --rebase again and retry from step 2.
+   fetch/rebase again and retry from step 2.
 
 Never overwrite unrelated rows/content you didn't intend to touch - if a
 diff shows changes outside your own hunk, stop and re-isolate before
-committing.
+committing. Working in your own isolated worktree (now automatic for launched
+builds — see "Mandatory worktree isolation") keeps your uncommitted edits out of
+the shared index entirely, which is the real cure for the staged-index-bleed class
+of collision.
