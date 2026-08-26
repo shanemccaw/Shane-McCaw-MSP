@@ -153,6 +153,57 @@ ${staticEntries}${articleEntries}
 `;
 }
 
+function extractDynamicRoutePatterns(appTsxPath: string): RegExp[] {
+  const source = fs.readFileSync(appTsxPath, "utf-8");
+  const routeRegex = /<Route\s+path="([^"]+)"\s+component=\{([^}]*)\}/g;
+  const patterns: RegExp[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = routeRegex.exec(source)) !== null) {
+    const [, routePath, componentExpr] = match;
+    if (!routePath.includes(":")) continue;
+    if (/^Redirect/.test(componentExpr.trim())) continue;
+    patterns.push(new RegExp(`^${routePath.replace(/:[^/]+/g, "[^/]+")}$`));
+  }
+  return patterns;
+}
+
+// The marketing SPA's own catch-all <Route component={NotFound} /> renders client-side, so a
+// plain `vite preview` always answers an unmatched path with a 200 (it's serving the SPA shell,
+// which happens to render the 404 page). Google et al treat that as a real, indexable 200 page —
+// the 404_README's explicit ask is for the SERVER to answer with a real 404 so it isn't indexed.
+// This mirrors that at the preview-server layer. It serves the same index.html body Vite's own
+// SPA-fallback middleware would (so the client still hydrates and renders NotFound normally), but
+// does so itself with a real 404 status and returns before Vite's fallback runs — Vite's own
+// htmlFallbackMiddleware unconditionally sets res.statusCode = 200, so setting the status and
+// calling next() does not work; the response has to be sent from here.
+function notFoundStatusPlugin(): Plugin {
+  const appTsxPath = path.resolve(import.meta.dirname, "src/App.tsx");
+  const indexHtmlPath = path.resolve(import.meta.dirname, "dist/public/index.html");
+
+  return {
+    name: "marketing-404-status",
+    configurePreviewServer(server) {
+      const knownPaths = new Set(extractRoutedPaths(appTsxPath));
+      const dynamicPatterns = extractDynamicRoutePatterns(appTsxPath);
+
+      server.middlewares.use((req, res, next) => {
+        if (req.method !== "GET" && req.method !== "HEAD") return next();
+
+        const url = (req.url ?? "/").split("?")[0];
+        const hasExtension = /\.[a-zA-Z0-9]+$/.test(url);
+        const isKnown =
+          knownPaths.has(url) || dynamicPatterns.some((re) => re.test(url));
+
+        if (hasExtension || isKnown || !fs.existsSync(indexHtmlPath)) return next();
+
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "text/html");
+        res.end(fs.readFileSync(indexHtmlPath, "utf-8"));
+      });
+    },
+  };
+}
+
 function sitemapPlugin(): Plugin {
   const appTsxPath = path.resolve(import.meta.dirname, "src/App.tsx");
   const articlesDir = path.resolve(import.meta.dirname, "src/content/articles");
@@ -265,6 +316,7 @@ export default defineConfig({
   plugins: [
     sitemapPlugin(),
     perRouteOgPlugin(),
+    notFoundStatusPlugin(),
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

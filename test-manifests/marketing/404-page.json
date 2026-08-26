@@ -1,0 +1,35 @@
+{
+  "feature": "Marketing 404 page rebuild (Git #1318, Design/404-export) — real destination grid (19 live routes, reconciled against App.tsx rather than the handoff README's own undercounted '18'), live client-side search over the site index, and a public fire-and-forget broken-link report. Copy for the H1 and good-news/bad-news subhead is fixed per the handoff and asserted verbatim below. Verified locally via a production build (`vite build` + `vite preview`) driven headlessly with playwright-core: unmatched paths return a real HTTP 404 (confirmed via curl, not asserted here since uiSteps don't inspect transport-level status codes), known routes and static assets stay 200, requestedUrl reflects the real path via useLocation().pathname, search filtering and the empty state both work, and the report button shows its inline confirmation with zero console errors.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "Public marketing page, no auth required — the page itself has zero API/auth dependency to render; only clicking 'Report this broken link' touches the network (POST /api/public/broken-link-report), and it shows its confirmation regardless of whether that call succeeds (fire-and-forget, per the handoff's explicit note that a 404 must render even when the backend is down).",
+    "N1 — H1 and good-news/bad-news subhead copy is fixed per the handoff; asserted verbatim, not paraphrased.",
+    "N2 — the destination grid renders from src/data/siteIndex.ts (19 entries): the six pillars, the free scan, monitoring, quick-start, retainers, pricing, all seven /solutions/* deep-dives (including /solutions/governance, which the handoff README's own summary count of 18 missed), and the full /solutions catalogue link.",
+    "N3 — search is asserted both ways: filtering to a real term narrows the grid (and hides an unrelated card), and a nonsense term surfaces the empty-state copy.",
+    "N4 — Requested URL card reads the real browser path via useLocation().pathname, asserted against the exact broken path this manifest navigates to.",
+    "N5 — this manifest does not assert the server's real 404 HTTP status (uiSteps only see the DOM, not the response status) — that was verified directly against a local `vite preview` build via curl during development; it is not re-verified by this manifest.",
+    "This manifest asserts against {{DEPLOY_URL}} — only reflects this commit once the marketing site is redeployed."
+  ],
+  "uiSteps": [
+    { "action": "goto", "target": "/some-old-broken-link-that-never-existed-xyz" },
+    { "action": "expect", "selector": "h1", "state": "visible", "textContains": "This page ran off to go check a compliance score." },
+    { "action": "expect", "selector": "[data-testid='text-requested-url']", "state": "visible", "textContains": "/some-old-broken-link-that-never-existed-xyz" },
+
+    { "name": "T1 -- destination grid shows all 19 reconciled destinations by default.", "action": "expect", "selector": "[data-testid='text-404-match-count']", "state": "visible", "textContains": "19 pages" },
+    { "action": "expect", "selector": "[data-testid='link-404-dest-scan']", "state": "visible" },
+    { "action": "expect", "selector": "[data-testid='link-404-dest-solutions-governance']", "state": "visible" },
+
+    { "name": "T2a -- search narrows the grid to a real term.", "action": "input", "selector": "[data-testid='input-404-search']", "value": "copilot" },
+    { "action": "expect", "selector": "[data-testid='text-404-match-count']", "state": "visible", "textContains": "1 match" },
+    { "action": "expect", "selector": "[data-testid='link-404-dest-solutions-copilot']", "state": "visible" },
+    { "name": "T2b -- an unrelated card is filtered out.", "action": "expect", "selector": "[data-testid='link-404-dest-scan']", "state": "absent" },
+
+    { "name": "T3 -- a nonsense query surfaces the empty state.", "action": "input", "selector": "[data-testid='input-404-search']", "value": "zzzznomatchxyz" },
+    { "action": "expect", "selector": "[data-testid='text-404-empty-state']", "state": "visible", "textContains": "Two 404s in one visit is impressive." },
+
+    { "name": "T4a -- clear the search to restore the full grid before reporting.", "action": "input", "selector": "[data-testid='input-404-search']", "value": "" },
+    { "name": "T4b -- report this broken link shows an inline confirmation.", "action": "click", "selector": "[data-testid='button-report-broken-link']" },
+    { "action": "expect", "selector": "[data-testid='text-report-broken-link-confirmation']", "state": "visible", "textContains": "Thanks" }
+  ]
+}

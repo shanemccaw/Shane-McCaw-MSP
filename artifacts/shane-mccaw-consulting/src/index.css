@@ -385,3 +385,14 @@ input:-webkit-autofill {
   88% { opacity: 1; }
   100% { left: calc(100% - 6px); opacity: 0; }
 }
+
+/* 404 page (NotFound.tsx, Git #1318) — destination-grid/common-row cards and quick-topic
+   pills hover states. Base colors are set inline; only the hover deltas live here. */
+.sm404-dest:hover {
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  background: #0e1a2c !important;
+}
+.sm404-pill:hover {
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  color: #f8fafc !important;
+}
