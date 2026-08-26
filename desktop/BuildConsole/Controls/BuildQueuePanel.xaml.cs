@@ -2881,14 +2881,16 @@ namespace BuildConsole.Controls
             floatTrans.BeginAnimation(TranslateTransform.YProperty, floatAnim);
 
             int variant = Math.Abs((item.GithubNumber ?? item.Id) % 5);
-            Canvas critter = variant switch
-            {
-                0 => CreateCuteFoxVector(mood),
-                1 => CreateCuteBearVector(mood),
-                2 => CreateCuteCatVector(mood),
-                3 => CreateCuteDuckVector(mood),
-                _ => CreateCuteBirdVector(mood)
-            };
+            FrameworkElement critter = isBlocked
+                ? IssueChompAnimation.BuildWhammyElement(scale: 0.5)
+                : (FrameworkElement)(variant switch
+                {
+                    0 => CreateCuteFoxVector(mood),
+                    1 => CreateCuteBearVector(mood),
+                    2 => CreateCuteCatVector(mood),
+                    3 => CreateCuteDuckVector(mood),
+                    _ => CreateCuteBirdVector(mood)
+                });
 
             Canvas.SetLeft(critter, 3);
             Canvas.SetTop(critter, 3);
