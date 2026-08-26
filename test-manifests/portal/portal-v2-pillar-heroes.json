@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 — Governance / Security / Compliance pillar HERO wiring to real war-room-pillars data (Git #1200). A FOCUSED subset of portal-v2-pillars.json: it exercises only the three heroes this wiring pass touched (score ring, live/fixture source marker, real finding-count tiles, cross-pillar global-admins tile, and the honest 'Not measured yet' gap tiles), so it runs in ~4 page loads rather than the full 227-step suite. The full suite (portal-v2-pillars.json) remains the deployed-server regression; this one is the fast, isolated proof of #1200. NOTE: GET /api/portal/assessment/war-room-pillars is a heavy engine recompute that takes ~90s per call on a LOCAL dev server, so the UI assertions below need a runner element-wait of >=90s to see the real value replace the fixture fallback — on a deployed (fast) server they resolve immediately, exactly as the Licensing/Adoption/Health hero steps already do in the full suite.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "8319f03f",
+  "lastVerifiedAgainstCommit": "b106c3493",
 
   "notes": [
     "THE API TESTS ARE THE REAL CONTRACT. SETUP+A1-A5 exercise GET /api/portal/assessment/war-room-pillars and extract the live per-pillar scores/counts the pages render, so they verify the data layer independent of the UI. pillars[] order is WAR_ROOM_PILLAR_KEYS: governance(0), licensing(1), adoption(2), compliance(3), health(4), security(5), copilot(6).",
@@ -137,6 +137,26 @@
     {
       "name": "C5 -- REAL (Git #1220): the 'documented policy decisions on record' count reads the real pillar-filtered register (GET /api/portal/policy-decisions), not the fixture 2 -- the hidden source marker reads 'live'.",
       "action": "expect", "selector": "[data-testid='pv2-cmp-decisions-source']", "state": "visible", "textContains": "live"
+    },
+    {
+      "name": "C6 -- REAL (Git #1338): a confirmed-real area card (Auto-labelling -> governance:auto-labeling-coverage) is wired -- its hidden per-card source marker reads 'live' (a scan has landed, proven by C2).",
+      "sessionTag": "1338-area-cards",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-area-source-compliance-autolabel']", "state": "visible", "textContains": "live"
+    },
+    {
+      "name": "C7 -- HONEST NO-DATA (Git #1338): Preservation Lock has no producing check anywhere, so its area card source marker reads 'nodata'.",
+      "sessionTag": "1338-area-cards",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-area-source-compliance-preservation-lock']", "state": "visible", "textContains": "nodata"
+    },
+    {
+      "name": "C8 -- INVESTIGATED NO-DATA (Git #1338): 'Stale Legal Holds' is NOT backed by exchange:litigation-hold-coverage (that check reads mailbox LitigationHoldEnabled only, no matter-status awareness), so its source marker reads 'nodata'.",
+      "sessionTag": "1338-area-cards",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-area-source-compliance-holds']", "state": "visible", "textContains": "nodata"
+    },
+    {
+      "name": "C9 -- CONTRAST (Git #1338): 'Litigation Hold' IS backed (exchange:litigation-hold-coverage), so its source marker reads 'live', not 'nodata' -- proving the investigated split is real in the DOM.",
+      "sessionTag": "1338-area-cards",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-area-source-compliance-litigation-hold']", "state": "visible", "textContains": "live"
     }
   ]
 }
