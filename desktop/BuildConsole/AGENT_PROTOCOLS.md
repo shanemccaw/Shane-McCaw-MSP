@@ -16,6 +16,69 @@ genuinely remote/CI caller uses plain HTTP.**
 
 ---
 
+## 0. Waiting for a `shaneapp://` result — foreground + bounded (read before copying any poll loop below)
+
+Every `shaneapp://` action here (executeSql, runTest, executeScan, runScan) is
+**fire‑and‑settle**: `Start-Process` triggers it and returns immediately, then the
+agent **waits for a result file** BuildConsole writes when the work settles. How you
+wait is the whole ballgame — get it wrong and the session hangs forever even though
+the work finished. Two rules, both learned from a real hang (**Git #1326**, evidence
+from #1286):
+
+**Rule 1 — always wait in the FOREGROUND with an explicit large tool timeout; never
+`run_in_background` + wait for a notification.** A real `runTest` with uiSteps takes
+5–7 minutes — past the **default 2‑minute** Bash/PowerShell tool timeout. The trap
+is to "fix" that by running the poll with `run_in_background: true` and then sitting
+idle waiting for a completion notification. That is exactly what hung in #1326: the
+run genuinely finished and wrote its result file, but the session kept repeating
+"waiting for the background task notification" — a signal it had **already
+received**. The harness's `--- done (…ms) ---` line **is** that completion; it means
+*"the result is ready, read it now,"* not *"keep waiting."* Instead, run the trigger
++ wait as a **single foreground call** and pass an explicit large tool `timeout`
+(e.g. `600000` ms = the 10‑minute max). The call blocks and returns the parsed
+envelope **directly in the tool result** — there is no separate notification to wait
+on, and nothing to strand on.
+
+**Rule 2 — the wait must be BOUNDED and always return an envelope.** Never copy a
+bare `while (-not (Test-Path $out)) { Start-Sleep … }` — that loop **never returns**
+if the file is never written (run refused by the busy latch, BuildConsole crashed,
+a stale‑result race, a cold start that never completes). Use a hard deadline that
+returns a synthetic `{ ok:false, timedOut:true }` envelope, so a stuck run fails
+cleanly instead of hanging. Keep the deadline safely **under** the tool `timeout` so
+the script exits and prints its envelope before the tool would kill it (leaving you
+with no output at all).
+
+Use this one helper for every wait below — it enforces both rules:
+
+```powershell
+# Canonical bounded wait. ALWAYS returns a JSON envelope; NEVER hangs.
+# Run the trigger + this call as a SINGLE FOREGROUND PowerShell tool call and pass an
+# explicit tool timeout >= (DeadlineSec + a margin), e.g. timeout: 600000.
+function Wait-ShaneAppResult {
+  param([string]$Path, [int]$DeadlineSec = 540, [int]$PollMs = 400)
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  while (-not (Test-Path $Path)) {
+    if ($sw.Elapsed.TotalSeconds -ge $DeadlineSec) {
+      return [pscustomobject]@{ ok = $false; timedOut = $true; error =
+        "no result file at $Path after ${DeadlineSec}s — the run never wrote one (refused/crashed/still running)" }
+    }
+    Start-Sleep -Milliseconds $PollMs
+  }
+  # File exists — read it, tolerating a brief partial‑write race.
+  for ($i = 0; $i -lt 10; $i++) {
+    try { return (Get-Content $Path -Raw -ErrorAction Stop | ConvertFrom-Json) }
+    catch { Start-Sleep -Milliseconds 150 }
+  }
+  return [pscustomobject]@{ ok = $false; error = "result file at $Path is present but not valid JSON yet" }
+}
+```
+
+Every recipe below clears any stale result, fires the trigger, then calls
+`Wait-ShaneAppResult` — do the same in your own calls rather than re‑inventing the
+poll loop.
+
+---
+
 ## 1. `shaneapp://executeSql` — local SQL trigger
 
 ### Why a protocol and not HTTP (for the trigger)
@@ -75,10 +138,10 @@ Set-Content -Path $ref -Value $sql -Encoding utf8
 
 Start-Process ("shaneapp://executeSql?src=claude-code&ref=" + [uri]::EscapeDataString($ref))
 
-# Poll for the result file, then read it:
+# Bounded, foreground wait for the result file, then read it — see §0 for Wait-ShaneAppResult.
+# SQL is fast, so a short deadline is fine here.
 $out = "$ref.result.json"
-while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 200 }
-Get-Content $out -Raw | ConvertFrom-Json
+Wait-ShaneAppResult -Path $out -DeadlineSec 120
 ```
 
 ### The result envelope
@@ -192,9 +255,13 @@ Remove-Item $out -ErrorAction SilentlyContinue   # clear any stale result first
 
 Start-Process ("shaneapp://runTest?src=claude-code&file=" + [uri]::EscapeDataString($file))
 
-# Poll for the fresh result file, then read it:
-while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 300 }
-$r = Get-Content $out -Raw | ConvertFrom-Json
+# Bounded, FOREGROUND wait for the fresh result file — see §0 for Wait-ShaneAppResult.
+# A uiSteps manifest can take 5-7 min, so run THIS whole call in the foreground and pass an
+# explicit tool timeout of 600000 ms; DeadlineSec 540 keeps the wait under that ceiling and
+# always returns an envelope. Do NOT run it in the background and then wait for a completion
+# notification — that is the #1326 hang: the run finishes and writes the file, but the session
+# sits waiting on a signal it already got.
+$r = Wait-ShaneAppResult -Path $out -DeadlineSec 540
 "{0}: {1}/{2} steps passed" -f (@{$true='PASS';$false='FAIL'}[$r.ok]), $r.passedCount, $r.stepCount
 ```
 
@@ -557,8 +624,8 @@ you diff it.
 $out = Join-Path $env:TEMP "shaneapp-runScan-42.result.json"
 Remove-Item $out -ErrorAction SilentlyContinue
 Start-Process ("shaneapp://runScan?src=claude-code&customerId=42&resultRef=" + [uri]::EscapeDataString($out))
-while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 300 }
-$scan = Get-Content $out -Raw | ConvertFrom-Json
+# Bounded, FOREGROUND wait — see §0. Scans are minutes-scale; run with tool timeout 600000.
+$scan = Wait-ShaneAppResult -Path $out -DeadlineSec 540
 
 # 2) Pull the ENGINE'S OBSERVED value for the check under test.
 $engineDlCount = ($scan.findings |
@@ -689,9 +756,9 @@ Remove-Item $out -ErrorAction SilentlyContinue        # clear any stale result f
 
 Start-Process ("shaneapp://runScan?src=claude-code&tenantId=" + [uri]::EscapeDataString($tenantId) + "&resultRef=" + [uri]::EscapeDataString($out))
 
-# Scans are minutes-scale (real Graph reads); poll for the SETTLED result file, then read it:
-while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 500 }
-$scan = Get-Content $out -Raw | ConvertFrom-Json
+# Scans are minutes-scale (real Graph reads); bounded FOREGROUND wait for the SETTLED result — see §0.
+# Run this whole call in the foreground with tool timeout 600000 (never backgrounded — #1326).
+$scan = Wait-ShaneAppResult -Path $out -DeadlineSec 540
 "{0}: run {1} status={2} ({3} findings, checks {4}/{5} ok)" -f `
   (@{$true='OK';$false='FAIL'}[$scan.ok]), $scan.runId, $scan.scanStatus, `
   $scan.findingsCount, $scan.checksOk, $scan.checksTotal
@@ -844,9 +911,8 @@ Start-Process ("shaneapp://executeScan?src=claude-code" +
   "&tenantId=" + [uri]::EscapeDataString($tenant) +
   "&resultRef=" + [uri]::EscapeDataString($out))
 
-# Poll for the settled result file, then read it:
-while (-not (Test-Path $out)) { Start-Sleep -Milliseconds 400 }
-$r = Get-Content $out -Raw | ConvertFrom-Json
+# Bounded FOREGROUND wait for the settled result file — see §0 (run with tool timeout 600000).
+$r = Wait-ShaneAppResult -Path $out -DeadlineSec 540
 "{0}: {1} / check {2}" -f (@{$true='OK';$false='FAIL'}[$r.ok]), $r.runStatus, $r.checkStatus
 $r.extractedProperties        # ← the engine's OWN observed values, to diff vs PowerShell
 ```
