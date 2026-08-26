@@ -6,6 +6,7 @@
     "auth/verification-code-flow.json",
     "auth/password-reset-guard.json",
     "auth/signup-exchange.json",
+    "auth/login-page-restyle.json",
     "chat/escalation.json",
     "chat/escalation-push.json",
     "portal/customer-requests.json",

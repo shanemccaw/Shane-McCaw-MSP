@@ -1,0 +1,65 @@
+{
+  "issue": 1348,
+  "feature": "Login page restyled to the new violet split-layout design (form left, generic pre-auth 'Behind this login' rail right) -- pure visual restyle, same real auth calls as before.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "This manifest only asserts the new visual surface renders and that the real form fields/ids the auth flow depends on (#email, #password, [data-testid='login-submit']) are unchanged -- see auth/password-reset-guard.json for the forgot-password API coverage and copilot-readiness/money-path-login-direct.json for the full real-credential login+MFA path, both of which this restyle must not regress.",
+    "The design's resetCode/resetNew inline six-digit-code password-reset steps are NOT implemented -- investigation during #1348 found the real backend (`POST /api/auth/forgot-password` -> `POST /api/auth/reset-password`) is an email-LINK flow (1-hour token TTL, artifacts/api-server/src/routes/auth.ts RESET_TOKEN_TTL_MS), not a code you type back into this page. Only the email-request step and its 'check your email' confirmation are covered here."
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/portal/login" },
+
+    {
+      "name": "Sign-in step renders the new design's heading/eyebrow copy verbatim",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in to your portal",
+      "critical": true
+    },
+    {
+      "name": "Real email field (#email) still present for the real /api/auth/login call",
+      "action": "expect",
+      "selector": "#email",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "Real password field (#password) still present",
+      "action": "expect",
+      "selector": "#password",
+      "state": "visible",
+      "critical": true
+    },
+    {
+      "name": "Real submit button testid unchanged",
+      "action": "expect",
+      "selector": "[data-testid='login-submit']",
+      "state": "visible",
+      "textContains": "Sign In",
+      "critical": true
+    },
+
+    {
+      "name": "Forgot password link opens the restyled reset-email step",
+      "action": "click",
+      "selector": "[data-testid='login-forgot-password']"
+    },
+    {
+      "name": "Reset-email step shows the design's copy verbatim",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Reset your password"
+    },
+    {
+      "name": "Reset-email step still has the real email field feeding /api/auth/forgot-password",
+      "action": "expect",
+      "selector": "#forgot-email",
+      "state": "visible"
+    }
+  ]
+}
