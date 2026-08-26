@@ -67,7 +67,7 @@ namespace BuildConsole.Controls
                         int id = GetInt(row, "id");
                         int? gh = GetNullableInt(row, "github_number");
                         string title = GetStr(row, "title");
-                        string name = gh.HasValue ? $"#{gh} — {title}" : title;
+                        string name = gh.HasValue ? $"{gh} — {title}" : title;
                         epics.Add(new EpicComboItem { Id = id, DisplayName = name });
                     }
                 }
@@ -96,6 +96,7 @@ namespace BuildConsole.Controls
                             Category = GetNullableStr(row, "category"),
                             AssociatedIssuesString = GetNullableStr(row, "associated_issues") ?? ""
                         };
+                        item.LastSavedEpicId = item.EpicId;
                         _allChats.Add(item);
                     }
                 }
@@ -156,15 +157,34 @@ namespace BuildConsole.Controls
             }
         }
 
-        private async void EpicComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void EpicComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (_api == null) return;
             if (sender is ComboBox cb && cb.DataContext is ChatMappingItem item)
             {
+                item.EpicId = cb.SelectedValue as int?;
+            }
+        }
+
+        private async void EpicComboBox_DropDownClosed(object sender, EventArgs e)
+        {
+            await SaveEpicChangeAsync(sender as ComboBox);
+        }
+
+        private async void EpicComboBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            await SaveEpicChangeAsync(sender as ComboBox);
+        }
+
+        private async Task SaveEpicChangeAsync(ComboBox? cb)
+        {
+            if (_api == null || cb == null) return;
+            if (cb.DataContext is ChatMappingItem item)
+            {
                 int? newEpicId = (int?)cb.SelectedValue;
-                if (item.EpicId == newEpicId) return;
+                if (item.EpicId == newEpicId && item.LastSavedEpicId == newEpicId) return;
 
                 item.EpicId = newEpicId;
+                item.LastSavedEpicId = newEpicId;
                 TxtStatus.Text = "Saving epic association...";
 
                 try
@@ -172,7 +192,6 @@ namespace BuildConsole.Controls
                     string sqlVal = newEpicId.HasValue ? newEpicId.Value.ToString() : "NULL";
                     await _api.ExecuteSqlAsync($"UPDATE bt_chats SET epic_id = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
                     TxtStatus.Text = "Epic saved.";
-                    // Sync the sidebar chats tree immediately
                     if (Application.Current.MainWindow is MainWindow mw)
                     {
                         mw.LeftSidebar.PopulateChatsTree();
@@ -319,6 +338,7 @@ namespace BuildConsole.Controls
         public int Id { get; set; }
         public string ConversationId { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        public int? LastSavedEpicId { get; set; }
 
         private int? _epicId;
         public int? EpicId

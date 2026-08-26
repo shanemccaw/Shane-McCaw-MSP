@@ -93,6 +93,12 @@
                                       DisplayMemberPath="DisplayName"
                                       SelectedValue="{Binding EpicId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       SelectionChanged="EpicComboBox_SelectionChanged"
+                                      DropDownClosed="EpicComboBox_DropDownClosed"
+                                      LostFocus="EpicComboBox_LostFocus"
+                                      IsEditable="True"
+                                      IsReadOnly="False"
+                                      TextSearch.TextPath="DisplayName"
+                                      StaysOpenOnEdit="True"
                                       VerticalAlignment="Center"/>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
