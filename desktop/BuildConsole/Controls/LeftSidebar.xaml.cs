@@ -2188,6 +2188,50 @@ namespace BuildConsole.Controls
             // cached the last time the tree actually re-rendered.
             _lastBoardChats = board.Chats;
             _chatEpicById = board.Epics.ToDictionary(e => e.Id);
+
+            // Git #1362 — resilience against a stale local bt_epics table. A chat
+            // is grouped under its epic ENTIRELY through _chatEpicById (see
+            // GetEpicForChat / GetEpicByGithubNumber): every resolution path ends
+            // at "is this github_number a known epic?". board.Epics comes straight
+            // from bt_epics, which is only ever repopulated by a full GitHub sync —
+            // so a real, open epic that hasn't been synced into bt_epics yet is
+            // invisible here, and every chat linked to it (via bt_chat_issues)
+            // strands permanently under "Unlinked" with no UI escape: re-assigning
+            // it just rewrites the same unresolvable bt_chat_issues row, and the
+            // assign path (LinkChatToIssueAsync) likewise can't set epic_id for an
+            // epic bt_epics doesn't contain. Prior fixes (0709f43c) made
+            // GetEpicForChat's *resolution* smarter but couldn't help, because the
+            // missing record is the EPIC, not the chat. Fix: backfill _chatEpicById
+            // from the live Git Board's own epics (_lastBoardIssues — already
+            // fetched for the board, OPEN-only per #839) for any epic github_number
+            // bt_epics doesn't already carry. The synthetic Id is negative so it
+            // can never collide with a real bt_epics sequence id, and it's only ever
+            // read for grouping/labelling/navigation — never fed back into a DB
+            // epic-id write (every assign path links by github NUMBER, not this Id).
+            // Fail-open: if the board hasn't loaded (_lastBoardIssues empty) this
+            // adds nothing and behaviour is exactly as before.
+            if (_lastBoardIssues.Count > 0)
+            {
+                var knownEpicGithubNumbers = new HashSet<int>(
+                    _chatEpicById.Values.Where(e => e.GithubNumber.HasValue).Select(e => e.GithubNumber!.Value));
+                int synthesizedEpics = 0;
+                foreach (var bi in _lastBoardIssues.Where(i => i.IsEpic && !i.IsClosed))
+                {
+                    if (!knownEpicGithubNumbers.Add(bi.Number)) continue; // already have this epic (real or synthesized)
+                    _chatEpicById[-bi.Number] = new BoardEpic
+                    {
+                        Id = -bi.Number,
+                        Title = bi.Title,
+                        Status = "open",
+                        GithubNumber = bi.Number,
+                    };
+                    synthesizedEpics++;
+                }
+                if (synthesizedEpics > 0)
+                    ActivityLog.Log("git-board.chats",
+                        $"backfilled {synthesizedEpics} live-board epic(s) missing from local bt_epics so their chats group correctly instead of stranding under Unlinked (Git #1362)");
+            }
+
             // Focus Mode needs chats + epic→issue-number to resolve a chat's milestone.
             BuildConsole.Services.FocusModeService.Instance.UpdateChatSnapshot(board.Chats, _chatEpicById);
             _chatsIsStale = isStale;
