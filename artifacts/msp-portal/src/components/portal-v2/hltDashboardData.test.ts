@@ -233,18 +233,16 @@ describe("Health configuration drift — verdict sort and owners", () => {
     );
   });
 
-  it("resolves each drift owner to a real person, and unknowns to Unassigned", () => {
-    assert.deepEqual(hltDriftOwner("pr"), {
-      init: "PR",
-      name: "Priya Raman",
-      tone: "#f472b6",
-    });
-    const unknown = hltDriftOwner("zz");
-    assert.equal(unknown.init, "—");
-    assert.equal(unknown.name, "Unassigned");
-    // Every drift row names an owner the roster knows.
+  it("resolves every drift owner to an honest Unassigned — no tenant has a RACI roster (Git #1342)", () => {
+    // The fictional Halden roster (Priya Raman, Shane McCaw, Marcus Lee, Aisha
+    // Bello) was purged from HLT_DRIFT_PEOPLE; there is no ownership/RACI table
+    // for any tenant, so every drift row — and any unknown id — resolves to the
+    // honest unassigned chip rather than an invented name.
+    const unassigned = { init: "—", name: "Unassigned", tone: "rgba(248,113,113,.14)" };
+    assert.deepEqual(hltDriftOwner("pr"), unassigned);
+    assert.deepEqual(hltDriftOwner("zz"), unassigned);
     hltDriftRows().forEach((r) =>
-      assert.notEqual(hltDriftOwner(r.owner).name, "Unassigned", `${r.setting} has no owner`),
+      assert.equal(hltDriftOwner(r.owner).name, "Unassigned", `${r.setting} should be Unassigned`),
     );
   });
 

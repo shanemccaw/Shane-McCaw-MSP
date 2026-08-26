@@ -251,19 +251,24 @@ export const HLT_VERDICT: Readonly<
 };
 
 /**
- * The drift owners (`d.owner`). The prototype resolves each row's owner through
- * `raciChip` from the shared RACI roster (7599-7609); only the four people the
- * drift rows actually reference are reproduced here, with the same tones, so the
- * owner avatar and the "Answers for it" line render without pulling the whole
- * roster into this page. The full pinned RACI hover-card is the shell's own
- * `raciHover` state (a later part); a `title` tooltip stands in for the name.
+ * The drift owners (`d.owner`).
+ *
+ * ── Emptied of the fictional Halden roster (Git #1342) ──────────────────────
+ * The prototype resolved each row's owner through `raciChip` from the shared RACI
+ * roster (7599-7609), and this map reproduced the four people the drift rows
+ * reference: Priya Raman, Shane McCaw, Marcus Lee, Aisha Bello. The Health page is
+ * WIRED (real pillar hero, object inventory), and this config-drift table renders
+ * on it, so those fictional employees rendered as the "Answers for it" owner on a
+ * real customer's screen — the same leak class as #1213-1216.
+ *
+ * There is no ownership/RACI table in the schema for any tenant (see
+ * `ownershipWire.ts`'s header), so there is genuinely no owner to resolve to. The
+ * map is now empty: `hltDriftOwner` already degrades an unknown id to the honest
+ * "Unassigned" chip, so every drift row shows an honest unassigned owner rather
+ * than an invented name. When a real drift-ownership source exists this map (or
+ * its replacement) is where the real names hydrate.
  */
-export const HLT_DRIFT_PEOPLE: Readonly<Record<string, { name: string; tone: string }>> = {
-  pr: { name: "Priya Raman", tone: "#f472b6" },
-  sm: { name: "Shane McCaw", tone: "#38bdf8" },
-  ml: { name: "Marcus Lee", tone: "#60a5fa" },
-  ab: { name: "Aisha Bello", tone: "#34d399" },
-};
+export const HLT_DRIFT_PEOPLE: Readonly<Record<string, { name: string; tone: string }>> = {};
 
 /** Two-letter initials from a name, matching the prototype's `initialsOf` (7643). */
 export function hltOwnerInitials(name: string): string {
@@ -312,7 +317,7 @@ export const HLT_DRIFT: readonly HltDrift[] = [
   { setting: "TransportConfig · SmtpClientAuthenticationDisabled", baseline: "True", current: "False", who: "Unknown — pre-baseline", when: "Before scan 1", scope: "Exchange Online", tone: "red", fixKey: "legacy-smtp-off", verdict: "unattributed", owner: "pr" },
   { setting: "CA201 policy state", baseline: "On", current: "On, 6 exclusions added", who: "a.reyes@tenant.com", when: "6 weeks ago", scope: "Conditional Access", tone: "red", fixKey: "ca-CA201-AllUsers-AllApps-RequireMFA", verdict: "unapproved", owner: "sm" },
   { setting: "CA301 policy state", baseline: "On", current: "Report-only", who: "a.reyes@tenant.com", when: "94 days ago", scope: "Conditional Access", tone: "red", fixKey: "ca-CA301-Guests-AllApps-RequireMFA", verdict: "approved", owner: "sm", cr: "CR-0098", crNote: "Put into report-only for the guest MFA pilot. The CR closed 63 days ago and it was never taken back out." },
-  { setting: "Intune compliance grace period", baseline: "1 day", current: "14 days", who: "k.osei@tenant.com", when: "5 weeks ago", scope: "Intune", tone: "amber", fixKey: "hlt-compliance-grace", verdict: "approved", owner: "ml", cr: "CR-0110", crNote: "Raised to stop the Bay 3 device lockouts during the scanner replacement. Approved by Dan Whitlock, due to revert when the scanners land." },
+  { setting: "Intune compliance grace period", baseline: "1 day", current: "14 days", who: "k.osei@tenant.com", when: "5 weeks ago", scope: "Intune", tone: "amber", fixKey: "hlt-compliance-grace", verdict: "approved", owner: "ml", cr: "CR-0110", crNote: "Raised to stop the Bay 3 device lockouts during the scanner replacement. Approved, due to revert when the scanners land." },
   { setting: "Teams meeting policy assignment", baseline: "Global for all", current: "3 custom policies, 2 unused", who: "r.delgado@tenant.com", when: "2 months ago", scope: "Teams", tone: "amber", fixKey: "hlt-teams-policy-sprawl", verdict: "unapproved", owner: "pr" },
   { setting: "Retention policy scope", baseline: "All mailboxes", current: "Static scope, 12 uncovered", who: "Scope not updated", when: "8 months ago", scope: "Purview", tone: "red", fixKey: "cmp-retention-coverage", verdict: "drifted", owner: "ab" },
   { setting: "Site sharing on 3 sites", baseline: "Inherit tenant", current: "Site-level override", who: "Site admins", when: "Various", scope: "SharePoint sites", tone: "red", fixKey: "gov-drift-reset-sites", verdict: "unapproved", owner: "ml" },
