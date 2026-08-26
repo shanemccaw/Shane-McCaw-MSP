@@ -177,3 +177,4 @@ See [CLAUDE.md](../../CLAUDE.md) for the exact instructions, including which ses
 
 
 | 2026-08-26 | ⏳ IN FLIGHT — Chats stuck under "Unlinked" (Git #1362): root-cause + read-path resilience so chats linked to real open epics missing from the local bt_epics table still group correctly instead of stranding in Unlinked | Investigating/building. |
+| 2026-08-26 | ⏳ IN FLIGHT — Blocked indicator disappears then only reappears after manual Git sync (Git #1367): persist blocked-status across board rebuilds so the badge stays stable between refreshes | Investigating/building. |
