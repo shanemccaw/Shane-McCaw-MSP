@@ -93,6 +93,7 @@ import {
   type PaidPurchaseSession,
 } from "../lib/purchase-account-flow.ts";
 import { getActiveMfaMethods, getRpId, getRpOrigin, encryptTotp } from "./mfa.ts";
+import { ensureMonitoringScanKickoff } from "../lib/monitoring-onboarding-scan.ts";
 
 const log = logger.child({ channel: "auth" });
 
@@ -344,6 +345,19 @@ router.post("/public/purchase/set-password", setPasswordLimiter, async (req: Req
     entityType: "user",
     entityId: String(result.userId),
     metadata: { checkoutSessionId: session.id, accountProvisionedInline: result.provisioned },
+  });
+
+  // Git #1314 (Epic #1309 Phase 5) — kick off the monitoring customer's first
+  // real scan now that the account is completed, so live data is populating
+  // while they finish MFA/sign-in and is ready by the time they land in the
+  // portal. Idempotent and monitoring-only (see ensureMonitoringScanKickoff): a
+  // no-op for non-monitoring products and — the common case — when the
+  // required-consent step already fired the scan at consent time. Fire-and-forget
+  // so it never delays completing the account. accountUserId is set on `ok` in
+  // the DB by attachPasswordToAccount, but not on the local session object read
+  // before it, so pass result.userId explicitly.
+  void ensureMonitoringScanKickoff({ ...session, accountUserId: result.userId }).catch((err) => {
+    log.error({ err, sessionId: session.id }, "purchase set-password: monitoring scan kickoff threw (non-fatal)");
   });
 
   // Same single-use, short-lived auto-login handoff the assessment flow mints

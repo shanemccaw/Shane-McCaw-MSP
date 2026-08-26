@@ -335,6 +335,10 @@ export default defineConfig({
       // priced against the REAL local catalog rows with only the Stripe SDK
       // and outbound side effects mocked.
       "src/routes/public-purchase-payment.test.ts",
+      // #1314 — the monitoring onboarding scan-kickoff decision (monitoring-only
+      // product gate, completed-account tenant resolution, idempotency guard),
+      // run against the real local Postgres with the scan trigger injected.
+      "src/lib/monitoring-onboarding-scan.test.ts",
     ],
     coverage: {
       provider: "v8",
