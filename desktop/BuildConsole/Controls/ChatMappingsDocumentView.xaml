@@ -1,0 +1,125 @@
+<UserControl x:Class="BuildConsole.Controls.ChatMappingsDocumentView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="{StaticResource BaseBrush}">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- Action toolbar -->
+            <RowDefinition Height="*"/>    <!-- Datagrid -->
+        </Grid.RowDefinitions>
+
+        <!-- Action toolbar -->
+        <Border Grid.Row="0" Background="{StaticResource MantleBrush}" BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1" Padding="12,8">
+            <DockPanel>
+                <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center">
+                    <TextBlock Text="💬 Chat Database Mappings" FontSize="14" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                    <Button x:Name="BtnReload" Content="↻ Refresh" Style="{StaticResource IconButton}" Padding="8,4" Margin="0,0,12,0" Click="BtnReload_Click"/>
+                    <TextBlock Text="Filter:" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBox x:Name="TxtFilter" Width="200" Padding="6,4" TextChanged="TxtFilter_TextChanged"/>
+                </StackPanel>
+                <TextBlock x:Name="TxtStatus" Text="Loading chats..." Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
+            </DockPanel>
+        </Border>
+
+        <!-- Datagrid -->
+        <DataGrid Grid.Row="1" x:Name="MappingsGrid"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  CanUserDeleteRows="False"
+                  Background="Transparent"
+                  BorderThickness="0"
+                  GridLinesVisibility="Horizontal"
+                  HorizontalGridLinesBrush="{StaticResource Surface0Brush}"
+                  RowBackground="Transparent"
+                  AlternatingRowBackground="{StaticResource MantleBrush}"
+                  Foreground="{StaticResource TextBrush}"
+                  RowHeaderWidth="0"
+                  SelectionMode="Single"
+                  HeadersVisibility="Column"
+                  Padding="8">
+            <DataGrid.Resources>
+                <!-- Modern header style -->
+                <Style TargetType="{x:Type DataGridColumnHeader}">
+                    <Setter Property="Background" Value="{StaticResource MantleBrush}"/>
+                    <Setter Property="Foreground" Value="{StaticResource MauveBrush}"/>
+                    <Setter Property="FontWeight" Value="SemiBold"/>
+                    <Setter Property="Padding" Value="10,8"/>
+                    <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource Surface0Brush}"/>
+                </Style>
+                <Style TargetType="{x:Type DataGridCell}">
+                    <Setter Property="BorderThickness" Value="0"/>
+                    <Setter Property="Padding" Value="10,6"/>
+                    <Setter Property="Background" Value="Transparent"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type DataGridCell}">
+                                <Border Padding="{TemplateBinding Padding}" Background="{TemplateBinding Background}">
+                                    <ContentPresenter />
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </DataGrid.Resources>
+            <DataGrid.Columns>
+                <!-- Chat Title -->
+                <DataGridTemplateColumn Header="Chat Title" Width="2*" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="💬" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{StaticResource BlueBrush}"/>
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Claude URL / Conversation ID -->
+                <DataGridTemplateColumn Header="Claude Chat Link" Width="1.5*" IsReadOnly="True">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="{Binding DisplayUrl}" Style="{StaticResource IconButton}" Foreground="{StaticResource SapphireBrush}" Click="BtnOpenClaude_Click" HorizontalAlignment="Left" ToolTip="Open this chat in a new tab"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Linked Epic (combobox) -->
+                <DataGridTemplateColumn Header="Linked Epic" Width="1.5*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ComboBox ItemsSource="{Binding RelativeSource={RelativeSource AncestorType={x:Type UserControl}}, Path=EpicsList}"
+                                      SelectedValuePath="Id"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValue="{Binding EpicId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      SelectionChanged="EpicComboBox_SelectionChanged"
+                                      VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Associated Issues (textbox) -->
+                <DataGridTemplateColumn Header="Linked Issues/Milestones (comma list)" Width="1.5*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding AssociatedIssuesString, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                     LostFocus="IssuesTextBox_LostFocus"
+                                     VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Category (textbox) -->
+                <DataGridTemplateColumn Header="Category" Width="1*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBox Text="{Binding Category, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                     LostFocus="CategoryTextBox_LostFocus"
+                                     VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</UserControl>

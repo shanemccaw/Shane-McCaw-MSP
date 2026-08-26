@@ -412,6 +412,15 @@ namespace BuildConsole
                 }
             }
 
+            if (Has("Chat Mapping Document", q) || Has("chat-mappings", q) || Has("database mappings", q))
+            {
+                if (CanAdd(CatChats))
+                {
+                    Add(CatChats, "🗺️", "Chat Mapping Document", "Open database chat mappings editor tab", "Chat Mapping Document",
+                        () => OpenChatMappingsTab());
+                }
+            }
+
             var ordered = items
                 .OrderBy(i => CategoryOrder(i.Category))
                 .ThenBy(i => i.MatchRank)

@@ -3696,6 +3696,51 @@ namespace BuildConsole
             return sqlViewer;
         }
 
+        public void OpenChatMappingsTab()
+        {
+            foreach (TabItem item in EditorTabs.Items)
+            {
+                if (item.Tag is string tagPath && tagPath == "chat_mappings")
+                {
+                    EditorTabs.SelectedItem = item;
+                    return;
+                }
+            }
+
+            var headerPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            var iconBlock = new TextBlock { Text = "🗺️", FontSize = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center };
+            var titleBlock = new TextBlock { Text = "Chat Mappings", FontSize = 13, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush") };
+            var closeBtn = new Button { Content = "✕", Style = (Style)FindResource("IconButton"), FontSize = 10, Padding = new Thickness(3, 1, 3, 1), Margin = new Thickness(4, 0, 0, 0), ToolTip = "Close Tab", VerticalAlignment = VerticalAlignment.Center };
+            
+            headerPanel.Children.Add(iconBlock);
+            headerPanel.Children.Add(titleBlock);
+            headerPanel.Children.Add(closeBtn);
+
+            var mappingsViewer = new Controls.ChatMappingsDocumentView();
+            mappingsViewer.Initialize(_buildTrackerApi);
+
+            var newTab = new TabItem
+            {
+                Header = headerPanel,
+                Content = mappingsViewer,
+                Tag = "chat_mappings"
+            };
+
+            AttachTabContextMenu(newTab, EditorTabs);
+            AttachTabDragHandlers(newTab);
+
+            closeBtn.Click += (s, e) => CloseTab(newTab);
+
+            EditorTabs.Items.Add(newTab);
+            EditorTabs.SelectedItem = newTab;
+            
+            ActiveDocTitleText.Text = " - Chat Mappings";
+        }
+
         public void OpenFileTab(string filePath)
         {
             if (!File.Exists(filePath)) return;

@@ -1,0 +1,322 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Data;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using BuildConsole.Services;
+
+namespace BuildConsole.Controls
+{
+    public partial class ChatMappingsDocumentView : UserControl, INotifyPropertyChanged
+    {
+        private BuildTrackerApiClient? _api;
+        private List<ChatMappingItem> _allChats = new();
+        private ObservableCollection<ChatMappingItem> _filteredChats = new();
+
+        public ObservableCollection<ChatMappingItem> FilteredChats => _filteredChats;
+
+        private ObservableCollection<EpicComboItem> _epicsList = new();
+        public ObservableCollection<EpicComboItem> EpicsList => _epicsList;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        public ChatMappingsDocumentView()
+        {
+            InitializeComponent();
+            DataContext = this;
+            MappingsGrid.ItemsSource = _filteredChats;
+        }
+
+        public void Initialize(BuildTrackerApiClient api)
+        {
+            _api = api;
+            _ = LoadDataAsync();
+        }
+
+        private async void BtnReload_Click(object sender, RoutedEventArgs e)
+        {
+            await LoadDataAsync();
+        }
+
+        private async Task LoadDataAsync()
+        {
+            if (_api == null) return;
+
+            TxtStatus.Text = "Loading...";
+            BtnReload.IsEnabled = false;
+
+            try
+            {
+                // 1. Fetch epics
+                var epicsRes = await _api.ExecuteSqlAsync("SELECT id, github_number, title FROM bt_epics ORDER BY title;");
+                var epics = new List<EpicComboItem> { new EpicComboItem { Id = null, DisplayName = "(Unlinked / None)" } };
+                if (epicsRes != null && epicsRes.Count > 0 && epicsRes[0].Rows != null)
+                {
+                    foreach (var row in epicsRes[0].Rows)
+                    {
+                        int id = GetInt(row, "id");
+                        int? gh = GetNullableInt(row, "github_number");
+                        string title = GetStr(row, "title");
+                        string name = gh.HasValue ? $"#{gh} — {title}" : title;
+                        epics.Add(new EpicComboItem { Id = id, DisplayName = name });
+                    }
+                }
+
+                _epicsList.Clear();
+                foreach (var ep in epics) _epicsList.Add(ep);
+
+                // 2. Fetch chats
+                var chatsRes = await _api.ExecuteSqlAsync(@"
+                    SELECT c.id, c.conversation_id, c.title, c.epic_id, c.category,
+                           (SELECT string_agg(cast(issue_number as text), ', ') FROM bt_chat_issues ci WHERE ci.chat_id = c.id) as associated_issues
+                    FROM bt_chats c
+                    ORDER BY c.updated_at DESC;");
+
+                _allChats.Clear();
+                if (chatsRes != null && chatsRes.Count > 0 && chatsRes[0].Rows != null)
+                {
+                    foreach (var row in chatsRes[0].Rows)
+                    {
+                        var item = new ChatMappingItem
+                        {
+                            Id = GetInt(row, "id"),
+                            ConversationId = GetStr(row, "conversation_id"),
+                            Title = GetStr(row, "title"),
+                            EpicId = GetNullableInt(row, "epic_id"),
+                            Category = GetNullableStr(row, "category"),
+                            AssociatedIssuesString = GetNullableStr(row, "associated_issues") ?? ""
+                        };
+                        _allChats.Add(item);
+                    }
+                }
+
+                ApplyFilter();
+                TxtStatus.Text = $"Loaded {_allChats.Count} chats successfully.";
+            }
+            catch (Exception ex)
+            {
+                TxtStatus.Text = $"Error: {ex.Message}";
+                ToastEngine.Error("Chat Mappings", $"Failed to load mappings: {ex.Message}");
+            }
+            finally
+            {
+                BtnReload.IsEnabled = true;
+            }
+        }
+
+        private void ApplyFilter()
+        {
+            string filter = (TxtFilter.Text ?? "").Trim();
+            _filteredChats.Clear();
+            foreach (var c in _allChats)
+            {
+                if (string.IsNullOrEmpty(filter) ||
+                    c.Title.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    c.ConversationId.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    c.AssociatedIssuesString.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    (c.Category != null && c.Category.Contains(filter, StringComparison.OrdinalIgnoreCase)))
+                {
+                    _filteredChats.Add(c);
+                }
+            }
+        }
+
+        private void TxtFilter_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            ApplyFilter();
+        }
+
+        private void BtnOpenClaude_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.DataContext is ChatMappingItem item)
+            {
+                // Request MainWindow to open this chat
+                if (Application.Current.MainWindow is MainWindow mw)
+                {
+                    // Find or create chat
+                    var boardChat = new BoardChat
+                    {
+                        ConversationId = item.ConversationId,
+                        Title = item.Title,
+                        EpicId = item.EpicId,
+                        ClaudeUrl = item.ClaudeUrl
+                    };
+                    mw.OpenChatTab(boardChat, null);
+                }
+            }
+        }
+
+        private async void EpicComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_api == null) return;
+            if (sender is ComboBox cb && cb.DataContext is ChatMappingItem item)
+            {
+                int? newEpicId = (int?)cb.SelectedValue;
+                if (item.EpicId == newEpicId) return;
+
+                item.EpicId = newEpicId;
+                TxtStatus.Text = "Saving epic association...";
+
+                try
+                {
+                    string sqlVal = newEpicId.HasValue ? newEpicId.Value.ToString() : "NULL";
+                    await _api.ExecuteSqlAsync($"UPDATE bt_chats SET epic_id = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
+                    TxtStatus.Text = "Epic saved.";
+                    // Sync the sidebar chats tree immediately
+                    if (Application.Current.MainWindow is MainWindow mw)
+                    {
+                        mw.LeftSidebar.PopulateChatsTree();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TxtStatus.Text = $"Save failed: {ex.Message}";
+                    ToastEngine.Error("Save Epic", $"Failed to update: {ex.Message}");
+                }
+            }
+        }
+
+        private async void IssuesTextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_api == null) return;
+            if (sender is TextBox tb && tb.DataContext is ChatMappingItem item)
+            {
+                string text = (tb.Text ?? "").Trim();
+                if (item.AssociatedIssuesString == text) return;
+
+                item.AssociatedIssuesString = text;
+                TxtStatus.Text = "Saving associated issues...";
+
+                try
+                {
+                    var sqlBatch = new StringBuilder();
+                    sqlBatch.Append($"DELETE FROM bt_chat_issues WHERE chat_id = {item.Id};");
+
+                    var numbers = text.Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var numStr in numbers)
+                    {
+                        if (int.TryParse(numStr, out var num))
+                        {
+                            sqlBatch.Append($"INSERT INTO bt_chat_issues (chat_id, issue_number, associated_at) VALUES ({item.Id}, {num}, now()) ON CONFLICT DO NOTHING;");
+                        }
+                    }
+
+                    await _api.ExecuteSqlAsync(sqlBatch.ToString());
+                    TxtStatus.Text = "Issues saved.";
+                    if (Application.Current.MainWindow is MainWindow mw)
+                    {
+                        mw.LeftSidebar.PopulateChatsTree();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TxtStatus.Text = $"Save failed: {ex.Message}";
+                    ToastEngine.Error("Save Issues", $"Failed to update: {ex.Message}");
+                }
+            }
+        }
+
+        private async void CategoryTextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_api == null) return;
+            if (sender is TextBox tb && tb.DataContext is ChatMappingItem item)
+            {
+                string? text = (tb.Text ?? "").Trim();
+                if (string.IsNullOrEmpty(text)) text = null;
+                if (item.Category == text) return;
+
+                item.Category = text;
+                TxtStatus.Text = "Saving category...";
+
+                try
+                {
+                    string sqlVal = text == null ? "NULL" : $"'{text.Replace("'", "''")}'";
+                    await _api.ExecuteSqlAsync($"UPDATE bt_chats SET category = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
+                    TxtStatus.Text = "Category saved.";
+                    if (Application.Current.MainWindow is MainWindow mw)
+                    {
+                        mw.LeftSidebar.PopulateChatsTree();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TxtStatus.Text = $"Save failed: {ex.Message}";
+                    ToastEngine.Error("Save Category", $"Failed to update: {ex.Message}");
+                }
+            }
+        }
+
+        // Helpers for json row parsing
+        private static int GetInt(Dictionary<string, JsonElement> row, string field)
+        {
+            return row.TryGetValue(field, out var val) && val.ValueKind == JsonValueKind.Number ? val.GetInt32() : 0;
+        }
+
+        private static int? GetNullableInt(Dictionary<string, JsonElement> row, string field)
+        {
+            if (row.TryGetValue(field, out var val) && val.ValueKind == JsonValueKind.Number) return val.GetInt32();
+            return null;
+        }
+
+        private static string GetStr(Dictionary<string, JsonElement> row, string field)
+        {
+            return row.TryGetValue(field, out var val) && val.ValueKind == JsonValueKind.String ? val.GetString() ?? "" : "";
+        }
+
+        private static string? GetNullableStr(Dictionary<string, JsonElement> row, string field)
+        {
+            if (row.TryGetValue(field, out var val) && val.ValueKind == JsonValueKind.String) return val.GetString();
+            return null;
+        }
+    }
+
+    public class ChatMappingItem : INotifyPropertyChanged
+    {
+        public int Id { get; set; }
+        public string ConversationId { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+
+        private int? _epicId;
+        public int? EpicId
+        {
+            get => _epicId;
+            set { _epicId = value; OnPropertyChanged(nameof(EpicId)); }
+        }
+
+        private string _associatedIssuesString = string.Empty;
+        public string AssociatedIssuesString
+        {
+            get => _associatedIssuesString;
+            set { _associatedIssuesString = value; OnPropertyChanged(nameof(AssociatedIssuesString)); }
+        }
+
+        private string? _category;
+        public string? Category
+        {
+            get => _category;
+            set { _category = value; OnPropertyChanged(nameof(Category)); }
+        }
+
+        public string ClaudeUrl => $"https://claude.ai/chat/{ConversationId}";
+        public string DisplayUrl => $"claude.ai/chat/{(ConversationId.Length >= 8 ? ConversationId.Substring(0, 8) : ConversationId)}...";
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+    }
+
+    public class EpicComboItem
+    {
+        public int? Id { get; set; }
+        public string DisplayName { get; set; } = string.Empty;
+    }
+}
