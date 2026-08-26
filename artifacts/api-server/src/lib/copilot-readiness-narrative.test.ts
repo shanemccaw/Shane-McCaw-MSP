@@ -90,6 +90,9 @@ function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "p
 function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
   return {
     pillars,
+    // No per-SKU ledger: these fixtures test narrative grounding, not #1230's
+    // Licensing money page, and none of them describes a real /subscribedSkus check.
+    licenseSkuLedger: null,
     // No licence gap: these fixtures test narrative grounding, not #489's
     // purchase tiering, and a recommendation here would be a fact about a
     // tenant none of them describes.
