@@ -296,7 +296,8 @@ namespace BuildConsole.Services
             var psi = new ProcessStartInfo
             {
                 FileName = exe,
-                Arguments = "-p --no-session-persistence \"/usage\"",
+                Arguments = "--safe-mode -p --no-session-persistence \"/usage\"",
+                WorkingDirectory = BuildTrackerConfig.FindRepoRoot() ?? Path.GetDirectoryName(exe),
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -305,6 +306,7 @@ namespace BuildConsole.Services
                 StandardOutputEncoding = Encoding.UTF8,
                 StandardErrorEncoding = Encoding.UTF8,
             };
+            psi.Environment.Remove("ELECTRON_RUN_AS_NODE");
 
             using var process = new Process { StartInfo = psi };
             try
@@ -916,6 +918,36 @@ namespace BuildConsole.Services
         private async Task<bool> NavigateAsync(string url)
         {
             if (_webView?.CoreWebView2 == null) return false;
+
+            // Navigating to the same hash-route on the same page does not fire NavigationCompleted in WebView2.
+            // By navigating to about:blank first, we guarantee a transition that triggers NavigationCompleted,
+            // resetting the document state and ensuring the subsequent navigate to claude.ai fully reloads.
+            var tcsBlank = new TaskCompletionSource<bool>();
+            void NavHandlerBlank(object? sender, CoreWebView2NavigationCompletedEventArgs args)
+            {
+                _webView.NavigationCompleted -= NavHandlerBlank;
+                tcsBlank.TrySetResult(args.IsSuccess);
+            }
+
+            _webView.NavigationCompleted += NavHandlerBlank;
+            try
+            {
+                _webView.CoreWebView2.Navigate("about:blank");
+            }
+            catch (Exception ex)
+            {
+                _webView.NavigationCompleted -= NavHandlerBlank;
+                ActivityLog.Log(Channel, $"Navigate(about:blank) threw: {ex.Message}");
+                return false;
+            }
+
+            var completedBlank = await Task.WhenAny(tcsBlank.Task, Task.Delay(5000));
+            if (completedBlank != tcsBlank.Task || !await tcsBlank.Task)
+            {
+                _webView.NavigationCompleted -= NavHandlerBlank;
+                ActivityLog.Log(Channel, "Navigate(about:blank) failed or timed out.");
+                return false;
+            }
 
             var tcs = new TaskCompletionSource<bool>();
             void NavHandler(object? sender, CoreWebView2NavigationCompletedEventArgs args)
