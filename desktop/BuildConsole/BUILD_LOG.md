@@ -174,3 +174,4 @@ See [CLAUDE.md](../../CLAUDE.md) for the exact instructions, including which ses
 
 
 
+| 2026-08-26 | ⏳ IN FLIGHT — Chats stuck under "Unlinked" (Git #1362): root-cause + read-path resilience so chats linked to real open epics missing from the local bt_epics table still group correctly instead of stranding in Unlinked | Investigating/building. |
