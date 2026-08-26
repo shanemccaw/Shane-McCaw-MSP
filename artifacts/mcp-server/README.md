@@ -105,6 +105,43 @@ under the platform taxonomy's own `audit` channel (src/logger.ts).
   net exists for), and an HTTP "write my audit log" endpoint would be a
   spoofable surface the platform doesn't need.
 
+## Query tools (Phase 3, Git #1322)
+
+Read-only tools wrapping real existing endpoints. Every one runs as the
+operator (PlatformAdmin, `mspId=1`) and returns real data — verified against a
+real customer at land time.
+
+| Tool | Real route(s) |
+|------|---------------|
+| `query_customers` | `GET /admin/clients/enriched` — filterable by any of the 7 pillar scores + name/company/email |
+| `get_customer_findings` | `GET /admin/clients/:id/command-center` + `GET /admin/clients/:id/health/summary` |
+| `get_running_sops` | `GET /msp/sops` + `GET /msp/sop-runs` |
+| `get_change_controls` | `GET /msp/change-requests` |
+| `get_alerts` | customer: `GET /admin/customer-alert-events` (+ `/customer-alert-rules`); platform: `GET /admin/observability/alert-events` (+ `/alert-rules`) |
+| `get_audit_logs` | msp: `GET /msp/audit`; platform: `GET /audit-logs` |
+| `get_invoices` | `GET /admin/invoices` (+ `GET /zoho/auth/status`) |
+| `get_risk_register` | `GET /msp/rbd` |
+| `get_microsoft_drift` | `GET /admin/drift/events` — **new** read endpoint over `drift_events` added in the same change (there was none) |
+
+Two things worth knowing:
+
+- **SOPs and the risk register wrap the MSP-operator surfaces, not the portal
+  ones.** The issue named `portal-sops.ts` / `portal-risk-register.ts`, but every
+  GET there is `requireRole("CustomerUser")` and reads the tenant off the JWT's
+  `customerId` claim — which the operator (no `customerId`) does not carry, so
+  those routes answer 403 for this server. `get_running_sops` / `get_risk_register`
+  wrap the MSP-operator siblings (`msp-sops.ts`, `msp-rbd.ts`) that read the SAME
+  tables and ARE reachable as the operator.
+- **`get_invoices` reports Zoho Books honestly.** The invoices are the
+  platform's own Stripe/onboarding records; Zoho Books (#87) is outbound-only and
+  is never read back into the platform, so the tool annotates that explicitly
+  rather than presenting the figures as a live Books sync.
+
+Tickets and scan results are **deliberately not covered** — both are confirmed
+real backend gaps (only a single-ticket-by-id customer route exists; no scan
+query endpoint at all). Filing those is their own follow-up, not a fabricated
+response shape here.
+
 ## Adding a tool (Phase 2–5)
 
 1. Create `src/tools/<your-tool>.ts` exporting a `ToolDef`:
