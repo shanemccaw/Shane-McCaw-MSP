@@ -3084,6 +3084,14 @@ namespace BuildConsole.Controls
             };
             cm.Items.Add(miArchiveToggle);
 
+            cm.Items.Add(new Separator());
+            var miChatMapping = new MenuItem { Header = "🗺️ Chat Mapping..." };
+            miChatMapping.Click += (_, _) =>
+            {
+                (Application.Current.MainWindow as MainWindow)?.OpenChatMappingsTab();
+            };
+            cm.Items.Add(miChatMapping);
+
             card.ContextMenu = cm;
 
             return card;
