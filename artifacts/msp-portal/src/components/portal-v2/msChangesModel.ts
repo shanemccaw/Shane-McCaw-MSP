@@ -431,7 +431,11 @@ export function waveQueue(
     // nothing rather than pinning a fixture write-up to a real Microsoft notice.
     if (!post || !svcOn(services, post.wl) || !inWave.has(bucketOf(post, ds))) return null;
     const o = raciOwner(post.wl, ds);
-    return { post, item, owner: o.name, ownerLine: `${o.name} · answers to ${o.accountable}` };
+    // No RACI table backs any tenant (Git #1342), so `accountable` is often empty
+    // and the owner is "Unassigned"; drop the "answers to …" clause rather than
+    // render a dangling "answers to " with no name after it.
+    const ownerLine = o.accountable ? `${o.name} · answers to ${o.accountable}` : o.name;
+    return { post, item, owner: o.name, ownerLine };
   }).filter((x): x is WaveQueueItem => x !== null);
 }
 

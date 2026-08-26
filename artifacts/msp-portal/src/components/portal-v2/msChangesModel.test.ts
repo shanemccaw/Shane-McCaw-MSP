@@ -286,8 +286,10 @@ describe("wave range and status", () => {
 });
 
 describe("ownership and services", () => {
-  it("takes the responsible name and initials off the RACI", () => {
-    assert.deepEqual(raciOwner("Exchange"), { name: "Priya Raman", initials: "PR", accountable: "Dan Whitlock" });
+  it("reports an honest Unassigned owner — no tenant has a RACI table (Git #1342)", () => {
+    // The fictional Halden roster was purged from MSC_RACI; every workload's
+    // Responsible is now empty, so raciOwner degrades to the honest gap state.
+    assert.deepEqual(raciOwner("Exchange"), { name: "Unassigned", initials: "—", accountable: "" });
     assert.equal(raciOwner("Copilot").name, "Unassigned");
   });
 
@@ -309,7 +311,7 @@ describe("what stops working / decide / quiet", () => {
     const breaks = waveBreaks(1, {});
     assert.deepEqual(breaks.map((b) => b.id).sort(), ["MC1042318", "MC1049877", "MC1051144"]);
     const basic = breaks.find((b) => b.id === "MC1042318")!;
-    assert.equal(basic.owner, "Priya Raman");
+    assert.equal(basic.owner, "Unassigned");
     assert.equal(basic.state, "CR-0142 · Awaiting approval");
     assert.equal(basic.hasCr, true);
     assert.equal(basic.evidence, "GET /reports/getEmailActivityUserDetail → 1,412 events across 11 accounts");
@@ -323,7 +325,7 @@ describe("what stops working / decide / quiet", () => {
   it("queues the wave's decisions with an owner line", () => {
     const q = waveQueue(1, {});
     assert.deepEqual(q.map((x) => x.item.id).sort(), ["MC1042318", "MC1049877", "MC1051144"]);
-    assert.equal(q.find((x) => x.item.id === "MC1049877")!.ownerLine, "Marcus Lee · answers to Dan Whitlock");
+    assert.equal(q.find((x) => x.item.id === "MC1049877")!.ownerLine, "Unassigned");
   });
 
   it("leaves the September wave with nothing quiet, since all three act", () => {

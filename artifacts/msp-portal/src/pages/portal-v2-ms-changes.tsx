@@ -32,6 +32,7 @@ import { useRoute } from "wouter";
 import { Link } from "wouter";
 
 import { useFormDrawer, type FormSpec } from "@/components/portal-v2/FormDrawer";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 /**
  * The bucket axis, the density rows, the stat cards, the post corpus and the
@@ -603,7 +604,7 @@ export default function PortalV2MsChangesPage() {
    * empty state. See `useMessageCenter.ts` for what is real in it and what stays
    * fixture.
    */
-  const { dataset: ds } = useMessageCenter();
+  const { dataset: ds, loaded } = useMessageCenter();
 
   const bands = useMemo(() => waveBands(ds.buckets), [ds]);
   const slugIndex = params?.wave ? WAVE_SLUGS.indexOf(params.wave as (typeof WAVE_SLUGS)[number]) : 0;
@@ -702,7 +703,7 @@ export default function PortalV2MsChangesPage() {
         submitLabel: "Save settings",
         fields: [
           { k: "day", label: "Digest sent", kind: "pick", value: "Monday 07:00", options: ["Monday 07:00", "Friday 16:00", "First Monday of the month"] },
-          { k: "to", label: "Recipients", kind: "text", value: "Priya Raman · IT team · Shane McCaw" },
+          { k: "to", label: "Recipients", kind: "text", value: "" },
           { k: "floor", label: "What to leave out", kind: "pick", value: "Skip no-impact unless it touches a control", options: ["Skip no-impact unless it touches a control", "Skip everything under 40", "Send everything"] },
           { k: "urgent", label: "Out of band", kind: "toggle", value: "In use", toggleLabel: "Send anything scored above 80 the day it is published" },
           ...ds.scans.map((sc) => ({ k: sc.wl, label: sc.name, kind: "toggle" as const, value: services[sc.wl] === false ? "Off" : "In use", toggleLabel: "In use", hint: `Scan found: ${sc.found}` })),
@@ -800,7 +801,7 @@ export default function PortalV2MsChangesPage() {
           { k: "urgency", label: "When you need it", kind: "pick", value: "This week", options: ["Today", "This week", "Before the deadline", "No rush"] },
         ],
         doneNote: "Sent to Shane McCaw with the notice and your tenant evidence attached. It is on the thread on this notice.",
-        onSubmit: (v) => setThreadOv((cur) => ({ ...cur, [p.id]: [...(cur[p.id] ?? []), { who: "Priya Raman", at: "just now", text: v.q, mine: true }] })),
+        onSubmit: (v) => setThreadOv((cur) => ({ ...cur, [p.id]: [...(cur[p.id] ?? []), { who: "You", at: "just now", text: v.q, mine: true }] })),
       }),
     );
 
@@ -835,6 +836,22 @@ export default function PortalV2MsChangesPage() {
         doneNote: `${name} will be told. It is on the record against ${items.join(" and ")}.`,
       }),
     );
+
+  // While the real Message Center read is in flight, render an honest skeleton
+  // rather than the design fixture (Git #1343). `useMessageCenter` hands the
+  // fixture dataset until `loaded`, so without this the page would show a
+  // confident-but-fake twelve months of Microsoft changes and then swap it out.
+  if (!loaded) {
+    return (
+      <PortalV2Shell eyebrow="Reference" title="Microsoft Changes">
+        <div style={{ minHeight: "100%", background: SIDEBAR_WASH }}>
+          <div style={{ maxWidth: 1180, margin: "0 auto", padding: "26px 28px 110px", display: "flex", flexDirection: "column", gap: 16, boxSizing: "border-box" }}>
+            <PortalV2LoadingState rows={8} label="Loading your Microsoft Message Center…" testId="pv2-msc-loading" />
+          </div>
+        </div>
+      </PortalV2Shell>
+    );
+  }
 
   return (
     <PortalV2Shell eyebrow="Reference" title="Microsoft Changes">

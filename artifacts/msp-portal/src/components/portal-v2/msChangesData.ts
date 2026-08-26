@@ -1116,13 +1116,30 @@ export interface MscRaci {
   i: string;
 }
 
+/**
+ * \u2500\u2500 The per-workload RACI names carried NO real backing (Git #1342) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+ * The prototype seeded these with fictional Halden Materials employees (Priya
+ * Raman, Dan Whitlock, Marcus Lee, Aisha Bello, Ruth Okafor, Jo Feltham,
+ * R. Court). This page is WIRED \u2014 `useMessageCenter()` swaps in the calling
+ * customer's real posts/scans/stats \u2014 but it does NOT (and cannot) swap `raci`:
+ * there is no ownership/RACI table in the schema for any tenant. So those names
+ * rendered as fact on a real customer's Microsoft Changes page (e.g. "Aisha
+ * Bello \u00b7 Responsible", "Legal \u00b7 R. Court \u00b7 Accountable" for Purview) \u2014 the same
+ * fictional-identity leak class as #1213-1216.
+ *
+ * The person slots are now honest-empty: `raciRows`/`raciOwner` already degrade
+ * an empty Responsible to "Unassigned" and an empty Accountable to "\u2014", so a
+ * real customer sees an honest unassigned gap rather than an invented owner.
+ * Only genuinely non-person tokens (department/group/audience labels) are kept \u2014
+ * none of which names an individual.
+ */
 export const MSC_RACI: Readonly<Record<string, MscRaci>> = {
-  Exchange: { r: "Priya Raman", a: "Dan Whitlock", c: "Shane McCaw", i: "Service desk" },
-  Teams: { r: "Priya Raman", a: "Dan Whitlock", c: "Comms \u00b7 Jo Feltham", i: "All staff" },
-  SharePoint: { r: "Marcus Lee", a: "Dan Whitlock", c: "Sales \u00b7 Ruth Okafor", i: "All staff" },
-  Entra: { r: "Shane McCaw", a: "Dan Whitlock", c: "Priya Raman", i: "Audit" },
-  Purview: { r: "Aisha Bello", a: "Legal \u00b7 R. Court", c: "Shane McCaw", i: "Audit" },
-  Copilot: { r: "Unassigned", a: "Dan Whitlock", c: "Shane McCaw", i: "Pilot group" },
+  Exchange: { r: "", a: "", c: "", i: "Service desk" },
+  Teams: { r: "", a: "", c: "Comms", i: "All staff" },
+  SharePoint: { r: "", a: "", c: "Sales", i: "All staff" },
+  Entra: { r: "", a: "", c: "", i: "Audit" },
+  Purview: { r: "", a: "Legal", c: "", i: "Audit" },
+  Copilot: { r: "", a: "", c: "", i: "Pilot group" },
 };
 
 /** The services in use, and what the last scan found - 1223-1230. Drives the filter. */
@@ -1196,8 +1213,8 @@ export const MSC_GROUPS: readonly MscGroup[] = [
   { name: "Bay 3 \u00b7 shop floor", heads: "18 people \u00b7 34 devices", items: ["MC1042318", "MC1066402"], first: "1 October", tone: "#f87171", told: false, what: "Scanners stop emailing when legacy auth goes, and nine of their terminals cannot run the new Teams client in February. The same six machines keep appearing in unrelated Microsoft changes.", who: "Facilities own the hardware. Nobody in Bay 3 has been told about either date." },
   { name: "Finance", heads: "26 people", items: ["MC1042318", "MC1061240"], first: "1 October", tone: "#f87171", told: false, what: "The nightly invoice export sends over SMTP AUTH and fails silently on 1 October. The purchase-order approval workflow stops running on 31 January.", who: "Finance own both. They know about the invoice export rewrite; they have not been told the workflow is retiring." },
   { name: "Sales", heads: "41 people", items: ["MC1049877"], first: "22 September", tone: "#f87171", told: false, what: "Tender links stop working for customers, one at a time, with no error on your side. 84 anonymous links a month.", who: "Not told. There is nothing to tell them until you decide what the default will be \u2014 which is why the 18 September date matters." },
-  { name: "Administrators", heads: "14 accounts", items: ["MC1054920"], first: "15 November", tone: "#fbbf24", told: true, what: "MFA required on every admin portal sign-in. Twelve accounts are already fine; the two break-glass accounts have no method registered.", who: "Priya Raman and Shane McCaw. Told in May, told again in August when the exemption wording disappeared." },
-  { name: "Procurement", heads: "12 people", items: ["MC1061240", "MC1051144"], first: "26 September", tone: "#fbbf24", told: true, what: "Anonymous meeting join changes on their supplier calls, and the purchase-order workflow retires in January.", who: "Marcus Bell, told on 20 August once the 61 workflow runs were traced." },
+  { name: "Administrators", heads: "14 accounts", items: ["MC1054920"], first: "15 November", tone: "#fbbf24", told: true, what: "MFA required on every admin portal sign-in. Twelve accounts are already fine; the two break-glass accounts have no method registered.", who: "The admin account holders. Told in May, told again in August when the exemption wording disappeared." },
+  { name: "Procurement", heads: "12 people", items: ["MC1061240", "MC1051144"], first: "26 September", tone: "#fbbf24", told: true, what: "Anonymous meeting join changes on their supplier calls, and the purchase-order workflow retires in January.", who: "Procurement, told on 20 August once the 61 workflow runs were traced." },
   { name: "Everyone with a mailbox", heads: "1,240 people", items: ["MC1051144", "MC1057733"], first: "26 September", tone: "#94a3b8", told: false, what: "Meeting join behaviour changes, and the Purview portal moves. Neither needs an announcement \u2014 but both are cited in compliance evidence.", who: "No announcement planned. Correct, as long as somebody decided that rather than forgot." },
 ];
 
