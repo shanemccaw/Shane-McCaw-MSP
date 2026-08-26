@@ -47,12 +47,15 @@ const log = logger.child({ channel: "billing" });
 
 const router: IRouter = Router();
 
-const DEFAULT_RETAINED_MINUTES = 480; // 8.0h
+export const DEFAULT_RETAINED_MINUTES = 480; // 8.0h
 const DEFAULT_RATE_CENTS = 30000; // $300/hr
 
 // ── Wire mappers ──────────────────────────────────────────────────────────────
+// Exported so the customer-facing seam (routes/portal-retainer.ts) renders the
+// exact same wire shape for its own, self-scoped read — one mapping, not two
+// that can drift apart.
 
-interface SettingsWire {
+export interface SettingsWire {
   customerId: number;
   retainedHours: number;
   hourlyRateCents: number;
@@ -61,7 +64,7 @@ interface SettingsWire {
   configured: boolean;
 }
 
-function entryToWire(row: typeof retainerWorkLogTable.$inferSelect) {
+export function entryToWire(row: typeof retainerWorkLogTable.$inferSelect) {
   return {
     id: row.id,
     periodMonth: row.periodMonth,
@@ -81,7 +84,7 @@ function entryToWire(row: typeof retainerWorkLogTable.$inferSelect) {
   };
 }
 
-function bucketToWire(bucket: ReturnType<typeof computeMonthBucket>) {
+export function bucketToWire(bucket: ReturnType<typeof computeMonthBucket>) {
   return {
     period: bucket.period,
     retainedHours: minutesToHours(bucket.retainedMinutes),

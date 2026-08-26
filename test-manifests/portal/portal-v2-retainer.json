@@ -11,7 +11,8 @@
     "AN EMPTY WEEK OMITS ITS BLOCKS. W31 logged no hours, so its report has no Work log / Produced / asks blocks (buildWeekView's has* flags). Not asserted here beyond the switch, because a negative 'absent' assertion is awkward in this harness; retainerModel.test.ts covers it.",
     "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS, and an array in `textContains` is ANY-of, not all-of. Every all-of assertion here is its own step.",
     "NO `select` STEPS. UiTestExecutor.cs cannot drive a native <select>; this page has none in the asserted flow.",
-    "UI ONLY: the ask box, the Open-as-PDF / Open / Book time / Billing buttons are visual, to be wired in a later pass. The retainer-hours ledger is greenfield -- every figure is the design's own fixture in retainerData.ts.",
+    "UI ONLY: the ask box, the Open-as-PDF / Open / Book time / Billing buttons are visual, to be wired in a later pass. The weekly report content (summary, per-line work log, deliverables, asks), RET_OUTCOMES, RET_TERMS, RET_DOCS and RET_COPY have no backend source and stay design fixture.",
+    "LIVE WIRING (#1285/#1293): the month bucket (retained/rolled/used) and the 'Where the hours went' work log now read GET /api/portal/retainer (useRetainerLive.ts) -- real once the customer has an active retainer row (AdminV2 Retainer Hours, admin-retainer.ts). RET14 below reads the hidden pv2-ret-source marker; it asserts 'fixture' because the harness's TEST_PORTAL_EMAIL account is not enrolled on a retainer, so RET1-RET5's fixture numbers stay valid. A future manifest pass against an enrolled test account should assert 'live' and the real bucket/work-log numbers instead.",
     "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "uiSteps": [
@@ -30,6 +31,7 @@
 
     { "name": "RET4 -- the work log names the first item in full, with its outcome.", "action": "expect", "selector": "[data-testid='pv2-ret-work']", "textContains": "Entra Connect: cleared 11 of 14 sync errors, staged the upgrade", "critical": true },
     { "name": "RET5 -- ...and a closed item shows the finding it belongs to.", "action": "expect", "selector": "[data-testid='pv2-ret-work']", "textContains": "CMP-01" },
+    { "name": "RET14 -- the hidden source marker states this account is NOT enrolled on a real retainer, so RET1-RET5 read the design fixture rather than a live (empty) bucket.", "action": "expect", "selector": "[data-testid='pv2-ret-source']", "textContains": "fixture", "sessionTag": "1285-live-wiring" },
 
     { "name": "RET6a -- the current week (W34) is selected by default; its report leads with the sync-server summary.", "action": "expect", "selector": "[data-testid='pv2-ret-week-report']", "textContains": "Most of this week went into the sync server", "critical": true },
     { "name": "RET6 -- switch the week in place by clicking the W33 tab.", "action": "click", "selector": "[data-testid='pv2-ret-week-tab-W33']", "critical": true },

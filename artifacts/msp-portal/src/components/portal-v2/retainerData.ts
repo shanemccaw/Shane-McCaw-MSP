@@ -10,13 +10,16 @@
  *   • RET_TERMS      15965-15973
  *   • RET_DOCS       15974-15981
  *
- * ── UI-ONLY, and why this ledger is fixture ────────────────────────────────
- * The retainer-hours ledger is greenfield — no such ledger exists anywhere in
- * the repo, so every number here is the design's own, kept in ONE module so the
- * later wiring pass has a single place to swap fixture for a real time-tracking
- * source. Nothing is retyped by hand where the prototype already wrote it down;
- * the strings below are copied value-for-value. Copy in this handoff is FINAL —
- * do not rewrite, shorten or "improve" any user-facing string.
+ * ── UI-ONLY fallback (#1285/#1293) ──────────────────────────────────────────
+ * `RET_HOURS` and `RET_WORK` are now the FALLBACK for an un-enrolled customer —
+ * `useRetainerLive.ts` overlays the real bucket + work log once the customer has
+ * an active retainer row (AdminV2 Retainer Hours, #1293). `RET_WEEKS`'s report
+ * content (summary, per-line log, deliverables, asks), `RET_OUTCOMES`,
+ * `RET_TERMS`, `RET_DOCS` and `RET_COPY` have no backend source and stay design
+ * fixture throughout. Nothing is retyped by hand where the prototype already
+ * wrote it down; the strings below are copied value-for-value. Copy in this
+ * handoff is FINAL — do not rewrite, shorten or "improve" any user-facing
+ * string.
  *
  * The derivations that shape these into what the page renders (hour totals, the
  * used percentage, the selected week's report) live in `retainerModel.ts` and

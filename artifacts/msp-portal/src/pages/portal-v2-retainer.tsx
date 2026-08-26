@@ -12,13 +12,19 @@
  * the top (hours used, findings closed, what is next) and a week you select in
  * place below it, which swaps the report card without moving the month.
  *
- * ── UI ONLY ────────────────────────────────────────────────────────────────
- * The retainer-hours ledger is greenfield — nothing in the repo tracks retainer
- * time yet — so every figure is the design's own fixture, kept in
- * `retainerData.ts` and shaped by `retainerModel.ts` (unit-tested). The week
- * selector is real local state so the page reads like the design; the ask box
- * and the document/PDF buttons are visual, to be wired in a later pass. Copy is
- * FINAL and reproduced verbatim.
+ * ── Live vs fixture (#1285/#1293) ─────────────────────────────────────────
+ * The month bucket (retained/rolled/used) and the "Where the hours went" work
+ * log now read real data via `useRetainerLive`, off `GET /api/portal/retainer`
+ * — the AdminV2 Retainer Hours module (#1293) is the real source Shane logs
+ * against. `dataState` overlays live data only once the customer has an
+ * active retainer row (`configured`); an un-enrolled customer sees the design
+ * fixture rather than a manufactured zero, same honest-fixture boundary
+ * `useLivePillarHero.ts` documents. A hidden `pv2-ret-source` marker states
+ * which is on screen. The weekly report card (summary, per-line work log,
+ * deliverables, asks) has no backend source and stays on `retainerData.ts`'s
+ * fixture, as do RET_OUTCOMES / RET_TERMS / RET_DOCS / RET_COPY. The week
+ * selector is real local state; the ask box and the document/PDF buttons are
+ * visual, to be wired in a later pass. Copy is FINAL and reproduced verbatim.
  */
 
 import { useState } from "react";
@@ -36,12 +42,15 @@ import {
 } from "@/components/portal-v2/retainerData";
 import {
   buildWeekView,
+  computeRetSummary,
   hoursChip,
   outcomeToneColor,
   pillarTextColor,
-  retSummary,
+  retSummary as fixtureRetSummary,
   workStateColor,
 } from "@/components/portal-v2/retainerModel";
+import { useRetainerLive } from "@/components/portal-v2/useRetainerLive";
+import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -62,7 +71,7 @@ function Eyebrow({ colour, children, spacing = ".18em" }: { colour: string; chil
 }
 
 /** The month rollup's three cards — the "time this period" one spans two. */
-function TimeCard() {
+function TimeCard({ retSummary, retainedLabel }: { retSummary: ReturnType<typeof computeRetSummary>; retainedLabel: string }) {
   return (
     <div
       data-testid="pv2-ret-time-card"
@@ -102,7 +111,7 @@ function TimeCard() {
         />
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "8px 16px", paddingTop: 2 }}>
-        <MicroStat label="Retained monthly" value={RET_COPY.retainedMonthly} />
+        <MicroStat label="Retained monthly" value={retainedLabel} />
         <MicroStat label="Rolled from July" value={`${retSummary.rolled} hours · ${RET_COPY.rolledExpiry}`} />
         <MicroStat label="Remaining" value={`${retSummary.remaining} hours, ${RET_COPY.remainingTail}`} />
       </div>
@@ -223,6 +232,15 @@ export default function PortalV2RetainerPage() {
   const week = buildWeekView(weekKey);
   const askReady = askText.trim().length > 0;
 
+  const live = useRetainerLive();
+  const retSummary = live.dataState === "live" && live.bucket
+    ? computeRetSummary({ retained: live.bucket.retainedHours, rolled: live.bucket.rolledHours, used: live.bucket.usedHours })
+    : fixtureRetSummary;
+  const retainedLabel = live.dataState === "live" && live.bucket
+    ? `${live.bucket.retainedHours.toFixed(1)} hours`
+    : RET_COPY.retainedMonthly;
+  const workItems = live.dataState === "live" && live.entries.length > 0 ? live.entries : RET_WORK;
+
   return (
     <PortalV2Shell eyebrow={RET_COPY.eyebrow} title="My Architect">
       <div style={{ minHeight: "100%", background: SIDEBAR_WASH }}>
@@ -286,8 +304,10 @@ export default function PortalV2RetainerPage() {
           </div>
 
           {/* Month rollup cards */}
+          <span data-testid="pv2-ret-source" style={PV2_SOURCE_CLIP}>{live.dataState}</span>
+
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12, alignItems: "stretch" }}>
-            <TimeCard />
+            <TimeCard retSummary={retSummary} retainedLabel={retainedLabel} />
             <SmallCard
               label={RET_COPY.findingsClosedLabel}
               value={RET_COPY.findingsClosedValue}
@@ -319,8 +339,8 @@ export default function PortalV2RetainerPage() {
                 overflow: "hidden",
               }}
             >
-              {RET_WORK.map((w) => (
-                <WorkRow key={`${w.finding}-${w.week}`} work={w} />
+              {workItems.map((w, i) => (
+                <WorkRow key={`${w.finding}-${w.week}-${i}`} work={w} />
               ))}
             </div>
           </div>

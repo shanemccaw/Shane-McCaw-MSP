@@ -36,18 +36,40 @@ export function hoursChip(n: number): string {
   return `${formatHours(n)} h`;
 }
 
+export interface RetSummary {
+  readonly used: string;
+  readonly available: string;
+  readonly remaining: string;
+  readonly rolled: string;
+  readonly usedPctLabel: string;
+  readonly usedPct: number;
+}
+
+/**
+ * The four headline hour figures, pre-formatted, from an arbitrary
+ * retained/rolled/used triple — real (the customer's live bucket, #1285) or
+ * fixture (`RET_HOURS`). Kept as one derivation so the live and fixture paths
+ * can never compute the bar fill / remaining figure differently.
+ */
+export function computeRetSummary(hours: { retained: number; rolled: number; used: number }): RetSummary {
+  const available = hours.retained + hours.rolled;
+  const remaining = available - hours.used;
+  const usedPct = available > 0 ? Math.round((hours.used / available) * 100) : 0;
+  return {
+    used: formatHours(hours.used),
+    available: formatHours(available),
+    remaining: formatHours(remaining),
+    rolled: formatHours(hours.rolled),
+    usedPctLabel: `${usedPct}%`,
+    usedPct,
+  };
+}
+
 /**
  * The four headline hour figures, pre-formatted. Prototype 19617-19622.
  * Kept together so the summary card reads one object rather than four calls.
  */
-export const retSummary = {
-  used: formatHours(RET_HOURS.used),
-  available: formatHours(RET_AVAILABLE),
-  remaining: formatHours(RET_REMAINING),
-  rolled: formatHours(RET_HOURS.rolled),
-  usedPctLabel: `${RET_USED_PCT}%`,
-  usedPct: RET_USED_PCT,
-} as const;
+export const retSummary = computeRetSummary(RET_HOURS);
 
 /**
  * A work row's right-hand state colour. Prototype 15874: Closed is the green
