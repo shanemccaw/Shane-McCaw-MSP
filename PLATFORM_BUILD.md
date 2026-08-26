@@ -437,6 +437,8 @@ History before 2026-08-12 lives in [PLATFORM_BUILD_ARCHIVE_2026-08-12.md](PLATFO
 | 2026-08-26 | ✅ DONE | Build Watch: fix buildSet color synchronization and replication by ensuring buildSet is extracted from JSON/body and persisted during queue insertion/update on the Express API server, and propagated back to client-side continuation/reply builds. Also added dynamic color/brush updates on poll ticks in the Build Watch slots to immediately reflect color when resolved. | `dd601248d` |
 | 2026-08-26 | ✅ DONE | Build Queue: use the Whammy blocked critter (the red guy with the sledgehammer) when a queue card is in a blocked state, rendering the scaled element dynamically in place of the randomized peppy critters. | `95f9ff12c` |
 | 2026-08-26 | ✅ DONE | Build Watch: Match slot background color with queue buildSet background by increasing the blend opacity factor on the slot background brush from 7% to 13.3% (`0.13`), matching the 13% opacity (`0x22`) used in the Build Queue panel's buildSet header cards. | `acd0995d3` |
+| 2026-08-26 | ⏳ IN FLIGHT | Build Queue: support --build-set fallback and serialize buildSet through restarts | pending |
+
 
 
 
