@@ -1,7 +1,7 @@
 {
   "feature": "Purchase-session -> portal auto-login handoff (Git #1313, Epic #1309 Phase 4): POST /api/public/purchase/portal-handoff mints a fresh single-use, 2-minute signup-exchange token for the account created THROUGH the session's own flow — and refuses everything else (invalid/unknown/unpaid sessions, sessions that never completed account creation). Since Git #1315 (Phase 6), the response's portalUrl also carries the session's product category (?product=retainer, etc.) so the msp-portal boot effect that consumes signupToken can land a Retainer purchase directly on My Architect (/portal-v2/retainer) instead of the generic Overview.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "",
+  "lastVerifiedAgainstCommit": "f338cead38895fa2c78600bd026e34d886c7d703",
 
   "notes": [
     "WHAT THIS COVERS: the #1313 backend mechanism only — no UI is wired to this route yet (Buy.tsx wiring is Phase 8, #1309). The session minted per run is the genuine PUBLIC intake (POST /api/public/checkout-session), same accepted side effect as marketing/read-consent-flow.json's CREATE; it expires in 24h and is never paid, so no account or token is ever created by this manifest.",
