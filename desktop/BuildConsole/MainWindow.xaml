@@ -468,6 +468,12 @@
                                FontSize="12" FontWeight="Bold"
                                Foreground="{StaticResource CrustBrush}"
                                VerticalAlignment="Center"/>
+                    <Button x:Name="BtnCancelPendingUpdate"
+                            Content="Cancel"
+                            FontSize="11" FontWeight="SemiBold"
+                            Padding="8,1" Margin="12,0,0,0"
+                            Click="BtnCancelPendingUpdate_Click"
+                            ToolTip="Cancel the pending update. The Build Queue resumes normal live queuing and Update can be clicked again later."/>
                 </StackPanel>
             </Border>
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
@@ -188,6 +189,79 @@ namespace BuildConsole
 
             _pendingDeployPollTimer ??= CreatePendingDeployPollTimer();
             _pendingDeployPollTimer.Start();
+        }
+
+        /// <summary>Cancel button on the pending-update banner (Git #1370). Shane: "I want it to
+        /// block and do exactly what it does. I just want to be able to cancel it." Does NOT
+        /// change the blocking behavior itself — only lets the pending update be called off
+        /// entirely: clears <see cref="_updatePending"/>, stops the poll, hides the banner, and
+        /// resumes normal live queuing for the Build Queue exactly as if Update was never
+        /// clicked. Any Queue clicks that happened during the wait were intercepted-and-persisted
+        /// to the local spillover file (see MainWindow.PendingUpdateQueue.cs) instead of the live
+        /// queue — since we're canceling rather than restarting, replay them into the live queue
+        /// right now rather than leaving them redirected for a restart that's no longer coming.</summary>
+        private async void BtnCancelPendingUpdate_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_updatePending) return;
+
+            ActivityLog.Log(VersionChannel, "Pending update canceled by Shane — Build Queue resumes normal live queuing.");
+
+            _updatePending = false;
+            _pendingDeployPollTimer?.Stop();
+            UpdatePendingBanner.Visibility = Visibility.Collapsed;
+            ApplyVersionUiState();
+
+            await ReplaySpilloverIntoLiveQueueAfterCancelAsync();
+        }
+
+        /// <summary>
+        /// Replays whatever's sitting in the pending-update spillover file straight into the
+        /// live queue (no restart involved, unlike <see cref="ReplayPersistedQueueRequestsOnLaunchAsync"/>
+        /// which runs on next launch after a real deploy restart). Reuses the same
+        /// <see cref="TryReplayOneAsync"/> queuing path and keep-on-failure semantics so a
+        /// request that fails to queue (DB unreachable) is retained rather than lost — it will
+        /// still be picked up by the normal launch-time replay if a restart happens later anyway.
+        /// </summary>
+        private async Task ReplaySpilloverIntoLiveQueueAfterCancelAsync()
+        {
+            var pending = LoadPersistedQueueRequests();
+            if (pending.Count == 0) return;
+
+            PendingUpdateQueueDiag(
+                $"Pending update canceled with {pending.Count} request(s) sitting in the spillover file — re-queuing them into the live queue now instead of leaving them redirected.");
+
+            var stillPending = new List<PersistedQueueRequest>();
+            foreach (var req in pending)
+            {
+                bool queued = await TryReplayOneAsync(req);
+                if (!queued) stillPending.Add(req);
+            }
+
+            if (stillPending.Count == 0)
+            {
+                TryDeletePendingUpdateQueueFile();
+                PendingUpdateQueueDiag("All spillover request(s) re-queued live after cancel — spillover file deleted.");
+                ToastEngine.Success("Update canceled",
+                    $"Pending update canceled. {pending.Count} build request(s) queued during the wait have been re-queued normally.");
+            }
+            else
+            {
+                try
+                {
+                    SavePersistedQueueRequests(stillPending);
+                }
+                catch
+                {
+                    // Leave the original file intact rather than lose anything — same
+                    // best-effort fallback as the launch-time replay path.
+                }
+                PendingUpdateQueueDiag(
+                    $"{stillPending.Count} of {pending.Count} spillover request(s) did NOT re-queue after cancel (DB unreachable?) — kept persisted, will retry on next launch or cancel.");
+                ToastEngine.Warning("Update canceled",
+                    $"Pending update canceled. {pending.Count - stillPending.Count} of {pending.Count} saved build request(s) re-queued; {stillPending.Count} couldn't reach the database and remain saved.");
+            }
+
+            try { await BuildQueuePanel.RefreshAsync(); } catch { /* best-effort */ }
         }
 
         private DispatcherTimer CreatePendingDeployPollTimer()
