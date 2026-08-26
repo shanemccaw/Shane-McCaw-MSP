@@ -983,3 +983,223 @@ describe("GET /public/flow/write-consent-url — product-type gate (#1312)", () 
     expect(mockInsert).not.toHaveBeenCalled();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// #1311 (Epic #1309 Phase 2) — generalized READ-consent flow for purchase
+// sessions. Properties under test: the requirement mapping is fail-closed
+// (only "retainer" may ever skip), the session-state URL mint reuses the one
+// shared builder, the skip route refuses required products and already-landed
+// consents server-side, and the callback clears a recorded skip the moment a
+// real grant lands. Existing flows (invite, reconsent, assessment funnel)
+// are covered above and untouched.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+import {
+  readConsentRequirementForServiceType,
+  buildSessionReadConsentUrl,
+} from "../lib/read-consent-flow.ts";
+
+describe("read-consent-flow (#1311) — requirement mapping + session URL", () => {
+  it("marks ONLY retainer optional; every other/unknown serviceType is required (fail closed)", () => {
+    expect(readConsentRequirementForServiceType("retainer")).toBe("optional");
+    expect(readConsentRequirementForServiceType("monitoring_tier")).toBe("required");
+    expect(readConsentRequirementForServiceType("config_pack")).toBe("required");
+    expect(readConsentRequirementForServiceType("assessment")).toBe("required");
+    expect(readConsentRequirementForServiceType("some-future-type")).toBe("required");
+    expect(readConsentRequirementForServiceType(null)).toBe("required");
+    expect(readConsentRequirementForServiceType(undefined)).toBe("required");
+  });
+
+  it("builds the session-state URL on the READ app aimed at /api/consent/callback", () => {
+    const url = buildSessionReadConsentUrl(
+      "https://example.test",
+      "323e4567-e89b-42d3-a456-426614174000",
+      "mt-client-id",
+    );
+    expect(url).toContain("https://login.microsoftonline.com/common/adminconsent?");
+    expect(url).toContain("client_id=mt-client-id");
+    expect(url).toContain("state=323e4567-e89b-42d3-a456-426614174000");
+    expect(url).toContain(encodeURIComponent("https://example.test/api/consent/callback"));
+  });
+});
+
+describe("GET /public/flow/read-consent-url (#1311)", () => {
+  const SESSION_ID = "223e4567-e89b-42d3-a456-426614174000";
+
+  const flowSessionRow = (over: Record<string, unknown> = {}) => ({
+    id: SESSION_ID,
+    status: "pending",
+    tenantId: null,
+    productSlug: "architect-essentials-retainer",
+    consentSkippedAt: null,
+    ...over,
+  });
+
+  async function callUrlRoute(queue: unknown[][]): Promise<MockResStore> {
+    dbSelectQueue = queue;
+    const { res, store } = mockRes();
+    const req = mockReq({ headers: {}, query: { sessionId: SESSION_ID } });
+    const handler = getHandler(consentRouter, "get", "/public/flow/read-consent-url");
+    expect(handler).not.toBeNull();
+    await handler!(req, res, (() => {}) as NextFunction);
+    return store;
+  }
+
+  beforeEach(() => {
+    dbSelectQueue = [];
+    mockSelect.mockClear();
+    mockUpdate.mockClear();
+  });
+
+  it("returns an optional, skippable session-state URL for a Retainer session", async () => {
+    const store = await callUrlRoute([
+      [flowSessionRow()],
+      [{ serviceType: "retainer" }],
+    ]);
+    expect(store.statusCode).toBe(200);
+    const body = store.jsonBody as {
+      url: string; requirement: string; skippable: boolean; scopes: string[]; readConsentSkipped: boolean;
+    };
+    expect(body.requirement).toBe("optional");
+    expect(body.skippable).toBe(true);
+    expect(body.url).toContain("client_id=mt-client-id");
+    expect(body.url).toContain(`state=${SESSION_ID}`);
+    expect(body.url).toContain("/common/adminconsent");
+    expect(body.scopes.length).toBeGreaterThan(0);
+    expect(body.readConsentSkipped).toBe(false);
+  });
+
+  it("returns required + not skippable for a Monitoring session", async () => {
+    const store = await callUrlRoute([
+      [flowSessionRow({ productSlug: "monitoring-foundation-smb" })],
+      [{ serviceType: "monitoring_tier" }],
+    ]);
+    expect(store.statusCode).toBe(200);
+    const body = store.jsonBody as { requirement: string; skippable: boolean; url: string };
+    expect(body.requirement).toBe("required");
+    expect(body.skippable).toBe(false);
+    expect(body.url).toContain(`state=${SESSION_ID}`);
+  });
+
+  it("fails CLOSED to required when the slug names no services row", async () => {
+    const store = await callUrlRoute([
+      [flowSessionRow({ productSlug: "no-such-product" })],
+      [], // no services row
+    ]);
+    expect(store.statusCode).toBe(200);
+    expect((store.jsonBody as { requirement: string }).requirement).toBe("required");
+    expect((store.jsonBody as { skippable: boolean }).skippable).toBe(false);
+  });
+
+  it("404s an unknown/expired session (same resolveFlowSession contract as its siblings)", async () => {
+    const store = await callUrlRoute([[]]);
+    expect(store.statusCode).toBe(404);
+    expect((store.jsonBody as { error: string }).error).toBe("session_expired");
+  });
+});
+
+describe("POST /public/flow/read-consent-skip (#1311)", () => {
+  const SESSION_ID = "223e4567-e89b-42d3-a456-426614174000";
+
+  const flowSessionRow = (over: Record<string, unknown> = {}) => ({
+    id: SESSION_ID,
+    status: "pending",
+    tenantId: null,
+    productSlug: "architect-essentials-retainer",
+    consentSkippedAt: null,
+    ...over,
+  });
+
+  async function callSkipRoute(queue: unknown[][], sessionId: unknown = SESSION_ID): Promise<MockResStore> {
+    dbSelectQueue = queue;
+    const { res, store } = mockRes();
+    const req = mockReq({ headers: {}, body: { sessionId } });
+    const handler = getHandler(consentRouter, "post", "/public/flow/read-consent-skip");
+    expect(handler).not.toBeNull();
+    await handler!(req, res, (() => {}) as NextFunction);
+    return store;
+  }
+
+  beforeEach(() => {
+    dbSelectQueue = [];
+    mockSelect.mockClear();
+    mockUpdate.mockClear();
+    mockUpdateSet.mockClear();
+  });
+
+  it("records the skip for a Retainer session — a real UPDATE stamping consentSkippedAt", async () => {
+    const store = await callSkipRoute([
+      [flowSessionRow()],
+      [{ serviceType: "retainer" }],
+    ]);
+    expect(store.statusCode).toBe(200);
+    const body = store.jsonBody as { ok: boolean; requirement: string; readConsentSkipped: boolean };
+    expect(body.ok).toBe(true);
+    expect(body.requirement).toBe("optional");
+    expect(body.readConsentSkipped).toBe(true);
+    const skipSet = (mockUpdateSet.mock.calls as Array<[Record<string, unknown>]>)
+      .find(([arg]) => arg["consentSkippedAt"] instanceof Date);
+    expect(skipSet).toBeDefined();
+  });
+
+  it("REFUSES a Monitoring session with 409 consent_required and writes NOTHING", async () => {
+    const store = await callSkipRoute([
+      [flowSessionRow({ productSlug: "monitoring-foundation-smb" })],
+      [{ serviceType: "monitoring_tier" }],
+    ]);
+    expect(store.statusCode).toBe(409);
+    expect((store.jsonBody as { error: string }).error).toBe("consent_required");
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("fails CLOSED for a slug with no services row — refused, nothing written", async () => {
+    const store = await callSkipRoute([
+      [flowSessionRow({ productSlug: "sow-cart" })],
+      [], // no services row resolves this slug
+    ]);
+    expect(store.statusCode).toBe(409);
+    expect((store.jsonBody as { error: string }).error).toBe("consent_required");
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("REFUSES once consent has landed (tenant connected) — 409 already_consented, before any catalog read", async () => {
+    const store = await callSkipRoute([
+      [flowSessionRow({ tenantId: "tenant-abc", status: "consented" })],
+      // No second row: the route must refuse before reading the services row.
+    ]);
+    expect(store.statusCode).toBe(409);
+    expect((store.jsonBody as { error: string }).error).toBe("already_consented");
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+
+  it("400s a non-UUID sessionId without touching anything", async () => {
+    const store = await callSkipRoute([], "not-a-uuid");
+    expect(store.statusCode).toBe(400);
+    expect(mockUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /consent/callback — read-consent skip is cleared by a real grant (#1311)", () => {
+  const CHECKOUT_STATE = "44444444-4444-4444-8444-444444444444";
+
+  it("sets consentSkippedAt back to null in the same update that marks the session consented", async () => {
+    dbSelectQueue = [];
+    mockUpdateSet.mockClear();
+    dbSelectQueue.push([{ id: 89 }]); // isDirectBusiness MSP id (cross-MSP guard)
+    dbSelectQueue.push([]);           // no conflicting customer for this tenant
+    const { res } = mockRes();
+    const req = mockReq({
+      query: { tenant: "tenant-skip-clear", admin_consent: "True", state: CHECKOUT_STATE },
+    });
+    const handler = getHandler(consentRouter, "get", "/consent/callback");
+    await handler!(req, res, (() => {}) as NextFunction);
+
+    const sessionSet = (mockUpdateSet.mock.calls as Array<[Record<string, unknown>]>)
+      .find(([arg]) => arg["status"] === "consented");
+    expect(sessionSet).toBeDefined();
+    // The property must be PRESENT and explicitly null — a buyer who skipped,
+    // changed their mind, and connected is no longer "skipped".
+    expect(Object.prototype.hasOwnProperty.call(sessionSet![0], "consentSkippedAt")).toBe(true);
+    expect(sessionSet![0]["consentSkippedAt"]).toBeNull();
+  });
+});

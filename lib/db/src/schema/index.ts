@@ -3456,6 +3456,16 @@ export const checkoutSessionsTable = pgTable("checkout_sessions", {
     .default([]),
   sowPhaseInvoicesCreatedAt: timestamp("sow_phase_invoices_created_at", { withTimezone: true }),
 
+  // ── Read-consent skip (Git #1311, Epic #1309 Phase 2) ──────────────────────
+  // Set when the buyer explicitly declined the OPTIONAL read-only tenant
+  // connection (a Retainer purchase's "Skip — buy without a scan"). A real
+  // recorded decision, distinct from "never reached the consent step":
+  // downstream fulfillment branches on it, and the consent callback clears it
+  // if the buyer later connects after all. Products whose read consent is
+  // required (monitoring_tier, config_pack, …) can never set it — the skip
+  // route refuses (see lib/read-consent-flow.ts's fail-closed mapping).
+  consentSkippedAt: timestamp("consent_skipped_at", { withTimezone: true }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),

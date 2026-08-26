@@ -11,6 +11,7 @@ import {
 import { and, asc, eq, inArray, gte } from "drizzle-orm";
 import { z } from "zod";
 import { resolveCatalogPricing, isServiceFree } from "../lib/catalog-pricing";
+import { buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
 import { ensureAssessmentFunnelLead } from "../lib/crm-pipeline";
 import { pushMarketingLeadToEngageBay } from "../lib/engagebay-marketing-lead";
 import { getMspPortalLandingUrl } from "../lib/portal-url.ts";
@@ -256,9 +257,7 @@ router.get("/public/consent-url", async (req: Request, res: Response) => {
 
   const proto = req.headers["x-forwarded-proto"] ?? req.protocol;
   const host = req.headers["x-forwarded-host"] ?? req.headers.host;
-  const redirectUri = `${proto}://${host}/api/consent/callback`;
-
-  const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri });
+  const hostBase = `${proto}://${host}`;
 
   // Thread the checkout session ID through as OAuth `state` if provided and valid.
   //
@@ -294,11 +293,16 @@ router.get("/public/consent-url", async (req: Request, res: Response) => {
       res.json({ url: null, error: "session_expired" });
       return;
     }
-    params.set("state", rawSessionId);
+    // Session-state URL — the ONE definition shared with the generalized
+    // purchase-flow route (#1311, GET /api/public/flow/read-consent-url).
+    // Identical output to the inline builder this replaced.
+    res.json({ url: buildSessionReadConsentUrl(hostBase, rawSessionId, clientId) });
+    return;
   }
 
-  const url = `https://login.microsoftonline.com/common/adminconsent?${params.toString()}`;
-  res.json({ url });
+  // State-less variant (no session to reconnect) — unchanged.
+  const params = new URLSearchParams({ client_id: clientId, redirect_uri: `${hostBase}/api/consent/callback` });
+  res.json({ url: `https://login.microsoftonline.com/common/adminconsent?${params.toString()}` });
 });
 
 // ── GET /api/catalog/assessments ──────────────────────────────────────────────

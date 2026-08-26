@@ -78,6 +78,7 @@ import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInit
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, provisionProspectAccount } from "../lib/direct-tenant-provisioning.ts";
+import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "auth" });
 
@@ -625,6 +626,10 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       .set({
         status: "consented",
         tenantId: tenant,
+        // #1311: a session whose admin actually granted consent is by
+        // definition not skipped — clears a Retainer buyer's earlier explicit
+        // skip if they changed their mind and connected after all.
+        consentSkippedAt: null,
         updatedAt: sessionNow,
       })
       .where(
@@ -1955,6 +1960,7 @@ type FlowSession = {
   status: string;
   tenantId: string | null;
   productSlug: string;
+  consentSkippedAt: Date | null;
 };
 
 /**
@@ -1976,6 +1982,7 @@ async function resolveFlowSession(
       status: checkoutSessionsTable.status,
       tenantId: checkoutSessionsTable.tenantId,
       productSlug: checkoutSessionsTable.productSlug,
+      consentSkippedAt: checkoutSessionsTable.consentSkippedAt,
     })
     .from(checkoutSessionsTable)
     .where(
@@ -2057,7 +2064,115 @@ router.get("/public/flow/consent-status", async (req: Request, res: Response) =>
     complianceGroup: consent.complianceGroup
       ? { path: consent.complianceGroup.path, confirmed: !!consent.complianceGroup.confirmedAt }
       : null,
+    // #1311: the buyer's explicit "skip the optional scan" decision (Retainer
+    // purchases only — see /public/flow/read-consent-skip below). Additive;
+    // pre-#1311 callers ignore it. Cleared server-side if consent later lands.
+    readConsentSkipped: session.consentSkippedAt != null,
   });
+});
+
+// ── GET /api/public/flow/read-consent-url (Git #1311, Epic #1309 Phase 2) ──────
+// The generalized READ-consent URL mint for a purchase session — the route
+// Buy.tsx's flow calls for every product. Same mechanism as the assessment
+// funnel's GET /api/public/consent-url (which stays unchanged for its existing
+// callers): the OAuth `state` is the session UUID itself, landing on the same
+// GET /api/consent/callback above. What this route adds is the product's
+// consent REQUIREMENT, resolved server-side from the session's own services row
+// (lib/read-consent-flow.ts) so the front-end renders required-vs-skippable
+// from the catalog rather than hardcoding product knowledge:
+//
+//   requirement "required" — Monitoring tiers, Packs, assessments, and any
+//     product the catalog cannot vouch for (fail closed). The purchase cannot
+//     proceed without the grant.
+//   requirement "optional" — Retainer only. The buyer may decline via
+//     POST /public/flow/read-consent-skip below.
+
+router.get("/public/flow/read-consent-url", async (req: Request, res: Response) => {
+  if (!process.env.MT_APP_CLIENT_ID) {
+    res.status(503).json({
+      error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)",
+    });
+    return;
+  }
+  const session = await resolveFlowSession(req.query.sessionId, res);
+  if (!session) return;
+
+  const { requirement } = await getReadConsentRequirementForProduct(session.productSlug);
+  const url = buildSessionReadConsentUrl(getHostBase(req), session.id, process.env.MT_APP_CLIENT_ID);
+
+  res.json({
+    url,
+    requirement,
+    skippable: requirement === "optional",
+    // Mirrors what the invite-link routes return, so the flow can show the
+    // buyer the read app's permission list before they approve it.
+    scopes: REQUIRED_MT_SCOPES,
+    readConsentSkipped: session.consentSkippedAt != null,
+  });
+});
+
+// ── POST /api/public/flow/read-consent-skip (Git #1311) ────────────────────────
+// The EXPLICIT skip branch behind Buy.tsx's "Skip — buy without a scan"
+// (`connectOffered`/`scanSkipped`): records the buyer's decision on the session
+// row (checkout_sessions.consent_skipped_at) so downstream fulfillment can
+// branch on a real fact, not a client-side state that vanished with the tab.
+// Fails closed twice, server-side, never trusting the caller:
+//
+//   - A product whose read consent is REQUIRED (Monitoring, Packs, anything
+//     unknown) is refused with 409 consent_required — the front-end offering a
+//     skip button it shouldn't have cannot manufacture a skippable purchase.
+//   - A session whose tenant already granted consent is refused with 409
+//     already_consented — a landed grant is never silently un-recorded; the
+//     buyer's "Change" path is a fresh consent, not a retroactive skip.
+
+const readConsentSkipSchema = z.object({ sessionId: z.string() });
+
+router.post("/public/flow/read-consent-skip", async (req: Request, res: Response) => {
+  const parsed = readConsentSkipSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request" });
+    return;
+  }
+  const session = await resolveFlowSession(parsed.data.sessionId, res);
+  if (!session) return;
+
+  if (session.tenantId?.trim() || session.status === "consented") {
+    res.status(409).json({ error: "already_consented" });
+    return;
+  }
+
+  const { requirement, serviceType } = await getReadConsentRequirementForProduct(session.productSlug);
+  if (requirement !== "optional") {
+    log.warn(
+      { sessionId: session.id, productSlug: session.productSlug, serviceType, requirement },
+      "public flow: read-consent skip REFUSED — this product's read consent is required, not skippable",
+    );
+    res.status(409).json({ error: "consent_required", requirement });
+    return;
+  }
+
+  const now = new Date();
+  await db
+    .update(checkoutSessionsTable)
+    .set({ consentSkippedAt: now, updatedAt: now })
+    .where(eq(checkoutSessionsTable.id, session.id));
+
+  await createAuditLog({
+    actorUserId: null,
+    actorName: "public:purchase-flow",
+    actorRole: "client",
+    actionType: "read_consent_skipped",
+    entityType: "checkout_session",
+    entityId: session.id,
+    metadata: { sessionId: session.id, productSlug: session.productSlug, serviceType },
+  });
+
+  log.info(
+    { sessionId: session.id, productSlug: session.productSlug, serviceType },
+    "public flow: read consent explicitly skipped (optional for this product)",
+  );
+
+  res.json({ ok: true, requirement, readConsentSkipped: true });
 });
 
 // ── GET /api/public/flow/sharepoint-consent-url — DELETED (#480) ───────────────

@@ -1,0 +1,112 @@
+{
+  "feature": "Generalized read-consent flow for Buy.tsx purchase sessions (Git #1311, Epic #1309 Phase 2): session-keyed read-consent URL mint with server-resolved requirement (required vs optional), the explicit Retainer skip branch, its fail-closed refusal for Monitoring, and the skip's visibility on consent-status.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "40dbcb3ab108378f6e108b35b92576dd95e301d4",
+
+  "notes": [
+    "WHAT THIS COVERS: the #1311 backend extraction only — no UI is wired to these routes yet (Buy.tsx wiring is Phase 8, #1309). Every call is either the genuine PUBLIC intake (POST /api/public/checkout-session, minting a real checkout_sessions row + funnel lead per run — same accepted side effect as billing/retainer-signup.json's CREATE) or a session-keyed public flow route.",
+    "PRODUCT SLUGS are real catalog rows confirmed against the live services table: architect-essentials-retainer (serviceType 'retainer' — the ONLY serviceType whose read consent is optional/skippable) and monitoring-foundation-smb (serviceType 'monitoring_tier' — consent required, skip must be refused 409).",
+    "WHAT CANNOT BE ASSERTED HERE, honestly: the Microsoft admin-consent screen itself and GET /api/consent/callback's grant stamping — the OAuth wall is architecturally undrivable by this harness (same caveat as copilot-readiness/money-path-e2e.json). The callback's skip-clearing branch (consentSkippedAt back to null when a real grant lands) is covered by unit tests in artifacts/api-server/src/routes/consent.test.ts instead.",
+    "The two sessions minted per run expire in 24h and are never consented/paid — no account, tenant, or grant is ever created by this manifest."
+  ],
+
+  "apiTests": [
+    {
+      "name": "CREATE (retainer) — mint a purchase session for a Retainer product; extract sessionId",
+      "method": "POST",
+      "path": "/api/public/checkout-session",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "productSlug": "architect-essentials-retainer",
+        "fullName": "Read Consent Flow Probe",
+        "email": "read-consent-flow-probe@testbed.local",
+        "company": "Read Consent Flow Testbed",
+        "industry": "technology",
+        "seats": 1
+      },
+      "expect": { "status": 200, "jsonPath": "$.sessionId", "exists": true },
+      "extract": { "as": "rcRetainerSessionId", "jsonPath": "$.sessionId" }
+    },
+    {
+      "name": "URL (retainer) — GET /api/public/flow/read-consent-url resolves the requirement server-side from the catalog: a Retainer session is optional",
+      "method": "GET",
+      "path": "/api/public/flow/read-consent-url?sessionId={{rcRetainerSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.requirement", "value": "optional" }
+    },
+    {
+      "name": "URL (retainer) — skippable flag is true for the optional product",
+      "method": "GET",
+      "path": "/api/public/flow/read-consent-url?sessionId={{rcRetainerSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.skippable", "value": true }
+    },
+    {
+      "name": "URL (retainer) — the minted URL is the session-state Microsoft admin-consent URL (state = the session UUID, /common/adminconsent)",
+      "method": "GET",
+      "path": "/api/public/flow/read-consent-url?sessionId={{rcRetainerSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.url", "containsAny": ["adminconsent"] }
+    },
+    {
+      "name": "SKIP (retainer) — POST /api/public/flow/read-consent-skip records the explicit skip on the session row (the real backend branch behind Buy.tsx's 'Skip — buy without a scan')",
+      "method": "POST",
+      "path": "/api/public/flow/read-consent-skip",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "{{rcRetainerSessionId}}" },
+      "expect": { "status": 200, "jsonPath": "$.readConsentSkipped", "value": true }
+    },
+    {
+      "name": "STATUS (retainer) — the recorded skip is visible to the flow: GET /api/public/flow/consent-status reports readConsentSkipped true",
+      "method": "GET",
+      "path": "/api/public/flow/consent-status?sessionId={{rcRetainerSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.readConsentSkipped", "value": true }
+    },
+    {
+      "name": "CREATE (monitoring) — mint a purchase session for a Monitoring tier; extract sessionId",
+      "method": "POST",
+      "path": "/api/public/checkout-session",
+      "headers": { "Content-Type": "application/json" },
+      "body": {
+        "productSlug": "monitoring-foundation-smb",
+        "fullName": "Read Consent Flow Probe",
+        "email": "read-consent-flow-probe-mon@testbed.local",
+        "company": "Read Consent Flow Testbed",
+        "industry": "technology",
+        "seats": 25
+      },
+      "expect": { "status": 200, "jsonPath": "$.sessionId", "exists": true },
+      "extract": { "as": "rcMonitoringSessionId", "jsonPath": "$.sessionId" }
+    },
+    {
+      "name": "URL (monitoring) — the same route reports required (not skippable) for a Monitoring session",
+      "method": "GET",
+      "path": "/api/public/flow/read-consent-url?sessionId={{rcMonitoringSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.requirement", "value": "required" }
+    },
+    {
+      "name": "SKIP REFUSED (monitoring) — the skip is a privileged branch: a required product's session is refused 409 consent_required, server-side, regardless of what the caller asks",
+      "method": "POST",
+      "path": "/api/public/flow/read-consent-skip",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "sessionId": "{{rcMonitoringSessionId}}" },
+      "expect": { "status": 409, "jsonPath": "$.error", "value": "consent_required" }
+    },
+    {
+      "name": "STATUS (monitoring) — no skip was recorded for the refused session",
+      "method": "GET",
+      "path": "/api/public/flow/consent-status?sessionId={{rcMonitoringSessionId}}",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 200, "jsonPath": "$.readConsentSkipped", "value": false }
+    },
+    {
+      "name": "SESSION GUARD — an unknown session UUID is refused by the same resolveFlowSession contract as every sibling flow route (404 session_expired)",
+      "method": "GET",
+      "path": "/api/public/flow/read-consent-url?sessionId=00000000-0000-4000-8000-000000000000",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 404, "jsonPath": "$.error", "value": "session_expired" }
+    }
+  ]
+}
