@@ -250,6 +250,9 @@ export function PortalV2ScanLanding({ onComplete }: { onComplete: () => void }) 
           <button type="button" onClick={togglePauseAutoScan} style={debugBtnStyle(44)}>
             {pauseAutoScan ? "[DEBUG] Resume Auto-Scan" : "[DEBUG] Pause Auto-Scan"}
           </button>
+          <button type="button" onClick={onComplete} style={debugBtnStyle(76)}>
+            [DEBUG] Skip to Overview
+          </button>
         </>
       ) : null}
 
