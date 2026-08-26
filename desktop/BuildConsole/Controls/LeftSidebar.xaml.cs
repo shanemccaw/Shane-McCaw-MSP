@@ -77,6 +77,8 @@ namespace BuildConsole.Controls
         public bool IsBlocked { get; set; }
         public int? BlockedByNumber { get; set; }
         public string? BlockedByTitle { get; set; }
+        /// <summary>Git #1368 — real "in-flight" label straight off the board's own GraphQL labels fetch (see <see cref="GitBoardIssue.HasInFlightLabel"/>), no separate REST call needed unlike <see cref="IsBlocked"/>.</summary>
+        public bool IsInFlight { get; set; }
         public bool HasParentEpic { get; set; }
         public int? ParentNumber { get; set; }
         public int SubIssueCount { get; set; }
@@ -1981,6 +1983,7 @@ namespace BuildConsole.Controls
                 ParentNumber = it.ParentNumber,
                 SubIssueCount = it.SubIssueCount,
                 IsBlocked = issueInTree?.IsBlocked ?? it.IsBlocked,
+                IsInFlight = it.HasInFlightLabel,
                 BlockedByNumber = issueInTree?.BlockedByNumber,
                 BlockedByTitle = issueInTree?.BlockedByTitle,
             };
@@ -2014,6 +2017,7 @@ namespace BuildConsole.Controls
                         Status = it.IsClosed ? "CLOSED" : "OPEN",
                         IsComplete = it.IsComplete,
                         IsBlocked = it.IsBlocked,
+                        IsInFlight = it.HasInFlightLabel,
                         SqlPath = DeriveSqlPath(it.Body),
                         Body = it.Body,
                         DatabaseId = it.DatabaseId,
@@ -3382,6 +3386,7 @@ namespace BuildConsole.Controls
                     RawTitle = searchResult.Title,
                     Status = searchResult.IsClosed ? "CLOSED" : "OPEN",
                     IsComplete = searchResult.Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase)),
+                    IsInFlight = searchResult.HasInFlightLabel,
                 };
                 IssueSelected?.Invoke(this, searchIssue);
                 GitDetailTabRequested?.Invoke(this, searchIssue);
@@ -3399,6 +3404,7 @@ namespace BuildConsole.Controls
                     IsEpic = boardIssue.IsEpic,
                     IsComplete = boardIssue.IsComplete,
                     HasParentEpic = boardIssue.ParentNumber.HasValue,
+                    IsInFlight = boardIssue.HasInFlightLabel,
                 };
                 IssueSelected?.Invoke(this, bi);
                 GitDetailTabRequested?.Invoke(this, bi);
@@ -3555,6 +3561,7 @@ namespace BuildConsole.Controls
         private const double IssuePriorityBadgeWidth = 22; // priority glyph + trailing space
         private const double IssueNumberBadgeWidth = 48;   // "#NNN" bordered pill + its 6px right margin
         private const double IssueBlockedBadgeWidth = 78;  // "🔴 Blocked" bordered pill + its 6px right margin
+        private const double IssueInFlightBadgeWidth = 88; // "🟠 In Flight" bordered pill + its 6px right margin
 
         private readonly List<(TextBlock block, double reserve)> _issueTitleBlocks = new();
 
@@ -4158,6 +4165,26 @@ namespace BuildConsole.Controls
                 showsNoParent = true;
             }
 
+            // Git #1368 — real "in-flight" GitHub label (whatever build session
+            // is actively working this issue right now), same amber/orange
+            // #FAB387 the search view's CreateSearchIssueHeader already uses
+            // for "In Flight" — deliberately NOT the Blocked badge's red
+            // #F38BA8, so the two are never confused at a glance even when
+            // both show on the same row.
+            if (issue.Status != "CLOSED" && issue.IsInFlight)
+            {
+                var inFlightBadge = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    ToolTip = "A build session is actively working this issue right now"
+                };
+                inFlightBadge.Child = new TextBlock { Text = "🟠 In Flight", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+                p.Children.Add(inFlightBadge);
+            }
+
             // Git #845 (Git Board Phase 7) — real still-OPEN blocked_by
             // dependency (EnrichBlockedStatusAsync), same red "Blocked" badge
             // styling as the search view's CreateSearchIssueHeader (#F38BA8).
@@ -4179,9 +4206,10 @@ namespace BuildConsole.Controls
 
             // Git #938 — issue rows sit at depth
             bool showsBlocked = issue.Status != "CLOSED" && issue.IsBlocked;
+            bool showsInFlight = issue.Status != "CLOSED" && issue.IsInFlight;
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * (depth + 1) + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
-                + (showsBlocked ? IssueBlockedBadgeWidth : 0) + (showsNoParent ? IssueBlockedBadgeWidth : 0)));
+                + (showsBlocked ? IssueBlockedBadgeWidth : 0) + (showsInFlight ? IssueInFlightBadgeWidth : 0) + (showsNoParent ? IssueBlockedBadgeWidth : 0)));
 
             // Left accent bar + subtle background tint so the active epic
             // reads ahead of every sibling epic even before you read its
@@ -4717,6 +4745,7 @@ namespace BuildConsole.Controls
                 Status = result.IsClosed ? "CLOSED" : "OPEN",
                 IsBlocked = blocked,
                 IsComplete = result.Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase)),
+                IsInFlight = result.HasInFlightLabel,
             };
 
             var tvi = new TreeViewItem { Header = p, Tag = gitIssue };
