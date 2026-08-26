@@ -527,19 +527,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // above, this is the buyer's real, ongoing session — applyTokens() (not
     // a raw setState) so the refresh timer / "are you still there?" warning
     // are set up exactly as they would be for a normal password login.
+    //
+    // Git #1315 (Epic #1309, Phase 6) — a `product` hint may ride alongside
+    // signupToken (set by the purchase portal-handoff endpoint, #1313,
+    // resolved from the session's own services.category). Retainer owns a
+    // real destination beyond the generic CustomerUser landing FlatLoggedInRedirect
+    // otherwise picks: "My Architect" (#1285), so a Retainer purchase lands
+    // there directly rather than on the Overview and needing a second click.
+    // Absent or any other category, this falls through to today's unchanged
+    // default landing — Phases 5/7 can add their own branch here the same way
+    // when they need a destination beyond the default.
     const signupToken = params.get("signupToken");
     if (signupToken) {
+      const product = params.get("product");
       sessionStorage.removeItem(REFRESH_TOKEN_KEY);
       sessionStorage.removeItem(REFRESH_EXPIRES_AT_KEY);
 
       exchangeSignupToken(signupToken).then((data) => {
         if (data) {
           applyTokens(data.accessToken, data.refreshToken, data.refreshExpiresAt);
-          // Single-use and already consumed — strip it so it is never
-          // visible/bookmarkable/retried.
+          // Single-use and already consumed — strip it (and the routing
+          // hint) so neither is ever visible/bookmarkable/retried.
           const url = new URL(window.location.href);
           url.searchParams.delete("signupToken");
+          url.searchParams.delete("product");
           window.history.replaceState({}, "", url.toString());
+
+          if (product === "retainer" && data.user.mspSlug) {
+            // SlugProvider (mounted once this route renders) persists the
+            // slug to sessionStorage itself — no need to duplicate that here.
+            const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+            window.history.pushState({}, "", `${base}/${data.user.mspSlug}/portal-v2/retainer`);
+            // wouter's browser location hook patches pushState to emit its
+            // own event (same mechanism the impersonation branch above
+            // relies on), so this lands the tab without a full reload.
+          }
         } else {
           setState((s) => ({ ...s, isLoading: false }));
         }

@@ -66,6 +66,7 @@ import {
   checkoutSessionsTable,
   checkoutEmailVerificationsTable,
   usersTable,
+  servicesTable,
 } from "@workspace/db";
 import { and, desc, eq, gte, isNotNull, isNull } from "drizzle-orm";
 import { provisionProspectAccount } from "./direct-tenant-provisioning.ts";
@@ -429,4 +430,23 @@ export async function resolvePortalHandoffUser(session: PaidPurchaseSession): Pr
   if (!user.passwordHash) return { outcome: "password_not_set" };
 
   return { outcome: "ok", userId: user.id };
+}
+
+/**
+ * Git #1315 (Epic #1309, Phase 6) — the session's product category
+ * (`services.category`), so the portal-handoff caller can tell each landing
+ * phase (5/6/7) which product this was without re-deriving it. The same
+ * reliable discriminator #1307/#1310/#1311/#1312 already settled on — never
+ * the raw `productSlug`, which varies per tier/seat-count within one category
+ * (six real retainer rows alone). Returns null for a slug with no catalog
+ * row; the caller degrades to the pre-#1315 handoff behavior rather than
+ * failing the mint over a lookup that is advisory, not load-bearing.
+ */
+export async function resolveProductCategory(productSlug: string): Promise<string | null> {
+  const [row] = await db
+    .select({ category: servicesTable.category })
+    .from(servicesTable)
+    .where(eq(servicesTable.slug, productSlug))
+    .limit(1);
+  return row?.category ?? null;
 }

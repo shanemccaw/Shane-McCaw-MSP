@@ -32,6 +32,7 @@ import {
   getVerifiedEmail,
   attachPasswordToAccount,
   resolvePortalHandoffUser,
+  resolveProductCategory,
   generateSixDigitCode,
   maskEmail,
   MAX_CODE_ATTEMPTS,
@@ -406,6 +407,16 @@ describe("portal handoff — only the account this session created is ever minta
     const { session, userId } = await completeAccountCreation(testEmail("handoff-nopw"));
     await db.update(usersTable).set({ passwordHash: null }).where(eq(usersTable.id, userId));
     expect(await resolvePortalHandoffUser(session)).toEqual({ outcome: "password_not_set" });
+  });
+});
+
+describe("resolveProductCategory — Git #1315, the portal-handoff landing hint", () => {
+  it("resolves a real retainer catalog row to its category", async () => {
+    expect(await resolveProductCategory("architect-essentials-retainer")).toBe("retainer");
+  });
+
+  it("returns null for a slug with no catalog row, rather than throwing", async () => {
+    expect(await resolveProductCategory(`no-such-product-${RUN_TAG}`)).toBeNull();
   });
 });
 

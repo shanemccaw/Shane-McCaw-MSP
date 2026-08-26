@@ -89,6 +89,7 @@ import {
   getVerifiedEmail,
   attachPasswordToAccount,
   resolvePortalHandoffUser,
+  resolveProductCategory,
   maskEmail,
   type PaidPurchaseSession,
 } from "../lib/purchase-account-flow.ts";
@@ -490,13 +491,21 @@ router.post("/public/purchase/portal-handoff", handoffLimiter, async (req: Reque
     metadata: { checkoutSessionId: session.id, productSlug: session.productSlug },
   });
 
+  // Git #1315 (Phase 6) — the product category rides along on the portal URL
+  // so the boot effect that consumes signupToken (msp-portal auth-context.tsx)
+  // can land each product on its own destination without a second round trip.
+  // Advisory only: a lookup miss just omits the param, and the boot effect's
+  // existing default landing applies exactly as it did before this phase.
+  const productCategory = await resolveProductCategory(session.productSlug);
+  const productParam = productCategory ? `&product=${encodeURIComponent(productCategory)}` : "";
+
   log.info(
-    { sessionId: session.id, userId: eligibility.userId, productSlug: session.productSlug },
+    { sessionId: session.id, userId: eligibility.userId, productSlug: session.productSlug, productCategory },
     "portal handoff: single-use auto-login token minted for the session's own completed account",
   );
   res.json({
     ok: true,
-    portalUrl: `${getMspPortalLandingUrl()}?signupToken=${encodeURIComponent(signupToken)}`,
+    portalUrl: `${getMspPortalLandingUrl()}?signupToken=${encodeURIComponent(signupToken)}${productParam}`,
   });
 });
 
