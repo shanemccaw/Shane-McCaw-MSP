@@ -178,8 +178,9 @@ night). An isolated worktree per session removes the shared mutable state entire
 
 **For a BuildConsole-launched build (the normal case): you don't have to do anything.**
 BuildConsole provisions a fresh worktree off `origin/main` and launches you inside it
-automatically (gated by the Settings toggle **"Enforce worktree isolation"**, default
-ON). Your `node_modules` + `lib/*/dist` are **junctioned** from the main checkout, not
+automatically (gated by the **`EnforceWorktreeIsolation`** setting, default ON; flip it
+to `false` in `%AppData%\BuildConsole\settings.json` to fall back to the shared
+checkout). Your `node_modules` + `lib/*/dist` are **junctioned** from the main checkout, not
 re-installed — one shared copy, zero extra downloads even on a slow connection (#1372).
 Just work and commit normally in your cwd. On completion BuildConsole merges your
 committed changes into the dev-server checkout and cleans up your worktree for you.

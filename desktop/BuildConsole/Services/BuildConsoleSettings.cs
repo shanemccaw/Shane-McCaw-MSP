@@ -365,6 +365,13 @@ namespace BuildConsole.Services
         /// <summary>On by default: queue builds launch with BuildConsole-owned redirected stdin/stdout so Build Watch can chat into them. Off = legacy --print positional-prompt path (no stdin, no interactivity).</summary>
         public bool InteractiveBuilds { get; set; } = true;
 
+        /// <summary>Git #1371 — On by default: every launched build runs in its OWN isolated git
+        /// worktree (provisioned off origin/main, node_modules junctioned/shared per #1372) instead
+        /// of the shared repo checkout, so concurrent sessions can never collide over the working
+        /// tree/index. Off = legacy behavior (all builds share the repo checkout — collision-prone).
+        /// A build queued with an explicit --cwd header still honors that path and skips isolation.</summary>
+        public bool EnforceWorktreeIsolation { get; set; } = true;
+
         /// <summary>Global queue paused state, remembered across app restarts.</summary>
         public bool QueuePaused { get; set; } = false;
 

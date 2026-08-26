@@ -104,6 +104,14 @@ namespace BuildConsole.Services
             /// <summary>Approximate current context-window usage — input_tokens + cache_creation_input_tokens + cache_read_input_tokens of the most recently seen "assistant"/"result" stream-json event's real `usage` object (the standard way to read "how full is the context window", since every API turn re-sends the whole conversation as input). Overwritten (not summed) on each new usage-bearing line. Null until the first such line lands.</summary>
             public long? ContextTokens;
 
+            /// <summary>Git #1371 — absolute path of the isolated git worktree this build runs in
+            /// (null when worktree isolation is off, or an explicit --cwd overrode it). On completion
+            /// this is where merge-back runs from; the sweep reclaims it once the build process exits.</summary>
+            public string? WorktreePath;
+            /// <summary>Git #1371 — the worktree's provisioning name/id (agent/&lt;name&gt; branch,
+            /// C:\wt\&lt;name&gt; path) used to merge-back / mark-stale / clean it up.</summary>
+            public string? WorktreeName;
+
             // ── Interactive (BuildConsole owns stdin/stdout) fields ──────────
             /// <summary>True when this build was launched in the interactive redirected-stdin mode (owned by this app instance). Legacy/foreign builds are false and behave exactly as before.</summary>
             public bool Interactive;
@@ -155,6 +163,8 @@ namespace BuildConsole.Services
         private readonly object _gate = new();
         private DispatcherTimer? _timer;
         private bool _ticking;
+        /// <summary>Git #1371 — throttles the background worktree cleanup sweep run from TickAsync.</summary>
+        private DateTime _lastWorktreeSweepUtc = DateTime.MinValue;
         private readonly List<(int Id, int ExitCode, string? SessionId)> _pendingCompletions = new();
 
         private const int MaxBufferedEvents = 4000;
@@ -261,7 +271,63 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Git #820 — "Run Now": launches an item this app just force-claimed (bypassing the blocker/free-slot check GetNextQueueItemsAsync would normally enforce). Same launch path as the normal poll loop, just triggered directly instead of discovered.</summary>
-        public void ForceLaunch(QueueItem item) => LaunchItem(item);
+        public void ForceLaunch(QueueItem item) => _ = SafeLaunch(item);
+
+        /// <summary>Fire-and-forget wrapper for the now-async <see cref="LaunchItem"/> — used by the
+        /// non-awaiting entry points (Run Now, Build Watch resume). Observes any exception so an
+        /// unawaited launch (e.g. a worktree-provisioning hiccup, Git #1371) can't crash the app.</summary>
+        private async Task SafeLaunch(QueueItem item, int? buildSetExpected = null)
+        {
+            try { await LaunchItem(item, buildSetExpected); }
+            catch (Exception ex) { ActivityLog.Log("watcher", $"LaunchItem threw for queue #{item.Id} ({item.Title}): {ex.Message}"); }
+        }
+
+        /// <summary>Git #1371 — the provisioning name/id for a build's isolated worktree. Uses the
+        /// queue row id (globally unique, stable across a Reply/resume of the same row) plus the
+        /// GitHub number when known, giving a readable branch/path (agent/&lt;name&gt;, C:\wt\&lt;name&gt;).</summary>
+        private static string ComposeWorktreeName(QueueItem item)
+        {
+            string gh = item.GithubNumber.HasValue ? $"{item.GithubNumber.Value}-" : "";
+            return $"{gh}q{item.Id}";
+        }
+
+        /// <summary>Git #1371 — the DEV_BUILD_SET* env a build-set member's merge-back needs so its
+        /// commit merges into the dev-server checkout but the restart stays deferred until the whole
+        /// set completes. Null for ungrouped builds (ordinary immediate coalesced restart).</summary>
+        private static IReadOnlyDictionary<string, string>? BuildSetEnvFor(RunningEntry entry)
+        {
+            if (string.IsNullOrWhiteSpace(entry.BuildSet)) return null;
+            var env = new Dictionary<string, string> { ["DEV_BUILD_SET"] = entry.BuildSet! };
+            if (!string.IsNullOrWhiteSpace(entry.BuildSetMember)) env["DEV_BUILD_SET_MEMBER"] = entry.BuildSetMember!;
+            return env;
+        }
+
+        /// <summary>Git #1371 — mark a queue item as failed-to-launch (e.g. worktree provisioning
+        /// failed while isolation is enforced) so it surfaces as a failed build instead of silently
+        /// vanishing. Same completion path as a real non-zero exit. Best-effort.</summary>
+        private async Task MarkLaunchFailedAsync(int id, string reason)
+        {
+            ActivityLog.Log("watcher", $"Queue #{id} launch failed: {reason}");
+            try
+            {
+                if (_db != null) await _db.MarkCompleteAsync(id, 1, null);
+                else await _api.MarkQueueItemCompleteAsync(id, 1, null);
+            }
+            catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't mark launch-failed queue #{id}: {ex.Message}"); }
+            try { BuildFinished?.Invoke(id, $"queue #{id}", 1); } catch { }
+        }
+
+        /// <summary>Git #1371 — throttled background worktree sweep (at most once every few minutes).
+        /// Non-force + ownership-gated in the dev-server script, so it never removes a live build's
+        /// worktree, an unrelated/harness worktree, or one still within its grace window; it only
+        /// reclaims agent/* worktrees whose build process is gone.</summary>
+        private void MaybeSweepWorktrees()
+        {
+            if (!BuildConsoleSettings.Load().EnforceWorktreeIsolation) return;
+            if ((DateTime.UtcNow - _lastWorktreeSweepUtc).TotalMinutes < 5) return;
+            _lastWorktreeSweepUtc = DateTime.UtcNow;
+            _ = WorktreeCleanupService.SweepWorktreesAsync(force: false, dryRun: false);
+        }
 
         private bool _starting;
 
@@ -293,6 +359,11 @@ namespace BuildConsole.Services
             }
             ActivityLog.Log("watcher", $"In-app build queue watcher starting - max {_maxConcurrent} concurrent, polling every 10s.");
             await RecoverOrphanedRunningItemsAsync();
+            // Git #1371 — reclaim agent worktrees orphaned by a prior BuildConsole session (their
+            // build processes are, by definition, gone once this fresh instance starts). Ownership-
+            // gated + non-force, so a live build from a concurrently-open instance (its worktree's
+            // creator pid still alive) is retained.
+            MaybeSweepWorktrees();
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
             _timer.Tick += async (_, _) => await TickAsync();
             _timer.Start();
@@ -527,6 +598,29 @@ namespace BuildConsole.Services
                         catch (Exception ex) { ActivityLog.Log("watcher", $"Build-set close backstop for '{entry.BuildSet}' failed: {ex.Message}"); }
                     }
 
+                    // Git #1371 — worktree completion. On success, merge the build's committed
+                    // changes into the local dev-server checkout (best-effort + idempotent — a no-op
+                    // if the session already published its commit or committed nothing). On failure,
+                    // mark the worktree stale so it's kept for debugging rather than reclaimed. The
+                    // cleanup sweep (MaybeSweepWorktrees, below) reclaims a successful build's worktree
+                    // once its process is gone and a short grace window has passed (so a quick Reply
+                    // /resume can still reuse it). Merge-back is left to the session for ungrouped
+                    // non-BuildConsole runs; here it is automatic.
+                    if (!string.IsNullOrWhiteSpace(entry.WorktreeName))
+                    {
+                        var wtName = entry.WorktreeName!;
+                        var wtPath = entry.WorktreePath;
+                        if (exitCode == 0 && !string.IsNullOrWhiteSpace(wtPath))
+                        {
+                            var setEnv = BuildSetEnvFor(entry);
+                            _ = WorktreeProvisionService.MergeBackAsync(wtPath!, wtName, setEnv);
+                        }
+                        else if (exitCode != 0)
+                        {
+                            _ = WorktreeCleanupService.MarkWorktreeStaleAsync(wtName, $"build failed (exit {exitCode})");
+                        }
+                    }
+
                     // Keep an interactive build's output around for the Build
                     // Watch window to finish draining and to hold its slot in
                     // interactive-render mode (never double-rendering via a
@@ -542,6 +636,12 @@ namespace BuildConsole.Services
                     }
                     _running.Remove(id);
                 }
+
+                // Git #1371 — periodically reclaim orphaned/finished agent worktrees in the
+                // background (throttled). Non-force + ownership-gated, so it never touches a live
+                // build's worktree, an unrelated/harness worktree, or one still inside its grace
+                // window; it only sweeps up agent/* worktrees whose build process is gone.
+                MaybeSweepWorktrees();
 
                 // Global pause: reaping (above) still runs so already-running
                 // builds complete and free their slots, but the claim/launch of
@@ -573,7 +673,7 @@ namespace BuildConsole.Services
                         try { buildSetExpected = await _db.CountBuildSetMembersAsync(item.BuildSet); }
                         catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't count build-set members for '{item.BuildSet}': {ex.Message}"); }
                     }
-                    try { LaunchItem(item, buildSetExpected); }
+                    try { await LaunchItem(item, buildSetExpected); }
                     catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't launch queue item {item.Id} ({item.Title}): {ex.Message}"); }
                 }
             }
@@ -641,7 +741,7 @@ namespace BuildConsole.Services
         /// stream-json, and deliver the prompt as the first stdin message
         /// instead of a positional arg — see the class doc comment.
         /// </summary>
-        private void LaunchItem(QueueItem item, int? buildSetExpected = null)
+        private async Task LaunchItem(QueueItem item, int? buildSetExpected = null)
         {
             var settings = BuildConsoleSettings.Load();
             bool interactive = settings.InteractiveBuilds;
@@ -660,10 +760,44 @@ namespace BuildConsole.Services
             // "Original instructions" reveal and slot.Prompt stay clean.)
             string launchPrompt = ComposeLaunchPrompt(item);
 
+            // Git #1371 — resolve the working directory for this build.
+            //   1. An explicit --cwd header always wins (manual override; isolation skipped).
+            //   2. Otherwise, when worktree isolation is enforced (default ON), provision a fresh
+            //      isolated worktree off origin/main (node_modules junctioned/shared per #1372) and
+            //      run the build THERE, so it can never collide with the shared checkout or another
+            //      concurrent build over the working tree/index.
+            //   3. If isolation is off, fall back to the shared repo checkout (legacy behavior).
+            // Provisioning failure is FAIL-LOUD: the build is not launched (never silently run in
+            // the shared checkout, which would reinstate the exact collision this prevents).
+            string workDir;
+            string? worktreePath = null, worktreeName = null;
+            if (!string.IsNullOrWhiteSpace(item.Cwd) && Directory.Exists(item.Cwd))
+            {
+                workDir = item.Cwd;
+            }
+            else if (settings.EnforceWorktreeIsolation)
+            {
+                worktreeName = ComposeWorktreeName(item);
+                int launcherPid = Process.GetCurrentProcess().Id;
+                var prov = await WorktreeProvisionService.ProvisionWorktreeAsync(worktreeName, launcherPid, link: true);
+                if (!prov.Ok || string.IsNullOrWhiteSpace(prov.Path))
+                {
+                    ActivityLog.Log("watcher", $"Worktree provisioning FAILED for queue #{item.Id} ({item.Title}): {prov.Error}. Build NOT launched — worktree isolation is enforced. (Set EnforceWorktreeIsolation=false in %AppData%\\BuildConsole\\settings.json to run in the shared checkout instead.)");
+                    await MarkLaunchFailedAsync(item.Id, $"worktree provisioning failed: {prov.Error}");
+                    return;
+                }
+                workDir = prov.Path!;
+                worktreePath = prov.Path;
+            }
+            else
+            {
+                workDir = _repoRoot;
+            }
+
             var psi = new ProcessStartInfo
             {
                 FileName = _claudeExe,
-                WorkingDirectory = (!string.IsNullOrWhiteSpace(item.Cwd) && Directory.Exists(item.Cwd)) ? item.Cwd : _repoRoot,
+                WorkingDirectory = workDir,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -763,12 +897,23 @@ namespace BuildConsole.Services
                 IdleFinalizeMs = Math.Max(0, settings.InteractiveIdleFinalizeSeconds) * 1000,
                 BuildSet = string.IsNullOrWhiteSpace(item.BuildSet) ? null : item.BuildSet,
                 BuildSetMember = string.IsNullOrWhiteSpace(item.BuildSet) ? null : (item.GithubNumber?.ToString() ?? item.Id.ToString()),
+                WorktreePath = worktreePath,
+                WorktreeName = worktreeName,
             };
             proc.OutputDataReceived += (_, e) => HandleOutput(entry, item.Id, e.Data);
             proc.ErrorDataReceived += (_, e) => { if (e.Data != null) HandleStderr(entry, e.Data); };
             proc.Start();
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
+
+            // Git #1371 — re-point the worktree's owner pid from the launcher (BuildConsole) to
+            // the freshly-started build process, so the cleanup sweep retains the worktree exactly
+            // while THIS build runs and can reclaim it (after a grace period) once the build exits.
+            if (worktreeName != null)
+            {
+                int buildPid = proc.Id;
+                _ = WorktreeProvisionService.StampOwnerAsync(worktreeName, buildPid);
+            }
 
             if (interactive)
             {
@@ -1015,7 +1160,7 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Immediately launches a claimed queue item (e.g. when resuming or continuing an interactive session from Build Watch).</summary>
-        public void LaunchItemExplicit(QueueItem item) => LaunchItem(item);
+        public void LaunchItemExplicit(QueueItem item) => _ = SafeLaunch(item);
 
         /// <summary>Approximate current context-window token usage for a live or just-exited (retained) interactive build — real numbers read from the CLI's own stream-json `usage` field, or null if unknown/not an interactive build/nothing seen yet.</summary>
         public long? GetContextTokens(int id)
