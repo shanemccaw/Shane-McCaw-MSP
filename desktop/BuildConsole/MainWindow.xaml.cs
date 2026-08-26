@@ -1242,14 +1242,28 @@ namespace BuildConsole
                 // viewer) clears the section.
                 if (EditorTabs.SelectedItem is TabItem selectedTab && selectedTab.Tag is BuildConsole.Services.BoardChat chat)
                 {
-                    // Git #910 — the real GitHub epic number now goes along with the
-                    // internal epicId/title, so BuildQueuePanel can fetch real sub-issues.
-                    int? epicId = chat.EpicId;
-                    int? epicGithubNumber = chat.EpicId.HasValue ? LeftSidebar.GetEpicGithubNumber(chat.EpicId.Value) : null;
-                    string? epicTitle = chat.EpicId.HasValue ? LeftSidebar.GetEpicTitle(chat.EpicId.Value) : null;
+                    // Git #910 — the real GitHub epic number goes along with the
+                    // internal epicId/title so BuildQueuePanel can fetch real sub-issues.
+                    // Git #1363 — resolve the chat's epic through the SAME canonical
+                    // resolver the Chats panel uses for grouping (LeftSidebar.GetEpicForChat):
+                    // it traverses the direct epic_id, the chat's own issue number, its
+                    // many-to-many bt_chat_issues associations, AND sub-issue→parent-epic —
+                    // so ANY chat that groups under an epic in the Chats panel also lights
+                    // up that epic's green "🎯 WORKING" badge on the Git Board. Previously
+                    // this block reimplemented a THINNER inline resolver (epic_id + the open
+                    // tab's number only), so a chat associated to its epic solely via the
+                    // join table grouped correctly yet never highlighted — the "works for
+                    // one chat but not another" symptom. (The underlying data gap that first
+                    // surfaced this — a real open epic missing from the stale local bt_epics
+                    // — was corrected in #1362; this aligns the highlight so it stays
+                    // reliable for any chat with a genuine epic association, not just some.)
+                    var resolvedEpic = LeftSidebar.GetEpicForChat(chat);
 
-                    // If it does not have a parent EpicId, check if this chat is for the Epic itself!
-                    if (!chat.EpicId.HasValue)
+                    // Fallback: if the chat itself doesn't resolve to an epic but the browser
+                    // tab is pinned to a specific issue/epic number, try that — preserves the
+                    // prior tabState.GithubNumber self-epic behaviour for a generic chat opened
+                    // in the context of a specific issue tab.
+                    if (resolvedEpic == null)
                     {
                         int? tabGithubNumber = null;
                         if (_chatTabs.TryGetValue(selectedTab, out var tabState))
@@ -1260,18 +1274,15 @@ namespace BuildConsole
                         {
                             tabGithubNumber = chat.IssueGithubNumber;
                         }
-
                         if (tabGithubNumber.HasValue)
                         {
-                            var selfEpic = LeftSidebar.GetEpicByGithubNumber(tabGithubNumber.Value);
-                            if (selfEpic != null)
-                            {
-                                epicId = selfEpic.Id;
-                                epicGithubNumber = selfEpic.GithubNumber;
-                                epicTitle = selfEpic.Title;
-                            }
+                            resolvedEpic = LeftSidebar.GetEpicByGithubNumber(tabGithubNumber.Value);
                         }
                     }
+
+                    int? epicId = resolvedEpic?.Id;
+                    int? epicGithubNumber = resolvedEpic?.GithubNumber;
+                    string? epicTitle = resolvedEpic?.Title;
 
                     BuildQueuePanel.SetActiveChatEpic(epicId, epicGithubNumber, epicTitle);
                     // Shane: "I should be able to look at the Git Board Tree
