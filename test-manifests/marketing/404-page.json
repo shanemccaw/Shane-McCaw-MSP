@@ -1,7 +1,7 @@
 {
   "feature": "Marketing 404 page rebuild (Git #1318, Design/404-export) — real destination grid (19 live routes, reconciled against App.tsx rather than the handoff README's own undercounted '18'), live client-side search over the site index, and a public fire-and-forget broken-link report. Copy for the H1 and good-news/bad-news subhead is fixed per the handoff and asserted verbatim below. Verified locally via a production build (`vite build` + `vite preview`) driven headlessly with playwright-core: unmatched paths return a real HTTP 404 (confirmed via curl, not asserted here since uiSteps don't inspect transport-level status codes), known routes and static assets stay 200, requestedUrl reflects the real path via useLocation().pathname, search filtering and the empty state both work, and the report button shows its inline confirmation with zero console errors.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "a97c77a0a",
+  "lastVerifiedAgainstCommit": "4a4ac6da7",
   "notes": [
     "Public marketing page, no auth required — the page itself has zero API/auth dependency to render; only clicking 'Report this broken link' touches the network (POST /api/public/broken-link-report), and it shows its confirmation regardless of whether that call succeeds (fire-and-forget, per the handoff's explicit note that a 404 must render even when the backend is down).",
     "N1 — H1 and good-news/bad-news subhead copy is fixed per the handoff; asserted verbatim, not paraphrased.",
@@ -9,7 +9,18 @@
     "N3 — search is asserted both ways: filtering to a real term narrows the grid (and hides an unrelated card), and a nonsense term surfaces the empty-state copy.",
     "N4 — Requested URL card reads the real browser path via useLocation().pathname, asserted against the exact broken path this manifest navigates to.",
     "N5 — this manifest does not assert the server's real 404 HTTP status (uiSteps only see the DOM, not the response status) — that was verified directly against a local `vite preview` build via curl during development; it is not re-verified by this manifest.",
-    "This manifest asserts against {{DEPLOY_URL}} — only reflects this commit once the marketing site is redeployed."
+    "This manifest asserts against {{DEPLOY_URL}} — only reflects this commit once the marketing site is redeployed.",
+    "N6 (Git #1351) — the 'Most people who land here' quick-links (COMMON list) used to hardcode 'From $149' and 'From $180/mo'. They now read live: the Pricing meta reads from the Quick-Start pack fixture's min price (same as Pricing.tsx's QUICK_START_MIN), and the Tenant monitoring meta computes the cheapest monitoring tier live via useCatalog() (same ppuOf/floorOf/surchargeOf/money formula Pricing.tsx uses). Asserted below via textContains 'From $' rather than a specific dollar figure, since the real catalog price can legitimately change.",
+    "N7 (Git #1351) — the free-scan blurb's '158 read-only checks' is now driven by GET /api/public/signal-check-count (live COUNT(*) FROM signal_derivation_rules WHERE msp_id IS NULL), via useSignalCheckCount(). apiTests below asserts the endpoint returns a real positive count; T5 asserts the DOM's free-scan destination card blurb reflects that same extracted count, proving the live wiring end to end rather than just that some number renders."
+  ],
+  "apiTests": [
+    {
+      "name": "signal-check-count returns a real live count",
+      "method": "GET",
+      "path": "/api/public/signal-check-count",
+      "expect": { "status": 200, "jsonPath": "$.count", "exists": true },
+      "extract": { "as": "signalCheckCount", "jsonPath": "$.count" }
+    }
   ],
   "uiSteps": [
     { "action": "goto", "target": "/some-old-broken-link-that-never-existed-xyz" },
@@ -30,6 +41,10 @@
 
     { "name": "T4a -- clear the search to restore the full grid before reporting.", "action": "input", "selector": "[data-testid='input-404-search']", "value": "" },
     { "name": "T4b -- report this broken link shows an inline confirmation.", "action": "click", "selector": "[data-testid='button-report-broken-link']" },
-    { "action": "expect", "selector": "[data-testid='text-report-broken-link-confirmation']", "state": "visible", "textContains": "Thanks" }
+    { "action": "expect", "selector": "[data-testid='text-report-broken-link-confirmation']", "state": "visible", "textContains": "Thanks" },
+
+    { "name": "T5 -- Git #1351: COMMON quick-link prices are live, not the old hardcoded 'From $149'/'From $180/mo' literals.", "sessionTag": "1351-live-prices", "action": "expect", "selector": "[data-testid='text-404-common-meta-pricing']", "state": "visible", "textContains": "From $" },
+    { "sessionTag": "1351-live-prices", "action": "expect", "selector": "[data-testid='text-404-common-meta-monitoring']", "state": "visible", "textContains": "From $" },
+    { "sessionTag": "1351-live-prices", "action": "expect", "selector": "[data-testid='link-404-dest-scan']", "state": "visible", "textContains": "{{signalCheckCount}} read-only checks" }
   ]
 }

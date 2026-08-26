@@ -501,6 +501,7 @@ export default function NotFound() {
                   key={c.href}
                   href={c.href}
                   className="sm404-dest"
+                  data-testid={`link-404-common-${c.href.replace(/^\//, "").replace(/\//g, "-")}`}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -517,7 +518,12 @@ export default function NotFound() {
                     {c.tag}
                   </span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: "13.5px", fontWeight: 700, color: "#f8fafc" }}>{c.label}</span>
-                  <span style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}>{c.meta}</span>
+                  <span
+                    data-testid={`text-404-common-meta-${c.href.replace(/^\//, "").replace(/\//g, "-")}`}
+                    style={{ fontSize: 12, color: "#94a3b8", whiteSpace: "nowrap" }}
+                  >
+                    {c.meta}
+                  </span>
                   <ArrowRight size={15} color="#60a5fa" strokeWidth={2} style={{ flex: "none" }} />
                 </Link>
               ))}
