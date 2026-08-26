@@ -962,9 +962,15 @@ export const signupExchangeTokensTable = pgTable("signup_exchange_tokens", {
   id: serial("id").primaryKey(),
   token: text("token").notNull().unique(),
   userId: integer("user_id").notNull().references(() => usersTable.id),
-  expiresAt: timestamp("expires_at").notNull(),
-  usedAt: timestamp("used_at"),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  // withTimezone matches the REAL column type (timestamptz — confirmed against
+  // the live DB, Git #1317). Declared naive, drizzle's read appended "+0000"
+  // to the driver's "…-04"-suffixed string and V8 honours the LAST offset, so
+  // on any non-UTC machine every 2-minute token parsed hours into the past and
+  // /auth/signup-exchange 401'd unconditionally. UTC servers (Replit) masked
+  // the bug because the two offsets coincide.
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type InsertSignupExchangeToken = typeof signupExchangeTokensTable.$inferInsert;

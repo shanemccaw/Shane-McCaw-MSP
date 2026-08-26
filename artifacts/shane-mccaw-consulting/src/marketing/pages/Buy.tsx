@@ -17,13 +17,17 @@ import {
   type DryAction,
   type Impact,
 } from "../data/buyCheckout";
+import { startRegistration } from "@simplewebauthn/browser";
 import { useQuickStartPackAvailability } from "../../hooks/useQuickStartPackAvailability";
 import { useServices, type PublicService } from "../../hooks/useServices";
-import { useBuyPackLive, liveStepOutcome } from "../../hooks/useBuyPackLive";
+import { useBuyPackLive, liveStepOutcome, BUY_SESSION_STORAGE_KEY } from "../../hooks/useBuyPackLive";
 import { StripePaymentElement } from "../../components/StripePaymentElement";
 import { logger } from "../../lib/logger";
 
 const log = logger.child({ channel: "billing" });
+// Consent, account creation, MFA and the portal handoff are the server's `auth`
+// channel (#1310-#1313) — mirrored here so the client call sites read the same.
+const authLog = logger.child({ channel: "auth" });
 
 // ── Real-catalog slug resolution (Git #1308) ────────────────────────────────
 // Buy.tsx prices from its own local fixture (buyCheckout.ts), keyed by short
@@ -72,9 +76,13 @@ function resolvePackSlug(services: PublicService[], packName: string): string | 
 // This page owns its own chrome (a minimal logo + step-rail header, no site Nav/Footer) — the same
 // approach FreeScan.tsx takes — because it is a focused conversion funnel, not a browsable page.
 //
-// SIMULATED, per the README "Out of scope": Stripe payment, the scans, the Graph write-back
-// (dry-run before/after values and the execution engine are authored data), account creation/MFA.
-// The realistic-looking flow is built truthfully; the real write path is separate, later work.
+// REAL, since Epic #1309 (Phases 1-8): Stripe payment (#1307/#1308), read consent via the
+// popup-and-poll pattern (#1311, popup on Microsoft's own domain + /public/flow/consent-status),
+// write consent for Packs (#1312), account creation/verification-code/password/MFA (#1310),
+// the single-use portal auto-login handoff (#1313/#1315), the monitoring scan kickoff riding
+// set-password server-side (#1314), and the pack dry-run/execute engine (#1316, useBuyPackLive).
+// The authored demo fixture remains only for the session-less pack walkthrough (never a real
+// purchase) — a real purchase session never sees fixture data.
 
 type Product = "monitoring" | "retainer" | "pack";
 type Stage =
@@ -95,7 +103,10 @@ type Stage =
   | "done";
 type DryScan = "idle" | "scanning" | "done";
 type DryWindow = "now" | "tonight" | "window";
-type MfaMethod = "app" | "rsa";
+// The platform offers exactly two portal-login second factors — TOTP and
+// passkey (#1310's purchase-session-keyed enrollment, mirroring
+// AssessmentMfaEnrollment: no SMS vendor and no RSA backend exist).
+type MfaMethod = "app" | "passkey";
 
 interface State {
   product: Product;
@@ -103,7 +114,6 @@ interface State {
   packSel: Record<string, boolean>;
   seatsFromCatalog: number | null;
   connected: boolean;
-  scannedParam: boolean; // arrived from a free scan (?scanned=1)
   scanSkipped: boolean;
   agreed: boolean;
   dryOff: Record<string, boolean>;
@@ -127,12 +137,24 @@ interface State {
   pw2: string;
   mfaMethod: MfaMethod;
   mfaCode: string;
-  phone: string;
+  /** Real TOTP enrollment material from POST /mfa/totp/setup (#1310) — nothing
+   *  is stored server-side until verify-setup proves the authenticator has it. */
+  mfaSetup: { secret: string; qrDataUrl: string } | null;
+  /** In-flight guard for the account/MFA calls (verify-code has its own
+   *  "verifying" overlay stage instead). */
+  acctBusy: boolean;
+  /** Error/info line on the account screens — real endpoint outcomes only. */
+  acctNotice: { kind: "error" | "info"; text: string } | null;
   writeGranted: boolean;
   writeDeclined: boolean;
+  writeError: string | null;
+  handoffBusy: boolean;
+  handoffError: string | null;
 }
 
-const REAL_SEATS = 1240; // what the tenant reports once connected
+// #1303: the fixture change record ("Halden Materials") stays reachable ONLY
+// from the session-less demo walkthrough. A real purchase (liveMode) links to
+// the buyer's own record in the Portal via the portal handoff instead.
 const CR_ID = "CR-QS-2026-0184";
 const ROLLBACK_LONG = "20 September 2026";
 const ROLLBACK_SHORT = "20 Sep 2026";
@@ -156,14 +178,15 @@ function initialState(): State {
   });
   const seatNum = parseInt(qs("seats") || "", 10);
   const seatsFromCatalog = isNaN(seatNum) ? null : Math.max(1, seatNum);
-  const scannedParam = qs("scanned") === "1";
   return {
     product,
     choice: qs("tier"),
     packSel,
     seatsFromCatalog,
-    connected: scannedParam,
-    scannedParam,
+    // `connected` means a REAL Microsoft consent landed on THIS purchase
+    // session (#1311) — a ?scanned=1 arrival from the free scan carries no
+    // session-linked consent, so it starts disconnected like everyone else.
+    connected: false,
     scanSkipped: false,
     agreed: false,
     dryOff: {},
@@ -187,9 +210,14 @@ function initialState(): State {
     pw2: "",
     mfaMethod: "app",
     mfaCode: "",
-    phone: "",
+    mfaSetup: null,
+    acctBusy: false,
+    acctNotice: null,
     writeGranted: false,
     writeDeclined: false,
+    writeError: null,
+    handoffBusy: false,
+    handoffError: null,
   };
 }
 
@@ -352,9 +380,18 @@ export default function Buy() {
     !isNaN(seatsTyped) && seatsTyped > 0
       ? seatsTyped
       : st.seatsFromCatalog || 250;
-  const seats = st.connected ? REAL_SEATS : seatsFn;
+  // The seat count is the buyer's own, and it IS the billing truth: the server
+  // prices tier × session.seats and band-validates it at payment (#1307).
+  // No endpoint reads a "tenant-reported" count — the old REAL_SEATS fixture
+  // pretended one existed and is gone with the simulated connect.
+  const seats = seatsFn;
 
-  const connectRequired = isMon;
+  // Read consent is REQUIRED before payment for Monitoring AND Packs — the
+  // server resolves this from the catalog, fail-closed (#1311's
+  // read-consent-flow: only `retainer` is optional) and the payment-intent
+  // gate enforces it (#1307). Retainer keeps its optional connectOffered
+  // branch, with the explicit skip recorded server-side at submit.
+  const connectRequired = isMon || isPack;
   const connectOffered = isRet && !st.connected && !st.scanSkipped;
 
   const packKeys = (() => {
@@ -391,8 +428,8 @@ export default function Buy() {
     st.pw1 === st.pw2;
   const mfaOk =
     st.mfaMethod === "app"
-      ? st.mfaCode.length === 6
-      : st.phone.replace(/\s/g, "").length >= 6;
+      ? st.mfaCode.length === 6 && !!st.mfaSetup
+      : true; // passkey: the advance button itself starts the browser ceremony
 
   const liveActions = (): LiveAction[] => {
     if (liveMode) return live.actions;
@@ -411,10 +448,128 @@ export default function Buy() {
     );
   };
 
+  // ── Session lifecycle ─────────────────────────────────────────────────────────
+  // The server-side checkout session (#1307) is what every real endpoint —
+  // consent URL mint, payment, account creation, handoff — is keyed on, and
+  // consent binds the Microsoft tenant to THAT session row. So any change to
+  // the selection or the buyer's identity after a session exists invalidates
+  // it (and a landed consent with it): the next connect/pay mints a fresh one.
+  const clearPersistedSession = () => {
+    try {
+      window.localStorage.removeItem(BUY_SESSION_STORAGE_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const invalidated = (s: State): Partial<State> => {
+    if (!s.sessionId) return {};
+    clearPersistedSession();
+    return { sessionId: null, connected: false, intent: null, payingError: null };
+  };
+
+  const resolveSelectedSlug = (): string | null =>
+    isMon
+      ? resolveMonitoringSlug(catalogServices, monSel.key, seats)
+      : isRet
+        ? resolveRetainerSlug(catalogServices, retSel.name)
+        : resolvePackSlug(catalogServices, PACKS_BY_KEY[packKeys[0]]?.name ?? "");
+
+  // Create (or reuse) the real checkout session. Throws with a buyer-facing
+  // message on refusal; the caller decides which error slot shows it.
+  const ensureSession = async (): Promise<string> => {
+    if (st.sessionId) return st.sessionId;
+    if (!st.email.trim() || !st.fullName.trim() || !st.company.trim()) {
+      throw new Error(
+        "Enter your billing email, full name and company first — the connection and the order are tied to them.",
+      );
+    }
+    const productSlug = resolveSelectedSlug();
+    if (!productSlug) {
+      throw new Error("This option isn't available to purchase right now. Please choose another.");
+    }
+    const res = await fetch("/api/public/checkout-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productSlug,
+        fullName: st.fullName.trim(),
+        email: st.email.trim(),
+        company: st.company.trim(),
+        industry: "Not specified",
+        seats,
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { sessionId?: string; error?: string };
+    if (!res.ok || !data.sessionId) {
+      log.warn({ status: res.status, error: data.error }, "purchase checkout session creation failed");
+      throw new Error(
+        data.error === "already_has_account"
+          ? "An account already exists for this email. Sign in to the Portal to buy from there."
+          : data.error ?? "Could not start checkout. Please check your details and try again.",
+      );
+    }
+    try {
+      window.localStorage.setItem(BUY_SESSION_STORAGE_KEY, data.sessionId);
+    } catch {
+      /* storage unavailable — state alone still works */
+    }
+    set({ sessionId: data.sessionId });
+    return data.sessionId;
+  };
+
+  // ── Consent popup + poll (#434's pattern, reused by #1311/#1312) ─────────────
+  // The buyer grants consent in a popup on Microsoft's own domain; this page
+  // never navigates away and polls consent-status until the grant lands.
+  interface ConsentStatus {
+    sessionStatus?: string;
+    tenantConnected?: boolean;
+    graph?: string | null;
+    writeBack?: string | null;
+    readConsentSkipped?: boolean;
+  }
+  const fetchConsentStatus = async (sessionId: string): Promise<ConsentStatus | null> => {
+    try {
+      const res = await fetch(`/api/public/flow/consent-status?sessionId=${encodeURIComponent(sessionId)}`);
+      if (!res.ok) return null;
+      return (await res.json()) as ConsentStatus;
+    } catch {
+      return null;
+    }
+  };
+  const waitForConsent = (
+    sessionId: string,
+    popup: Window | null,
+    landed: (s: ConsentStatus) => boolean,
+  ): Promise<boolean> =>
+    new Promise((resolve) => {
+      let closedPolls = 0;
+      const tick = async () => {
+        const status = await fetchConsentStatus(sessionId);
+        if (status && landed(status)) {
+          resolve(true);
+          return;
+        }
+        if (popup?.closed) {
+          // One grace poll after the popup closes — the self-closing success
+          // page (#474) races the callback's own DB write by a beat.
+          closedPolls += 1;
+          if (closedPolls >= 2) {
+            resolve(false);
+            return;
+          }
+        }
+        push(window.setTimeout(() => void tick(), 3000));
+      };
+      void tick();
+    });
+
+  const openConsentPopup = (): Window | null =>
+    window.open("", "smc-consent", "width=620,height=760,menubar=no,toolbar=no");
+
   // ── Handlers ──────────────────────────────────────────────────────────────────
   const pick = (key: string) => {
     if (!isPack) {
-      set({ choice: key });
+      set((s) => ({ choice: key, ...invalidated(s) }));
       return;
     }
     set((s) => {
@@ -425,23 +580,104 @@ export default function Buy() {
       } else {
         sel[key] = true;
       }
-      return { packSel: sel };
+      return { packSel: sel, ...invalidated(s) };
     });
   };
   const toggleAgree = () => set((s) => ({ agreed: !s.agreed }));
   const onSeats = (e: React.ChangeEvent<HTMLInputElement>) =>
-    set({ seatInput: e.target.value, seatEdited: true });
-  const doConnect = () => {
-    set({ stage: "connecting" });
-    push(
-      window.setTimeout(
-        () => set({ connected: true, scanSkipped: false, stage: "buy" }),
-        1400,
-      ),
-    );
+    set((s) => ({ seatInput: e.target.value, seatEdited: true, ...invalidated(s) }));
+
+  // Real read consent (#1311): mint the session-keyed admin-consent URL, hand
+  // it to a popup, and poll until the callback stamps the session consented.
+  const doConnect = async () => {
+    if (st.stage !== "buy") return;
+    if (catalogLoading) {
+      // The consent URL is minted against a session created from the live
+      // catalog's slug — not resolvable yet. Say so instead of ignoring the click.
+      set({ payingError: "Still loading the catalogue — try again in a moment." });
+      return;
+    }
+    // Open synchronously in the click gesture so popup blockers allow it; the
+    // URL is set once the mint returns.
+    const popup = openConsentPopup();
+    set({ stage: "connecting", payingError: null });
+    try {
+      const sessionId = await ensureSession();
+      const urlRes = await fetch(`/api/public/flow/read-consent-url?sessionId=${encodeURIComponent(sessionId)}`);
+      const urlData = (await urlRes.json().catch(() => ({}))) as { url?: string; error?: string };
+      if (!urlRes.ok || !urlData.url) {
+        authLog.warn({ status: urlRes.status, error: urlData.error, sessionId }, "read-consent URL mint failed");
+        throw new Error("Could not start the Microsoft connection. Please try again.");
+      }
+      if (!popup || popup.closed) {
+        throw new Error(
+          "Your browser blocked the Microsoft consent window — allow pop-ups for this site and try again.",
+        );
+      }
+      popup.location.href = urlData.url;
+      authLog.info({ sessionId }, "read consent popup opened");
+      const landedOk = await waitForConsent(
+        sessionId,
+        popup,
+        // The exact condition the payment gate checks (#1307): tenant linked
+        // and the session stamped consented (or already paid).
+        (s) => !!s.tenantConnected && (s.sessionStatus === "consented" || s.sessionStatus === "paid"),
+      );
+      if (!landedOk) {
+        throw new Error("The Microsoft consent window closed before approval — nothing was connected.");
+      }
+      try {
+        popup.close();
+      } catch {
+        /* already closed itself */
+      }
+      authLog.info({ sessionId }, "read consent granted — tenant connected to this purchase session");
+      set({ connected: true, scanSkipped: false, stage: "buy" });
+    } catch (err) {
+      try {
+        popup?.close();
+      } catch {
+        /* ignore */
+      }
+      const message = err instanceof Error ? err.message : "The Microsoft connection failed. Please try again.";
+      authLog.warn({ err: message }, "read consent connect failed");
+      set({ stage: "buy", payingError: message });
+    }
   };
+  // The explicit skip stays client-side here; the server-side record (#1311's
+  // consent_skipped_at, required by the payment gate) is written at submit,
+  // once the session the skip must be stamped on actually exists.
   const skipConnect = () => set({ scanSkipped: true });
-  const reconnect = () => set({ connected: false, scanSkipped: false });
+  const reconnect = () =>
+    set((s) => ({ connected: false, scanSkipped: false, ...invalidated(s) }));
+
+  // Real six-digit code issue (#1310) — mails the code via Exchange Online.
+  // Fired on entering the code stage and again by "Resend code".
+  const sendCode = async (sessionIdArg?: string) => {
+    const sessionId = sessionIdArg ?? st.sessionId;
+    if (!sessionId) return;
+    try {
+      const res = await fetch("/api/public/purchase/send-verification-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; email?: string; error?: string };
+      if (!res.ok || !data.ok) {
+        authLog.error({ status: res.status, error: data.error, sessionId }, "purchase verification code send failed");
+        throw new Error(
+          data.error === "email_send_failed"
+            ? "We could not deliver the code email. Check the address is right, then press Resend code."
+            : "Could not send the code just now. Press Resend code to try again.",
+        );
+      }
+      authLog.info({ sessionId }, "purchase verification code issued and emailed");
+      set({ acctNotice: { kind: "info", text: `Code sent to ${data.email ?? "your billing address"}.` } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not send the code. Press Resend code to try again.";
+      set({ acctNotice: { kind: "error", text: message } });
+    }
+  };
 
   // Real Stripe confirm callback (#1307's payment-confirmed), shared by the
   // StripePaymentElement's onSuccess and the alreadyPaid recovery path below.
@@ -465,7 +701,9 @@ export default function Buy() {
       );
     }
     log.info({ sessionId, paymentIntentId }, "purchase payment confirmed");
-    set({ stage: "code" });
+    set({ stage: "code", codeInput: "", acctNotice: null });
+    // The paid session may now be emailed its verification code (#1310).
+    void sendCode(sessionId);
   };
 
   // Real checkout: mint a server-side session (#1307's payment-intent needs
@@ -479,58 +717,36 @@ export default function Buy() {
     if (hasUnavailablePack) return;
     if (catalogLoading) return;
 
-    const productSlug = isMon
-      ? resolveMonitoringSlug(catalogServices, monSel.key, seats)
-      : isRet
-        ? resolveRetainerSlug(catalogServices, retSel.name)
-        : resolvePackSlug(catalogServices, PACKS_BY_KEY[packKeys[0]]?.name ?? "");
-
-    if (!productSlug) {
-      set({ payingError: "This option isn't available to purchase right now. Please choose another." });
-      return;
-    }
-
     set({ stage: "paying", creatingIntent: true, payingError: null, intent: null });
 
     try {
-      const sessionRes = await fetch("/api/public/checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          productSlug,
-          fullName: st.fullName.trim(),
-          email: st.email.trim(),
-          company: st.company.trim(),
-          industry: "Not specified",
-          seats,
-        }),
-      });
-      const sessionData = (await sessionRes.json().catch(() => ({}))) as {
-        sessionId?: string;
-        error?: string;
-        portalUrl?: string;
-      };
-      if (!sessionRes.ok || !sessionData.sessionId) {
-        log.warn({ status: sessionRes.status, error: sessionData.error }, "purchase checkout session creation failed");
-        throw new Error(
-          sessionData.error === "already_has_account"
-            ? "An account already exists for this email. Sign in to the Portal to buy from there."
-            : "Could not start checkout. Please check your details and try again.",
-        );
-      }
-      const sessionId = sessionData.sessionId;
+      // A session minted at connect time (doConnect) is reused — consent is
+      // bound to it. Selection/identity edits since then invalidated it, so
+      // an existing id always matches what is on screen.
+      const sessionId = await ensureSession();
 
-      // Retainer read consent is the one product this flow may lawfully skip
-      // without a tenant connection (#1311). Monitoring and Packs require it,
-      // and the connect step above stays exactly as simulated as it is today
-      // (out of scope here per #1308), so those two are refused server-side
-      // (consent_required) below until a later phase wires that step for real.
-      if (isRet) {
-        await fetch("/api/public/flow/read-consent-skip", {
+      // Retainer is the one product whose read consent may be lawfully
+      // skipped (#1311). If this buyer did not connect, record the explicit
+      // skip the payment gate requires — the server refuses it for any other
+      // product (consent_required) and for already-consented sessions.
+      if (isRet && !st.connected) {
+        const skipRes = await fetch("/api/public/flow/read-consent-skip", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sessionId }),
-        }).catch((err) => log.warn({ err, sessionId }, "read-consent-skip call failed"));
+        }).catch((err) => {
+          authLog.warn({ err, sessionId }, "read-consent-skip call failed");
+          return null;
+        });
+        if (skipRes && !skipRes.ok) {
+          const skipErr = (await skipRes.json().catch(() => ({}))) as { error?: string };
+          // already_consented just means a grant landed on this session —
+          // the payment gate passes on the consent itself. Anything else is
+          // surfaced by the payment-intent's own consent_required refusal.
+          authLog.warn({ status: skipRes.status, error: skipErr.error, sessionId }, "read-consent-skip refused");
+        } else if (skipRes) {
+          authLog.info({ sessionId }, "read consent explicitly skipped for this retainer purchase");
+        }
       }
 
       const packSlugs = isPack
@@ -555,6 +771,12 @@ export default function Buy() {
       };
       if (!intentRes.ok || !intentData.clientSecret || !intentData.publishableKey) {
         log.warn({ status: intentRes.status, error: intentData.error, sessionId }, "purchase payment-intent failed");
+        if (intentData.error === "consent_required") {
+          // The server does not consider this session connected (e.g. a
+          // resumed stale one) — drop the client-side flag so the connect
+          // card is actually on screen for the retry.
+          set({ connected: false });
+        }
         throw new Error(
           intentData.error === "consent_required"
             ? "This purchase needs your tenant connected first. Grant read-only access above, then try again."
@@ -579,35 +801,213 @@ export default function Buy() {
     }
   };
   const onEmail = (e: React.ChangeEvent<HTMLInputElement>) =>
-    set({ email: e.target.value });
+    set((s) => ({ email: e.target.value, ...invalidated(s) }));
   const onFullName = (e: React.ChangeEvent<HTMLInputElement>) =>
-    set({ fullName: e.target.value });
+    set((s) => ({ fullName: e.target.value, ...invalidated(s) }));
   const onCompany = (e: React.ChangeEvent<HTMLInputElement>) =>
-    set({ company: e.target.value });
+    set((s) => ({ company: e.target.value, ...invalidated(s) }));
   const onCode = (e: React.ChangeEvent<HTMLInputElement>) =>
     set({ codeInput: e.target.value.replace(/\D/g, "").slice(0, 6) });
-  const resend = () => set({ codeInput: "" });
-  const verifyCode = () => {
-    if (st.codeInput.length !== 6) return;
-    set({ stage: "verifying" });
-    push(window.setTimeout(() => set({ stage: "password" }), 1100));
+  const resend = () => {
+    set({ codeInput: "", acctNotice: null });
+    void sendCode();
+  };
+  // Real code check (#1310): count-before-judge attempt budget, resend
+  // supersedes — every refusal is surfaced with what to do next.
+  const verifyCode = async () => {
+    if (st.codeInput.length !== 6 || !st.sessionId) return;
+    const sessionId = st.sessionId;
+    const code = st.codeInput;
+    set({ stage: "verifying", acctNotice: null });
+    try {
+      const res = await fetch("/api/public/purchase/verify-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, code }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        attemptsRemaining?: number;
+      };
+      if (!res.ok || !data.ok) {
+        authLog.warn({ status: res.status, error: data.error, sessionId }, "purchase verify-code refused");
+        throw new Error(
+          data.error === "code_incorrect"
+            ? `That code isn't right${
+                typeof data.attemptsRemaining === "number"
+                  ? ` — ${data.attemptsRemaining} ${data.attemptsRemaining === 1 ? "attempt" : "attempts"} left`
+                  : ""
+              }.`
+            : data.error === "code_expired"
+              ? "That code has expired. Press Resend code for a fresh one."
+              : data.error === "too_many_attempts"
+                ? "Too many wrong attempts on that code. Press Resend code for a fresh one."
+                : data.error === "no_code_issued"
+                  ? "No code has been issued yet. Press Resend code."
+                  : "Could not check the code. Please try again.",
+        );
+      }
+      authLog.info({ sessionId }, "purchase email address proven");
+      set({ stage: "password", acctNotice: null });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not check the code. Please try again.";
+      set({ stage: "code", acctNotice: { kind: "error", text: message } });
+    }
   };
   const onPw1 = (e: React.ChangeEvent<HTMLInputElement>) =>
     set({ pw1: e.target.value });
   const onPw2 = (e: React.ChangeEvent<HTMLInputElement>) =>
     set({ pw2: e.target.value });
-  const savePw = () => {
-    if (pwOk) set({ stage: "mfa" });
+  // Real TOTP setup material (#1310) — prefetched on entering the MFA stage so
+  // the default "Authenticator app" method has its genuine secret + QR ready.
+  const loadTotpSetup = async (sessionIdArg?: string) => {
+    const sessionId = sessionIdArg ?? st.sessionId;
+    if (!sessionId) return;
+    try {
+      const res = await fetch("/api/public/purchase/mfa/totp/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        secret?: string;
+        qrDataUrl?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.secret || !data.qrDataUrl) {
+        if (data.error === "mfa_already_enrolled") {
+          // A resumed session whose account already finished MFA — nothing to
+          // enroll; move straight past the stage.
+          authLog.info({ sessionId }, "purchase MFA already enrolled — skipping enrollment stage");
+          afterMfa();
+          return;
+        }
+        authLog.error({ status: res.status, error: data.error, sessionId }, "purchase TOTP setup failed");
+        throw new Error("Could not prepare the authenticator setup. Pick the method again to retry.");
+      }
+      set({ mfaSetup: { secret: data.secret, qrDataUrl: data.qrDataUrl } });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not prepare the authenticator setup.";
+      set({ acctNotice: { kind: "error", text: message } });
+    }
+  };
+  // Real password attach (#1310): provisions the account when consent-time
+  // provisioning never ran (skippable Retainer consent), never overwrites an
+  // existing credential, and — server-side — kicks off the monitoring scan
+  // (#1314) and mints nothing the client needs to hold on to here.
+  const savePw = async () => {
+    if (!pwOk || !st.sessionId || st.acctBusy) return;
+    const sessionId = st.sessionId;
+    set({ acctBusy: true, acctNotice: null });
+    try {
+      const res = await fetch("/api/public/purchase/set-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, password: st.pw1 }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        accountProvisioned?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        authLog.warn({ status: res.status, error: data.error, sessionId }, "purchase set-password refused");
+        throw new Error(
+          data.error === "already_set"
+            ? "This email already has a Portal account with a password — sign in at the Portal instead."
+            : data.error === "email_not_verified"
+              ? "Your email needs verifying first. Go back and enter the code from your inbox."
+              : "Could not set the password. Please try again.",
+        );
+      }
+      authLog.info({ sessionId, accountProvisioned: data.accountProvisioned }, "purchase account password set");
+      set({ acctBusy: false, stage: "mfa", acctNotice: null, mfaSetup: null });
+      void loadTotpSetup(sessionId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not set the password. Please try again.";
+      set({ acctBusy: false, acctNotice: { kind: "error", text: message } });
+    }
   };
   const onMfaCode = (e: React.ChangeEvent<HTMLInputElement>) =>
     set({ mfaCode: e.target.value.replace(/\D/g, "").slice(0, 6) });
-  const onPhone = (e: React.ChangeEvent<HTMLInputElement>) =>
-    set({ phone: e.target.value.toUpperCase() });
-  const pickMfa = (m: MfaMethod) => set({ mfaMethod: m });
-  const finishAccount = () => {
-    if (!mfaOk) return;
-    set({ stage: "logging" });
-    push(window.setTimeout(() => set({ stage: "write" }), 1500));
+  const pickMfa = (m: MfaMethod) => {
+    set({ mfaMethod: m, acctNotice: null });
+    if (m === "app" && !st.mfaSetup) void loadTotpSetup();
+  };
+  // Where the account stage lands once MFA is enrolled. Write consent is
+  // Packs-only in this public flow — the server refuses every other product
+  // before minting anything (#1312) — so Monitoring/Retainer go straight to
+  // done, where the Portal's own authenticated pages own any later SOP
+  // write-access grant.
+  const afterMfa = () =>
+    set((s) => ({
+      stage: s.product === "pack" ? "write" : "done",
+      acctBusy: false,
+      acctNotice: null,
+    }));
+  // Real MFA enrollment (#1310): TOTP verify-setup for the authenticator app,
+  // or the browser's own WebAuthn ceremony for a passkey — same two methods,
+  // same client pattern, as AssessmentMfaEnrollment.tsx.
+  const finishAccount = async () => {
+    if (!mfaOk || !st.sessionId || st.acctBusy) return;
+    const sessionId = st.sessionId;
+    if (st.mfaMethod === "app") {
+      if (!st.mfaSetup) return;
+      set({ acctBusy: true, acctNotice: null });
+      try {
+        const res = await fetch("/api/public/purchase/mfa/totp/verify-setup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId, secret: st.mfaSetup.secret, code: st.mfaCode }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!res.ok || !data.ok) {
+          throw new Error(data.error ?? "That code didn't match. Please try again.");
+        }
+        authLog.info({ sessionId }, "purchase MFA enrolled (TOTP)");
+        afterMfa();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "That code didn't match. Please try again.";
+        set({ acctBusy: false, acctNotice: { kind: "error", text: message } });
+      }
+      return;
+    }
+    // Passkey
+    set({ acctBusy: true, acctNotice: null });
+    try {
+      const optRes = await fetch("/api/public/purchase/mfa/passkey/registration-options", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      if (!optRes.ok) {
+        const optErr = (await optRes.json().catch(() => ({}))) as { error?: string };
+        authLog.warn({ status: optRes.status, error: optErr.error, sessionId }, "purchase passkey options refused");
+        throw new Error("Could not start passkey setup. Use the authenticator app instead.");
+      }
+      const options = await optRes.json();
+      const attResp = await startRegistration({ optionsJSON: options });
+      const verRes = await fetch("/api/public/purchase/mfa/passkey/verify-registration", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, response: attResp }),
+      });
+      const verData = (await verRes.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!verRes.ok || !verData.ok) {
+        throw new Error(verData.error ?? "Passkey setup failed. Use the authenticator app instead.");
+      }
+      authLog.info({ sessionId }, "purchase MFA enrolled (passkey)");
+      afterMfa();
+    } catch (err) {
+      const message =
+        err instanceof Error && err.name === "NotAllowedError"
+          ? "Passkey setup was cancelled."
+          : err instanceof Error
+            ? err.message
+            : "Passkey setup failed. Use the authenticator app instead.";
+      set({ acctBusy: false, acctNotice: { kind: "error", text: message } });
+    }
   };
   const declineWrite = () => set({ writeDeclined: true, stage: "done" });
   const runPreScan = () => {
@@ -660,19 +1060,64 @@ export default function Buy() {
     };
     step();
   };
-  const grantWrite = () => {
-    set({ stage: "granting" });
-    push(
-      window.setTimeout(
-        () =>
-          set({
-            writeGranted: true,
-            stage: st.product === "pack" ? "prescan" : "done",
-          }),
-        1400,
-      ),
-    );
-    if (st.product === "pack") push(window.setTimeout(runPreScan, 1500));
+  // Real write consent (#1312): the separate write-scoped app registration,
+  // minted only for an eligible product's session (Packs here — the server
+  // refuses everything else before creating any state). Same popup-and-poll
+  // shape as the read consent above; a tenant whose write consent already
+  // stands (a re-purchase) skips the popup instead of re-consenting.
+  const grantWrite = async () => {
+    const sessionId = st.sessionId;
+    if (!sessionId) {
+      set({ writeError: "Your purchase session has expired — please start the purchase again." });
+      return;
+    }
+    const popup = openConsentPopup();
+    set({ stage: "granting", writeError: null });
+    try {
+      const already = await fetchConsentStatus(sessionId);
+      if (already?.writeBack !== "granted") {
+        const urlRes = await fetch(
+          `/api/public/flow/write-consent-url?sessionId=${encodeURIComponent(sessionId)}`,
+        );
+        const urlData = (await urlRes.json().catch(() => ({}))) as { consentUrl?: string; error?: string };
+        if (!urlRes.ok || !urlData.consentUrl) {
+          authLog.warn({ status: urlRes.status, error: urlData.error, sessionId }, "write-consent URL mint failed");
+          throw new Error(
+            urlData.error === "write_consent_not_available_for_product"
+              ? "Write access isn't available for this product."
+              : "Could not start the write-access consent. Please try again.",
+          );
+        }
+        if (!popup || popup.closed) {
+          throw new Error(
+            "Your browser blocked the Microsoft consent window — allow pop-ups for this site and try again.",
+          );
+        }
+        popup.location.href = urlData.consentUrl;
+        authLog.info({ sessionId }, "write consent popup opened");
+        const landedOk = await waitForConsent(sessionId, popup, (s) => s.writeBack === "granted");
+        if (!landedOk) {
+          throw new Error("The Microsoft consent window closed before approval — write access was not granted.");
+        }
+      }
+      try {
+        popup?.close();
+      } catch {
+        /* already closed itself */
+      }
+      authLog.info({ sessionId }, "write consent granted for this pack purchase");
+      set({ writeGranted: true, stage: "prescan", writeError: null });
+      runPreScan();
+    } catch (err) {
+      try {
+        popup?.close();
+      } catch {
+        /* ignore */
+      }
+      const message = err instanceof Error ? err.message : "The write-access consent failed. Please try again.";
+      authLog.warn({ err: message, sessionId }, "write consent failed");
+      set({ stage: "write", writeError: message });
+    }
   };
   const toggleAction = (id: string) => {
     // A REAL pack executes as one dependency-ordered unit — per-action opt-out
@@ -729,6 +1174,43 @@ export default function Buy() {
       );
     };
     tick();
+  };
+
+  // Real portal handoff (#1313, destination routing #1315): mint a fresh
+  // single-use, 2-minute auto-login token for the account THIS session
+  // created, and send the tab to the returned portal URL — Retainer lands on
+  // My Architect via its ?product= hint, everything else on the default
+  // landing. Minted at click time because the token lives 2 minutes.
+  const openPortal = async () => {
+    if (st.handoffBusy) return;
+    const sessionId = st.sessionId;
+    if (!sessionId) {
+      window.location.assign("/portal");
+      return;
+    }
+    set({ handoffBusy: true, handoffError: null });
+    try {
+      const res = await fetch("/api/public/purchase/portal-handoff", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; portalUrl?: string; error?: string };
+      if (!res.ok || !data.portalUrl) {
+        authLog.warn({ status: res.status, error: data.error, sessionId }, "portal handoff refused");
+        throw new Error(
+          "Automatic sign-in didn't work — open the Portal and sign in with the password you just set.",
+        );
+      }
+      authLog.info({ sessionId }, "portal handoff minted — signing the buyer in");
+      // The flow is complete; never resurrect this session on a later /buy visit.
+      clearPersistedSession();
+      window.location.assign(data.portalUrl);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Automatic sign-in didn't work — open the Portal and sign in.";
+      set({ handoffBusy: false, handoffError: message });
+    }
   };
 
   // ── Step rail ─────────────────────────────────────────────────────────────────
@@ -789,7 +1271,11 @@ export default function Buy() {
     executing: st.stage === "executing",
     executed: st.stage === "executed",
     estimate: isMon && !st.connected,
-    pay: !connectBlocked,
+    // Contact fields are needed BEFORE the connection now: the Microsoft
+    // consent is minted against a real checkout session, and the session is
+    // created from these fields (#1311). The pay CTA itself stays blocked
+    // until the connection lands (`blocked`/`connectBlocked`).
+    pay: true,
   };
 
   const reduceMotion =
@@ -812,7 +1298,7 @@ export default function Buy() {
     ? {
         eyebrow: "Tenant monitoring",
         title: "Connect first, then buy the tier that fits.",
-        body: "Monitoring is priced per seat from your real tenant, so the connection comes before the card. Nothing is charged until you see the actual number.",
+        body: "Monitoring runs on a connected tenant, so the read-only connection comes before the card. Nothing is charged until you approve the payment.",
       }
     : isRet
       ? {
@@ -856,7 +1342,6 @@ export default function Buy() {
           available: catalogLoading || availablePackKeys.has(o.key),
         }));
 
-  const cameFromScan = st.scannedParam && !st.scanSkipped;
   const connectCard = connectOffered
     ? {
         title: "Connect your tenant for a scan (optional)",
@@ -864,42 +1349,38 @@ export default function Buy() {
         body: "Your architect can start from real findings instead of a discovery call. It changes nothing about the price, and you can skip it and connect later from the Portal.",
         foot: "Skipping is fine — the retainer runs either way.",
       }
-    : {
-        title: st.seatsFromCatalog
-          ? "One thing left: confirm the seat count from your tenant"
-          : "Connect your tenant, read-only",
-        optional: false,
-        body:
-          (st.seatsFromCatalog
-            ? "You have already picked " +
-              monSel.name +
-              " at " +
-              st.seatsFromCatalog.toLocaleString("en-US") +
-              " seats. Billing runs on the seat count your tenant reports, not the one you typed, so the connection is what turns your estimate into the real figure. "
-            : "Monitoring is priced per seat, so the real number comes from your tenant rather than a form. ") +
-          "You approve a scoped, read-only connection in Microsoft’s own consent screen — nothing is charged at this step.",
-        foot: "Revocable from your tenant at any time.",
-      };
+    : isPack
+      ? {
+          title: "Connect your tenant, read-only",
+          optional: false,
+          body: "The dry run is built from your tenant’s real configuration, so the read-only connection comes before payment. You approve it in Microsoft’s own consent screen — nothing is charged at this step, and nothing is written through it.",
+          foot: "Revocable from your tenant at any time.",
+        }
+      : {
+          title: "Connect your tenant, read-only",
+          optional: false,
+          body:
+            (st.seatsFromCatalog
+              ? "You have already picked " +
+                monSel.name +
+                " at " +
+                st.seatsFromCatalog.toLocaleString("en-US") +
+                " seats — that count is what you are billed on, locked in when you connect. "
+              : "Monitoring runs against your connected tenant, and the seat count you set here is what you are billed on. ") +
+            "You approve a scoped, read-only connection in Microsoft’s own consent screen — nothing is charged at this step.",
+          foot: "Revocable from your tenant at any time.",
+        };
 
-  const connectedCard = cameFromScan
-    ? {
-        title: "Reusing the connection from your free scan",
-        body:
-          "You granted read-only access on 12 August. " +
-          (isMon
-            ? "Your tenant reports " +
-              REAL_SEATS.toLocaleString("en-US") +
-              " licensed seats, and that is what you will be billed on."
-            : "Your architect will have your findings on day one."),
-      }
-    : {
-        title: "Tenant connected, read-only",
-        body: isMon
-          ? "Your tenant reports " +
-            REAL_SEATS.toLocaleString("en-US") +
-            " licensed seats, and that is what you will be billed on."
-          : "A read-only scan will run before your first session.",
-      };
+  const connectedCard = {
+    title: "Tenant connected, read-only",
+    body: isMon
+      ? "You will be billed on the " +
+        seats.toLocaleString("en-US") +
+        " seats you set, now locked to this order. The first read-only scan is already under way."
+      : isPack
+        ? "Your tenant is connected. The dry run will read it exactly as it is at approval time."
+        : "A read-only scan will run before your first session.",
+  };
 
   const est = (() => {
     if (!isMon) return null;
@@ -920,8 +1401,8 @@ export default function Buy() {
         ? "Licensed users, as you set them"
         : "Roughly how many licensed users?",
       foot: carried
-        ? "This is the seat count and tier you picked on the pricing page. Change it here if it was a guess — either way you are billed on what your tenant reports, and you see that figure before you pay."
-        : "An estimate from the number you typed. You are billed on whatever your tenant actually reports, and you see that figure before you pay.",
+        ? "This is the seat count and tier you picked on the pricing page. Change it here if it was a guess — this count is what you are billed on, and it locks in when you connect your tenant."
+        : "Set this to your real licensed-user count — it is what you are billed on, and it locks in when you connect your tenant.",
     };
   })();
 
@@ -936,7 +1417,7 @@ export default function Buy() {
       ? monSel.name +
         " · " +
         seats.toLocaleString("en-US") +
-        (st.connected ? " seats, read from your tenant" : " seats, your estimate")
+        (st.connected ? " seats, locked to your order" : " seats, your estimate")
       : isPack
         ? packKeys.length > 1
           ? packKeys.length + " packs, one dry run"
@@ -980,7 +1461,9 @@ export default function Buy() {
           ? "Accept the terms to continue"
           : "Pay " + money(price) + (isPack ? " and continue" : " and start"),
     foot: connectBlocked
-      ? "Monitoring cannot be priced before the tenant reports its seat count."
+      ? isPack
+        ? "The dry run reads your tenant, so the connection comes before payment."
+        : "Monitoring needs your tenant connected before payment."
       : hasUnavailablePack
         ? "Choose a pack marked available to continue."
         : isPack
@@ -1074,7 +1557,6 @@ export default function Buy() {
     },
     { text: "Both fields match", ok: st.pw1.length > 0 && st.pw1 === st.pw2 },
   ];
-  const mfaSecret = "JBSW Y3DP EHPK 3PXP";
 
   const done = {
     title: isPack
@@ -1094,7 +1576,7 @@ export default function Buy() {
             "/mo on " +
             selName +
             " for " +
-            REAL_SEATS.toLocaleString("en-US") +
+            seats.toLocaleString("en-US") +
             " seats. The first full pass is running now."
           : money(price) +
             "/mo on " +
@@ -1637,7 +2119,7 @@ export default function Buy() {
                 >
                   <button
                     data-testid="buy-connect-grant"
-                    onClick={doConnect}
+                    onClick={() => void doConnect()}
                     style={{
                       padding: "10px 18px",
                       border: 0,
@@ -2283,7 +2765,7 @@ export default function Buy() {
                 {(
                   [
                     { key: "app" as MfaMethod, name: "Authenticator app", desc: "Microsoft Authenticator, 1Password, or anything TOTP." },
-                    { key: "rsa" as MfaMethod, name: "RSA SecurID", desc: "A hardware or software token, if that is what your organization already issues." },
+                    { key: "passkey" as MfaMethod, name: "Passkey", desc: "Face ID, a fingerprint, or a hardware security key — your browser handles it." },
                   ]
                 ).map((m) => {
                   const on = st.mfaMethod === m.key;
@@ -2376,22 +2858,46 @@ export default function Buy() {
                       >
                         Setup key
                       </span>
-                      <span
-                        style={{
-                          fontSize: "14px",
-                          fontWeight: 700,
-                          letterSpacing: ".16em",
-                          color: "#f1f5f9",
-                          fontFamily: "Menlo,Consolas,monospace",
-                        }}
-                      >
-                        {mfaSecret}
-                      </span>
+                      {st.mfaSetup ? (
+                        <>
+                          <img
+                            data-testid="buy-mfa-qr"
+                            src={st.mfaSetup.qrDataUrl}
+                            alt="Authenticator QR code"
+                            style={{
+                              width: "148px",
+                              height: "148px",
+                              borderRadius: "8px",
+                              background: "#fff",
+                              padding: "6px",
+                              alignSelf: "center",
+                            }}
+                          />
+                          <span
+                            data-testid="buy-mfa-secret"
+                            style={{
+                              fontSize: "12.5px",
+                              fontWeight: 700,
+                              letterSpacing: ".08em",
+                              color: "#f1f5f9",
+                              fontFamily: "Menlo,Consolas,monospace",
+                              wordBreak: "break-all",
+                            }}
+                          >
+                            {st.mfaSetup.secret}
+                          </span>
+                        </>
+                      ) : (
+                        <span style={{ fontSize: "12px", color: "#94a3b8" }}>
+                          Preparing your setup key…
+                        </span>
+                      )}
                       <span style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.5 }}>
                         Scan or paste this into your authenticator, then enter the code it shows.
                       </span>
                     </div>
                     <FocusInput
+                      data-testid="buy-mfa-code"
                       value={st.mfaCode}
                       onChange={onMfaCode}
                       inputMode="numeric"
@@ -2400,29 +2906,43 @@ export default function Buy() {
                     />
                   </>
                 )}
-                {st.mfaMethod === "rsa" && (
-                  <>
-                    <FocusInput
-                      value={st.phone}
-                      onChange={onPhone}
-                      placeholder="Token serial number"
-                      style={inputStyle}
-                    />
-                    <FocusInput
-                      value={st.mfaCode}
-                      onChange={onMfaCode}
-                      inputMode="numeric"
-                      placeholder="Current token code"
-                      style={inputStyle}
-                    />
-                  </>
+                {st.mfaMethod === "passkey" && (
+                  <div
+                    style={{
+                      border: "1px solid rgba(59,130,246,.28)",
+                      borderRadius: "11px",
+                      background: "rgba(59,130,246,.06)",
+                      padding: "13px 15px",
+                      fontSize: "12px",
+                      color: "#94a3b8",
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    Your browser will ask you to confirm with Face ID, a fingerprint, or your
+                    security key when you press the button below. Nothing to type.
+                  </div>
                 )}
               </>
             )}
 
+            {st.acctNotice && (
+              <p
+                data-testid="buy-account-notice"
+                data-kind={st.acctNotice.kind}
+                style={{
+                  margin: 0,
+                  fontSize: "12.5px",
+                  lineHeight: 1.55,
+                  color: st.acctNotice.kind === "error" ? "#f87171" : "#34d399",
+                }}
+              >
+                {st.acctNotice.text}
+              </p>
+            )}
             <button
               data-testid="buy-account-advance"
               onClick={acct.advance}
+              disabled={st.acctBusy}
               style={{
                 width: "100%",
                 padding: "12px",
@@ -2432,11 +2952,11 @@ export default function Buy() {
                 fontSize: "13.5px",
                 fontWeight: 700,
                 color: "#fff",
-                cursor: acctReady ? "pointer" : "not-allowed",
-                background: acctReady ? gradientBtn : "rgba(71,85,105,.4)",
+                cursor: acctReady && !st.acctBusy ? "pointer" : "not-allowed",
+                background: acctReady && !st.acctBusy ? gradientBtn : "rgba(71,85,105,.4)",
               }}
             >
-              {acct.cta}
+              {st.acctBusy ? "Working…" : acct.cta}
             </button>
             <span
               style={{ fontSize: "11px", color: "#475569", lineHeight: 1.5, textAlign: "center" }}
@@ -2556,10 +3076,18 @@ export default function Buy() {
               </span>
             ))}
           </div>
+          {st.writeError && (
+            <p
+              data-testid="buy-write-error"
+              style={{ margin: 0, fontSize: "12.5px", color: "#f87171", lineHeight: 1.55 }}
+            >
+              {st.writeError}
+            </p>
+          )}
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
             <button
               data-testid="buy-write-grant"
-              onClick={grantWrite}
+              onClick={() => void grantWrite()}
               style={{
                 padding: "12px 24px",
                 border: 0,
@@ -3390,6 +3918,11 @@ export default function Buy() {
             ))}
           </div>
 
+          {/* #1303: a REAL purchase (liveMode) never links to the fixture
+              record at /records/:id ("Halden Materials") — the buyer's own
+              change record lives in their Portal, reached through the same
+              single-use auto-login handoff as the done screen. The fixture
+              link survives only in the session-less demo walkthrough. */}
           <div
             style={{
               display: "flex",
@@ -3403,41 +3936,86 @@ export default function Buy() {
             }}
           >
             <span style={{ flex: "1 1 320px", minWidth: 0, fontSize: "12px", color: "#cbd5e1", lineHeight: 1.6 }}>
-              A read-only scan confirmed every applied value 20 minutes after the run. Two changes
-              sit in a report-only period and are re-verified when they enforce.
+              {liveMode
+                ? "This record lives in your Portal: every before and after value, the run's own log, and the paused steps if any. You are signed in automatically."
+                : "A read-only scan confirmed every applied value 20 minutes after the run. Two changes sit in a report-only period and are re-verified when they enforce."}
             </span>
-            <Link
-              href={`/records/${CR_ID}`}
-              style={{
-                flex: "none",
-                padding: "10px 16px",
-                borderRadius: "9px",
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "#fff",
-                background: gradientBtn,
-                whiteSpace: "nowrap",
-                textDecoration: "none",
-              }}
-            >
-              Download as PDF
-            </Link>
+            {liveMode ? (
+              <button
+                data-testid="buy-executed-portal"
+                onClick={() => void openPortal()}
+                disabled={st.handoffBusy}
+                style={{
+                  flex: "none",
+                  padding: "10px 16px",
+                  border: 0,
+                  borderRadius: "9px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  fontFamily: "inherit",
+                  color: "#fff",
+                  background: gradientBtn,
+                  whiteSpace: "nowrap",
+                  cursor: st.handoffBusy ? "wait" : "pointer",
+                }}
+              >
+                {st.handoffBusy ? "Signing you in…" : "View in your Portal"}
+              </button>
+            ) : (
+              <Link
+                href={`/records/${CR_ID}`}
+                style={{
+                  flex: "none",
+                  padding: "10px 16px",
+                  borderRadius: "9px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#fff",
+                  background: gradientBtn,
+                  whiteSpace: "nowrap",
+                  textDecoration: "none",
+                }}
+              >
+                Download as PDF
+              </Link>
+            )}
           </div>
           <div style={{ display: "flex", gap: "11px", flexWrap: "wrap", alignItems: "center" }}>
-            <Link
-              href={`/records/${CR_ID}`}
-              style={{
-                padding: "12px 20px",
-                borderRadius: "10px",
-                fontSize: "13px",
-                fontWeight: 700,
-                color: "#fff",
-                background: gradientBtn,
-                textDecoration: "none",
-              }}
-            >
-              Open your change record
-            </Link>
+            {liveMode ? (
+              <button
+                data-testid="buy-executed-open-record"
+                onClick={() => void openPortal()}
+                disabled={st.handoffBusy}
+                style={{
+                  padding: "12px 20px",
+                  border: 0,
+                  borderRadius: "10px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  fontFamily: "inherit",
+                  color: "#fff",
+                  background: gradientBtn,
+                  cursor: st.handoffBusy ? "wait" : "pointer",
+                }}
+              >
+                {st.handoffBusy ? "Signing you in…" : "Open your change record"}
+              </button>
+            ) : (
+              <Link
+                href={`/records/${CR_ID}`}
+                style={{
+                  padding: "12px 20px",
+                  borderRadius: "10px",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#fff",
+                  background: gradientBtn,
+                  textDecoration: "none",
+                }}
+              >
+                Open your change record
+              </Link>
+            )}
             <a
               href="/portal"
               style={{
@@ -3453,6 +4031,14 @@ export default function Buy() {
               Or tour the Portal
             </a>
           </div>
+          {st.handoffError && (
+            <p
+              data-testid="buy-handoff-error"
+              style={{ margin: 0, fontSize: "12.5px", color: "#f87171", lineHeight: 1.55 }}
+            >
+              {st.handoffError}
+            </p>
+          )}
           <span style={{ fontSize: "11.5px", color: "#64748b", lineHeight: 1.6 }}>
             The change record is a document, not a dashboard: every before and after value, the
             accounts affected, what you declined, and the rollback window. Print it or save it as
@@ -3537,9 +4123,26 @@ export default function Buy() {
               </span>
             ))}
           </div>
+          {st.handoffError && (
+            <p
+              data-testid="buy-handoff-error"
+              style={{ margin: 0, fontSize: "12.5px", color: "#f87171", lineHeight: 1.55 }}
+            >
+              {st.handoffError}
+            </p>
+          )}
           <div style={{ display: "flex", alignItems: "center", gap: "14px", flexWrap: "wrap" }}>
+            {/* Real auto-login (#1313): the click mints the single-use token
+                and the tab lands in the Portal already signed in. A session-
+                less demo walk falls back to the plain Portal link. */}
             <a
+              data-testid="buy-open-portal"
               href="/portal"
+              onClick={(e) => {
+                if (!st.sessionId) return;
+                e.preventDefault();
+                void openPortal();
+              }}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -3551,9 +4154,10 @@ export default function Buy() {
                 color: "#fff",
                 background: gradientBtn,
                 textDecoration: "none",
+                cursor: st.handoffBusy ? "wait" : "pointer",
               }}
             >
-              Open your Portal <IconArrow />
+              {st.handoffBusy ? "Signing you in…" : "Open your Portal"} <IconArrow />
             </a>
             <Link href="/" style={{ fontSize: "13px", fontWeight: 600, color: "#60a5fa" }}>
               Back to the site
