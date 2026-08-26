@@ -3,6 +3,11 @@
     "neon": {
       "type": "http",
       "url": "https://mcp.neon.tech/mcp"
+    },
+    "shane-msp": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["artifacts/mcp-server/src/index.ts"]
     }
   }
 }

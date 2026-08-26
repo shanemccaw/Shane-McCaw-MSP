@@ -1,0 +1,25 @@
+{
+  "name": "@workspace/mcp-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shane's operating MCP server - real platform query/execution tools over the live api-server (Git #1319)",
+  "scripts": {
+    "start": "node src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "e2e": "node scripts/e2e-check.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.20.0",
+    "pino": "^9.14.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.11.0",
+    "typescript": "~5.9.3"
+  }
+}
