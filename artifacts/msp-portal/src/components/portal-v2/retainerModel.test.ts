@@ -16,10 +16,14 @@ import {
   RET_USED_PCT,
   askWho,
   buildWeekView,
+  currentHeadingLabel,
+  daysLeftInPeriodLabel,
   hoursChip,
   outcomeToneColor,
+  periodEndDate,
   pillarTextColor,
   retSummary,
+  rolledExpiryLabel,
   selectWeek,
   workStateColor,
 } from "./retainerModel";
@@ -95,6 +99,42 @@ describe("selectWeek", () => {
 
   it("returns the requested week when it exists", () => {
     assert.equal(selectWeek("W32").key, "W32");
+  });
+});
+
+describe("periodEndDate (#1401)", () => {
+  it("resolves the last real calendar day of a 31-day month", () => {
+    assert.equal(periodEndDate("2026-08").toISOString(), "2026-08-31T00:00:00.000Z");
+  });
+  it("resolves the last real calendar day of a 30-day month", () => {
+    assert.equal(periodEndDate("2026-09").toISOString(), "2026-09-30T00:00:00.000Z");
+  });
+  it("resolves February in a leap year", () => {
+    assert.equal(periodEndDate("2028-02").toISOString(), "2028-02-29T00:00:00.000Z");
+  });
+});
+
+describe("rolledExpiryLabel (#1401)", () => {
+  it("names the real last day of the bucket's own period, not a fixture date", () => {
+    assert.equal(rolledExpiryLabel("2026-08"), "expire 31 Aug");
+    assert.equal(rolledExpiryLabel("2026-09"), "expire 30 Sep");
+  });
+});
+
+describe("daysLeftInPeriodLabel (#1401)", () => {
+  it("counts real days remaining in the period from `now`", () => {
+    assert.equal(daysLeftInPeriodLabel("2026-08", new Date("2026-08-27T00:00:00.000Z")), "4 days left");
+    assert.equal(daysLeftInPeriodLabel("2026-08", new Date("2026-08-30T00:00:00.000Z")), "1 day left");
+  });
+  it("floors at 0 rather than reading negative for a stale read past period end", () => {
+    assert.equal(daysLeftInPeriodLabel("2026-08", new Date("2026-09-02T00:00:00.000Z")), "0 days left");
+  });
+});
+
+describe("currentHeadingLabel (#1401)", () => {
+  it("states the real current calendar month and year, not a hardcoded one", () => {
+    assert.equal(currentHeadingLabel(new Date("2026-08-27T00:00:00.000Z")), "My Architect · August 2026");
+    assert.equal(currentHeadingLabel(new Date("2027-01-05T00:00:00.000Z")), "My Architect · January 2027");
   });
 });
 

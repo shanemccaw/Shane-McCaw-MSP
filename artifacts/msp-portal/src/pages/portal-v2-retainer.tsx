@@ -25,11 +25,26 @@
  * hidden `pv2-ret-source` marker states which of the five is on screen. The
  * weekly report card (summary, per-line work log, deliverables, asks) has no
  * backend source at all and stays on `retainerData.ts`'s fixture, as do
- * RET_OUTCOMES / RET_TERMS / RET_DOCS / RET_COPY, and — separately, a known,
+ * RET_OUTCOMES / RET_TERMS / RET_DOCS, and — separately, a known,
  * still-open gap — the "Findings closed" / "Next scheduled" SmallCards below
  * (see #1398's follow-up). The week selector is real local state; the ask box
  * and the document/PDF buttons are visual, to be wired in a later pass. Copy
  * is FINAL and reproduced verbatim.
+ *
+ * ── Header line + rollover text (#1401) ──────────────────────────────────
+ * The heading's month/year, the architect/billing line, and the rolled-hours
+ * expiry/countdown text were all unconditional fixture strings even after
+ * #1398 (which only fixed the bucket's hour NUMBERS) — worse than a pure
+ * fixture since real hours sat next to a fake date and a fake person's name.
+ * All five are now real: `heading` is the actual current calendar period
+ * (independent of enrollment); `architectLabel`/`billingLabel` come from the
+ * caller's own `retainer_settings` row (architect_name, hourly_rate_cents),
+ * honest no-data ("No architect assigned yet") when the row has no architect
+ * set, and hidden entirely when there is no retainer row at all; `rolledExpiry`
+ * / `remainingTail` are derived from the real `bucket.period` per the
+ * documented rollover model (rolled hours expire at the end of their own
+ * period) — see retainerModel.ts's periodEndDate/rolledExpiryLabel/
+ * daysLeftInPeriodLabel/currentHeadingLabel.
  */
 
 import { useState } from "react";
@@ -48,10 +63,13 @@ import {
 import {
   buildWeekView,
   computeRetSummary,
+  currentHeadingLabel,
+  daysLeftInPeriodLabel,
   hoursChip,
   outcomeToneColor,
   pillarTextColor,
   retSummary as fixtureRetSummary,
+  rolledExpiryLabel,
   workStateColor,
 } from "@/components/portal-v2/retainerModel";
 import { useRetainerLive } from "@/components/portal-v2/useRetainerLive";
@@ -78,7 +96,19 @@ function Eyebrow({ colour, children, spacing = ".18em" }: { colour: string; chil
 }
 
 /** The month rollup's three cards — the "time this period" one spans two. */
-function TimeCard({ retSummary, retainedLabel }: { retSummary: ReturnType<typeof computeRetSummary>; retainedLabel: string }) {
+function TimeCard({
+  retSummary,
+  retainedLabel,
+  rolledExpiry,
+  remainingTail,
+}: {
+  retSummary: ReturnType<typeof computeRetSummary>;
+  retainedLabel: string;
+  /** REAL expiry of this period's rolled hours (Git #1401) — never the design fixture. */
+  rolledExpiry: string;
+  /** REAL days left in the period (Git #1401) — never the design fixture. */
+  remainingTail: string;
+}) {
   return (
     <div
       data-testid="pv2-ret-time-card"
@@ -119,8 +149,8 @@ function TimeCard({ retSummary, retainedLabel }: { retSummary: ReturnType<typeof
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(140px,1fr))", gap: "8px 16px", paddingTop: 2 }}>
         <MicroStat label="Retained monthly" value={retainedLabel} />
-        <MicroStat label="Rolled from July" value={`${retSummary.rolled} hours · ${RET_COPY.rolledExpiry}`} />
-        <MicroStat label="Remaining" value={`${retSummary.remaining} hours, ${RET_COPY.remainingTail}`} />
+        <MicroStat label="Rolled from last month" value={`${retSummary.rolled} hours · ${rolledExpiry}`} />
+        <MicroStat label="Remaining" value={`${retSummary.remaining} hours, ${remainingTail}`} />
       </div>
       <span style={{ fontSize: "10.5px", color: "#94a3b8", lineHeight: 1.5, textWrap: "pretty" }}>{RET_COPY.timeNote}</span>
     </div>
@@ -264,6 +294,22 @@ export default function PortalV2RetainerPage() {
       ? "The request failed. Refresh the page to try again."
       : "There is no retainer to show hours for yet.";
 
+  // Git #1401: the header's architect/billing line and the rolled-hours'
+  // expiry/countdown text were unconditional design-fixture strings even when
+  // the bucket beside them was real (#1398 only fixed the bucket numbers
+  // themselves). All four are now derived from the real retainer_settings /
+  // bucket.period the api already returns — honest no-data when there is no
+  // real source (never enrolled, or the settings row has no architect set).
+  const heading = currentHeadingLabel();
+  const architectLabel = retainerConfigured
+    ? live.settings?.architectName ?? "No architect assigned yet"
+    : null;
+  const billingLabel = retainerConfigured && live.bucket && live.settings
+    ? `$${Math.round((live.bucket.retainedHours * live.settings.hourlyRateCents) / 100).toLocaleString("en-US")}/mo`
+    : null;
+  const rolledExpiry = retainerConfigured && live.bucket ? rolledExpiryLabel(live.bucket.period) : "";
+  const remainingTail = retainerConfigured && live.bucket ? daysLeftInPeriodLabel(live.bucket.period) : "";
+
   return (
     <PortalV2Shell eyebrow={RET_COPY.eyebrow} title="My Architect">
       <div style={{ minHeight: "100%", background: SIDEBAR_WASH }}>
@@ -316,13 +362,16 @@ export default function PortalV2RetainerPage() {
                 data-testid="pv2-page-title"
                 style={{ fontSize: "18px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.015em" }}
               >
-                {RET_COPY.heading}
+                {heading}
               </span>
               <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.55, maxWidth: "82ch" }}>{RET_COPY.subhead}</span>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flex: "0 0 auto" }}>
-              <span style={{ fontSize: "10.5px", color: "#64748b" }}>{RET_COPY.architect}</span>
-              <span style={{ fontSize: "10.5px", color: "#475569" }}>{RET_COPY.billing}</span>
+            <div
+              data-testid="pv2-ret-architect-billing"
+              style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flex: "0 0 auto" }}
+            >
+              {architectLabel && <span style={{ fontSize: "10.5px", color: "#64748b" }}>{architectLabel}</span>}
+              {billingLabel && <span style={{ fontSize: "10.5px", color: "#475569" }}>{billingLabel}</span>}
             </div>
           </div>
 
@@ -333,7 +382,12 @@ export default function PortalV2RetainerPage() {
             <PortalV2LoadingState rows={2} label="Loading your retainer hours…" testId="pv2-ret-summary-loading" />
           ) : retainerConfigured ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12, alignItems: "stretch" }}>
-              <TimeCard retSummary={retSummary} retainedLabel={retainedLabel} />
+              <TimeCard
+                retSummary={retSummary}
+                retainedLabel={retainedLabel}
+                rolledExpiry={rolledExpiry}
+                remainingTail={remainingTail}
+              />
               <SmallCard
                 label={RET_COPY.findingsClosedLabel}
                 value={RET_COPY.findingsClosedValue}

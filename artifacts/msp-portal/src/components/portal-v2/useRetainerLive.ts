@@ -50,14 +50,29 @@ export interface RetainerLiveBucket {
   readonly retainedHours: number;
   readonly rolledHours: number;
   readonly usedHours: number;
+  /** "YYYY-MM" — the real bucket period, e.g. "2026-08" (Git #1401). */
+  readonly period: string;
+}
+
+/** Real retainer settings (Git #1401) — the customer's own retainer_settings row. */
+export interface RetainerLiveSettings {
+  readonly architectName: string | null;
+  readonly hourlyRateCents: number;
 }
 
 interface RetainerApiResponse {
   configured: boolean;
+  settings: {
+    retainedHours: number;
+    hourlyRateCents: number;
+    architectName: string | null;
+    active: boolean;
+  } | null;
   bucket: {
     retainedHours: number;
     rolledHours: number;
     usedHours: number;
+    period: string;
   };
   entries: RetainerLiveEntry[];
 }
@@ -77,6 +92,8 @@ export interface RetainerLiveState {
   /** True once a first real response (success or failure) has arrived. */
   readonly loaded: boolean;
   readonly dataState: RetainerDataState;
+  /** Real retainer_settings row (architect, hourly rate) — null when unconfigured. */
+  readonly settings: RetainerLiveSettings | null;
 }
 
 const KNOWN_STATES: readonly RetWorkState[] = ["In progress", "Closed", "In review", "Scheduled"];
@@ -104,6 +121,7 @@ const LOADING_STATE: RetainerLiveState = {
   entries: [],
   loaded: false,
   dataState: "loading",
+  settings: null,
 };
 
 export function useRetainerLive(): RetainerLiveState {
@@ -126,6 +144,10 @@ export function useRetainerLive(): RetainerLiveState {
           entries,
           loaded: true,
           dataState: !configured ? "unconfigured" : entries.length > 0 ? "live" : "empty",
+          settings:
+            configured && data.settings
+              ? { architectName: data.settings.architectName, hourlyRateCents: data.settings.hourlyRateCents }
+              : null,
         });
       } catch {
         if (cancelled) return;
@@ -135,6 +157,7 @@ export function useRetainerLive(): RetainerLiveState {
           entries: [],
           loaded: true,
           dataState: "error",
+          settings: null,
         });
       }
     })();

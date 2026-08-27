@@ -72,6 +72,56 @@ export function computeRetSummary(hours: { retained: number; rolled: number; use
 export const retSummary = computeRetSummary(RET_HOURS);
 
 /**
+ * The last real calendar day of a "YYYY-MM" bucket period, as a UTC Date.
+ * `Date.UTC(y, m, 0)` is "day 0 of the next month", which JS resolves to the
+ * last day of the requested month — matches `periodMonthOf`'s UTC convention
+ * on the api-server side (retainer-hours.ts) so the two never disagree about
+ * which calendar day a period ends on.
+ */
+export function periodEndDate(period: string): Date {
+  const [y, m] = period.split("-").map((n) => parseInt(n, 10));
+  return new Date(Date.UTC(y, m, 0));
+}
+
+/**
+ * "expire 31 Aug" — the REAL expiry of this period's rolled-forward hours
+ * (Git #1401). Per the rollover model (retainer-hours.ts computeMonthBucket):
+ * unused hours roll forward exactly one month, then expire — so "expire" is
+ * always the last calendar day of the bucket's own period, derived from the
+ * live `bucket.period` the api already returns, never a fixture string.
+ */
+export function rolledExpiryLabel(period: string): string {
+  const end = periodEndDate(period);
+  const day = end.getUTCDate();
+  const month = end.toLocaleString("en-US", { month: "short", timeZone: "UTC" });
+  return `expire ${day} ${month}`;
+}
+
+/**
+ * "9 days left" — REAL days remaining until the period (and its rolled-hours
+ * expiry) ends, counted from `now` (Git #1401). Floored at 0 so a stale read
+ * lingering past midnight never reads negative.
+ */
+export function daysLeftInPeriodLabel(period: string, now: Date = new Date()): string {
+  const end = periodEndDate(period);
+  const endUTC = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  const nowUTC = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const days = Math.max(0, Math.round((endUTC - nowUTC) / 86_400_000));
+  return `${days} day${days === 1 ? "" : "s"} left`;
+}
+
+/**
+ * "My Architect · August 2026" — the REAL current calendar period (Git
+ * #1401). Independent of retainer enrollment (unlike the bucket, which only
+ * exists for a configured customer), so this renders for every dataState —
+ * never the hardcoded month the design fixture shipped with.
+ */
+export function currentHeadingLabel(now: Date = new Date()): string {
+  const monthYear = now.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+  return `My Architect · ${monthYear}`;
+}
+
+/**
  * A work row's right-hand state colour. Prototype 15874: Closed is the green
  * "done", In progress is the blue "moving", everything else is the amber
  * "waiting" — the three states the design colours, not a per-string map.

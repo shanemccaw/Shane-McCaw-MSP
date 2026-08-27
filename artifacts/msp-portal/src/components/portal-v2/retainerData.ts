@@ -292,19 +292,19 @@ export const RET_DOCS: readonly { readonly name: string; readonly when: string; 
   { name: "August retainer summary", when: "Publishes 1 September", kind: "Rollup" },
 ];
 
-/* ── Static header/meta copy — prototype 1990-1996, 2030-2038. Verbatim. ──── */
+/* ── Static header/meta copy — prototype 1990-1996, 2030-2038. Verbatim. ────
+ * `heading` (the month/year), `architect` and `billing` are Git #1401's real
+ * derivations (retainerModel.ts / useRetainerLive.ts) now, not fixture — kept
+ * out of this object so a stale hardcoded value can never leak back in. Same
+ * for `rolledExpiry`/`remainingTail`, computed per-render from the real
+ * bucket period. */
 export const RET_COPY = {
   eyebrow: "My Architect",
-  heading: "My Architect · August 2026",
   subhead:
     "8 hours a month with a named architect. Every hour below is attached to the work it went into and, where there is one, the finding it closed. Nothing here is a summary written after the fact — it is the working log.",
-  architect: "Priya Raman · M365 Architect",
-  billing: "$2,400/mo · next status report Friday",
   timeLabel: "Time this period",
   timeMeta: "Logged per work item · running total",
   retainedMonthly: "8.0 hours",
-  rolledExpiry: "expire 31 Aug",
-  remainingTail: "9 days left",
   timeNote:
     "Time is recorded against work items rather than tracked to the minute. If a line looks wrong, say so on the status report below and it is corrected the same day.",
   findingsClosedLabel: "Findings closed",
