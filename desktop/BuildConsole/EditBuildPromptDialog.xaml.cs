@@ -122,7 +122,13 @@ namespace BuildConsole
 
             // Git #1416 — reflect any `--account` header flag into the footer selector without
             // triggering a re-sync back into the prompt (that would fire before the body is set).
-            bool secondary = string.Equals(_parsedFlags.GetValueOrDefault("account"), "secondary", StringComparison.OrdinalIgnoreCase);
+            // Git #1419 — when the prompt carries NO explicit `--account` flag, default the
+            // selector to the title-bar toggle's current global default instead of always
+            // "primary", so a build opened for editing already reflects Shane's current global
+            // choice. An explicit flag on the prompt always wins over the global default.
+            bool secondary = _parsedFlags.TryGetValue("account", out var accountFlag)
+                ? string.Equals(accountFlag, "secondary", StringComparison.OrdinalIgnoreCase)
+                : string.Equals(Services.BuildConsoleSettings.Load().DefaultAccount, "secondary", StringComparison.OrdinalIgnoreCase);
             _syncingPrompt = true;
             AccountSelector.SelectedIndex = secondary ? 1 : 0;
             _syncingPrompt = false;

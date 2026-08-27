@@ -186,6 +186,13 @@ namespace BuildConsole.Services
         public string SecondaryClaudeConfigDir { get; set; } =
             System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude-secondary");
 
+        /// <summary>Git #1419 — the global default account ("primary" or "secondary") applied to any
+        /// newly queued build that doesn't already carry an explicit `--account` header flag or an
+        /// Edit Build Prompt dialog override. Set via the title-bar Primary/Secondary toggle so Shane
+        /// can route a whole overflow session to the secondary account without opening the dialog for
+        /// every build. The per-build Account selector (#1416) always wins when it's explicitly set.</summary>
+        public string DefaultAccount { get; set; } = "primary";
+
         // ── Git #937 (Epic #803) — always-on-top Sticky Notes floaty ──────────
         // Shane: "a floaty sticky notes... take notes for... Then I should be
         // able to send what I note down into a Claude chat that I'm typing into
