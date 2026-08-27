@@ -19,10 +19,13 @@ namespace BuildConsole.Services
     /// <c>git rev-parse --short HEAD</c> (run once, at server-process startup, against the server's
     /// own working directory) plus that startup instant. This class computes the exact same two
     /// values straight from disk, no HTTP, no running process required:
-    ///   - <c>commitHash</c> — <c>git rev-parse --short HEAD</c> run directly against the dev-server
-    ///     coordinator's own dedicated checkout (scripts/dev-server/config.mjs's
-    ///     <c>serverWorktree</c>, default <c>C:\dev-server</c>, honoring the same
-    ///     <c>DEV_SERVER_WORKTREE</c> env override config.mjs itself honors).
+    ///   - <c>commitHash</c> — <c>git rev-parse --short HEAD</c> run directly against the SAME
+    ///     checkout the real local dev server (and this BuildConsole.exe) actually runs from
+    ///     (<see cref="VersionInfo.FindRepoRoot"/> — the MAIN checkout, per #1395; honors
+    ///     <c>DEV_SERVER_WORKTREE</c> as an explicit override for anyone who genuinely wants
+    ///     scripts/dev-server/config.mjs's separate <c>C:\dev-server</c> mirror instead — see the
+    ///     "#1421 follow-up" note on <see cref="ResolveServerWorktree"/> for why that mirror is
+    ///     NOT the right default here).
     ///   - <c>timestamp</c> — the coordinator's own <c>server.json</c> (<c>state-dir</c>'s
     ///     <c>serverMetaFile</c>) records the real process-start instant every time
     ///     scripts/dev-server actually launches the server, so reading it back reproduces
@@ -32,13 +35,28 @@ namespace BuildConsole.Services
     /// </summary>
     public static class LocalDeployStatusService
     {
-        /// <summary>Mirrors scripts/dev-server/config.mjs's <c>serverWorktree</c> default exactly:
-        /// <c>DEV_SERVER_WORKTREE</c> env override, else the fixed short path used on this
-        /// machine (a deep path blows past Windows MAX_PATH — see config.mjs's own comment).</summary>
+        /// <summary>
+        /// Git #1421 follow-up: this originally mirrored scripts/dev-server/config.mjs's
+        /// <c>serverWorktree</c> default of <c>C:\dev-server</c> — but #1395 established that
+        /// the local dev server BuildConsole actually watches (:8080 api-server, etc.) is
+        /// launched by <c>DevServicesManager.StartServiceAsync</c> → <c>dev-all.mjs --start
+        /// &lt;svc&gt;</c> with <c>WorkingDirectory = MAIN checkout</c> — NOT from
+        /// <c>C:\dev-server</c>. The coordinator's own restart action
+        /// (<c>refresh-main-server.mjs</c>) runs the real server from the MAIN checkout too;
+        /// <c>C:\dev-server</c> is kept only as a secondary mirror whose merge is documented to
+        /// fail/lag independently (#1395 Layer 1, <c>mergeNoEdit</c>'s dirty-pnpm-lock retries).
+        /// Defaulting here to <c>C:\dev-server</c> would reintroduce the exact "reads the wrong
+        /// checkout, reports a stale commit" bug class #1395 fixed for <c>/api/version</c> — so
+        /// this now defaults to <see cref="VersionInfo.FindRepoRoot"/>, the SAME checkout the
+        /// real server (and this very BuildConsole.exe) resolves. <c>DEV_SERVER_WORKTREE</c>
+        /// still works as an explicit override for anyone who genuinely wants the
+        /// <c>C:\dev-server</c> mirror's state instead.
+        /// </summary>
         public static string ResolveServerWorktree()
         {
             var env = Environment.GetEnvironmentVariable("DEV_SERVER_WORKTREE");
-            return string.IsNullOrWhiteSpace(env) ? @"C:\dev-server" : env;
+            if (!string.IsNullOrWhiteSpace(env)) return env;
+            return VersionInfo.FindRepoRoot() ?? @"C:\dev-server";
         }
 
         /// <summary>Mirrors config.mjs's <c>stateDir</c>: <c>DEV_SERVER_STATE_DIR</c> env override,
