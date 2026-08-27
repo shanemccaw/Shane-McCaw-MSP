@@ -36,6 +36,8 @@ import type { PjMilestone, PjRow } from "./projectsModel";
 export interface WireProjectSummary {
   readonly id: number;
   readonly title: string;
+  readonly description: string | null;
+  readonly projectType: "project" | "retainer" | "quick_win";
   readonly startDate: string | null;
   readonly endDate: string | null;
 }
@@ -87,6 +89,54 @@ export function formatShortDate(iso: string | null): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+}
+
+function formatDateWithYear(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/* ── Header meta (Git #1399) ──────────────────────────────────────────────
+ * `sowLabel`/`terms`/`day` have no dedicated schema fields the way the design
+ * fixture invents ("SOW-2026-0114", "fixed fee $14,800", "next report
+ * Friday") — there is no SOW-number column, no per-project fee, no report
+ * schedule. Rather than fabricate those, each field is derived only from a
+ * column that genuinely exists (`projectType`, `startDate`/`endDate`,
+ * `description`, the real schedule window) and left `null` — rendered as
+ * honest no-data by the page — when the source column itself is null. */
+
+const PROJECT_TYPE_LABEL: Readonly<Record<WireProjectSummary["projectType"], string>> = {
+  project: "Fixed-scope project",
+  retainer: "Retainer engagement",
+  quick_win: "Quick win",
+};
+
+export interface LiveProjectMeta {
+  readonly title: string;
+  readonly sowLabel: string;
+  readonly intro: string | null;
+  readonly terms: string | null;
+  readonly day: string | null;
+}
+
+export function toProjectMeta(
+  project: WireProjectSummary,
+  todayDay: number,
+  winDays: number,
+  hasSchedule: boolean,
+): LiveProjectMeta {
+  const terms =
+    project.startDate && project.endDate
+      ? `${formatDateWithYear(project.startDate)} – ${formatDateWithYear(project.endDate)}`
+      : null;
+  return {
+    title: project.title,
+    sowLabel: PROJECT_TYPE_LABEL[project.projectType] ?? "Delivery project",
+    intro: project.description && project.description.trim().length > 0 ? project.description : null,
+    terms,
+    day: hasSchedule ? `Day ${todayDay} of ${winDays}` : null,
+  };
 }
 
 /* ── Phase status / lane / priority maps ─────────────────────────────────── */

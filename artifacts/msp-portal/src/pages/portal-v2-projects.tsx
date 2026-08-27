@@ -6,11 +6,24 @@
  * and arranges everything under them: how much of the contracted scope is done,
  * and whose move it is.
  *
- * ── UI only ────────────────────────────────────────────────────────────────
- * Every number and string is fixture data, held in projectsData.ts. A later
- * pass wires it to a real source. The gantt geometry is REUSED from
- * overviewModel via projectsModel (pjRows/pjPct) so this full gantt and the
- * Overview's mini-gantt cannot disagree about a phase.
+ * ── Live vs honest-empty (#1241/#1399) ─────────────────────────────────────
+ * The header meta, phases/Gantt, task board, "With us" list and scope-bar
+ * values read real data via `useProjectsLive` — `dataState` genuinely
+ * distinguishes loading / an active project with real steps or tasks
+ * ("live") / an active project with nothing scheduled yet ("empty") / no
+ * active project at all ("unconfigured") / a failed read ("error"). Only
+ * "live" and "empty" have a real project row to show; "unconfigured" and
+ * "error" render an honest no-data state (`NoScanDataState`) for the entire
+ * project body instead of the design fixture, replacing the two-state
+ * `"live" | "fixture"` model that showed the fictional Copilot Readiness
+ * Assessment fixture (`PROJECT_META`, `PJ_TASKS`, …) to a customer with no
+ * project at all. The hand-written narrative sentences (the schedule
+ * callout, the waiting/with-us card tails, the scope note) have no live
+ * analogue and stay the design fixture unconditionally when a real project
+ * is on screen — same call the pillar drill-downs already made in
+ * `PillarLiveSource.tsx`. The gantt geometry is REUSED from overviewModel via
+ * projectsModel (pjRows/pjPct) for the Overview's OWN mini-gantt fixture, so
+ * that page and this one cannot disagree about the fixture phase shape.
  *
  * ── ROUND TWO ITEM 6: the gantt and the board are FLUID ────────────────────
  * The reason this page is called out. The gantt track is `186px minmax(0,1fr)`
@@ -52,7 +65,6 @@ import {
   PJ_WAITING_CARD,
   PJ_WEEKS,
   PRIO_META,
-  PROJECT_META,
   type ProjectMineItem,
   type ProjectPhase,
   type ProjectTask,
@@ -68,6 +80,7 @@ import {
 } from "@/components/portal-v2/projectsModel";
 import { useProjectsLive } from "@/components/portal-v2/projectsLive";
 import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
+import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
@@ -757,13 +770,38 @@ function FooterActions() {
   );
 }
 
+/* ── The header block — real project meta, or nothing (honest-empty owns the header instead) ── */
+function HeaderMeta({ meta }: { meta: { title: string; sowLabel: string; intro: string | null; terms: string | null; day: string | null } }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap", paddingBottom: 14, borderBottom: "1px solid rgba(30,41,59,.9)" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
+        <span data-testid="pv2-projects-sow" style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".2em", textTransform: "uppercase", color: "#60a5fa" }}>{meta.sowLabel}</span>
+        <span data-testid="pv2-projects-title" style={{ fontSize: "18px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.015em" }}>{meta.title}</span>
+        {meta.intro && (
+          <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.55, maxWidth: "88ch", textWrap: "pretty" }}>{meta.intro}</span>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flex: "0 0 auto" }}>
+        {meta.terms && <span style={{ fontSize: "10.5px", color: "#475569" }}>{meta.terms}</span>}
+        {meta.day && <span style={{ fontSize: "10.5px", color: "#475569" }}>{meta.day}</span>}
+      </div>
+    </div>
+  );
+}
+
 export default function PortalV2ProjectsPage() {
   const [openPhase, setOpenPhase] = useState<number | null>(null);
   const [openTask, setOpenTask] = useState<string | null>(null);
   const live = useProjectsLive();
 
+  const noProjectLabel = live.dataState === "error" ? "Couldn't load your project" : "There is no active project to show yet";
+  const noProjectDetail =
+    live.dataState === "error"
+      ? "The request failed. Refresh the page to try again."
+      : "Once a delivery project starts, its schedule and task board will show here.";
+
   return (
-    <PortalV2Shell eyebrow="Projects" title={PROJECT_META.title}>
+    <PortalV2Shell eyebrow="Projects" title={live.meta?.title ?? "Projects"}>
       <div
         data-testid="pv2-projects"
         style={{
@@ -803,26 +841,19 @@ export default function PortalV2ProjectsPage() {
           {live.dataState}
         </span>
 
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 16, flexWrap: "wrap", paddingBottom: 14, borderBottom: "1px solid rgba(30,41,59,.9)" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 5, minWidth: 0 }}>
-            <span data-testid="pv2-projects-sow" style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".2em", textTransform: "uppercase", color: "#60a5fa" }}>{PROJECT_META.sowLabel}</span>
-            <span data-testid="pv2-projects-title" style={{ fontSize: "18px", fontWeight: 800, color: "#f8fafc", letterSpacing: "-.015em" }}>{PROJECT_META.title}</span>
-            <span style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.55, maxWidth: "88ch", textWrap: "pretty" }}>{PROJECT_META.intro}</span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2, flex: "0 0 auto" }}>
-            <span style={{ fontSize: "10.5px", color: "#64748b" }}>{PROJECT_META.lead}</span>
-            <span style={{ fontSize: "10.5px", color: "#475569" }}>{PROJECT_META.terms}</span>
-            <span style={{ fontSize: "10.5px", color: "#475569" }}>{PROJECT_META.day}</span>
-          </div>
-        </div>
-
         {live.loading ? (
           // Real project read in flight: honest skeleton, never the design's
-          // fixture schedule/tasks swapping in after the fact (Git #1365).
-          <PortalV2LoadingState rows={8} label="Loading your project schedule…" testId="pv2-projects-loading" />
+          // fixture header/schedule/tasks swapping in after the fact (Git #1365/#1399).
+          <PortalV2LoadingState rows={8} label="Loading your project…" testId="pv2-projects-loading" />
+        ) : live.dataState === "unconfigured" || live.dataState === "error" ? (
+          // Git #1399: no active project (or a failed read) gets the honest
+          // no-data state for the ENTIRE project body, never the fictional
+          // Copilot Readiness Assessment fixture (PROJECT_META, PJ_TASKS, …).
+          <NoScanDataState testId="pv2-projects-empty" label={noProjectLabel} detail={noProjectDetail} />
         ) : (
           <>
+            {live.meta && <HeaderMeta meta={live.meta} />}
+
             {/* The three summary cards */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 12, alignItems: "stretch" }}>
               <WaitingCard tasks={live.tasks} />

@@ -10,8 +10,8 @@
     "WHAT IS REALLY DRIVEN: the phase-rail toggle (PJ13-PJ15 -- clicking a Gantt phase row opens its deliverables panel, real local UI state) and the nav wiring (PJ16-PJ18 -- the ungrouped Projects nav row navigates to the page). The task-card expand/collapse split, the two card counts and the milestone diamond placement are pinned by src/components/portal-v2/projectsModel.test.ts (unit) rather than re-driven here.",
     "ROUND TWO ITEM 6: the Gantt track (186px minmax(0,1fr)) and the 5-lane board (repeat(auto-fit,minmax(200px,1fr))) are FLUID -- no fixed min-width floor and no overflow-x wrapper. Layout fluidity is a visual property this text-based harness cannot assert; it is verified by eye and stated here so nobody reads a green run as proof of it.",
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
-    "GIT #1241 -- the phases/Gantt, task board, 'With us' list and scope-bar VALUES now read from a real project (workflow_steps + kanban_tasks via GET /api/portal/dashboard -> /api/portal/projects/:id -> /api/portal/projects/:id/delivery-kanban-tasks) when the logged-in customer has an active project row; projectsLive.ts/projectsWire.ts. The header meta (SOW label, fee, day-N-of-M kicker), the schedule narrative (callout/next-milestone text) and the two summary cards' descriptive tail sentences stay the design fixture unconditionally -- there is no live analogue for hand-written prose, same call PillarLiveSource.tsx's drill-downs already made. TEST_PORTAL_EMAIL's account carries no active projectsTable row, so PJ3-PJ15 below are exercising the FIXTURE fallback path (dataState=fixture), which is the honest, correct behaviour for that account -- not a sign the live path is untested; toLiveProjectGeometry/toProjectTasks/toScopeBars are pinned directly by projectsWire.test.ts instead.",
-    "LOADING-STATE FIXTURE FLASH FIX (Git #1365) -- the summary cards, Gantt/phase rail and task board now render PortalV2LoadingState while the real project read (`/api/portal/dashboard` -> `/api/portal/projects/:id` -> delivery-kanban-tasks) is in flight, instead of the design fixture, matching the pattern #1343 established for Ownership/Change Control. Not asserted with a new uiStep here: the loading window is typically sub-200ms against the dev/test API, so gating a step on it would be a flaky race rather than reliable coverage. PJ3-PJ15's settled dataState=fixture assertions above are unchanged."
+    "GIT #1241/#1399 -- the header meta, phases/Gantt, task board, 'With us' list and scope-bar VALUES read from a real project (workflow_steps + kanban_tasks via GET /api/portal/dashboard -> /api/portal/projects/:id -> /api/portal/projects/:id/delivery-kanban-tasks) when the logged-in customer has an active project row; projectsLive.ts/projectsWire.ts. Git #1399 replaced the old two-state 'live'|'fixture' model (which showed the fictional Copilot Readiness Assessment fixture to EVERY account, enrolled or not) with five real states: loading / live / empty (active project, nothing scheduled yet) / unconfigured (no active project) / error (failed read) -- only 'live' and 'empty' show the real project's header meta and arrays; 'unconfigured' and 'error' render an honest NoScanDataState for the whole project body instead of the design fixture. PJ1/PJ2 below assert that honest state is what's actually on screen, and PJ21 reads the hidden pv2-projects-source marker to confirm the real dataState is 'unconfigured', because TEST_PORTAL_EMAIL's account carries no active projectsTable row. A future manifest pass against an enrolled test account should assert 'live'/'empty' and the real header meta/board content instead -- toLiveProjectGeometry/toProjectTasks/toScopeBars/toProjectMeta are pinned directly by projectsWire.test.ts for that live path in the meantime. The schedule narrative (callout/next-milestone text) and the two summary cards' descriptive tail sentences still have no live analogue and stay the design fixture unconditionally once a real project is on screen -- same call PillarLiveSource.tsx's drill-downs already made.",
+    "LOADING-STATE FIXTURE FLASH FIX (Git #1365) -- the header, summary cards, Gantt/phase rail and task board render PortalV2LoadingState while the real project read (`/api/portal/dashboard` -> `/api/portal/projects/:id` -> delivery-kanban-tasks) is in flight, instead of the design fixture, matching the pattern #1343 established for Ownership/Change Control. Not asserted with a new uiStep here: the loading window is typically sub-200ms against the dev/test API, so gating a step on it would be a flaky race rather than reliable coverage. PJ1/PJ2/PJ21's settled honest-empty assertions above are the SETTLED (post-loading) state."
   ],
   "apiTests": [
     {
@@ -70,97 +70,22 @@
       "target": "/portal/shane-mccaw-consulting/portal-v2/projects"
     },
     {
-      "name": "PJ1 -- the page resolved to Projects, not NotFound and not the param pillar route. The SOW label is the header's first line.",
+      "name": "PJ1 (#1399) -- the page resolved to Projects, not NotFound and not the param pillar route. The unenrolled TEST_PORTAL_EMAIL account gets the honest no-active-project state, NOT the design fixture's SOW label/title.",
       "action": "expect",
-      "selector": "[data-testid='pv2-projects-sow']",
-      "textContains": "Fixed-scope project · SOW-2026-0114",
-      "critical": true
+      "selector": "[data-testid='pv2-projects-empty']",
+      "textContains": "There is no active project to show yet",
+      "critical": true,
+      "sessionTag": "1399-honest-dataState"
     },
     {
-      "name": "PJ2 -- the project title.",
+      "name": "PJ2 (#1399) -- ...with the specific reason stated, not a bare dash.",
       "action": "expect",
-      "selector": "[data-testid='pv2-projects-title']",
-      "textContains": "Copilot Readiness Assessment"
+      "selector": "[data-testid='pv2-projects-empty']",
+      "textContains": "Once a delivery project starts, its schedule and task board will show here.",
+      "sessionTag": "1399-honest-dataState"
     },
     {
-      "name": "PJ3 -- the 'Waiting on you' card leads with its kicker and its overdue count.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-waiting']",
-      "textContains": "Waiting on you"
-    },
-    {
-      "name": "PJ4 -- ...and the derived count of items with the customer (3 tasks in the waiting lane) with its verbatim tail.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-waiting']",
-      "textContains": "items are with you. One of them is holding two phases."
-    },
-    {
-      "name": "PJ5 -- the 'With us' card says nothing is overdue on our side.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-mine']",
-      "textContains": "Nothing overdue on our side"
-    },
-    {
-      "name": "PJ6 -- the 'Scope delivered' card names the contracted-deliverables bar.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-scope']",
-      "textContains": "Contracted deliverables accepted"
-    },
-    {
-      "name": "PJ7 -- ...and its 2-of-8 value, alongside the tasks-closed bar.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-scope']",
-      "textContains": "Tasks closed"
-    },
-    {
-      "name": "PJ8 -- the schedule strip carries the day-19-of-53 window kicker.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-schedule']",
-      "textContains": "Schedule · 4 Aug – 26 Sep, day 19 of 53"
-    },
-    {
-      "name": "PJ9 -- the Gantt renders, and a complete phase's bar reads 'Signed off', not a task count.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-gantt']",
-      "textContains": "Signed off"
-    },
-    {
-      "name": "PJ10 -- the blocked phase (P4) reads 'Blocked', not '0/3 tasks' -- cannot-start, not no-progress-yet.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-gantt']",
-      "textContains": "Blocked"
-    },
-    {
-      "name": "PJ11 -- the Gantt legend names the contracted end line, 26 Sep.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-gantt']",
-      "textContains": "Contracted end · 26 Sep"
-    },
-    {
-      "name": "PJ12 -- the task board header counts 18 tasks across the five phases.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-board']",
-      "textContains": "Task board · 18 tasks across the five phases"
-    },
-    {
-      "name": "PJ13 -- the phase deliverables rail is closed on arrival (no phase selected).",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-phase-panel']",
-      "state": "absent"
-    },
-    {
-      "name": "PJ14 -- click phase 3's Gantt row to open its rail.",
-      "action": "click",
-      "selector": "[data-testid='pv2-projects-phase-3']"
-    },
-    {
-      "name": "PJ15 -- the rail opens on phase 3, the running phase, and carries its status badge.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-projects-phase-panel']",
-      "textContains": "Pilot group configuration"
-    },
-    {
-      "name": "PJ16 -- the footer offers the real deep link into Change Control, and the Billing pointer.",
+      "name": "PJ16 -- the footer offers the real deep link into Change Control, and the Billing pointer. The footer is generic page chrome, unaffected by dataState.",
       "action": "expect",
       "selector": "[data-testid='pv2-projects-footer']",
       "textContains": "Fee, invoices and milestone releases live in Billing"
@@ -182,17 +107,18 @@
       "selector": "[data-testid='pv2-nav-projects']"
     },
     {
-      "name": "PJ20 -- it lands on the Projects page: the SOW label is back.",
+      "name": "PJ20 (#1399) -- it lands on the Projects page: the honest no-active-project state is back.",
       "action": "expect",
-      "selector": "[data-testid='pv2-projects-sow']",
-      "textContains": "Fixed-scope project · SOW-2026-0114"
+      "selector": "[data-testid='pv2-projects-empty']",
+      "textContains": "There is no active project to show yet",
+      "sessionTag": "1399-honest-dataState"
     },
     {
-      "name": "PJ21 -- GIT #1241: the live/fixture source marker is present. TEST_PORTAL_EMAIL has no active delivery project, so this correctly reads 'fixture' rather than fabricating live data -- toLiveProjectGeometry/toProjectTasks are unit-pinned separately in projectsWire.test.ts for the live path.",
+      "name": "PJ21 (#1399) -- the hidden source marker states the real dataState: 'unconfigured', not the old 'fixture'.",
       "action": "expect",
       "selector": "[data-testid='pv2-projects-source']",
-      "textContains": "fixture",
-      "sessionTag": "git1241-live-wire"
+      "textContains": "unconfigured",
+      "sessionTag": "1399-honest-dataState"
     }
   ]
 }

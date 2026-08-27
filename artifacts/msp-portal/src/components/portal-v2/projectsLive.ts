@@ -13,36 +13,47 @@
  * that response and sources the task board from the delivery-kanban endpoint
  * instead, which strips `internalNotes` for a non-admin caller.
  *
- * `PROJECT_META` (the SOW label, fee, delivery-lead name) and every hand-written
- * narrative sentence (the schedule callout, the waiting/with-us card tails, the
- * scope note) stay on the design fixture unconditionally — same call the
- * pillar drill-downs already made in `PillarLiveSource.tsx`: what the schema
- * genuinely has (phase status, task columns, due dates) goes live; prose that
- * would have to be regenerated to stay honest does not.
+ * ── dataState (Git #1399) ────────────────────────────────────────────────
+ * The old two-state `"live" | "fixture"` model conflated three genuinely
+ * different situations under `"fixture"`: the first read still in flight, a
+ * customer with an active project but nothing scheduled in it yet, and a
+ * customer who has no active project at all. All three rendered identically
+ * — the full design fixture, `PROJECT_META` included — which is exactly the
+ * silent fixture-fallback Shane's standing rule forbids (Git #1398 fixed the
+ * same shape of bug for `useRetainerLive`). `dataState` now names all five
+ * real cases, same names #1398 uses:
+ *   - "loading"      — first read in flight.
+ *   - "live"          — an active project with at least one real step or task.
+ *   - "empty"         — an active project row, genuinely no steps AND no
+ *                       tasks yet — real data, just nothing scheduled yet.
+ *   - "unconfigured"  — no active project row. There is nothing real to show.
+ *   - "error"         — a read failed. Distinct from "unconfigured" so the
+ *                       page never tells a customer "you have no project"
+ *                       when the truth is "the request failed."
+ * `meta` (the header's title/SOW-type/date-range/day-of-schedule) is `null`
+ * for "loading"/"unconfigured"/"error" and populated from the real project
+ * row for "live"/"empty" — see `projectsWire.ts`'s `toProjectMeta` for which
+ * of `PROJECT_META`'s fields have a real column behind them (title,
+ * project type, dates, description) and which genuinely do not (there is no
+ * SOW-number, fee, or delivery-lead column) and so are simply omitted rather
+ * than invented. The hand-written narrative sentences (the schedule callout,
+ * the waiting/with-us card tails, the scope note) still have no live
+ * analogue and stay the design fixture unconditionally when "live"/"empty" —
+ * same call the pillar drill-downs already made in `PillarLiveSource.tsx`.
  */
 
 import { useEffect, useMemo, useState } from "react";
 
 import { useAuth } from "@/lib/auth-context";
-import { pjRows as fixturePjRows, pjPct as fixturePjPct } from "./overviewModel";
-import { pjMilestones as fixturePjMilestones, type PjMilestone, type PjRow } from "./projectsModel";
-import {
-  PJ_CONTRACT_END,
-  PJ_MINE,
-  PJ_SCOPE_BARS,
-  PJ_TASKS,
-  PJ_TODAY,
-  PROJECT_PHASES,
-  type ProjectMineItem,
-  type ProjectPhase,
-  type ProjectTask,
-  type ScopeBar,
-} from "./projectsData";
+import { type PjMilestone, type PjRow } from "./projectsModel";
+import type { ProjectMineItem, ProjectPhase, ProjectTask, ScopeBar } from "./projectsData";
 import {
   toLiveProjectGeometry,
   toMineItems,
+  toProjectMeta,
   toProjectTasks,
   toScopeBars,
+  type LiveProjectMeta,
   type WireKanbanTask,
   type WireProjectStep,
   type WireProjectSummary,
@@ -52,10 +63,13 @@ const DASHBOARD_URL = "/api/portal/dashboard";
 const projectUrl = (id: number) => `/api/portal/projects/${id}`;
 const kanbanUrl = (id: number) => `/api/portal/projects/${id}/delivery-kanban-tasks`;
 
+export type ProjectsDataState = "loading" | "live" | "empty" | "unconfigured" | "error";
+
 export interface ProjectsLiveState {
-  /** "live" once a real project's phases and tasks have landed; the design fixture until then or on error/no active project. */
-  readonly dataState: "live" | "fixture";
+  readonly dataState: ProjectsDataState;
   readonly loading: boolean;
+  /** Real header meta for the active project. `null` unless `dataState` is "live"/"empty". */
+  readonly meta: LiveProjectMeta | null;
   readonly phases: readonly ProjectPhase[];
   readonly rows: readonly PjRow[];
   readonly milestones: readonly PjMilestone[];
@@ -67,6 +81,8 @@ export interface ProjectsLiveState {
 }
 
 interface LiveResult {
+  readonly hasSchedule: boolean;
+  readonly meta: LiveProjectMeta;
   readonly phases: readonly ProjectPhase[];
   readonly rows: readonly PjRow[];
   readonly milestones: readonly PjMilestone[];
@@ -77,10 +93,25 @@ interface LiveResult {
   readonly contractEndPct: number;
 }
 
+const LOADING_STATE: ProjectsLiveState = {
+  dataState: "loading",
+  loading: true,
+  meta: null,
+  phases: [],
+  rows: [],
+  milestones: [],
+  tasks: [],
+  mineItems: [],
+  scopeBars: [],
+  todayPct: 0,
+  contractEndPct: 0,
+};
+
+type Outcome = { kind: "ok"; result: LiveResult } | { kind: "unconfigured" } | { kind: "error" };
+
 export function useProjectsLive(): ProjectsLiveState {
   const { fetchWithAuth } = useAuth();
-  const [live, setLive] = useState<LiveResult | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +121,10 @@ export function useProjectsLive(): ProjectsLiveState {
         if (!dashRes.ok) throw new Error(`dashboard ${dashRes.status}`);
         const dashBody = (await dashRes.json()) as { projects?: readonly WireProjectSummary[] };
         const project = dashBody?.projects?.[0];
-        if (!project) throw new Error("no active project");
+        if (!project) {
+          if (!cancelled) setOutcome({ kind: "unconfigured" });
+          return;
+        }
 
         const [detailRes, kanbanRes] = await Promise.all([
           fetchWithAuth(projectUrl(project.id), undefined, { silent: true }),
@@ -105,22 +139,26 @@ export function useProjectsLive(): ProjectsLiveState {
 
         const nowIso = new Date().toISOString();
         const steps = detailBody?.steps ?? [];
+        const hasSchedule = steps.length > 0 || kanbanTasks.length > 0;
         const geometry = toLiveProjectGeometry(steps, kanbanTasks, project, nowIso);
 
-        setLive({
-          phases: geometry.phases,
-          rows: geometry.rows,
-          milestones: geometry.milestones,
-          todayPct: geometry.todayPct,
-          contractEndPct: geometry.contractEndPct,
-          tasks: toProjectTasks(kanbanTasks, geometry.phaseNByStepId, nowIso),
-          mineItems: toMineItems(kanbanTasks),
-          scopeBars: toScopeBars(geometry.phases, kanbanTasks, geometry.todayDay, geometry.winDays),
+        setOutcome({
+          kind: "ok",
+          result: {
+            hasSchedule,
+            meta: toProjectMeta(project, geometry.todayDay, geometry.winDays, hasSchedule),
+            phases: geometry.phases,
+            rows: geometry.rows,
+            milestones: geometry.milestones,
+            todayPct: geometry.todayPct,
+            contractEndPct: geometry.contractEndPct,
+            tasks: toProjectTasks(kanbanTasks, geometry.phaseNByStepId, nowIso),
+            mineItems: toMineItems(kanbanTasks),
+            scopeBars: toScopeBars(geometry.phases, kanbanTasks, geometry.todayDay, geometry.winDays),
+          },
         });
       } catch {
-        if (!cancelled) setLive(null);
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setOutcome({ kind: "error" });
       }
     })();
     return () => {
@@ -129,18 +167,28 @@ export function useProjectsLive(): ProjectsLiveState {
   }, [fetchWithAuth]);
 
   return useMemo(() => {
-    if (live) return { dataState: "live" as const, loading, ...live };
+    if (!outcome) return LOADING_STATE;
+
+    if (outcome.kind === "unconfigured") {
+      return { ...LOADING_STATE, dataState: "unconfigured", loading: false };
+    }
+    if (outcome.kind === "error") {
+      return { ...LOADING_STATE, dataState: "error", loading: false };
+    }
+
+    const { result } = outcome;
     return {
-      dataState: "fixture" as const,
-      loading,
-      phases: PROJECT_PHASES,
-      rows: fixturePjRows(),
-      milestones: fixturePjMilestones(),
-      tasks: PJ_TASKS,
-      mineItems: PJ_MINE,
-      scopeBars: PJ_SCOPE_BARS,
-      todayPct: fixturePjPct(PJ_TODAY),
-      contractEndPct: fixturePjPct(PJ_CONTRACT_END),
+      dataState: result.hasSchedule ? ("live" as const) : ("empty" as const),
+      loading: false,
+      meta: result.meta,
+      phases: result.phases,
+      rows: result.rows,
+      milestones: result.milestones,
+      tasks: result.tasks,
+      mineItems: result.mineItems,
+      scopeBars: result.scopeBars,
+      todayPct: result.todayPct,
+      contractEndPct: result.contractEndPct,
     };
-  }, [live, loading]);
+  }, [outcome]);
 }

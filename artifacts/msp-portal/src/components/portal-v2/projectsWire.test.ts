@@ -8,6 +8,7 @@ import {
   formatShortDate,
   toLiveProjectGeometry,
   toMineItems,
+  toProjectMeta,
   toProjectTasks,
   toScopeBars,
   type WireKanbanTask,
@@ -15,7 +16,14 @@ import {
   type WireProjectSummary,
 } from "./projectsWire";
 
-const PROJECT: WireProjectSummary = { id: 1, title: "Copilot Readiness Assessment", startDate: "2026-08-04T00:00:00.000Z", endDate: "2026-09-26T00:00:00.000Z" };
+const PROJECT: WireProjectSummary = {
+  id: 1,
+  title: "Copilot Readiness Assessment",
+  description: "A defined scope with five phases.",
+  projectType: "project",
+  startDate: "2026-08-04T00:00:00.000Z",
+  endDate: "2026-09-26T00:00:00.000Z",
+};
 
 const STEPS: readonly WireProjectStep[] = [
   { id: 10, title: "Discovery", description: "Inventory everything.", status: "completed", order: 0, notes: "Signed off.", dueDate: "2026-08-13T00:00:00.000Z" },
@@ -144,5 +152,28 @@ describe("toScopeBars", () => {
     assert.equal(bars[0].value, "1 of 3");
     assert.equal(bars[1].value, "1 of 2");
     assert.equal(bars[2].pct, Math.round((g.todayDay / g.winDays) * 100));
+  });
+});
+
+describe("toProjectMeta", () => {
+  it("derives every field from a real column, never invents a SOW number/fee/lead", () => {
+    const meta = toProjectMeta(PROJECT, 19, 53, true);
+    assert.equal(meta.title, "Copilot Readiness Assessment");
+    assert.equal(meta.sowLabel, "Fixed-scope project");
+    assert.equal(meta.intro, "A defined scope with five phases.");
+    assert.equal(meta.terms, "4 Aug 2026 – 26 Sept 2026");
+    assert.equal(meta.day, "Day 19 of 53");
+  });
+
+  it("nulls out a field with no real column instead of inventing one", () => {
+    const meta = toProjectMeta({ ...PROJECT, description: null, startDate: null, endDate: null }, 0, 0, false);
+    assert.equal(meta.intro, null);
+    assert.equal(meta.terms, null);
+    assert.equal(meta.day, null);
+  });
+
+  it("labels a retainer/quick-win project type honestly rather than always 'Fixed-scope'", () => {
+    assert.equal(toProjectMeta({ ...PROJECT, projectType: "retainer" }, 0, 1, false).sowLabel, "Retainer engagement");
+    assert.equal(toProjectMeta({ ...PROJECT, projectType: "quick_win" }, 0, 1, false).sowLabel, "Quick win");
   });
 });
