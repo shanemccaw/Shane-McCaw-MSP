@@ -129,7 +129,8 @@ namespace BuildConsole
         // WebView2 to type doesn't change WPF selection, but it does move focus).
         private TabControl? _activeEditorPane;
 
-        // ── Git #805: deploy-status poll (Epic #803 Phase 1) ─────────────────────
+        // ── Git #805 / #1421: deploy-status poll (Epic #803 Phase 1) — local git
+        // read since #1421, no longer an HTTP call to the local Dev api-server ────
         private DispatcherTimer? _deployStatusTimer;
         private string? _lastSeenDeployCommitHash;
 
@@ -533,11 +534,13 @@ namespace BuildConsole
             _homeRollupTimer.Tick += async (_, _) => await RefreshHomeRollupAsync();
             _homeRollupTimer.Start();
 
-            // Git #805 — Epic #803 Phase 1: "polling, not webhook/SSE... follow
-            // the existing pattern." Same 3s DispatcherTimer shape as
-            // _buildTailTimer above, hitting the new GET /api/internal/deploy-status
-            // endpoint. A changed commitHash from the last-seen value IS the
-            // "deploy complete" signal - no separate push mechanism needed.
+            // Git #805 (Epic #803 Phase 1) / #1421 — "polling, not webhook/SSE...
+            // follow the existing pattern." Same 3s DispatcherTimer shape as
+            // _buildTailTimer above. #1421 replaced the original HTTP GET
+            // /api/internal/deploy-status hit with a direct local git read
+            // (LocalDeployStatusService) so this no longer needs the local Dev
+            // api-server running at all. A changed commitHash from the last-seen
+            // value IS the "deploy complete" signal - no separate push mechanism needed.
             _deployStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _deployStatusTimer.Tick += async (_, _) => await PollDeployStatusAsync();
             _deployStatusTimer.Start();
@@ -3035,21 +3038,25 @@ namespace BuildConsole
         private static string JsLiteral(string s) => System.Text.Json.JsonSerializer.Serialize(s);
 
         /// <summary>
-        /// Git #805 — polls GET /api/internal/deploy-status every 3s (same
-        /// interval as PollChatTabBuildStateAsync above) and treats a changed
-        /// commitHash from the last one this app has seen as "deploy complete".
-        /// The first successful poll after startup only seeds the baseline -
-        /// it deliberately does NOT fire a "deploy complete" line, since there
-        /// was no prior deploy this app watched to compare against.
+        /// Git #1421 — every 3s (same interval as PollChatTabBuildStateAsync above),
+        /// reads the local dev-server checkout's own git state directly
+        /// (LocalDeployStatusService) and treats a changed commitHash from the last
+        /// one this app has seen as "deploy complete". No HTTP call to the local Dev
+        /// api-server — this used to poll GET /api/internal/deploy-status (#805), which
+        /// required that server to be running just to answer "what commit is currently
+        /// deployed"; Shane: "it should not even be reading the API anymore... I don't
+        /// have to have it running all the time." The first successful poll after
+        /// startup only seeds the baseline - it deliberately does NOT fire a "deploy
+        /// complete" line, since there was no prior deploy this app watched to compare
+        /// against.
         /// </summary>
         private async System.Threading.Tasks.Task PollDeployStatusAsync()
         {
-            if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured) return;
-
             BuildConsole.Services.DeployStatus? status;
             try
             {
-                status = await _buildTrackerApi.GetDeployStatusAsync();
+                status = await System.Threading.Tasks.Task.Run(
+                    () => BuildConsole.Services.LocalDeployStatusService.GetLocalDeployStatus());
             }
             catch (Exception ex)
             {
@@ -3059,7 +3066,8 @@ namespace BuildConsole
 
             if (status == null || string.IsNullOrWhiteSpace(status.CommitHash))
             {
-                ReportDeployStatus("empty deploy-status response");
+                ReportDeployStatus(
+                    $"local dev-server checkout not found at {BuildConsole.Services.LocalDeployStatusService.ResolveServerWorktree()} — has it been bootstrapped (scripts/dev-server/bootstrap-server.mjs)?");
                 return;
             }
 
