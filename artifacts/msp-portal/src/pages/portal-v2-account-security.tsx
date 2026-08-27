@@ -32,6 +32,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import {
   SEC_DATA,
   SEC_DATA_KICKER,
@@ -309,15 +310,21 @@ export default function PortalV2AccountSecurityPage() {
                 gap: "10px 20px",
               }}
             >
-              {posture.map((p) => (
-                <div key={p.k} style={{ display: "flex", alignItems: "flex-start", gap: 9, minWidth: 0 }}>
-                  <span style={{ flex: "0 0 6px", width: 6, height: 6, borderRadius: "50%", background: secDotColor(p.tone), marginTop: 6 }} />
-                  <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
-                    <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#64748b" }}>{p.k}</span>
-                    <span style={{ fontSize: "11.5px", color: "#e2e8f0", lineHeight: 1.45 }}>{p.v}</span>
+              {live.loading ? (
+                // Real per-portal-login read in flight: honest skeleton, never the
+                // design's fixture posture rows swapping in after the fact (Git #1365).
+                <PortalV2LoadingState rows={4} label="Loading your security posture…" testId="pv2-sec-posture-loading" />
+              ) : (
+                posture.map((p) => (
+                  <div key={p.k} style={{ display: "flex", alignItems: "flex-start", gap: 9, minWidth: 0 }}>
+                    <span style={{ flex: "0 0 6px", width: 6, height: 6, borderRadius: "50%", background: secDotColor(p.tone), marginTop: 6 }} />
+                    <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0 }}>
+                      <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#64748b" }}>{p.k}</span>
+                      <span style={{ fontSize: "11.5px", color: "#e2e8f0", lineHeight: 1.45 }}>{p.v}</span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
             <div style={{ padding: "0 16px 14px" }}>
               <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55, textWrap: "pretty" }}>{SEC_POSTURE_NOTE}</span>
@@ -331,9 +338,11 @@ export default function PortalV2AccountSecurityPage() {
               <span style={{ fontSize: "10.5px", color: "#475569" }}>{SEC_MFA_SUB}</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(290px,1fr))", gap: 10 }}>
-              {mfaCards.map((m) => (
-                <MfaCard key={m.key} m={m} />
-              ))}
+              {live.loading ? (
+                <PortalV2LoadingState rows={3} label="Loading your MFA methods…" testId="pv2-sec-mfa-loading" />
+              ) : (
+                mfaCards.map((m) => <MfaCard key={m.key} m={m} />)
+              )}
             </div>
           </div>
 
@@ -360,36 +369,42 @@ export default function PortalV2AccountSecurityPage() {
                   {SEC_SESSIONS_SIGNOUT}
                 </button>
               </div>
-              {sessionRows.map((s) => (
-                <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 16px", borderBottom: "1px solid rgba(30,41,59,.8)" }}>
-                  <span style={{ flex: "0 0 6px", width: 6, height: 6, borderRadius: "50%", background: sessionDotColor(s.current), marginTop: 6 }} />
-                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#e2e8f0" }}>{s.device}</span>
-                      {s.current && (
-                        <span style={{ padding: "2px 7px", borderRadius: 4, border: "1px solid rgba(52,211,153,.35)", background: "rgba(52,211,153,.08)", fontSize: "9px", fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "#34d399" }}>
-                          This device
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO }}>
-                      {s.where} · {s.when}
-                    </span>
-                    <span style={{ fontSize: "10.5px", color: sessionCompliantColor(s.compliant) }}>
-                      {s.compliant ? `${s.since} · ${s.compliant}` : s.since}
-                    </span>
-                  </div>
-                  {!s.current && (
-                    <button
-                      type="button"
-                      onClick={live.sessions ? () => void live.revokeSession(s.id) : undefined}
-                      style={{ flex: "0 0 auto", padding: "4px 10px", borderRadius: 5, border: "1px solid rgba(148,163,184,.22)", background: "transparent", fontSize: "10.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
-                    >
-                      Revoke
-                    </button>
-                  )}
+              {live.loading ? (
+                <div style={{ padding: "11px 16px" }}>
+                  <PortalV2LoadingState rows={2} label="Loading your active sessions…" testId="pv2-sec-sessions-loading" />
                 </div>
-              ))}
+              ) : (
+                sessionRows.map((s) => (
+                  <div key={s.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "11px 16px", borderBottom: "1px solid rgba(30,41,59,.8)" }}>
+                    <span style={{ flex: "0 0 6px", width: 6, height: 6, borderRadius: "50%", background: sessionDotColor(s.current), marginTop: 6 }} />
+                    <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "12px", fontWeight: 700, color: "#e2e8f0" }}>{s.device}</span>
+                        {s.current && (
+                          <span style={{ padding: "2px 7px", borderRadius: 4, border: "1px solid rgba(52,211,153,.35)", background: "rgba(52,211,153,.08)", fontSize: "9px", fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "#34d399" }}>
+                            This device
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO }}>
+                        {s.where} · {s.when}
+                      </span>
+                      <span style={{ fontSize: "10.5px", color: sessionCompliantColor(s.compliant) }}>
+                        {s.compliant ? `${s.since} · ${s.compliant}` : s.since}
+                      </span>
+                    </div>
+                    {!s.current && (
+                      <button
+                        type="button"
+                        onClick={live.sessions ? () => void live.revokeSession(s.id) : undefined}
+                        style={{ flex: "0 0 auto", padding: "4px 10px", borderRadius: 5, border: "1px solid rgba(148,163,184,.22)", background: "transparent", fontSize: "10.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
+                      >
+                        Revoke
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
               <div style={{ padding: "11px 16px" }}>
                 <span style={{ fontSize: "10.5px", color: "#475569", lineHeight: 1.5 }}>{SEC_SESSIONS_NOTE}</span>
               </div>

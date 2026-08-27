@@ -13,7 +13,8 @@
     "NO `select` STEPS. UiTestExecutor.cs cannot drive a native <select>; this page has none in the asserted flow.",
     "UI ONLY: the ask box, the Open-as-PDF / Open / Book time / Billing buttons are visual, to be wired in a later pass. The weekly report content (summary, per-line work log, deliverables, asks), RET_OUTCOMES, RET_TERMS, RET_DOCS and RET_COPY have no backend source and stay design fixture.",
     "LIVE WIRING (#1285/#1293): the month bucket (retained/rolled/used) and the 'Where the hours went' work log now read GET /api/portal/retainer (useRetainerLive.ts) -- real once the customer has an active retainer row (AdminV2 Retainer Hours, admin-retainer.ts). RET14 below reads the hidden pv2-ret-source marker; it asserts 'fixture' because the harness's TEST_PORTAL_EMAIL account is not enrolled on a retainer, so RET1-RET5's fixture numbers stay valid. A future manifest pass against an enrolled test account should assert 'live' and the real bucket/work-log numbers instead.",
-    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
+    "LOADING-STATE FIXTURE FLASH FIX (Git #1365) -- the month rollup cards and the 'Where the hours went' work log now render PortalV2LoadingState while GET /api/portal/retainer is in flight, instead of the design fixture, matching the pattern #1343 established for Ownership/Change Control. Not asserted with a new uiStep here: the loading window is typically sub-200ms against the dev/test API, so gating a step on it would be a flaky race rather than reliable coverage. RET1-RET5/RET14's settled fixture assertions above are unchanged."
   ],
   "uiSteps": [
     { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },

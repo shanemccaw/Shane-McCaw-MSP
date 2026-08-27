@@ -65,6 +65,7 @@ import {
 } from "@/components/portal-v2/webhooksModel";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import { useWebhooksLive } from "@/components/portal-v2/webhooksLive";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import {
   liveBannerBody,
   liveBannerTitle,
@@ -281,7 +282,7 @@ export default function PortalV2WebhooksPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [testFor, setTestFor] = useState<string | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
-  const { endpoints, dataState } = useWebhooksLive();
+  const { endpoints, dataState, loading } = useWebhooksLive();
   const isLive = dataState === "live";
 
   const catalogue = isLive ? liveEventCatalogue(endpoints) : whEventCatalogue();
@@ -349,19 +350,27 @@ export default function PortalV2WebhooksPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
               <Kicker>{WH_ENDPOINTS_KICKER}</Kicker>
               <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid rgba(30,41,59,.9)", borderRadius: 12, background: "rgba(15,23,42,.35)", overflow: "hidden" }}>
-                {endpoints.map(({ webhook: w, chips, eventCountLabel }, i) => (
-                  <EndpointRow
-                    key={w.id}
-                    w={w}
-                    chips={chips}
-                    eventCountLabel={eventCountLabel}
-                    index={i}
-                    expanded={expanded === i}
-                    onToggle={() => setExpanded((e) => (e === i ? null : i))}
-                    testShown={testFor === w.id}
-                    onTest={() => setTestFor(w.id)}
-                  />
-                ))}
+                {loading ? (
+                  // Real read in flight: honest skeleton, never the design's
+                  // fixture endpoints swapping in after the fact (Git #1365).
+                  <div style={{ padding: "14px 16px" }}>
+                    <PortalV2LoadingState rows={3} label="Loading your webhook endpoints…" testId="pv2-wh-loading" />
+                  </div>
+                ) : (
+                  endpoints.map(({ webhook: w, chips, eventCountLabel }, i) => (
+                    <EndpointRow
+                      key={w.id}
+                      w={w}
+                      chips={chips}
+                      eventCountLabel={eventCountLabel}
+                      index={i}
+                      expanded={expanded === i}
+                      onToggle={() => setExpanded((e) => (e === i ? null : i))}
+                      testShown={testFor === w.id}
+                      onTest={() => setTestFor(w.id)}
+                    />
+                  ))
+                )}
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 6 }}>

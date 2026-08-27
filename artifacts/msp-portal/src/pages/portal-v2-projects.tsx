@@ -67,6 +67,7 @@ import {
   type PjRow,
 } from "@/components/portal-v2/projectsModel";
 import { useProjectsLive } from "@/components/portal-v2/projectsLive";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
@@ -816,24 +817,32 @@ export default function PortalV2ProjectsPage() {
           </div>
         </div>
 
-        {/* The three summary cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 12, alignItems: "stretch" }}>
-          <WaitingCard tasks={live.tasks} />
-          <WithUsCard mineItems={live.mineItems} />
-          <ScopeCard bars={live.scopeBars} />
-        </div>
+        {live.loading ? (
+          // Real project read in flight: honest skeleton, never the design's
+          // fixture schedule/tasks swapping in after the fact (Git #1365).
+          <PortalV2LoadingState rows={8} label="Loading your project schedule…" testId="pv2-projects-loading" />
+        ) : (
+          <>
+            {/* The three summary cards */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(310px,1fr))", gap: 12, alignItems: "stretch" }}>
+              <WaitingCard tasks={live.tasks} />
+              <WithUsCard mineItems={live.mineItems} />
+              <ScopeCard bars={live.scopeBars} />
+            </div>
 
-        <ScheduleSection
-          open={openPhase}
-          onToggle={(n) => setOpenPhase((cur) => (cur === n ? null : n))}
-          phases={live.phases}
-          rows={live.rows}
-          milestones={live.milestones}
-          todayPct={live.todayPct}
-          contractEndPct={live.contractEndPct}
-        />
+            <ScheduleSection
+              open={openPhase}
+              onToggle={(n) => setOpenPhase((cur) => (cur === n ? null : n))}
+              phases={live.phases}
+              rows={live.rows}
+              milestones={live.milestones}
+              todayPct={live.todayPct}
+              contractEndPct={live.contractEndPct}
+            />
 
-        <TaskBoard openTask={openTask} onToggle={(id) => setOpenTask((cur) => (cur === id ? null : id))} tasks={live.tasks} />
+            <TaskBoard openTask={openTask} onToggle={(id) => setOpenTask((cur) => (cur === id ? null : id))} tasks={live.tasks} />
+          </>
+        )}
 
         <FooterActions />
       </div>

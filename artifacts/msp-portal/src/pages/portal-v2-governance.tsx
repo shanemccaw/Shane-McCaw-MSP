@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
@@ -659,41 +660,47 @@ export default function PortalV2GovernancePage() {
                 }}
               />
 
-              {clusters.map((cluster) => (
-                <div
-                  key={cluster.name}
-                  style={{
-                    position: "relative",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 9,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "9.5px",
-                      fontWeight: 700,
-                      letterSpacing: ".16em",
-                      textTransform: "uppercase",
-                      color: "#475569",
-                    }}
-                  >
-                    {cluster.name}
-                  </span>
+              {!areaLive.loaded ? (
+                // Real per-area read in flight: honest skeleton, never the
+                // fixture area scores swapping in after the fact (Git #1365).
+                <PortalV2LoadingState rows={4} label="Loading your governance areas…" testId="pv2-gov-areas-loading" />
+              ) : (
+                clusters.map((cluster) => (
                   <div
+                    key={cluster.name}
                     style={{
+                      position: "relative",
                       display: "flex",
-                      flexWrap: "wrap",
-                      alignItems: "stretch",
-                      gap: 10,
+                      flexDirection: "column",
+                      gap: 9,
                     }}
                   >
-                    {cluster.tiles.map((a) => (
-                      <AreaTile key={a.key} tile={a} live={areaLive.byKey[a.key] ?? null} />
-                    ))}
+                    <span
+                      style={{
+                        fontSize: "9.5px",
+                        fontWeight: 700,
+                        letterSpacing: ".16em",
+                        textTransform: "uppercase",
+                        color: "#475569",
+                      }}
+                    >
+                      {cluster.name}
+                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "stretch",
+                        gap: 10,
+                      }}
+                    >
+                      {cluster.tiles.map((a) => (
+                        <AreaTile key={a.key} tile={a} live={areaLive.byKey[a.key] ?? null} />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
         </>
       </div>

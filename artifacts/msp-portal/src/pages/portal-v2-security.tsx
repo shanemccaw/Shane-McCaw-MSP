@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
@@ -660,16 +661,24 @@ export default function PortalV2SecurityPage() {
             Security Categories
           </div>
           <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}>
-              {secAreaRow1.map((a) => (
-                <AreaCard key={a.key} link={a} allLinks={secAreaLinks} />
-              ))}
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}>
-              {secAreaRow2.map((a) => (
-                <AreaCard key={a.key} link={a} allLinks={secAreaLinks} />
-              ))}
-            </div>
+            {!areaLinksLive.loaded ? (
+              // Real per-category read in flight: honest skeleton, never the
+              // fixture category scores swapping in after the fact (Git #1365).
+              <PortalV2LoadingState rows={2} label="Loading your security categories…" testId="pv2-sec-areas-loading" />
+            ) : (
+              <>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}>
+                  {secAreaRow1.map((a) => (
+                    <AreaCard key={a.key} link={a} allLinks={secAreaLinks} />
+                  ))}
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 10 }}>
+                  {secAreaRow2.map((a) => (
+                    <AreaCard key={a.key} link={a} allLinks={secAreaLinks} />
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         </div>
 

@@ -60,6 +60,7 @@ import {
 } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk, type AcceptRiskSpec } from "@/components/portal-v2/AcceptRiskPanel";
@@ -315,6 +316,7 @@ export default function PortalV2GovOversharingPage() {
       <OversharingBody
         sites={sitesLive.sites}
         sitesDataState={sitesLive.dataState}
+        sitesLoading={sitesLive.loading}
         acceptedSiteIds={acceptedSiteIds}
         acceptedLinkIds={acceptedLinkIds}
         onFix={openFixPanel}
@@ -366,6 +368,7 @@ interface DisplaySite {
 function OversharingBody({
   sites,
   sitesDataState,
+  sitesLoading,
   acceptedSiteIds,
   acceptedLinkIds,
   onFix,
@@ -373,6 +376,7 @@ function OversharingBody({
 }: {
   sites: readonly OversharingSiteWire[];
   sitesDataState: "live" | "fixture";
+  sitesLoading: boolean;
   acceptedSiteIds: string[];
   acceptedLinkIds: number[];
   onFix: (key: string) => void;
@@ -680,7 +684,12 @@ function OversharingBody({
           </div>
 
           <div style={LIST_PANEL} data-testid="pv2-ovr-sites">
-            {siteRows.map((s) => {
+            {sitesLoading ? (
+              // Real per-site read in flight: honest skeleton, never the design's
+              // fixture sites swapping in after the fact (Git #1365).
+              <PortalV2LoadingState rows={4} label="Loading your affected sites…" testId="pv2-ovr-sites-loading" />
+            ) : (
+            siteRows.map((s) => {
               const manuallyAccepted = acceptedSiteIds.includes(s.id);
               const accepted = s.status === "accepted" || manuallyAccepted;
               const isExpanded = siteExpanded === s.id;
@@ -892,7 +901,8 @@ function OversharingBody({
                   )}
                 </div>
               );
-            })}
+            })
+            )}
           </div>
 
           <Pager

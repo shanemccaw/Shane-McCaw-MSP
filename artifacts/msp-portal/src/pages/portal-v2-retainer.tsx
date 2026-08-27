@@ -51,6 +51,7 @@ import {
 } from "@/components/portal-v2/retainerModel";
 import { useRetainerLive } from "@/components/portal-v2/useRetainerLive";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -240,6 +241,10 @@ export default function PortalV2RetainerPage() {
     ? `${live.bucket.retainedHours.toFixed(1)} hours`
     : RET_COPY.retainedMonthly;
   const workItems = live.dataState === "live" && live.entries.length > 0 ? live.entries : RET_WORK;
+  // Real read in flight: `loaded` is the only signal this hook exposes (Git
+  // #1365) — `dataState` starts "fixture" and stays "fixture" for a genuinely
+  // unconfigured retainer, so it can't distinguish loading from settled.
+  const retainerLoading = !live.loaded;
 
   return (
     <PortalV2Shell eyebrow={RET_COPY.eyebrow} title="My Architect">
@@ -306,20 +311,24 @@ export default function PortalV2RetainerPage() {
           {/* Month rollup cards */}
           <span data-testid="pv2-ret-source" style={PV2_SOURCE_CLIP}>{live.dataState}</span>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12, alignItems: "stretch" }}>
-            <TimeCard retSummary={retSummary} retainedLabel={retainedLabel} />
-            <SmallCard
-              label={RET_COPY.findingsClosedLabel}
-              value={RET_COPY.findingsClosedValue}
-              sub={RET_COPY.findingsClosedSub}
-              valueSize="20px"
-            />
-            <SmallCard
-              label={RET_COPY.nextScheduledLabel}
-              value={RET_COPY.nextScheduledValue}
-              sub={RET_COPY.nextScheduledSub}
-            />
-          </div>
+          {retainerLoading ? (
+            <PortalV2LoadingState rows={2} label="Loading your retainer hours…" testId="pv2-ret-summary-loading" />
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12, alignItems: "stretch" }}>
+              <TimeCard retSummary={retSummary} retainedLabel={retainedLabel} />
+              <SmallCard
+                label={RET_COPY.findingsClosedLabel}
+                value={RET_COPY.findingsClosedValue}
+                sub={RET_COPY.findingsClosedSub}
+                valueSize="20px"
+              />
+              <SmallCard
+                label={RET_COPY.nextScheduledLabel}
+                value={RET_COPY.nextScheduledValue}
+                sub={RET_COPY.nextScheduledSub}
+              />
+            </div>
+          )}
 
           {/* Where the hours went */}
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -339,9 +348,11 @@ export default function PortalV2RetainerPage() {
                 overflow: "hidden",
               }}
             >
-              {workItems.map((w, i) => (
-                <WorkRow key={`${w.finding}-${w.week}-${i}`} work={w} />
-              ))}
+              {retainerLoading ? (
+                <PortalV2LoadingState rows={4} label="Loading where the hours went…" testId="pv2-ret-work-loading" />
+              ) : (
+                workItems.map((w, i) => <WorkRow key={`${w.finding}-${w.week}-${i}`} work={w} />)
+              )}
             </div>
           </div>
 

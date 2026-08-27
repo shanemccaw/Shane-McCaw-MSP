@@ -32,6 +32,7 @@ import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shel
 import { RECEIPT_INTRO, RECEIPT_ISSUER, RECEIPT_ISSUER_INITIALS } from "@/components/portal-v2/receiptData";
 import { useReceiptLive } from "@/components/portal-v2/receiptLive";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -55,7 +56,7 @@ const ACTIONS: readonly { label: string; border: string; bg: string; color: stri
 
 export default function PortalV2ReceiptPage() {
   const [, params] = useRoute("/portal-v2/receipt/:id");
-  const { view: v, dataState, livePdfUrl } = useReceiptLive(params?.id);
+  const { view: v, dataState, loading, livePdfUrl } = useReceiptLive(params?.id);
 
   return (
     <PortalV2Shell eyebrow="Billing" title="Receipt">
@@ -97,6 +98,12 @@ export default function PortalV2ReceiptPage() {
           </Link>
 
           {/* ── The receipt card ─────────────────────────────────────────── */}
+          {loading ? (
+            // Real Stripe read in flight: honest skeleton, never the design's
+            // fixture receipt swapping in after the fact (Git #1365).
+            <PortalV2LoadingState rows={6} label="Loading your receipt…" testId="pv2-receipt-loading" />
+          ) : (
+          <>
           <div
             style={{
               display: "flex",
@@ -325,6 +332,8 @@ export default function PortalV2ReceiptPage() {
               );
             })}
           </div>
+          </>
+          )}
         </div>
       </div>
     </PortalV2Shell>

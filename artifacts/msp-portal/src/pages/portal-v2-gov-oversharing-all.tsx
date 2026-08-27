@@ -43,6 +43,7 @@ import { Link } from "wouter";
 import { Search } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
 import { useOversharingItemsLive } from "@/components/portal-v2/oversharingItemsLive";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
@@ -75,6 +76,7 @@ export default function PortalV2GovOversharingAllPage() {
     goPrev,
     hasNext,
     hasPrev,
+    loading,
   } = useOversharingItemsLive({ grantKinds: LINK_GRANT_KINDS, pageSize: PAGE_SIZE });
 
   const totalLabel = total.toLocaleString("en-GB");
@@ -210,47 +212,55 @@ export default function PortalV2GovOversharingAllPage() {
           }}
           data-testid="pv2-ovrall-rows"
         >
-          {rows.map((row) => {
-            const name = row.site.name ?? row.site.id;
-            const context = [row.grant.principal, row.grant.roles.length > 0 ? row.grant.roles.join(", ") : null]
-              .filter(Boolean)
-              .join(" · ");
-            return (
-            <div
-              key={row.itemId}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 14,
-                padding: "11px 18px",
-                borderTop: "1px solid rgba(30,41,59,.7)",
-              }}
-            >
-              <input type="checkbox" aria-label={`Select ${name}`} style={{ flex: "0 0 auto" }} />
-              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>
-                  {name}
-                </span>
-                <span style={{ fontSize: "11px", color: "#64748b" }}>{context}</span>
-              </div>
-              <button
+          {loading ? (
+            // Real server-side page in flight: honest skeleton, never a
+            // transiently-empty table indistinguishable from "no results" (Git #1365).
+            <div style={{ padding: "14px 18px" }}>
+              <PortalV2LoadingState rows={PAGE_SIZE} label="Loading your overshared items…" testId="pv2-ovrall-loading" />
+            </div>
+          ) : (
+            rows.map((row) => {
+              const name = row.site.name ?? row.site.id;
+              const context = [row.grant.principal, row.grant.roles.length > 0 ? row.grant.roles.join(", ") : null]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+              <div
+                key={row.itemId}
                 style={{
-                  padding: "5px 11px",
-                  borderRadius: 5,
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  border: "1px solid rgba(30,41,59,.9)",
-                  background: "transparent",
-                  color: "#60a5fa",
-                  cursor: "pointer",
-                  fontFamily: "inherit",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                  padding: "11px 18px",
+                  borderTop: "1px solid rgba(30,41,59,.7)",
                 }}
               >
-                Fix
-              </button>
-            </div>
-            );
-          })}
+                <input type="checkbox" aria-label={`Select ${name}`} style={{ flex: "0 0 auto" }} />
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>
+                    {name}
+                  </span>
+                  <span style={{ fontSize: "11px", color: "#64748b" }}>{context}</span>
+                </div>
+                <button
+                  style={{
+                    padding: "5px 11px",
+                    borderRadius: 5,
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    border: "1px solid rgba(30,41,59,.9)",
+                    background: "transparent",
+                    color: "#60a5fa",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  Fix
+                </button>
+              </div>
+              );
+            })
+          )}
         </div>
 
         <div
