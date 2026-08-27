@@ -40,6 +40,11 @@ namespace BuildConsole.Services
         public List<int> AssociatedIssueNumbers { get; set; } = new();
         /// <summary>The CLI engine requested for this build session (e.g. "claude" or "gemini").</summary>
         public string? Cli { get; set; }
+        /// <summary>Git #1416 — which Claude account this build launches against: "secondary" routes
+        /// claude.exe to <see cref="BuildConsoleSettings.SecondaryClaudeConfigDir"/> via CLAUDE_CONFIG_DIR
+        /// (Shane's overflow Pro account); null/empty/"primary" (the default) uses the default config
+        /// dir. Sequential overflow only — no concurrency change, no automatic failover.</summary>
+        public string? Account { get; set; }
     }
 
     /// <summary>Matches POST /admin/simulator/deploy/console's real `{ ok, command, output }` response shape.</summary>
@@ -581,7 +586,7 @@ namespace BuildConsole.Services
         private class SqlExecuteResponse { public List<SqlStatementResult> Statements { get; set; } = new(); }
 
         /// <summary>Git #814 — same POST the extension's "📋 Queue" button and background.js's queueBuild() already use, now called directly from the WPF app's own injected chat buttons. Git #826 added resumeSessionId — set by a Reply action so the watcher launches with --resume instead of a fresh session.</summary>
-        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null, string? chatUrl = null, string? originatingChatId = null, string? buildSet = null, string? cli = null) =>
+        public Task<HttpResponseMessage> QueueBuildAsync(string title, string prompt, string? model, string? effort, string? cwd, int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null, string? chatUrl = null, string? originatingChatId = null, string? buildSet = null, string? cli = null, string? account = null) =>
             TrackAsync($"POST queue \"{title}\"", () => _http.PostAsJsonAsync("api/admin/build-tracker/extension/queue", new
             {
                 title,
@@ -596,6 +601,7 @@ namespace BuildConsole.Services
                 originatingChatId,
                 buildSet,
                 cli,
+                account,
             }));
 
         /// <summary>Git #826 — sessionId (captured from this run's own stream-json output) is stored so a later Reply can resume this exact conversation.</summary>

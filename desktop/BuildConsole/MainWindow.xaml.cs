@@ -4909,7 +4909,7 @@ namespace BuildConsole
                             {
                                 bool saved = PersistQueueRequestDuringPendingUpdate(
                                     dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                    dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli);
+                                    dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli, account: dialog.FinalAccount);
                                 if (saved)
                                 {
                                     ToastEngine.Success("Queued after update", "Build request saved for after restart.");
@@ -4921,7 +4921,7 @@ namespace BuildConsole
                             {
                                 await _queueDb.QueueBuildAsync(
                                     dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                    dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli);
+                                    dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli, account: dialog.FinalAccount);
                                 var editIdLabel = dialogGithubNum.HasValue ? BuildConsole.Services.LocalBuildId.FormatRef(dialogGithubNum.Value) : "";
                                 ToastEngine.Success("Build Queued",
                                     $"Queued '{dialog.FinalTitle ?? "Build"}'{(editIdLabel.Length > 0 ? $" as {editIdLabel}" : "")} successfully.");
@@ -5028,7 +5028,7 @@ namespace BuildConsole
                     {
                         bool saved = PersistQueueRequestDuringPendingUpdate(
                             Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"),
-                            githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"));
+                            githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: Str("account"));
                         // Unstick the injected button back to its clickable label (it was
                         // set to a disabled "In Progress..." on click) — nothing is in the
                         // live queue, so leaving it stuck would misrepresent reality.
@@ -5063,7 +5063,7 @@ namespace BuildConsole
                     try
                     {
                         queued = await _queueDb.QueueBuildAsync(
-                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"));
+                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: Str("account"));
                     }
                     catch (Exception ex)
                     {

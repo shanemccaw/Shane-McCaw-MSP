@@ -103,6 +103,8 @@ namespace BuildConsole
             public string? OriginatingChatId { get; set; }
             public string? BuildSet { get; set; }
             public string? Cli { get; set; }
+            /// <summary>Git #1416 — the chosen Claude account ("secondary" = overflow Pro; null/"primary" = default). Preserved across the update restart so a persisted request re-queues against the same account.</summary>
+            public string? Account { get; set; }
         }
 
         /// <summary>
@@ -153,7 +155,7 @@ namespace BuildConsole
         private bool PersistQueueRequestDuringPendingUpdate(
             string title, string prompt, string? model, string? effort, string? cwd,
             int? githubNumber, List<int>? blockedByNumbers, string? chatUrl = null, string? originatingChatId = null,
-            string? buildSet = null, string? cli = null)
+            string? buildSet = null, string? cli = null, string? account = null)
         {
             var pending = LoadPersistedQueueRequests();
             pending.Add(new PersistedQueueRequest
@@ -169,6 +171,7 @@ namespace BuildConsole
                 OriginatingChatId = originatingChatId,
                 BuildSet = buildSet,
                 Cli = cli,
+                Account = account,
             });
 
             try
@@ -357,7 +360,7 @@ namespace BuildConsole
                 try
                 {
                     await _queueDb.QueueBuildAsync(
-                        req.Title, req.Prompt, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers, chatUrl: req.ChatUrl, originatingChatId: req.OriginatingChatId, buildSet: req.BuildSet, cli: req.Cli);
+                        req.Title, req.Prompt, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers, chatUrl: req.ChatUrl, originatingChatId: req.OriginatingChatId, buildSet: req.BuildSet, cli: req.Cli, account: req.Account);
                     PendingUpdateQueueDiag(
                         $"Re-queued persisted request \"{req.Title}\" after the update restart (attempt {attempt}/{ReplayMaxAttemptsPerItem}, direct Postgres).");
                     return true;

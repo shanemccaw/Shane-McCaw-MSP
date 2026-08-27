@@ -129,6 +129,8 @@ namespace BuildConsole
             public string? SessionId;
             public List<int>? BlockedByNumbers;
             public string? BuildSet;
+            /// <summary>Git #1416 — which Claude account this build ran against ("secondary" = overflow Pro), so a Build Watch "Continue" resume re-queues against the same account.</summary>
+            public string? Account;
             public SlotState State = SlotState.Empty;
             /// <summary>True while a Running slot is actually the #943 "VERIFYING…" hold (queue said failed with the -2 sentinel).</summary>
             public bool Verifying;
@@ -1186,6 +1188,7 @@ namespace BuildConsole
             slot.SessionId = item.SessionId;
             slot.BlockedByNumbers = item.BlockedByNumbers;
             slot.BuildSet = item.BuildSet;
+            slot.Account = item.Account;
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
             slot.Verifying = false;
@@ -1283,6 +1286,7 @@ namespace BuildConsole
             slot.GithubNumber = null;
             slot.Title = "";
             slot.BuildSet = null;
+            slot.Account = null;
             slot.State = SlotState.Empty;
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
@@ -1671,7 +1675,7 @@ namespace BuildConsole
                         slot.GithubNumber,
                         slot.BlockedByNumbers,
                         resumeSessionId: sessionId,
-                        buildSet: slot.BuildSet);
+                        buildSet: slot.BuildSet, account: slot.Account);
 
                     int newQueueId = queued.Id;
                     slot.QueueItemId = newQueueId;

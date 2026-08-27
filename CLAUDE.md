@@ -219,6 +219,7 @@ none are parsed (the line is treated as prompt text). Recognized flags:
 | `--cwd <path>` | Working directory the build runs in. |
 | `--blocked-by <n,n,...>` / `--block-by <n,...>` | GitHub / local blockers that must clear before this build runs. |
 | `--buildSet <name>` | **Build Set** — group this build with every other build sharing the same `<name>` so the local dev server restarts ONCE, after the whole set finishes, instead of once per build. |
+| `--account <primary\|secondary>` | **Multi-account routing (Git #1416)** — which Claude account this build launches against. `secondary` runs Claude Code with `CLAUDE_CONFIG_DIR` pointed at the configured secondary config dir (Shane's overflow Pro account, set in BuildConsole Settings → General); omitted/`primary` uses the default account. Sequential overflow only — never concurrent, no automatic failover. Also selectable per-build via the Edit Build Prompt dialog's Account dropdown. |
 
 ### `--buildSet` — when and why to use it
 

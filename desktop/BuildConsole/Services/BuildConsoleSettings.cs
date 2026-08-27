@@ -167,6 +167,25 @@ namespace BuildConsole.Services
 
         public bool HasSshConfig => !string.IsNullOrWhiteSpace(SshKeyPath) && !string.IsNullOrWhiteSpace(SshHost);
 
+        // ── Git #1416 — multi-account routing for Claude Code (overflow to secondary) ──
+        // Shane runs a primary Max 20x account and a secondary Pro account as SEQUENTIAL
+        // overflow (never concurrent). A queue build carries an Account of "primary"
+        // (default) or "secondary"; when secondary, QueueWatcherService.LaunchItem launches
+        // claude.exe with CLAUDE_CONFIG_DIR pointed at this secondary path instead of the
+        // default (~/.claude) config dir, so the overflow build authenticates as the second
+        // account without Shane ever switching config dirs at the terminal. No automatic
+        // failover — Shane picks primary/secondary per job (the queue UI's account selector,
+        // or the `--account secondary` build-prompt header flag). A leading `~` is expanded
+        // to the user profile at launch. Same %AppData%\BuildConsole\settings.json store /
+        // field-initializer-as-default convention as every field above; a pre-#1416
+        // settings.json (no "secondaryClaudeConfigDir" key) deserializes with this default
+        // intact, and a build with no/blank/"primary" Account always uses the default config
+        // dir exactly as before.
+
+        /// <summary>Git #1416 — the CLAUDE_CONFIG_DIR a "secondary"-account queue build is launched against (Shane's overflow Pro account). Defaults to ~/.claude-secondary. A leading ~ is expanded at launch. Primary-account builds are unaffected — they use the default (~/.claude) config dir.</summary>
+        public string SecondaryClaudeConfigDir { get; set; } =
+            System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude-secondary");
+
         // ── Git #937 (Epic #803) — always-on-top Sticky Notes floaty ──────────
         // Shane: "a floaty sticky notes... take notes for... Then I should be
         // able to send what I note down into a Claude chat that I'm typing into

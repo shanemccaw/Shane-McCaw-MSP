@@ -284,6 +284,23 @@ namespace BuildConsole.Services
             catch (Exception ex) { ActivityLog.Log("watcher", $"LaunchItem threw for queue #{item.Id} ({item.Title}): {ex.Message}"); }
         }
 
+        /// <summary>Git #1416 — expand a leading <c>~</c> (or <c>~/</c>, <c>~\</c>) in a configured
+        /// path to the current user's profile directory, so a secondary config dir stored as
+        /// <c>~/.claude-secondary</c> resolves to a real absolute path for CLAUDE_CONFIG_DIR. A path
+        /// with no leading tilde is returned trimmed but otherwise unchanged.</summary>
+        private static string ExpandUserPath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return "";
+            path = path.Trim();
+            if (path == "~" || path.StartsWith("~/") || path.StartsWith("~\\"))
+            {
+                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string rest = path.Length <= 1 ? "" : path.Substring(2);
+                return string.IsNullOrEmpty(rest) ? home : Path.Combine(home, rest);
+            }
+            return path;
+        }
+
         /// <summary>Git #1371 — the provisioning name/id for a build's isolated worktree. Uses the
         /// queue row id (globally unique, stable across a Reply/resume of the same row) plus the
         /// GitHub number when known, giving a readable branch/path (agent/&lt;name&gt;, C:\wt\&lt;name&gt;).</summary>
@@ -827,6 +844,27 @@ namespace BuildConsole.Services
                 psi.StandardInputEncoding = new UTF8Encoding(false);
                 psi.StandardOutputEncoding = new UTF8Encoding(false);
                 psi.StandardErrorEncoding = new UTF8Encoding(false);
+            }
+
+            // Git #1416 — multi-account routing. A build queued against the "secondary"
+            // account launches claude.exe with CLAUDE_CONFIG_DIR pointed at the configured
+            // secondary config dir (Shane's overflow Pro account), so the whole session
+            // authenticates as that account instead of the default (~/.claude). Any other
+            // Account value (null/blank/"primary") leaves CLAUDE_CONFIG_DIR unset, so the
+            // build uses the default config dir exactly as before. This is a sequential,
+            // per-job manual choice — no concurrency change, no automatic failover.
+            if (string.Equals(item.Account, "secondary", StringComparison.OrdinalIgnoreCase))
+            {
+                string secondaryDir = ExpandUserPath(settings.SecondaryClaudeConfigDir);
+                if (string.IsNullOrWhiteSpace(secondaryDir))
+                {
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} requested the secondary account but SecondaryClaudeConfigDir is unset in settings — launching against the DEFAULT account instead.");
+                }
+                else
+                {
+                    psi.Environment["CLAUDE_CONFIG_DIR"] = secondaryDir;
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) routed to the SECONDARY Claude account — CLAUDE_CONFIG_DIR={secondaryDir}.");
+                }
             }
 
             // Git #826 — a Reply resumes the ORIGINAL session instead of

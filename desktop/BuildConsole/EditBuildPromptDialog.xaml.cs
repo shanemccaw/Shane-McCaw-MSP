@@ -30,6 +30,11 @@ namespace BuildConsole
         /// every build queued with this same name is grouped into one set whose dev-server
         /// restart is deferred until the whole set completes (see scripts/dev-server).</summary>
         public string? FinalBuildSet { get; private set; }
+        /// <summary>Git #1416 — which Claude account this build runs against: "secondary" (Shane's
+        /// overflow Pro account, launched with CLAUDE_CONFIG_DIR pointed at the secondary config dir)
+        /// or null/"primary" (the default Max 20x account). Chosen via the footer Account selector,
+        /// mirrored to an `--account secondary` build-prompt header flag.</summary>
+        public string? FinalAccount { get; private set; }
         public string? FinalMode { get; private set; }
         /// <summary>Positive GitHub issue number, or null. A LOCAL (--notGit) build carries
         /// null here — its letter id (A, B, C…) is auto-allocated at queue time, not now.</summary>
@@ -114,6 +119,13 @@ namespace BuildConsole
 
             string effort = _parsedFlags.GetValueOrDefault("effort", "high");
             EffortBadgeText.Text = $"effort: {effort}";
+
+            // Git #1416 — reflect any `--account` header flag into the footer selector without
+            // triggering a re-sync back into the prompt (that would fire before the body is set).
+            bool secondary = string.Equals(_parsedFlags.GetValueOrDefault("account"), "secondary", StringComparison.OrdinalIgnoreCase);
+            _syncingPrompt = true;
+            AccountSelector.SelectedIndex = secondary ? 1 : 0;
+            _syncingPrompt = false;
 
             // Populate Editor with the full raw prompt
             _syncingPrompt = true;
@@ -232,6 +244,42 @@ namespace BuildConsole
             UpdateCharCount();
         }
 
+        /// <summary>Git #1416 — footer Account selector changed: mirror the choice into the prompt's
+        /// `--account` header flag (secondary adds it; primary removes it) so the flag line stays the
+        /// single source of truth, exactly like the blockers box.</summary>
+        private void AccountSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_syncingPrompt) return;
+            SyncAccountToPrompt();
+        }
+
+        /// <summary>Rewrites the prompt's leading flag line so its `--account` flag matches the
+        /// footer selector. "secondary" sets `--account secondary`; "primary" (the default) removes
+        /// the flag entirely so a primary build stays flag-free. Preserves every other header flag.</summary>
+        private void SyncAccountToPrompt()
+        {
+            bool secondary = string.Equals(SelectedAccount(), "secondary", StringComparison.OrdinalIgnoreCase);
+
+            string currentPrompt = PromptEditorBox.Text;
+            var (flags, rest) = ExtractLeadingFlags(currentPrompt);
+
+            if (secondary)
+                flags["account"] = "secondary";
+            else
+                flags.Remove("account");
+
+            string flagLine = string.Join(" ", flags.Select(kv => $"--{kv.Key} {kv.Value}"));
+            string newPrompt = string.IsNullOrEmpty(flagLine) ? rest : flagLine + "\n\n" + rest;
+
+            _syncingPrompt = true;
+            PromptEditorBox.Text = newPrompt;
+            _syncingPrompt = false;
+        }
+
+        /// <summary>The account currently chosen in the footer selector ("primary" or "secondary"); "primary" when unset.</summary>
+        private string SelectedAccount() =>
+            (AccountSelector?.SelectedItem as ComboBoxItem)?.Content?.ToString()?.Trim().ToLowerInvariant() ?? "primary";
+
         private void UpdateCharCount()
         {
             int chars = PromptEditorBox.Text.Length;
@@ -251,6 +299,12 @@ namespace BuildConsole
             FinalCwd = flags.GetValueOrDefault("cwd");
             FinalMode = flags.GetValueOrDefault("mode");
             FinalBuildSet = flags.GetValueOrDefault("buildSet");
+            // Git #1416 — the footer selector is the source of truth (it's mirrored into the
+            // `--account` flag on change); fall back to a hand-typed flag if for any reason the
+            // selector wasn't touched. Only "secondary" is meaningful; primary → null.
+            bool secondary = string.Equals(SelectedAccount(), "secondary", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(flags.GetValueOrDefault("account"), "secondary", StringComparison.OrdinalIgnoreCase);
+            FinalAccount = secondary ? "secondary" : null;
 
             // Title
             string? rawTitle = flags.GetValueOrDefault("title");

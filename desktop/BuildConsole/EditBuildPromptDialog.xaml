@@ -118,6 +118,19 @@
             <Button Content="✕ Cancel" Style="{StaticResource IconButton}"
                     Padding="14,6" FontSize="12" Click="Cancel_Click" DockPanel.Dock="Left"/>
 
+            <!-- Git #1416 — per-build Claude account (primary Max 20x / secondary Pro overflow).
+                 Sequential overflow only; mirrors the choice into an account header flag on the prompt. -->
+            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left" VerticalAlignment="Center" Margin="14,0,0,0">
+                <TextBlock Text="Account:" FontSize="11" FontWeight="SemiBold"
+                           Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox x:Name="AccountSelector" Width="120" FontSize="11" VerticalAlignment="Center"
+                          SelectionChanged="AccountSelector_SelectionChanged"
+                          ToolTip="Primary = Max 20x account (default). Secondary = Pro overflow account, launched with CLAUDE_CONFIG_DIR pointed at the secondary config dir (Settings). Sequential only — never concurrent.">
+                    <ComboBoxItem Content="primary" IsSelected="True"/>
+                    <ComboBoxItem Content="secondary"/>
+                </ComboBox>
+            </StackPanel>
+
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                 <Button x:Name="BtnQueueBuild" Content="📋 Add to Build Queue"
                         Style="{StaticResource IconButton}"

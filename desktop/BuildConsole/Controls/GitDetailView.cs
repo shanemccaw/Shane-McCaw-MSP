@@ -2085,7 +2085,7 @@ namespace BuildConsole.Controls
                         _loadedIssue?.IssueNumber,
                         blockedBy,
                         resumeSessionId: sessionId,
-                        buildSet: _associatedBuild?.BuildSet);
+                        buildSet: _associatedBuild?.BuildSet, account: _associatedBuild?.Account);
                     newQueueId = queued.Id;
 
                     try
@@ -2109,7 +2109,7 @@ namespace BuildConsole.Controls
                         _loadedIssue?.IssueNumber,
                         blockedBy,
                         resumeSessionId: sessionId,
-                        buildSet: _associatedBuild?.BuildSet);
+                        buildSet: _associatedBuild?.BuildSet, account: _associatedBuild?.Account);
                 }
 
                 if (newQueueId > 0)

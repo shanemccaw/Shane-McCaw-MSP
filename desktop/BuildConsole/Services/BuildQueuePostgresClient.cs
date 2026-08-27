@@ -185,7 +185,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set, cli
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account
                 FROM bt_build_queue
                 ORDER BY created_at ASC";
 
@@ -225,7 +225,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set, cli
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account
                 FROM bt_build_queue
                 WHERE status = 'queued'
                 ORDER BY created_at ASC";
@@ -275,7 +275,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set, cli";
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account";
 
             var claimed = new List<QueueItem>();
             await using (var reader = await claimCmd.ExecuteReaderAsync())
@@ -302,7 +302,8 @@ namespace BuildConsole.Services
         public async Task<QueueItem> QueueBuildAsync(
             string title, string prompt, string? model, string? effort, string? cwd,
             int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null,
-            string? chatUrl = null, string? originatingChatId = null, string? buildSet = null, string? cli = null)
+            string? chatUrl = null, string? originatingChatId = null, string? buildSet = null, string? cli = null,
+            string? account = null)
         {
             var titleTrimmed = title.Trim();
             var modelTrimmed = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
@@ -312,6 +313,10 @@ namespace BuildConsole.Services
             var originatingChatIdTrimmed = string.IsNullOrWhiteSpace(originatingChatId) ? null : originatingChatId.Trim();
             var chatUrlTrimmed = string.IsNullOrWhiteSpace(chatUrl) ? null : chatUrl.Trim();
             var cliTrimmed = string.IsNullOrWhiteSpace(cli) ? null : cli.Trim();
+            // Git #1416 — normalize the account: only an explicit "secondary" persists; anything
+            // else (null, blank, "primary") stores NULL and launches against the default config dir.
+            var accountTrimmed = string.Equals(account?.Trim(), "secondary", StringComparison.OrdinalIgnoreCase)
+                ? "secondary" : null;
 
             var allBlockers = (blockedByNumbers ?? new List<int>()).Distinct().ToList();
             int? firstBlocker = allBlockers.Count > 0 ? allBlockers[0] : null;
@@ -340,7 +345,7 @@ namespace BuildConsole.Services
                     await using var updateCmd = new NpgsqlCommand(@"
                         UPDATE bt_build_queue
                            SET title = @title, prompt = @prompt, model = @model, effort = @effort, cwd = @cwd,
-                               build_set = @buildSet, cli = @cli,
+                               build_set = @buildSet, cli = @cli, account = @account,
                                blocked_by_number = @blockedByNumber, blocked_by_numbers = @blockedByNumbers,
                                resume_session_id = @resumeSessionId, originating_chat_id = @originatingChatId,
                                chat_url = @chatUrl, status = 'queued', claimed_at = NULL, completed_at = NULL,
@@ -349,7 +354,7 @@ namespace BuildConsole.Services
                         RETURNING id, title, prompt, model, effort, cwd,
                                   github_number, blocked_by_number, blocked_by_numbers,
                                   status, exit_code, session_id, resume_session_id,
-                                  originating_chat_id, chat_url, updated_at, build_set, cli", conn);
+                                  originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
                     updateCmd.Parameters.AddWithValue("@title", titleTrimmed);
                     updateCmd.Parameters.AddWithValue("@prompt", prompt);
                     updateCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
@@ -357,6 +362,7 @@ namespace BuildConsole.Services
                     updateCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@buildSet", (object?)buildSetTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@account", (object?)accountTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
                     updateCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
                     { Value = (object?)blockerArray ?? DBNull.Value });
@@ -375,15 +381,15 @@ namespace BuildConsole.Services
                     INSERT INTO bt_build_queue
                         (title, prompt, model, effort, cwd, github_number,
                          blocked_by_number, blocked_by_numbers, resume_session_id,
-                         originating_chat_id, chat_url, build_set, cli)
+                         originating_chat_id, chat_url, build_set, cli, account)
                     VALUES
                         (@title, @prompt, @model, @effort, @cwd, @githubNumber,
                          @blockedByNumber, @blockedByNumbers, @resumeSessionId,
-                         @originatingChatId, @chatUrl, @buildSet, @cli)
+                         @originatingChatId, @chatUrl, @buildSet, @cli, @account)
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
-                              originating_chat_id, chat_url, updated_at, build_set, cli", conn);
+                              originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
                 insertCmd.Parameters.AddWithValue("@title", titleTrimmed);
                 insertCmd.Parameters.AddWithValue("@prompt", prompt);
                 insertCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
@@ -398,6 +404,7 @@ namespace BuildConsole.Services
                 insertCmd.Parameters.AddWithValue("@originatingChatId", (object?)originatingChatIdTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@account", (object?)accountTrimmed ?? DBNull.Value);
                 await using var reader = await insertCmd.ExecuteReaderAsync();
                 await reader.ReadAsync();
                 row = MapRow(reader);
@@ -531,15 +538,15 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set, cli", conn);
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
             cmd.Parameters.AddWithValue("@id", id);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
                 throw new InvalidOperationException($"Queue item {id} is not in 'queued' status — cannot force-claim.");
-            // Git #1384 — this RETURNING must select the SAME 17 columns (through
-            // build_set at ordinal 16) that every other SELECT/RETURNING in this file
-            // does, because MapRow reads ordinal 16. It was missing build_set, so it
-            // returned only 16 columns (0–15) and MapRow's r.IsDBNull(16) threw
+            // Git #1384 — this RETURNING must select the SAME columns (now through
+            // account at ordinal 18, added #1416) that every other SELECT/RETURNING in
+            // this file does, because MapRow reads the highest ordinal. It was once
+            // missing build_set, so it returned only 16 columns (0–15) and MapRow threw
             // "Column must be between 0 and 15". That exception surfaced live as
             // "Couldn't force-launch continuation #NNN: Column must be between 0 and 15"
             // whenever a Build Watch chat nudge to a finished/exited build routed
@@ -640,7 +647,7 @@ namespace BuildConsole.Services
             // id, title, prompt, model, effort, cwd,
             // github_number, blocked_by_number, blocked_by_numbers,
             // status, exit_code, session_id, resume_session_id,
-            // originating_chat_id, chat_url, updated_at, build_set, cli
+            // originating_chat_id, chat_url, updated_at, build_set, cli, account
             var blockedByNumbersRaw = r.IsDBNull(8) ? null : r.GetValue(8) as int[];
             return new QueueItem
             {
@@ -664,6 +671,7 @@ namespace BuildConsole.Services
                 UpdatedAt         = r.IsDBNull(15) ? null : r.GetFieldValue<DateTimeOffset>(15),
                 BuildSet          = r.IsDBNull(16) ? null : r.GetString(16),
                 Cli               = r.IsDBNull(17) ? null : r.GetString(17),
+                Account           = r.IsDBNull(18) ? null : r.GetString(18),
             };
         }
 

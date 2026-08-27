@@ -38,6 +38,8 @@ namespace BuildConsole.Controls
 
             EpicChatProjectUrlBox.Text = savedSettings.EpicChatProjectUrl;
 
+            SecondaryClaudeConfigDirBox.Text = savedSettings.SecondaryClaudeConfigDir;
+
             ReplitWatcherEnabledCheck.IsChecked = savedSettings.ReplitWatcherEnabled;
             ReplitWatcherIntervalBox.Text = savedSettings.ReplitWatcherIntervalMinutes.ToString();
             ReplitRunSelectorBox.Text = savedSettings.ReplitRunButtonSelector;
@@ -943,6 +945,20 @@ namespace BuildConsole.Controls
             settings.EpicChatProjectUrl = EpicChatProjectUrlBox.Text.Trim();
             settings.Save();
             EpicChatProjectUrlSavedText.Text = "Project URL saved.";
+        }
+
+        /// <summary>Git #1416 — persist the secondary-account CLAUDE_CONFIG_DIR a "secondary"
+        /// queue build is launched against. Blank falls back to the ~/.claude-secondary default
+        /// on next load.</summary>
+        private void BtnSaveSecondaryClaudeConfigDir_Click(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            var path = SecondaryClaudeConfigDirBox.Text.Trim();
+            settings.SecondaryClaudeConfigDir = path;
+            settings.Save();
+            SecondaryClaudeConfigDirSavedText.Text = string.IsNullOrEmpty(path)
+                ? "Saved (blank — will use the ~/.claude-secondary default)."
+                : $"Secondary account path saved: {path}";
         }
 
         private void BtnSaveReplitWatcher_Click(object sender, RoutedEventArgs e)
