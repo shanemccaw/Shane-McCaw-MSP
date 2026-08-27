@@ -133,6 +133,10 @@ namespace BuildConsole
         private DispatcherTimer? _deployStatusTimer;
         private string? _lastSeenDeployCommitHash;
 
+        // ── Git #1417: local PostgreSQL Windows-service status poll ──────────────
+        private DispatcherTimer? _postgresStatusTimer;
+        private BuildConsole.Services.PostgresServiceStatus? _lastPostgresStatus;
+
         // ── Epic #803: auto deploy+verify+test on build completion ────────────────
         // The missing automation between "a queue build finished" and "its code is live
         // and tested". On QueueWatcherService.BuildFinished (success) it reuses the exact
@@ -537,6 +541,16 @@ namespace BuildConsole
             _deployStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
             _deployStatusTimer.Tick += async (_, _) => await PollDeployStatusAsync();
             _deployStatusTimer.Start();
+
+            // Git #1417 — local PostgreSQL Windows-service status: an always-visible
+            // status-bar segment (same dot+text convention as Deploy/Replit above),
+            // polled independently of SystemHealthService's DB-pipe check since that
+            // one goes red whenever the api-server itself is down too. 15s cadence —
+            // a Windows service query is cheap, but no need to hammer it every tick.
+            _postgresStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+            _postgresStatusTimer.Tick += async (_, _) => await RefreshPostgresStatusAsync();
+            _postgresStatusTimer.Start();
+            _ = RefreshPostgresStatusAsync();
 
             // Version status bar + auto-Update button (see MainWindow.VersionUpdate.cs):
             // live "Current: v{Major}.{Minor}.{build}" vs the build THIS instance was
@@ -3123,6 +3137,112 @@ namespace BuildConsole
         private void ReplitStatus_Click(object sender, MouseButtonEventArgs e)
         {
             BtnReplitRefresh_Click(sender, e);
+        }
+
+        /// <summary>
+        /// Git #1417 — polls the real local PostgreSQL Windows service (via
+        /// PostgresServiceMonitor, System.ServiceProcess.ServiceController under
+        /// the hood) and renders dot + text + a "Start" action in the status bar.
+        /// The Start button is only shown when the service is genuinely down
+        /// (Stopped/NotFound/Unknown) — never for Running/pending states.
+        /// </summary>
+        private async System.Threading.Tasks.Task RefreshPostgresStatusAsync()
+        {
+            BuildConsole.Services.PostgresServiceStatus status;
+            try
+            {
+                status = await BuildConsole.Services.PostgresServiceMonitor.CheckAsync();
+            }
+            catch (Exception ex)
+            {
+                status = new BuildConsole.Services.PostgresServiceStatus
+                {
+                    State = BuildConsole.Services.PostgresServiceState.Unknown,
+                    Summary = $"Error checking service: {ex.Message}",
+                    Details = ex.ToString(),
+                };
+            }
+
+            _lastPostgresStatus = status;
+            RenderPostgresStatus(status);
+        }
+
+        private void RenderPostgresStatus(BuildConsole.Services.PostgresServiceStatus status)
+        {
+            PostgresDot.Fill = status.State switch
+            {
+                BuildConsole.Services.PostgresServiceState.Running => DotReady,
+                BuildConsole.Services.PostgresServiceState.StartPending => DotLoading,
+                BuildConsole.Services.PostgresServiceState.StopPending => DotLoading,
+                BuildConsole.Services.PostgresServiceState.Stopped => DotError,
+                BuildConsole.Services.PostgresServiceState.NotFound => (Brush)FindResource("Surface2Brush"),
+                _ => DotError,
+            };
+
+            string label = status.State switch
+            {
+                BuildConsole.Services.PostgresServiceState.Running => $"Postgres: up ({status.ServiceName})",
+                BuildConsole.Services.PostgresServiceState.StartPending => "Postgres: starting…",
+                BuildConsole.Services.PostgresServiceState.StopPending => "Postgres: stopping…",
+                BuildConsole.Services.PostgresServiceState.Stopped => $"Postgres: DOWN ({status.ServiceName})",
+                BuildConsole.Services.PostgresServiceState.NotFound => "Postgres: service not found",
+                _ => $"Postgres: {status.Summary}",
+            };
+            PostgresStatusText.Text = label;
+            PostgresStatusText.ToolTip = $"{status.Details}\n\nClick to re-check now.";
+
+            bool canOfferStart = status.State == BuildConsole.Services.PostgresServiceState.Stopped
+                || status.State == BuildConsole.Services.PostgresServiceState.Unknown;
+            BtnPostgresStart.Visibility = canOfferStart ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void PostgresStatus_Click(object sender, MouseButtonEventArgs e)
+        {
+            _ = RefreshPostgresStatusAsync();
+        }
+
+        /// <summary>
+        /// Git #1417 — the one-click "Start" action. Invokes the real Windows
+        /// service-control start (PostgresServiceMonitor.StartAsync), which
+        /// re-checks the actual service state afterward before reporting success
+        /// — never assumes Start() succeeding means the DB is genuinely up.
+        /// Surfaces an elevation failure with a clear, actionable message rather
+        /// than failing silently.
+        /// </summary>
+        private async void BtnPostgresStart_Click(object sender, RoutedEventArgs e)
+        {
+            string? serviceName = _lastPostgresStatus?.ServiceName;
+            if (string.IsNullOrWhiteSpace(serviceName))
+            {
+                // NotFound/never-checked — re-check once to try to resolve a real name first.
+                await RefreshPostgresStatusAsync();
+                serviceName = _lastPostgresStatus?.ServiceName;
+            }
+            if (string.IsNullOrWhiteSpace(serviceName))
+            {
+                BuildConsole.Services.ActivityLog.Log("system.health", "Postgres Start clicked but no service name resolved — nothing to start.");
+                return;
+            }
+
+            BtnPostgresStart.IsEnabled = false;
+            PostgresStatusText.Text = "Postgres: starting…";
+            PostgresDot.Fill = DotLoading;
+            try
+            {
+                var (success, message) = await BuildConsole.Services.PostgresServiceMonitor.StartAsync(serviceName);
+                if (!success)
+                {
+                    PostgresStatusText.Text = $"Postgres: start failed — {message}";
+                    PostgresStatusText.ToolTip = message;
+                    PostgresDot.Fill = DotError;
+                    BuildConsole.Services.ActivityLog.Log("system.health", $"Postgres start FAILED: {message}");
+                }
+            }
+            finally
+            {
+                await RefreshPostgresStatusAsync();
+                BtnPostgresStart.IsEnabled = true;
+            }
         }
 
         /// <summary>Refresh icon next to the usage status text — triggers an immediate manual poll instead of waiting for the next scheduled cycle (Shane reports the automatic poll only lands ~25% of the time). Reuses the exact same polling logic as the timer via ClaudeUsageMeterService.ManualRefreshAsync; the service's own Polling-state emit (dot turns amber, "Checking claude.ai…" tooltip) is the in-progress feedback, so a click is never silent. Button is disabled for the duration so repeat clicks can't stack polls.</summary>

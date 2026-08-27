@@ -502,6 +502,8 @@
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- queue -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- local Postgres service (Git #1417) -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- deploy -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- replit watcher (Git #902) -->
@@ -548,7 +550,31 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="7"/>
+                <!-- Git #1417 — local PostgreSQL Windows-service status: Shane's own
+                     words, "I need a way in the WPF App to know when the Postgres
+                     service goes down, and turn it back on." Same dot+text status-bar
+                     convention as Deploy/Replit; the Start button only appears when the
+                     service is genuinely down (see RenderPostgresStatus). -->
                 <StatusBarItem Grid.Column="8">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Cursor="Hand" MouseLeftButtonUp="PostgresStatus_Click"
+                                ToolTip="Local PostgreSQL Windows service — click to re-check now">
+                        <Ellipse x:Name="PostgresDot" Width="8" Height="8"
+                                 Fill="{StaticResource Surface2Brush}"
+                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="PostgresStatusText" Text="Postgres: —" VerticalAlignment="Center"/>
+                        <Button x:Name="BtnPostgresStart"
+                                Style="{StaticResource PrimaryButton}"
+                                Content="▶ Start"
+                                FontSize="11" FontWeight="SemiBold"
+                                Padding="8,1" Margin="8,0,0,0"
+                                Visibility="Collapsed"
+                                Click="BtnPostgresStart_Click"
+                                ToolTip="Start the local PostgreSQL Windows service (net start / Start-Service). Requires an elevated BuildConsole if the service is owned by an admin-only ACL."/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="9"/>
+                <StatusBarItem Grid.Column="10">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                 Cursor="Hand" MouseLeftButtonUp="DeployStatus_Click"
                                 ToolTip="Click to rebuild &amp; redeploy latest local code to ShanesBuild">
@@ -574,12 +600,12 @@
                                 ToolTip="A newer BuildConsole build is committed locally — build &amp; deploy it to bin\ShanesBuild via deploy-shanesbuild.cmd. Deploys immediately when the Build Queue is clear, otherwise waits until it drains, then fires automatically."/>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="9"/>
+                <Separator Grid.Column="11"/>
                 <!-- Git #902 — Replit idle watcher status: unobtrusive dot + text, same
                      pattern as the Queue/Deploy indicators. Grey=off, green=watching/app up,
                      orange=checking/grace/waking, red=error. Tooltip carries last check &
                      last intervention times. -->
-                <StatusBarItem Grid.Column="10">
+                <StatusBarItem Grid.Column="12">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="ReplitDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -596,13 +622,13 @@
                         </Button>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="11"/>
+                <Separator Grid.Column="13"/>
                 <!-- Claude usage meter: always-visible percent used, with a smoothly-ticking
                      "resets in Xd Xh Xm" countdown appended only at 85%+. Shows a muted
                      placeholder when the meter can't be read (not logged in / page
                      changed). Green=fresh read, orange=polling, grey=unavailable,
                      red=error. Tooltip carries reset time + last-checked. -->
-                <StatusBarItem Grid.Column="12">
+                <StatusBarItem Grid.Column="14">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="UsageDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -617,9 +643,9 @@
                                 Click="BtnUsageRefresh_Click"/>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="13"/>
+                <Separator Grid.Column="15"/>
                 <!-- Claude Weekly usage meter -->
-                <StatusBarItem Grid.Column="14">
+                <StatusBarItem Grid.Column="16">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="WeeklyUsageDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -634,9 +660,9 @@
                                 Click="BtnWeeklyUsageRefresh_Click"/>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="15"/>
+                <Separator Grid.Column="17"/>
                 <!-- Claude Service Health Status (source: status.anthropic.com) -->
-                <StatusBarItem Grid.Column="16">
+                <StatusBarItem Grid.Column="18">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="ClaudeOnlineDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -653,8 +679,8 @@
                                 Click="BtnClaudeOnlineRefresh_Click"/>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="17"/>
-                <StatusBarItem Grid.Column="18" Padding="6,0,10,0">
+                <Separator Grid.Column="19"/>
+                <StatusBarItem Grid.Column="20" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>

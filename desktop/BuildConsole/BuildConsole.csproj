@@ -28,6 +28,7 @@
          Processor Time/_Total). Not in the .NET base class libraries since
          .NET Core — Windows-only, which is fine, this app is Windows-only WPF. -->
     <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="7.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
