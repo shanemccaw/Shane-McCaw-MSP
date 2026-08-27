@@ -10,10 +10,12 @@ import { createNotification } from "../lib/notification-center";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { requireAdmin, requireAdminOrIngestToken } from "../middlewares/requireAuth";
 import { executeMonitorCheck } from "../lib/monitor-executor";
+import { callPsExecution, PsExecutionError } from "../lib/ps-execution-client";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.signals" });
 const policyLog = logger.child({ channel: "engine.policy" });
 const systemLog = logger.child({ channel: "system.core" });
+const psLog = logger.child({ channel: "integration.ps-execution" });
 import { SIMULATOR_MANIFEST, simulatorStorage } from "../lib/simulator-events";
 import {
   ENGINE_DEFS,
@@ -1867,6 +1869,171 @@ router.post("/simulator/sql/execute", requireAdminOrIngestToken(), async (req: R
       actorUserId: req.user?.id ?? null,
     });
     return res.status(500).json({ error: err.message || "Failed to execute query" });
+  }
+});
+
+/**
+ * @route POST /api/simulator/ps-execution/cmdlet
+ * @desc Runs ONE allowlisted PowerShell cmdlet through the SAME real server code
+ *       path a real scan uses — lib/ps-execution-client.callPsExecution() → the
+ *       ca-ps-execution[-dev] container (#1404). Backs shaneapp://executeCmdlet so
+ *       a local build session can exercise the Security & Compliance / Exchange /
+ *       Teams cmdlets that make up the PowerShell-backed scan checks, WITHOUT ever
+ *       holding the raw ps-execution bearer secret — that secret is fetched
+ *       server-side by ps-execution-client, exactly as monitor-executor's
+ *       runPowerShellCheck() does. This closes #1400/#1389's remaining live-verify
+ *       gap (a session's own environment correctly refused to fetch that secret).
+ *
+ * REUSE, NOT A SECOND CLIENT: this calls callPsExecution() directly — the SAME
+ * function runPowerShellCheck() calls — so the Dev-vs-Production container
+ * selection (getContainerUrl → isProductionEnvironment, #1385: a dev api-server
+ * hits the isolated ca-ps-execution-dev, never production), the bearer-token/cert
+ * handling, and the container's fixed cmdlet allowlist all apply unchanged.
+ * `cmdletKey` resolves ONLY to a catalog entry container-side
+ * (services/ps-execution/cmdlet-catalog.ps1); an unknown key is the container's
+ * own 400 "unknown_cmdlet", never validated here.
+ *
+ * #965 TESTBED GATE (a server-side belt to shaneapp://executeCmdlet's own
+ * client-side TestbedGate): a real Connect-IPPSSession/Exchange/Teams sign-in
+ * against a tenant is a real confidentiality boundary, so — exactly like
+ * admin-baseline-templates' write gate — this refuses (403) unless the resolved
+ * tenant is a real isTestbed=true, active customer. `tenantId` may be the Entra
+ * tenant GUID or the numeric customer id. The Organization actually handed to
+ * Connect-* is derived from that GATED testbed tenant's own domain
+ * (tenants.domain, GUID fallback — exactly how runPowerShellCheck resolves it),
+ * NEVER from an unchecked caller value: a caller-supplied `organization` is
+ * honored only if it matches the gated tenant, so the sign-in can never be
+ * pointed at a different org than the one that passed the gate, and a caller can
+ * never override it through `params.Organization` either.
+ */
+router.post("/simulator/ps-execution/cmdlet", requireAdminOrIngestToken(), async (req: Request, res: Response) => {
+  const startedAt = Date.now();
+  const body = (req.body ?? {}) as {
+    cmdletKey?: unknown;
+    tenantId?: unknown;
+    organization?: unknown;
+    params?: unknown;
+  };
+
+  const cmdletKey = typeof body.cmdletKey === "string" ? body.cmdletKey.trim() : "";
+  const tenantArg = body.tenantId == null ? "" : String(body.tenantId).trim();
+  const callerOrg = typeof body.organization === "string" ? body.organization.trim() : "";
+  const callerParams =
+    body.params && typeof body.params === "object" && !Array.isArray(body.params)
+      ? (body.params as Record<string, unknown>)
+      : {};
+
+  if (!cmdletKey) {
+    return res.status(400).json({ ok: false, error: "A cmdletKey (an allowlisted ps-execution cmdlet key) is required." });
+  }
+  if (!tenantArg) {
+    return res.status(400).json({ ok: false, error: "A tenantId (a testbed tenant GUID or numeric customer id) is required." });
+  }
+
+  // ── #965 testbed gate + Organization resolution (the server is source of truth) ──
+  const numericId = /^\d+$/.test(tenantArg) ? Number(tenantArg) : null;
+  const [tenant] = await db
+    .select({
+      id: tenantsTable.id,
+      name: tenantsTable.customerName,
+      tenantId: tenantsTable.tenantId,
+      domain: tenantsTable.domain,
+      isTestbed: tenantsTable.isTestbed,
+      status: tenantsTable.status,
+    })
+    .from(tenantsTable)
+    .where(numericId != null ? eq(tenantsTable.id, numericId) : eq(tenantsTable.tenantId, tenantArg))
+    .limit(1);
+
+  if (!tenant) {
+    return res.status(404).json({ ok: false, error: `No tenant found for '${tenantArg}'.`, cmdletKey });
+  }
+  if (!tenant.isTestbed || tenant.status !== "active") {
+    return res.status(403).json({
+      ok: false,
+      error:
+        `Tenant '${tenant.name ?? tenantArg}' is not a confirmed isTestbed=true, active customer — refusing to run a real PowerShell cmdlet against a non-testbed tenant (#965).`,
+      cmdletKey,
+      customerId: tenant.id,
+      matchedCustomerName: tenant.name ?? null,
+    });
+  }
+
+  // Organization is the reserved tenant-identity field Connect-* needs
+  // (cmdlet-catalog.ps1) — the GATED testbed tenant's own domain, GUID fallback.
+  const organization = tenant.domain || tenant.tenantId || "";
+  const eqCI = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  if (
+    callerOrg &&
+    !eqCI(callerOrg, organization) &&
+    !eqCI(callerOrg, tenant.tenantId ?? "") &&
+    !eqCI(callerOrg, tenant.domain ?? "")
+  ) {
+    return res.status(400).json({
+      ok: false,
+      error:
+        `organization '${callerOrg}' does not match the resolved testbed tenant ('${organization}') — refusing (the sign-in target must be the gated testbed tenant).`,
+      cmdletKey,
+      customerId: tenant.id,
+      matchedCustomerName: tenant.name ?? null,
+    });
+  }
+
+  // params fill the cmdlet's allowed parameter VALUES only (the container-side
+  // allowlist decides which are honored); Organization is FORCED to the gated
+  // value so a caller can never override the sign-in target through params.
+  const params: Record<string, unknown> = { ...callerParams, Organization: organization };
+
+  try {
+    const { items, rawResponse } = await callPsExecution(cmdletKey, params);
+    const elapsedMs = Date.now() - startedAt;
+    psLog.info(
+      { cmdletKey, organization, customerId: tenant.id, itemCount: items.length, elapsedMs },
+      "ps-execution cmdlet (simulator) ok",
+    );
+    return res.json({
+      ok: true,
+      cmdletKey,
+      organization,
+      tenantId: tenant.tenantId,
+      customerId: tenant.id,
+      matchedCustomerName: tenant.name ?? null,
+      itemCount: items.length,
+      items,
+      rawResponse,
+      elapsedMs,
+    });
+  } catch (err) {
+    const elapsedMs = Date.now() - startedAt;
+    if (err instanceof PsExecutionError) {
+      // Map the container's failure kind to an HTTP status: a malformed check
+      // definition (script_error / bad request) is the caller's 400; an
+      // auth/cmdlet-availability/unreachable failure is an upstream 502.
+      const status = err.kind === "script_error" ? 400 : 502;
+      psLog.warn(
+        { cmdletKey, organization, customerId: tenant.id, kind: err.kind, containerErrorKind: err.containerErrorKind, elapsedMs },
+        "ps-execution cmdlet (simulator) failed",
+      );
+      return res.status(status).json({
+        ok: false,
+        error: err.message,
+        kind: err.kind,
+        containerErrorKind: err.containerErrorKind ?? null,
+        cmdletKey,
+        organization,
+        tenantId: tenant.tenantId,
+        customerId: tenant.id,
+        matchedCustomerName: tenant.name ?? null,
+        elapsedMs,
+      });
+    }
+    psLog.error({ err, cmdletKey, organization }, "ps-execution cmdlet (simulator) threw");
+    return res.status(500).json({
+      ok: false,
+      error: (err as Error)?.message || "ps-execution cmdlet failed",
+      cmdletKey,
+      elapsedMs,
+    });
   }
 });
 

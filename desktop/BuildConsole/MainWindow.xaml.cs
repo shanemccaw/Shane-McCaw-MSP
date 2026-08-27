@@ -6913,6 +6913,21 @@ namespace BuildConsole
                     return;
                 }
 
+                // executeCmdlet → run ONE allowlisted ps-execution PowerShell cmdlet (by its
+                // cmdlet-catalog key) against a testbed tenant, through the SAME server code path a
+                // real scan uses (POST /api/simulator/ps-execution/cmdlet → callPsExecution → the
+                // ca-ps-execution[-dev] container). #1404 — the agent never holds the raw bearer
+                // secret. See MainWindow.ShaneAppExecuteCmdlet.cs.
+                if (string.Equals(req.Action, "executeCmdlet", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action '{req.Action}' to executeCmdlet handler (src='{src}').");
+                    BuildConsole.Services.ShaneAppStreamService.Instance.BeginRun("PowerShell Cmdlet", $"Source: {src}");
+                    await HandleShaneAppExecuteCmdletAsync(req, src, ch);
+                    BuildConsole.Services.ShaneAppStreamService.Instance.EndRun(true, "Cmdlet completed");
+                    return;
+                }
+
                 // reportProgress → explicit progress report from running build
                 if (string.Equals(req.Action, "reportProgress", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(req.Action, "progress", StringComparison.OrdinalIgnoreCase))
@@ -6926,7 +6941,7 @@ namespace BuildConsole
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / reportProgress are handled. Ignoring.");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / executeCmdlet / reportProgress are handled. Ignoring.");
                     return;
                 }
 

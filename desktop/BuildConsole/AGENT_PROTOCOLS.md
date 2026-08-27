@@ -12,13 +12,15 @@ genuinely remote/CI caller uses plain HTTP.**
 | **Run a test manifest — remote/CI caller** | Git #898 HTTP (`/api/admin/deploy/test-run`) | For a caller **not** on this machine. Any HTTP‑capable agent calls it directly. Unchanged by `runTest`. |
 | **Run a tenant scan + get per‑finding results back** | `shaneapp://runScan` local protocol *(landing under local #59)* | Triggers a real diagnostics run, **settles it to completion**, and hands back the full **per‑finding** envelope — so the agent can diff each engine observation against an independent PowerShell ground‑truth read of the same tenant fact, not merely confirm "the scan ran". The whole point is the **comparison** (see **§5** below). |
 | **Run ONE individual check + get its observed values back** | `shaneapp://executeScan` local protocol *(local #60)* | Triggers exactly **one** monitor check by its real `monitor_checks` key — Simulator Studio's "M365 Endpoints" per‑check Run — against a **testbed** tenant, settles that single run, and returns the check's own **observed output** (`extractedProperties`, item/page counts, severity, raw captured items). The granular sibling of `runScan` (which runs the whole aggregate scan); same dual‑verification purpose (**§5**), pointed at one check. See **§7**. |
+| **Run ONE allowlisted PowerShell cmdlet + get its raw output back** | `shaneapp://executeCmdlet` local protocol *(#1404)* | Runs exactly **one** allowlisted `ps-execution` cmdlet by its **cmdlet‑catalog key** (e.g. `get-connection-info`, `get-cs-online-user`) against a **testbed** tenant, through the **SAME server code path a real scan uses** (`callPsExecution` → the `ca-ps-execution[-dev]` container — the identical call `runPowerShellCheck()` makes). The agent **never holds the raw ps‑execution bearer secret** (the exact gap that blocked #1400/#1389's manual verify) — it's fetched server‑side, just like `executeSql` for DB creds. See **§9**. |
 | **Report explicit build progress** | `shaneapp://reportProgress` local protocol | Explicitly reports a running build's current step, total steps, and phase description (`step=N&total=M&label=...`) directly to BuildConsole's Build Watch slots and Progress Tracker. Replaces brittle free-form text inference. See **§8**. |
 
 ---
 
 ## 0. Waiting for a `shaneapp://` result — foreground + bounded (read before copying any poll loop below)
 
-Every `shaneapp://` action here (executeSql, runTest, executeScan, runScan) is
+Every `shaneapp://` action here (executeSql, runTest, executeScan, runScan,
+executeCmdlet) is
 **fire‑and‑settle**: `Start-Process` triggers it and returns immediately, then the
 agent **waits for a result file** BuildConsole writes when the work settles. How you
 wait is the whole ballgame — get it wrong and the session hangs forever even though
@@ -1021,4 +1023,193 @@ node scripts/report-progress.mjs <buildId> <step> <total> "<label>"
 - **Stale-progress notice (Git #1206):** if an in-progress build reports no new step for longer than `BuildProgressReport.StaleThreshold` (3 min), the phase card shows a soft "⚠ No progress update in Xm" line (re-evaluated off wall-clock time by a 10s timer, independent of whether a report arrives). It clears the moment a fresh report lands, and never appears on a completed build (`step == total`). This makes a quiet panel read as honestly-stale rather than looking frozen; it does not force an agent to report.
 - **Queue Panel:** Displays queue-wide token & cost usage at a glance (`🪙 Xk tokens · ~$Y.YY`).
 - **Activity Log:** Structured trace on `build.progress` channel.
+
+---
+
+## 9. `shaneapp://executeCmdlet` — local SINGLE PowerShell-cmdlet trigger (#1404)
+
+Runs exactly **ONE** allowlisted `ps-execution` PowerShell cmdlet — by its real
+**cmdlet‑catalog key** (`services/ps-execution/cmdlet-catalog.ps1`, e.g.
+`get-connection-info`, `get-dlp-policies`, `get-cs-online-user`) — against a
+**testbed** tenant, and writes ONE result envelope carrying the cmdlet's real
+returned output. It is the **raw‑cmdlet** companion to `executeScan` (§7): where
+`executeScan` runs a whole `monitor_checks` check (Graph request → mapping →
+severity → persistence), `executeCmdlet` runs just the underlying Security &
+Compliance / Exchange / Teams cmdlet and hands back its own output — the exact
+cmdlets that back the platform's PowerShell scan checks (DLP/labels #212, audit
+retention #754, Teams phone #1253).
+
+### Why it exists (Shane's own words)
+> *"we need a shaneapp:// or MCP update so the agent can run these… they are part
+> of the scan system… the agent should be able to execute them itself using the
+> same code path as the scanners."*
+
+#1400/#1389 fixed the ps‑execution container's MSAL assembly conflict
+(subprocess‑per‑request isolation), but the live proof — a `get-connection-info`
+compliance request immediately followed by a `get-cs-online-user` teams request
+against the same warm `ca-ps-execution-dev` replica — was **blocked** because a
+Claude Code session's own environment correctly **refused to fetch the raw
+`ps-execution-bearer-token` secret** (a reasonable live‑credential guardrail).
+`executeCmdlet` is the right fix: it routes through the **same already‑authenticated
+server code path the scan system uses**, which fetches/holds that secret
+**server‑side** — the agent never sees it, exactly the safety pattern `executeSql`
+already uses for DB credentials.
+
+### Reuse, not reimplementation
+`executeCmdlet` is a **courier**, not a second ps‑execution client. It calls the
+api‑server route **`POST /api/simulator/ps-execution/cmdlet`**
+(`artifacts/api-server/src/routes/admin-engines.ts`) via
+`Services/CmdletExecutionClient.cs`; that route calls
+`lib/ps-execution-client.callPsExecution()` — **the identical function
+`monitor-executor.runPowerShellCheck()` calls** for a real PowerShell scan check.
+Everything that matters lives server‑side and is therefore inherited unchanged:
+
+- **The raw bearer secret + cert handling** — fetched once from Key Vault by
+  `ps-execution-client`, never exposed to the calling agent.
+- **Environment‑aware container selection (#1385)** — `getContainerUrl()` picks
+  `PS_EXECUTION_CONTAINER_URL_DEV` (the isolated `ca-ps-execution-dev`) whenever
+  the api‑server isn't the production tier, and **never** falls back to the
+  production container from a dev context. Because `executeCmdlet` targets the
+  configured **dev** api‑server (`devBaseUrl`, `http://localhost:8080`), a local
+  build session's cmdlet run hits the **dev** container automatically — it cannot
+  accidentally touch the production `ca-ps-execution`.
+- **The cmdlet allowlist** — `cmdletKey` resolves ONLY to a fixed, code‑owned
+  catalog entry container‑side; an unknown key is the container's own 400
+  `unknown_cmdlet`, never something the agent can smuggle a script string past.
+
+### The double #965 testbed gate (never a real customer tenant)
+A real `Connect-IPPSSession`/`Connect-ExchangeOnline`/`Connect-MicrosoftTeams`
+sign‑in against a tenant is a real confidentiality boundary, so it is gated **two
+independent ways**:
+1. **BuildConsole side**, before any HTTP call — `Services/TestbedGate`
+   (`ResolveTestbedTargetAsync`, fail‑closed), the SAME #965 gate
+   `executeScan`/`graphTests`/`powerShellVerify` use, resolving the
+   caller‑supplied `tenantId` against the server's live `isTestbed=true` list.
+2. **Server side**, in the route — it re‑resolves the tenant, **refuses (403)**
+   anything that isn't a real `isTestbed=true`, `active` customer, and derives the
+   `Organization` handed to `Connect-*` from **that gated testbed tenant's own
+   domain** (`tenants.domain`, GUID fallback — exactly how `runPowerShellCheck`
+   resolves it). A caller‑supplied `organization` is honored **only if it matches**
+   the gated tenant, and `params.Organization` can never override it — so the
+   sign‑in can never be pointed at a different org than the one that passed the gate.
+
+### The invocation contract
+
+```
+shaneapp://executeCmdlet?cmdletKey=<catalog key>&tenantId=<testbed tenant GUID or customer id>&organization=<optional tenant domain>&resultRef=<optional out path>&src=<optional caller tag>
+```
+
+| Query param | Required | Meaning |
+|-------------|----------|---------|
+| `cmdletKey` | **yes** | The `ps-execution` cmdlet‑catalog key to run, e.g. `get-connection-info`, `get-cs-online-user`. Resolved container‑side against the fixed allowlist. |
+| `tenantId` | **yes** | The **testbed** target — the Entra tenant GUID **or** the numeric customer id (`tenants.id`). Resolved + #965‑gated against the server's live testbed list, both client‑ and server‑side. |
+| `organization` | no | The tenant **domain** for `Connect-*` (e.g. `mccawsoft2.onmicrosoft.com`). Optional — the server derives it from the gated testbed tenant when omitted; if supplied it MUST match that tenant (else the run is refused). |
+| `resultRef` | no | Path to write the JSON result envelope to. Defaults to `%TEMP%\shaneapp-executeCmdlet-<cmdletKey>.result.json` (cmdlet key filename‑sanitized). |
+| `src` | no | Free‑text caller tag, logged verbatim as the source (`unknown` when absent). |
+
+The action name is the URI **authority** (`executeCmdlet`); it is case‑insensitive.
+
+### How to invoke it (PowerShell)
+
+```powershell
+$cmdlet = "get-connection-info"                       # a real cmdlet-catalog key
+$tenant = "<your-testbed-tenant-GUID-or-customer-id>"
+$out    = Join-Path $env:TEMP "shaneapp-executeCmdlet-get-connection-info.result.json"
+Remove-Item $out -ErrorAction SilentlyContinue        # clear any stale result first
+
+Start-Process ("shaneapp://executeCmdlet?src=claude-code" +
+  "&cmdletKey=" + [uri]::EscapeDataString($cmdlet) +
+  "&tenantId="  + [uri]::EscapeDataString($tenant) +
+  "&resultRef=" + [uri]::EscapeDataString($out))
+
+# A real Connect-* sign-in + per-request child pwsh cold-start (#1400) is seconds-scale.
+# Bounded FOREGROUND wait for the settled result file — see §0 (run with tool timeout 600000).
+$r = Wait-ShaneAppResult -Path $out -DeadlineSec 240
+"{0}: {1} items in {2}ms" -f (@{$true='OK';$false='FAIL'}[$r.ok]), $r.itemCount, $r.elapsedMs
+$r.items        # ← the cmdlet's OWN returned output, to diff vs an independent read
+```
+
+### The result envelope
+
+Written to `resultRef` (or the temp default). Top‑line `ok`/`error` a CLI agent can
+branch on immediately, the resolved testbed target, and the cmdlet's own returned
+output (`items` + `rawResponse` are the load‑bearing dual‑verification fields):
+
+```jsonc
+{
+  "ok": true,                      // false if the gate refused / it couldn't run / the cmdlet errored
+  "error": null,                   // the refusal / failure reason, else null
+  "action": "executeCmdlet",
+  "source": "claude-code",         // whatever ?src= was
+  "ranAtUtc": "2026-08-27T...Z",
+  "cmdletKey": "get-connection-info",
+  "organization": "mccawsoft2.onmicrosoft.com",  // the org the SERVER connected with (gated tenant's domain)
+  "tenantId": "<as supplied>",
+  "customerId": 1,                 // resolved tenants.id (the gate target)
+  "matchedCustomerName": "…",      // the testbed customer the gate matched
+  "kind": null,                    // on failure: ps-execution-client's discriminator
+                                   //   (unreachable | auth_failed | script_error | cmdlet_unavailable)
+  "containerErrorKind": null,      // on failure: the container's own `error` field, when present
+  "itemCount": 1,                  // number of items the cmdlet returned
+  "items": [ … ],                  // ← THE CMDLET'S OWN RETURNED OUTPUT — diff THIS vs an independent read
+  "rawResponse": { … },            // the container's raw JSON body (array or single object), un-normalized
+  "elapsedMs": 3120,               // client-side round-trip wall clock (connect handshake INCLUDED)
+  "serverElapsedMs": 3010          // server-side time around callPsExecution
+}
+```
+
+> **Where the real `childElapsedMs` is.** #1400 has each child `pwsh` spawn log its
+> own wall‑clock `childElapsedMs` to the **container's** console/Log Analytics — that
+> is the pure per‑request cold‑start number. The envelope's `elapsedMs` /
+> `serverElapsedMs` are the end‑to‑end round trip (child cold‑start **plus** the
+> `Connect-*` handshake **plus** HTTP), a strict upper bound on it; read the
+> container log's `childElapsedMs` field for the isolated spawn cost.
+
+### Completing #1400/#1389's live verification (the reason this shipped)
+Run the two cmdlets that exercise **different** session types against the **same
+warm** `ca-ps-execution-dev` replica — a compliance connect immediately followed by
+a teams connect. Both succeeding is the exact proof the subprocess‑per‑request MSAL
+fix works (the old single‑process design would fail whichever session type hit a
+replica second):
+
+```powershell
+$tenant = "<testbed-tenant-GUID>"   # the tenant the ps-execution app cert is registered for
+foreach ($c in "get-connection-info","get-cs-online-user") {
+  $out = Join-Path $env:TEMP "shaneapp-executeCmdlet-$c.result.json"
+  Remove-Item $out -ErrorAction SilentlyContinue
+  Start-Process ("shaneapp://executeCmdlet?src=claude-code&cmdletKey=$c&tenantId=" +
+    [uri]::EscapeDataString($tenant) + "&resultRef=" + [uri]::EscapeDataString($out))
+  $r = Wait-ShaneAppResult -Path $out -DeadlineSec 240
+  "{0} → {1} ({2}ms, kind={3})" -f $c, (@{$true='OK';$false='FAIL'}[$r.ok]), $r.elapsedMs, $r.kind
+}
+```
+
+`get-connection-info` uses the **compliance** session (`Connect-IPPSSession`);
+`get-cs-online-user` uses the **teams** session (`Connect-MicrosoftTeams`) — the two
+modules whose conflicting `Microsoft.Identity.Client` versions #1389 was about. Two
+`OK`s = fix confirmed live.
+
+### Settle & non‑hang guarantee
+The route is synchronous (`callPsExecution` returns the cmdlet body directly — no
+fire‑and‑forget run to poll), so `executeCmdlet` writes its envelope as soon as the
+call returns. **Every** failure path (missing `cmdletKey`/`tenantId`, a refused gate,
+a non‑testbed/org‑mismatch 4xx, a `PsExecutionError` from the container, or any thrown
+exception) still writes an envelope, so an agent's file poll never hangs.
+
+### Logging
+Every invocation lands on the same **`sql-runner.protocol`** ActivityLog channel as
+`executeSql`/`runTest`/`runScan`/`executeScan` (real cmdlet key, real tenant, real
+outcome: gate result, ok/fail, elapsed ms, result path — or the exact reason it
+couldn't run). The #965 gate additionally logs its pass/refuse on
+`testing.testbed-gate`, and the server route logs the cmdlet key / org / outcome on
+the `integration.ps-execution` channel (the same channel `ps-execution-client` uses).
+
+### One‑time setup
+1. The **same** `shaneapp://` registration `executeSql` uses
+   (`setup-shaneapp-protocol.ps1`) already covers `executeCmdlet` — the scheme is
+   registered once, all actions ride it. No extra setup.
+2. The dev api‑server must be on this feature's code and have
+   `PS_EXECUTION_CONTAINER_URL_DEV` set (the isolated `ca-ps-execution-dev`
+   endpoint, #1385) plus reachability to Key Vault for the bearer secret — the
+   same prerequisites a real dev‑tier PowerShell scan check already needs.
 

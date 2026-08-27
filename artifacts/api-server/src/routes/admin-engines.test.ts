@@ -49,13 +49,43 @@ vi.mock("@workspace/db", () => ({
   savedSqlScripts: { id: "id" },
 }));
 
-vi.mock("../middlewares/requireAuth", () => ({
-  requireAdmin: (req: express.Request, res: express.Response, next: express.NextFunction) => {
+// requireAdmin AND requireAdminOrIngestToken are both exported by the real module;
+// several routes here (e.g. /simulator/sql/execute, /simulator/ps-execution/cmdlet)
+// gate with requireAdminOrIngestToken() — a factory returning the middleware — so the
+// mock must expose it too, or importing the router throws at route-registration time.
+vi.mock("../middlewares/requireAuth", () => {
+  const gate = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const auth = req.headers["authorization"] ?? "";
     if (auth === `Bearer ${ADMIN_PASS}`) return next();
     res.status(401).json({ error: "Unauthorized" });
-  },
-}));
+  };
+  return {
+    requireAdmin: gate,
+    requireAdminOrIngestToken: () => gate,
+  };
+});
+
+// The ps-execution container client is mocked so /simulator/ps-execution/cmdlet
+// (#1404) never makes a real network call. A real PsExecutionError class is exported
+// so the route's `err instanceof PsExecutionError` branch is exercised for real.
+const mockCallPsExecution = vi.hoisted(() => vi.fn());
+vi.mock("../lib/ps-execution-client", () => {
+  class PsExecutionError extends Error {
+    kind: string;
+    cmdletKey: string;
+    containerErrorKind?: string;
+    rawBody?: string;
+    constructor(kind: string, cmdletKey: string, message: string, opts?: { containerErrorKind?: string; rawBody?: string }) {
+      super(message);
+      this.name = "PsExecutionError";
+      this.kind = kind;
+      this.cmdletKey = cmdletKey;
+      this.containerErrorKind = opts?.containerErrorKind;
+      this.rawBody = opts?.rawBody;
+    }
+  }
+  return { callPsExecution: mockCallPsExecution, PsExecutionError };
+});
 
 vi.mock("../lib/logger", () => ({
   // `child` included because lib/run-history.ts — which the SQL and migration
@@ -312,13 +342,24 @@ describe("POST /simulator/fire-event", () => {
 });
 
 describe("POST /simulator/sql/execute", () => {
-  it("rejects queries with destructive commands", async () => {
+  it("permits destructive commands — #702 is deliberately full read/write, no prohibition", async () => {
+    // The route comment is explicit: "full read/write, no restrictions, by his own
+    // explicit choice after being walked through the risk. Development server, not
+    // production." There is no destructive-command guard, so a DROP runs like any
+    // other statement (this assertion previously expected a guard that never existed;
+    // it was only ever hidden because the whole file crashed at import — see the
+    // requireAdminOrIngestToken mock).
+    const { pool } = await import("@workspace/db");
+    const mockQuery = vi.fn().mockResolvedValue({ rows: [], rowCount: 0, fields: [] });
+    (pool as any).connect = vi.fn().mockResolvedValue({ query: mockQuery, release: vi.fn() });
+
     const res = await request(app)
       .post("/simulator/sql/execute")
       .set(authHeader)
       .send({ query: "DROP TABLE users;" });
-    expect(res.status).toBe(400);
-    expect(res.body.error).toContain("prohibited");
+    expect(res.status).toBe(200);
+    expect(res.body.statements).toHaveLength(1);
+    expect(res.body.statements[0].success).toBe(true);
   });
 
   it("executes a query and returns a per-statement result array", async () => {
@@ -397,5 +438,143 @@ describe("POST /simulator/session-lock", () => {
     expect(res.body.success).toBe(true);
     expect(res.body.locked).toBe(true);
     expect(mockUpdate).toHaveBeenCalled();
+  });
+});
+
+describe("POST /simulator/ps-execution/cmdlet (#1404)", () => {
+  // Helper: point db.select(...).from(...).where(...).limit(...) at one tenant row.
+  const stubTenant = async (row: Record<string, unknown> | null) => {
+    const { db } = await import("@workspace/db");
+    vi.spyOn(db, "select").mockReturnValue({
+      from: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          limit: vi.fn().mockResolvedValue(row ? [row] : []),
+        }),
+      }),
+    } as any);
+  };
+
+  const TESTBED = {
+    id: 1,
+    name: "Testbed Co",
+    tenantId: "11111111-1111-1111-1111-111111111111",
+    domain: "mccawsoft2.onmicrosoft.com",
+    isTestbed: true,
+    status: "active",
+  };
+
+  it("returns 401 without auth", async () => {
+    const res = await request(app).post("/simulator/ps-execution/cmdlet").send({ cmdletKey: "get-connection-info", tenantId: "1" });
+    expect(res.status).toBe(401);
+  });
+
+  it("400 when cmdletKey is missing", async () => {
+    const res = await request(app).post("/simulator/ps-execution/cmdlet").set(authHeader).send({ tenantId: "1" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("cmdletKey");
+  });
+
+  it("400 when tenantId is missing", async () => {
+    const res = await request(app).post("/simulator/ps-execution/cmdlet").set(authHeader).send({ cmdletKey: "get-connection-info" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("tenantId");
+  });
+
+  it("404 when the tenant is not found", async () => {
+    await stubTenant(null);
+    const res = await request(app).post("/simulator/ps-execution/cmdlet").set(authHeader).send({ cmdletKey: "get-connection-info", tenantId: "999" });
+    expect(res.status).toBe(404);
+    expect(mockCallPsExecution).not.toHaveBeenCalled();
+  });
+
+  it("403 (#965 gate) when the tenant is not a testbed", async () => {
+    await stubTenant({ ...TESTBED, isTestbed: false });
+    const res = await request(app).post("/simulator/ps-execution/cmdlet").set(authHeader).send({ cmdletKey: "get-connection-info", tenantId: "1" });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain("isTestbed");
+    expect(mockCallPsExecution).not.toHaveBeenCalled();
+  });
+
+  it("403 (#965 gate) when the tenant is testbed but not active", async () => {
+    await stubTenant({ ...TESTBED, status: "onboarding" });
+    const res = await request(app).post("/simulator/ps-execution/cmdlet").set(authHeader).send({ cmdletKey: "get-connection-info", tenantId: "1" });
+    expect(res.status).toBe(403);
+    expect(mockCallPsExecution).not.toHaveBeenCalled();
+  });
+
+  it("400 when a supplied organization does not match the gated testbed tenant", async () => {
+    await stubTenant(TESTBED);
+    const res = await request(app)
+      .post("/simulator/ps-execution/cmdlet")
+      .set(authHeader)
+      .send({ cmdletKey: "get-connection-info", tenantId: "1", organization: "attacker.onmicrosoft.com" });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("does not match");
+    expect(mockCallPsExecution).not.toHaveBeenCalled();
+  });
+
+  it("200 runs the cmdlet, forces Organization to the gated tenant's domain, and returns its output", async () => {
+    await stubTenant(TESTBED);
+    mockCallPsExecution.mockResolvedValue({ items: [{ Name: "IPPS" }], rawResponse: [{ Name: "IPPS" }] });
+
+    const res = await request(app)
+      .post("/simulator/ps-execution/cmdlet")
+      .set(authHeader)
+      .send({ cmdletKey: "get-connection-info", tenantId: "1", params: { Foo: "bar" } });
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.cmdletKey).toBe("get-connection-info");
+    expect(res.body.organization).toBe(TESTBED.domain);
+    expect(res.body.customerId).toBe(1);
+    expect(res.body.itemCount).toBe(1);
+    expect(res.body.items).toEqual([{ Name: "IPPS" }]);
+
+    // Organization is FORCED to the gated tenant's domain (never overridable via params).
+    expect(mockCallPsExecution).toHaveBeenCalledWith("get-connection-info", { Foo: "bar", Organization: TESTBED.domain });
+  });
+
+  it("a caller cannot override Organization through params", async () => {
+    await stubTenant(TESTBED);
+    mockCallPsExecution.mockResolvedValue({ items: [], rawResponse: [] });
+
+    await request(app)
+      .post("/simulator/ps-execution/cmdlet")
+      .set(authHeader)
+      .send({ cmdletKey: "get-connection-info", tenantId: "1", params: { Organization: "attacker.onmicrosoft.com" } });
+
+    expect(mockCallPsExecution).toHaveBeenCalledWith("get-connection-info", { Organization: TESTBED.domain });
+  });
+
+  it("resolves by numeric customer id as well as tenant GUID", async () => {
+    await stubTenant(TESTBED);
+    mockCallPsExecution.mockResolvedValue({ items: [], rawResponse: [] });
+    const res = await request(app)
+      .post("/simulator/ps-execution/cmdlet")
+      .set(authHeader)
+      .send({ cmdletKey: "get-cs-online-user", tenantId: TESTBED.tenantId });
+    expect(res.status).toBe(200);
+  });
+
+  it("502 maps a PsExecutionError auth_failed to an upstream failure with its kind", async () => {
+    await stubTenant(TESTBED);
+    const { PsExecutionError } = await import("../lib/ps-execution-client");
+    mockCallPsExecution.mockRejectedValue(
+      new PsExecutionError("auth_failed", "get-connection-info", "Could not establish a session", { containerErrorKind: "auth_failed" }),
+    );
+    const res = await request(app).post("/simulator/ps-execution/cmdlet").set(authHeader).send({ cmdletKey: "get-connection-info", tenantId: "1" });
+    expect(res.status).toBe(502);
+    expect(res.body.ok).toBe(false);
+    expect(res.body.kind).toBe("auth_failed");
+    expect(res.body.containerErrorKind).toBe("auth_failed");
+  });
+
+  it("400 maps a PsExecutionError script_error to a caller error", async () => {
+    await stubTenant(TESTBED);
+    const { PsExecutionError } = await import("../lib/ps-execution-client");
+    mockCallPsExecution.mockRejectedValue(new PsExecutionError("script_error", "get-connection-info", "bad_request"));
+    const res = await request(app).post("/simulator/ps-execution/cmdlet").set(authHeader).send({ cmdletKey: "get-connection-info", tenantId: "1" });
+    expect(res.status).toBe(400);
+    expect(res.body.kind).toBe("script_error");
   });
 });
