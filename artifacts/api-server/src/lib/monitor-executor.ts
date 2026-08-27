@@ -26,7 +26,8 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, desc, gte } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked, getInitialDomainForTenant } from "./graph";
-import { collectDrift, type DriftAttribution } from "./drift-collector.ts";
+import { maybeCollectDriftForCheck, type DriftAttribution } from "./drift-collector.ts";
+import { driftSpecForCheck } from "./drift-check-specs.ts";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client";
 import {
   getTenantSharingCapability,
@@ -132,6 +133,46 @@ async function buildCaChangeRequestAttribution(
     crRef: `CR-${cr.id}`,
   };
   return () => attribution;
+}
+
+/**
+ * The universal drift hook every executor path calls once its scan is complete
+ * (#1287). #1283 hard-coded a single inline collectDrift for Conditional Access
+ * in the graph path; this generalises it: a check is drift-tracked iff it has a
+ * spec in drift-check-specs.ts, and the spec (not this function) knows how to
+ * turn that check's `items`/`extracted`/`status` into a stable comparable config
+ * — or an honest reason it can't. Kept deliberately non-fatal: a monitoring scan
+ * must never fail because drift bookkeeping did, so every failure is caught and
+ * logged, never propagated.
+ *
+ * `items` is whatever that path treats as the collected configuration — the raw
+ * Graph items for graph/powershell/sharepoint-admin/dns, or the NORMALISED
+ * per-source-item rows (`combinedItems`) for a fan-out, which is the shape the
+ * fan-out's own mapping already counts.
+ */
+async function collectDriftForCompletedCheck(
+  check: MonitorCheck,
+  tenantId: string,
+  items: unknown[],
+  extracted: Record<string, unknown>,
+  status: CheckResult["status"],
+): Promise<void> {
+  try {
+    const spec = driftSpecForCheck(check.key);
+    if (!spec) return; // not a drift-tracked check — an intended no-op, not a gap
+    const attributionFor =
+      spec.attribution === "ca-change-request"
+        ? await buildCaChangeRequestAttribution(tenantId)
+        : undefined;
+    await maybeCollectDriftForCheck({
+      checkKey: check.key,
+      tenantId,
+      scan: { items, extracted, status },
+      attributionFor,
+    });
+  } catch (err) {
+    log.warn({ err, tenantId, checkKey: check.key }, "monitor-executor: drift collection failed (non-fatal)");
+  }
 }
 
 /**
@@ -1769,6 +1810,14 @@ async function runPowerShellCheck(opts: {
   const severityRules = (check.severityRules ?? []) as SeverityRule[];
   const severityMatch = classifySeverity(severityRules, extracted);
 
+  // Configuration Drift (#1287) — the hook is present on the PowerShell path so
+  // any deterministic-config PS check (DLP/label/transport-rule definitions) can
+  // be drift-tracked with a one-line drift-check-specs.ts entry once its cmdlet
+  // output shape is confirmed stable. No PS check has a spec yet (see the
+  // registry's note on non-deterministic operational readings), so this is a
+  // no-op today — but the executor type is wired, not skipped.
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
+
   // The container's contract (#210) is one synchronous request/response — no
   // @odata.nextLink, no CSV — so pageCount is always 1.
   const pageCount = 1;
@@ -1974,6 +2023,12 @@ async function runSharePointAdminCheck(opts: {
   const severityRules = (check.severityRules ?? []) as SeverityRule[];
   const severityMatch = classifySeverity(severityRules, extracted);
 
+  // Configuration Drift (#1287) — sharepoint:tenant-sharing-capability is
+  // drift-tracked: the tenant-wide sharing-capability enum is the most stable
+  // drift signal there is, and a change to it is a single `replace` at
+  // /sharingCapability. Non-fatal, opt-in per check via drift-check-specs.ts.
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
+
   // One CSOM round trip, one answer — there is no paging concept here, so
   // pageCount is always 1 (same reasoning as the PowerShell path).
   const pageCount = 1;
@@ -2139,6 +2194,12 @@ async function runDnsCheck(opts: {
 
   const severityRules = (check.severityRules ?? []) as SeverityRule[];
   const severityMatch = classifySeverity(severityRules, extracted);
+
+  // Configuration Drift (#1287) — exchange:dkim-spf-dmarc-status is drift-tracked:
+  // the SPF/DMARC record strings and the DKIM selectors found are a deterministic
+  // public-DNS posture, so an edited record or a vanished DKIM key is a `replace`.
+  // Non-fatal, opt-in per check via drift-check-specs.ts.
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
 
   // One DNS lookup set, one answer — no paging concept here either.
   const pageCount = 1;
@@ -2413,6 +2474,15 @@ async function runFanOutCheck(opts: {
   const severityRules = (check.severityRules ?? []) as SeverityRule[];
   const severityMatch = classifySeverity(severityRules, extracted);
 
+  // Configuration Drift (#1287) — fan-out checks diff the NORMALISED per-site
+  // rows (`combinedItems`), keyed by site id, so a newly overshared site is an
+  // `add` and a revoked share a `replace`. Crucially the REAL run `status` is
+  // passed: an incomplete/truncated fan-out is refused by the spec's coverage
+  // guard (recorded as not_comparable with a specific reason) rather than
+  // diffing a partial site set and fabricating "shares were revoked". Today:
+  // compliance:eeeu-site-sharing (External Sharing Drift, #1333).
+  await collectDriftForCompletedCheck(check, tenantId, combinedItems, extracted, status);
+
   const pageCount = enumResult.pageCount + perItemPageTotal;
   const rawResponse = {
     _format: "fanOut",
@@ -2605,21 +2675,6 @@ export async function executeMonitorCheck(opts: {
       check.requestBody as unknown,
     );
 
-    // 1b. Configuration Drift (#1270/#1283) — CA-domain checks only, additive
-    // and non-fatal. Hooked BEFORE applyMapping and diffed against the raw
-    // `items`, not `extracted`: `extracted` is narrowed to whatever this
-    // check's mapping/properties pull out for severity classification, which
-    // is a lossy view of the tenant's actual policy configuration. Drift
-    // needs the real config, so it diffs the raw Graph response.
-    if (check.key === "identity:ca-policy-count") {
-      try {
-        const attributionFor = await buildCaChangeRequestAttribution(tenantId);
-        await collectDrift(tenantId, "ca-policy", { policies: items }, { attributionFor });
-      } catch (err) {
-        log.warn({ err, tenantId, checkKey: check.key }, "monitor-executor: drift collection failed (non-fatal)");
-      }
-    }
-
     // 2. Property extraction + mapping
     const mapping = (check.mapping ?? []) as MappingRule[];
     const properties = (check.properties ?? []) as string[];
@@ -2640,6 +2695,12 @@ export async function executeMonitorCheck(opts: {
     // 4. Severity classification
     const severityRules = (check.severityRules ?? []) as SeverityRule[];
     const severityMatch = classifySeverity(severityRules, extracted);
+
+    // 4b. Configuration Drift (#1270/#1283/#1287) — additive, non-fatal, opt-in
+    // per check via drift-check-specs.ts. Diffs the RAW `items` (the real config)
+    // not the lossy mapped `extracted`. Graph checks with a spec today:
+    // identity:ca-policy-count and governance:public-teams-discoverable.
+    await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
 
     // 5. Persist result
     const profileId = await persistCheckProfile(persistProfile, {

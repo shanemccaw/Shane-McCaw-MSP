@@ -1450,6 +1450,55 @@ export const DASHBOARD_METRICS: MetricDef[] = [
     status: "available",
     smartEligible: false,
   },
+  // #1287 — the first non-CA domains with REAL collectors (drift-check-specs.ts).
+  // eeeu-site-sharing (fan-out) is what Governance's "External Sharing Drift" card
+  // (#1333) consumes; public-teams-discoverable (graph), tenant-sharing-capability
+  // (sharepoint-admin) and email-authentication (dns) prove the engine spans every
+  // executor type, not just Graph.
+  {
+    key: "drift.externalSiteSharingDriftCount",
+    label: "External Site Sharing Drift",
+    valueType: "event-list",
+    shape: "timeline",
+    sourceType: "monitor_profile",
+    sourceKey: "drift:eeeu-site-sharing",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "drift.publicTeamsDriftCount",
+    label: "Public Teams Drift",
+    valueType: "event-list",
+    shape: "timeline",
+    sourceType: "monitor_profile",
+    sourceKey: "drift:public-teams-discoverable",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "drift.tenantSharingCapabilityDriftCount",
+    label: "Tenant Sharing Capability Drift",
+    valueType: "event-list",
+    shape: "timeline",
+    sourceType: "monitor_profile",
+    sourceKey: "drift:tenant-sharing-capability",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
+  {
+    key: "drift.emailAuthenticationDriftCount",
+    label: "Email Authentication Drift",
+    valueType: "event-list",
+    shape: "timeline",
+    sourceType: "monitor_profile",
+    sourceKey: "drift:email-authentication",
+    scope: "customer",
+    status: "available",
+    smartEligible: false,
+  },
 
   // ---- Dynamics 365 -----------------------------------------------------
   {

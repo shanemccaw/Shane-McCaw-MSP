@@ -88,6 +88,7 @@ import {
   tenantEngineSnapshotsTable,
   driftEventsTable,
   driftBaselineSnapshotsTable,
+  driftCollectionStatusTable,
 } from "@workspace/db";
 import { and, eq, desc, gte, inArray, sql, count } from "drizzle-orm";
 import type { MetricDef, MetricShape, MetricScope, MetricValueType } from "@workspace/dashboard-registry";
@@ -663,7 +664,11 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
  * (sourceKey "drift:ca-policy" → domain "ca-policy"). Produced by
  * drift-collector.ts.
  *
- * Honest three-way outcome, matching this file's zero-vs-no-data principle:
+ * Honest outcome, matching this file's zero-vs-no-data principle:
+ *   - a scan RAN but couldn't be diffed (#1287, e.g. a fan-out that hit its
+ *     coverage cap) → not_available("not_comparable") with the SPECIFIC reason
+ *     the collector recorded, so the UI never shows a silent gap or a fabricated
+ *     "no drift" for a domain that genuinely can't be compared this run.
  *   - no baseline captured for the domain → not_available("no_data"): the tenant
  *     has never been scanned for this domain's drift (distinct from a real zero).
  *   - baseline exists, no events in window → ok with `events: []` + zeroRows:
@@ -679,6 +684,22 @@ async function resolveDriftEvents(def: MetricDef, tenantId: string, ctx: Resolve
     .where(and(eq(driftBaselineSnapshotsTable.tenantId, tenantId), eq(driftBaselineSnapshotsTable.domainKey, domainKey)))
     .limit(1);
   if (!baseline) {
+    // Before falling back to the generic "never scanned" answer, check whether a
+    // scan actually ran but could not produce a comparable config this run — that
+    // is a distinct, honest state the collector records with a specific reason.
+    const [status] = await db
+      .select({ status: driftCollectionStatusTable.status, reason: driftCollectionStatusTable.reason })
+      .from(driftCollectionStatusTable)
+      .where(and(eq(driftCollectionStatusTable.tenantId, tenantId), eq(driftCollectionStatusTable.domainKey, domainKey)))
+      .limit(1);
+    if (status && (status.status === "not_comparable" || status.status === "error")) {
+      return notAvailable(
+        def,
+        status.status === "error" ? "collection_error" : "not_comparable",
+        status.reason ??
+          `drift for "${def.sourceKey}" could not be compared on the most recent scan`,
+      );
+    }
     return notAvailable(
       def,
       "no_data",
