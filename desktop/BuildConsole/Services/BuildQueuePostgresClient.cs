@@ -191,10 +191,14 @@ namespace BuildConsole.Services
 
             var items = new List<QueueItem>();
             await using var conn = await OpenAsync();
-            await using var cmd = new NpgsqlCommand(sql, conn);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-                items.Add(MapRow(reader));
+            await using (var cmd = new NpgsqlCommand(sql, conn))
+            {
+                await using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                        items.Add(MapRow(reader));
+                }
+            }
             await PopulateAssociatedIssueNumbersAsync(items, conn);
             return items;
         }
