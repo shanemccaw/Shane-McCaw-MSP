@@ -4623,6 +4623,60 @@ export type DriftEvent = typeof driftEventsTable.$inferSelect;
 export type InsertDriftEvent = typeof driftEventsTable.$inferInsert;
 export type InsertPortalOwnershipRow = typeof portalOwnershipRowsTable.$inferInsert;
 
+// ── drift_collection_status (Git #1287) ──────────────────────────────────────
+//
+// Per (tenant, domain) record of the MOST RECENT drift-collection attempt, so a
+// domain that was scanned but could not be diffed does not read as "never
+// scanned". The drift engine (#1270/#1283) originally only distinguished three
+// outcomes via the resolver (no baseline / clean / events); extending drift to
+// every executor type (#1287) introduced a fourth, honest outcome — a scan ran
+// but a stable before/after comparison genuinely could not be made this run
+// (e.g. a fan-out site scan that hit its coverage cap, so the un-scanned sites
+// would falsely read as removed shares). That MUST surface as a specific reason,
+// not a silent gap and not a fabricated "no drift detected" — this table is
+// where that reason lives, upserted on every collection attempt.
+//
+// status:
+//   - tracked            — drift was diffed against a baseline this run (events may be 0).
+//   - baseline_captured  — first scan of this domain; the baseline was captured, no events yet.
+//   - not_comparable     — a scan ran but no stable diff could be made (see `reason`).
+//   - error              — the collection attempt itself failed (see `reason`).
+export const DRIFT_COLLECTION_STATUSES = [
+  "tracked",
+  "baseline_captured",
+  "not_comparable",
+  "error",
+] as const;
+export type DriftCollectionStatus = (typeof DRIFT_COLLECTION_STATUSES)[number];
+
+export const driftCollectionStatusTable = pgTable("drift_collection_status", {
+  id: serial("id").primaryKey(),
+  /** TEXT M365 tenant id (same keying as drift_events / tenant_monitor_profiles). */
+  tenantId: text("tenant_id").notNull(),
+  /** Bare drift domain slug, e.g. "eeeu-site-sharing" (metric sourceKey minus "drift:"). */
+  domainKey: text("domain_key").notNull(),
+  /** The monitor_checks.key whose scan drives this domain's drift, for provenance. */
+  checkKey: text("check_key"),
+  status: text("status", { enum: DRIFT_COLLECTION_STATUSES }).notNull(),
+  /**
+   * Honest, specific human reason when status is not_comparable/error — e.g.
+   * "site scan truncated at the fan-out cap (500/812 eligible sites scanned)".
+   * NULL for tracked / baseline_captured (nothing to explain).
+   */
+  reason: text("reason"),
+  /** Optional coverage/diagnostic detail (scanned/total/truncated/run status). */
+  coverage: jsonb("coverage").$type<Record<string, unknown>>(),
+  /** How many new drift events this run inserted (0 for clean/not_comparable). */
+  eventsInserted: integer("events_inserted").notNull().default(0),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("drift_collection_status_tenant_domain_uniq").on(t.tenantId, t.domainKey),
+]);
+
+export type DriftCollectionStatusRow = typeof driftCollectionStatusTable.$inferSelect;
+export type InsertDriftCollectionStatusRow = typeof driftCollectionStatusTable.$inferInsert;
+
 // ============================================================================
 // Customer-Tenant Alert Rules (Git #1278)
 // ============================================================================
