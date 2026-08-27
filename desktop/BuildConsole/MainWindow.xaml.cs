@@ -4723,15 +4723,20 @@ namespace BuildConsole
                 BuildConsole.Services.BuildConsoleSettings.Load().DefaultAccount,
                 "secondary", StringComparison.OrdinalIgnoreCase);
 
+            // Git #1423: secondary state was a solid full-brightness MauveBrush fill (#CBA6F7),
+            // reading as harsh bright purple/magenta — the same class of regression already fixed
+            // once in ae7316606 ("Subtle dark ambient polish"), which moved Focus/Immersive off
+            // pink/mauve onto the palette's muted COOL accent (Blue #89B4FA) as a dark surface with
+            // a blue border/text accent, never a solid bright fill. Mirror that same treatment here.
             TopAccountToggleText.Text = secondary ? "Secondary" : "Primary";
             TopAccountToggleBorder.Background = secondary
-                ? (System.Windows.Media.Brush)FindResource("MauveBrush")
+                ? (System.Windows.Media.Brush)FindResource("Surface1Brush")
                 : (System.Windows.Media.Brush)FindResource("Surface0Brush");
             TopAccountToggleBorder.BorderBrush = secondary
-                ? (System.Windows.Media.Brush)FindResource("MauveBrush")
+                ? (System.Windows.Media.Brush)FindResource("BlueBrush")
                 : (System.Windows.Media.Brush)FindResource("Surface1Brush");
             TopAccountToggleText.Foreground = secondary
-                ? (System.Windows.Media.Brush)FindResource("CrustBrush")
+                ? (System.Windows.Media.Brush)FindResource("BlueBrush")
                 : (System.Windows.Media.Brush)FindResource("TextBrush");
             TopAccountToggleBorder.ToolTip = secondary
                 ? "Account: SECONDARY — new builds launch against Shane's overflow Pro account (CLAUDE_CONFIG_DIR override). Click to switch new builds back to primary."
