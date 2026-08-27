@@ -122,6 +122,7 @@ import PortalV2SecurityEvidencePage from "@/pages/portal-v2-security-evidence";
 import PortalV2ComplianceGapsPage from "@/pages/portal-v2-compliance-gaps";
 import PortalV2ComplianceDecisionsPage from "@/pages/portal-v2-compliance-decisions";
 import PortalV2ComplianceObligationsPage from "@/pages/portal-v2-compliance-obligations";
+import PortalV2ComplianceAreaPage from "@/pages/portal-v2-cmp-area";
 import PortalV2GovAreaPage from "@/pages/portal-v2-gov-area";
 import ConsentDeclinedPage from "@/pages/consent-declined";
 import ConsentSuccessPage from "@/pages/consent-success";
@@ -854,6 +855,16 @@ function SlugInnerSwitch() {
       </Route>
       <Route path="/portal-v2/compliance/obligations">
         <ProtectedRoute component={PortalV2ComplianceObligationsPage} />
+      </Route>
+      {/* Compliance cluster-area drill-down (Git #1388). Every Compliance pillar
+          area card links to "/portal-v2/compliance/<area>"; before this route
+          those were true 404s, because Compliance had no ":area" fallback (unlike
+          Governance's ":area" wildcard just above). Declared AFTER the three
+          literal compliance sub-routes so wouter's source-order match keeps them
+          from being swallowed by this param route — the same ordering discipline
+          the Governance block uses. */}
+      <Route path="/portal-v2/compliance/:area">
+        <ProtectedRoute component={PortalV2ComplianceAreaPage} />
       </Route>
       {/* ═══════════════════════════════════════════════════════════════════
           PORTAL-V2 ROUTE INSERTION POINT — ADD NEW /portal-v2 ROUTES ABOVE.
