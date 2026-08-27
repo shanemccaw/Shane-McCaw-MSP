@@ -23,6 +23,7 @@ namespace BuildConsole
         public string FinalPrompt { get; private set; } = "";
         public string? FinalTitle { get; private set; }
         public string? FinalModel { get; private set; }
+        public string? FinalCli { get; private set; }
         public string? FinalEffort { get; private set; }
         public string? FinalCwd { get; private set; }
         /// <summary>Build Sets — the optional `--buildSet &lt;name&gt;` header flag. When present,
@@ -245,6 +246,7 @@ namespace BuildConsole
 
             FinalPrompt = rest;
             FinalModel = flags.GetValueOrDefault("model");
+            FinalCli = flags.GetValueOrDefault("cli");
             FinalEffort = flags.GetValueOrDefault("effort");
             FinalCwd = flags.GetValueOrDefault("cwd");
             FinalMode = flags.GetValueOrDefault("mode");

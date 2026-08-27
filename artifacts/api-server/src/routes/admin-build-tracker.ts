@@ -1413,7 +1413,7 @@ router.get("/admin/build-tracker/extension/in-progress", ingestAuth, async (_req
  * Auth: admin session cookie OR Authorization: Bearer <BUILD_TRACKER_INGEST_TOKEN>
  */
 router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Request, res: Response) => {
-  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber, blockedByNumbers, resumeSessionId, originatingChatId, chatUrl, buildSet } = req.body as {
+  const { title, prompt, model, effort, cwd, githubNumber, blockedByNumber, blockedByNumbers, resumeSessionId, originatingChatId, chatUrl, buildSet, cli } = req.body as {
     title?: string;
     prompt?: string;
     model?: string | null;
@@ -1429,6 +1429,7 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
     /** Full chat URL when queued from a chat */
     chatUrl?: string | null;
     buildSet?: string | null;
+    cli?: string | null;
   };
   if (!title?.trim() || !prompt?.trim()) {
     res.status(400).json({ error: "title and prompt are required" });
@@ -1489,6 +1490,7 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
             originatingChatId: originatingChatId?.trim() || null,
             chatUrl: chatUrl?.trim() || null,
             buildSet: buildSet?.trim() || null,
+            cli: cli?.trim() || null,
             status: "queued",
             claimedAt: null,
             completedAt: null,
@@ -1515,6 +1517,7 @@ router.post("/admin/build-tracker/extension/queue", ingestAuth, async (req: Requ
           originatingChatId: originatingChatId?.trim() || null,
           chatUrl: chatUrl?.trim() || null,
           buildSet: buildSet?.trim() || null,
+          cli: cli?.trim() || null,
         })
         .returning();
     }

@@ -102,6 +102,7 @@ namespace BuildConsole
             public string? ChatUrl { get; set; }
             public string? OriginatingChatId { get; set; }
             public string? BuildSet { get; set; }
+            public string? Cli { get; set; }
         }
 
         /// <summary>
@@ -152,7 +153,7 @@ namespace BuildConsole
         private bool PersistQueueRequestDuringPendingUpdate(
             string title, string prompt, string? model, string? effort, string? cwd,
             int? githubNumber, List<int>? blockedByNumbers, string? chatUrl = null, string? originatingChatId = null,
-            string? buildSet = null)
+            string? buildSet = null, string? cli = null)
         {
             var pending = LoadPersistedQueueRequests();
             pending.Add(new PersistedQueueRequest
@@ -167,6 +168,7 @@ namespace BuildConsole
                 ChatUrl = chatUrl,
                 OriginatingChatId = originatingChatId,
                 BuildSet = buildSet,
+                Cli = cli,
             });
 
             try
@@ -355,7 +357,7 @@ namespace BuildConsole
                 try
                 {
                     await _queueDb.QueueBuildAsync(
-                        req.Title, req.Prompt, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers, chatUrl: req.ChatUrl, originatingChatId: req.OriginatingChatId, buildSet: req.BuildSet);
+                        req.Title, req.Prompt, req.Model, req.Effort, req.Cwd, req.GithubNumber, req.BlockedByNumbers, chatUrl: req.ChatUrl, originatingChatId: req.OriginatingChatId, buildSet: req.BuildSet, cli: req.Cli);
                     PendingUpdateQueueDiag(
                         $"Re-queued persisted request \"{req.Title}\" after the update restart (attempt {attempt}/{ReplayMaxAttemptsPerItem}, direct Postgres).");
                     return true;

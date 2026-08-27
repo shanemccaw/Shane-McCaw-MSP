@@ -156,6 +156,7 @@ namespace BuildConsole.Services
         private readonly int _maxConcurrent;
         private readonly string _repoRoot;
         private readonly string _claudeExe;
+        private readonly string _geminiExe;
         private readonly Dictionary<int, RunningEntry> _running = new();
         /// <summary>Interactive builds that have exited but whose slot may still be on screen — kept so the Build Watch window can drain the final output tail and hold the slot in interactive-render mode (never falling back to a double-rendering file-tail). Evicted when the window dismisses the slot (ReleaseInteractive) or capped defensively.</summary>
         private readonly Dictionary<int, RunningEntry> _retained = new();
@@ -198,6 +199,7 @@ namespace BuildConsole.Services
             _maxConcurrent = maxConcurrent;
             _repoRoot = repoRoot ?? AppDomain.CurrentDomain.BaseDirectory;
             _claudeExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
+            _geminiExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "gemini.exe");
             _paused = BuildConsoleSettings.Load().QueuePaused;
         }
 
@@ -352,9 +354,9 @@ namespace BuildConsole.Services
         {
             if (_timer != null || _starting) return;
             _starting = true;
-            if (!File.Exists(_claudeExe))
+            if (!File.Exists(_claudeExe) && !File.Exists(_geminiExe))
             {
-                ActivityLog.Log("watcher", $"claude.exe not found at {_claudeExe} - in-app watcher disabled.");
+                ActivityLog.Log("watcher", $"Neither claude.exe nor gemini.exe was found - in-app watcher disabled.");
                 return;
             }
             ActivityLog.Log("watcher", $"In-app build queue watcher starting - max {_maxConcurrent} concurrent, polling every 10s.");
@@ -794,9 +796,23 @@ namespace BuildConsole.Services
                 workDir = _repoRoot;
             }
 
+            string exeToRun = _claudeExe;
+            if (string.Equals(item.Cli, "gemini", StringComparison.OrdinalIgnoreCase))
+            {
+                exeToRun = _geminiExe;
+            }
+
+            if (!File.Exists(exeToRun))
+            {
+                string name = Path.GetFileName(exeToRun);
+                ActivityLog.Log("watcher", $"{name} not found at {exeToRun} - launch failed for queue #{item.Id}.");
+                await MarkLaunchFailedAsync(item.Id, $"{name} not found at {exeToRun}");
+                return;
+            }
+
             var psi = new ProcessStartInfo
             {
-                FileName = _claudeExe,
+                FileName = exeToRun,
                 WorkingDirectory = workDir,
                 UseShellExecute = false,
                 RedirectStandardOutput = true,

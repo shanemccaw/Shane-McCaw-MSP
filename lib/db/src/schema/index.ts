@@ -4402,6 +4402,7 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   originatingChatId: text("originating_chat_id"),
   /** Full Claude chat URL when queued from a chat */
   chatUrl:         text("chat_url"),
+  cli:             text("cli"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

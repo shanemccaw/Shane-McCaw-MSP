@@ -185,7 +185,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set
+                       originating_chat_id, chat_url, updated_at, build_set, cli
                 FROM bt_build_queue
                 ORDER BY created_at ASC";
 
@@ -221,7 +221,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set
+                       originating_chat_id, chat_url, updated_at, build_set, cli
                 FROM bt_build_queue
                 WHERE status = 'queued'
                 ORDER BY created_at ASC";
@@ -271,7 +271,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set";
+                          originating_chat_id, chat_url, updated_at, build_set, cli";
 
             var claimed = new List<QueueItem>();
             await using (var reader = await claimCmd.ExecuteReaderAsync())
@@ -298,7 +298,7 @@ namespace BuildConsole.Services
         public async Task<QueueItem> QueueBuildAsync(
             string title, string prompt, string? model, string? effort, string? cwd,
             int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null,
-            string? chatUrl = null, string? originatingChatId = null, string? buildSet = null)
+            string? chatUrl = null, string? originatingChatId = null, string? buildSet = null, string? cli = null)
         {
             var titleTrimmed = title.Trim();
             var modelTrimmed = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
@@ -307,6 +307,7 @@ namespace BuildConsole.Services
             var buildSetTrimmed = string.IsNullOrWhiteSpace(buildSet) ? null : buildSet.Trim();
             var originatingChatIdTrimmed = string.IsNullOrWhiteSpace(originatingChatId) ? null : originatingChatId.Trim();
             var chatUrlTrimmed = string.IsNullOrWhiteSpace(chatUrl) ? null : chatUrl.Trim();
+            var cliTrimmed = string.IsNullOrWhiteSpace(cli) ? null : cli.Trim();
 
             var allBlockers = (blockedByNumbers ?? new List<int>()).Distinct().ToList();
             int? firstBlocker = allBlockers.Count > 0 ? allBlockers[0] : null;
@@ -335,22 +336,23 @@ namespace BuildConsole.Services
                     await using var updateCmd = new NpgsqlCommand(@"
                         UPDATE bt_build_queue
                            SET title = @title, prompt = @prompt, model = @model, effort = @effort, cwd = @cwd,
-                               build_set = @buildSet,
+                               build_set = @buildSet, cli = @cli,
                                blocked_by_number = @blockedByNumber, blocked_by_numbers = @blockedByNumbers,
                                resume_session_id = @resumeSessionId, originating_chat_id = @originatingChatId,
                                chat_url = @chatUrl, status = 'queued', claimed_at = NULL, completed_at = NULL,
                                exit_code = NULL, updated_at = NOW()
-                         WHERE id = @id
+                          WHERE id = @id
                         RETURNING id, title, prompt, model, effort, cwd,
                                   github_number, blocked_by_number, blocked_by_numbers,
                                   status, exit_code, session_id, resume_session_id,
-                                  originating_chat_id, chat_url, updated_at, build_set", conn);
+                                  originating_chat_id, chat_url, updated_at, build_set, cli", conn);
                     updateCmd.Parameters.AddWithValue("@title", titleTrimmed);
                     updateCmd.Parameters.AddWithValue("@prompt", prompt);
                     updateCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@effort", (object?)effortTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@buildSet", (object?)buildSetTrimmed ?? DBNull.Value);
+                    updateCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
                     updateCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
                     updateCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
                     { Value = (object?)blockerArray ?? DBNull.Value });
@@ -369,15 +371,15 @@ namespace BuildConsole.Services
                     INSERT INTO bt_build_queue
                         (title, prompt, model, effort, cwd, github_number,
                          blocked_by_number, blocked_by_numbers, resume_session_id,
-                         originating_chat_id, chat_url, build_set)
+                         originating_chat_id, chat_url, build_set, cli)
                     VALUES
                         (@title, @prompt, @model, @effort, @cwd, @githubNumber,
                          @blockedByNumber, @blockedByNumbers, @resumeSessionId,
-                         @originatingChatId, @chatUrl, @buildSet)
+                         @originatingChatId, @chatUrl, @buildSet, @cli)
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
-                              originating_chat_id, chat_url, updated_at, build_set", conn);
+                              originating_chat_id, chat_url, updated_at, build_set, cli", conn);
                 insertCmd.Parameters.AddWithValue("@title", titleTrimmed);
                 insertCmd.Parameters.AddWithValue("@prompt", prompt);
                 insertCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
@@ -391,6 +393,7 @@ namespace BuildConsole.Services
                 insertCmd.Parameters.AddWithValue("@resumeSessionId", (object?)resumeSessionId ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@originatingChatId", (object?)originatingChatIdTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
                 await using var reader = await insertCmd.ExecuteReaderAsync();
                 await reader.ReadAsync();
                 row = MapRow(reader);
@@ -524,7 +527,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set", conn);
+                          originating_chat_id, chat_url, updated_at, build_set, cli", conn);
             cmd.Parameters.AddWithValue("@id", id);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
@@ -633,7 +636,7 @@ namespace BuildConsole.Services
             // id, title, prompt, model, effort, cwd,
             // github_number, blocked_by_number, blocked_by_numbers,
             // status, exit_code, session_id, resume_session_id,
-            // originating_chat_id, chat_url, updated_at, build_set
+            // originating_chat_id, chat_url, updated_at, build_set, cli
             var blockedByNumbersRaw = r.IsDBNull(8) ? null : r.GetValue(8) as int[];
             return new QueueItem
             {
@@ -656,6 +659,7 @@ namespace BuildConsole.Services
                 ChatUrl           = r.IsDBNull(14) ? null : r.GetString(14),
                 UpdatedAt         = r.IsDBNull(15) ? null : r.GetFieldValue<DateTimeOffset>(15),
                 BuildSet          = r.IsDBNull(16) ? null : r.GetString(16),
+                Cli               = r.IsDBNull(17) ? null : r.GetString(17),
             };
         }
 
