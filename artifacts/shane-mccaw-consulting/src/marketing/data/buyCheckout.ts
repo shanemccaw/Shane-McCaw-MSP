@@ -16,8 +16,8 @@
 //     an "Advisory" $900/5hrs tier — `architect-advisory-retainer` has had a live `services` row
 //     since 2026-08-25's recovery, alongside the three fixed hour-based tiers (Essentials/Growth/
 //     Enterprise at $1,500/$3,000/$5,500). The four are reproduced here because the Buy design is a
-//     self-contained checkout; incoming ?tier= from /retainers is one of essentials/growth/enterprise
-//     (which match), and Advisory is reachable only by direct link or as the default fallback.
+//     self-contained checkout; `key` on each tier is the real database slug (matching what
+//     Retainers.tsx sends as ?tier=), not display shorthand — see Git #1379.
 
 import { PACKS as QS_PACKS } from "./quickStartPacks";
 
@@ -82,10 +82,10 @@ export interface RetTier {
 }
 
 export const RET_TIERS: RetTier[] = [
-  { key: "advisory", name: "Advisory", price: 900, desc: "5 hours a month. A name to call before something goes wrong." },
-  { key: "essentials", name: "Essentials", price: 1500, desc: "8 hours a month. Real architectural guidance, not a help desk." },
-  { key: "growth", name: "Growth", price: 3000, desc: "16 hours a month. An architect who owns initiatives." },
-  { key: "enterprise", name: "Enterprise", price: 5500, desc: "30 hours a month. FTE-level architecture, without the hire." },
+  { key: "architect-advisory-retainer", name: "Advisory", price: 900, desc: "5 hours a month. A name to call before something goes wrong." },
+  { key: "architect-essentials-retainer", name: "Essentials", price: 1500, desc: "8 hours a month. Real architectural guidance, not a help desk." },
+  { key: "architect-growth-retainer", name: "Growth", price: 3000, desc: "16 hours a month. An architect who owns initiatives." },
+  { key: "architect-enterprise-retainer", name: "Enterprise", price: 5500, desc: "30 hours a month. FTE-level architecture, without the hire." },
 ];
 
 // ── Packs: name + price sourced from the canonical Quick-Start fixture; the Buy page carries its
