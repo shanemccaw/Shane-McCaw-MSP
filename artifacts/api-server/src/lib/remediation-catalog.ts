@@ -92,6 +92,7 @@ export const PACK_KEY_BY_SERVICE_SLUG: Record<string, string> = {
   "identity-hygiene-pack-v1": "identity-hygiene-v1",
   "mfa-enforcement-pack-v1": "mfa-enforcement-v1",
   "privileged-access-pack-v1": "privileged-access-v1",
+  "sharepoint-oversharing-pack-v1": "sharepoint-oversharing-v1",
 };
 
 /** The minimal shape of a `services` row this resolver needs. */
