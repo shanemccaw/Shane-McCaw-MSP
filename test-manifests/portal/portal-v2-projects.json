@@ -85,10 +85,11 @@
       "sessionTag": "1399-honest-dataState"
     },
     {
-      "name": "PJ16 -- the footer offers the real deep link into Change Control, and the Billing pointer. The footer is generic page chrome, unaffected by dataState.",
+      "name": "PJ16 (#1408) -- FooterActions no longer renders outside the dataState conditional. The unenrolled TEST_PORTAL_EMAIL account (dataState 'unconfigured') gets ONLY the honest empty state -- no fixture CR number/SOW/docs links leaking below it.",
       "action": "expect",
       "selector": "[data-testid='pv2-projects-footer']",
-      "textContains": "Fee, invoices and milestone releases live in Billing"
+      "state": "absent",
+      "sessionTag": "1408-footer-honest-gate"
     },
     {
       "name": "PJ17 -- the ungrouped Projects nav row exists (above the Pillars group, beside My Architect).",

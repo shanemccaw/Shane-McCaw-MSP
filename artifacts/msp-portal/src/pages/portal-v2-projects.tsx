@@ -872,10 +872,10 @@ export default function PortalV2ProjectsPage() {
             />
 
             <TaskBoard openTask={openTask} onToggle={(id) => setOpenTask((cur) => (cur === id ? null : id))} tasks={live.tasks} />
+
+            <FooterActions />
           </>
         )}
-
-        <FooterActions />
       </div>
     </PortalV2Shell>
   );
