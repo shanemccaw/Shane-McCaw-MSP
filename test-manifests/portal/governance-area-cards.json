@@ -1,0 +1,70 @@
+{
+  "feature": "Customer Portal v2 — Governance pillar area-card grid wired to REAL per-check scan data (Git #1333). Replaces the GOV_AREA_LINKS fixture's fabricated per-card scores/deltas/sparklines (#1330) with the tenant's real tenant_monitor_profiles counts for the ten confirmed-real Governance checks, read via GET /api/portal/governance/areas. The four cards with no backing check today — External Sharing Drift (a scan-to-scan drift check, blocked on #1287) and the three Devices cards — render an honest '—' no-data state instead of a fake number.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "ca638ef58",
+
+  "notes": [
+    "THE API TEST IS THE REAL CONTRACT. SETUP+A1 exercise GET /api/portal/governance/areas and prove it returns one entry per confirmed-real card with a real value/prevValue/status; A1 extracts the App Governance card's live count, which the DOM step G1 then asserts is the number actually rendered on the card — an apiTests extract + uiStep textContains DOM-integration proof, not a captureResponse.",
+    "areas[] order is GOV_AREA_CHECK_DEFS order: oversharing(0), public-teams(1), channels(2), guests(3), group-owners(4), team-owners(5), orphaned-groups(6), orphaned-teams(7), app-access(8), pim(9). app-access maps to appgov:risky-permission-grants, which on the testbed tenant carries a real graded 'warning' severity and a non-zero count — the most robust real-value card to assert.",
+    "G2 is the HONEST no-data proof: External Sharing Drift has no backing check (pending #1287's drift engine), so its card value renders a literal '—', never a fabricated number. Same for the three Devices cards — deliberately not wired (no confirmed check).",
+    "The route is a direct tenant_monitor_profiles read (no war-room engine recompute), so it resolves fast — no >=90s element-wait needed, unlike the hero-score manifest.",
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the Portal origin, e.g. http://localhost:5175 — its /api proxies to the api-server), TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG.",
+    "PRECONDITION: needs the api-server running WITH this issue's new /portal/governance/areas route (i.e. after the build-complete redeploy) — the route is registered in routes/index.ts. Until then the endpoint 404s and every card falls back to the honest '—' no-data state, so G1 (the real-value assertion) will not match while G2 still passes."
+  ],
+
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the TESTBED Assessment account; extract the bearer.",
+      "sessionTag": "gov-area-cards-1333",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "A1 -- GET the real area-card data. area[8] is App Governance (appgov:risky-permission-grants); extract its REAL live count, which the card renders.",
+      "sessionTag": "gov-area-cards-1333",
+      "method": "GET",
+      "path": "/api/portal/governance/areas",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.areas[8].checkKey", "value": "appgov:risky-permission-grants" },
+      "extract": { "as": "appGovValue", "jsonPath": "$.areas[8].value" }
+    },
+    {
+      "name": "A2 -- the App Governance card has real data (hasData true) — it is a wired card, not a no-data fallback.",
+      "sessionTag": "gov-area-cards-1333",
+      "method": "GET",
+      "path": "/api/portal/governance/areas",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.areas[8].hasData", "value": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "name": "goto login", "sessionTag": "gov-area-cards-1333", "action": "goto", "target": "/portal/login" },
+    { "name": "wait for login form", "sessionTag": "gov-area-cards-1333", "action": "expect", "selector": "#email", "state": "visible" },
+    { "sessionTag": "gov-area-cards-1333", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "gov-area-cards-1333", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "login", "sessionTag": "gov-area-cards-1333", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto Governance pillar", "sessionTag": "gov-area-cards-1333", "action": "goto", "target": "/portal/{{TEST_PORTAL_SLUG}}/portal-v2/governance" },
+    {
+      "name": "G1 -- REAL: the App Governance card shows the live per-check count ({{appGovValue}}) from GET /portal/governance/areas, not a fixture number.",
+      "sessionTag": "gov-area-cards-1333",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-area-value-governance-app-access']",
+      "state": "visible",
+      "textContains": "{{appGovValue}}"
+    },
+    {
+      "name": "G2 -- HONEST NO-DATA: External Sharing Drift has no backing check (pending #1287), so the card renders a literal '—', never a fabricated score.",
+      "sessionTag": "gov-area-cards-1333",
+      "action": "expect",
+      "selector": "[data-testid='pv2-gov-area-value-governance-sharing-drift']",
+      "state": "visible",
+      "textContains": "—"
+    }
+  ]
+}
