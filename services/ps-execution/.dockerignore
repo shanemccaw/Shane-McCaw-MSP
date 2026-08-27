@@ -1,3 +1,6 @@
 **
 !Dockerfile
 !entrypoint.ps1
+!common.ps1
+!cmdlet-catalog.ps1
+!child-worker.ps1

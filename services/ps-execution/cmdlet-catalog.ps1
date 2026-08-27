@@ -1,0 +1,541 @@
+# cmdlet-catalog.ps1 — dot-sourced by both entrypoint.ps1 (the long-lived
+# parent dispatcher, which only needs it to fail fast on an unknown
+# cmdletKey before spawning a child) and child-worker.ps1 (the fresh-per-
+# request child, which uses it to actually resolve and invoke the cmdlet).
+# Extracted unchanged from the pre-#1400 single-process entrypoint.ps1 as
+# part of #1400's subprocess-per-request restructuring — the catalog itself
+# and its security posture (cmdletKey resolves ONLY to an entry here, never
+# to a script string from the request) are untouched by that restructuring.
+#
+# cmdletKey (from the request body) resolves ONLY to an entry here — never
+# to a script string from the request itself. This is the security
+# boundary #209's design calls out explicitly: a PS-backed check does not
+# have the "bounded, read-only Graph REST call" ceiling a malformed Graph
+# endpoint string has, so what-code-runs stays code-owned, not DB/request
+# driven. `AllowedParams` is the per-cmdlet parameter-name allowlist —
+# `params` in the request can only fill values for names on this list,
+# never add new ones or influence which cmdlet runs.
+#
+# get-connection-info: trivial, read-only placeholder that still exercises
+# the full path (connect, invoke, capture, disconnect) end to end —
+# Get-ConnectionInformation lists the current process's own open EXO/IPPS
+# sessions, no tenant mail or compliance data involved. #210/#211 verified
+# this live.
+#
+# The four #212 entries below are the real DLP/Label checks. Two catalog
+# entry fields beyond Cmdlet/AllowedParams exist ONLY because these real
+# cmdlets need them (get-connection-info needed neither):
+#   - ResultProperty: some cmdlets don't return the item collection
+#     directly — their result is a wrapper object with the real data
+#     JSON-encoded inside one property. When set, the dispatcher reads
+#     $result.<ResultProperty> and, if it's a string, ConvertFrom-Json's it
+#     before anything downstream sees it.
+#   - PostFilter: a code-owned (never DB/request-driven) predicate
+#     scriptblock run over the item collection before the response is
+#     built. This exists because monitor-executor.ts's applyMapping()
+#     unconditionally sets `_itemCount = items.length` — there is no
+#     post-fetch filtering stage on the api-server side for PS-backed
+#     checks the way Graph checks get `$filter` via filterParams — so a
+#     check whose whole point is "count of policies/labels IN A BAD STATE"
+#     has to arrive pre-filtered, and filtering here (code) rather than via
+#     a request param keeps the #209 what-code-runs-stays-code-owned
+#     boundary intact: PostFilter is picked by cmdletKey, never by
+#     anything in the request body.
+$script:CmdletCatalog = @{
+    "get-connection-info" = @{
+        Cmdlet         = "Get-ConnectionInformation"
+        AllowedParams  = @()
+    }
+
+    # #212: weak / non-enforcing DLP policies.
+    # Get-DlpCompliancePolicy is the current, non-retired cmdlet per
+    # Microsoft Learn (learn.microsoft.com/powershell/module/
+    # exchangepowershell/get-dlpcompliancepolicy, checked 2026-07-31) — the
+    # issue text raised a possible "Get-DlpCompliancePolicyV2"; no such
+    # cmdlet exists in current docs, so it's not used. No parameters are
+    # required to list every policy in the org.
+    #
+    # "Weak" is this session's product-level read, not a Microsoft-defined
+    # term: a policy not in Mode=Enable (i.e. still TestWithNotifications /
+    # TestWithoutNotifications / PendingDeletion) or explicitly disabled is
+    # doing detection/audit work at best, not actually blocking anything.
+    # Flagged for Shane to correct the bar if this doesn't match his intent
+    # for compliance:weak-dlp-policies.
+    "get-dlp-policies" = @{
+        Cmdlet         = "Get-DlpCompliancePolicy"
+        AllowedParams  = @()
+        PostFilter     = { $_.Mode -ne "Enable" -or $_.Enabled -eq $false }
+    }
+
+    # #1301: ALL DLP policies (raw tenant-wide count, NO PostFilter).
+    # Same cmdlet as get-dlp-policies above, but deliberately UNFILTERED so
+    # _itemCount is the TOTAL number of DLP policies in the tenant, not the
+    # weak/non-enforcing subset. This is the one thing compliance:weak-dlp-
+    # policies structurally cannot report: when a tenant has ZERO DLP policies
+    # at all, the weak-subset PostFilter has nothing to count and produces
+    # _itemCount == 0 — indistinguishable from a healthy tenant whose policies
+    # are all actively enforcing. Backs compliance:zero-dlp-policies, whose
+    # `dlpPoliciesCount == 0` critical rule mirrors identity:ca-policy-count's
+    # existing `caPolicyCount == 0` rule exactly (raw count -> eq-0 -> critical).
+    # No PostFilter follows the same convention as get-antispam-policies /
+    # get-shared-mailboxes above (a "count" check wants the full set). An
+    # errored/unavailable cmdlet still surfaces as status="error" (no
+    # extracted_properties, no severity match) — never a false "0 policies".
+    "get-all-dlp-policies" = @{
+        Cmdlet         = "Get-DlpCompliancePolicy"
+        AllowedParams  = @()
+    }
+
+    # #212: DLP incidents.
+    # Get-DlpIncidentDetailReport ("will be retired") and Get-DlpDetailReport
+    # ("This cmdlet is retired") are both explicitly superseded on Microsoft
+    # Learn by Export-ActivityExplorerData as of 2026 — confirmed against the
+    # live docs pages, not assumed. There is no other PowerShell-reachable
+    # DLP-incident source; #180's Graph-coverage concern is real (Graph has
+    # no DLP incident endpoint either), so this genuinely requires the PS
+    # path.
+    #
+    # StartTime/EndTime/OutputFormat are mandatory on the real cmdlet.
+    # OutputFormat is fixed to "Json" here (never request-driven) because
+    # ResultProperty's unwrap below only makes sense for the Json shape.
+    # StartTime/EndTime are supplied per-check via psParams using the
+    # {NDaysAgo} placeholder monitor-executor.ts's resolvePsParamsPlaceholders
+    # now resolves (#212 addition, mirrors the existing Graph-endpoint
+    # {NDaysAgo} token) — Activity Explorer only retains 30 days regardless.
+    # Filter1 scopes the export to DLP-specific Activity values
+    # (DLPRuleMatch/DLPRuleEnforce/DLPInfo/DlpClassification) rather than
+    # every Activity Explorer event type; supplied via psParams as a fill
+    # value, never chosen by this container.
+    #
+    # Export-ActivityExplorerData's real return shape (confirmed against
+    # multiple independent real-world usage reports, since Microsoft Learn's
+    # own page doesn't document the object's shape) is a wrapper:
+    # { ResultData: "<JSON-encoded string>", LastPage: bool, Watermark: string }
+    # — ResultData is a STRING containing the JSON-encoded item array, not
+    # the array itself. ResultProperty tells the dispatcher to unwrap it.
+    "get-dlp-incidents" = @{
+        Cmdlet         = "Export-ActivityExplorerData"
+        AllowedParams  = @("StartTime", "EndTime", "OutputFormat", "Filter1", "PageSize")
+        ResultProperty = "ResultData"
+    }
+
+    # #212: sensitivity label taxonomy / coverage gap.
+    # Get-Label lists LABEL DEFINITIONS in the org, not per-document/
+    # per-site label application — there is no Connect-IPPSSession-reachable
+    # cmdlet that reports "documents missing a label" short of Content/
+    # Activity Explorer (and Export-ActivityExplorerData, above, doesn't
+    # cover label-application coverage either). No parameters are required
+    # to list every label.
+    #
+    # PostFilter narrows to Disabled=$true labels: label definitions that
+    # exist in the org's taxonomy but are not currently active, i.e.
+    # protecting nothing right now — the closest honest "missing" proxy
+    # this cmdlet can produce. Flagged explicitly: this is NOT literally
+    # "items missing sensitivity labels" (copilot-readiness.ts's own
+    # docstring language for compliance:missing-labels) — it's the nearest
+    # real signal available from Get-Label. A truer per-item coverage
+    # metric would need a different data source; Shane should confirm this
+    # proxy is acceptable or flag a follow-up.
+    "get-labels" = @{
+        Cmdlet         = "Get-Label"
+        AllowedParams  = @()
+        PostFilter     = { $_.Disabled -eq $true }
+    }
+
+    # #212: label policy distribution/publish errors.
+    # Get-LabelPolicy's Name/Mode/DistributionStatus output fields
+    # (confirmed via real-world usage reports — the Microsoft Learn
+    # parameter page doesn't enumerate output properties, only parameters)
+    # surface publish/distribution failures. No parameters are required to
+    # list every policy.
+    #
+    # PostFilter narrows to policies whose DistributionStatus is present and
+    # not "Success" — the compliance:label-errors count.
+    "get-label-policies" = @{
+        Cmdlet         = "Get-LabelPolicy"
+        AllowedParams  = @()
+        PostFilter     = { $_.DistributionStatus -and $_.DistributionStatus -ne "Success" }
+    }
+
+    # #247 (#246 chunk A): first WRITE cmdlet in this catalog — every entry
+    # above is read-only per #209's design. Adds a member (an Entra
+    # security/mail-enabled group or user) to a Security & Compliance role
+    # group — #246's actual driver is landing mt-app's own service
+    # principal, via an Entra security group, into a Purview DLP role group
+    # so app-only Get-DlpCompliancePolicy/etc. calls stop failing with
+    # "not recognized" for tenants onboarded after this ships.
+    #
+    # AllowedParams is Identity/Member — Add-RoleGroupMember's real,
+    # splattable parameter names (learn.microsoft.com/powershell/module/
+    # exchangepowershell/add-rolegroupmember, checked 2026-07-31: Identity
+    # is the role-group target, Member the principal to add; no parameter
+    # named "RoleGroup" exists). The issue text described the intended scope
+    # as "RoleGroup and Member" — read as the two concepts being locked
+    # down, not a literal parameter-name instruction: every other catalog
+    # entry's AllowedParams are the cmdlet's actual PowerShell parameter
+    # names because they're splatted directly via `& $Cmdlet @cmdletParams`
+    # below, and "RoleGroup" isn't one here. Flagged for Shane: whichever
+    # future caller (#246 chunk C's consent.ts orchestration) builds
+    # psParams for this cmdletKey needs to send Identity, not RoleGroup.
+    #
+    # Idempotency (investigated, not assumed): Microsoft Learn's own
+    # Add-RoleGroupMember page (checked 2026-07-31) documents parameters and
+    # permissions but does not state what happens on a duplicate add. The
+    # closest confirmed real-world behavior is Add-DistributionGroupMember —
+    # same "Add-*Member" Exchange cmdlet family, same underlying
+    # group-membership-write mechanism, role groups included — which throws
+    # a MemberAlreadyExistsException on a repeat add rather than silently
+    # no-op'ing (widely reported; not itself a Microsoft Learn statement
+    # either, so treated as a strong inference, not a certainty). Given
+    # this write cmdlet's entire purpose (#246) is onboarding-time
+    # provisioning that legitimately needs to be re-runnable — retries, and
+    # Shane's own confirmed "admin-panel manual re-trigger for backfill/
+    # troubleshooting" design in #246 — the dispatcher treats a caught
+    # "already a member"/"AlreadyExists" error as a successful no-op, not a
+    # script_error, so a caller re-running this against an already-
+    # provisioned tenant sees success rather than having to special-case a
+    # specific exception string itself.
+    #
+    # Logging/audit (investigated, not assumed): runPowerShellCheck's
+    # existing logging shape was built for scheduled reads and deliberately
+    # never logs request params (no existing entry's AllowedParams held
+    # anything worth logging). A write action's audit value IS the specific
+    # params (which role group, which member) and the outcome
+    # (succeeded/no-op/failed) — those need to land in the log record
+    # itself, on the platform's dedicated "audit" channel (CLAUDE.md's
+    # locked taxonomy), not buried in "integration.ps-execution" alongside
+    # startup/routing noise. This container has no DB access (CLAUDE.md) so
+    # it cannot call the Node-side createAuditLog()/auditLogsTable directly
+    # the way write-action-safety.ts's Graph-write engine does — the
+    # audit-channel stdout entries emitted below are the input Shane's
+    # future consent.ts orchestration (#246 chunk C) reads and forwards
+    # into that real audit log, not a substitute for it. IsWrite is the flag
+    # the dispatcher keys this treatment off of — code-owned, per
+    # cmdletKey, never request-driven, matching every other catalog field's
+    # security posture.
+    "add-role-group-member" = @{
+        Cmdlet         = "Add-RoleGroupMember"
+        AllowedParams  = @("Identity", "Member")
+        IsWrite        = $true
+    }
+
+    # #491: 11 Exchange checks that had a literal `exchange-online://Get-X`
+    # pseudo-URI as their `endpoint` — never intercepted, so it went straight
+    # to Graph and 400'd. `Session = "exchange"` on every entry below is the
+    # key difference from every catalog entry above: Get-Mailbox,
+    # Get-TransportRule, Get-InboundConnector, Get-HostedContentFilterPolicy,
+    # Get-HostedOutboundSpamFilterPolicy, Get-DkimSigningConfig and
+    # Get-MailboxStatistics are Exchange Online Management cmdlets, NOT
+    # Security & Compliance cmdlets — confirmed against Microsoft Learn's
+    # Connect-ExchangeOnline vs Connect-IPPSSession docs (checked 2026-08-06):
+    # an IPPSSession (what every entry above connects with) simply does not
+    # expose them. Adding them to the catalog without also branching the
+    # connect step to Connect-ExchangeOnline would have hit the exact same
+    # `cmdlet_unavailable`/CommandNotFoundException path #250 built for the
+    # Purview case — see child-worker.ps1's connect block for the
+    # `Session`-keyed branch and Resolve-CmdletInvocation/its dispatch block
+    # for `Script` support (added for get-mailbox-quota-utilization, the one
+    # check that needs two composed cmdlets, not one).
+    #
+    # Prerequisite this session could NOT configure or verify (no Azure/
+    # Graph/DB reachability here): the same app-only cert already loaded at
+    # startup (reused, not a new registration, mirroring the Purview
+    # role-group precedent add-role-group-member exists for) must ALSO be
+    # granted the Exchange.ManageAsApp API permission and have its service
+    # principal added to an Exchange RBAC role group (e.g. "View-Only
+    # Organization Management") via Entra/Exchange admin center. Until
+    # that's done, every entry below will surface as `cmdlet_unavailable` —
+    # an honest, already-handled failure, not silently wrong data — flagged
+    # for Shane to confirm/configure.
+    #
+    # No PostFilter is a raw tenant-wide count/list (the check's own name —
+    # "X Count", "X Review" — reads as wanting the full set). A PostFilter
+    # narrows to a "gap"/"risk" subset, matching the compliance:missing-labels
+    # /weak-dlp-policies precedent above, and is this session's own product
+    # read of what each check's name implies — flagged per-entry for Shane to
+    # correct the bar if it doesn't match his intent, exactly like that
+    # precedent. `mapping`/`properties`/`severity_rules` on the DB rows
+    # themselves were deliberately left untouched by #491's migration (no DB
+    # read access to confirm the field names/thresholds already configured
+    # against — see the migration file's own header).
+
+    # exchange:antispam-policy-coverage. No params needed to list every
+    # custom anti-spam (HostedContentFilter) policy in the org; "coverage" is
+    # read as "how many custom policies exist" — no PostFilter, a policy-level
+    # list has no obvious single-cmdlet "gap" proxy the way a per-mailbox
+    # check does.
+    "get-antispam-policies" = @{
+        Cmdlet         = "Get-HostedContentFilterPolicy"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+
+    # exchange:shared-mailbox-licensing (raw count — the check's own name
+    # says "Count") and exchange:mail-flow-rule-review/transport-rule-count's
+    # sibling use of Get-Mailbox for a different recipient type. ResultSize
+    # must be forced to Unlimited — EXO defaults Get-Mailbox to a 1000-row
+    # cap otherwise — and RecipientTypeDetails to SharedMailbox, both fixed
+    # via ps_params (code/DB-owned, never client-driven, same posture as
+    # DLP's Filter1/OutputFormat above). FLAGGED: the "Licensing" half of
+    # this check's name isn't answerable from Get-Mailbox alone — whether a
+    # shared mailbox has a paid license assigned is an Entra
+    # assignedLicenses property, not an Exchange mailbox property, so it
+    # would need a Graph cross-reference per mailbox UPN. Out of this
+    # session's scope; this returns the raw shared-mailbox count only.
+    "get-shared-mailboxes" = @{
+        Cmdlet         = "Get-Mailbox"
+        AllowedParams  = @("ResultSize", "RecipientTypeDetails")
+        Session        = "exchange"
+    }
+
+    # exchange:litigation-hold-coverage. PostFilter narrows to mailboxes
+    # WITHOUT litigation hold enabled — the coverage GAP, same proxy shape as
+    # compliance:missing-labels above (a "coverage" name paired with a raw
+    # _itemCount of ALL mailboxes would be meaningless: a healthy and an
+    # unhealthy tenant with the same headcount would score identically).
+    "get-litigation-hold-gap" = @{
+        Cmdlet         = "Get-Mailbox"
+        AllowedParams  = @("ResultSize")
+        PostFilter     = { -not $_.LitigationHoldEnabled }
+        Session        = "exchange"
+    }
+
+    # exchange:archive-mailbox-rate. Same "rate" reasoning as the litigation
+    # hold gap above — PostFilter narrows to mailboxes whose archive is NOT
+    # active (defined-but-inactive archives are treated the same as never
+    # enabled, matching Get-Mailbox's own ArchiveStatus enum, which has no
+    # separate "was on now off" state worth distinguishing here).
+    "get-archive-mailbox-gap" = @{
+        Cmdlet         = "Get-Mailbox"
+        AllowedParams  = @("ResultSize")
+        PostFilter     = { $_.ArchiveStatus -ne "Active" }
+        Session        = "exchange"
+    }
+
+    # exchange:transport-rule-count (raw count) and exchange:mail-flow-rule-review
+    # (raw list "to review") share this ONE catalog entry across two separate
+    # monitor_checks rows/cmdletKey references — same pattern as this file's
+    # existing DLP entries being distinct per-check where compliance:dlp-incidents
+    # and compliance:weak-dlp-policies are NOT shared (different cmdlets) but
+    # mirrors add-role-group-member's single-entry-multiple-callers shape.
+    # No PostFilter: "review" reads as "here is the full list to look at",
+    # not a pre-filtered risk subset this session has no basis to define.
+    "get-transport-rules" = @{
+        Cmdlet         = "Get-TransportRule"
+        AllowedParams  = @()
+        Session        = "exchange"
+    }
+
+    # exchange:connector-health. PostFilter narrows to inbound connectors
+    # that do NOT require TLS — RequireTls=$false is Microsoft's own
+    # documented Exchange Online connector security-baseline flag, the
+    # closest honest single-property "health" signal Get-InboundConnector
+    # exposes (vs. e.g. Enabled=$false, which is often an intentional,
+    # non-risky state, not a health problem).
+    "get-inbound-connector-tls-gap" = @{
+        Cmdlet         = "Get-InboundConnector"
+        AllowedParams  = @()
+        PostFilter     = { -not $_.RequireTls }
+        Session        = "exchange"
+    }
+
+    # exchange:auto-forwarding-rules. Deliberately NOT Get-InboxRule, despite
+    # that being the literal pseudo-URI the original (broken) endpoint named
+    # — confirmed via Microsoft Learn that Get-InboxRule has no tenant-wide
+    # form (Identity/Mailbox is mandatory in EXO, same limitation Microsoft
+    # Graph's own /users/{id}/mailFolders/inbox/messageRules equivalent has),
+    # so it cannot answer this check in one call the way every other entry
+    # here does, and doing it per-mailbox would need a NEW fan-out mechanism
+    # this container doesn't have (runFanOutCheck, the closest analog, is
+    # Graph-only — see monitor-executor.ts). Rerouted instead to
+    # Get-HostedOutboundSpamFilterPolicy's AutoForwardingMode — the real,
+    # tenant-wide, single-call EXO security-baseline control that governs
+    # whether auto-forwarding to external recipients is even possible, and
+    # the mechanism Microsoft's own Defender documentation names for exactly
+    # this risk. PostFilter narrows to policies where external auto-forwarding
+    # is allowed (AutoForwardingMode -eq "On"; "Automatic" now behaves as
+    # "Off" per Microsoft Learn, so only "On" is the risk state). FLAGGED:
+    # this check's PRE-EXISTING severity_rules/mapping (untouched by #491's
+    # migration) were presumably authored against a per-mailbox-rule-count
+    # assumption that never actually ran — Shane should confirm the
+    # thresholds still read sensibly against this policy-level _itemCount
+    # (0 or 1 in almost every tenant, not a per-mailbox count).
+    "get-auto-forward-risk-policies" = @{
+        Cmdlet         = "Get-HostedOutboundSpamFilterPolicy"
+        AllowedParams  = @()
+        PostFilter     = { $_.AutoForwardingMode -eq "On" }
+        Session        = "exchange"
+    }
+
+    # exchange:dkim-spf-dmarc-status. Get-DkimSigningConfig only covers the
+    # DKIM third of this check's name — SPF and DMARC are public DNS TXT
+    # records, not Exchange or Graph configuration state, and reading them
+    # would need an actual DNS query against each accepted domain (a
+    # different execution class entirely, no cmdlet or Graph endpoint
+    # involved). FLAGGED, not built here: out of #491's wiring-fix scope: a
+    # true SPF/DMARC check needs a DNS-lookup capability this container
+    # doesn't have. PostFilter narrows to domains where DKIM signing is NOT
+    # enabled — the same missing-control-gap shape as every other narrowed
+    # entry above.
+    "get-dkim-disabled-domains" = @{
+        Cmdlet         = "Get-DkimSigningConfig"
+        AllowedParams  = @()
+        PostFilter     = { -not $_.Enabled }
+        Session        = "exchange"
+    }
+
+    # exchange:mailbox-quota-utilization. No single EXO cmdlet answers this:
+    # quota thresholds live on Get-Mailbox (ProhibitSendQuota), actual usage
+    # only on Get-MailboxStatistics, and Get-MailboxStatistics has no
+    # tenant-wide form in EXO (Identity is mandatory — confirmed against
+    # Microsoft Learn, same class of limitation as Get-InboxRule above) — the
+    # standard, Microsoft-documented pattern for a tenant-wide report is
+    # exactly the composition below (Get-Mailbox piped per-mailbox into
+    # Get-MailboxStatistics). `Script` is a NEW catalog field (see
+    # Resolve-CmdletInvocation/the dispatch block) for the one check that
+    # genuinely needs more than one splatted cmdlet call — every other entry
+    # in this file, including every #491 entry above, still fits the
+    # existing single-Cmdlet shape and deliberately does NOT use it.
+    # ProhibitSendQuota/TotalItemSize are Exchange's ByteQuantifiedSize type;
+    # .Value.ToBytes() is its documented conversion method. Unlimited-quota
+    # mailboxes (ProhibitSendQuota has no numeric value) get
+    # UtilizationPercent = $null and are excluded by the PostFilter's null
+    # check, not miscounted as 0% or over-quota. PostFilter narrows to
+    # mailboxes at or above 90% utilization — this session's own threshold
+    # pick (flagged, same as the DLP "weak" bar above) for what counts as
+    # "near quota", not a Microsoft-defined cutoff.
+    "get-mailbox-quota-utilization" = @{
+        Script = {
+            Get-Mailbox -ResultSize Unlimited -RecipientTypeDetails UserMailbox, SharedMailbox |
+                ForEach-Object {
+                    $mbx = $_
+                    $prohibitBytes = $null
+                    if ($mbx.ProhibitSendQuota -and $mbx.ProhibitSendQuota.ToString() -ne "Unlimited") {
+                        $prohibitBytes = $mbx.ProhibitSendQuota.Value.ToBytes()
+                    }
+                    $stats = Get-MailboxStatistics -Identity $mbx.Identity -ErrorAction SilentlyContinue
+                    $usedBytes = $null
+                    if ($stats -and $stats.TotalItemSize) {
+                        $usedBytes = $stats.TotalItemSize.Value.ToBytes()
+                    }
+                    $utilizationPercent = $null
+                    if ($prohibitBytes -and $usedBytes) {
+                        $utilizationPercent = [math]::Round(($usedBytes / $prohibitBytes) * 100, 1)
+                    }
+                    [PSCustomObject]@{
+                        PrimarySmtpAddress = $mbx.PrimarySmtpAddress
+                        DisplayName        = $mbx.DisplayName
+                        ProhibitSendQuotaBytes = $prohibitBytes
+                        TotalItemSizeBytes = $usedBytes
+                        UtilizationPercent = $utilizationPercent
+                    }
+                }
+        }
+        PostFilter = { $null -ne $_.UtilizationPercent -and $_.UtilizationPercent -ge 90 }
+        Session    = "exchange"
+    }
+
+    # #754: compliance:audit-log-retention. Get-UnifiedAuditLogRetentionPolicy
+    # is the current, non-retired Security & Compliance cmdlet for reading
+    # EXPLICITLY configured unified audit log retention policies (Microsoft
+    # Learn, checked 2026-08-14: module ExchangeOnlineManagement,
+    # Connect-IPPSSession/Purview session — no Graph REST equivalent exists,
+    # same class of gap #212's DLP/label checks were built for). No parameters
+    # are required to list every policy in the org; default Session
+    # ("compliance") applies, matching every entry above #491.
+    #
+    # Deliberately NO PostFilter here (unlike get-dlp-policies/get-labels
+    # above): this cmdlet only reports policies an admin explicitly created.
+    # A tenant with ZERO custom policies is not necessarily non-compliant —
+    # Microsoft applies its own built-in default retention (1 year with
+    # Purview Audit (Premium)/E5, 90 days without it), which this cmdlet
+    # cannot reveal (no per-tenant licensing signal comes back with it). So
+    # the "below 90 days" judgment is left to the check's own severity_rules
+    # (see the 2026-08-14-audit-log-retention-check-754.sql migration) reading
+    # RetentionDuration off the returned policy objects, rather than filtered
+    # away here — the container stays a thin, honest data fetch for this
+    # check, the same posture #506/#491's "no PostFilter = raw tenant-wide
+    # list" precedent already established for checks where a container-side
+    # gap proxy would be guessing.
+    "get-audit-retention-policy" = @{
+        Cmdlet        = "Get-UnifiedAuditLogRetentionPolicy"
+        AllowedParams = @()
+    }
+
+    # #1253: adoption:teams-phone-provisioning. Get-CsOnlineUser is a
+    # MicrosoftTeams module cmdlet, NOT reachable over either the
+    # Connect-IPPSSession (default, "compliance") or Connect-ExchangeOnline
+    # ("exchange") sessions above — a THIRD `Session = "teams"` value is added
+    # below (Connect-MicrosoftTeams) specifically for this and the entry after
+    # it. PostFilter narrows to users actually provisioned for Teams Phone —
+    # EnterpriseVoiceEnabled -eq $true AND a non-empty LineURI — the literal
+    # "is this user provisioned" signal the monitor_checks row's own mapping
+    # reads (see the #1253 migration), matching the litigation-hold/archive
+    # gap-proxy precedent above (filter in the container, not via a DB-side
+    # countWhere, since the raw per-user Get-CsOnlineUser output has no
+    # `{value: [...]}` envelope for the condition grammar to walk the way a
+    # Graph or CSV-report response does).
+    "get-cs-online-user" = @{
+        Cmdlet        = "Get-CsOnlineUser"
+        AllowedParams = @()
+        PostFilter    = { $_.EnterpriseVoiceEnabled -eq $true -and $_.LineURI }
+        Session       = "teams"
+    }
+
+    # #1253: added to the allowlist per the issue's exact endpoint list
+    # (Get-CsTeamsMeetingPolicy), so it is available for the next monitor_check
+    # that needs it. NOT wired to a monitor_checks row by this issue — a
+    # Teams meeting policy's fields (recording, lobby bypass, presenter
+    # rights, ...) don't cleanly answer "phone provisioning" without a
+    # specific product decision on which field is the real signal; flagged
+    # for Shane to pick one, same posture as this file's other "flagged"
+    # catalog entries. No parameters are required to list every custom
+    # meeting policy in the org.
+    "get-cs-teams-meeting-policy" = @{
+        Cmdlet        = "Get-CsTeamsMeetingPolicy"
+        AllowedParams = @()
+        Session       = "teams"
+    }
+}
+
+# Resolves cmdletKey against the allowlist and merges request params into
+# that cmdlet's allowed parameter set only — fill values, never control
+# flow. `Organization` is treated as the reserved tenant-identity field for
+# Connect-IPPSSession (not forwarded to the cmdlet itself); this field name
+# is this phase's assumption, not yet confirmed against #211's real
+# monitor-executor.ts caller (which doesn't exist yet) — flagged for
+# Shane's review, not silently assumed permanent.
+function Resolve-CmdletInvocation {
+    param(
+        [string]$CmdletKey,
+        [hashtable]$RequestParams
+    )
+
+    $catalogEntry = $script:CmdletCatalog[$CmdletKey]
+
+    # #491: get-mailbox-quota-utilization's Script entry — a composed,
+    # code-owned scriptblock (no single EXO cmdlet answers that check; see
+    # its catalog comment) rather than one splatted cmdlet. Never
+    # request-driven, same as every other field on a catalog entry — Params
+    # stays empty because the script takes none.
+    if ($catalogEntry.Script) {
+        return @{
+            Cmdlet   = "<script:$CmdletKey>"
+            Params   = @{}
+            IsScript = $true
+        }
+    }
+
+    $cmdletParams = @{}
+    foreach ($allowedName in $catalogEntry.AllowedParams) {
+        if ($RequestParams.ContainsKey($allowedName)) {
+            $cmdletParams[$allowedName] = $RequestParams[$allowedName]
+        }
+    }
+
+    return @{
+        Cmdlet   = $catalogEntry.Cmdlet
+        Params   = $cmdletParams
+        IsScript = $false
+    }
+}

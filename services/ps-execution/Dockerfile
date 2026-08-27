@@ -39,6 +39,14 @@ RUN pwsh -NoLogo -NonInteractive -Command " \
 # Phase 2 (#198) request-handling entrypoint. See entrypoint.ps1 for the
 # Managed Identity -> Key Vault -> secrets round-trip and the bearer-token
 # gate on incoming requests.
+#
+# #1400: entrypoint.ps1 is now a thin dispatcher only — it spawns
+# child-worker.ps1 as a fresh process per request (the real fix for
+# #1389's MSAL assembly-load conflict). common.ps1 (shared logging) and
+# cmdlet-catalog.ps1 (the allowlist) are dot-sourced by both.
+COPY common.ps1 /app/common.ps1
+COPY cmdlet-catalog.ps1 /app/cmdlet-catalog.ps1
+COPY child-worker.ps1 /app/child-worker.ps1
 COPY entrypoint.ps1 /app/entrypoint.ps1
 
 # Container Apps default ingress target port; override via the PORT env var
