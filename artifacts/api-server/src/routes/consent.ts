@@ -874,6 +874,19 @@ router.get("/consent/callback", async (req: Request, res: Response) => {
       // tenants/users by #92). Converts the funnel-entry lead new → converted.
       // Idempotent — the downstream free-checkout / paid-webhook paths find it
       // already linked, and the tenants row resolved above is the one it reuses.
+      //
+      // Free Scan shell account (Git #1355, Phase 3 of #1352): the marketing
+      // /scan flow reaches this exact branch — its read consent runs through the
+      // same #1311 session-keyed checkout session (#1361), against the
+      // `license-waste-audit-free` *assessment* product — so a Free Scan grant
+      // provisions a passwordless "Assessment" Prospect here with a real
+      // customerId, which Phase 4's scan trigger and Phase 7's return link
+      // attach to. This deliberately does NOT mint a /setup-password token or a
+      // session: hasRealEntitlement() (auth.ts) refuses both password setup and
+      // session issuance for an account with no client_services row, and a Free
+      // Scan Prospect has none — so it cannot reach the portal until it actually
+      // converts and a real entitlement is created (#656). Locked by
+      // lib/free-scan-prospect.test.ts.
       if (sessionEmail) {
         const prospect = await provisionProspectAccount({
           email: sessionEmail,
