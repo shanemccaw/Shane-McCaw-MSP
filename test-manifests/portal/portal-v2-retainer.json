@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- MY ARCHITECT / the retainer page (/portal-v2/retainer), recreated from 'Customer Portal Shell.dc.html' markup 1981-2196 and logic class 15852-15984. A NEW page: the retainer carried 19% of its design copy (all of it built in the logic class, invisible to the page) and had no route before this. Eight retained hours a month shown as a working log at two zoom levels -- the month rollup (hours used, findings closed, what is next) and a week you select in place, which swaps the report card without moving the month.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "b3bfb373c",
+  "lastVerifiedAgainstCommit": "ca8547c77",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/retainer. App.tsx declares '/portal-v2/retainer' ABOVE the '/portal-v2/:pillar' insertion marker so the param route does not swallow it.",
