@@ -588,6 +588,88 @@ namespace BuildConsole.Services
         /// </summary>
         public Task MarkOrphanedFailedAsync(int id) => MarkCompleteAsync(id, -2, null);
 
+        // ── Sonnet+ Overflow (Git #1418) ─────────────────────────────────────────────
+        /// <summary>
+        /// Parks a claimed-but-never-launched row as <see cref="AccountCapPolicy.HeldStatus"/> —
+        /// used when a queued item requested the secondary account but its real
+        /// model/effort exceeds Sonnet Medium (AccountCapPolicy.ExceedsSonnetMedium).
+        /// The row stays visible in the Build Queue (BuildQueuePanel's "Active" filter
+        /// includes "held") but WHERE status = 'queued' means GetNextAsync can never
+        /// reclaim/relaunch it — only an explicit bulk resume (<see cref="ResumeHeldOverflowAsync"/>)
+        /// or a manual per-item action moves it forward again.
+        /// </summary>
+        public async Task MarkHeldForOverflowAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = @status,
+                       claimed_at = NULL,
+                       updated_at = NOW()
+                 WHERE id = @id", conn);
+            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.HeldStatus);
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        /// <summary>All rows currently parked at <see cref="AccountCapPolicy.HeldStatus"/> — the
+        /// real contents of the Sonnet+ Overflow milestone, used to drive the Build Queue
+        /// panel's bulk-resume banner/count.</summary>
+        public async Task<List<QueueItem>> GetHeldOverflowAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, title, prompt, model, effort, cwd,
+                       github_number, blocked_by_number, blocked_by_numbers,
+                       status, exit_code, session_id, resume_session_id,
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account
+                FROM bt_build_queue
+                WHERE status = @status
+                ORDER BY created_at ASC", conn);
+            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.HeldStatus);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items;
+        }
+
+        /// <summary>
+        /// The bulk-resume action Shane asked for: "a single action that switches them
+        /// back to the primary account and pushes them all into the live queue at
+        /// once... so I can kick them off quick" the moment his primary account resets.
+        /// Flips every held row back to account = NULL (primary) and status = 'queued'
+        /// in one statement, so the very next tick's GetNextAsync picks them all up
+        /// normally. Returns the resumed rows (their github_number, if any, is what the
+        /// caller uses to clear the Sonnet+ Overflow milestone back off the real issue).
+        /// </summary>
+        public async Task<List<QueueItem>> ResumeHeldOverflowAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'queued',
+                       account    = NULL,
+                       updated_at = NOW()
+                 WHERE status = @status
+                RETURNING id, title, prompt, model, effort, cwd,
+                          github_number, blocked_by_number, blocked_by_numbers,
+                          status, exit_code, session_id, resume_session_id,
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.HeldStatus);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items;
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────────
 
         private async Task<NpgsqlConnection> OpenAsync()

@@ -3319,6 +3319,39 @@ namespace BuildConsole
             // row (no-op once that row has already settled — the meter keeps polling for
             // the status bar long after launch).
             _startupConnectivity?.ReportUsageMeter(status);
+
+            // Git #1418 — nice-to-have per the issue: "confirm the real usage-meter
+            // reset-time parsing already built (#978, 'Resets Sun 9:00 PM') could
+            // reasonably inform a real, optional reminder... when the primary
+            // account's reset time arrives and Sonnet+ Overflow has real pending
+            // items." Fires once per crossing (guarded by _sonnetOverflowResetNotified)
+            // the first time a poll observes WeeklyResetTarget has passed — reusing the
+            // existing real reset parsing, no new polling loop.
+            _ = CheckSonnetOverflowReminderAsync(status.WeeklyResetTarget);
+        }
+
+        /// <summary>See the reminder note in <see cref="UsageMeter_StatusChanged"/>. Best-effort,
+        /// non-fatal — a failed held-count query just means no reminder fires this poll, tried
+        /// again on the next one.</summary>
+        private DateTime? _sonnetOverflowRemindedForReset;
+        private async System.Threading.Tasks.Task CheckSonnetOverflowReminderAsync(DateTime? weeklyResetTarget)
+        {
+            if (_queueDb == null || !weeklyResetTarget.HasValue) return;
+            if (DateTime.Now < weeklyResetTarget.Value) return; // hasn't reset yet
+            if (_sonnetOverflowRemindedForReset == weeklyResetTarget.Value) return; // already reminded for this reset
+            try
+            {
+                var held = await _queueDb.GetHeldOverflowAsync();
+                if (held.Count == 0) return;
+                _sonnetOverflowRemindedForReset = weeklyResetTarget.Value;
+                ToastEngine.Success("Primary Account Reset",
+                    $"{held.Count} build{(held.Count == 1 ? "" : "s")} waiting on Sonnet+ Overflow — resume them from the Build Queue panel.");
+                BuildConsole.Services.ActivityLog.Log("watcher", $"Primary account reset crossed with {held.Count} item(s) held on Sonnet+ Overflow — reminder shown.");
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("watcher", $"Sonnet+ Overflow reminder check failed: {ex.Message}");
+            }
         }
 
         // ── Claude Online Status (source: status.anthropic.com) ─────────────────

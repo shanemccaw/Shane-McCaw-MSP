@@ -287,6 +287,41 @@
                                 </StackPanel>
                             </Border>
 
+                            <!-- Git #1418 — Sonnet+ Overflow bulk-resume banner. Builds queued
+                                 against the secondary account that exceed Sonnet Medium (any
+                                 Opus model, or Sonnet at High/xhigh effort) are held instead of
+                                 launched and reassigned to the real "Sonnet+ Overflow" GitHub
+                                 milestone. Shane's own words: "when Sunday 9pm happens and my
+                                 primary 20x account is refreshed, I can kick them off quick" —
+                                 this is that single action: flips every held item back onto the
+                                 primary account and straight into the live queue at once. -->
+                            <Border x:Name="SonnetOverflowBanner"
+                                    Background="#3A331E"
+                                    BorderBrush="{StaticResource PeachBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="4"
+                                    Padding="8,6"
+                                    Margin="0,0,0,8"
+                                    Visibility="Collapsed"
+                                    ToolTip="Held because the secondary account's build cap (Sonnet Medium) would have been exceeded">
+                                <StackPanel>
+                                    <TextBlock x:Name="SonnetOverflowText"
+                                               Text="0 builds held on Sonnet+ Overflow"
+                                               FontSize="11"
+                                               Foreground="{StaticResource PeachBrush}"
+                                               VerticalAlignment="Center"
+                                               TextWrapping="Wrap"/>
+                                    <Button x:Name="BtnResumeSonnetOverflow"
+                                            Content="⏫ Resume All on Primary"
+                                            Padding="8,3"
+                                            Margin="0,6,0,0"
+                                            HorizontalAlignment="Stretch"
+                                            FontSize="11"
+                                            FontWeight="SemiBold"
+                                            Click="BtnResumeSonnetOverflow_Click"/>
+                                </StackPanel>
+                            </Border>
+
                             <!-- Git #933 - Shane: "Mark the filtering pills be a drop down menu
                                  because they go off streen. Make All last, and make Queued &
                                  Running first and Default." The old ToggleButton pill row

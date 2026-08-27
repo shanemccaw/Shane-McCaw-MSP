@@ -672,6 +672,7 @@ namespace BuildConsole.Controls
                 if (_filter == "Tests") RenderTestsTree();
                 UpdateUsageSummary();
                 UpdateOrphanRecoveryBanner();
+                UpdateSonnetOverflowBanner();
                 SyncError?.Invoke(this, _queueIsStale
                     ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
                     : null);
@@ -791,6 +792,73 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
+        /// <summary>
+        /// Git #1418 — shows/hides the bulk "Resume All on Primary" banner based on how
+        /// many rows are currently parked at AccountCapPolicy.HeldStatus (capped off the
+        /// secondary account for exceeding Sonnet Medium). Called after every RefreshAsync,
+        /// same pattern as UpdateOrphanRecoveryBanner.
+        /// </summary>
+        private void UpdateSonnetOverflowBanner()
+        {
+            if (SonnetOverflowBanner == null) return;
+            int count = _lastItems.Count(i => i.Status == AccountCapPolicy.HeldStatus);
+            if (count == 0)
+            {
+                SonnetOverflowBanner.Visibility = Visibility.Collapsed;
+                return;
+            }
+            SonnetOverflowText.Text = $"{count} build{(count == 1 ? "" : "s")} held on '{AccountCapPolicy.SonnetPlusOverflowMilestoneTitle}' (exceeds secondary's Sonnet Medium cap)";
+            SonnetOverflowBanner.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Git #1418 — Shane's own requirement: "a single action that switches them
+        /// back to the primary account and pushes them all into the live queue at
+        /// once... so I can kick them off quick" once his primary 20x account resets
+        /// Sunday 9pm. Flips every held row to account=primary/status=queued in one DB
+        /// statement, then best-effort clears the Sonnet+ Overflow milestone off each
+        /// resumed issue (a GitHub hiccup here doesn't block the actual resume — the
+        /// builds are already back in the live queue either way).
+        /// </summary>
+        private async void BtnResumeSonnetOverflow_Click(object sender, RoutedEventArgs e)
+        {
+            if (_db == null) return;
+            BtnResumeSonnetOverflow.IsEnabled = false;
+            List<QueueItem> resumed;
+            try
+            {
+                resumed = await _db.ResumeHeldOverflowAsync();
+            }
+            catch (Exception ex)
+            {
+                BtnResumeSonnetOverflow.IsEnabled = true;
+                ToastEngine.Warning("Resume Failed", ex.Message);
+                ActivityLog.Log("build-queue", $"Resume Sonnet+ Overflow failed: {ex.Message}");
+                return;
+            }
+            BtnResumeSonnetOverflow.IsEnabled = true;
+
+            if (resumed.Count == 0) { await RefreshAsync(); return; }
+
+            var settings = Services.BuildConsoleSettings.Load();
+            if (!string.IsNullOrWhiteSpace(settings.GitHubPat))
+            {
+                var gh = new Services.GitHubApiClient(settings.GitHubPat);
+                foreach (var item in resumed.Where(i => i.GithubNumber.HasValue))
+                {
+                    try { await gh.SetIssueMilestoneAsync(item.GithubNumber!.Value, null); }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("build-queue", $"Resume Sonnet+ Overflow: couldn't clear milestone off issue #{item.GithubNumber!.Value}: {ex.Message}");
+                    }
+                }
+            }
+
+            ToastEngine.Success("Resumed on Primary", $"{resumed.Count} build{(resumed.Count == 1 ? "" : "s")} moved back to the primary account and re-queued.");
+            ActivityLog.Log("build-queue", $"Resume Sonnet+ Overflow: {resumed.Count} build(s) switched to primary and re-queued.");
+            await RefreshAsync();
+        }
+
         private static string FormatTokens(long tokens) =>
             tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:0.1}M tokens" :
             tokens >= 1_000 ? $"{tokens / 1_000.0:0}k tokens" :
@@ -849,7 +917,10 @@ namespace BuildConsole.Controls
 
         private List<QueueItem> ApplyFilter(List<QueueItem> items) => _filter switch
         {
-            "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running")).ToList(),
+            // Git #1418 — "held" (Sonnet+ Overflow) items stay visible under Active, per
+            // Shane's own requirement: capped-off builds must stay "visible in the Build
+            // Queue but not actively executing", not disappear into a filter nobody checks.
+            "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or AccountCapPolicy.HeldStatus)).ToList(),
             "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             "Canceled" => items.Where(i => i.Status == "canceled" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
@@ -873,7 +944,7 @@ namespace BuildConsole.Controls
 
             string targetFilter = item.Status switch
             {
-                "queued" or "running" => "Active",
+                "queued" or "running" or AccountCapPolicy.HeldStatus => "Active",
                 "done"                => "Done",
                 "canceled"            => "Canceled",
                 _                     => "All",
@@ -1855,6 +1926,27 @@ namespace BuildConsole.Controls
                     FontSize = 9.5,
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+            }
+            else if (item.Status == AccountCapPolicy.HeldStatus)
+            {
+                // Git #1418 — held for exceeding the secondary account's Sonnet Medium
+                // cap; parked on the real "Sonnet+ Overflow" milestone, not launched.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x3A, 0x33, 0x1E)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "⏫ SONNET+ OVERFLOW",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
                     VerticalAlignment = VerticalAlignment.Center
                 };
             }

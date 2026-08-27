@@ -382,6 +382,52 @@ namespace BuildConsole.Services
             return milestones ?? new List<GitHubMilestoneInfo>();
         }
 
+        /// <summary>Git #1418 — real `POST /repos/{o}/{r}/milestones`, creating a new GitHub Milestone.</summary>
+        public async Task<GitHubMilestoneInfo> CreateMilestoneAsync(string title, string? description = null)
+        {
+            object payload = description != null
+                ? new { title, description }
+                : new { title };
+            var res = await _http.PostAsJsonAsync($"repos/{Owner}/{Repo}/milestones", payload);
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception($"GitHub rejected milestone creation ({(int)res.StatusCode}): {err}");
+            }
+            var created = await res.Content.ReadFromJsonAsync<GitHubMilestoneInfo>(JsonOpts);
+            if (created == null) throw new Exception("GitHub returned an empty response for the created milestone.");
+            return created;
+        }
+
+        /// <summary>
+        /// Git #1418 — finds the real milestone with the given title (case-insensitive), creating
+        /// it if it doesn't exist yet. Used to lazily provision the "Sonnet+ Overflow" milestone
+        /// the first time a build actually needs to be parked on it, rather than requiring a
+        /// separate one-time setup step.
+        /// </summary>
+        public async Task<GitHubMilestoneInfo> GetOrCreateMilestoneAsync(string title, string? description = null)
+        {
+            var existing = await GetMilestonesAsync(bypassCache: true);
+            var found = existing.FirstOrDefault(m => string.Equals(m.Title, title, StringComparison.OrdinalIgnoreCase));
+            if (found != null) return found;
+            return await CreateMilestoneAsync(title, description);
+        }
+
+        /// <summary>Git #1418 — real `PATCH /issues/{n}` setting (or clearing, when null) the issue's milestone.</summary>
+        public async Task SetIssueMilestoneAsync(int issueNumber, int? milestoneNumber)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Patch, $"repos/{Owner}/{Repo}/issues/{issueNumber}")
+            {
+                Content = JsonContent.Create(new { milestone = milestoneNumber }),
+            };
+            var res = await _http.SendAsync(req);
+            if (!res.IsSuccessStatusCode)
+            {
+                var err = await res.Content.ReadAsStringAsync();
+                throw new Exception($"GitHub rejected setting milestone on #{issueNumber} ({(int)res.StatusCode}): {err}");
+            }
+        }
+
         private class GitHubIssueIdResult
         {
             public long Id { get; set; }
