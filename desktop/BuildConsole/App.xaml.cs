@@ -72,6 +72,22 @@ namespace BuildConsole
 
         private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
+            if (IsFatalRenderingException(e.Exception))
+            {
+                e.Handled = true;
+                string details = FormatExceptionDetails("Fatal Render Error", e.Exception);
+                LogExceptionToDisk("Fatal Render Error", e.Exception);
+                
+                string friendlyMessage = "A fatal rendering error occurred (UCEERR_RENDERTHREADFAILURE).\n\n" +
+                    "This is usually caused by a graphics driver crash, remote desktop reconnection, or hardware acceleration issues.\n" +
+                    "The application will now shut down to prevent system freeze.\n\n" +
+                    "Details:\n" + details;
+                
+                MessageBox.Show(friendlyMessage, "BuildConsole Error: Fatal Render Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                Environment.Exit(-1);
+                return;
+            }
+
             e.Handled = true; // Prevent silent crash
             ShowExceptionDialog("UI Thread Error", e.Exception);
 
@@ -129,6 +145,35 @@ namespace BuildConsole
                 {
                     return true;
                 }
+                current = current.InnerException;
+            }
+            return false;
+        }
+
+        private static bool IsFatalRenderingException(Exception ex)
+        {
+            Exception? current = ex;
+            while (current != null)
+            {
+                if (current is System.Runtime.InteropServices.COMException comEx)
+                {
+                    // UCEERR_RENDERTHREADFAILURE (0x88980406) or Desktop composition disabled (0x80263001)
+                    if (comEx.HResult == unchecked((int)0x88980406) || 
+                        comEx.HResult == unchecked((int)0x80263001) ||
+                        comEx.Message.Contains("UCEERR_RENDERTHREADFAILURE"))
+                    {
+                        return true;
+                    }
+                }
+                
+                string stack = current.StackTrace ?? "";
+                if (stack.Contains("System.Windows.Media.Composition") || 
+                    stack.Contains("HwndTarget.UpdateWindowSettings") ||
+                    stack.Contains("WindowChromeWorker._ExtendGlassFrame"))
+                {
+                    return true;
+                }
+                
                 current = current.InnerException;
             }
             return false;
