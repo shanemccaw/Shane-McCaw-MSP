@@ -15,15 +15,15 @@
  *
  * The 14 `GOV_AREA_LINKS` per-sub-area scores/prevScores/status shipped as a
  * fixture too — confident fake numbers on a never-scanned tenant (#1330). That
- * is now wired (#1333): ten of the cards have a real, active `monitor_checks`
- * check behind them, read live per-card (value + previous-scan delta + derived
- * severity) via `useGovAreaLinksLive` off `GET /api/portal/governance/areas`.
- * The `score`/`prevScore`/`status` fields below are no longer rendered as
- * confident numbers — a card shows its REAL live value or an honest "—". The
- * four cards with no backing check today render that no-data state
- * unconditionally: "External Sharing Drift" (a scan-to-scan drift check, blocked
- * on #1287) and the three "Devices …" cards (no confirmed check — pending
- * Shane's call, see `lib/portal-governance-areas.ts`).
+ * is now wired: thirteen of the cards have a real, active `monitor_checks`
+ * check behind them (ten from #1333; the three Devices cards added #1366 per
+ * Shane's confirmed mapping), read live per-card (value + previous-scan delta +
+ * derived severity) via `useGovAreaLinksLive` off
+ * `GET /api/portal/governance/areas`. The `score`/`prevScore`/`status` fields
+ * below are no longer rendered as confident numbers — a card shows its REAL
+ * live value or an honest "—". Only "External Sharing Drift" still renders
+ * that no-data state unconditionally (a scan-to-scan drift check, blocked on
+ * #1287) — see `lib/portal-governance-areas.ts`.
  */
 
 import { trendGeometry } from "./DriftTrend";
@@ -109,9 +109,9 @@ export const GOV_AREA_LINKS: readonly GovAreaLink[] = [
   { key: "governance-orphaned-teams", label: "Orphaned Teams", score: 5, prevScore: 5, sub: "no active members", icon: "users", cluster: "Identity & Ownership", weight: "small", status: "yellow" },
   { key: "governance-app-access", label: "App Governance", score: 14, prevScore: 12, sub: "apps, service principals", icon: "clipboard-list", cluster: "Apps & Roles", weight: "large", status: "yellow" },
   { key: "governance-pim", label: "Role Governance (PIM)", score: 4, prevScore: 4, sub: "standing roles, not JIT", icon: "key", cluster: "Apps & Roles", weight: "medium", status: "red" },
-  { key: "governance-device-inventory", label: "Device Inventory Governance", score: 212, prevScore: 205, sub: "devices tracked", icon: "smartphone", cluster: "Devices", weight: "small", status: "green" },
-  { key: "governance-device-lifecycle", label: "Device Lifecycle Governance", score: 17, prevScore: 14, sub: "past retirement age", icon: "smartphone", cluster: "Devices", weight: "medium", status: "yellow" },
-  { key: "governance-device-ownership", label: "Device Ownership Governance", score: 23, prevScore: 19, sub: "no assigned owner", icon: "smartphone", cluster: "Devices", weight: "medium", status: "red" },
+  { key: "governance-device-inventory", label: "Device Inventory Governance", score: 212, prevScore: 205, sub: "devices enrolled", icon: "smartphone", cluster: "Devices", weight: "small", status: "green" },
+  { key: "governance-device-lifecycle", label: "Device Lifecycle Governance", score: 17, prevScore: 14, sub: "stale or duplicate records", icon: "smartphone", cluster: "Devices", weight: "medium", status: "yellow" },
+  { key: "governance-device-ownership", label: "Device Compliance Governance", score: 23, prevScore: 19, sub: "non-compliant devices", icon: "smartphone", cluster: "Devices", weight: "medium", status: "red" },
 ];
 
 /** Hero scalars — lines 7270-7287, 11383-11384, 17973, 18006-18007. */
