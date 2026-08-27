@@ -1,5 +1,5 @@
 {
-  "feature": "Customer Portal v2 -- OVERVIEW (/portal-v2/overview). The tenant-health landing page. Git #1216 wired the headline stat, the scan band's real last-scan time, the drift chips' real accepted-as-risk count, and three of the six 'Everything in motion' lanes (change requests, hold windows, accepted risks) to real per-tenant data -- see overviewModel.ts's *FromLive functions. The pillar strip was already live (#1200/#1201). Evidence pack, Microsoft changes and the project schedule stay fixture -- no live producer exists for them and none was claimed. 'Fixed this week' / 'new this week' drift chips render the honest em-dash: no run-to-run finding diff exists anywhere in this platform yet.",
+  "feature": "Customer Portal v2 -- OVERVIEW (/portal-v2/overview). The tenant-health landing page. Git #1216 wired the headline stat, the scan band's real last-scan time, the drift chips' real accepted-as-risk count, and three of the six 'Everything in motion' lanes (change requests, hold windows, accepted risks) to real per-tenant data -- see overviewModel.ts's *FromLive functions. The pillar strip was already live (#1200/#1201). Git #1390 wired the remaining five fixture-only sections, each gated with the same dataState==='live' + honest-empty-state pattern: the Evidence pack now reads the tenant's REAL verified remediation steps (remediation_tracker_steps rows whose verification.state==='verified', joined to the remediation catalogue by stepId -- evidenceFromVerifiedSteps); Microsoft changes now reads the real M365 Message Center (useMessageCenter().dataset.live -> mcLanesFromLive); the Project & release schedule now reads the real project phases via useProjectsLive (#1241); Policy decisions now read /api/portal/policy-decisions via usePolicyDecisions; and the headline sub-line is gated on the real last-scan state (headlineSub) rather than asserting 'pulled from your last scan' unconditionally. 'Fixed this week' / 'new this week' drift chips still render the honest em-dash: no run-to-run finding diff exists anywhere in this platform yet.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "e9fd7323f",
   "notes": "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.,UI ROUTE SHAPE: /portal/{slug}/portal-v2 (the BARE /portal-v2 route, declared before /portal-v2/:pillar in App.tsx so the index isn't swallowed by the param match -- there is no separate /portal-v2/overview path).,shaneapp://runTest hits the DEPLOYED build, not the local worktree -- this manifest's live-data assertions only go green once this session's commit is deployed.,LIVE, TENANT-SPECIFIC NUMBERS ARE NOT ASSERTED BY VALUE, same rule as portal-v2-copilot.json: the headline total, the accepted-as-risk count and every lane depend on the tenant's own real data, so the harness asserts an any-of STRUCTURE (which of the two honest headline sentences is on screen) and static label copy, never a specific number.,THE 'FIXED THIS WEEK' / 'NEW THIS WEEK' CHIPS ARE INTENTIONALLY UNASSERTED BY VALUE -- they render an em-dash because no backing computation exists yet (documented in overviewData.ts / overviewModel.ts's driftChips). Only their static labels are asserted.,THE THREE 'IN MOTION' LANES (cc/rb/rr) FALL BACK TO FIXTURE ON A NON-LIVE READ (fixture read failure, unscoped tenant, or -- for hold windows -- no runbooks yet), so at least one lane row is ALWAYS present in each of the three sections regardless of live vs fixture; a prefixed data-testid selector proves a row rendered without asserting whether it was live or fixture.,NO `select` STEPS. UiTestExecutor.cs cannot drive a native <select>; this page has none.,ZERO-DATA SCENE 0 LANDING (Git #1298, manual trigger per Git #1300): PortalV2ScanLanding ports RevealScanOverlay (Scene 0) as the entry point for a customer with NO scan on record -- it mounts only when scan-status confirms `!everScanned`. #1300 removed the testbed tenant's auto-fire-on-mount: a testbed tenant with no scan now sees RevealNoScanGate's ready state with a 'Start my scan' button (only that click POSTs debug-trigger-scan); a real tenant still sees RevealNoScanGate's honest 'hasn't started yet' message, unchanged since #1298 (debug-trigger-scan was already hard-gated server-side to testbed tenants, so a real tenant never had a self-serve trigger to remove). Hands off to this Overview on scan completion either way. The landing's own SHOWING, and the new 'Start my scan' click path, cannot be asserted live here because the only reachable test tenant (shane-mccaw-consulting) is already scanned (everScanned=true), so the landing correctly never mounts for it. The gating decisions themselves are unit-tested (revealAutoScan.test.ts decideAutoScan, neverScannedGate.test.ts shouldBlockNeverScanned) -- PortalV2ScanLanding reuses those exact helpers unchanged by #1300. What IS asserted live below (OV16) is the regression guard: for an already-scanned tenant the ported overlay stays absent and the real Overview renders directly.,ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD. Git #1339: the pillar-strip score is now rendered by the shared NoScanValue component (src/components/portal-v2/NoScanDataState.tsx) — a genuinely unscored pillar shows a muted — instead of a fabricated 0. The testbed tenant (id 1) is always scored, so the honest empty branch cannot be exercised via UI here; it is fully covered by the pure unit test NoScanDataState.test.ts. Step OV9b (tag 1339-no-scan-data) asserts the shared seam is mounted in the strip.",
@@ -157,6 +157,58 @@
       "action": "expect",
       "selector": "[data-testid='pv2-ov-link-rb']",
       "textContains": "Open Active Runbooks"
+    },
+    {
+      "name": "OV17 (#1390) -- open the Microsoft changes lane (now backed by the real M365 Message Center, fixture on a non-live read).",
+      "action": "click",
+      "selector": "[data-testid='pv2-ov-toggle-mc']",
+      "sessionTag": "overview-live-1390"
+    },
+    {
+      "name": "OV18 (#1390) -- ...its link to the real Microsoft Changes page is present regardless of live vs fixture.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ov-link-mc']",
+      "textContains": "Open Microsoft Changes",
+      "sessionTag": "overview-live-1390"
+    },
+    {
+      "name": "OV19 (#1390) -- open the Project & release schedule lane (now backed by the real project phases, #1241; fixture when the tenant has no active project).",
+      "action": "click",
+      "selector": "[data-testid='pv2-ov-toggle-pj']",
+      "sessionTag": "overview-live-1390"
+    },
+    {
+      "name": "OV20 (#1390) -- ...at least one phase row renders (live phases when scoped, the design fixture otherwise) OR the honest empty-state points on; the link to the full schedule is always present.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ov-link-pj']",
+      "textContains": "Open the full schedule",
+      "sessionTag": "overview-live-1390"
+    },
+    {
+      "name": "OV21 (#1390) -- open the Policy decisions lane (now backed by /api/portal/policy-decisions, fixture on a non-live read).",
+      "action": "click",
+      "selector": "[data-testid='pv2-ov-toggle-pd']",
+      "sessionTag": "overview-live-1390"
+    },
+    {
+      "name": "OV22 (#1390) -- ...its link to the real Policy Decisions page is present.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ov-link-pd']",
+      "textContains": "Open Policy Decisions",
+      "sessionTag": "overview-live-1390"
+    },
+    {
+      "name": "OV23 (#1390) -- open the Evidence pack (now the tenant's real verified remediation, honest 'No verified fixes yet' empty state when none).",
+      "action": "click",
+      "selector": "[data-testid='pv2-ov-evidence-toggle']",
+      "sessionTag": "overview-live-1390"
+    },
+    {
+      "name": "OV24 (#1390) -- ...the evidence pack panel renders (rows if any fix is verified, the honest empty state otherwise -- never the old fixture Halden rows over a real tenant).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ov-evidence']",
+      "state": "visible",
+      "sessionTag": "overview-live-1390"
     }
   ]
 }

@@ -41,40 +41,41 @@ import { PortalV2ScanLanding } from "@/components/portal-v2/PortalV2ScanLanding"
 import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
 import { useScanStatus } from "@/lib/scan-status-context";
 import { useAuth } from "@/lib/auth-context";
-import { useRiskRegister } from "@/components/portal-v2/riskRegisterLive";
+import { useRiskRegister, usePolicyDecisions } from "@/components/portal-v2/riskRegisterLive";
 import { useRunbooks } from "@/components/portal-v2/holds/useRunbooks";
 import { useChangeControl } from "@/components/portal-v2/useChangeControl";
+import { useProjectsLive } from "@/components/portal-v2/projectsLive";
+import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
+import { useRemediationTracker } from "@/components/copilot-journey/useRemediationTracker";
 import { hexAlpha } from "@/components/copilot-journey/journeyTokens";
 import {
   OV_EVIDENCE_ROWS,
-  OV_HEADLINE_SUB,
-  OV_MC_INCOMING,
-  OV_POLICY_DECISIONS,
-  PJ_CONTRACT_END,
   PJ_CURRENT_WEEKS,
-  PJ_TODAY,
   PJ_WEEKS,
 } from "@/components/portal-v2/overviewData";
+import type { PjRow } from "@/components/portal-v2/projectsModel";
+import type { OvEvidenceRow } from "@/components/portal-v2/overviewData";
 import {
   acceptedRiskLanes,
   crLanes,
   crLanesFromLive,
   driftChips,
+  evidenceFromVerifiedSteps,
   flaggedPolicyCount,
   headlineMain,
+  headlineSub,
   holdLanes,
   holdLanesFromLive,
   laneTrackBackground,
   lastScanLabel,
   mcLanes,
+  mcLanesFromLive,
   pdLanes,
   pillarDelta,
   pillarDeltaLabel,
   pillarDeltaTone,
   pillarsOpenFindingsTotal,
   pillarStripSub,
-  pjPct,
-  pjRows,
   sectionCount,
   type Lane,
 } from "@/components/portal-v2/overviewModel";
@@ -316,8 +317,15 @@ function MotionSection({
 
 /* ── The project schedule lane — prototype 509-540 ───────────────────────── */
 
-function ProjectSchedule() {
-  const rows = pjRows();
+function ProjectSchedule({
+  rows,
+  todayPct,
+  contractEndPct,
+}: {
+  rows: readonly PjRow[];
+  todayPct: number;
+  contractEndPct: number;
+}) {
   return (
     <>
       <div
@@ -404,7 +412,7 @@ function ProjectSchedule() {
             <div
               style={{
                 position: "absolute",
-                left: `${pjPct(PJ_TODAY)}%`,
+                left: `${todayPct}%`,
                 top: -2,
                 bottom: -2,
                 width: 1,
@@ -415,7 +423,7 @@ function ProjectSchedule() {
             <div
               style={{
                 position: "absolute",
-                left: `${pjPct(PJ_CONTRACT_END)}%`,
+                left: `${contractEndPct}%`,
                 top: -2,
                 bottom: -2,
                 width: 1,
@@ -483,6 +491,28 @@ function ProjectSchedule() {
   );
 }
 
+/**
+ * The honest empty state a motion section drops in when it is genuinely LIVE
+ * with zero real items — a scoped tenant that truly has no phases / no policy
+ * decisions on record. Never shown for the fixture fallback, which always
+ * carries the design's worked example.
+ */
+function MotionEmpty({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        padding: "12px 6px",
+        borderTop: "1px solid rgba(30,41,59,.7)",
+        fontSize: "11.5px",
+        color: "#64748b",
+        lineHeight: 1.5,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function PortalV2OverviewPage() {
   const { view, loaded, scanning, everScanned } = usePortalV2Pillars();
   const scanStatus = useScanStatus();
@@ -525,6 +555,10 @@ export default function PortalV2OverviewPage() {
   const riskRegister = useRiskRegister();
   const runbooks = useRunbooks();
   const changeControl = useChangeControl();
+  const projects = useProjectsLive();
+  const messageCenter = useMessageCenter();
+  const policy = usePolicyDecisions();
+  const tracker = useRemediationTracker();
   const [evidenceOpen, setEvidenceOpen] = useState(false);
 
   // Zero-data landing (Git #1298). A CustomerUser lands straight here with no
@@ -558,6 +592,41 @@ export default function PortalV2OverviewPage() {
   const accepted = riskRegisterLive ? acceptedRiskLanes(riskRegister.risks) : acceptedRiskLanes();
   const crMotionLanes =
     changeControl.dataState === "live" ? crLanesFromLive(changeControl.crs()) : crLanes();
+
+  // Microsoft changes: the tenant's real Message Center posts once the dataset
+  // is live (fixture until, and if, it lands). `dataset.live` is only true for a
+  // scoped tenant with at least one real post, so a live lane set is never empty.
+  const mcMotionLanes = messageCenter.dataset.live
+    ? mcLanesFromLive(messageCenter.dataset.posts)
+    : mcLanes();
+
+  // Policy decisions: the customer's real register from /api/portal/policy-
+  // decisions once loaded, the design fixture until then / on error. Same
+  // `!loading && !error` gate the accepted-risks lane above uses.
+  const policyLive = !policy.loading && !policy.error;
+  const pdMotionLanes = policyLive ? pdLanes(policy.decisions) : pdLanes();
+  const flaggedPolicy = policyLive ? flaggedPolicyCount(policy.decisions) : flaggedPolicyCount();
+  const policyEmpty = policyLive && policy.decisions.length === 0;
+
+  // Project & release schedule: the real project phases #1241 already wired for
+  // the Projects page. `useProjectsLive` returns fixture rows in its own fixture
+  // branch, so `projects.rows` is always renderable; `dataState` says which.
+  const projectsEmpty = projects.dataState === "live" && projects.rows.length === 0;
+
+  // Evidence pack: the tenant's real VERIFIED remediation — steps a re-scan
+  // actually confirmed (`verification.state === "verified"`), joined to the
+  // remediation catalogue by stepId. A ticked-but-unverified step is a claim,
+  // not evidence, so it is excluded. Fixture until the tracker read lands / on
+  // error; an honest empty state when the tenant has no verified fixes yet.
+  const evidenceLive = tracker.loaded && !tracker.error;
+  const evidenceRows: readonly OvEvidenceRow[] = evidenceLive
+    ? evidenceFromVerifiedSteps(
+        [...tracker.verification.entries()]
+          .filter(([, v]) => v.state === "verified")
+          .map(([stepId, v]) => ({ stepId, verifiedAt: v.verifiedAt })),
+      )
+    : OV_EVIDENCE_ROWS;
+  const evidenceEmpty = evidenceLive && evidenceRows.length === 0;
 
   const totalFindings = loaded ? pillarsOpenFindingsTotal(view.pillars) : null;
   const chips = useMemo(
@@ -627,7 +696,7 @@ export default function PortalV2OverviewPage() {
             {headlineMain(totalFindings)}
           </h1>
           <div style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.5, maxWidth: "74ch" }}>
-            {OV_HEADLINE_SUB}
+            {headlineSub(scanStatus.loaded, scanStatus.data?.lastScanAt ?? null)}
           </div>
         </div>
 
@@ -765,7 +834,7 @@ export default function PortalV2OverviewPage() {
               <span
                 style={{ fontSize: "11px", fontWeight: 700, color: "#34d399", fontFamily: MONO }}
               >
-                {OV_EVIDENCE_ROWS.length}
+                {evidenceRows.length}
               </span>
               <span
                 style={{
@@ -796,11 +865,14 @@ export default function PortalV2OverviewPage() {
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                 <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#f8fafc" }}>
-                  {OV_EVIDENCE_ROWS.length} verified fixes, timestamped
+                  {evidenceEmpty
+                    ? "No verified fixes yet"
+                    : `${evidenceRows.length} verified fixes, timestamped`}
                 </span>
                 <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.5 }}>
-                  What changed, when the re-scan confirmed it, and which finding it closes — written
-                  for auditors, cyber insurers, and your own board.
+                  {evidenceEmpty
+                    ? "A fix appears here once a re-scan has confirmed it closed the finding — written for auditors, cyber insurers, and your own board."
+                    : "What changed, when the re-scan confirmed it, and which finding it closes — written for auditors, cyber insurers, and your own board."}
                 </span>
               </div>
               <div
@@ -810,7 +882,7 @@ export default function PortalV2OverviewPage() {
                   borderTop: "1px solid rgba(30,41,59,.9)",
                 }}
               >
-                {OV_EVIDENCE_ROWS.map((ev) => (
+                {evidenceRows.map((ev) => (
                   <div
                     key={ev.title}
                     style={{
@@ -830,44 +902,46 @@ export default function PortalV2OverviewPage() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 8, paddingTop: 2 }}>
-                <button
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "8px 13px",
-                    borderRadius: 6,
-                    border: "1px solid var(--brand-blue, #0078D4)",
-                    background: "var(--brand-blue, #0078D4)",
-                    color: "#fff",
-                    fontSize: "11.5px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Download as PDF
-                </button>
-                <button
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 7,
-                    padding: "8px 13px",
-                    borderRadius: 6,
-                    border: "1px solid rgba(30,41,59,.9)",
-                    background: "transparent",
-                    color: "#cbd5e1",
-                    fontSize: "11.5px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  Export as CSV
-                </button>
-              </div>
+              {!evidenceEmpty && (
+                <div style={{ display: "flex", gap: 8, paddingTop: 2 }}>
+                  <button
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "8px 13px",
+                      borderRadius: 6,
+                      border: "1px solid var(--brand-blue, #0078D4)",
+                      background: "var(--brand-blue, #0078D4)",
+                      color: "#fff",
+                      fontSize: "11.5px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Download as PDF
+                  </button>
+                  <button
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 7,
+                      padding: "8px 13px",
+                      borderRadius: 6,
+                      border: "1px solid rgba(30,41,59,.9)",
+                      background: "transparent",
+                      color: "#cbd5e1",
+                      fontSize: "11.5px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    Export as CSV
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1044,11 +1118,11 @@ export default function PortalV2OverviewPage() {
             <MotionSection
               id="mc"
               label="Microsoft changes incoming"
-              countLabel={sectionCount(OV_MC_INCOMING.length, "posts")}
+              countLabel={sectionCount(mcMotionLanes.length, "posts")}
               linkLabel="Open Microsoft Changes →"
               href="/portal-v2/ms-changes"
             >
-              {mcLanes().map((l) => (
+              {mcMotionLanes.map((l) => (
                 <LaneRow key={l.key} lane={l} href="/portal-v2/ms-changes" />
               ))}
             </MotionSection>
@@ -1058,12 +1132,23 @@ export default function PortalV2OverviewPage() {
             <MotionSection
               id="pj"
               label="Project & release schedule"
-              countLabel={sectionCount(pjRows().length, "phases")}
+              countLabel={sectionCount(projects.rows.length, "phases")}
               linkLabel="Open the full schedule →"
               href="/portal-v2/projects"
               fullWidth
             >
-              <ProjectSchedule />
+              {projectsEmpty ? (
+                <MotionEmpty>
+                  No project on record yet. Delivery phases appear here once an engagement is under
+                  way.
+                </MotionEmpty>
+              ) : (
+                <ProjectSchedule
+                  rows={projects.rows}
+                  todayPct={projects.todayPct}
+                  contractEndPct={projects.contractEndPct}
+                />
+              )}
             </MotionSection>
 
             {/* Hold windows have their own lane shape — a progress track and a
@@ -1175,13 +1260,20 @@ export default function PortalV2OverviewPage() {
             <MotionSection
               id="pd"
               label="Policy decisions due for review"
-              countLabel={sectionCount(flaggedPolicyCount(), "flagged")}
+              countLabel={sectionCount(flaggedPolicy, "flagged")}
               linkLabel="Open Policy Decisions →"
               href="/portal-v2/policy-decisions"
             >
-              {pdLanes().map((l) => (
-                <LaneRow key={l.key} lane={l} href="/portal-v2/policy-decisions" />
-              ))}
+              {policyEmpty ? (
+                <MotionEmpty>
+                  No policy decisions on record yet. A gap you decide to live with is recorded here so
+                  it reads as a decision, not neglect.
+                </MotionEmpty>
+              ) : (
+                pdMotionLanes.map((l) => (
+                  <LaneRow key={l.key} lane={l} href="/portal-v2/policy-decisions" />
+                ))
+              )}
             </MotionSection>
           </div>
         </div>

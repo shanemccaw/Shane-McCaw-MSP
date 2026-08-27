@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 
 import { OV_CR_PIPELINE, OV_POLICY_DECISIONS, PJ_WIN } from "./overviewData";
 import { RR_RISKS } from "./riskRegisterData";
+import { MS_POSTS } from "./msChangesData";
 import { toChangeRequest, type WireChangeRequest } from "./ccChangeControlWire";
 import type { HoldWindow } from "./holds/useRunbooks";
 import {
@@ -21,13 +22,16 @@ import {
   crLanes,
   crLanesFromLive,
   driftChips,
+  evidenceFromVerifiedSteps,
   flaggedPolicyCount,
   headlineMain,
+  headlineSub,
   holdDecisionCount,
   holdLanes,
   holdLanesFromLive,
   lastScanLabel,
   mcLanes,
+  mcLanesFromLive,
   ovBar,
   pdLanes,
   pillarDelta,
@@ -502,5 +506,92 @@ describe("drift chips", () => {
   it("shows an em-dash for accepted-as-risk too while the register hasn't loaded", () => {
     const chips = driftChips({ fixedThisWeek: null, newThisWeek: null, acceptedAsRisk: null });
     assert.equal(chips[2].num, "—");
+  });
+});
+
+describe("live Microsoft-change lanes (Git #1390)", () => {
+  it("gives every real Message Center post a lane", () => {
+    const posts = MS_POSTS.slice(0, 3);
+    assert.equal(mcLanesFromLive(posts).length, posts.length);
+  });
+
+  it("orders the lanes soonest-first by month, so the next thing to land leads", () => {
+    const months = mcLanesFromLive(MS_POSTS).map(
+      (l) => MS_POSTS.find((p) => p.id === l.key)?.month ?? -1,
+    );
+    assert.deepEqual(months, [...months].sort((a, b) => a - b));
+  });
+
+  it("uses a FIXED bar, not the fixture's to-scale day offset (a real post carries no day number)", () => {
+    const lane = mcLanesFromLive(MS_POSTS)[0];
+    assert.equal(lane.bar.left, 6);
+    assert.equal(lane.bar.width, 80);
+  });
+
+  it("carries the post's own land-date text and change kind rather than invented prose", () => {
+    const post = MS_POSTS[0];
+    const lane = mcLanesFromLive([post])[0];
+    assert.equal(lane.dateLabel, post.when);
+    assert.equal(lane.note, post.kind);
+  });
+});
+
+describe("policy-decision lanes read the passed register (Git #1390)", () => {
+  it("maps the live decisions handed in, not the fixture, when given a real set", () => {
+    const oneLive = OV_POLICY_DECISIONS.filter((d) => d.id === "CMP-A1");
+    const lanes = pdLanes(oneLive);
+    assert.equal(lanes.length, 1);
+    assert.equal(lanes[0].key, "CMP-A1");
+  });
+
+  it("counts flagged decisions off the passed register too", () => {
+    // A register with only a live (in-date) decision flags nothing.
+    const clean = OV_POLICY_DECISIONS.filter((d) => d.state === "live");
+    assert.equal(flaggedPolicyCount(clean), 0);
+  });
+
+  it("still defaults to the design fixture when called with no argument", () => {
+    assert.equal(pdLanes().length, OV_POLICY_DECISIONS.length);
+  });
+});
+
+describe("headline sub-line is gated on the real scan (Git #1390)", () => {
+  it("says nothing while the first scan-status read is still in flight", () => {
+    assert.equal(headlineSub(false, null), "");
+  });
+
+  it("does not claim 'pulled from your last scan' for a tenant that has never scanned", () => {
+    const sub = headlineSub(true, null);
+    assert.doesNotMatch(sub, /last scan/i);
+    assert.match(sub, /No scan on record/i);
+  });
+
+  it("keeps the design's line once there is a real scan to have pulled from", () => {
+    assert.match(headlineSub(true, "2026-08-24T00:00:00.000Z"), /Pulled from your last scan/);
+  });
+});
+
+describe("evidence pack from verified remediation (Git #1390)", () => {
+  it("builds a row for each verified step, joined to the catalogue title and pillar", () => {
+    // s7 is the platform step for the admin-MFA finding; s1 is the org-wide
+    // sharing finding. Both exist in the remediation catalogue.
+    const rows = evidenceFromVerifiedSteps([
+      { stepId: "s7", verifiedAt: "2026-08-20T00:00:00.000Z" },
+      { stepId: "s1", verifiedAt: "2026-08-25T00:00:00.000Z" },
+    ]);
+    assert.equal(rows.length, 2);
+    // Ordered most-recently-verified first — s1 was verified after s7.
+    assert.match(rows[0].finding, /^Governance · /);
+    assert.match(rows[1].finding, /^Security · /);
+    assert.equal(rows[0].by, "verified by re-scan");
+  });
+
+  it("drops a verified step whose id is not in the catalogue rather than showing it headless", () => {
+    const rows = evidenceFromVerifiedSteps([{ stepId: "s999", verifiedAt: null }]);
+    assert.equal(rows.length, 0);
+  });
+
+  it("is empty for a tenant with no verified steps — the honest empty state, not the fixture", () => {
+    assert.equal(evidenceFromVerifiedSteps([]).length, 0);
   });
 });

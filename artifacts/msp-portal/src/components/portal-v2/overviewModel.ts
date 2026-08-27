@@ -11,14 +11,19 @@
 
 import {
   OV_CR_PIPELINE,
+  OV_HEADLINE_SUB,
   OV_HOLD_WINDOWS,
   OV_MC_INCOMING,
   OV_POLICY_DECISIONS,
   PD_TONE,
   PD_UNSIGNED,
+  type OvEvidenceRow,
   type OvHoldWindow,
   type OvPolicyDecision,
 } from "./overviewData";
+import { impactTone } from "./msChangesModel";
+import type { MsPost } from "./msChangesData";
+import { RT_TASKS, RT_PILLAR_LABEL } from "./remediationData";
 // The project fixture and gantt geometry live in projectsData.ts (Part 8); this
 // derivation and the Projects page read the one copy so their gantts can't drift.
 import {
@@ -170,6 +175,37 @@ export function mcLanes(): readonly Lane[] {
 }
 
 /**
+ * The live twin of `mcLanes()` — the tenant's real Microsoft 365 Message Center
+ * posts from `useMessageCenter().dataset.posts` (the same daily Graph pull the
+ * Microsoft Changes page renders), once that dataset is `live`.
+ *
+ * A real post carries `when` (Microsoft's own free-text land date) and a
+ * per-tenant `impact` band, but no numeric day offset from today to place a
+ * to-scale bar with — the fixture's `day` is a design contrivance. So this
+ * reuses the same FIXED-geometry approach `crLanesFromLive`/`pdLanes` already
+ * use: the bar communicates state (`impactTone`, the exact colour the Microsoft
+ * Changes page itself renders that impact in, so the two can never disagree),
+ * not a calendar position. Posts are ordered soonest-first by `month`, so the
+ * lane leads with what lands next rather than in corpus order.
+ */
+export function mcLanesFromLive(posts: readonly MsPost[]): readonly Lane[] {
+  return [...posts]
+    .sort((a, b) => a.month - b.month)
+    .map((p) => {
+      const tone = impactTone(p.impact);
+      return {
+        key: p.id,
+        title: p.title,
+        note: p.kind,
+        dateLabel: p.when,
+        tone,
+        bar: { ...ovBar(-20, 220, -20, 240), left: 6, width: 80 },
+        fill: `linear-gradient(90deg,${tone},${tone}30)`,
+      };
+    });
+}
+
+/**
  * Policy decisions — prototype 17446-17457.
  *
  * The bar is FIXED at left 56% / width 34% rather than derived from the dates.
@@ -178,8 +214,10 @@ export function mcLanes(): readonly Lane[] {
  * every one of them into the same sliver. The window here communicates state
  * and review position, not duration.
  */
-export function pdLanes(): readonly Lane[] {
-  return OV_POLICY_DECISIONS.map((d) => {
+export function pdLanes(
+  decisions: readonly OvPolicyDecision[] = OV_POLICY_DECISIONS,
+): readonly Lane[] {
+  return decisions.map((d) => {
     const tone = PD_TONE[d.state] ?? "#94a3b8";
     const unsigned = d.approved === PD_UNSIGNED;
     return {
@@ -465,6 +503,68 @@ export function headlineMain(totalFindings: number | null): string {
   if (totalFindings === null) return "Reading your tenant's risk picture…";
   if (totalFindings === 0) return "Nothing is putting your tenant at risk right now.";
   return `${totalFindings} thing${totalFindings === 1 ? " is" : "s are"} putting your tenant at risk.`;
+}
+
+/**
+ * The headline's sub-line, gated on the real scan state rather than asserted
+ * unconditionally.
+ *
+ * The design's own line — `OV_HEADLINE_SUB`, "Pulled from your last scan across
+ * all six pillars…" — is a CLAIM about a scan, and it is only true once a scan
+ * has actually happened. Printing it over a tenant that has never scanned (or
+ * before the first poll lands) would be a fabricated provenance, exactly the
+ * kind of thing the headline stat above was already made honest about. So this
+ * returns the design copy only when there is a real last scan to have pulled
+ * from, an honest "not scanned yet" line when the tenant genuinely has none, and
+ * nothing at all while the first read is still in flight (the main headline is
+ * already saying "Reading your tenant's risk picture…" at that point).
+ */
+export function headlineSub(loaded: boolean, lastScanAt: string | null): string {
+  if (!loaded) return "";
+  if (!lastScanAt) return "No scan on record yet — this fills in the moment your first scan lands.";
+  return OV_HEADLINE_SUB;
+}
+
+/**
+ * The evidence pack's rows — the tenant's REAL verified remediation, not a
+ * fixture.
+ *
+ * The band's whole argument is that every row is a fix a re-scan confirmed
+ * ("what changed, when the re-scan confirmed it, and which finding it closes").
+ * The one place this platform holds that fact is `remediation_tracker_steps`:
+ * only `reverifyRemediationTrackerSteps()`, fired from inside a real scan, ever
+ * moves a step to `verified` with a `verifiedAt` timestamp (see
+ * `useRemediationTracker` / `portal-remediation-tracker.ts`). A ticked-but-
+ * unverified step is a claim, not evidence, and is deliberately excluded — the
+ * caller passes only `verified` entries.
+ *
+ * The step's title and pillar come from the remediation catalogue
+ * (`remediationData.ts`) joined by the same `stepId` seam `remediationLive.ts`
+ * uses; a verified step whose id is not in the catalogue is dropped rather than
+ * shown headless. Rows are ordered most-recently-verified first.
+ */
+export interface VerifiedRemediationStep {
+  readonly stepId: string;
+  readonly verifiedAt: string | null;
+}
+
+const RT_STEP_TO_TASK = new Map(
+  RT_TASKS.filter((t) => t.stepId !== null).map((t) => [t.stepId as string, t]),
+);
+
+export function evidenceFromVerifiedSteps(
+  verified: readonly VerifiedRemediationStep[],
+): readonly OvEvidenceRow[] {
+  return verified
+    .map((v) => ({ v, task: RT_STEP_TO_TASK.get(v.stepId) }))
+    .filter((x): x is { v: VerifiedRemediationStep; task: (typeof RT_TASKS)[number] } => !!x.task)
+    .sort((a, b) => (b.v.verifiedAt ?? "").localeCompare(a.v.verifiedAt ?? ""))
+    .map(({ v, task }) => ({
+      title: task.t,
+      finding: `${RT_PILLAR_LABEL[task.pl]} · ${task.sv}`,
+      when: v.verifiedAt ? timeAgo(v.verifiedAt) : "recently",
+      by: "verified by re-scan",
+    }));
 }
 
 /** Same relative-time rendering `scan-status-indicator.tsx` uses for its own "Last scan: …" line. */
