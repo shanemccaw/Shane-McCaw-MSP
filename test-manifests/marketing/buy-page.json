@@ -1,7 +1,7 @@
 {
   "feature": "Marketing Buy / Checkout page (/buy) — the one checkout for all three products. Asserts the product-specific rules that make or break the flow: monitoring gates pricing+payment behind a tenant connection, retainer offers a skippable scan and is never gated, packs are multi-select with a summed one-time total, and the terms checkbox gates the pay button without ever hiding the payment fields.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "9909cefba",
+  "lastVerifiedAgainstCommit": "ac02085210",
   "apiTests": [
     {
       "sessionTag": "1316-pack-flow",
@@ -107,13 +107,26 @@
     { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-connected']", "state": "absent" },
     { "sessionTag": "1317-integration", "action": "expect", "selector": "[data-testid='buy-estimate']", "state": "visible" },
 
-    { "action": "goto", "target": "/buy?product=retainer&tier=essentials" },
+    { "sessionTag": "1379-retainer-slug-fix", "name": "RET1 (Git #1379) — real slug ?tier=architect-essentials-retainer (what Retainers.tsx actually sends via tier.slug, NOT the old short 'essentials' key) lands on Essentials, not the Advisory fallback.", "action": "goto", "target": "/buy?product=retainer&tier=architect-essentials-retainer" },
     { "action": "expect", "selector": "[data-testid='buy-heading']", "state": "visible", "textContains": "Pick your hours" },
     { "action": "expect", "selector": "[data-testid='buy-connect-skip']", "state": "visible" },
     { "action": "expect", "selector": "[data-testid='buy-payment-fields']", "state": "visible" },
+    { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-sub']", "state": "visible", "textContains": "Essentials" },
     { "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$1,500" },
     { "action": "click", "selector": "[data-testid='buy-terms']" },
     { "action": "expect", "selector": "[data-testid='buy-pay']", "state": "visible", "textContains": "Pay $1,500 and start" },
+
+    { "sessionTag": "1379-retainer-slug-fix", "name": "RET2 (Git #1379) — real slug ?tier=architect-advisory-retainer lands on Advisory.", "action": "goto", "target": "/buy?product=retainer&tier=architect-advisory-retainer" },
+    { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-sub']", "state": "visible", "textContains": "Advisory" },
+    { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$900" },
+
+    { "sessionTag": "1379-retainer-slug-fix", "name": "RET3 (Git #1379) — real slug ?tier=architect-growth-retainer lands on Growth, not the Advisory fallback.", "action": "goto", "target": "/buy?product=retainer&tier=architect-growth-retainer" },
+    { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-sub']", "state": "visible", "textContains": "Growth" },
+    { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$3,000" },
+
+    { "sessionTag": "1379-retainer-slug-fix", "name": "RET4 (Git #1379) — real slug ?tier=architect-enterprise-retainer lands on Enterprise, not the Advisory fallback.", "action": "goto", "target": "/buy?product=retainer&tier=architect-enterprise-retainer" },
+    { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-sub']", "state": "visible", "textContains": "Enterprise" },
+    { "sessionTag": "1379-retainer-slug-fix", "action": "expect", "selector": "[data-testid='buy-summary-total']", "state": "visible", "textContains": "$5,500" },
 
     { "sessionTag": "1317-integration", "name": "PACK1 (Git #1317) — packs now show the REQUIRED read-consent connect card: the server demands read consent before a pack payment (#1311 fail-closed mapping + #1307 payment gate), so the UI offers it up front instead of failing at pay.", "action": "goto", "target": "/buy?product=pack&packs=entra,ca" },
     { "action": "expect", "selector": "[data-testid='buy-heading']", "state": "visible", "textContains": "Buy the pack" },
