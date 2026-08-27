@@ -572,9 +572,23 @@ export default function PortalV2OverviewPage() {
   // and its extra journey fetches — never mount for the common case.
   const [landingArmed, setLandingArmed] = useState(false);
   const [landingComplete, setLandingComplete] = useState(false);
+  // Git #1393 — programmatic Scene 0 bypass for shaneapp://runTest manifests.
+  // A query param, not a click: distinct from PortalV2ScanLanding's manual
+  // [DEBUG] buttons, and gated the SAME way they are — the server-verified
+  // isTestbed flag already on this session's own scan-status payload, so
+  // setting the param does nothing for a real customer regardless of what
+  // they pass (their isTestbed is always false server-side). No new server
+  // route needed: this only decides whether the landing arms at all.
+  const [e2eSkipLandingRequested] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("e2e_skip_landing") === "1",
+  );
   useEffect(() => {
-    if (scanStatus.loaded && !everScanned) setLandingArmed(true);
-  }, [scanStatus.loaded, everScanned]);
+    if (!scanStatus.loaded || everScanned) return;
+    if (e2eSkipLandingRequested && scanStatus.data?.isTestbed === true) return;
+    setLandingArmed(true);
+  }, [scanStatus.loaded, everScanned, e2eSkipLandingRequested, scanStatus.data?.isTestbed]);
   const showLanding = landingArmed && !landingComplete;
 
   // The real clock, per the README's "use the real clock in production" note on
