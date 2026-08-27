@@ -20,6 +20,7 @@
     "@azure/keyvault-secrets": "^4.11.2",
     "@google-analytics/data": "^5.1.0",
     "@grpc/grpc-js": "^1.14.4",
+    "@grpc/proto-loader": "^0.8.1",
     "@simplewebauthn/server": "^13.3.1",
     "@types/multer": "^2.1.0",
     "@workspace/api-zod": "workspace:*",
