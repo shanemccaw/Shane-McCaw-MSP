@@ -9,10 +9,25 @@
  * `retainerData.ts`'s fixture — same honest-fixture boundary
  * `useLivePillarHero.ts` documents for its own dashboards.
  *
- * `configured` is false whenever the customer has no active retainer row —
- * the page overlays live data only when `configured` is true, and falls back
- * to the design fixture otherwise, rather than rendering a manufactured zero
- * for a customer who was never enrolled.
+ * ── dataState (Git #1398) ────────────────────────────────────────────────
+ * The old two-state `"live" | "fixture"` model conflated three genuinely
+ * different situations under `"fixture"`: the first read still in flight, a
+ * customer with an active retainer row but nothing logged yet this month, and
+ * a customer who was never enrolled at all. All three rendered identically —
+ * the full design fixture — which is exactly the silent fixture-fallback
+ * Shane's standing rule forbids. `dataState` now names all four real cases:
+ *   - "loading"      — first read in flight.
+ *   - "live"          — an active retainer row AND at least one logged entry.
+ *   - "empty"         — an active retainer row, genuinely zero entries this
+ *                       month — real data, just nothing logged yet.
+ *   - "unconfigured"  — no active retainer row. The customer was never
+ *                       enrolled; there is nothing real to show.
+ *   - "error"         — the read failed. Distinct from "unconfigured" so the
+ *                       page never tells a customer "you're not enrolled"
+ *                       when the truth is "the request failed."
+ * The page renders its honest empty/unconfigured/error state for whichever
+ * of these it actually is — never the design fixture — for the bucket and
+ * work-log sections this hook backs.
  */
 import { useEffect, useState } from "react";
 
@@ -47,6 +62,13 @@ interface RetainerApiResponse {
   entries: RetainerLiveEntry[];
 }
 
+/**
+ * "loading" — first read in flight. "live" — configured, real entries exist.
+ * "empty" — configured, genuinely zero entries this month. "unconfigured" —
+ * no active retainer row. "error" — the read itself failed.
+ */
+export type RetainerDataState = "loading" | "live" | "empty" | "unconfigured" | "error";
+
 export interface RetainerLiveState {
   /** True once the caller has an active retainer row — only then is data live. */
   readonly configured: boolean;
@@ -54,8 +76,7 @@ export interface RetainerLiveState {
   readonly entries: readonly RetWorkItem[];
   /** True once a first real response (success or failure) has arrived. */
   readonly loaded: boolean;
-  /** "live" once real, configured data is on screen; "fixture" otherwise. */
-  readonly dataState: "live" | "fixture";
+  readonly dataState: RetainerDataState;
 }
 
 const KNOWN_STATES: readonly RetWorkState[] = ["In progress", "Closed", "In review", "Scheduled"];
@@ -77,37 +98,44 @@ function toWorkItem(e: RetainerLiveEntry): RetWorkItem {
   };
 }
 
-const EMPTY_STATE: RetainerLiveState = {
+const LOADING_STATE: RetainerLiveState = {
   configured: false,
   bucket: null,
   entries: [],
   loaded: false,
-  dataState: "fixture",
+  dataState: "loading",
 };
 
 export function useRetainerLive(): RetainerLiveState {
   const { fetchWithAuth } = useAuth();
-  const [state, setState] = useState<RetainerLiveState>(EMPTY_STATE);
+  const [state, setState] = useState<RetainerLiveState>(LOADING_STATE);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
         const res = await fetchWithAuth("/api/portal/retainer", {}, { silent: true });
-        if (!res.ok) return; // honest fixture fallback
+        if (!res.ok) throw new Error(`retainer ${res.status}`);
         const data = (await res.json()) as RetainerApiResponse;
         if (cancelled) return;
+        const configured = data.configured === true;
+        const entries = configured ? data.entries.map(toWorkItem) : [];
         setState({
-          configured: data.configured === true,
-          bucket: data.configured ? data.bucket : null,
-          entries: data.configured ? data.entries.map(toWorkItem) : [],
+          configured,
+          bucket: configured ? data.bucket : null,
+          entries,
           loaded: true,
-          dataState: data.configured ? "live" : "fixture",
+          dataState: !configured ? "unconfigured" : entries.length > 0 ? "live" : "empty",
         });
       } catch {
-        // best-effort — the page renders its honest fixture fallback
-      } finally {
-        if (!cancelled) setState((s) => ({ ...s, loaded: true }));
+        if (cancelled) return;
+        setState({
+          configured: false,
+          bucket: null,
+          entries: [],
+          loaded: true,
+          dataState: "error",
+        });
       }
     })();
     return () => {

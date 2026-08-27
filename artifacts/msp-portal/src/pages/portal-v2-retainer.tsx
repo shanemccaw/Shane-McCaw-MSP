@@ -12,19 +12,24 @@
  * the top (hours used, findings closed, what is next) and a week you select in
  * place below it, which swaps the report card without moving the month.
  *
- * ── Live vs fixture (#1285/#1293) ─────────────────────────────────────────
+ * ── Live vs honest-empty (#1285/#1293/#1398) ──────────────────────────────
  * The month bucket (retained/rolled/used) and the "Where the hours went" work
- * log now read real data via `useRetainerLive`, off `GET /api/portal/retainer`
- * — the AdminV2 Retainer Hours module (#1293) is the real source Shane logs
- * against. `dataState` overlays live data only once the customer has an
- * active retainer row (`configured`); an un-enrolled customer sees the design
- * fixture rather than a manufactured zero, same honest-fixture boundary
- * `useLivePillarHero.ts` documents. A hidden `pv2-ret-source` marker states
- * which is on screen. The weekly report card (summary, per-line work log,
- * deliverables, asks) has no backend source and stays on `retainerData.ts`'s
- * fixture, as do RET_OUTCOMES / RET_TERMS / RET_DOCS / RET_COPY. The week
- * selector is real local state; the ask box and the document/PDF buttons are
- * visual, to be wired in a later pass. Copy is FINAL and reproduced verbatim.
+ * log read real data via `useRetainerLive`, off `GET /api/portal/retainer` —
+ * the AdminV2 Retainer Hours module (#1293) is the real source Shane logs
+ * against. `dataState` genuinely distinguishes loading / a configured
+ * retainer with entries ("live") / a configured retainer with nothing logged
+ * yet ("empty") / no retainer row at all ("unconfigured") / a failed read
+ * ("error") — only "live" and "empty" have a real retainer row, so only those
+ * two show the real bucket numbers; "unconfigured" and "error" render an
+ * honest no-data state (`NoScanDataState`) instead of the design fixture. A
+ * hidden `pv2-ret-source` marker states which of the five is on screen. The
+ * weekly report card (summary, per-line work log, deliverables, asks) has no
+ * backend source at all and stays on `retainerData.ts`'s fixture, as do
+ * RET_OUTCOMES / RET_TERMS / RET_DOCS / RET_COPY, and — separately, a known,
+ * still-open gap — the "Findings closed" / "Next scheduled" SmallCards below
+ * (see #1398's follow-up). The week selector is real local state; the ask box
+ * and the document/PDF buttons are visual, to be wired in a later pass. Copy
+ * is FINAL and reproduced verbatim.
  */
 
 import { useState } from "react";
@@ -52,6 +57,7 @@ import {
 import { useRetainerLive } from "@/components/portal-v2/useRetainerLive";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
+import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
 
@@ -234,17 +240,29 @@ export default function PortalV2RetainerPage() {
   const askReady = askText.trim().length > 0;
 
   const live = useRetainerLive();
-  const retSummary = live.dataState === "live" && live.bucket
+  // Git #1398: the bucket and work-log sections are backed by a real
+  // customer-scoped read (`useRetainerLive`) that now genuinely distinguishes
+  // loading / configured-with-data / configured-but-empty / never-configured /
+  // failed-read, rather than collapsing the last three into one "fixture"
+  // bucket. Only "live" and "empty" have a real retainer row to show; the
+  // design fixture is used for those two states' real numbers, never as a
+  // stand-in for a customer who was never enrolled or a failed read.
+  const retainerLoading = live.dataState === "loading";
+  const retainerConfigured = live.dataState === "live" || live.dataState === "empty";
+  const retSummary = retainerConfigured && live.bucket
     ? computeRetSummary({ retained: live.bucket.retainedHours, rolled: live.bucket.rolledHours, used: live.bucket.usedHours })
     : fixtureRetSummary;
-  const retainedLabel = live.dataState === "live" && live.bucket
+  const retainedLabel = retainerConfigured && live.bucket
     ? `${live.bucket.retainedHours.toFixed(1)} hours`
     : RET_COPY.retainedMonthly;
-  const workItems = live.dataState === "live" && live.entries.length > 0 ? live.entries : RET_WORK;
-  // Real read in flight: `loaded` is the only signal this hook exposes (Git
-  // #1365) — `dataState` starts "fixture" and stays "fixture" for a genuinely
-  // unconfigured retainer, so it can't distinguish loading from settled.
-  const retainerLoading = !live.loaded;
+  const noRetainerLabel =
+    live.dataState === "error"
+      ? "Couldn't load your retainer hours"
+      : "This account isn't enrolled in a retainer";
+  const noRetainerDetail =
+    live.dataState === "error"
+      ? "The request failed. Refresh the page to try again."
+      : "There is no retainer to show hours for yet.";
 
   return (
     <PortalV2Shell eyebrow={RET_COPY.eyebrow} title="My Architect">
@@ -313,7 +331,7 @@ export default function PortalV2RetainerPage() {
 
           {retainerLoading ? (
             <PortalV2LoadingState rows={2} label="Loading your retainer hours…" testId="pv2-ret-summary-loading" />
-          ) : (
+          ) : retainerConfigured ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(230px,1fr))", gap: 12, alignItems: "stretch" }}>
               <TimeCard retSummary={retSummary} retainedLabel={retainedLabel} />
               <SmallCard
@@ -328,6 +346,8 @@ export default function PortalV2RetainerPage() {
                 sub={RET_COPY.nextScheduledSub}
               />
             </div>
+          ) : (
+            <NoScanDataState label={noRetainerLabel} detail={noRetainerDetail} testId="pv2-ret-summary-empty" />
           )}
 
           {/* Where the hours went */}
@@ -350,8 +370,12 @@ export default function PortalV2RetainerPage() {
             >
               {retainerLoading ? (
                 <PortalV2LoadingState rows={4} label="Loading where the hours went…" testId="pv2-ret-work-loading" />
+              ) : live.dataState === "live" ? (
+                live.entries.map((w, i) => <WorkRow key={`${w.finding}-${w.week}-${i}`} work={w} />)
+              ) : live.dataState === "empty" ? (
+                <NoScanDataState label="No hours logged yet this month" testId="pv2-ret-work-empty" compact />
               ) : (
-                workItems.map((w, i) => <WorkRow key={`${w.finding}-${w.week}-${i}`} work={w} />)
+                <NoScanDataState label={noRetainerLabel} detail={noRetainerDetail} testId="pv2-ret-work-empty" compact />
               )}
             </div>
           </div>
