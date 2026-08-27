@@ -36,6 +36,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 
 import { useRemediationTracker } from "@/components/copilot-journey/useRemediationTracker";
+import { useRemediationPillarScores } from "@/components/portal-v2/useRemediationPillarScores";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
@@ -45,6 +46,7 @@ import {
   type RtStateKey,
 } from "@/components/portal-v2/remediationData";
 import type { RtLiveState } from "@/components/portal-v2/remediationLive";
+import type { RtLiveScores } from "@/components/portal-v2/remediationScores";
 import {
   RT_OV_EMPTY,
   rtDriftItems,
@@ -91,12 +93,25 @@ export default function PortalV2RemediationPage() {
     [tracker.statuses, tracker.verification],
   );
 
+  // ── The REAL per-pillar scores (Git #1381) — rolling before/now, permanent
+  // day-one baseline and the real Copilot gate. Replaces the fixture headline.
+  const pillarScores = useRemediationPillarScores();
+  const scores: RtLiveScores = useMemo(
+    () => ({
+      pillars: pillarScores.pillars,
+      copilotGate: pillarScores.copilotGate,
+      taskPoints: pillarScores.taskPoints,
+      loaded: pillarScores.loaded,
+    }),
+    [pillarScores.pillars, pillarScores.copilotGate, pillarScores.taskPoints, pillarScores.loaded],
+  );
+
   // Session-only overrides for the not-yet-persisted Round Four structure.
   const [ov, setOv] = useState<RtOverrides>(RT_OV_EMPTY);
   const [selState, setSelState] = useState<RtStateKey | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
-  const ctx: RtCtx = useMemo(() => ({ live, ov }), [live, ov]);
+  const ctx: RtCtx = useMemo(() => ({ live, ov, scores }), [live, ov, scores]);
   const { openForm, formElement } = useFormDrawer();
 
   const headline = useMemo(() => rtHeadline(ctx), [ctx]);
@@ -297,26 +312,35 @@ export default function PortalV2RemediationPage() {
             <span data-testid="pv2-rt-sub" style={{ fontSize: "12.5px", color: "#94a3b8", lineHeight: 1.6, maxWidth: "86ch", textWrap: "pretty" }}>{headline.sub}</span>
           </div>
 
-          {/* ── Gate summary strip — proto 5970-5991 ─────────────────────────── */}
-          <div data-testid="pv2-rt-gate" style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", padding: "16px 18px", border: "1px solid rgba(30,41,59,.9)", borderRadius: 13, background: "rgba(15,23,42,.45)" }}>
+          {/* ── Gate summary strip — real rolling tenant score + day-one (#1381) ─ */}
+          <div data-testid="pv2-rt-gate" data-rt-scored={gate.hasScore ? "true" : "false"} style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", padding: "16px 18px", border: "1px solid rgba(30,41,59,.9)", borderRadius: 13, background: "rgba(15,23,42,.45)" }}>
             <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 3 }}>
               <span style={{ fontSize: "9px", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>Tenant score</span>
-              <span style={{ fontSize: "40px", fontWeight: 800, lineHeight: 1, fontFamily: MONO, color: gate.nowColor }}>{gate.now}</span>
-              <span style={{ fontSize: "10.5px", fontWeight: 700, fontFamily: MONO, color: gate.pendingColor }}>{gate.pending}</span>
+              <span data-testid="pv2-rt-gate-now" style={{ fontSize: "40px", fontWeight: 800, lineHeight: 1, fontFamily: MONO, color: gate.nowColor }}>{gate.now}</span>
+              {gate.hasScore ? (
+                gate.delta ? (
+                  <span style={{ fontSize: "10.5px", fontWeight: 700, fontFamily: MONO, color: gate.deltaPositive ? "#34d399" : gate.deltaNegative ? "#f87171" : "#475569" }}>{gate.before} → {gate.now} · {gate.delta} since last scan</span>
+                ) : (
+                  <span style={{ fontSize: "10.5px", fontWeight: 700, fontFamily: MONO, color: "#475569" }}>{gate.statusNote || "no change since last scan"}</span>
+                )
+              ) : (
+                <span style={{ fontSize: "10.5px", fontWeight: 700, fontFamily: MONO, color: "#64748b" }}>{gate.statusNote}</span>
+              )}
             </div>
             <div style={{ flex: "1 1 260px", minWidth: 200, display: "flex", flexDirection: "column", gap: 7 }}>
               <div style={{ position: "relative", height: 9, borderRadius: 5, background: "rgba(148,163,184,.14)", overflow: "hidden" }}>
-                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${gate.confPct}%`, background: "linear-gradient(90deg,#34d399,#5eead4)", transition: "width 500ms" }} />
-                <div style={{ position: "absolute", left: `${gate.confPct}%`, top: 0, bottom: 0, width: `${gate.pendPct}%`, background: "#5eead4", opacity: 0.3, transition: "all 500ms" }} />
+                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${gate.scorePct}%`, background: "linear-gradient(90deg,#34d399,#5eead4)", transition: "width 500ms" }} />
+                {gate.dayOne && <div style={{ position: "absolute", left: `${gate.dayOnePct}%`, top: -2, bottom: -2, width: 2, background: "#94a3b8" }} title={`Day 1 · ${gate.dayOne}`} />}
               </div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
-                <span style={{ fontSize: "10.5px", color: "#94a3b8", fontFamily: MONO }}>{gate.base} at scan 1</span>
-                <span style={{ fontSize: "10.5px", color: "#94a3b8", fontFamily: MONO }}>{gate.target} when every task is verified</span>
+                {gate.dayOne && <span data-testid="pv2-rt-gate-dayone" style={{ fontSize: "10.5px", color: "#94a3b8", fontFamily: MONO }}>day 1 · {gate.dayOne}</span>}
+                {gate.hasScore && gate.before && <span style={{ fontSize: "10.5px", color: "#94a3b8", fontFamily: MONO }}>previous scan · {gate.before}</span>}
+                {!gate.hasScore && <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO }}>run a scan to establish a baseline</span>}
               </div>
             </div>
             <div style={{ flex: "0 0 auto", display: "flex", flexDirection: "column", gap: 2, paddingLeft: 18, borderLeft: "1px solid rgba(30,41,59,.9)" }}>
               <span style={{ fontSize: "9px", fontWeight: 800, letterSpacing: ".14em", textTransform: "uppercase", color: "#64748b" }}>Copilot gate</span>
-              <span style={{ fontSize: "15px", fontWeight: 800, fontFamily: MONO, color: gate.copilotOk ? "#34d399" : "#fbbf24" }}>{gate.copilotGate}</span>
+              <span data-testid="pv2-rt-copilot-gate" style={{ fontSize: "15px", fontWeight: 800, fontFamily: MONO, color: gate.copilotOk ? "#34d399" : gate.copilotEvaluated ? "#fbbf24" : "#64748b" }}>{gate.copilotGate}</span>
               <span style={{ fontSize: "10px", color: "#64748b" }}>{gate.copilotNote}</span>
             </div>
           </div>
@@ -332,15 +356,15 @@ export default function PortalV2RemediationPage() {
               >
                 <span style={{ fontSize: "9px", fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: p.color }}>{p.label}</span>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-                  <span style={{ fontSize: "18px", fontWeight: 800, fontFamily: MONO, color: p.atTarget ? "#34d399" : "#f8fafc" }}>{p.score}</span>
-                  <span style={{ fontSize: "9.5px", color: "#475569", fontFamily: MONO }}>{p.target}</span>
-                  <span style={{ fontSize: "9.5px", fontWeight: 700, fontFamily: MONO, color: p.deltaPositive ? "#34d399" : "#64748b" }}>{p.delta}</span>
+                  <span data-testid={`pv2-rt-pillar-score-${p.key}`} style={{ fontSize: "18px", fontWeight: 800, fontFamily: MONO, color: p.hasScore ? "#f8fafc" : "#475569" }}>{p.score}</span>
+                  {p.dayOneLabel && <span style={{ fontSize: "9.5px", color: "#475569", fontFamily: MONO }}>{p.dayOneLabel}</span>}
+                  {p.delta && <span style={{ fontSize: "9.5px", fontWeight: 700, fontFamily: MONO, color: p.deltaPositive ? "#34d399" : p.deltaNegative ? "#f87171" : "#64748b" }}>{p.delta}</span>}
                 </div>
                 <div style={{ position: "relative", height: 5, borderRadius: 3, background: "rgba(148,163,184,.14)", overflow: "hidden" }}>
-                  <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${p.confPct}%`, background: p.color, transition: "width 400ms" }} />
-                  <div style={{ position: "absolute", left: `${p.confPct}%`, top: 0, bottom: 0, width: `${p.pendPct}%`, background: p.color, opacity: 0.35, transition: "all 400ms" }} />
+                  <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${p.scorePct}%`, background: p.color, transition: "width 400ms" }} />
+                  {p.dayOne && <div style={{ position: "absolute", left: `${p.dayOnePct}%`, top: -1, bottom: -1, width: 1.5, background: "#94a3b8" }} />}
                 </div>
-                {p.hasPending && <span style={{ fontSize: "9px", fontWeight: 700, color: "#5eead4", fontFamily: MONO }}>{p.pending}</span>}
+                {p.statusNote && <span style={{ fontSize: "9px", fontWeight: 700, color: "#64748b", fontFamily: MONO }}>{p.statusNote}</span>}
               </button>
             ))}
           </div>

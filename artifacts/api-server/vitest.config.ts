@@ -150,6 +150,7 @@ export default defineConfig({
       "src/routes/msp-diagnostics-finding-classification.test.ts",
       "src/lib/diagnostics-finding-title.test.ts",
       "src/routes/portal-delivery-kanban.test.ts",
+      "src/routes/portal-remediation-tracker-scores.test.ts",
       "src/lib/__tests__/live-monitor-nodes.test.ts",
       "src/routes/msp-sow.test.ts",
       "src/routes/admin-observability.test.ts",

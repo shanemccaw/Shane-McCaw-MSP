@@ -1,5 +1,5 @@
 {
-  "feature": "Customer Portal v2 -- Operate -> Remediation Tracker (/portal-v2/remediation), Round Four shell, STILL WIRED TO REAL DATA. The page was rebuilt from a 3-phase checklist into the 7-phase working tracker ('Customer Portal Shell.dc.html' 5961-6228 markup, 20678-21173 derivation): the phases live in the LEFT NAV, tasks carry a CR gate / hold window / evidence state, and pillar scores show base/confirmed/pending. CRITICAL AND UNCHANGED BY THE REBUILD: whether a task is DONE, VERIFIED or ACCEPTED still comes off the customer's own `remediation_tracker_steps` rows over GET /api/portal/remediation-tracker (customer-scoped off the JWT), read through the same `useRemediationTracker` hook the Full Remediation Guide writes with, per task via its `stepId` (remediationLive.ts). The new CR-gate / hold / evidence structure is fixture seed + session-only interactivity for this shell pass; the finding CATALOGUE is the design's fixture.",
+  "feature": "Customer Portal v2 -- Operate -> Remediation Tracker (/portal-v2/remediation), Round Four shell, STILL WIRED TO REAL DATA. The page was rebuilt from a 3-phase checklist into the 7-phase working tracker ('Customer Portal Shell.dc.html' 5961-6228 markup, 20678-21173 derivation): the phases live in the LEFT NAV, tasks carry a CR gate / hold window / evidence state, and the headline/pillar cells/Copilot gate now show REAL scores off GET /api/portal/remediation-tracker/pillar-scores (#1381): the rolling before/now pair from the last two real scans (tenant_pillar_snapshots), the permanent day-one baseline, the real computeCopilotGate verdict, and per-task point chips from each task's real underlying finding severity -- with an honest no-data state for single-scan / unscanned pillars. CRITICAL AND UNCHANGED BY THE REBUILD: whether a task is DONE, VERIFIED or ACCEPTED still comes off the customer's own `remediation_tracker_steps` rows over GET /api/portal/remediation-tracker (customer-scoped off the JWT), read through the same `useRemediationTracker` hook the Full Remediation Guide writes with, per task via its `stepId` (remediationLive.ts). The new CR-gate / hold / evidence structure is fixture seed + session-only interactivity for this shell pass; the finding CATALOGUE is the design's fixture.",
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "21ee4bea",
   "notes": [
@@ -9,7 +9,8 @@
     "PERSISTED-SESSION FLAKE (known): when WebView2 is already authed the login FORM never renders, so the #email 'expect' and the two #email/#password inputs fail while everything after runs green. N-3 of N with only those three red is a PASS for the feature; any RT* step going red is not.",
     "THE REAL-DATA GUARANTEE -- WHY RT1/RT2 ARE LOAD-BEARING. data-rt-loaded='true' is set ONLY once a payload has actually returned from /api/portal/remediation-tracker, and data-rt-error='false' proves it was a real read, not a silently-failed one rendering defaults. The page derives every task's done/verified/accepted from those rows through useRemediationTracker (see remediationModel.test.ts, 28 unit tests) -- it is imported and used, not a dead import. The headline 'Tenant score X -> Y ... tasks completed' is COMPUTED from the real pillar scores and the real completed count, so it is real data on the page, not fixture.",
     "STRUCTURE IS FIXTURE-DRIVEN, SO IT RENDERS REGARDLESS OF DB STATE. The seven phase groups, the nine state chips, the CR gate stepper, the hold window and the evidence block derive from the design's catalogue seeds, so they render for any tenant. Exact per-task STATE (completed vs waiting vs blocked) rides on the live rows and is deliberately NOT hard-asserted here -- that is what keeps the page honest when the tenant's rows change.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD.",
+    "REAL SCORES (#1381) -- API3-API6 + RT25-RT28 (sessionTag 'rt1381') cover GET /api/portal/remediation-tracker/pillar-scores. The endpoint reads tenant_pillar_snapshots (previousScore->score for rolling before/now, earliest row per pillar for the permanent day-one baseline) + computeCopilotGate + the latest run's finding severities for the per-task point weights, keyed by the tracker's six pillars (health maps to the engine's 'architecture' snapshot; copilot is the gate, not a cell). The UI steps assert the score NODES render (data-testid present) rather than exact numbers, because the shane-mccaw-consulting testbed's snapshot history changes as scans run -- asserting a specific score would be a fixture in disguise. A single-scan / unscanned tenant honestly shows a dash and 'not enough data yet', which is the point of the exercise. To run just the new steps: shaneapp://runTest?file=<this>&onlyTag=rt1381."
   ],
   "apiTests": [
     {
@@ -34,6 +35,34 @@
       "path": "/api/portal/remediation-tracker",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.steps", "exists": true }
+    },
+    {
+      "name": "API3 (#1381) -- the real per-pillar score route is access-gated: no bearer, no data.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "headers": { "Content-Type": "application/json" },
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "API4 (#1381) -- authenticated, the route returns the real rolling before/now + permanent day-one per pillar.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars", "exists": true }
+    },
+    {
+      "name": "API5 (#1381) -- ...and the REAL Copilot gate rides alongside it (computeCopilotGate, fixed 82 threshold), not a guess off the tenant score.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.copilotGate.threshold", "exists": true }
+    },
+    {
+      "name": "API6 (#1381) -- ...and the per-task point weights derived from real finding severity are present.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.taskPoints", "exists": true }
     }
   ],
   "uiSteps": [
@@ -66,6 +95,10 @@
     { "name": "RT21 -- filtered to Baseline: the Baseline group is shown.", "action": "expect", "selector": "[data-testid='pv2-rt-group-baseline']", "state": "visible", "critical": true },
     { "name": "RT22 -- ...and Discovery is filtered out.", "action": "expect", "selector": "[data-testid='pv2-rt-group-discovery']", "state": "absent" },
     { "name": "RT23 -- the filter bar shows the 'Showing N of 31 tasks' clear control.", "action": "expect", "selector": "[data-testid='pv2-rt-clear']", "textContains": "Baseline" },
-    { "name": "RT24 -- the Operate nav row for Remediation Tracker exists.", "action": "expect", "selector": "[data-testid='pv2-nav-remediation']", "state": "visible" }
+    { "name": "RT24 -- the Operate nav row for Remediation Tracker exists.", "action": "expect", "selector": "[data-testid='pv2-nav-remediation']", "state": "visible" },
+    { "name": "RT25 (#1381) -- the tenant-score gate number renders from the REAL score API (a number, or an honest dash when there is no snapshot yet).", "action": "expect", "selector": "[data-testid='pv2-rt-gate-now']", "state": "visible", "sessionTag": "rt1381" },
+    { "name": "RT26 (#1381) -- the gate strip carries its scored/no-data flag, so the honest-null state is observable.", "action": "expect", "selector": "[data-testid='pv2-rt-gate'][data-rt-scored]", "state": "present", "sessionTag": "rt1381" },
+    { "name": "RT27 (#1381) -- the REAL Copilot gate renders ('N of 82' when scored, or an honest 'not evaluated yet').", "action": "expect", "selector": "[data-testid='pv2-rt-copilot-gate']", "state": "visible", "sessionTag": "rt1381" },
+    { "name": "RT28 (#1381) -- each pillar cell shows its own score node -- the real 'now' score, or an honest dash for an unscanned pillar.", "action": "expect", "selector": "[data-testid='pv2-rt-pillar-score-governance']", "state": "visible", "sessionTag": "rt1381" }
   ]
 }

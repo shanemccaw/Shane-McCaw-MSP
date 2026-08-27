@@ -35,11 +35,9 @@ import {
   RT_CR_STAGES,
   RT_PHASE_NAME,
   RT_PHASES,
-  RT_PILLAR_BASE,
   RT_PILLAR_COLOR,
   RT_PILLAR_LABEL,
   RT_PILLAR_ORDER,
-  RT_PILLAR_TARGET,
   RT_MESSAGE_CENTER,
   RT_RESCAN,
   RT_SEV_COLOR,
@@ -59,6 +57,11 @@ import {
   rtLiveStep,
   type RtLiveState,
 } from "./remediationLive";
+import {
+  RT_SCORES_EMPTY,
+  type RtLiveScores,
+  type RtPillarScoreStatus,
+} from "./remediationScores";
 
 /** A runbook run in progress — prototype `this.state.rtExec[id]`. */
 export interface RtExec {
@@ -99,13 +102,17 @@ export const RT_OV_EMPTY: RtOverrides = {
   rescan: {},
 };
 
-/** Everything a derivation reads: the real wire state and the session overrides. */
+/** Everything a derivation reads: the real wire state, the real per-pillar scores
+ * (Git #1381), and the session overrides. `scores` is honest-null by default —
+ * before its payload lands, and for a tenant with too little history, every pillar
+ * reads insufficient_data rather than a fabricated number. */
 export interface RtCtx {
   readonly live: RtLiveState;
   readonly ov: RtOverrides;
+  readonly scores: RtLiveScores;
 }
 
-export const RT_CTX_EMPTY: RtCtx = { live: RT_LIVE_EMPTY, ov: RT_OV_EMPTY };
+export const RT_CTX_EMPTY: RtCtx = { live: RT_LIVE_EMPTY, ov: RT_OV_EMPTY, scores: RT_SCORES_EMPTY };
 
 // ── The load-bearing facts: real baseline, session override on top ────────────
 
@@ -146,24 +153,25 @@ function scoredOf(t: RemediationTask, ctx: RtCtx): boolean {
   return rtDoneOf(t, ctx) && rtEvStateOf(t, ctx) === "approved" && rtVerOf(t, ctx);
 }
 
-// ── Severity-weighted points — prototype `pts` (20808-20815) ──────────────────
+// ── Per-task points — the task's REAL underlying finding severity (Git #1381) ──
+//
+// Shane's call: "The chip's point value should come directly from that task's real
+// underlying finding severity, full stop." A task's platform step (`stepId`) maps
+// to real monitor checks (STEP_CHECK_KEYS) whose latest-scan finding severity the
+// score API returns as a 1-3 weight (critical 3 / warning 2 / info 1 / ok 0). When
+// the live weight is present it wins; otherwise the chip falls back to the design's
+// own severity weight (`RT_SEV_WEIGHT[t.sv]`, the SAME 1-3 scale) so an
+// un-scanned tenant still shows a sensible, non-fabricated point value rather than
+// the old gap-toward-a-fixed-target projection this replaces.
 
-/** Points per task id: a pillar hits its target when all of it is scored. */
-export const RT_POINTS: Readonly<Record<string, number>> = (() => {
-  const pts: Record<string, number> = {};
-  for (const k of RT_PILLAR_ORDER) {
-    const ts = RT_TASKS.filter((t) => t.pl === k);
-    const sum = ts.reduce((a, t) => a + RT_SEV_WEIGHT[t.sv], 0);
-    const gap = RT_PILLAR_TARGET[k] - RT_PILLAR_BASE[k];
-    let acc = 0;
-    ts.forEach((t, i) => {
-      const p = i === ts.length - 1 ? gap - acc : Math.round((gap * RT_SEV_WEIGHT[t.sv]) / sum);
-      pts[t.id] = p;
-      acc += p;
-    });
+/** The point value for a task's chip — real finding severity weight, honest fallback. */
+export function rtTaskPoints(t: RemediationTask, ctx: RtCtx = RT_CTX_EMPTY): number {
+  if (t.stepId) {
+    const live = ctx.scores.taskPoints?.[t.stepId];
+    if (live) return live.weight;
   }
-  return pts;
-})();
+  return RT_SEV_WEIGHT[t.sv];
+}
 
 // ── The nine-state resolver — prototype `stateOf` (20836-20855) ───────────────
 
@@ -190,7 +198,7 @@ export function rtStateOf(t: RemediationTask, ctx: RtCtx = RT_CTX_EMPTY): RtStat
     if (!rtVerOf(t, ctx)) {
       return {
         k: "completed",
-        next: `Closed. Re-scan to bank the ${RT_POINTS[t.id]} points against ${RT_PILLAR_LABEL[t.pl]}.`,
+        next: `Closed. Re-scan to bank the ${rtTaskPoints(t, ctx)} points against ${RT_PILLAR_LABEL[t.pl]}.`,
       };
     }
     return { k: "completed", next: "Closed and verified at scan 14. Monitored for drift from here." };
@@ -225,104 +233,168 @@ export function rtCanTick(t: RemediationTask, ctx: RtCtx = RT_CTX_EMPTY): boolea
   return true;
 }
 
-// ── Pillar-live maths — prototype `pillarLive` (20816-20823) ──────────────────
+// ── Pillar-live scoring — REAL rolling before/now + permanent day-one (#1381) ──
+//
+// The fixture `RT_PILLAR_BASE`/`RT_PILLAR_TARGET` + confirmed/pending point
+// accumulation this replaced never touched the database. Per Shane's decision the
+// tracker now shows the last TWO consecutive real scan scores (`before` → `now`),
+// plus the permanent `dayOne` baseline for the long-arc journey. There is no
+// "target"/"pending" projection any more — a pillar with too little history reads
+// insufficient_data rather than a fabricated number.
 
 export interface RtPillarLive {
-  readonly base: number;
-  readonly now: number;
-  readonly pending: number;
-  readonly target: number;
+  /** The previous scan's real score. Null on a first scan (nothing to compare). */
+  readonly before: number | null;
+  /** The current scan's real score. Null when the tenant has no snapshot at all. */
+  readonly now: number | null;
+  /** The tenant's VERY FIRST real score for this pillar, kept forever. */
+  readonly dayOne: number | null;
+  /** now − before, or null when there is no rolling pair yet. */
+  readonly delta: number | null;
+  readonly status: RtPillarScoreStatus;
 }
+
+const INSUFFICIENT_PILLAR: RtPillarLive = {
+  before: null,
+  now: null,
+  dayOne: null,
+  delta: null,
+  status: "insufficient_data",
+};
 
 export function rtPillarLive(k: RtPillarKey, ctx: RtCtx = RT_CTX_EMPTY): RtPillarLive {
-  let conf = 0;
-  let pend = 0;
-  for (const t of RT_TASKS.filter((x) => x.pl === k)) {
-    if (rtAcceptedOf(t, ctx)) continue;
-    if (scoredOf(t, ctx)) conf += RT_POINTS[t.id];
-    else if (rtDoneOf(t, ctx)) pend += RT_POINTS[t.id];
+  const s = ctx.scores.pillars?.[k];
+  if (!s || s.now == null) {
+    // Keep a dayOne if one somehow exists without a current score, but otherwise
+    // this pillar has nothing real to show.
+    return { ...INSUFFICIENT_PILLAR, dayOne: s?.dayOne ?? null };
   }
-  return { base: RT_PILLAR_BASE[k], now: RT_PILLAR_BASE[k] + conf, pending: pend, target: RT_PILLAR_TARGET[k] };
+  return { before: s.before, now: s.now, dayOne: s.dayOne, delta: s.delta, status: s.status };
 }
 
-const clampPct = (n: number, span: number) => Math.max(0, Math.min(100, Math.round((n / span) * 100)));
+const clampScore = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
 export interface RtPillarCell {
   readonly key: RtPillarKey;
   readonly label: string;
   readonly color: string;
+  readonly hasScore: boolean;
+  /** The current score, or "—" when there is nothing real to show. */
   readonly score: string;
-  readonly target: string;
+  /** "+6" / "±0" / "-3" — the rolling movement since the previous scan; "" if none. */
   readonly delta: string;
   readonly deltaPositive: boolean;
-  readonly atTarget: boolean;
-  readonly pending: string;
-  readonly hasPending: boolean;
-  readonly confPct: number;
-  readonly pendPct: number;
+  readonly deltaNegative: boolean;
+  /** The previous scan's score as a string, or "". */
+  readonly before: string;
+  /** The permanent day-one score as a string, or "". */
+  readonly dayOne: string;
+  /** "day 1 · 28" for the long-arc story, or "". */
+  readonly dayOneLabel: string;
+  /** "not enough data yet" / "first scan" / "". */
+  readonly statusNote: string;
+  /** now as 0-100 for the bar fill. 0 when unscored. */
+  readonly scorePct: number;
+  /** dayOne as a 0-100 marker on the bar. 0 when absent. */
+  readonly dayOnePct: number;
 }
 
 export function rtPillarCells(ctx: RtCtx = RT_CTX_EMPTY): readonly RtPillarCell[] {
   return RT_PILLAR_ORDER.map((k) => {
     const l = rtPillarLive(k, ctx);
-    const span = l.target - l.base;
+    const has = l.now != null;
+    const d = l.delta;
     return {
       key: k,
       label: RT_PILLAR_LABEL[k],
       color: RT_PILLAR_COLOR[k],
-      score: String(l.now),
-      target: `of ${l.target}`,
-      delta: l.now > l.base ? `+${l.now - l.base}` : "±0",
-      deltaPositive: l.now > l.base,
-      atTarget: l.now >= l.target,
-      pending: l.pending > 0 ? `+${l.pending} pending` : "",
-      hasPending: l.pending > 0,
-      confPct: clampPct(l.now - l.base, span),
-      pendPct: clampPct(l.pending, span),
+      hasScore: has,
+      score: has ? String(l.now) : "—",
+      delta: d == null ? "" : d > 0 ? `+${d}` : d < 0 ? String(d) : "±0",
+      deltaPositive: (d ?? 0) > 0,
+      deltaNegative: (d ?? 0) < 0,
+      before: l.before != null ? String(l.before) : "",
+      dayOne: l.dayOne != null ? String(l.dayOne) : "",
+      dayOneLabel: l.dayOne != null ? `day 1 · ${l.dayOne}` : "",
+      statusNote: l.status === "insufficient_data" ? "not enough data yet" : l.status === "single_scan" ? "first scan" : "",
+      scorePct: has ? clampScore(l.now as number) : 0,
+      dayOnePct: l.dayOne != null ? clampScore(l.dayOne) : 0,
     };
   });
 }
 
-// ── The gate summary — prototype 21120-21166 ──────────────────────────────────
+// ── The gate summary — real tenant score + real Copilot gate (#1381) ──────────
+//
+// The tenant score is averaged over the SAME set of pillars for `before` and
+// `now` (every pillar that has a current score), with a single-scan pillar's
+// `before` taken as its own `now` — it hasn't moved, so it contributes 0 to the
+// rolling delta rather than dropping out and skewing the average. `dayOne` is
+// averaged over the same set (a pillar with a current score always has a day-one
+// row). The Copilot gate is the engine's REAL go/no-go, honestly "not evaluated"
+// when there is too little coverage — never a `now − 2` guess off the tenant score.
 
 export interface RtGate {
-  readonly base: string;
+  readonly hasScore: boolean;
   readonly now: string;
-  readonly target: string;
+  readonly before: string;
+  readonly dayOne: string;
+  readonly delta: string;
+  readonly deltaPositive: boolean;
+  readonly deltaNegative: boolean;
   readonly nowColor: string;
-  readonly pending: string;
-  readonly pendingColor: string;
-  readonly confPct: number;
-  readonly pendPct: number;
+  readonly statusNote: string;
+  readonly scorePct: number;
+  readonly dayOnePct: number;
   readonly copilotGate: string;
   readonly copilotNote: string;
   readonly copilotOk: boolean;
+  readonly copilotEvaluated: boolean;
 }
 
 export function rtGate(ctx: RtCtx = RT_CTX_EMPTY): RtGate {
-  const avg = (f: (l: RtPillarLive) => number) =>
-    Math.round(RT_PILLAR_ORDER.reduce((a, k) => a + f(rtPillarLive(k, ctx)), 0) / RT_PILLAR_ORDER.length);
-  const gBase = avg((l) => l.base);
-  const gNow = avg((l) => l.now);
-  const gTarget = avg((l) => l.target);
-  const gPend = avg((l) => l.pending);
-  const gw = (n: number) => Math.max(0, Math.min(100, (n / (gTarget - gBase)) * 100));
+  const lives = RT_PILLAR_ORDER.map((k) => rtPillarLive(k, ctx));
+  const withNow = lives.filter((l): l is RtPillarLive & { now: number } => l.now != null);
+  const withDayOne = lives.filter((l): l is RtPillarLive & { dayOne: number } => l.dayOne != null);
+  const mean = (ns: number[]) => Math.round(ns.reduce((a, n) => a + n, 0) / ns.length);
+
+  const hasScore = withNow.length > 0;
+  const now = hasScore ? mean(withNow.map((l) => l.now)) : null;
+  // A single-scan pillar's `before` is its own `now` — it hasn't moved.
+  const before = hasScore ? mean(withNow.map((l) => l.before ?? l.now)) : null;
+  const dayOne = withDayOne.length > 0 ? mean(withDayOne.map((l) => l.dayOne)) : null;
+  const delta = now != null && before != null ? now - before : null;
+
+  const anyRolling = withNow.some((l) => l.status === "scored");
+  const statusNote = !hasScore ? "not enough data yet" : anyRolling ? "" : "first scan";
+
+  const cg = ctx.scores.copilotGate;
+  const copilotEvaluated = cg != null && cg.score != null;
+  const copilotOk = cg?.status === "go";
+
   return {
-    base: String(gBase),
-    now: String(gNow),
-    target: String(gTarget),
-    nowColor: gNow >= 68 ? "#34d399" : gNow > gBase ? "#f8fafc" : "#f87171",
-    pending: gPend > 0 ? `+${gPend} pending re-scan` : "nothing pending re-scan",
-    pendingColor: gPend > 0 ? "#5eead4" : "#475569",
-    confPct: gw(gNow - gBase),
-    pendPct: gw(gPend),
-    copilotGate: `${Math.max(0, gNow - 2)} of 82`,
-    copilotNote: gNow >= 68 ? "clear to deploy Copilot" : "not yet safe to turn Copilot on",
-    copilotOk: gNow >= 68,
+    hasScore,
+    now: now != null ? String(now) : "—",
+    before: before != null ? String(before) : "",
+    dayOne: dayOne != null ? String(dayOne) : "",
+    delta: delta == null ? "" : delta > 0 ? `+${delta}` : delta < 0 ? String(delta) : "±0",
+    deltaPositive: (delta ?? 0) > 0,
+    deltaNegative: (delta ?? 0) < 0,
+    nowColor: !hasScore ? "#64748b" : (delta ?? 0) > 0 ? "#34d399" : (delta ?? 0) < 0 ? "#f87171" : "#f8fafc",
+    statusNote,
+    scorePct: now != null ? clampScore(now) : 0,
+    dayOnePct: dayOne != null ? clampScore(dayOne) : 0,
+    copilotGate: copilotEvaluated ? `${cg!.score} of ${cg!.threshold}` : "not evaluated yet",
+    copilotNote: copilotOk
+      ? "clear to deploy Copilot"
+      : copilotEvaluated
+        ? "not yet safe to turn Copilot on"
+        : "not enough data to gate Copilot",
+    copilotOk,
+    copilotEvaluated,
   };
 }
 
-// ── Progress headline — prototype 21156-21157 ─────────────────────────────────
+// ── Progress headline — real rolling before → now (#1381) ─────────────────────
 
 export interface RtHeadline {
   readonly headline: string;
@@ -332,9 +404,19 @@ export interface RtHeadline {
 export function rtHeadline(ctx: RtCtx = RT_CTX_EMPTY): RtHeadline {
   const g = rtGate(ctx);
   const completed = RT_TASKS.filter((t) => rtStateKeyOf(t, ctx) === "completed").length;
+  const total = RT_TASKS.length;
+  const tail = `${completed} of ${total} tasks completed.`;
+  let headline: string;
+  if (!g.hasScore) {
+    headline = `Tenant score not available yet, ${tail}`;
+  } else if (g.deltaPositive || g.deltaNegative) {
+    headline = `Tenant score ${g.before} → ${g.now}, ${tail}`;
+  } else {
+    headline = `Tenant score ${g.now}, ${tail}`;
+  }
   return {
-    headline: `Tenant score ${g.base} → ${g.now}, ${completed} of ${RT_TASKS.length} tasks completed.`,
-    sub: "The whole tenant across seven phases, each task gated by its change request, its hold window and the evidence it owes. Points only move the score once a re-scan proves the change, and drift puts a task back on the board.",
+    headline,
+    sub: "The whole tenant across seven phases, each task gated by its change request, its hold window and the evidence it owes. The score moves between your last two real scans; drift puts a completed task back on the board.",
   };
 }
 
@@ -478,7 +560,7 @@ export function rtRow(t: RemediationTask, ctx: RtCtx = RT_CTX_EMPTY): RtRow {
   const exec = ctx.ov.exec[t.id] ?? null;
   const canTick = rtCanTick(t, ctx);
   const signedOff = done && (ev === "approved" || ver);
-  const pts = RT_POINTS[t.id];
+  const pts = rtTaskPoints(t, ctx);
 
   const chips: RtChip[] = [
     { text: RT_PILLAR_LABEL[t.pl], color: RT_PILLAR_COLOR[t.pl], dashed: false },

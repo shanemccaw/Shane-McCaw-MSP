@@ -15,25 +15,26 @@ import assert from "node:assert/strict";
 
 import {
   RT_PHASES,
-  RT_PILLAR_BASE,
-  RT_PILLAR_ORDER,
-  RT_PILLAR_TARGET,
+  RT_SEV_WEIGHT,
   RT_TASKS,
 } from "./remediationData";
 import { RT_ACCEPTED_STATUSES, RT_FIXED_STATUSES, type RtLiveState } from "./remediationLive";
+import { RT_SCORES_EMPTY, type RtLiveScores, type RtPillarScore } from "./remediationScores";
 import {
   RT_CTX_EMPTY,
   RT_OV_EMPTY,
-  RT_POINTS,
   rtAcceptedOf,
   rtCanTick,
   rtDoneOf,
   rtDriftItems,
   rtGate,
   rtGroups,
+  rtHeadline,
+  rtPillarCells,
   rtPillarLive,
   rtStateChips,
   rtStateKeyOf,
+  rtTaskPoints,
   rtVerOf,
   type RtCtx,
   type RtOverrides,
@@ -46,7 +47,28 @@ function live(statuses: Record<string, string>, verification: Record<string, str
     verification: new Map(Object.entries(verification).map(([k, v]) => [k, { state: v }])) as RtLiveState["verification"],
   };
 }
-const ctxOf = (l: RtLiveState, ov: Partial<RtOverrides> = {}): RtCtx => ({ live: l, ov: { ...RT_OV_EMPTY, ...ov } });
+const ctxOf = (l: RtLiveState, ov: Partial<RtOverrides> = {}): RtCtx => ({ live: l, ov: { ...RT_OV_EMPTY, ...ov }, scores: RT_SCORES_EMPTY });
+
+/** A full pillar-score row with sensible defaults, for the score-consuming tests. */
+function pillarScore(partial: Partial<RtPillarScore>): RtPillarScore {
+  return {
+    before: null,
+    now: null,
+    dayOne: null,
+    delta: null,
+    status: "insufficient_data",
+    capturedAt: null,
+    scanCount: 0,
+    ...partial,
+  };
+}
+
+/** An RtCtx carrying real per-pillar scores (Git #1381), empty wire + overrides. */
+const scoresCtx = (scores: Partial<RtLiveScores>): RtCtx => ({
+  live: { statuses: new Map(), verification: new Map() },
+  ov: RT_OV_EMPTY,
+  scores: { ...RT_SCORES_EMPTY, loaded: true, ...scores },
+});
 const task = (id: string) => RT_TASKS.find((t) => t.id === id)!;
 
 describe("fixture", () => {
@@ -170,37 +192,130 @@ describe("the CR tick gate", () => {
   });
 });
 
-describe("severity-weighted points", () => {
-  it("each pillar's task points sum to its base→target gap", () => {
-    for (const k of RT_PILLAR_ORDER) {
-      const sum = RT_TASKS.filter((t) => t.pl === k).reduce((a, t) => a + RT_POINTS[t.id], 0);
-      assert.equal(sum, RT_PILLAR_TARGET[k] - RT_PILLAR_BASE[k], `${k} points do not sum to its gap`);
+describe("per-task points come from the real finding severity (#1381)", () => {
+  it("uses the live severity weight when the API supplies one for the task's step", () => {
+    // s1 (task) → stepId s7. A live critical finding weighs 3.
+    const ctx = scoresCtx({ taskPoints: { s7: { severity: "critical", weight: 3 } } });
+    assert.equal(rtTaskPoints(task("s1"), ctx), 3);
+  });
+  it("falls back to the design severity weight when there is no live finding", () => {
+    // s1 is a Critical design task; with no live taskPoints it reads the design weight.
+    assert.equal(rtTaskPoints(task("s1"), RT_CTX_EMPTY), RT_SEV_WEIGHT[task("s1").sv]);
+  });
+  it("an unmapped task (no stepId) always reads the design severity weight", () => {
+    // d1 has no stepId, so no live finding can ever back it.
+    const ctx = scoresCtx({ taskPoints: { s7: { severity: "critical", weight: 3 } } });
+    assert.equal(rtTaskPoints(task("d1"), ctx), RT_SEV_WEIGHT[task("d1").sv]);
+  });
+});
+
+describe("pillar live scoring — rolling before/now + permanent day-one (#1381)", () => {
+  it("reads a pillar's real before/now/dayOne straight off the score API", () => {
+    const ctx = scoresCtx({
+      pillars: { security: pillarScore({ before: 30, now: 32, dayOne: 28, delta: 2, status: "scored", scanCount: 3 }) },
+    });
+    const l = rtPillarLive("security", ctx);
+    assert.equal(l.before, 30);
+    assert.equal(l.now, 32);
+    assert.equal(l.dayOne, 28);
+    assert.equal(l.delta, 2);
+    assert.equal(l.status, "scored");
+  });
+  it("a single-scan pillar has now but no before to compare", () => {
+    const ctx = scoresCtx({
+      pillars: { governance: pillarScore({ before: null, now: 41, dayOne: 41, delta: null, status: "single_scan", scanCount: 1 }) },
+    });
+    const l = rtPillarLive("governance", ctx);
+    assert.equal(l.now, 41);
+    assert.equal(l.before, null);
+    assert.equal(l.delta, null);
+    assert.equal(l.status, "single_scan");
+  });
+  it("a pillar with no snapshot at all reads insufficient_data, never a fabricated number", () => {
+    const l = rtPillarLive("compliance", RT_CTX_EMPTY);
+    assert.equal(l.now, null);
+    assert.equal(l.status, "insufficient_data");
+  });
+  it("maps health → the engine's architecture snapshot via the API's own keying", () => {
+    // The API returns the tracker key `health`; the model reads it directly.
+    const ctx = scoresCtx({ pillars: { health: pillarScore({ before: 44, now: 50, dayOne: 40, delta: 6, status: "scored", scanCount: 2 }) } });
+    assert.equal(rtPillarLive("health", ctx).now, 50);
+  });
+});
+
+describe("pillar cells surface the honest state (#1381)", () => {
+  it("shows a dash and a no-data note for an unscored pillar", () => {
+    const cells = rtPillarCells(RT_CTX_EMPTY);
+    for (const c of cells) {
+      assert.equal(c.hasScore, false);
+      assert.equal(c.score, "—");
+      assert.equal(c.statusNote, "not enough data yet");
     }
   });
-});
-
-describe("pillar live scoring", () => {
-  it("banks points as CONFIRMED only when done, evidence-approved AND verified", () => {
-    const base = RT_PILLAR_BASE.security;
-    // h2 is a security task. Done + approved evidence (seed) + verified.
-    const scored = rtPillarLive("security", ctxOf(live({ s8: "completed" }, { s8: "verified" })));
-    assert.equal(scored.now, base + RT_POINTS.h2);
-    assert.equal(scored.pending, 0);
-  });
-  it("holds points as PENDING when done but not yet verified", () => {
-    const base = RT_PILLAR_BASE.security;
-    const pending = rtPillarLive("security", ctxOf(live({ s8: "completed" })));
-    assert.equal(pending.now, base);
-    assert.equal(pending.pending, RT_POINTS.h2);
+  it("renders the rolling delta and the day-one label when scored", () => {
+    const ctx = scoresCtx({
+      pillars: { security: pillarScore({ before: 30, now: 32, dayOne: 28, delta: 2, status: "scored", scanCount: 3 }) },
+    });
+    const cell = rtPillarCells(ctx).find((c) => c.key === "security")!;
+    assert.equal(cell.score, "32");
+    assert.equal(cell.delta, "+2");
+    assert.equal(cell.deltaPositive, true);
+    assert.equal(cell.dayOneLabel, "day 1 · 28");
   });
 });
 
-describe("gate summary", () => {
-  it("reports the base as the average of the pillar bases before anything is scored", () => {
+describe("gate summary — real tenant score + real Copilot gate (#1381)", () => {
+  it("has no score at all before any snapshot lands", () => {
     const g = rtGate(RT_CTX_EMPTY);
-    const avgBase = Math.round(RT_PILLAR_ORDER.reduce((a, k) => a + RT_PILLAR_BASE[k], 0) / RT_PILLAR_ORDER.length);
-    assert.equal(g.now, String(avgBase));
-    assert.equal(g.base, String(avgBase));
+    assert.equal(g.hasScore, false);
+    assert.equal(g.now, "—");
+    assert.equal(g.copilotGate, "not evaluated yet");
+    assert.equal(g.copilotEvaluated, false);
+  });
+  it("averages the real pillar scores and reports the rolling movement", () => {
+    const ctx = scoresCtx({
+      pillars: {
+        governance: pillarScore({ before: 34, now: 40, dayOne: 28, delta: 6, status: "scored", scanCount: 3 }),
+        security: pillarScore({ before: 30, now: 34, dayOne: 26, delta: 4, status: "scored", scanCount: 3 }),
+      },
+    });
+    const g = rtGate(ctx);
+    assert.equal(g.hasScore, true);
+    assert.equal(g.now, "37"); // mean(40,34)
+    assert.equal(g.before, "32"); // mean(34,30)
+    assert.equal(g.delta, "+5");
+    assert.equal(g.dayOne, "27"); // mean(28,26)
+  });
+  it("surfaces the real Copilot gate go/no-go, not a guess off the tenant score", () => {
+    const ctx = scoresCtx({
+      pillars: { security: pillarScore({ before: 30, now: 34, dayOne: 26, delta: 4, status: "scored", scanCount: 2 }) },
+      copilotGate: { score: 74, threshold: 82, status: "no_go", evaluation: { status: "scored", reason: "scored" } },
+    });
+    const g = rtGate(ctx);
+    assert.equal(g.copilotGate, "74 of 82");
+    assert.equal(g.copilotOk, false);
+    assert.equal(g.copilotEvaluated, true);
+  });
+  it("says the Copilot gate is not evaluated when the score is null", () => {
+    const ctx = scoresCtx({
+      copilotGate: { score: null, threshold: 82, status: null, evaluation: { status: "not_evaluated", reason: "no coverage" } },
+    });
+    assert.equal(rtGate(ctx).copilotGate, "not evaluated yet");
+  });
+});
+
+describe("headline — real rolling before → now (#1381)", () => {
+  it("says the score is not available yet with no snapshot", () => {
+    assert.ok(rtHeadline(RT_CTX_EMPTY).headline.startsWith("Tenant score not available yet"));
+  });
+  it("reads before → now when the tenant has moved", () => {
+    const ctx = scoresCtx({
+      pillars: {
+        governance: pillarScore({ before: 34, now: 40, dayOne: 28, delta: 6, status: "scored", scanCount: 3 }),
+        security: pillarScore({ before: 30, now: 34, dayOne: 26, delta: 4, status: "scored", scanCount: 3 }),
+      },
+    });
+    assert.ok(rtHeadline(ctx).headline.startsWith("Tenant score 32 → 37,"));
   });
 });
 
