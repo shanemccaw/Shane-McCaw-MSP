@@ -123,7 +123,11 @@ export async function runCycle(config, deps, opts = {}) {
       `dev-server: merge ${shortSha(req.commit)} from ${req.agentId || "agent"}`
     );
     if (res.ok) {
-      perRequest[req.id] = { merged: true, commit: req.commit };
+      perRequest[req.id] = {
+        merged: true,
+        commit: req.commit,
+        ...(res.autoRestored ? { autoRestored: res.autoRestored } : {}),
+      };
       merged.push(req);
     } else {
       perRequest[req.id] = {
@@ -411,6 +415,7 @@ export async function runSetMemberCycle(config, deps, { commit, agentId, setName
 
   let status;
   let error;
+  let autoRestored;
   if (!resolved) {
     status = "conflict";
     error = "unresolvable commit";
@@ -425,6 +430,7 @@ export async function runSetMemberCycle(config, deps, { commit, agentId, setName
     );
     if (res.ok) {
       status = "merged";
+      autoRestored = res.autoRestored;
     } else {
       status = "conflict";
       error = res.stderr;
@@ -444,6 +450,7 @@ export async function runSetMemberCycle(config, deps, { commit, agentId, setName
     merged: bs.mergedCount(set),
     expected: set.expected,
     closed: set.closed,
+    ...(autoRestored ? { autoRestored } : {}),
   });
 
   const fire = await maybeFireSetRestart(config, deps, setName, { byAgent: agentId || key });

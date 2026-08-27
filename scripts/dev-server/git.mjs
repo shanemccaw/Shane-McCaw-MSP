@@ -74,19 +74,91 @@ export function resolveCommit(cwd, ref) {
 }
 
 /**
+ * Parse the tracked-file paths git names in a "would be overwritten by merge"
+ * refusal. git prints, on stdout+stderr:
+ *
+ *   error: Your local changes to the following files would be overwritten by merge:
+ *   \tpnpm-lock.yaml
+ *   \tpackage.json
+ *   Please commit your changes or stash them before you merge.
+ *   Aborting
+ *
+ * Returns the (tab-indented) path lines between that header and the trailer.
+ */
+export function parseMergeBlockedFiles(text) {
+  const files = [];
+  let capture = false;
+  for (const rawLine of String(text || "").split(/\r?\n/)) {
+    if (/would be overwritten by merge/i.test(rawLine)) {
+      capture = true;
+      continue;
+    }
+    if (!capture) continue;
+    if (/^\s*(Please commit|Aborting|Updating|Merge|error:)/i.test(rawLine) || rawLine.trim() === "") {
+      break;
+    }
+    const f = rawLine.trim();
+    if (f) files.push(f);
+  }
+  return files;
+}
+
+/**
  * Merge `commit` into the branch currently checked out in `cwd`.
- * Returns { ok, ff, sha, stderr }. On conflict it ABORTS the merge so the
- * worktree is left clean, and returns ok:false with the conflict text.
+ * Returns { ok, ff, sha, stderr, autoRestored? }. On conflict it ABORTS the
+ * merge so the worktree is left clean, and returns ok:false with the conflict text.
+ *
+ * SELF-HEAL (Git #1395): the dedicated dev-server checkout legitimately carries
+ * regeneratable local edits to dependency manifests (package.json / pnpm-lock.yaml
+ * -- e.g. Windows-native binaries added so the local stack runs). A plain
+ * `git merge` REFUSES to touch a locally-modified tracked file and aborts the
+ * ENTIRE merge-back ("Your local changes to the following files would be
+ * overwritten by merge"), silently freezing the server checkout at stale code
+ * while builds appear to do nothing. When that (and only that) is why a merge
+ * failed, discard exactly the tracked files git named -- which the incoming
+ * merge was about to overwrite anyway -- and retry. node_modules is untracked
+ * (a real dir / junction), so `git checkout --` never touches it or the
+ * installed binaries. Bounded retries in case git names files in stages.
  */
 export function mergeNoEdit(cwd, commit, message) {
   const before = revParse(cwd, "HEAD");
-  const args = ["merge", "--no-edit"];
-  if (message) args.push("-m", message);
-  args.push(commit);
-  const r = git(cwd, args);
+  const doMerge = () => {
+    const args = ["merge", "--no-edit"];
+    if (message) args.push("-m", message);
+    args.push(commit);
+    return git(cwd, args);
+  };
+
+  let r = doMerge();
+  const autoRestored = [];
+  let attempts = 0;
+  while (
+    r.code !== 0 &&
+    attempts < 3 &&
+    /would be overwritten by merge/i.test(r.stdout + r.stderr) &&
+    !/untracked working tree files/i.test(r.stdout + r.stderr)
+  ) {
+    const blocked = parseMergeBlockedFiles(r.stdout + r.stderr).filter(
+      (f) => !autoRestored.includes(f)
+    );
+    if (blocked.length === 0) break; // nothing new to restore -> give up, report honestly
+    // Restore only the named tracked files to HEAD (discard local dep-manifest churn).
+    const restore = git(cwd, ["checkout", "HEAD", "--", ...blocked]);
+    if (restore.code !== 0) break; // couldn't clean them -> fall through to abort+report
+    autoRestored.push(...blocked);
+    attempts++;
+    r = doMerge();
+  }
+
   if (r.code === 0) {
     const after = revParse(cwd, "HEAD");
-    return { ok: true, ff: after === before ? false : true, sha: after, stderr: "" };
+    return {
+      ok: true,
+      ff: after === before ? false : true,
+      sha: after,
+      stderr: "",
+      autoRestored: autoRestored.length ? autoRestored : undefined,
+    };
   }
   // Leave the server checkout in a clean state -- never half-merged.
   git(cwd, ["merge", "--abort"]);
@@ -94,6 +166,7 @@ export function mergeNoEdit(cwd, commit, message) {
     ok: false,
     sha: before,
     stderr: (r.stdout + "\n" + r.stderr).trim(),
+    autoRestored: autoRestored.length ? autoRestored : undefined,
   };
 }
 
