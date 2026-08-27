@@ -46,6 +46,12 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import {
+  NoScanValue,
+  hasScanValue,
+  NO_DATA_DASH,
+  NO_DATA_INK,
+} from "@/components/portal-v2/NoScanDataState";
 import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
 import { useHltObjectsLive } from "@/components/portal-v2/useHltObjectsLive";
 import { PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
@@ -194,9 +200,12 @@ export default function PortalV2HealthPage() {
   // stay fixture. The RING delta tracks the score (up = green), which is separate
   // from the debt TREND chart below that is red-because-rising by design.
   const live = useLivePillarHero("health");
-  const score = live.score ?? HLT_HERO.score;
-  const delta = live.delta?.text ?? HLT_HERO.delta;
-  const deltaColor = live.delta?.color ?? "#f87171";
+  // Honest-null contract (#1387): real score/delta when scored, muted "—"
+  // otherwise — never the design fixture.
+  const score = live.score;
+  const hasScore = hasScanValue(score);
+  const delta = live.delta?.text ?? NO_DATA_DASH;
+  const deltaColor = live.delta?.color ?? NO_DATA_INK;
 
   // The accepted-risk strip's sentence (#1273): the worst real finding on this
   // tenant's own Health payload, off the SAME `pillars` array `live` already
@@ -247,7 +256,7 @@ export default function PortalV2HealthPage() {
 
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (score / 100) * ringC;
+  const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
 
   const [expanded, setExpanded] = useState<number | null>(null);
   const [driftOpen, setDriftOpen] = useState<number | null>(null);
@@ -684,18 +693,17 @@ export default function PortalV2HealthPage() {
                     gap: 1,
                   }}
                 >
-                  <span
+                  <NoScanValue
+                    value={score}
+                    color={HLT_GREEN_TEXT}
+                    testId="pv2-hlt-score"
                     style={{
                       fontSize: "26px",
                       fontWeight: 800,
                       letterSpacing: "-.02em",
-                      color: HLT_GREEN_TEXT,
                       fontFamily: MONO,
                     }}
-                    data-testid="pv2-hlt-score"
-                  >
-                    {score}
-                  </span>
+                  />
                   <span
                     style={{ fontSize: "9.5px", fontWeight: 700, color: deltaColor, fontFamily: MONO }}
                   >

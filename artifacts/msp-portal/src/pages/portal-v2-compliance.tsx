@@ -50,6 +50,13 @@ import {
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import {
+  NoScanValue,
+  hasScanValue,
+  NO_DATA_DASH,
+  NO_DATA_INK,
+  NO_SCAN_DATA_LABEL,
+} from "@/components/portal-v2/NoScanDataState";
 import { useScanStatus } from "@/lib/scan-status-context";
 import { lastScanLabel } from "@/components/portal-v2/overviewModel";
 import { usePolicyDecisions } from "@/components/portal-v2/riskRegisterLive";
@@ -164,13 +171,16 @@ export default function PortalV2CompliancePage() {
       ? null
       : policyDecisions.filter((d) => d.pillar.trim().toLowerCase() === "compliance").length;
 
-  // Honest-null contract: real engine score when scored, design fixture otherwise;
+  // Honest-null contract (#1387): the REAL engine score when scored, and a muted
+  // "—" through the one shared no-scan-data seam otherwise — never the design
+  // fixture. The ring draws no arc when there is nothing to score.
   // `pv2-cmp-source` states which is on screen.
-  const score = live.score ?? CMP_HERO.score;
+  const score = live.score;
+  const hasScore = hasScanValue(score);
   const trend = trendGeometry(live.history ?? CMP_HISTORY);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (score / 100) * ringC;
+  const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
 
   // `cmpScrutiny` selection (proto 13659) — a pill toggles the detail below it
   // open, clicking the same pill closes it.
@@ -387,10 +397,11 @@ export default function PortalV2CompliancePage() {
                   }}
                 >
                   {/* Real severity band + real open-finding count, not the
-                      fixture "Stable · 6 gaps open". */}
+                      fixture "Stable · 6 gaps open"; honest no-data label when
+                      unscored (#1387). */}
                   {sev
                     ? `${sev.label} · ${openGaps} ${openGaps === 1 ? "gap" : "gaps"} open`
-                    : CMP_HERO.statusLabel}
+                    : NO_SCAN_DATA_LABEL}
                 </span>
               </span>
             </div>
@@ -544,23 +555,22 @@ export default function PortalV2CompliancePage() {
                     gap: 1,
                   }}
                 >
-                  <span
+                  <NoScanValue
+                    value={score}
+                    color="#f8fafc"
+                    testId="pv2-cmp-score"
                     style={{
                       fontSize: "26px",
                       fontWeight: 800,
                       letterSpacing: "-.02em",
-                      color: "#f8fafc",
                       fontFamily: MONO,
                     }}
-                    data-testid="pv2-cmp-score"
-                  >
-                    {score}
-                  </span>
+                  />
                   <span
-                    style={{ fontSize: "9.5px", fontWeight: 700, color: live.delta?.color ?? "#94a3b8", fontFamily: MONO }}
+                    style={{ fontSize: "9.5px", fontWeight: 700, color: live.delta?.color ?? NO_DATA_INK, fontFamily: MONO }}
                     data-testid="pv2-cmp-delta"
                   >
-                    {live.delta?.text ?? CMP_HERO.delta}
+                    {live.delta?.text ?? NO_DATA_DASH}
                   </span>
                   {/* Hidden live/fixture marker so a test can prove the real score. */}
                   <span data-testid="pv2-cmp-source" style={PV2_SOURCE_CLIP}>

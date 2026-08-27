@@ -45,6 +45,12 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import {
+  NoScanValue,
+  hasScanValue,
+  NO_DATA_DASH,
+  NO_DATA_INK,
+} from "@/components/portal-v2/NoScanDataState";
 import { useAdpWorkloadsLive } from "@/components/portal-v2/useAdpWorkloadsLive";
 import {
   ADP_DEPT,
@@ -104,9 +110,12 @@ export default function PortalV2AdoptionPage() {
   // honest-null fallback. Only the ring is wired — the workload list, department
   // heat-map and plays below have no per-item server feed and stay fixture.
   const live = useLivePillarHero("adoption");
-  const score = live.score ?? ADP_HERO.score;
-  const delta = live.delta?.text ?? ADP_HERO.delta;
-  const deltaColor = live.delta?.color ?? "#34d399";
+  // Honest-null contract (#1387): real score/delta when scored, muted "—"
+  // otherwise — never the design fixture.
+  const score = live.score;
+  const hasScore = hasScanValue(score);
+  const delta = live.delta?.text ?? NO_DATA_DASH;
+  const deltaColor = live.delta?.color ?? NO_DATA_INK;
 
   // #1252: the 4 workload rows with a real per-check server feed (Exchange,
   // Teams chat & meetings, SharePoint, OneDrive) overlaid onto the fixture —
@@ -115,7 +124,7 @@ export default function PortalV2AdoptionPage() {
   const workloads = adpWorkloadsWithLive(workloadLive);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (score / 100) * ringC;
+  const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
 
   const [expanded, setExpanded] = useState<number | null>(null);
   const [openWorkload, setOpenWorkload] = useState<number | null>(null);
@@ -490,18 +499,17 @@ export default function PortalV2AdoptionPage() {
                     gap: 1,
                   }}
                 >
-                  <span
+                  <NoScanValue
+                    value={score}
+                    color={ADP_ORANGE_TEXT}
+                    testId="pv2-adp-score"
                     style={{
                       fontSize: "26px",
                       fontWeight: 800,
                       letterSpacing: "-.02em",
-                      color: ADP_ORANGE_TEXT,
                       fontFamily: MONO,
                     }}
-                    data-testid="pv2-adp-score"
-                  >
-                    {score}
-                  </span>
+                  />
                   <span
                     style={{ fontSize: "9.5px", fontWeight: 700, color: deltaColor, fontFamily: MONO }}
                   >

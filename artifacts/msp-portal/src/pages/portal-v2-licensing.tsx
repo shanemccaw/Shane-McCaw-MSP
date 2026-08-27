@@ -58,6 +58,12 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import {
+  NoScanValue,
+  hasScanValue,
+  NO_DATA_DASH,
+  NO_DATA_INK,
+} from "@/components/portal-v2/NoScanDataState";
 import { useLicenseSkuLedgerLive } from "@/components/portal-v2/usePortalV2Pillars";
 import {
   LIC_ACK,
@@ -179,9 +185,12 @@ export default function PortalV2LicensingPage() {
   // buckets and the provenance block stay design fixture — no billing-term or
   // usage-activity data exists to source them (see the ledger note below).
   const live = useLivePillarHero("licensing");
-  const score = live.score ?? LIC_HERO.score;
-  const delta = live.delta?.text ?? LIC_HERO.delta;
-  const deltaColor = live.delta?.color ?? "#34d399";
+  // Honest-null contract (#1387): real score/delta when scored, muted "—"
+  // otherwise — never the design fixture.
+  const score = live.score;
+  const hasScore = hasScanValue(score);
+  const delta = live.delta?.text ?? NO_DATA_DASH;
+  const deltaColor = live.delta?.color ?? NO_DATA_INK;
 
   // The per-SKU ledger (Git #1230): real purchased/assigned/unassigned + dollar
   // rows from the tenant's own /subscribedSkus + sku_price_reference data, when
@@ -208,7 +217,7 @@ export default function PortalV2LicensingPage() {
 
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (score / 100) * ringC;
+  const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
 
   /** `licSku` (14071) — which ledger card is open, keyed by SKU part number. */
   const [openSku, setOpenSku] = useState<string | null>(null);
@@ -557,20 +566,19 @@ export default function PortalV2LicensingPage() {
                     gap: 1,
                   }}
                 >
-                  <span
+                  <NoScanValue
+                    value={score}
+                    color={TEAL_TEXT}
+                    testId="pv2-lic-score"
                     style={{
                       fontSize: "26px",
                       fontWeight: 800,
                       letterSpacing: "-.02em",
-                      color: TEAL_TEXT,
                       fontFamily: MONO,
                     }}
-                    data-testid="pv2-lic-score"
-                  >
-                    {score}
-                  </span>
+                  />
                   {/* Real score movement; colour follows its sign (green up, red
-                      down). Fixture is green and positive when live data is absent. */}
+                      down). Muted "—" when live data is absent (#1387). */}
                   <span
                     style={{ fontSize: "9.5px", fontWeight: 700, color: deltaColor, fontFamily: MONO }}
                   >

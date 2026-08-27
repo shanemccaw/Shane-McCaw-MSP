@@ -57,6 +57,13 @@ import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import {
+  NoScanValue,
+  hasScanValue,
+  NO_DATA_DASH,
+  NO_DATA_INK,
+  NO_SCAN_DATA_LABEL,
+} from "@/components/portal-v2/NoScanDataState";
 import { useSecAreaLinksLive } from "@/components/portal-v2/useSecAreaLinksLive";
 import { useCaBaselineLive } from "@/components/portal-v2/useCaBaselineLive";
 import { caBandsWithRowsLive } from "@/components/portal-v2/secCaModel";
@@ -192,13 +199,16 @@ export default function PortalV2SecurityPage() {
     .sort((a) => (a.key === "security-mfa" ? -1 : 1));
   const secAreaRow2 = secAreaLinks.filter((a) => a.key !== "security-mfa" && a.key !== "security-ca");
 
-  // Honest-null contract: real engine score when scored, design fixture otherwise
-  // (the ring never shows a red zero); `pv2-sec-source` states which is on screen.
-  const score = live.score ?? SEC_HERO.score;
+  // Honest-null contract (#1387): the REAL engine score when scored, and a muted
+  // "—" through the one shared no-scan-data seam otherwise — never the fixture's
+  // fabricated number. The ring draws no red arc when there is nothing to score.
+  // `pv2-sec-source` states which is on screen.
+  const score = live.score;
+  const hasScore = hasScanValue(score);
   const trend = trendGeometry(live.history ?? SEC_HISTORY);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (score / 100) * ringC;
+  const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
 
   // The risk drop panel (proto `secRisk`, 8188) — identical to Governance's, so
   // the same component. The banner button toggles it; a row toggles its detail.
@@ -441,8 +451,9 @@ export default function PortalV2SecurityPage() {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {/* Real severity band for the live score, not the fixture "Critical". */}
-                  {sev?.label ?? SEC_HERO.statusLabel}
+                  {/* Real severity band for the live score, not the fixture
+                      "Critical"; honest no-data label when unscored (#1387). */}
+                  {sev?.label ?? NO_SCAN_DATA_LABEL}
                 </span>
               </span>
             </div>
@@ -454,8 +465,9 @@ export default function PortalV2SecurityPage() {
               dotColor={RED}
               fillOpacity={0.3}
               // An honest verdict derived from the REAL trend direction, not the
-              // fixture's fabricated "2 new exposures since scan 12".
-              verdict={pillarTrendVerdict(live.history) ?? SEC_HERO.trendVerdict}
+              // fixture's fabricated "2 new exposures since scan 12"; honest
+              // no-data label when there is no real series to describe (#1387).
+              verdict={pillarTrendVerdict(live.history) ?? NO_SCAN_DATA_LABEL}
               verdictColor={RED}
               data-testid="pv2-sec-trend"
             />
@@ -521,28 +533,27 @@ export default function PortalV2SecurityPage() {
                     gap: 1,
                   }}
                 >
-                  <span
+                  <NoScanValue
+                    value={score}
+                    color={RED}
+                    testId="pv2-sec-score"
                     style={{
                       fontSize: "26px",
                       fontWeight: 800,
                       letterSpacing: "-.02em",
-                      color: RED,
                       fontFamily: MONO,
                     }}
-                    data-testid="pv2-sec-score"
-                  >
-                    {score}
-                  </span>
+                  />
                   <span
                     style={{
                       fontSize: "9.5px",
                       fontWeight: 700,
-                      color: live.delta?.color ?? RED,
+                      color: live.delta?.color ?? NO_DATA_INK,
                       fontFamily: MONO,
                     }}
                     data-testid="pv2-sec-delta"
                   >
-                    {live.delta?.text ?? SEC_HERO.delta}
+                    {live.delta?.text ?? NO_DATA_DASH}
                   </span>
                   {/* Hidden live/fixture marker so a test can prove the real score. */}
                   <span data-testid="pv2-sec-source" style={PV2_SOURCE_CLIP}>

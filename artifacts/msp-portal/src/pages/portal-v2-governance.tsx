@@ -53,6 +53,13 @@ import { PillarScanBar } from "@/components/portal-v2/PillarScanBar";
 import { DriftTrend, trendGeometry } from "@/components/portal-v2/DriftTrend";
 import { RiskAcceptedPanel } from "@/components/portal-v2/RiskAcceptedPanel";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
+import {
+  NoScanValue,
+  hasScanValue,
+  NO_DATA_DASH,
+  NO_DATA_INK,
+  NO_SCAN_DATA_LABEL,
+} from "@/components/portal-v2/NoScanDataState";
 import { useScanStatus } from "@/lib/scan-status-context";
 import { lastScanLabel } from "@/components/portal-v2/overviewModel";
 import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
@@ -141,15 +148,18 @@ export default function PortalV2GovernancePage() {
   // cards have a confirmed backing check; the rest render an honest "—".
   const areaLive = useGovAreaLinksLive();
 
-  // Honest-null contract (same as the Overview and the other pillar heroes):
-  // overlay the REAL engine score when the tenant is scored, fall back to the
-  // design fixture otherwise so the ring never shows a red zero. `pv2-gov-source`
-  // states which is on screen. The sparkline draws the REAL replayed series.
-  const score = live.score ?? GOV_HERO.score;
+  // Honest-null contract (#1387, same as the Overview and the other pillar
+  // heroes): overlay the REAL engine score when the tenant is scored, and a muted
+  // "—" through the one shared no-scan-data seam otherwise — never the design
+  // fixture. The ring draws no arc when there is nothing to score.
+  // `pv2-gov-source` states which is on screen. The sparkline draws the REAL
+  // replayed series.
+  const score = live.score;
+  const hasScore = hasScanValue(score);
   const trend = trendGeometry(live.history ?? GOV_HERO.history);
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
-  const ringOffset = ringC - (score / 100) * ringC;
+  const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
 
   // The risk drop panel (proto `govRisk`, 8188): the banner button toggles it
   // open, a row toggles its own detail. Both live here rather than in the panel
@@ -432,8 +442,9 @@ export default function PortalV2GovernancePage() {
                       }}
                     >
                       {/* Real severity band for the live score (journeyTokens'
-                          severityForScore), not the fixture "Needs attention". */}
-                      {sev?.label ?? GOV_HERO.statusLabel}
+                          severityForScore), not the fixture "Needs attention";
+                          honest no-data label when unscored (#1387). */}
+                      {sev?.label ?? NO_SCAN_DATA_LABEL}
                     </span>
                   </span>
                 </div>
@@ -524,28 +535,27 @@ export default function PortalV2GovernancePage() {
                         gap: 1,
                       }}
                     >
-                      <span
+                      <NoScanValue
+                        value={score}
+                        color="#60a5fa"
+                        testId="pv2-gov-score"
                         style={{
                           fontSize: "26px",
                           fontWeight: 800,
                           letterSpacing: "-.02em",
-                          color: "#60a5fa",
                           fontFamily: MONO,
                         }}
-                        data-testid="pv2-gov-score"
-                      >
-                        {score}
-                      </span>
+                      />
                       <span
                         style={{
                           fontSize: "9.5px",
                           fontWeight: 700,
-                          color: live.delta?.color ?? "#f87171",
+                          color: live.delta?.color ?? NO_DATA_INK,
                           fontFamily: MONO,
                         }}
                         data-testid="pv2-gov-delta"
                       >
-                        {live.delta?.text ?? GOV_HERO.delta}
+                        {live.delta?.text ?? NO_DATA_DASH}
                       </span>
                       {/* Hidden live/fixture marker (clipped, not display:none) so a
                           test can prove the ring shows the real engine score. */}
