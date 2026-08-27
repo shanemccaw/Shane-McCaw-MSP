@@ -57,6 +57,8 @@ namespace BuildConsole.Controls
         private string _filter = "Active";
         private readonly HashSet<int> _manuallyHiddenQueueIds = new();
         private int? _selectedQueueItemId;
+        private static readonly Dictionary<int, string> _issueTitleCache = new();
+        private static readonly HashSet<int> _pendingFetches = new();
 
         private const double IssueRowTitleReserve = 50;
         private const double MinIssueRowTitleWidth = 24;
@@ -673,6 +675,7 @@ namespace BuildConsole.Controls
                 SyncError?.Invoke(this, _queueIsStale
                     ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
                     : null);
+                TriggerBackgroundIssueTitleQueries();
             }
             catch (Exception ex)
             {
@@ -1964,7 +1967,7 @@ namespace BuildConsole.Controls
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(1, 2, 1, 0)
             };
-            AttachBubbleTooltip(titleBlock, item.Title);
+            SetQueueCardTooltip(card, item);
             mainStack.Children.Add(titleBlock);
 
             // ── Third Row: Extra info (blocker details, exit code) ──
@@ -2575,6 +2578,157 @@ namespace BuildConsole.Controls
             }
 
             UpdateCritterLoungeVisibility();
+        }
+
+        private void TriggerBackgroundIssueTitleQueries()
+        {
+            if (_lastItems == null || _lastItems.Count == 0) return;
+
+            var issueNumbers = _lastItems
+                .SelectMany(i => i.AssociatedIssueNumbers)
+                .Distinct()
+                .ToList();
+
+            foreach (var num in issueNumbers)
+            {
+                bool alreadyCached;
+                bool alreadyPending;
+                lock (_issueTitleCache)
+                {
+                    alreadyCached = _issueTitleCache.ContainsKey(num);
+                }
+                lock (_pendingFetches)
+                {
+                    alreadyPending = _pendingFetches.Contains(num);
+                }
+
+                if (!alreadyCached && !alreadyPending)
+                {
+                    lock (_pendingFetches)
+                    {
+                        _pendingFetches.Add(num);
+                    }
+                    _ = FetchAndCacheIssueTitleAsync(num);
+                }
+            }
+        }
+
+        private async System.Threading.Tasks.Task FetchAndCacheIssueTitleAsync(int issueNumber)
+        {
+            try
+            {
+                var title = await Services.GitHubIssuesService.GetIssueTitleAsync(issueNumber);
+                if (title != null)
+                {
+                    lock (_issueTitleCache)
+                    {
+                        _issueTitleCache[issueNumber] = title;
+                    }
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        UpdateTooltipForIssue(issueNumber);
+                    }));
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.ActivityLog.Log("github", $"Failed to fetch title for issue #{issueNumber}: {ex.Message}");
+            }
+            finally
+            {
+                lock (_pendingFetches)
+                {
+                    _pendingFetches.Remove(issueNumber);
+                }
+            }
+        }
+
+        private void UpdateTooltipForIssue(int issueNumber)
+        {
+            foreach (var node in _currentGraphNodes)
+            {
+                if (node.Item != null && node.CardElement != null && node.Item.AssociatedIssueNumbers.Contains(issueNumber))
+                {
+                    SetQueueCardTooltip(node.CardElement, node.Item);
+                }
+            }
+        }
+
+        private void SetQueueCardTooltip(Border card, QueueItem item)
+        {
+            var text = GetTooltipText(item);
+            if (string.IsNullOrWhiteSpace(text)) return;
+
+            card.ToolTip = new ToolTip
+            {
+                Style = (Style)Application.Current.FindResource("BubbleToolTip"),
+                Content = new TextBlock
+                {
+                    Text = text,
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 350,
+                    Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                    FontSize = 12,
+                },
+            };
+            ToolTipService.SetInitialShowDelay(card, 250);
+            ToolTipService.SetShowDuration(card, 20000);
+        }
+
+        private string GetTooltipText(QueueItem item)
+        {
+            if (item.AssociatedIssueNumbers == null || item.AssociatedIssueNumbers.Count == 0)
+            {
+                return item.Title; // fallback to the build title
+            }
+
+            var sb = new System.Text.StringBuilder();
+            
+            // Primary issue is the first one
+            int primaryNum = item.AssociatedIssueNumbers[0];
+            string? primaryTitle = null;
+            lock (_issueTitleCache)
+            {
+                _issueTitleCache.TryGetValue(primaryNum, out primaryTitle);
+            }
+
+            if (primaryTitle != null)
+            {
+                sb.Append($"#{primaryNum}: {primaryTitle}");
+            }
+            else
+            {
+                sb.Append($"#{primaryNum}: [Loading title...]");
+            }
+
+            if (item.AssociatedIssueNumbers.Count > 1)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Associated Issues:");
+                for (int i = 1; i < item.AssociatedIssueNumbers.Count; i++)
+                {
+                    int num = item.AssociatedIssueNumbers[i];
+                    string? title = null;
+                    lock (_issueTitleCache)
+                    {
+                        _issueTitleCache.TryGetValue(num, out title);
+                    }
+                    if (title != null)
+                    {
+                        sb.Append($"- #{num}: {title}");
+                    }
+                    else
+                    {
+                        sb.Append($"- #{num}: [Loading title...]");
+                    }
+                    if (i < item.AssociatedIssueNumbers.Count - 1)
+                    {
+                        sb.AppendLine();
+                    }
+                }
+            }
+
+            return sb.ToString();
         }
 
         private const int TooltipMaxChars = 80;

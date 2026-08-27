@@ -195,6 +195,7 @@ namespace BuildConsole.Services
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
                 items.Add(MapRow(reader));
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
             return items;
         }
 
@@ -278,6 +279,7 @@ namespace BuildConsole.Services
                 while (await reader.ReadAsync())
                     claimed.Add(MapRow(reader));
             }
+            await PopulateAssociatedIssueNumbersAsync(claimed, conn);
             return claimed;
         }
 
@@ -410,6 +412,11 @@ namespace BuildConsole.Services
                 });
             }
 
+            if (row != null)
+            {
+                await PopulateAssociatedIssueNumbersAsync(new List<QueueItem> { row }, conn);
+            }
+
             return row;
         }
 
@@ -531,7 +538,9 @@ namespace BuildConsole.Services
             // whenever a Build Watch chat nudge to a finished/exited build routed
             // through the #1327 resume path (SendSlotInput → ForceClaimAsync →
             // LaunchItemExplicit) — the real reason the text box "still didn't send".
-            return MapRow(reader);
+            var row = MapRow(reader);
+            await PopulateAssociatedIssueNumbersAsync(new List<QueueItem> { row }, conn);
+            return row;
         }
 
         // ── CancelAsync ───────────────────────────────────────────────────────────
@@ -648,6 +657,107 @@ namespace BuildConsole.Services
                 UpdatedAt         = r.IsDBNull(15) ? null : r.GetFieldValue<DateTimeOffset>(15),
                 BuildSet          = r.IsDBNull(16) ? null : r.GetString(16),
             };
+        }
+
+        private static async Task PopulateAssociatedIssueNumbersAsync(List<QueueItem> items, NpgsqlConnection conn)
+        {
+            if (items == null || items.Count == 0) return;
+
+            // Pre-seed with item's own GithubNumber
+            foreach (var item in items)
+            {
+                if (item.GithubNumber.HasValue)
+                {
+                    if (!item.AssociatedIssueNumbers.Contains(item.GithubNumber.Value))
+                        item.AssociatedIssueNumbers.Add(item.GithubNumber.Value);
+                }
+            }
+
+            var chatIds = items.Select(i => i.OriginatingChatId)
+                               .Where(id => !string.IsNullOrWhiteSpace(id))
+                               .Distinct()
+                               .ToList();
+
+            if (chatIds.Count == 0) return;
+
+            // Fetch the chat IDs, issue/epic numbers, and bt_chat_issues for these chats
+            var chatMap = new Dictionary<string, (int id, int? issueNum, int? epicNum, List<int> extraIssues)>();
+            var dbIds = new List<int>();
+
+            const string sqlChats = @"
+                SELECT c.conversation_id, c.id, i.github_number, e.github_number
+                FROM bt_chats c
+                LEFT JOIN bt_issues i ON c.issue_id = i.id
+                LEFT JOIN bt_epics e ON c.epic_id = e.id
+                WHERE c.conversation_id = ANY(@chatIds)";
+
+            await using (var cmd = new NpgsqlCommand(sqlChats, conn))
+            {
+                cmd.Parameters.AddWithValue("@chatIds", chatIds.ToArray());
+                await using (var reader = await cmd.ExecuteReaderAsync())
+                {
+                    while (await reader.ReadAsync())
+                    {
+                        var convId = reader.GetString(0);
+                        var id = reader.GetInt32(1);
+                        int? issueNum = reader.IsDBNull(2) ? null : reader.GetInt32(2);
+                        int? epicNum = reader.IsDBNull(3) ? null : reader.GetInt32(3);
+                        chatMap[convId] = (id, issueNum, epicNum, new List<int>());
+                        dbIds.Add(id);
+                    }
+                }
+            }
+
+            if (dbIds.Count > 0)
+            {
+                const string sqlIssues = @"
+                    SELECT chat_id, issue_number
+                    FROM bt_chat_issues
+                    WHERE chat_id = ANY(@dbIds)";
+                
+                await using (var cmdIssues = new NpgsqlCommand(sqlIssues, conn))
+                {
+                    cmdIssues.Parameters.AddWithValue("@dbIds", dbIds.ToArray());
+                    await using (var reader = await cmdIssues.ExecuteReaderAsync())
+                    {
+                        while (await reader.ReadAsync())
+                        {
+                            var chatId = reader.GetInt32(0);
+                            var issueNum = reader.GetInt32(1);
+                            foreach (var kvp in chatMap)
+                            {
+                                if (kvp.Value.id == chatId)
+                                {
+                                    kvp.Value.extraIssues.Add(issueNum);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            foreach (var item in items)
+            {
+                if (!string.IsNullOrWhiteSpace(item.OriginatingChatId) && chatMap.TryGetValue(item.OriginatingChatId, out var chatData))
+                {
+                    if (chatData.issueNum.HasValue && !item.AssociatedIssueNumbers.Contains(chatData.issueNum.Value))
+                    {
+                        item.AssociatedIssueNumbers.Add(chatData.issueNum.Value);
+                    }
+                    if (chatData.epicNum.HasValue && !item.AssociatedIssueNumbers.Contains(chatData.epicNum.Value))
+                    {
+                        item.AssociatedIssueNumbers.Add(chatData.epicNum.Value);
+                    }
+                    foreach (var num in chatData.extraIssues)
+                    {
+                        if (!item.AssociatedIssueNumbers.Contains(num))
+                        {
+                            item.AssociatedIssueNumbers.Add(num);
+                        }
+                    }
+                }
+            }
         }
 
         // ── Static factory ────────────────────────────────────────────────────────

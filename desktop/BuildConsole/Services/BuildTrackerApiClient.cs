@@ -36,6 +36,8 @@ namespace BuildConsole.Services
         public string? OriginatingChatId { get; set; }
         /// <summary>Git #905 — the server's own `updatedAt` was already in the response (`GET /extension/queue` spreads the whole row), just never captured client-side; used to show "done {time}" on the new Completed tile.</summary>
         public DateTimeOffset? UpdatedAt { get; set; }
+        /// <summary>All GitHub issue numbers associated with this queue item (derived from its linked chat or itself).</summary>
+        public List<int> AssociatedIssueNumbers { get; set; } = new();
     }
 
     /// <summary>Matches POST /admin/simulator/deploy/console's real `{ ok, command, output }` response shape.</summary>

@@ -224,6 +224,59 @@ namespace BuildConsole.Services
             }
         }
 
+        public static async Task<string?> GetIssueTitleAsync(int issueNumber)
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "gh",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("issue");
+            psi.ArgumentList.Add("view");
+            psi.ArgumentList.Add(issueNumber.ToString());
+            psi.ArgumentList.Add("--repo");
+            psi.ArgumentList.Add(Repo);
+            psi.ArgumentList.Add("--json");
+            psi.ArgumentList.Add("title");
+
+            using var proc = new Process { StartInfo = psi };
+            try
+            {
+                proc.Start();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"Couldn't start gh CLI for issue #{issueNumber}: {ex.Message}");
+                return null;
+            }
+            string stdout = await proc.StandardOutput.ReadToEndAsync();
+            string stderr = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+            {
+                ActivityLog.Log("github", $"gh issue view #{issueNumber} failed (exit {proc.ExitCode}): {stderr.Trim()}");
+                return null;
+            }
+
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(stdout);
+                if (doc.RootElement.TryGetProperty("title", out var titleProp))
+                {
+                    return titleProp.GetString();
+                }
+                return null;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"Couldn't parse gh issue view output for #{issueNumber}: {ex.Message}");
+                return null;
+            }
+        }
+
         private class OpenIssueNumberRow
         {
             public int Number { get; set; }
