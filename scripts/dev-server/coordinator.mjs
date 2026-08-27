@@ -233,10 +233,13 @@ function makeRestartAction(config) {
       return { oldPid: null, newPid: -1, ready: true, fake: true, only: opts.only || null };
     };
   }
-  // Lazy import so paths that never restart don't load the process manager.
+  // Git #1395: the real restart action is the MAIN-checkout refresh (ff-pull +
+  // rebuild the built api-server), not a C:\dev-server server restart -- see
+  // request-restart.mjs makeRestart for the rationale. Lazy import so paths that
+  // never restart don't load it.
   return async (cfg, opts = {}) => {
-    const { restartServer } = await import("./server-process.mjs");
-    return restartServer(cfg, opts);
+    const { refreshMainServer } = await import("./refresh-main-server.mjs");
+    return refreshMainServer(cfg, opts);
   };
 }
 

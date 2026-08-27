@@ -39,7 +39,7 @@ import {
   cleanup,
 } from "./queue.mjs";
 import { runCycle, runSetMemberCycle } from "./coordinator.mjs";
-import { restartServer } from "./server-process.mjs";
+import { refreshMainServer } from "./refresh-main-server.mjs";
 import { existsSync } from "node:fs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -62,7 +62,14 @@ function parseArgs(argv) {
   return a;
 }
 
-/** The restart action handed to the coordinator (real, unless FAKE_RESTART). */
+/** The restart action handed to the coordinator (real, unless FAKE_RESTART).
+ *
+ * Git #1395: the "restart" the coordinator fires is the MAIN-checkout refresh
+ * (ff-pull origin/main + rebuild the built api-server) -- NOT a restart of the
+ * dedicated C:\dev-server server, which nothing observes and which would fight the
+ * main-checkout services over :8080. The C:\dev-server MERGE still runs as the
+ * coordinator's confirm/mirror; only the restart target moved to the checkout
+ * BuildConsole actually launches the dev servers from. */
 function makeRestart(config) {
   if (config.fakeRestart) {
     // Selftest / dry safety: record the restart instead of touching a process.
@@ -77,7 +84,7 @@ function makeRestart(config) {
       return { oldPid: null, newPid: -1, ready: true, fake: true, only: opts.only || null };
     };
   }
-  return restartServer;
+  return refreshMainServer;
 }
 
 export async function requestRestart(opts = {}) {
