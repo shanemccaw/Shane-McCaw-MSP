@@ -431,15 +431,34 @@ describe("#413 Part 1 — fetchTenantEvaluableSignalKeys resolves the tenant's r
     expect(raw).toBeLessThanOrEqual(maxWith); // the invariant, restored
   });
 
-  it("falls back to the catalog-wide denominator when the tenant has no resolvable scan scope", async () => {
+  it("returns an EMPTY set (never the catalog-wide fallback) when the tenant has NEVER been scanned", async () => {
+    // Git #1392: no msp_diagnostic_runs row at all. The old behavior fell back
+    // to the whole catalog as the denominator with a zero numerator, which
+    // `computePillarDisplayScore` renders as a fabricated perfect 100 for a
+    // genuinely zero-data tenant. The honest answer is an empty denominator, so
+    // every pillar reads not_evaluated (score null) rather than 100.
     const rules = buildCorpus();
-
-    // No runs at all.
     wireDb({ runPackageKeys: [], packageChecks: PACKAGE_CHECKS });
-    expect((await fetchTenantEvaluableSignalKeys(1, rules)).size).toBe(CATALOG_SIZE);
 
-    // Runs exist, but their packages curate no checks (the platform-wide state
-    // before 2026-07-21's repopulation).
+    const evaluable = await fetchTenantEvaluableSignalKeys(1, rules);
+    expect(evaluable.size).toBe(0);
+
+    // The behavioural payoff: no fabricated score anywhere on the radar.
+    const impacts = getSignalHealthImpacts(rules, []);
+    const output = engineOutput(HEALTHY_TENANT, rules);
+    for (const p of RADAR_PILLARS) {
+      expect(computePillarDisplayScore(p, output, impacts, evaluable)).toBeNull();
+    }
+    expect(computeOverallDisplayScore(RADAR_PILLARS, output, impacts, evaluable)).toBeNull();
+  });
+
+  it("STILL falls back to the catalog-wide denominator when a run exists but its scan scope is unresolvable", async () => {
+    // Git #1392: this is the OTHER null-checkKeys reason and must stay distinct
+    // from never-scanned — a run named a package, but that package curates no
+    // checks yet (the platform-wide state before 2026-07-21's repopulation).
+    // For a real-but-unresolvable scan, catalog-wide remains the honest
+    // best-effort rather than silently nulling every pillar.
+    const rules = buildCorpus();
     wireDb({ runPackageKeys: ["core:security-baseline"], packageChecks: {} });
     expect((await fetchTenantEvaluableSignalKeys(1, rules)).size).toBe(CATALOG_SIZE);
   });

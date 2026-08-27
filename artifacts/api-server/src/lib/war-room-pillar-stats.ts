@@ -1226,6 +1226,11 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   const evaluableSignalKeys = await fetchTenantEvaluableSignalKeys(customerId, rules, {
     firedSignalKeys: output.rawSignals,
     scannedCheckKeys: scanned.checkKeys,
+    // Git #1392: a genuinely never-scanned tenant (no diagnostic run at all)
+    // must get an EMPTY denominator, not the catalog-wide fallback that
+    // fabricates a perfect 100. Passing hasAnyRun preserves that distinction
+    // through the pre-resolved-scope path.
+    hasAnyRun: scanned.hasAnyRun,
   });
   const impacts = getSignalHealthImpacts(rules, groups);
   const { pillars: enginePillars } = buildPillarViews(output, impacts, evaluableSignalKeys);

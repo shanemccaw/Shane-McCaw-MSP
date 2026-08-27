@@ -377,6 +377,16 @@ async function resolveCoveredSignalKeys(
  * all, or packages with no curated checks (the platform-wide state before
  * 2026-07-21's repopulation, which would otherwise mark every stat unscanned).
  *
+ * `hasAnyRun` reports whether the tenant has ANY `msp_diagnostic_runs` row at all
+ * (Git #1392) — the load-bearing distinction between the two reasons `checkKeys`
+ * can be null: `false` means genuinely NEVER scanned (nothing to measure — the
+ * caller must NOT substitute a catalog-wide denominator, or it fabricates a
+ * perfect 100 for a zero-data tenant), while `true` with a null `checkKeys` means
+ * a run exists but its scan scope couldn't be resolved (an error/coverage blip
+ * for which the catalog-wide fallback stays the honest best-effort). It reflects
+ * run EXISTENCE regardless of `package_key`, so a run stored with a null
+ * package_key still counts as "has been scanned" rather than "never scanned".
+ *
  * Lives here (rather than in war-room-pillar-stats.ts, where it was written for
  * #341's `not_in_scan_package` honesty fix) because the scoring denominator and
  * the stat-unavailability reason must be answering the same question about the
@@ -387,14 +397,21 @@ async function resolveCoveredSignalKeys(
 export async function fetchScannedCheckKeys(customerId: number): Promise<{
   packageKeys: string[];
   checkKeys: Set<string> | null;
+  hasAnyRun: boolean;
 }> {
   const runRows = await db
     .selectDistinct({ packageKey: mspDiagnosticRunsTable.packageKey })
     .from(mspDiagnosticRunsTable)
     .where(eq(mspDiagnosticRunsTable.customerId, customerId));
 
+  // Run EXISTENCE, independent of whether any run named a resolvable package —
+  // a run with a null package_key still means the tenant has been scanned
+  // (Git #1392). `selectDistinct(package_key)` collapses to one row per distinct
+  // key (the null group included), so a non-empty result proves ≥1 run exists.
+  const hasAnyRun = runRows.length > 0;
+
   const packageKeys = runRows.map((r) => r.packageKey).filter((k): k is string => !!k);
-  if (packageKeys.length === 0) return { packageKeys: [], checkKeys: null };
+  if (packageKeys.length === 0) return { packageKeys: [], checkKeys: null, hasAnyRun };
 
   const checkRows = await db
     .selectDistinct({ checkKey: monitoringPackageChecksTable.checkKey })
@@ -407,9 +424,9 @@ export async function fetchScannedCheckKeys(customerId: number): Promise<{
       { customerId, packageKeys },
       "pillar-coverage: scanned packages curate no checks — scan scope cannot be resolved",
     );
-    return { packageKeys, checkKeys: null };
+    return { packageKeys, checkKeys: null, hasAnyRun };
   }
-  return { packageKeys, checkKeys };
+  return { packageKeys, checkKeys, hasAnyRun };
 }
 
 /**
@@ -435,18 +452,33 @@ export async function fetchScannedCheckKeys(customerId: number): Promise<{
  *     while being absent from the denominator — `rawScore > theoreticalMax`,
  *     clamped to a spurious 0. Passing them keeps numerator ⊆ denominator, which
  *     is a precondition of the formula, not an adjustment to it.
- *  2. When the tenant's scan scope cannot be resolved at all (no runs, or
- *     packages that curate no checks — `fetchScannedCheckKeys` returning null),
- *     this falls back to the catalog-wide `fetchEvaluableSignalKeys` and says so
- *     in the log. Silently nulling every pillar for a data-availability blip
- *     would be a new wrong answer; the honest "this tenant has never been
- *     scanned" surface is a separate, deliberate product decision (#413
- *     Finding 2) and is not made here by accident.
+ *  2. When a run exists but its scan scope cannot be resolved (packages that
+ *     curate no checks — `fetchScannedCheckKeys` returning a null `checkKeys`
+ *     with `hasAnyRun: true`), this falls back to the catalog-wide
+ *     `fetchEvaluableSignalKeys` and says so in the log. Silently nulling every
+ *     pillar for a data-availability blip would be a new wrong answer.
+ *
+ * ── The never-scanned case is NOT the fallback case (Git #1392) ───────────────
+ * A tenant that has genuinely NEVER been scanned (`hasAnyRun: false` — no
+ * `msp_diagnostic_runs` row at all) must NOT reach the catalog-wide fallback.
+ * That fallback substitutes the whole catalog as the denominator while the
+ * numerator stays zero (nothing fired), and `computePillarDisplayScore` renders
+ * `100 − 0/max × 100` = a fabricated perfect 100 for a pillar that was never
+ * measured — the exact zero-data "100 across the board" bug. For this case the
+ * honest denominator is EMPTY, which drives `evaluatePillarDisplay`'s
+ * `evaluableSignalCount === 0` guard to `not_evaluated` instead of a score. This
+ * is the "this tenant has never been scanned" surface (#413 Finding 2), now
+ * reached deliberately rather than papered over by the fallback.
  *
  * `opts.scannedCheckKeys` lets a caller that has ALREADY resolved the tenant's
  * scan scope (war-room-pillar-stats.ts needs it for `not_in_scan_package`) pass
  * it in rather than repeat the two queries — `undefined` means "resolve it",
- * `null` means "already resolved, and there was nothing to conclude from".
+ * `null` means "already resolved, and there was nothing to conclude from". A
+ * caller passing `scannedCheckKeys` should also pass `hasAnyRun` (from the same
+ * `fetchScannedCheckKeys` result) so the never-scanned vs. unresolvable-scope
+ * distinction survives; when `hasAnyRun` is left undefined the conservative
+ * catalog-wide fallback is kept (old behavior), so a caller can only OPT IN to
+ * the stricter never-scanned handling, never regress into it by omission.
  */
 export async function fetchTenantEvaluableSignalKeys(
   customerId: number,
@@ -454,24 +486,46 @@ export async function fetchTenantEvaluableSignalKeys(
   opts?: {
     firedSignalKeys?: Iterable<string>;
     scannedCheckKeys?: ReadonlySet<string> | null;
+    hasAnyRun?: boolean;
   },
 ): Promise<Set<string>> {
-  const scannedCheckKeys =
-    opts?.scannedCheckKeys !== undefined
-      ? opts.scannedCheckKeys
-      : (await fetchScannedCheckKeys(customerId)).checkKeys;
-
-  if (scannedCheckKeys == null || scannedCheckKeys.size === 0) {
-    log.warn(
-      { customerId },
-      "pillar-coverage: no resolvable scan scope for this customer — falling back to the catalog-wide denominator",
-    );
-    return fetchEvaluableSignalKeys(rules);
+  let scannedCheckKeys: ReadonlySet<string> | null;
+  let hasAnyRun: boolean | undefined;
+  if (opts?.scannedCheckKeys !== undefined) {
+    scannedCheckKeys = opts.scannedCheckKeys;
+    hasAnyRun = opts.hasAnyRun;
+  } else {
+    const scanned = await fetchScannedCheckKeys(customerId);
+    scannedCheckKeys = scanned.checkKeys;
+    hasAnyRun = scanned.hasAnyRun;
   }
 
-  const evaluable = await resolveCoveredSignalKeys(scannedCheckKeys, rules);
+  let evaluable: Set<string>;
+  if (scannedCheckKeys == null || scannedCheckKeys.size === 0) {
+    if (hasAnyRun === false) {
+      // Genuinely never scanned — empty denominator, NO catalog-wide fallback
+      // (Git #1392). See the header block above.
+      log.info(
+        { customerId },
+        "pillar-coverage: tenant has never been scanned — returning an empty evaluable set (no catalog-wide fallback) so pillars read not_evaluated rather than a fabricated 100",
+      );
+      evaluable = new Set();
+    } else {
+      // A run exists but its scan scope is unresolvable (or the caller passed a
+      // pre-resolved null without a hasAnyRun hint) — catalog-wide best-effort.
+      log.warn(
+        { customerId, hasAnyRun },
+        "pillar-coverage: no resolvable scan scope for this customer — falling back to the catalog-wide denominator",
+      );
+      evaluable = await fetchEvaluableSignalKeys(rules);
+    }
+  } else {
+    evaluable = await resolveCoveredSignalKeys(scannedCheckKeys, rules);
+  }
 
-  // Proof-of-evaluability widening (1) above.
+  // Proof-of-evaluability widening (1) above — applies in every branch,
+  // never-scanned included: a signal that genuinely FIRED is evaluable for this
+  // tenant by direct proof of the data behind it, wherever its producer lives.
   let firedOutsidePackage = 0;
   for (const signalKey of opts?.firedSignalKeys ?? []) {
     if (evaluable.has(signalKey)) continue;
@@ -482,7 +536,8 @@ export async function fetchTenantEvaluableSignalKeys(
   log.debug(
     {
       customerId,
-      scannedCheckCount: scannedCheckKeys.size,
+      scannedCheckCount: scannedCheckKeys?.size ?? 0,
+      hasAnyRun,
       evaluableSignalCount: evaluable.size,
       firedOutsidePackage,
     },
