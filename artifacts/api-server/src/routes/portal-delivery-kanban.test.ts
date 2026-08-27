@@ -62,8 +62,16 @@ vi.mock("../lib/monitor-executor.ts", () => ({
   executeMonitoringPackage: vi.fn(),
 }));
 
-vi.mock("../lib/logger.ts", () => ({
-  logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+vi.mock("../lib/logger.ts", () => {
+  const stub = { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() };
+  // portal-delivery-kanban.ts does `logger.child(...)` at module scope.
+  return { logger: { ...stub, child: vi.fn(() => stub) } };
+});
+
+// #1397: assertProjectAccess now customer-scopes via this bridge. Stub to the
+// single-login set so no extra DB select is issued and mock expectations hold.
+vi.mock("../lib/tenant-signals.ts", () => ({
+  resolveSiblingUserIds: async (id: number) => [id],
 }));
 
 // ── Import router after mocks ──────────────────────────────────────────────────

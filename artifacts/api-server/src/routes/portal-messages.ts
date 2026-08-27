@@ -1,7 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, messagesTable, usersTable, notificationsTable, deviceTokensTable } from "@workspace/db";
-import { eq, and, asc, count } from "drizzle-orm";
+import { eq, and, asc, count, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth";
+import { resolveSiblingUserIds } from "../lib/tenant-signals";
 import { sendEmailFromTemplate, getTenantHealthBlockHtml, canSendAutomatedCustomerEmailForUser } from "../lib/mailer";
 import { sendPushNotifications } from "../lib/push";
 import { sendWebPushToAdmins } from "../lib/web-push";
@@ -39,10 +40,13 @@ router.get("/portal/messages", requireAuth, async (req: Request, res: Response) 
     await db.update(messagesTable).set({ readByAdmin: true }).where(and(eq(messagesTable.clientUserId, clientId), eq(messagesTable.readByAdmin, false)));
     res.json(messages);
   } else {
+    // #1397: the customer↔MSP thread belongs to the account — show and mark-read
+    // across every login of the customer, not just the requesting one.
+    const siblingIds = await resolveSiblingUserIds(userId);
     const messages = await db.select().from(messagesTable)
-      .where(eq(messagesTable.clientUserId, userId))
+      .where(inArray(messagesTable.clientUserId, siblingIds))
       .orderBy(asc(messagesTable.createdAt));
-    await db.update(messagesTable).set({ readByClient: true }).where(and(eq(messagesTable.clientUserId, userId), eq(messagesTable.readByClient, false)));
+    await db.update(messagesTable).set({ readByClient: true }).where(and(inArray(messagesTable.clientUserId, siblingIds), eq(messagesTable.readByClient, false)));
     res.json(messages);
   }
 });

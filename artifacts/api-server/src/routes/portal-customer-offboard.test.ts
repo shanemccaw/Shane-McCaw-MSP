@@ -68,6 +68,13 @@ vi.mock("stripe", () => {
   };
 });
 
+// #1397: portal-customer-engines.ts now customer-scopes reads/offboard via this
+// bridge. Stub to the single-login set so no extra DB select is issued and this
+// file's mock queue expectations stay valid.
+vi.mock("../lib/tenant-signals", () => ({
+  resolveCustomerUserIds: async (id: number) => [id],
+}));
+
 import router from "./portal-customer-engines";
 import { db } from "@workspace/db";
 
@@ -128,9 +135,10 @@ describe("Customer Offboarding & Export API", () => {
     it("exports customer data package", async () => {
       const token = makeToken();
 
-      // Mock all selects during export (they all use mockSelectResults in mock but we can adjust to return a general mocked set)
+      // Mock all selects during export (they all use mockSelectResults in mock but we can adjust to return a general mocked set).
+      // The export response maps customer.name from the tenants row's customerName column.
       mockSelectResults = [
-        { name: "Customer Inc", status: "active", title: "Doc", score: 95 }
+        { customerName: "Customer Inc", status: "active", title: "Doc", score: 95 }
       ];
 
       const res = await request(app)

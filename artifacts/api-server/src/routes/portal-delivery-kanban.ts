@@ -28,6 +28,7 @@ import {
 } from "@workspace/db";
 import { eq, and, asc, desc } from "drizzle-orm";
 import { requireAuth, requireAdmin } from "../middlewares/requireAuth.ts";
+import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
 import { broadcastKanbanChange } from "../lib/sse-channels.ts";
 import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
 import { executeMonitoringPackage } from "../lib/monitor-executor.ts";
@@ -66,7 +67,10 @@ async function assertProjectAccess(req: Request, projectId: number): Promise<{ p
   if (!project) return null;
 
   if (req.user?.role === "client") {
-    if (project.clientUserId !== req.user.id) return null;
+    // #1397: a project belongs to the customer account — allow any sibling login
+    // of the same tenant to access its delivery board, not just the owning login.
+    const siblingIds = await resolveSiblingUserIds(req.user.id);
+    if (project.clientUserId == null || !siblingIds.includes(project.clientUserId)) return null;
   }
 
   return { project };

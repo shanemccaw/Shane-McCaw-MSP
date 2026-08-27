@@ -116,6 +116,17 @@ mock.module("../lib/audit.ts", {
   },
 });
 
+// #1397: data-export now customer-scopes the legacy users.id-keyed records via
+// resolveSiblingUserIds. Mock it (its real impl imports `./logger` without a
+// `.ts` extension, which fails ESM resolution under --experimental-strip-types)
+// to the single-login set so it makes no real DB query and preserves the
+// existing dbQueue expectations.
+mock.module("../lib/tenant-signals.ts", {
+  namedExports: {
+    resolveSiblingUserIds: async (id: number) => [id],
+  },
+});
+
 // ── Import app under test ─────────────────────────────────────────────────────
 const { default: router } = await import("./portal-privacy.ts");
 import express from "express";

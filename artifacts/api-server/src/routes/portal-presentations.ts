@@ -5,7 +5,7 @@ import { requireAuth } from "../middlewares/requireAuth.ts";
 import jwt from "jsonwebtoken";
 import { getStripeKey } from "../lib/stripe.ts";
 import { stripStagedForReviewBanner, stripTierDetectionText, WORKSTREAM_ADJ_MAP, ADJ_SIGNAL_PATTERNS } from "../lib/sow-pricing.ts";
-import { computeTenantSignals, getAdjustmentSignalDefinitions, getDisabledSignalKeys, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
+import { computeTenantSignals, getAdjustmentSignalDefinitions, getDisabledSignalKeys, resolveSiblingUserIds, type SignalDerivationRule, type SignalRuleGroup } from "../lib/tenant-signals.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -398,6 +398,9 @@ async function resolveScopeAwarePrice(
 router.get("/portal/presentations/latest", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    // #1397: the presentation belongs to the customer account — match across
+    // every linked login so a second/recreated login sees it.
+    const siblingIds = await resolveSiblingUserIds(userId);
     const [row] = await db
       .select({
         id: quickWinPresentationsTable.id,
@@ -406,7 +409,7 @@ router.get("/portal/presentations/latest", requireAuth, async (req: Request, res
         createdAt: quickWinPresentationsTable.createdAt,
       })
       .from(quickWinPresentationsTable)
-      .where(eq(quickWinPresentationsTable.clientUserId, userId))
+      .where(inArray(quickWinPresentationsTable.clientUserId, siblingIds))
       .orderBy(desc(quickWinPresentationsTable.createdAt))
       .limit(1);
 
@@ -779,8 +782,12 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
       res.status(400).json({ error: "signatureData and signerName are required" }); return;
     }
 
+    // #1397: allow any login of the customer account to sign the account's
+    // presentation (the exact recreated-login case — the presentation's own
+    // clientUserId may be a prior login). signerName is still captured.
+    const siblingIds = await resolveSiblingUserIds(userId);
     const [pres] = await db.select().from(quickWinPresentationsTable)
-      .where(and(eq(quickWinPresentationsTable.id, id), eq(quickWinPresentationsTable.clientUserId, userId)))
+      .where(and(eq(quickWinPresentationsTable.id, id), inArray(quickWinPresentationsTable.clientUserId, siblingIds)))
       .limit(1);
     if (!pres) { res.status(404).json({ error: "Presentation not found" }); return; }
 

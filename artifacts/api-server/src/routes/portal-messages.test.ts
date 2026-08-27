@@ -94,6 +94,13 @@ vi.mock("../lib/logger", () => {
 // regression test is to exercise the REAL getMspPortalBaseUrl() and prove it,
 // not a stub, drives the notification email's portalLink/anchor.
 
+// #1397: portal-messages.ts now customer-scopes the client thread via this
+// bridge. Stub to the single-login set so no extra DB select is issued and this
+// file's mockSelectResultsQueue expectations stay valid.
+vi.mock("../lib/tenant-signals", () => ({
+  resolveSiblingUserIds: async (id: number) => [id],
+}));
+
 import router from "./portal-messages";
 
 // getMspPortalBaseUrl() resolves off PORTAL_BASE_URL (highest priority, see

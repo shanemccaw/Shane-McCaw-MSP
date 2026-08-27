@@ -86,6 +86,13 @@ vi.mock("../lib/request-context.ts", () => ({
   enrichRequestContext: vi.fn(),
 }));
 
+// #1397: portal-customer-engines.ts now customer-scopes reads via this bridge.
+// Stub to the single-login set so no extra DB select is issued and this file's
+// mock queue expectations stay valid.
+vi.mock("../lib/tenant-signals", () => ({
+  resolveCustomerUserIds: async (id: number) => [id],
+}));
+
 import router from "./portal-customer-engines";
 
 function makeApp() {

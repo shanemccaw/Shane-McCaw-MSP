@@ -38,6 +38,7 @@ import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, serv
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
+import { resolveCustomerUserIds } from "../lib/tenant-signals";
 
 const router: IRouter = Router();
 
@@ -413,6 +414,14 @@ router.get(
       return;
     }
 
+    // #1397: customer-owned data (projects, paid-tier SOWs, purchased services)
+    // is stored under a users.id-shaped `clientUserId` FK, but it belongs to the
+    // CUSTOMER, not one login. Scope every such read across the customer's full
+    // set of linked logins — the same resolveCustomerUserIds() bridge the rest of
+    // the portal (portal-assessment.ts) and admin routes already use — so a
+    // second login or a recreated account still sees its own organization's data.
+    const customerUserIds = await resolveCustomerUserIds(customerId);
+
     try {
       const snapshots = await db
         .select({
@@ -439,7 +448,7 @@ router.get(
         .from(assessmentSowAgreementsTable)
         .where(
           and(
-            eq(assessmentSowAgreementsTable.clientUserId, req.user!.id),
+            inArray(assessmentSowAgreementsTable.clientUserId, customerUserIds),
             inArray(assessmentSowAgreementsTable.status, ["paid", "free_activated"]),
           ),
         )
@@ -492,7 +501,7 @@ router.get(
         .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
         .where(
           and(
-            eq(clientServicesTable.clientUserId, req.user!.id),
+            inArray(clientServicesTable.clientUserId, customerUserIds),
             eq(clientServicesTable.status, "active")
           )
         );
@@ -531,9 +540,8 @@ router.get(
       const telemetryStatus = customer?.status === "onboarding" ? "in_progress" : "completed";
 
       // ── Merge existing dashboard fields for customer-home.tsx ──
-      const userId = req.user!.id;
       const projects = await db.select().from(projectsTable)
-        .where(and(eq(projectsTable.clientUserId, userId), eq(projectsTable.status, "active")))
+        .where(and(inArray(projectsTable.clientUserId, customerUserIds), eq(projectsTable.status, "active")))
         .orderBy(desc(projectsTable.updatedAt)).limit(5);
 
       type EnrichedProject = typeof projects[0] & {
@@ -584,22 +592,27 @@ router.get(
         },
       }).from(clientServicesTable)
         .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
-        .where(and(eq(clientServicesTable.clientUserId, userId), or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))))
+        .where(and(inArray(clientServicesTable.clientUserId, customerUserIds), or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))))
         .orderBy(desc(clientServicesTable.purchasedAt)).limit(6);
 
       const invoices = await db.select().from(invoicesTable)
-        .where(eq(invoicesTable.clientUserId, userId))
+        .where(inArray(invoicesTable.clientUserId, customerUserIds))
         .orderBy(desc(invoicesTable.createdAt)).limit(5);
 
       const reports = await db.select().from(reportsTable)
-        .where(eq(reportsTable.clientUserId, userId))
+        .where(inArray(reportsTable.clientUserId, customerUserIds))
         .orderBy(desc(reportsTable.createdAt)).limit(3);
 
+      // Notifications stay per-login: a notification feed is the one genuinely
+      // user-specific surface Shane named (#1397, "maybe alert preferences"),
+      // delivered to a specific login rather than shared across the account.
       const [{ unread }] = await db.select({ unread: count() }).from(notificationsTable)
-        .where(and(eq(notificationsTable.userId, userId), eq(notificationsTable.read, false)));
+        .where(and(eq(notificationsTable.userId, req.user!.id), eq(notificationsTable.read, false)));
 
+      // Messages are the customer↔MSP thread (a single readByClient flag per
+      // message, not per-login) — scope the unread badge across the account.
       const [{ unreadMessages }] = await db.select({ unreadMessages: count() }).from(messagesTable)
-        .where(and(eq(messagesTable.clientUserId, userId), eq(messagesTable.readByClient, false)));
+        .where(and(inArray(messagesTable.clientUserId, customerUserIds), eq(messagesTable.readByClient, false)));
 
       res.json({
         scores: {
@@ -653,11 +666,14 @@ router.get(
   requireRole("CustomerUser"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
-    const userId = req.user!.id;
     if (!customerId) {
       res.status(400).json({ error: "No customer account associated with this user" });
       return;
     }
+
+    // #1397: enabled modules come from the customer's purchased services, which
+    // may sit under any linked login — scope across the whole account.
+    const customerUserIds = await resolveCustomerUserIds(customerId);
 
     try {
       const activeServices = await db
@@ -666,7 +682,7 @@ router.get(
         .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
         .where(
           and(
-            eq(clientServicesTable.clientUserId, userId),
+            inArray(clientServicesTable.clientUserId, customerUserIds),
             eq(clientServicesTable.status, "active")
           )
         );
@@ -714,14 +730,21 @@ router.post(
       return;
     }
 
+    // #1397: offboarding is a CUSTOMER-level action (steps 4/5 mark the whole
+    // tenant inactive by customerId). Cancel/pause services across every login
+    // linked to the account, not just the requesting one — otherwise a sibling
+    // login's active services (and their Stripe subscriptions) survive an
+    // offboard that has already flipped the tenant to inactive.
+    const customerUserIds = await resolveCustomerUserIds(customerId);
+
     try {
-      // 1. Find all active or paused client services for this user
+      // 1. Find all active or paused client services across the customer account
       const userServices = await db
         .select()
         .from(clientServicesTable)
         .where(
           and(
-            eq(clientServicesTable.clientUserId, userId),
+            inArray(clientServicesTable.clientUserId, customerUserIds),
             or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))
           )
         );
@@ -757,7 +780,7 @@ router.post(
           .set({ status: "paused" })
           .where(
             and(
-              eq(clientServicesTable.clientUserId, userId),
+              inArray(clientServicesTable.clientUserId, customerUserIds),
               or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))
             )
           );
@@ -822,12 +845,17 @@ router.get(
   requireRole("CustomerUser"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
-    const userId = req.user!.id;
 
     if (!customerId) {
       res.status(400).json({ error: "No customer account associated with this user" });
       return;
     }
+
+    // #1397: scope the data export across every login linked to the customer
+    // account, not just the requesting user, so the export reflects the whole
+    // organization's services/projects/reports (see resolveCustomerUserIds note
+    // on the /portal/dashboard handler above).
+    const customerUserIds = await resolveCustomerUserIds(customerId);
 
     try {
       const [customer] = await db
@@ -847,17 +875,17 @@ router.get(
         })
         .from(clientServicesTable)
         .innerJoin(servicesTable, eq(clientServicesTable.serviceId, servicesTable.id))
-        .where(eq(clientServicesTable.clientUserId, userId));
+        .where(inArray(clientServicesTable.clientUserId, customerUserIds));
 
       const projects = await db
         .select()
         .from(projectsTable)
-        .where(eq(projectsTable.clientUserId, userId));
+        .where(inArray(projectsTable.clientUserId, customerUserIds));
 
       const reports = await db
         .select()
         .from(reportsTable)
-        .where(eq(reportsTable.clientUserId, userId));
+        .where(inArray(reportsTable.clientUserId, customerUserIds));
 
       const snapshots = await db
         .select({

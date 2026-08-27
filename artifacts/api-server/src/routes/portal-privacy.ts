@@ -26,6 +26,7 @@ import {
 } from "@workspace/db";
 import { eq, desc, inArray } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
+import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { submitSelfServiceDeletionRequest } from "../lib/data-rights.ts";
 import { logger } from "../lib/logger.ts";
@@ -50,12 +51,19 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
 
     if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
+    // #1397: this archive claims to hold "all data ... for your account" — the
+    // legacy users.id-keyed records (projects/invoices/messages/documents/M365
+    // profile) belong to the CUSTOMER, so export them across every linked login,
+    // not just the requesting one. The personal audit trail below stays
+    // user-scoped (it is genuinely "who did this").
+    const siblingIds = await resolveSiblingUserIds(userId);
+
     const projects = await db.select({
       id: projectsTable.id,
       title: projectsTable.title,
       status: projectsTable.status,
       createdAt: projectsTable.createdAt,
-    }).from(projectsTable).where(eq(projectsTable.clientUserId, userId)).orderBy(desc(projectsTable.createdAt));
+    }).from(projectsTable).where(inArray(projectsTable.clientUserId, siblingIds)).orderBy(desc(projectsTable.createdAt));
 
     const projectIds = projects.map(p => p.id);
 
@@ -75,26 +83,26 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
       status: invoicesTable.status,
       description: invoicesTable.description,
       createdAt: invoicesTable.createdAt,
-    }).from(invoicesTable).where(eq(invoicesTable.clientUserId, userId)).orderBy(desc(invoicesTable.createdAt));
+    }).from(invoicesTable).where(inArray(invoicesTable.clientUserId, siblingIds)).orderBy(desc(invoicesTable.createdAt));
 
     const messages = await db.select({
       id: messagesTable.id,
       body: messagesTable.body,
       senderUserId: messagesTable.senderUserId,
       createdAt: messagesTable.createdAt,
-    }).from(messagesTable).where(eq(messagesTable.clientUserId, userId)).orderBy(desc(messagesTable.createdAt));
+    }).from(messagesTable).where(inArray(messagesTable.clientUserId, siblingIds)).orderBy(desc(messagesTable.createdAt));
 
     const [m365Profile] = await db.select({
       profile: clientM365ProfilesTable.profile,
       updatedAt: clientM365ProfilesTable.updatedAt,
-    }).from(clientM365ProfilesTable).where(eq(clientM365ProfilesTable.clientId, userId)).limit(1);
+    }).from(clientM365ProfilesTable).where(inArray(clientM365ProfilesTable.clientId, siblingIds)).limit(1);
 
     const clientDocs = await db.select({
       id: clientDocumentsTable.id,
       filename: clientDocumentsTable.filename,
       mimeType: clientDocumentsTable.mimeType,
       createdAt: clientDocumentsTable.createdAt,
-    }).from(clientDocumentsTable).where(eq(clientDocumentsTable.clientUserId, userId)).orderBy(desc(clientDocumentsTable.createdAt));
+    }).from(clientDocumentsTable).where(inArray(clientDocumentsTable.clientUserId, siblingIds)).orderBy(desc(clientDocumentsTable.createdAt));
 
     const auditEntries = await db.select({
       actionType: auditLogsTable.actionType,

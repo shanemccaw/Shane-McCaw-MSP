@@ -130,6 +130,9 @@ mock.module("../lib/tenant-signals.ts", {
     computeTenantSignals: () => ({ firedSignals: new Set<string>(), trace: [] }),
     getAdjustmentSignalDefinitions: async () => [],
     getDisabledSignalKeys: async () => new Set<string>(),
+    // #1397: portal-presentations.ts now customer-scopes /latest and /sign via
+    // this bridge; stub to the single-login set so no real DB query is made.
+    resolveSiblingUserIds: async (id: number) => [id],
   },
 });
 

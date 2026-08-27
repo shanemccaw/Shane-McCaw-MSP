@@ -14,6 +14,7 @@ import {
 } from "@workspace/db";
 import { eq, and, asc, desc, inArray, isNotNull } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
+import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
 import { registerSSEClient } from "../lib/sse-channels.ts";
 import jwt from "jsonwebtoken";
 import { logger } from "../lib/logger.ts";
@@ -48,9 +49,12 @@ router.get("/portal/projects/:id/kanban-events", async (req: Request, res: Respo
   catch { res.status(401).json({ error: "Invalid or expired token" }); return; }
 
   if (user.role === "client") {
+    // #1397: a project belongs to the CUSTOMER account, not one login — allow
+    // any sibling login of the same tenant to subscribe.
     const [project] = await db.select({ clientUserId: projectsTable.clientUserId })
       .from(projectsTable).where(eq(projectsTable.id, projectId));
-    if (!project || project.clientUserId !== user.id) {
+    const siblingIds = await resolveSiblingUserIds(user.id);
+    if (!project || project.clientUserId == null || !siblingIds.includes(project.clientUserId)) {
       res.status(403).json({ error: "Access denied" }); return;
     }
   }
@@ -64,8 +68,10 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
   if (isNaN(id)) { res.status(400).json({ error: "Invalid project ID" }); return; }
 
   const isAdmin = req.user!.role === "admin";
+  // #1397: scope project access to the whole customer account, not one login.
+  const siblingIds = isAdmin ? [] : await resolveSiblingUserIds(userId);
   const [project] = await db.select().from(projectsTable)
-    .where(isAdmin ? eq(projectsTable.id, id) : and(eq(projectsTable.id, id), eq(projectsTable.clientUserId, userId)));
+    .where(isAdmin ? eq(projectsTable.id, id) : and(eq(projectsTable.id, id), inArray(projectsTable.clientUserId, siblingIds)));
   if (!project) { res.status(404).json({ error: "Project not found" }); return; }
 
   const steps = await db.select().from(workflowStepsTable)
@@ -105,12 +111,14 @@ router.get("/portal/projects/:id", requireAuth, async (req: Request, res: Respon
     .where(eq(projectUpdatesTable.projectId, id))
     .orderBy(desc(projectUpdatesTable.createdAt));
 
-  // Status reports for this project (sent only, visible to client)
-  const effectiveUserId = isAdmin ? (project.clientUserId ?? userId) : userId;
+  // Status reports for this project (sent only, visible to client).
+  // #1397: for a client, match across every login of the customer account;
+  // for an admin, scope to the project's own owning login.
+  const reportScopeUserIds = isAdmin ? [project.clientUserId ?? userId] : siblingIds;
   const statusReports = await db.select().from(statusReportsTable)
     .where(and(
       eq(statusReportsTable.projectId, id),
-      eq(statusReportsTable.clientUserId, effectiveUserId),
+      inArray(statusReportsTable.clientUserId, reportScopeUserIds),
       eq(statusReportsTable.reportStatus, "sent"),
     ))
     .orderBy(desc(statusReportsTable.sentAt));

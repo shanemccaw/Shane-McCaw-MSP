@@ -1,8 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, reportsTable, insightsGeneratedDocumentsTable, projectsTable, quickWinResultSharesTable, presentationDocViewsTable, usersTable, mspsTable, printTokensTable } from "@workspace/db";
-import { eq, and, or, desc } from "drizzle-orm";
+import { eq, and, or, desc, inArray } from "drizzle-orm";
 import { randomBytes } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth.ts";
+import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
 import { stripStagedForReviewBanner } from "../lib/sow-pricing.ts";
 import { getMspPortalBaseUrl, buildPrintDocumentUrl } from "../lib/portal-url.ts";
 import { buildHtmlDoc, htmlToPdf, renderLiveDocumentToPdf } from "../lib/insight-pdf.ts";
@@ -41,8 +42,10 @@ const UPLOADS_BASE = process.env.UPLOADS_DIR
 
 router.get("/portal/reports", requireAuth, async (req: Request, res: Response) => {
   const userId = req.user!.id;
+  // #1397: reports belong to the customer account — list across every login.
+  const siblingIds = await resolveSiblingUserIds(userId);
   const reports = await db.select().from(reportsTable)
-    .where(eq(reportsTable.clientUserId, userId))
+    .where(inArray(reportsTable.clientUserId, siblingIds))
     .orderBy(desc(reportsTable.createdAt));
   res.json(reports);
 });
@@ -51,6 +54,9 @@ router.get("/portal/reports", requireAuth, async (req: Request, res: Response) =
 router.get("/portal/insights-documents", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    // #1397: insights_generated_documents.customerId is a users.id-shaped FK;
+    // scope the customer's document list across every linked login.
+    const siblingIds = await resolveSiblingUserIds(userId);
     const docs = await db
       .select({
         id:            insightsGeneratedDocumentsTable.id,
@@ -68,7 +74,7 @@ router.get("/portal/insights-documents", requireAuth, async (req: Request, res: 
       .leftJoin(projectsTable, eq(insightsGeneratedDocumentsTable.projectId, projectsTable.id))
       .where(
         and(
-          eq(insightsGeneratedDocumentsTable.customerId, userId),
+          inArray(insightsGeneratedDocumentsTable.customerId, siblingIds),
           or(
             eq(insightsGeneratedDocumentsTable.status, "delivered"),
             eq(insightsGeneratedDocumentsTable.docType, "scoped_sow"),
@@ -100,7 +106,9 @@ router.get("/portal/insights-documents/:id/view", requireAuth, async (req: Reque
       .from(insightsGeneratedDocumentsTable)
       .where(eq(insightsGeneratedDocumentsTable.id, id));
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
-    if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    // #1397: allow any login of the customer account to view its documents.
+    const siblingIds = await resolveSiblingUserIds(userId);
+    if (doc.customerId == null || !siblingIds.includes(doc.customerId)) { res.status(403).json({ error: "Forbidden" }); return; }
     if (doc.status !== "delivered" && doc.docType !== "scoped_sow") { res.status(403).json({ error: "Document not yet delivered" }); return; }
     if (LIVE_RENDERED_DOC_TYPES.has(doc.docType)) {
       res.status(409).json({ error: "This report renders live and has no stored HTML to view here" });
@@ -134,7 +142,9 @@ router.get("/portal/insights-documents/:id/pdf", requireAuth, async (req: Reques
       .where(eq(insightsGeneratedDocumentsTable.id, id));
 
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
-    if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    // #1397: allow any login of the customer account to download its documents.
+    const siblingIds = await resolveSiblingUserIds(userId);
+    if (doc.customerId == null || !siblingIds.includes(doc.customerId)) { res.status(403).json({ error: "Forbidden" }); return; }
     // Allow download for approved docs shown in the presentation portal, not just formally "delivered" ones
     if (!["approved", "delivered"].includes(doc.status ?? "")) { res.status(403).json({ error: "Document not available for download" }); return; }
     if (LIVE_RENDERED_DOC_TYPES.has(doc.docType)) {
@@ -226,7 +236,9 @@ router.post("/portal/documents/:id/share", requireAuth, async (req: Request, res
       .where(eq(insightsGeneratedDocumentsTable.id, id));
 
     if (!doc) { res.status(404).json({ error: "Document not found" }); return; }
-    if (doc.customerId !== userId) { res.status(403).json({ error: "Forbidden" }); return; }
+    // #1397: allow any login of the customer account to share its documents.
+    const siblingIds = await resolveSiblingUserIds(userId);
+    if (doc.customerId == null || !siblingIds.includes(doc.customerId)) { res.status(403).json({ error: "Forbidden" }); return; }
     if (!["approved", "delivered"].includes(doc.status ?? "") && doc.docType !== "scoped_sow") {
       res.status(403).json({ error: "Document not available to share" });
       return;
@@ -385,8 +397,10 @@ router.get("/portal/reports/:id/download", requireAuth, async (req: Request, res
   if (isNaN(id)) { res.status(400).json({ error: "Invalid ID" }); return; }
 
   const isAdmin = req.user!.role === "admin";
+  // #1397: any login of the customer account can download the account's reports.
+  const siblingIds = isAdmin ? [] : await resolveSiblingUserIds(userId);
   const [report] = await db.select().from(reportsTable)
-    .where(isAdmin ? eq(reportsTable.id, id) : and(eq(reportsTable.id, id), eq(reportsTable.clientUserId, userId)));
+    .where(isAdmin ? eq(reportsTable.id, id) : and(eq(reportsTable.id, id), inArray(reportsTable.clientUserId, siblingIds)));
   if (!report) { res.status(404).json({ error: "Report not found" }); return; }
 
   const filePath = path.join(UPLOADS_BASE, "reports", report.filename);
