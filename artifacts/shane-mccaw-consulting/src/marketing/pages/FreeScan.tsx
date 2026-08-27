@@ -920,6 +920,20 @@ export default function FreeScan() {
 
   const emailValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim());
 
+  // ── Git #1380: localhost-only [DEBUG] autofill ──────────────────────────────
+  // Hard-gated on the REAL runtime hostname (not a build-time env var), so this
+  // control cannot exist on any deployed host — only a developer's own machine.
+  // FreeScan has no verification-code / password step (only name/company/email +
+  // the consent checkbox), so the fill is exactly those four page-level fields.
+  const isLocalhost =
+    typeof window !== "undefined" && window.location.hostname === "localhost";
+  const debugFillStartForm = () => {
+    setName("Dev Tester");
+    setCompany("Dev Test Co");
+    setEmail(`dev.${Date.now()}@example.com`);
+    setConsent(true);
+  };
+
   // Start form → consent screen. Captures the lead (name/company/work email) via the real Zoho
   // bridge BEFORE Microsoft consent, so an abandoned grant still keeps it, and fetches the read
   // app's real scopes to disclose on the next screen. Non-fatal if the capture request fails.
@@ -2209,6 +2223,63 @@ export default function FreeScan() {
       </main>
 
       <Footer />
+
+      {/* Git #1380 — LOCALHOST-ONLY [DEBUG] autofill. Fills the start form's real
+          page-level fields (name/company/work email) and ticks the consent box so
+          a developer can reach the consent step in one click. Renders only when
+          the real hostname is "localhost" — never on any deployed host. It only
+          shows on the start screen, where those fields exist. */}
+      {isLocalhost && phase === "start" && (
+        <div
+          data-testid="freescan-debug-autofill"
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: 16,
+            zIndex: 60,
+            width: 210,
+            padding: "12px 12px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(245,158,11,.5)",
+            background: "rgba(20,14,2,.94)",
+            boxShadow: "0 12px 30px -14px rgba(0,0,0,.8)",
+            fontFamily: "inherit",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: ".12em",
+              textTransform: "uppercase",
+              color: "#fbbf24",
+              marginBottom: 8,
+            }}
+          >
+            [DEBUG] localhost only
+          </div>
+          <button
+            type="button"
+            onClick={debugFillStartForm}
+            data-testid="freescan-debug-fill"
+            style={{
+              width: "100%",
+              padding: "7px 9px",
+              borderRadius: 8,
+              border: "1px solid rgba(245,158,11,.45)",
+              background: "rgba(245,158,11,.12)",
+              color: "#fde68a",
+              fontSize: 11.5,
+              fontWeight: 600,
+              fontFamily: "inherit",
+              textAlign: "left",
+              cursor: "pointer",
+            }}
+          >
+            Fill name / company / email + consent
+          </button>
+        </div>
+      )}
     </div>
   );
 }

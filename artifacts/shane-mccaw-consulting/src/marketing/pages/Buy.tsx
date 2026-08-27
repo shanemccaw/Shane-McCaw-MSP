@@ -133,6 +133,12 @@ interface State {
   creatingIntent: boolean;
   payingError: string | null;
   codeInput: string;
+  /** Git #1380 — LOCALHOST ONLY. The real six-digit code, captured from the
+   *  dev-only `devVerificationCode` field the send-verification-code endpoint
+   *  returns when the api-server runs with NODE_ENV=development. null in every
+   *  real environment (the field is never present), so the [DEBUG] autofill's
+   *  "fill code" action is inert off localhost even if it were somehow rendered. */
+  devCode: string | null;
   pw1: string;
   pw2: string;
   mfaMethod: MfaMethod;
@@ -206,6 +212,7 @@ function initialState(): State {
     creatingIntent: false,
     payingError: null,
     codeInput: "",
+    devCode: null,
     pw1: "",
     pw2: "",
     mfaMethod: "app",
@@ -330,6 +337,29 @@ export default function Buy() {
   const isMon = st.product === "monitoring";
   const isRet = st.product === "retainer";
   const isPack = st.product === "pack";
+
+  // ── Git #1380: localhost-only [DEBUG] autofill ──────────────────────────────
+  // Hard-gated on the REAL runtime hostname (not a build-time env var, so it can
+  // never be bundled-in enabled and shipped to staging/prod), re-checked every
+  // render. When false, nothing below renders and none of the helpers run.
+  const isLocalhost =
+    typeof window !== "undefined" && window.location.hostname === "localhost";
+  // A real password that passes pwOk (>=12 chars, a capital, a digit).
+  const DEBUG_PASSWORD = "DebugTester2026A";
+  const debugFillAccount = () =>
+    set({
+      fullName: "Dev Tester",
+      email: `dev.${Date.now()}@example.com`,
+      company: "Dev Test Co",
+      agreed: true,
+    });
+  const debugFillPassword = () => set({ pw1: DEBUG_PASSWORD, pw2: DEBUG_PASSWORD });
+  // Reads the dev-only real code the send-verification-code endpoint returns on
+  // NODE_ENV=development (captured into st.devCode by sendCode). Inert with no
+  // real code present — never a fabricated value.
+  const debugFillCode = () => {
+    if (st.devCode) set({ codeInput: st.devCode });
+  };
 
   // Git #1316: a REAL checkout session id (the stage machine's own st.sessionId
   // minted by #1308's real payment wiring, else ?session= or the flow's storage
@@ -662,7 +692,7 @@ export default function Buy() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId }),
       });
-      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; email?: string; error?: string };
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; email?: string; error?: string; devVerificationCode?: string };
       if (!res.ok || !data.ok) {
         authLog.error({ status: res.status, error: data.error, sessionId }, "purchase verification code send failed");
         throw new Error(
@@ -672,7 +702,13 @@ export default function Buy() {
         );
       }
       authLog.info({ sessionId }, "purchase verification code issued and emailed");
-      set({ acctNotice: { kind: "info", text: `Code sent to ${data.email ?? "your billing address"}.` } });
+      // Git #1380 — capture the dev-only real code (present only when the
+      // api-server runs NODE_ENV=development) so the localhost [DEBUG] autofill
+      // can fill it. undefined in every real environment → stays null.
+      set({
+        devCode: data.devVerificationCode ?? null,
+        acctNotice: { kind: "info", text: `Code sent to ${data.email ?? "your billing address"}.` },
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not send the code. Press Resend code to try again.";
       set({ acctNotice: { kind: "error", text: message } });
@@ -4197,6 +4233,87 @@ export default function Buy() {
           </div>
         </div>
       )}
+
+      {/* Git #1380 — LOCALHOST-ONLY [DEBUG] autofill. Renders only when the real
+          hostname is "localhost"; on any deployed host this branch is not
+          reached, so no debug UI exists off a developer's own machine. */}
+      {isLocalhost && (
+        <div
+          data-testid="buy-debug-autofill"
+          style={{
+            position: "fixed",
+            right: 16,
+            bottom: 16,
+            zIndex: 60,
+            width: 210,
+            padding: "12px 12px 14px",
+            borderRadius: 12,
+            border: "1px solid rgba(245,158,11,.5)",
+            background: "rgba(20,14,2,.94)",
+            boxShadow: "0 12px 30px -14px rgba(0,0,0,.8)",
+            fontFamily: "inherit",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10.5,
+              fontWeight: 700,
+              letterSpacing: ".12em",
+              textTransform: "uppercase",
+              color: "#fbbf24",
+              marginBottom: 8,
+            }}
+          >
+            [DEBUG] localhost only
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <button
+              type="button"
+              onClick={debugFillAccount}
+              data-testid="buy-debug-fill-account"
+              style={debugBtnStyle}
+            >
+              Fill name / email / company
+            </button>
+            <button
+              type="button"
+              onClick={debugFillPassword}
+              data-testid="buy-debug-fill-password"
+              style={debugBtnStyle}
+            >
+              Fill password
+            </button>
+            <button
+              type="button"
+              onClick={debugFillCode}
+              disabled={!st.devCode}
+              data-testid="buy-debug-fill-code"
+              style={{
+                ...debugBtnStyle,
+                opacity: st.devCode ? 1 : 0.45,
+                cursor: st.devCode ? "pointer" : "not-allowed",
+              }}
+            >
+              {st.devCode ? "Fill verification code" : "Code (send it first)"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+// Git #1380 — shared style for the localhost-only [DEBUG] autofill buttons.
+const debugBtnStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "7px 9px",
+  borderRadius: 8,
+  border: "1px solid rgba(245,158,11,.45)",
+  background: "rgba(245,158,11,.12)",
+  color: "#fde68a",
+  fontSize: 11.5,
+  fontWeight: 600,
+  fontFamily: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+};

@@ -102,6 +102,19 @@ const router: IRouter = Router();
 
 const isDev = process.env.NODE_ENV !== "production";
 
+// Git #1380 — a STRICTER gate than `isDev` for the one thing that must never
+// leak outside a developer's own machine: exposing the real six-digit
+// verification code so the localhost-only [DEBUG] autofill on Buy.tsx can read
+// it. `isDev` is `!== "production"`, which is also true in test/staging; this
+// is `=== "development"`, the value local dev sets explicitly (see
+// scripts/dev-server/server-process.mjs and .env.local) and that no deployed
+// environment (staging/prod run "production") ever carries. This is a
+// server-side safeguard INDEPENDENT of the frontend's own hostname gate: this
+// route bypasses the real account-security email round-trip, so the exposure
+// must be impossible to turn on anywhere but a local box regardless of what the
+// client does.
+const isLocalDevCodeExposure = process.env.NODE_ENV === "development";
+
 // Same limiter budgets as the assessment flow's — separate instances, so one
 // funnel's abuse cannot exhaust the other's budget. Sending mail costs money
 // and lands in someone's inbox — the resend button is the abusable surface
@@ -233,6 +246,23 @@ router.post("/public/purchase/send-verification-code", sendCodeLimiter, async (r
   });
 
   log.info({ sessionId: session.id, productSlug: session.productSlug }, "purchase verification: six-digit code issued and emailed");
+
+  // Git #1380 — LOCAL DEV ONLY. Normally the code is never logged, audited or
+  // returned (only its bcrypt hash is stored) — that invariant is preserved for
+  // every real environment. On a developer's own machine (NODE_ENV ===
+  // "development" only, never staging/prod) we additionally surface the real
+  // code so the localhost-gated [DEBUG] autofill on Buy.tsx can complete the
+  // email-verification step without a real inbox. Both a clearly-marked log
+  // line and a response field, hard-gated server-side independent of the client.
+  if (isLocalDevCodeExposure) {
+    log.warn(
+      { sessionId: session.id, devVerificationCode: code },
+      "[DEV] purchase verification code exposed for localhost autofill — NODE_ENV=development only, never active in staging/production",
+    );
+    res.json({ ok: true, expiresAt: expiresAt.toISOString(), email: maskEmail(email), devVerificationCode: code });
+    return;
+  }
+
   res.json({ ok: true, expiresAt: expiresAt.toISOString(), email: maskEmail(email) });
 });
 
