@@ -322,6 +322,28 @@
                                 <TextBlock x:Name="TopShaneAppIndicatorText" Text="RUNNING" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
+                        <!-- Git #1419 - global Primary/Secondary account toggle. Shane: "put a
+                             checkbox or toggle switch up on the title bar that just switches all
+                             the builds over." Sets BuildConsoleSettings.DefaultAccount, which any
+                             newly queued build without its own explicit account flag/dialog
+                             override (Edit Build Prompt's #1416 Account selector still wins when
+                             set) falls back to going forward. Colors/text driven from code-behind
+                             (RefreshTopAccountToggleUi) so the currently-active account is always
+                             visible at a glance. -->
+                        <Border x:Name="TopAccountToggleBorder"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource Surface1Brush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="7,2"
+                                Margin="0,0,6,0"
+                                Cursor="Hand"
+                                MouseLeftButtonUp="TopAccountToggle_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Account:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock x:Name="TopAccountToggleText" Text="Primary" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"

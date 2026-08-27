@@ -245,6 +245,10 @@ namespace BuildConsole
             // (%AppData%\BuildConsole\settings.json) in the menu checkmark on launch.
             MuteCompletionSoundMenuItem.IsChecked = BuildConsole.Services.BuildConsoleSettings.Load().BuildCompleteSoundMuted;
 
+            // Git #1419 — title-bar Primary/Secondary account toggle: reflect the persisted
+            // global default on launch.
+            RefreshTopAccountToggleUi();
+
             // Git #934 — Shane: "add a - [DEBUG] if I have the app open in
             // the Debug folder." Checked by the running exe's OWN path
             // (bin\Debug\... vs bin\Release\...), not a `#if DEBUG`
@@ -4687,6 +4691,53 @@ namespace BuildConsole
             settings.Save();
         }
 
+        // ── Title bar: Primary/Secondary account toggle (Git #1419) ────────────
+        // Shane: "put a checkbox or toggle switch up on the title bar that just
+        // switches all the builds over." Flips BuildConsoleSettings.DefaultAccount,
+        // which every NEW build-queue trigger that doesn't already carry an explicit
+        // `--account` flag or dialog override (the chat-button BT_QUEUE_BUILD path,
+        // and EditBuildPromptDialog's own initial selector state) falls back to. The
+        // per-build Account selector from #1416 remains a real, explicit override —
+        // this toggle only changes what NEW builds default to going forward.
+        private void TopAccountToggle_Click(object sender, MouseButtonEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            bool nowSecondary = !string.Equals(settings.DefaultAccount, "secondary", StringComparison.OrdinalIgnoreCase);
+            settings.DefaultAccount = nowSecondary ? "secondary" : "primary";
+            settings.Save();
+            RefreshTopAccountToggleUi();
+        }
+
+        /// <summary>Repaints the title-bar account toggle from the persisted global default.</summary>
+        private void RefreshTopAccountToggleUi()
+        {
+            bool secondary = string.Equals(
+                BuildConsole.Services.BuildConsoleSettings.Load().DefaultAccount,
+                "secondary", StringComparison.OrdinalIgnoreCase);
+
+            TopAccountToggleText.Text = secondary ? "Secondary" : "Primary";
+            TopAccountToggleBorder.Background = secondary
+                ? (System.Windows.Media.Brush)FindResource("MauveBrush")
+                : (System.Windows.Media.Brush)FindResource("Surface0Brush");
+            TopAccountToggleBorder.BorderBrush = secondary
+                ? (System.Windows.Media.Brush)FindResource("MauveBrush")
+                : (System.Windows.Media.Brush)FindResource("Surface1Brush");
+            TopAccountToggleText.Foreground = secondary
+                ? (System.Windows.Media.Brush)FindResource("CrustBrush")
+                : (System.Windows.Media.Brush)FindResource("TextBrush");
+            TopAccountToggleBorder.ToolTip = secondary
+                ? "Account: SECONDARY — new builds launch against Shane's overflow Pro account (CLAUDE_CONFIG_DIR override). Click to switch new builds back to primary."
+                : "Account: PRIMARY (default Max 20x account) — new builds launch normally. Click to default new builds to the secondary overflow account instead.\n\nThis only sets the default for NEW builds; the Edit Build Prompt dialog's own Account selector always overrides it per build.";
+        }
+
+        /// <summary>Git #1419 — the `account` value a newly queued build should carry when it has
+        /// no explicit `--account` flag of its own: "secondary" when the title-bar toggle's global
+        /// default is secondary, else null (primary, unchanged from pre-#1419 behavior).</summary>
+        private static string? ResolveDefaultAccountFlag() =>
+            string.Equals(BuildConsole.Services.BuildConsoleSettings.Load().DefaultAccount, "secondary", StringComparison.OrdinalIgnoreCase)
+                ? "secondary"
+                : null;
+
         // ── Menu: View ────────────────────────────────────────────────────────
         private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
         {
@@ -5076,6 +5127,9 @@ namespace BuildConsole
                     string? chatUrl = Str("chatUrl");
                     int? githubNum = Int("githubNumber");
                     string? buildSet = Str("buildSet");
+                    // Git #1419 — a chat-button build carries no `--account` flag of its own; fall
+                    // back to the title-bar toggle's current global default instead of always primary.
+                    string? accountFlag = Str("account") ?? ResolveDefaultAccountFlag();
                     string? originatingChatId = null;
                     if (EditorTabs.SelectedItem is TabItem selected)
                     {
@@ -5148,7 +5202,7 @@ namespace BuildConsole
                     {
                         bool saved = PersistQueueRequestDuringPendingUpdate(
                             Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"),
-                            githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: Str("account"));
+                            githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: accountFlag);
                         // Unstick the injected button back to its clickable label (it was
                         // set to a disabled "In Progress..." on click) — nothing is in the
                         // live queue, so leaving it stuck would misrepresent reality.
@@ -5183,7 +5237,7 @@ namespace BuildConsole
                     try
                     {
                         queued = await _queueDb.QueueBuildAsync(
-                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: Str("account"));
+                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: accountFlag);
                     }
                     catch (Exception ex)
                     {
