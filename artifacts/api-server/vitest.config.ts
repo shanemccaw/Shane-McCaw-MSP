@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     include: [
       "src/lib/drift-collector.test.ts",
+      "src/lib/drift-check-specs.test.ts",
       "src/lib/retainer-hours.test.ts",
       "src/lib/remediation-catalog.test.ts",
       "src/lib/portal-message-center.test.ts",

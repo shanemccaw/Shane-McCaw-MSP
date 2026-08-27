@@ -8,11 +8,13 @@ import {
   driftDomainKeyFromSourceKey,
   collectDrift,
   getCurrentBaseline,
+  maybeCollectDriftForCheck,
+  recordDriftCollectionStatus,
   type PlannedDriftEvent,
 } from "./drift-collector.ts";
 import { detectDrift } from "./pcc/drift-detector.ts";
 import { db } from "@workspace/db";
-import { driftEventsTable, driftBaselineSnapshotsTable } from "@workspace/db";
+import { driftEventsTable, driftBaselineSnapshotsTable, driftCollectionStatusTable } from "@workspace/db";
 import { and, eq, gte, desc, sql } from "drizzle-orm";
 
 describe("drift-collector — verdict derivation (#1270)", () => {
@@ -389,5 +391,145 @@ describe.skipIf(!process.env.DATABASE_URL)("drift-collector — resolve→reopen
     row = await oneEvent();
     expect(row.status).toBe("reopened");
     expect(row.reopenCount).toBe(2);
+  });
+});
+
+// ── DB integration (#1287) — the universal per-check hook + honest status.
+const MC_TENANT = `vitest-1287-${Math.floor(Math.random() * 1e9)}`;
+const EEEU_DOMAIN = "eeeu-site-sharing";
+
+describe.skipIf(!process.env.DATABASE_URL)("drift-collector — maybeCollectDriftForCheck + honest status (#1287)", () => {
+  beforeAll(async () => {
+    await db.execute(
+      sql.raw(`
+        CREATE TABLE IF NOT EXISTS drift_collection_status (
+          id serial PRIMARY KEY,
+          tenant_id text NOT NULL,
+          domain_key text NOT NULL,
+          check_key text,
+          status text NOT NULL,
+          reason text,
+          coverage jsonb,
+          events_inserted integer NOT NULL DEFAULT 0,
+          updated_at timestamptz NOT NULL DEFAULT now(),
+          created_at timestamptz NOT NULL DEFAULT now()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS drift_collection_status_tenant_domain_uniq
+          ON drift_collection_status (tenant_id, domain_key);
+      `),
+    );
+  });
+
+  afterAll(async () => {
+    await db.delete(driftEventsTable).where(eq(driftEventsTable.tenantId, MC_TENANT));
+    await db.delete(driftBaselineSnapshotsTable).where(eq(driftBaselineSnapshotsTable.tenantId, MC_TENANT));
+    await db.delete(driftCollectionStatusTable).where(eq(driftCollectionStatusTable.tenantId, MC_TENANT));
+  });
+
+  const site = (id: string, level: string | null) => ({
+    siteId: id,
+    siteUrl: `https://contoso.sharepoint.com/sites/${id}`,
+    broadAccess: level !== null,
+    highestSharingLevel: level,
+    hasEeeu: level === "eeeu",
+    hasEveryone: false,
+    hasAnonymousLink: false,
+    hasOrganizationLink: false,
+  });
+
+  const statusRow = async (domain: string) => {
+    const [row] = await db
+      .select()
+      .from(driftCollectionStatusTable)
+      .where(and(eq(driftCollectionStatusTable.tenantId, MC_TENANT), eq(driftCollectionStatusTable.domainKey, domain)));
+    return row;
+  };
+
+  it("a check with no drift spec is a clean no-op (not drift-tracked, no status row)", async () => {
+    const r = await maybeCollectDriftForCheck({
+      checkKey: "compliance:dlp-incidents",
+      tenantId: MC_TENANT,
+      scan: { items: [{ count: 3 }], extracted: {}, status: "ok" },
+    });
+    expect(r.driftTracked).toBe(false);
+    expect(await statusRow("dlp-incidents")).toBeUndefined();
+  });
+
+  it("first eeeu-site-sharing run captures a baseline and records baseline_captured", async () => {
+    const r = await maybeCollectDriftForCheck({
+      checkKey: "compliance:eeeu-site-sharing",
+      tenantId: MC_TENANT,
+      scan: { items: [site("s1", null)], extracted: { _fanOut: { truncated: false } }, status: "ok" },
+    });
+    expect(r).toMatchObject({ driftTracked: true, domainKey: EEEU_DOMAIN, status: "baseline_captured" });
+    const st = await statusRow(EEEU_DOMAIN);
+    expect(st.status).toBe("baseline_captured");
+    expect(st.reason).toBeNull();
+    expect(st.checkKey).toBe("compliance:eeeu-site-sharing");
+  });
+
+  it("a newly overshared site is tracked as one real drift event", async () => {
+    const r = await maybeCollectDriftForCheck({
+      checkKey: "compliance:eeeu-site-sharing",
+      tenantId: MC_TENANT,
+      scan: { items: [site("s1", null), site("s2", "eeeu")], extracted: { _fanOut: { truncated: false } }, status: "ok" },
+    });
+    expect(r.status).toBe("tracked");
+    const events = await db
+      .select()
+      .from(driftEventsTable)
+      .where(and(eq(driftEventsTable.tenantId, MC_TENANT), eq(driftEventsTable.domainKey, EEEU_DOMAIN)));
+    expect(events).toHaveLength(1);
+    expect(events[0].setting).toBe("/sites/s2");
+    expect(events[0].op).toBe("add");
+    const st = await statusRow(EEEU_DOMAIN);
+    expect(st.status).toBe("tracked");
+    expect(st.eventsInserted).toBe(1);
+  });
+
+  it("a TRUNCATED fan-out is recorded not_comparable with a specific reason — no false drift", async () => {
+    const before = await db
+      .select()
+      .from(driftEventsTable)
+      .where(and(eq(driftEventsTable.tenantId, MC_TENANT), eq(driftEventsTable.domainKey, EEEU_DOMAIN)));
+
+    const r = await maybeCollectDriftForCheck({
+      checkKey: "compliance:eeeu-site-sharing",
+      tenantId: MC_TENANT,
+      // Only s1 came back (s2 lost to the cap) — diffing this would falsely
+      // "remove" s2. The spec must refuse and the status must say why.
+      scan: {
+        items: [site("s1", null)],
+        extracted: { _fanOut: { truncated: true, sourceItemsScanned: 1, sourceItemsEligible: 2 } },
+        status: "partial",
+      },
+    });
+    expect(r.status).toBe("not_comparable");
+    expect(r.reason).toContain("truncated");
+
+    const st = await statusRow(EEEU_DOMAIN);
+    expect(st.status).toBe("not_comparable");
+    expect(st.reason).toContain("truncated");
+    expect(st.eventsInserted).toBe(0);
+
+    // Crucially: NO new drift events were written (s2 was NOT falsely removed).
+    const after = await db
+      .select()
+      .from(driftEventsTable)
+      .where(and(eq(driftEventsTable.tenantId, MC_TENANT), eq(driftEventsTable.domainKey, EEEU_DOMAIN)));
+    expect(after.length).toBe(before.length);
+  });
+
+  it("recordDriftCollectionStatus upserts (one current row per tenant+domain)", async () => {
+    await recordDriftCollectionStatus(MC_TENANT, "some-domain", { status: "error", reason: "boom" });
+    await recordDriftCollectionStatus(MC_TENANT, "some-domain", { status: "tracked", eventsInserted: 4 });
+    const rows = await db
+      .select()
+      .from(driftCollectionStatusTable)
+      .where(and(eq(driftCollectionStatusTable.tenantId, MC_TENANT), eq(driftCollectionStatusTable.domainKey, "some-domain")));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe("tracked");
+    expect(rows[0].reason).toBeNull();
+    expect(rows[0].eventsInserted).toBe(4);
   });
 });

@@ -29,10 +29,11 @@
  */
 
 import { db } from "@workspace/db";
-import { driftBaselineSnapshotsTable, driftEventsTable } from "@workspace/db";
-import type { DriftEventStatus, DriftEventVerdict, InsertDriftEvent } from "@workspace/db";
+import { driftBaselineSnapshotsTable, driftEventsTable, driftCollectionStatusTable } from "@workspace/db";
+import type { DriftEventStatus, DriftEventVerdict, InsertDriftEvent, DriftCollectionStatus } from "@workspace/db";
 import { and, eq, isNull, desc, inArray, sql } from "drizzle-orm";
 import { detectDrift, type PccDiff } from "./pcc/drift-detector.ts";
+import { driftSpecForCheck, type DriftScanContext } from "./drift-check-specs.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -45,6 +46,13 @@ const log = logger.child({ channel: "engine.dashboard" });
  */
 export const DRIFT_DOMAINS = {
   "ca-policy": { sourceKey: "drift:ca-policy", label: "Conditional Access policy" },
+  // #1287 — extended past CA to four more executor paths. Each has a real
+  // collector (see DRIFT_CHECK_SPECS in drift-check-specs.ts) and a stable,
+  // id-keyed (or single-setting) config the resolver can serve as a timeline.
+  "eeeu-site-sharing": { sourceKey: "drift:eeeu-site-sharing", label: "SharePoint external site sharing" },
+  "public-teams-discoverable": { sourceKey: "drift:public-teams-discoverable", label: "Public / discoverable Teams" },
+  "tenant-sharing-capability": { sourceKey: "drift:tenant-sharing-capability", label: "SharePoint tenant sharing capability" },
+  "email-authentication": { sourceKey: "drift:email-authentication", label: "Email authentication (SPF / DKIM / DMARC)" },
 } as const;
 
 export type DriftDomainKey = keyof typeof DRIFT_DOMAINS;
@@ -374,4 +382,147 @@ export async function collectDrift(
     return { firstRun: false, baselineSnapshotId: id, inserted, reopened, resolved: plan.toResolveKeys.length };
   }
   return { firstRun: false, baselineSnapshotId: baseline.id, inserted, reopened, resolved: plan.toResolveKeys.length };
+}
+
+// ── Honest per-domain collection status (#1287) ───────────────────────────────
+//
+// The producer above knows three outcomes (first baseline / clean / events). The
+// #1287 rollout to every executor type adds a fourth the resolver could not
+// otherwise tell apart from "never scanned": a scan RAN this run but no stable
+// diff could be made (e.g. a fan-out that hit its coverage cap). This upsert is
+// the durable, readable record of the LAST collection attempt per (tenant,
+// domain), so the UI can show a SPECIFIC reason instead of a silent gap.
+
+export interface DriftCollectionStatusInput {
+  status: DriftCollectionStatus;
+  /** Specific human reason for not_comparable / error; NULL for tracked / baseline_captured. */
+  reason?: string | null;
+  /** The monitor_checks.key that drives this domain, for provenance. */
+  checkKey?: string | null;
+  /** Optional coverage / diagnostic detail (scanned/total/truncated/run status). */
+  coverage?: Record<string, unknown> | null;
+  /** New drift events this run inserted (0 for clean / not_comparable / error). */
+  eventsInserted?: number;
+}
+
+/** Upsert the current drift-collection status for one (tenant, domain). */
+export async function recordDriftCollectionStatus(
+  tenantId: string,
+  domainKey: string,
+  input: DriftCollectionStatusInput,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(driftCollectionStatusTable)
+    .values({
+      tenantId,
+      domainKey,
+      checkKey: input.checkKey ?? null,
+      status: input.status,
+      reason: input.reason ?? null,
+      coverage: input.coverage ?? null,
+      eventsInserted: input.eventsInserted ?? 0,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [driftCollectionStatusTable.tenantId, driftCollectionStatusTable.domainKey],
+      set: {
+        checkKey: input.checkKey ?? null,
+        status: input.status,
+        reason: input.reason ?? null,
+        coverage: input.coverage ?? null,
+        eventsInserted: input.eventsInserted ?? 0,
+        updatedAt: now,
+      },
+    });
+}
+
+export interface MaybeCollectDriftParams {
+  /** The monitor_checks.key that just completed. */
+  checkKey: string;
+  tenantId: string;
+  /** The completed scan, in the executor-agnostic shape every path can populate. */
+  scan: DriftScanContext;
+  /** Per-setting attribution (only Conditional Access supplies one today). */
+  attributionFor?: (setting: string) => DriftAttribution | undefined;
+}
+
+export interface MaybeCollectDriftResult {
+  /** False when the check has no drift spec (not drift-tracked — an intended no-op). */
+  driftTracked: boolean;
+  domainKey?: string;
+  /** The status this run recorded, when drift-tracked. */
+  status?: DriftCollectionStatus;
+  /** The specific reason, when status is not_comparable / error. */
+  reason?: string;
+}
+
+/**
+ * The universal drift entry point every executor path calls after it has its
+ * `items` / `extracted` / `status`. It:
+ *   1. looks up the check's drift spec — no spec ⇒ not drift-tracked, a clean no-op;
+ *   2. asks the (pure) spec to build a stable comparable config, OR an honest
+ *      reason it can't (recorded as not_comparable, no events written);
+ *   3. runs collectDrift and records tracked / baseline_captured with counts.
+ *
+ * Self-contained and non-fatal: any failure is caught, recorded as `error`, and
+ * swallowed (a monitoring scan must never fail because drift bookkeeping did).
+ */
+export async function maybeCollectDriftForCheck(
+  params: MaybeCollectDriftParams,
+): Promise<MaybeCollectDriftResult> {
+  const { checkKey, tenantId, scan, attributionFor } = params;
+  const spec = driftSpecForCheck(checkKey);
+  if (!spec) return { driftTracked: false };
+
+  const coverage: Record<string, unknown> = { runStatus: scan.status };
+  const fo = scan.extracted?._fanOut;
+  if (fo && typeof fo === "object") {
+    const f = fo as Record<string, unknown>;
+    coverage.sourceItemsEligible = f.sourceItemsEligible;
+    coverage.sourceItemsScanned = f.sourceItemsScanned;
+    coverage.sourceItemsSucceeded = f.sourceItemsSucceeded;
+    coverage.truncated = f.truncated;
+  }
+
+  try {
+    const outcome = spec.buildConfig(scan);
+    if (!outcome.comparable) {
+      await recordDriftCollectionStatus(tenantId, spec.domainKey, {
+        status: "not_comparable",
+        reason: outcome.reason,
+        checkKey,
+        coverage,
+      });
+      log.info(
+        { tenantId, checkKey, domainKey: spec.domainKey, reason: outcome.reason },
+        "drift: scan not comparable this run — recorded honest reason, no events written",
+      );
+      return { driftTracked: true, domainKey: spec.domainKey, status: "not_comparable", reason: outcome.reason };
+    }
+
+    const result = await collectDrift(tenantId, spec.domainKey, outcome.config, { attributionFor });
+    const status: DriftCollectionStatus = result.firstRun ? "baseline_captured" : "tracked";
+    await recordDriftCollectionStatus(tenantId, spec.domainKey, {
+      status,
+      checkKey,
+      coverage,
+      eventsInserted: result.inserted.length + result.reopened.length,
+    });
+    return { driftTracked: true, domainKey: spec.domainKey, status };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn({ err, tenantId, checkKey, domainKey: spec.domainKey }, "drift: collection failed (non-fatal)");
+    try {
+      await recordDriftCollectionStatus(tenantId, spec.domainKey, {
+        status: "error",
+        reason: message,
+        checkKey,
+        coverage,
+      });
+    } catch (statusErr) {
+      log.warn({ err: statusErr, tenantId, checkKey }, "drift: could not record error status");
+    }
+    return { driftTracked: true, domainKey: spec.domainKey, status: "error", reason: message };
+  }
 }
