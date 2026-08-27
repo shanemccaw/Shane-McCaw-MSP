@@ -90,6 +90,23 @@ namespace BuildConsole
             public ColumnDefinition? SqlColumn;
         }
         private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
+
+        private class ChatContextMeterState
+        {
+            public ProgressBar ProgressBar = null!;
+            public Border Banner = null!;
+            public TextBlock BannerText = null!;
+            public Button BannerCloseBtn = null!;
+            public bool BannerDismissed;
+            public double EstimatedTokens;
+            public int TurnCount;
+            public int HeavyTurnCount;
+            public double Cost;
+            public double RemainingBuffer;
+            public bool HandoffFired;
+        }
+
+        private readonly Dictionary<Microsoft.Web.WebView2.Wpf.WebView2, ChatContextMeterState> _contextMeters = new();
         /// <summary>Git #942 — queue item id -> last label pushed to that item's injected chat button ("In Progress..."/"Done"/"Failed: Retry"). Populated when BT_QUEUE_BUILD captures a real id; drained by PushChatButtonStatuses the moment an item hits a terminal state (done/failed/canceled) or leaves the queue, so nothing is polled forever. UI-thread only (event handler + DispatcherTimer), so no locking needed.</summary>
         private readonly Dictionary<int, string> _chatButtonStatus = new();
         private DispatcherTimer? _buildTailTimer;
@@ -945,13 +962,24 @@ namespace BuildConsole
             }
         }
 
+        private static Microsoft.Web.WebView2.Wpf.WebView2? FindWebView2Recursive(DependencyObject parent)
+        {
+            if (parent is Microsoft.Web.WebView2.Wpf.WebView2 wv) return wv;
+            int childCount = VisualTreeHelper.GetChildrenCount(parent);
+            for (int i = 0; i < childCount; i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                var found = FindWebView2Recursive(child);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
         private static Microsoft.Web.WebView2.Wpf.WebView2? WebViewOf(TabItem ti)
         {
-            if (ti.Content is Microsoft.Web.WebView2.Wpf.WebView2 direct) return direct;
-            if (ti.Content is Panel panel)
+            if (ti.Content is DependencyObject depObj)
             {
-                foreach (var child in panel.Children)
-                    if (child is Microsoft.Web.WebView2.Wpf.WebView2 wv) return wv;
+                return FindWebView2Recursive(depObj);
             }
             return null;
         }
@@ -5046,11 +5074,329 @@ namespace BuildConsole
                 // Git #1253 — also inject the issue-mention highlighter that underlines
                 // #NNN tokens in Claude's responses and lets Shane hover/click them.
                 await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildConsole.Services.IssueMentionInjector.Script);
+                // Issue #1424 — inject the chat context DOM scraper script
+                await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildConsole.Services.ChatContextMeterScript.Script);
+
+                // Set up the context meter progress bar + banner UI wrapper
+                SetupContextMeterUi(wv);
+
                 wv.WebMessageReceived -= ChatWv_WebMessageReceived;
                 wv.WebMessageReceived += ChatWv_WebMessageReceived;
                 return true;
             }
             catch { return false; }
+        }
+
+        private void SetupContextMeterUi(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        {
+            if (wv == ClaudeWebView || wv == ReplitWatcherWebView || wv == UsageMeterWebView) return;
+            if (_contextMeters.ContainsKey(wv)) return;
+
+            var parent = wv.Parent as Panel;
+            if (parent == null) return;
+
+            // Create Banner
+            var banner = new Border
+            {
+                Background = (Brush)FindResource("YellowBrush"),
+                Padding = new Thickness(10, 6, 10, 6),
+                Visibility = Visibility.Collapsed
+            };
+
+            var bannerGrid = new Grid();
+            bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var bannerText = new TextBlock
+            {
+                Text = "",
+                FontSize = 12,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)FindResource("CrustBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextWrapping = TextWrapping.Wrap
+            };
+            Grid.SetColumn(bannerText, 0);
+            bannerGrid.Children.Add(bannerText);
+
+            var bannerCloseBtn = new Button
+            {
+                Content = "✕",
+                Style = (Style)FindResource("IconButton"),
+                FontSize = 10,
+                Padding = new Thickness(4, 2, 4, 2),
+                Foreground = (Brush)FindResource("CrustBrush"),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(bannerCloseBtn, 1);
+            bannerGrid.Children.Add(bannerCloseBtn);
+            banner.Child = bannerGrid;
+
+            // Create ProgressBar
+            var progressBar = new ProgressBar
+            {
+                Height = 4,
+                Minimum = 0,
+                Maximum = 130000,
+                Value = 0,
+                BorderThickness = new Thickness(0),
+                Background = Brushes.Transparent,
+                Foreground = (Brush)FindResource("GreenBrush"),
+                Visibility = Visibility.Collapsed
+            };
+
+            // Wrap wv inside chatContextGrid
+            int index = parent.Children.IndexOf(wv);
+            if (index < 0) return; // safety check
+
+            int gridRow = Grid.GetRow(wv);
+            int gridCol = Grid.GetColumn(wv);
+            int gridRowSpan = Grid.GetRowSpan(wv);
+            int gridColSpan = Grid.GetColumnSpan(wv);
+
+            parent.Children.RemoveAt(index);
+
+            var chatContextGrid = new Grid();
+            chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+
+            // Clear Grid properties from wv
+            Grid.SetRow(wv, 2);
+            Grid.SetColumn(wv, 0);
+            Grid.SetRowSpan(wv, 1);
+            Grid.SetColumnSpan(wv, 1);
+
+            Grid.SetRow(banner, 0);
+            Grid.SetRow(progressBar, 1);
+
+            chatContextGrid.Children.Add(banner);
+            chatContextGrid.Children.Add(progressBar);
+            chatContextGrid.Children.Add(wv);
+
+            // Re-apply parent grid properties to wrapper
+            Grid.SetRow(chatContextGrid, gridRow);
+            Grid.SetColumn(chatContextGrid, gridCol);
+            Grid.SetRowSpan(chatContextGrid, gridRowSpan);
+            Grid.SetColumnSpan(chatContextGrid, gridColSpan);
+
+            parent.Children.Insert(index, chatContextGrid);
+
+            var meterState = new ChatContextMeterState
+            {
+                ProgressBar = progressBar,
+                Banner = banner,
+                BannerText = bannerText,
+                BannerCloseBtn = bannerCloseBtn
+            };
+
+            bannerCloseBtn.Click += (s, e) =>
+            {
+                banner.Visibility = Visibility.Collapsed;
+                meterState.BannerDismissed = true;
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "User dismissed context warning banner.");
+            };
+
+            _contextMeters[wv] = meterState;
+        }
+
+        private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, double cost, double remainingBuffer)
+        {
+            if (!_contextMeters.TryGetValue(wv, out var meterState)) return;
+
+            // Update state fields
+            meterState.EstimatedTokens = estTokens;
+            meterState.TurnCount = turnCount;
+            meterState.HeavyTurnCount = heavyTurnCount;
+            meterState.Cost = cost;
+            meterState.RemainingBuffer = remainingBuffer;
+
+            // Make progress bar visible
+            meterState.ProgressBar.Visibility = Visibility.Visible;
+            meterState.ProgressBar.Value = Math.Min(estTokens, 130000);
+
+            // Format tooltip
+            meterState.ProgressBar.ToolTip = $"Turns: {turnCount}\n" +
+                                             $"Estimated Tokens: {estTokens:N0} / 130,000\n" +
+                                             $"Remaining to Critical (100k): {(remainingBuffer > 0 ? remainingBuffer.ToString("N0") : "0")} tokens\n" +
+                                             $"Remaining to Limit (130k): {Math.Max(0, 130000 - estTokens):N0} tokens (30k buffer)\n" +
+                                             $"Estimated Cost: ${cost:F3}\n" +
+                                             $"Heavy Turns: {heavyTurnCount}";
+
+            // Threshold rules
+            if (estTokens < 60000)
+            {
+                meterState.ProgressBar.Foreground = (Brush)FindResource("GreenBrush");
+                meterState.Banner.Visibility = Visibility.Collapsed;
+            }
+            else if (estTokens >= 60000 && estTokens < 85000)
+            {
+                meterState.ProgressBar.Foreground = (Brush)FindResource("YellowBrush");
+                meterState.Banner.Background = (Brush)FindResource("YellowBrush");
+                meterState.BannerText.Text = "Chat getting long, consider wrapping up soon.";
+                meterState.BannerText.Foreground = (Brush)FindResource("CrustBrush");
+                meterState.BannerCloseBtn.Visibility = Visibility.Visible;
+                meterState.BannerCloseBtn.Foreground = (Brush)FindResource("CrustBrush");
+
+                if (!meterState.BannerDismissed)
+                {
+                    meterState.Banner.Visibility = Visibility.Visible;
+                }
+            }
+            else if (estTokens >= 85000 && estTokens < 100000)
+            {
+                meterState.ProgressBar.Foreground = (Brush)FindResource("PeachBrush");
+                meterState.Banner.Background = (Brush)FindResource("PeachBrush");
+                double buffer = 100000.0 - estTokens;
+                meterState.BannerText.Text = $"Chat getting very long. Remaining token buffer to critical: {Math.Max(0, buffer):N0} tokens.";
+                meterState.BannerText.Foreground = (Brush)FindResource("CrustBrush");
+                meterState.BannerCloseBtn.Visibility = Visibility.Visible;
+                meterState.BannerCloseBtn.Foreground = (Brush)FindResource("CrustBrush");
+
+                // Re-surface banner even if user previously dismissed it in lower zone
+                meterState.Banner.Visibility = Visibility.Visible;
+            }
+            else if (estTokens >= 100000)
+            {
+                meterState.ProgressBar.Foreground = (Brush)FindResource("RedBrush");
+                meterState.Banner.Background = (Brush)FindResource("RedBrush");
+                meterState.BannerText.Text = "Critical context reached! Wrapping up now and handing off to a new chat...";
+                meterState.BannerText.Foreground = (Brush)FindResource("CrustBrush");
+                meterState.BannerCloseBtn.Visibility = Visibility.Collapsed; // Non-dismissible!
+                meterState.Banner.Visibility = Visibility.Visible;
+
+                // Auto-fire handoff exactly once
+                if (!meterState.HandoffFired)
+                {
+                    meterState.HandoffFired = true;
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Critical context reached ({estTokens:N0} tokens). Triggering auto-handoff.");
+                    _ = TriggerAutoHandoffAsync(wv);
+                }
+            }
+        }
+
+        private async System.Threading.Tasks.Task TriggerAutoHandoffAsync(Microsoft.Web.WebView2.Wpf.WebView2 oldWv)
+        {
+            try
+            {
+                TabItem? oldTab = null;
+                BuildConsole.Services.BoardChat? chat = null;
+
+                foreach (var kvp in _chatTabs)
+                {
+                    if (kvp.Value.WebView == oldWv)
+                    {
+                        oldTab = kvp.Key;
+                        chat = oldTab.Tag as BuildConsole.Services.BoardChat;
+                        break;
+                    }
+                }
+
+                if (oldTab == null)
+                {
+                    foreach (TabItem item in EditorTabs.Items)
+                    {
+                        if (WebViewOf(item) == oldWv)
+                        {
+                            oldTab = item;
+                            chat = item.Tag as BuildConsole.Services.BoardChat;
+                            break;
+                        }
+                    }
+                }
+
+                if (oldTab == null)
+                {
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "Auto-handoff failed: old chat tab could not be identified.");
+                    return;
+                }
+
+                int? targetIssue = null;
+                if (chat != null)
+                {
+                    var resolvedEpic = LeftSidebar.GetEpicForChat(chat);
+                    if (resolvedEpic == null)
+                    {
+                        int? tabGithubNumber = null;
+                        if (_chatTabs.TryGetValue(oldTab, out var tabState))
+                        {
+                            tabGithubNumber = tabState.GithubNumber;
+                        }
+                        if (!tabGithubNumber.HasValue)
+                        {
+                            tabGithubNumber = chat.IssueGithubNumber;
+                        }
+                        if (tabGithubNumber.HasValue)
+                        {
+                            resolvedEpic = LeftSidebar.GetEpicByGithubNumber(tabGithubNumber.Value);
+                        }
+                    }
+                    if (resolvedEpic != null)
+                    {
+                        targetIssue = resolvedEpic.GithubNumber;
+                    }
+                }
+
+                if (!targetIssue.HasValue)
+                {
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "Auto-handoff aborted: no resolved epic associated with the current chat.");
+                    ToastEngine.Warning("Auto-Handoff", "Cannot auto-handoff: chat has no associated epic.");
+                    return;
+                }
+
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (settings == null || string.IsNullOrWhiteSpace(settings.EpicChatProjectUrl))
+                {
+                    ToastEngine.Warning("Auto-Handoff", "New Chat Project URL is not configured in Settings.");
+                    return;
+                }
+
+                var baseUrl = settings.EpicChatProjectUrl.Trim();
+                if (!System.Uri.TryCreate(baseUrl, System.UriKind.Absolute, out _))
+                {
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Auto-handoff aborted — invalid New Chat Project URL '{baseUrl}'");
+                    ToastEngine.Warning("Auto-Handoff", "The configured New Chat Project URL isn't a valid URL.");
+                    return;
+                }
+
+                var pat = settings.GitHubPat?.Trim() ?? "";
+                var label = $"Epic #{targetIssue.Value}";
+                var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
+                var sep = baseUrl.Contains('?') ? "&" : "?";
+                var fullUrl = $"{baseUrl}{sep}bt_prefill={System.Uri.EscapeDataString(prefill)}";
+
+                if (chat != null)
+                {
+                    string convId = chat.ConversationId;
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Archiving old chat '{chat.Title}' ({convId})...");
+                    DateTime? archivedAtUtc = null;
+                    if (_queueDb != null)
+                    {
+                        archivedAtUtc = await _queueDb.ArchiveChatAsync(convId);
+                    }
+                    else if (_buildTrackerApi != null && _buildTrackerApi.IsConfigured)
+                    {
+                        var res = await _buildTrackerApi.ArchiveChatAsync(convId);
+                        if (res.IsSuccessStatusCode)
+                        {
+                            archivedAtUtc = DateTime.UtcNow;
+                        }
+                    }
+                    chat.Archived = true;
+                    chat.ArchivedAt = archivedAtUtc;
+                    try { LeftSidebar.PopulateChatsTree(); } catch { }
+                }
+
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Auto-firing new chat for Epic #{targetIssue.Value}...");
+                OpenWebTab(fullUrl, $"#{targetIssue.Value} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue.Value, associateIssueType: "Epic", associateDefaultTitle: $"[#{targetIssue.Value}] New Chat");
+
+                CloseTab(oldTab);
+                ToastEngine.Success("Auto-Handoff", $"Handoff fired for Epic #{targetIssue.Value}! Old chat archived.");
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Auto-handoff failed: {ex.Message}");
+            }
         }
 
         /// <summary>Git #816 — injects the builder buttons into ClaudeWebView BEFORE navigating it to claude.ai for the first time (the XAML Source binding that used to do this navigated too early).</summary>
@@ -5083,7 +5429,23 @@ namespace BuildConsole
                 string? Str(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
                 int? Int(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : null;
 
-                if (type == "BT_EDIT_BUILD")
+                if (type == "BT_CHAT_STATS")
+                {
+                    var activeWv = sender as Microsoft.Web.WebView2.Wpf.WebView2;
+                    if (activeWv != null)
+                    {
+                        int turnCount = Int("turnCount") ?? 0;
+                        int charCount = Int("charCount") ?? 0;
+                        int heavyTurnCount = Int("heavyTurnCount") ?? 0;
+
+                        double estTokens = charCount / 4.0;
+                        double cost = estTokens * (3.00 / 1000000.0);
+                        double remainingBuffer = 100000.0 - estTokens;
+
+                        UpdateContextMeter(activeWv, estTokens, turnCount, heavyTurnCount, cost, remainingBuffer);
+                    }
+                }
+                else if (type == "BT_EDIT_BUILD")
                 {
                     string rawText = Str("rawText") ?? "";
                     int? referencedNumber = Int("referencedNumber");
