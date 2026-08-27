@@ -853,6 +853,19 @@ namespace BuildConsole.Services
             // Account value (null/blank/"primary") leaves CLAUDE_CONFIG_DIR unset, so the
             // build uses the default config dir exactly as before. This is a sequential,
             // per-job manual choice — no concurrency change, no automatic failover.
+            //
+            // Git #1420 — Shane: secondary selection wasn't actually switching auth; the
+            // spawned window still showed him logged in as primary. Root cause: `psi.Environment`
+            // is pre-populated with a COPY of this process's own environment (ProcessStartInfo's
+            // documented behavior for UseShellExecute=false), so setting CLAUDE_CONFIG_DIR alone
+            // does not remove a real, persistent CLAUDE_CODE_OAUTH_TOKEN Shane has set as a
+            // user-level env var (via `claude setup-token`, for spawned agents' headless auth).
+            // The Claude Code CLI authenticates directly off that token when present — it isn't
+            // just a fallback consulted when CLAUDE_CONFIG_DIR has no session — so the inherited
+            // token silently overrode the secondary config dir every time. Explicitly strip it
+            // (and ANTHROPIC_API_KEY, which docs confirm also outranks subscription/config-dir
+            // auth) from the spawned process's environment when secondary is selected, so it's
+            // genuinely forced back onto the secondary CLAUDE_CONFIG_DIR's own logged-in session.
             if (string.Equals(item.Account, "secondary", StringComparison.OrdinalIgnoreCase))
             {
                 string secondaryDir = ExpandUserPath(settings.SecondaryClaudeConfigDir);
@@ -863,7 +876,10 @@ namespace BuildConsole.Services
                 else
                 {
                     psi.Environment["CLAUDE_CONFIG_DIR"] = secondaryDir;
-                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) routed to the SECONDARY Claude account — CLAUDE_CONFIG_DIR={secondaryDir}.");
+                    bool hadOAuthToken = psi.Environment.Remove("CLAUDE_CODE_OAUTH_TOKEN");
+                    bool hadApiKey = psi.Environment.Remove("ANTHROPIC_API_KEY");
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) routed to the SECONDARY Claude account — CLAUDE_CONFIG_DIR={secondaryDir}" +
+                        (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")} so the secondary config dir's own session is actually used)" : "") + ".");
                 }
             }
 
