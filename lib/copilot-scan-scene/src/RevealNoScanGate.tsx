@@ -34,12 +34,16 @@ export function RevealNoScanGate({
   open,
   message,
   onRetry,
+  ctaLabel = "Try again",
 }: {
   /** True while the tenant is genuinely gated on "no scan yet". False fades
    *  the gate away without unmounting the rest of the page's chrome. */
   open: boolean;
   message?: string | null;
   onRetry: () => void;
+  /** Overrides the button's copy — e.g. "Start my scan" when `onRetry` is
+   *  really a first-time trigger rather than a retry of one already tried. */
+  ctaLabel?: string;
 }) {
   const { mounted, visible } = useOverlayFade(open);
   if (!mounted) return null;
@@ -83,6 +87,7 @@ export function RevealNoScanGate({
         </p>
         <button
           type="button"
+          data-testid="cj-no-scan-gate-cta"
           onClick={onRetry}
           style={{
             marginTop: 10,
@@ -97,7 +102,7 @@ export function RevealNoScanGate({
             cursor: "pointer",
           }}
         >
-          Try again
+          {ctaLabel}
         </button>
       </div>
     </div>

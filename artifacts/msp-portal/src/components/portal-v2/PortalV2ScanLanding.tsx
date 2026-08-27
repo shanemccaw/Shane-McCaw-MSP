@@ -20,19 +20,26 @@
  * the journey dissolves Scene 0 into Scenes 1-9, this dissolves it into the
  * Overview (`onComplete`).
  *
- * THE TRIGGER QUESTION (investigated per the issue)
- * -------------------------------------------------
+ * THE TRIGGER QUESTION (investigated per #1298, revised per #1300)
+ * -------------------------------------------------------------
  * `debug-trigger-scan` is the platform's ONLY scan trigger and is hard-gated
  * server-side to testbed tenants (portal-assessment.ts). A REAL customer's scan
  * fires at consent time (consent.ts's runDiagnostics) — there is no self-serve
- * trigger for them, to stop AI-credit spam. So this handles the trigger exactly
- * the way the journey's Scene 0 does and NO more: for a testbed tenant with no
- * scan, it POSTs the debug trigger; for a real tenant with no scan, it shows
- * the no-scan gate rather than inventing a second trigger pathway. This never
- * calls the trigger endpoint for a real customer.
+ * trigger for them, to stop AI-credit spam. This never calls the trigger
+ * endpoint for a real customer; nothing here changes that.
+ *
+ * #1298 had a testbed tenant auto-POST the trigger the instant the page saw
+ * "no scan on record" — useful for a fresh account, but it meant every
+ * navigation back to a zero-data testbed tenant (Shane's QA loop while
+ * auditing the portal for fake data, in particular) silently kicked off a
+ * real scan run. #1300 removes that auto-fire: a testbed tenant with no scan
+ * now sees the SAME `RevealNoScanGate` a real tenant sees while genuinely
+ * gated (no run active, nothing about to start) — just with its own copy and
+ * a "Start my scan" button in place of "Try again". Clicking it is the only
+ * thing that now calls the trigger endpoint; nothing does so on mount.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth-context";
 import { useScanStatus } from "@/lib/scan-status-context";
@@ -49,7 +56,7 @@ import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourne
 import "@/components/copilot-journey/copilot-journey.css";
 
 export function PortalV2ScanLanding({ onComplete }: { onComplete: () => void }) {
-  const { user, fetchWithAuth } = useAuth();
+  const { fetchWithAuth } = useAuth();
   const {
     data: scanStatusData,
     loaded: scanStatusLoaded,
@@ -99,89 +106,80 @@ export function PortalV2ScanLanding({ onComplete }: { onComplete: () => void }) 
   const { view, scan } = live;
 
   /* ---------------------------------------------------------------- *
-   * Auto-start a scan for a tenant that has genuinely never had one —
-   * ported verbatim from copilot-readiness.tsx's #367 effect. Testbed
-   * only ever POSTs the debug trigger; a real tenant reports why none can
-   * start (autoTriggerError → the no-scan gate) instead of inventing a
-   * second trigger pathway.
+   * Manual scan trigger (Git #1300 — replaces #1298's auto-fire-on-mount).
+   *
+   * `decision` is read-only until the customer actually clicks: a testbed
+   * tenant with nothing running/on record is offered a "Start my scan" CTA
+   * on the no-scan gate instead of the trigger firing itself. A real tenant
+   * gets `decision.kind === "unavailable"` and always has — there was never
+   * an auto-fire for them to remove.
    * ---------------------------------------------------------------- */
-  const autoTriggerRef = useRef(false);
+  const decision = useMemo(() => decideAutoScan(scanStatusData), [scanStatusData]);
+  const triggeringRef = useRef(false);
   const [awaitingAutoScan, setAwaitingAutoScan] = useState(false);
   const [autoTriggerError, setAutoTriggerError] = useState<string | null>(null);
 
-  // Testbed-only persisted pause on the auto-trigger, so Shane's edit-DB →
-  // reload → inspect loop can hold the overlay/gate open without a run firing.
-  const pauseAutoScanKey =
-    user?.customerId != null ? `debug:pauseAutoScan:${user.customerId}` : null;
-  const [pauseAutoScan, setPauseAutoScan] = useState(() => {
-    if (typeof window === "undefined" || !pauseAutoScanKey) return false;
-    return window.localStorage.getItem(pauseAutoScanKey) === "1";
-  });
-  const togglePauseAutoScan = useCallback(() => {
-    if (!pauseAutoScanKey) return;
-    setPauseAutoScan((prev) => {
-      const next = !prev;
-      if (next) window.localStorage.setItem(pauseAutoScanKey, "1");
-      else window.localStorage.removeItem(pauseAutoScanKey);
-      return next;
-    });
-  }, [pauseAutoScanKey]);
-
-  useEffect(() => {
-    if (autoTriggerRef.current) return;
-    if (pauseAutoScan) return;
-    const decision = decideAutoScan(scanStatusData);
-    if (decision.kind === "skip") return;
-
-    autoTriggerRef.current = true;
-
-    if (decision.kind === "unavailable") {
-      setAutoTriggerError(decision.message);
-      return;
-    }
-
+  const startScan = useCallback(async () => {
+    if (triggeringRef.current) return;
+    triggeringRef.current = true;
+    setAutoTriggerError(null);
     setAwaitingAutoScan(true);
-    void (async () => {
-      try {
-        const res = await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", {
-          method: "POST",
-        });
-        if (!res.ok) {
-          let message = `Trigger request failed (${res.status})`;
-          try {
-            const body = (await res.json()) as { error?: string };
-            if (body?.error) message = body.error;
-          } catch {
-            // non-JSON error body — keep the status-code message
-          }
-          reportTriggerError(message);
-          setAutoTriggerError(message);
-          setAwaitingAutoScan(false);
-          return;
-        }
-        let startedRunId: string | null = null;
+    try {
+      const res = await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", {
+        method: "POST",
+      });
+      if (!res.ok) {
+        let message = `Trigger request failed (${res.status})`;
         try {
-          const body = (await res.json()) as { runId?: unknown };
-          if (typeof body?.runId === "string" && body.runId) startedRunId = body.runId;
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) message = body.error;
         } catch {
-          // No/unreadable body — fall back to poll discovery, as before.
+          // non-JSON error body — keep the status-code message
         }
-        reportTriggerStarted(startedRunId);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Network error triggering scan";
         reportTriggerError(message);
         setAutoTriggerError(message);
         setAwaitingAutoScan(false);
+        triggeringRef.current = false;
+        return;
       }
-    })();
-  }, [pauseAutoScan, scanStatusData, reportTriggerStarted, reportTriggerError, fetchWithAuth]);
+      let startedRunId: string | null = null;
+      try {
+        const body = (await res.json()) as { runId?: unknown };
+        if (typeof body?.runId === "string" && body.runId) startedRunId = body.runId;
+      } catch {
+        // No/unreadable body — fall back to poll discovery, as before.
+      }
+      reportTriggerStarted(startedRunId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Network error triggering scan";
+      reportTriggerError(message);
+      setAutoTriggerError(message);
+      setAwaitingAutoScan(false);
+      triggeringRef.current = false;
+    }
+  }, [fetchWithAuth, reportTriggerStarted, reportTriggerError]);
 
-  // The no-scan gate's retry re-runs the gating decision rather than just
-  // refetching, so a failed trigger isn't a permanent dead end.
-  const retryAutoTrigger = useCallback(() => {
-    autoTriggerRef.current = false;
-    setAutoTriggerError(null);
-  }, []);
+  // The no-scan gate's CTA does double duty: for a testbed tenant ready to
+  // trigger, it starts the scan (and re-offers "Start my scan" if a prior
+  // attempt failed); for a real tenant told none is available, it just
+  // clears any stale message rather than pretending a trigger it can't
+  // perform — that tenant's scan already fired at consent time, so there is
+  // nothing here to retry, only the honest wait-and-refresh message #1298
+  // shipped.
+  const gateAction = useCallback(() => {
+    if (decision.kind === "trigger") {
+      void startScan();
+    } else {
+      setAutoTriggerError(null);
+    }
+  }, [decision.kind, startScan]);
+  const gateCtaLabel = decision.kind === "trigger" ? "Start my scan" : "Try again";
+  const gateMessage =
+    decision.kind === "trigger"
+      ? (autoTriggerError ?? "You haven't run a scan for this tenant yet. Start one to see your real data.")
+      : decision.kind === "unavailable"
+        ? (autoTriggerError ?? decision.message)
+        : null;
 
   /* ---------------------------------------------------------------- *
    * Overlay lifecycle + the handoff to Overview.
@@ -249,19 +247,24 @@ export function PortalV2ScanLanding({ onComplete }: { onComplete: () => void }) 
           >
             {forceProgressComplete ? "[DEBUG] Show Live Progress" : "[DEBUG] Force 100%"}
           </button>
-          <button type="button" onClick={togglePauseAutoScan} style={debugBtnStyle(44)}>
-            {pauseAutoScan ? "[DEBUG] Resume Auto-Scan" : "[DEBUG] Pause Auto-Scan"}
-          </button>
-          <button type="button" onClick={onComplete} style={debugBtnStyle(76)}>
-            [DEBUG] Skip to Overview
+          {/* Git #1300 — temporary QA-only bypass, isTestbed-gated like its
+              siblings above (today that resolves to Shane's own real dev/QA
+              M365 tenant, id 1 — see the issue-comment proposal for the full
+              gating rationale). Remove or re-gate this once Shane confirms
+              the portal is clean of fake data; it must never reach a real
+              customer, hence the same server-verified isTestbed flag every
+              other [DEBUG] control on this page already relies on. */}
+          <button type="button" onClick={onComplete} style={debugBtnStyle(44)}>
+            [DEBUG] Skip to Overview (QA only — Git #1300)
           </button>
         </>
       ) : null}
 
       <RevealNoScanGate
         open={neverScannedBlocked}
-        message={autoTriggerError}
-        onRetry={retryAutoTrigger}
+        message={gateMessage}
+        onRetry={gateAction}
+        ctaLabel={gateCtaLabel}
       />
 
       <RevealScanOverlay
