@@ -395,6 +395,31 @@ default limitation.
 
 ## Test Coverage — Standing Practice
 
+## HARD RULE — never fall back to fixture/demo content when real data doesn't exist
+
+This is non-negotiable, applies to every agent, every session, no exceptions.
+
+When real backend/database data does not exist for something — a missing
+check, an unbuilt endpoint, a genuinely-empty-vs-never-configured ambiguity,
+anything — the agent must NEVER silently fall back to hardcoded
+fixture/demo content to make a page "look done." This includes reusing an
+existing fixture constant as a fallback value, inventing a plausible-looking
+placeholder, or leaving an old fixture branch in place "for now."
+
+Instead: render an honest, explicit "no backend exists for this yet" state
+and STOP there. Then flag the gap clearly in the bookend/completion comment
+on the real GitHub issue so a new issue can be filed for Shane to architect
+the real backend/fixture himself.
+
+Why this is a hard rule, not a preference: silently choosing fixture-as-
+fallback has repeatedly cost Shane real time and real money re-verifying
+work that looked complete in a screenshot but wasn't wired to anything real
+underneath. A session that can't tell "genuinely empty" from "never
+configured" from "still loading" should build the real distinction (a real
+tri-state, not a boolean live/fixture flag) rather than papering over the
+ambiguity with fixture content.
+
+
 **Scope: applies only to changes inside artifacts/msp-portal/ and
 artifacts/shane-mccaw-consulting/.** Do not write test manifests for
 desktop/BuildConsole (the WPF app) or other internal tooling - those are
