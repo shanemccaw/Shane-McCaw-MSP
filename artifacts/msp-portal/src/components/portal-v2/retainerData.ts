@@ -250,8 +250,13 @@ export const RET_OUTCOMES: readonly RetOutcome[] = [
   },
 ];
 
+export interface RetTerm {
+  readonly k: string;
+  readonly v: string;
+}
+
 /** RET_TERMS — how the retainer works. Prototype 15965-15973. */
-export const RET_TERMS: readonly { readonly k: string; readonly v: string }[] = [
+export const RET_TERMS: readonly RetTerm[] = [
   {
     k: "Retained hours",
     v: "8 hours a month, $2,400 — $300 an hour equivalent, billed monthly on the 1st",
@@ -282,8 +287,14 @@ export const RET_TERMS: readonly { readonly k: string; readonly v: string }[] = 
   },
 ];
 
+export interface RetDoc {
+  readonly name: string;
+  readonly when: string;
+  readonly kind: string;
+}
+
 /** RET_DOCS — the retainer's documents rail. Prototype 15974-15981. */
-export const RET_DOCS: readonly { readonly name: string; readonly when: string; readonly kind: string }[] = [
+export const RET_DOCS: readonly RetDoc[] = [
   { name: "Weekly status report · W33", when: "15 August 2026", kind: "Status report" },
   { name: "Retention coverage evidence export", when: "14 August 2026", kind: "Evidence" },
   { name: "Guest invitation standard", when: "13 August 2026", kind: "Standard" },

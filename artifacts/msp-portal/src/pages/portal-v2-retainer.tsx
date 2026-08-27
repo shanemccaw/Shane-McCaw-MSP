@@ -52,14 +52,7 @@ import { Link } from "wouter";
 import { ArrowLeft } from "lucide-react";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
-import {
-  RET_COPY,
-  RET_DOCS,
-  RET_OUTCOMES,
-  RET_TERMS,
-  RET_WEEKS,
-  RET_WORK,
-} from "@/components/portal-v2/retainerData";
+import { RET_COPY, type RetWorkItem } from "@/components/portal-v2/retainerData";
 import {
   buildWeekView,
   computeRetSummary,
@@ -202,7 +195,7 @@ function SmallCard({ label, value, sub, valueSize = "14px" }: { label: string; v
 }
 
 /** One row in the "Where the hours went" table. */
-function WorkRow({ work }: { work: (typeof RET_WORK)[number] }) {
+function WorkRow({ work }: { work: RetWorkItem }) {
   const chipColour = pillarTextColor(work.color);
   return (
     <div
@@ -264,9 +257,8 @@ function WorkRow({ work }: { work: (typeof RET_WORK)[number] }) {
 }
 
 export default function PortalV2RetainerPage() {
-  const [weekKey, setWeekKey] = useState<string>(RET_WEEKS[0].key);
+  const [weekKey, setWeekKey] = useState<string>("");
   const [askText, setAskText] = useState("");
-  const week = buildWeekView(weekKey);
   const askReady = askText.trim().length > 0;
 
   const live = useRetainerLive();
@@ -434,7 +426,26 @@ export default function PortalV2RetainerPage() {
             </div>
           </div>
 
-          {/* Week detail + right rail */}
+          {/* Week detail + right rail (Git #1407) — gated on the same
+              retainerConfigured flag as the top section. No backend exists for
+              the weekly report / outcomes / documents / terms yet, so a
+              configured retainer with none shows an honest "no reports yet"
+              state and the design fixture is never rendered. The populated
+              shape below is preserved for a future real weekly-report source. */}
+          {retainerLoading ? (
+            <PortalV2LoadingState rows={5} label="Loading your architect's weekly reports…" testId="pv2-ret-week-loading" />
+          ) : !retainerConfigured ? (
+            <NoScanDataState label={noRetainerLabel} detail={noRetainerDetail} testId="pv2-ret-week-empty" />
+          ) : live.weeklyReports.length === 0 ? (
+            <NoScanDataState
+              label="No weekly reports yet"
+              detail="Your architect's weekly report, the outcomes it has produced, and the documents it delivers appear here once the first one is published."
+              testId="pv2-ret-week-empty"
+            />
+          ) : (
+            (() => {
+              const week = buildWeekView(weekKey, live.weeklyReports);
+              return (
           <div className="pv2-gov-grid">
             {/* Left: week selector + report */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
@@ -444,7 +455,7 @@ export default function PortalV2RetainerPage() {
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(110px,1fr))", gap: 8 }}>
-                {RET_WEEKS.map((t) => {
+                {live.weeklyReports.map((t) => {
                   const sel = t.key === weekKey;
                   return (
                     <button
@@ -701,7 +712,7 @@ export default function PortalV2RetainerPage() {
                   </Eyebrow>
                   <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.45 }}>{RET_COPY.producedNote}</span>
                 </div>
-                {RET_OUTCOMES.map((o) => (
+                {live.outcomes.map((o) => (
                   <div key={o.what} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "11px 14px", borderBottom: "1px solid rgba(52,211,153,.1)" }}>
                     <span style={{ flex: "0 0 6px", width: 6, height: 6, borderRadius: "50%", background: outcomeToneColor(o.tone), marginTop: 6 }} />
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
@@ -746,7 +757,7 @@ export default function PortalV2RetainerPage() {
                     {RET_COPY.documentsAll}
                   </button>
                 </div>
-                {RET_DOCS.map((d) => (
+                {live.documents.map((d) => (
                   <div key={d.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", borderBottom: "1px solid rgba(30,41,59,.8)" }}>
                     <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
                       <span style={{ fontSize: "11.5px", fontWeight: 600, color: "#e2e8f0", lineHeight: 1.4, textWrap: "pretty" }}>{d.name}</span>
@@ -793,7 +804,7 @@ export default function PortalV2RetainerPage() {
                   </Eyebrow>
                 </div>
                 <div style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 0 }}>
-                  {RET_TERMS.map((t) => (
+                  {live.terms.map((t) => (
                     <div key={t.k} style={{ display: "flex", flexDirection: "column", gap: 1, padding: "8px 0", borderBottom: "1px solid rgba(30,41,59,.75)" }}>
                       <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#64748b" }}>{t.k}</span>
                       <span style={{ fontSize: "11.5px", color: "#e2e8f0", lineHeight: 1.55, textWrap: "pretty" }}>{t.v}</span>
@@ -837,6 +848,9 @@ export default function PortalV2RetainerPage() {
               </div>
             </div>
           </div>
+              );
+            })()
+          )}
         </div>
       </div>
     </PortalV2Shell>

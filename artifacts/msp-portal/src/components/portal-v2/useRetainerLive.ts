@@ -4,10 +4,23 @@
  * Reads `GET /api/portal/retainer` (`routes/portal-retainer.ts`, Git #1293's
  * ledger) — the caller's own retainer settings + this month's hour bucket +
  * the full work-log ledger. Only the month bucket (retained/rolled/used) and
- * the work-log entries are real; the weekly report content (summary, work-log
- * line items, deliverables, asks) has no backend source yet and stays on
- * `retainerData.ts`'s fixture — same honest-fixture boundary
- * `useLivePillarHero.ts` documents for its own dashboards.
+ * the work-log entries are real.
+ *
+ * ── The lower-half sections have NO backend (Git #1407) ────────────────────
+ * The weekly narrative report (summary, per-line log, deliverables, the
+ * question/answer asks thread), the "What the retainer has produced" outcomes
+ * card, the documents rail, and the "How the retainer works" terms have NO
+ * backend source anywhere in the schema — `GET /api/portal/retainer` returns
+ * none of them, and no `retainer_report` / `retainer_outcome` / `retainer_doc`
+ * table exists. Per the standing hard rule, this hook therefore exposes them as
+ * genuinely EMPTY arrays (`weeklyReports`/`outcomes`/`documents`/`terms`),
+ * NEVER the `retainerData.ts` design fixture. The page renders an honest "no
+ * reports yet" state off these; the UI shape it drives is preserved so that the
+ * moment a real weekly-report backend is architected and this hook parses it,
+ * the section lights up with real data and nothing else has to change. Until
+ * then these stay `[]` — the previous behaviour, where the whole lower half
+ * rendered the fixture unconditionally next to an honest "not enrolled" banner
+ * (Git #1407), is exactly the silent fixture-fallback the rule forbids.
  *
  * ── dataState (Git #1398) ────────────────────────────────────────────────
  * The old two-state `"live" | "fixture"` model conflated three genuinely
@@ -32,7 +45,7 @@
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/lib/auth-context";
-import type { RetWorkItem, RetWorkState } from "./retainerData";
+import type { RetDoc, RetOutcome, RetTerm, RetWeek, RetWorkItem, RetWorkState } from "./retainerData";
 
 export interface RetainerLiveEntry {
   readonly id: number;
@@ -94,7 +107,25 @@ export interface RetainerLiveState {
   readonly dataState: RetainerDataState;
   /** Real retainer_settings row (architect, hourly rate) — null when unconfigured. */
   readonly settings: RetainerLiveSettings | null;
+  /**
+   * Git #1407 — the lower-half sections. There is NO backend for any of these
+   * yet (see the header note), so they are ALWAYS empty here, never the design
+   * fixture. The page shows an honest "no reports yet" state off them and keeps
+   * the UI shape ready for a future real source.
+   */
+  readonly weeklyReports: readonly RetWeek[];
+  readonly outcomes: readonly RetOutcome[];
+  readonly documents: readonly RetDoc[];
+  readonly terms: readonly RetTerm[];
 }
+
+// Git #1407: no backend exists for the weekly report / outcomes / documents /
+// terms, so these are the honest empty source the page renders off — shared
+// frozen references, never the retainerData.ts fixture.
+const NO_WEEKLY_REPORTS: readonly RetWeek[] = [];
+const NO_OUTCOMES: readonly RetOutcome[] = [];
+const NO_DOCUMENTS: readonly RetDoc[] = [];
+const NO_TERMS: readonly RetTerm[] = [];
 
 const KNOWN_STATES: readonly RetWorkState[] = ["In progress", "Closed", "In review", "Scheduled"];
 
@@ -122,6 +153,10 @@ const LOADING_STATE: RetainerLiveState = {
   loaded: false,
   dataState: "loading",
   settings: null,
+  weeklyReports: NO_WEEKLY_REPORTS,
+  outcomes: NO_OUTCOMES,
+  documents: NO_DOCUMENTS,
+  terms: NO_TERMS,
 };
 
 export function useRetainerLive(): RetainerLiveState {
@@ -148,6 +183,11 @@ export function useRetainerLive(): RetainerLiveState {
             configured && data.settings
               ? { architectName: data.settings.architectName, hourlyRateCents: data.settings.hourlyRateCents }
               : null,
+          // Git #1407: no backend for these — honestly empty, never fixture.
+          weeklyReports: NO_WEEKLY_REPORTS,
+          outcomes: NO_OUTCOMES,
+          documents: NO_DOCUMENTS,
+          terms: NO_TERMS,
         });
       } catch {
         if (cancelled) return;
@@ -158,6 +198,10 @@ export function useRetainerLive(): RetainerLiveState {
           loaded: true,
           dataState: "error",
           settings: null,
+          weeklyReports: NO_WEEKLY_REPORTS,
+          outcomes: NO_OUTCOMES,
+          documents: NO_DOCUMENTS,
+          terms: NO_TERMS,
         });
       }
     })();
