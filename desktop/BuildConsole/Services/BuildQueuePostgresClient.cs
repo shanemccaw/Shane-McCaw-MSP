@@ -517,11 +517,20 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at", conn);
+                          originating_chat_id, chat_url, updated_at, build_set", conn);
             cmd.Parameters.AddWithValue("@id", id);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
                 throw new InvalidOperationException($"Queue item {id} is not in 'queued' status — cannot force-claim.");
+            // Git #1384 — this RETURNING must select the SAME 17 columns (through
+            // build_set at ordinal 16) that every other SELECT/RETURNING in this file
+            // does, because MapRow reads ordinal 16. It was missing build_set, so it
+            // returned only 16 columns (0–15) and MapRow's r.IsDBNull(16) threw
+            // "Column must be between 0 and 15". That exception surfaced live as
+            // "Couldn't force-launch continuation #NNN: Column must be between 0 and 15"
+            // whenever a Build Watch chat nudge to a finished/exited build routed
+            // through the #1327 resume path (SendSlotInput → ForceClaimAsync →
+            // LaunchItemExplicit) — the real reason the text box "still didn't send".
             return MapRow(reader);
         }
 
