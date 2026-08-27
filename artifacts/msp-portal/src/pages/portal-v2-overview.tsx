@@ -31,7 +31,7 @@
  * a known consequence rather than a silent loss.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ChevronDown, Loader2 } from "lucide-react";
 
@@ -40,6 +40,7 @@ import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PortalV2ScanLanding } from "@/components/portal-v2/PortalV2ScanLanding";
 import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
 import { useScanStatus } from "@/lib/scan-status-context";
+import { useAuth } from "@/lib/auth-context";
 import { useRiskRegister } from "@/components/portal-v2/riskRegisterLive";
 import { useRunbooks } from "@/components/portal-v2/holds/useRunbooks";
 import { useChangeControl } from "@/components/portal-v2/useChangeControl";
@@ -485,6 +486,42 @@ function ProjectSchedule() {
 export default function PortalV2OverviewPage() {
   const { view, loaded, scanning, everScanned } = usePortalV2Pillars();
   const scanStatus = useScanStatus();
+  const { fetchWithAuth } = useAuth();
+  const [triggeringScan, setTriggeringScan] = useState(false);
+  // `debug-trigger-scan` is the platform's ONLY scan trigger and it is hard-gated
+  // server-side to testbed tenants (see portal-assessment.ts and #1298/#1300's
+  // PortalV2ScanLanding) — real customers never get a self-serve trigger, to stop
+  // AI-credit spam. Mirrors ScanTriggerButton.tsx's own isTestbed gate.
+  const handleScanNow = useCallback(async () => {
+    if (!scanStatus.data?.isTestbed || scanning || triggeringScan) return;
+    setTriggeringScan(true);
+    try {
+      const res = await fetchWithAuth("/api/portal/assessment/debug-trigger-scan", { method: "POST" });
+      if (res.ok) {
+        let startedRunId: string | null = null;
+        try {
+          const body = (await res.json()) as { runId?: unknown };
+          if (typeof body?.runId === "string" && body.runId) startedRunId = body.runId;
+        } catch {
+          // No/unreadable body — fall back to poll discovery, as before.
+        }
+        scanStatus.reportTriggerStarted(startedRunId);
+      } else {
+        let message = `Trigger request failed (${res.status})`;
+        try {
+          const body = (await res.json()) as { error?: string };
+          if (body?.error) message = body.error;
+        } catch {
+          // non-JSON error body — keep the status-code message
+        }
+        scanStatus.reportTriggerError(message);
+      }
+    } catch (err) {
+      scanStatus.reportTriggerError(err instanceof Error ? err.message : "Network error triggering scan");
+    } finally {
+      setTriggeringScan(false);
+    }
+  }, [fetchWithAuth, scanStatus, scanning, triggeringScan]);
   const riskRegister = useRiskRegister();
   const runbooks = useRunbooks();
   const changeControl = useChangeControl();
@@ -618,27 +655,32 @@ export default function PortalV2OverviewPage() {
             }}
           >
             <Kicker colour="#64748b">Since your last scan · {lastScan}</Kicker>
-            <button
-              data-testid="pv2-ov-scan"
-              style={{
-                padding: "4px 11px",
-                borderRadius: 6,
-                border: "1px solid rgba(0,180,216,.4)",
-                background: "rgba(0,180,216,.1)",
-                color: "#22d3ee",
-                fontSize: "10.5px",
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                whiteSpace: "nowrap",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-              }}
-            >
-              {scanning && <Loader2 className="size-3 animate-spin" />}
-              {scanning ? "Scanning…" : "Scan now"}
-            </button>
+            {scanStatus.data?.isTestbed && (
+              <button
+                data-testid="pv2-ov-scan"
+                onClick={() => void handleScanNow()}
+                disabled={scanning || triggeringScan}
+                style={{
+                  padding: "4px 11px",
+                  borderRadius: 6,
+                  border: "1px solid rgba(0,180,216,.4)",
+                  background: "rgba(0,180,216,.1)",
+                  color: "#22d3ee",
+                  fontSize: "10.5px",
+                  fontWeight: 700,
+                  cursor: scanning || triggeringScan ? "default" : "pointer",
+                  opacity: scanning || triggeringScan ? 0.6 : 1,
+                  fontFamily: "inherit",
+                  whiteSpace: "nowrap",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                {(scanning || triggeringScan) && <Loader2 className="size-3 animate-spin" />}
+                {scanning || triggeringScan ? "Scanning…" : "Scan now"}
+              </button>
+            )}
           </div>
 
           <div

@@ -75,6 +75,13 @@
       "textContains": "Since your last scan"
     },
     {
+      "name": "OV4b (#1391) -- the 'Scan now' button is wired to the real testbed-only debug-trigger-scan action (same gate as ScanTriggerButton.tsx); a real, non-testbed tenant (shane-mccaw-consulting) never gets a self-serve trigger, so it stays absent here rather than rendering a dead button.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-ov-scan']",
+      "state": "absent",
+      "sessionTag": "scan-now-1391"
+    },
+    {
       "name": "OV5 -- the drift row renders.",
       "action": "expect",
       "selector": "[data-testid='pv2-ov-drift']",
