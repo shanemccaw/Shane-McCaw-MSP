@@ -34,6 +34,119 @@ Standalone Docker image for the containerized PowerShell execution service
 Not part of the pnpm workspace — this is a plain Docker image, built and
 run independently of the Node/pnpm toolchain.
 
+## Deploy targets — Dev vs Production (#1385)
+
+There are **two** Container Apps running this image, deliberately isolated so a
+redeploy for testing can never hit live production PowerShell execution against
+real customer tenants:
+
+| | Production | Dev |
+|---|---|---|
+| Container App | `ca-ps-execution` | `ca-ps-execution-dev` |
+| Endpoint | `https://ca-ps-execution.proudstone-22013f89.eastus2.azurecontainerapps.io/` | `https://ca-ps-execution-dev.proudstone-22013f89.eastus2.azurecontainerapps.io/` |
+| Image tag convention | `acrsmccaw2184.azurecr.io/ps-execution:vNN` (e.g. `:v11`) | `acrsmccaw2184.azurecr.io/ps-execution:dev` |
+| api-server env var | `PS_EXECUTION_CONTAINER_URL` | `PS_EXECUTION_CONTAINER_URL_DEV` |
+| Who redeploys it | Shane, deliberately, at go-live of tested changes | freely, for any dev/testing cycle |
+
+Both live in resource group **`rg-smccaw-2184`** (East US 2), managed environment
+**`cae-smccaw-2184`**, and share the **same** Container Registry **`acrsmccaw2184`**
+(distinct image tags, not distinct registries — the isolation that matters is at
+the Container App level) and the **same** Key Vault **`ShaneMcCawConsulting`**.
+Both use a **system-assigned Managed Identity** with exactly two RBAC roles:
+`AcrPull` on the registry and `Key Vault Secrets User` on the vault.
+
+**Routing is automatic** — `artifacts/api-server/src/lib/ps-execution-client.ts`
+picks the endpoint by the same real dev/prod environment-tiering the rest of the
+platform uses (`env.ts` → `isProductionEnvironment` → `stripe.ts`'s
+`isReplitDevEnvironment`, the exact signal `getStripeKey()` uses for
+sk_test_/sk_live_). Dev → `PS_EXECUTION_CONTAINER_URL_DEV`; Staging/Production →
+`PS_EXECUTION_CONTAINER_URL`. Dev **never** falls back to the production URL — an
+unset dev URL throws rather than crossing over.
+
+### Deploy to PRODUCTION (`ca-ps-execution`) — Shane only, deliberate
+
+```
+# 1. Build a new production image tag from current source (bump the version):
+az acr build --registry acrsmccaw2184 --image ps-execution:v12 services/ps-execution
+
+# 2. Point the PRODUCTION container at it:
+az containerapp update -n ca-ps-execution -g rg-smccaw-2184 \
+  --image acrsmccaw2184.azurecr.io/ps-execution:v12
+```
+
+### Deploy to DEV (`ca-ps-execution-dev`) — safe to run freely
+
+```
+# 1. Build the dev image tag from current source:
+az acr build --registry acrsmccaw2184 --image ps-execution:dev services/ps-execution
+
+# 2. Point the DEV container at it (add --revision-suffix to force a clean revision):
+az containerapp update -n ca-ps-execution-dev -g rg-smccaw-2184 \
+  --image acrsmccaw2184.azurecr.io/ps-execution:dev --revision-suffix devNNNN
+```
+
+### One-time DEV container provisioning (for reproducibility)
+
+```
+# Create the isolated dev Container App. --registry-identity system enables the
+# system-assigned MI AND auto-grants it AcrPull on the registry:
+az containerapp create --name ca-ps-execution-dev --resource-group rg-smccaw-2184 \
+  --environment cae-smccaw-2184 \
+  --image acrsmccaw2184.azurecr.io/ps-execution:dev \
+  --system-assigned \
+  --registry-server acrsmccaw2184.azurecr.io --registry-identity system \
+  --target-port 8080 --ingress external \
+  --min-replicas 0 --max-replicas 2 --cpu 0.5 --memory 1.0Gi \
+  --env-vars AZURE_KEY_VAULT_URL=https://shanemccawconsulting.vault.azure.net/ \
+             MT_APP_CLIENT_ID=9ea2e409-d1b9-422a-8451-02fa0b98d1c3
+
+# Grant the dev MI read access to the same Key Vault secrets prod uses — this
+# mirrors production's "Key Vault Secrets User" RBAC role exactly (the vault is
+# RBAC-authorized, no access policies). Use the principalId from the create above:
+az role assignment create \
+  --assignee-object-id <ca-ps-execution-dev principalId> --assignee-principal-type ServicePrincipal \
+  --role "Key Vault Secrets User" \
+  --scope /subscriptions/eae24589-2931-4571-9269-0fc6da779f06/resourceGroups/rg-smccaw-2184/providers/Microsoft.KeyVault/vaults/ShaneMcCawConsulting
+```
+
+### Live smoke test (#1385, run against the DEV container)
+
+```
+# Reads the shared bearer token from Key Vault, then exercises the full
+# connect/invoke/capture/disconnect path with the trivial get-connection-info
+# cmdlet against the testbed tenant (TEST_TENANT_ID = c4c814d4-…; initial domain
+# mccawsoft2.onmicrosoft.com):
+TOKEN=$(az keyvault secret show --vault-name ShaneMcCawConsulting --name ps-execution-bearer-token --query value -o tsv)
+curl -i https://ca-ps-execution-dev.proudstone-22013f89.eastus2.azurecontainerapps.io/ \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"cmdletKey":"get-connection-info","params":{"Organization":"mccawsoft2.onmicrosoft.com"}}'
+```
+
+**First real live end-to-end result (2026-08-27, dev container revision
+`dev1385a`):** every piece of the container infrastructure works — the
+system-assigned MI acquires a token, reads the `mt-app-cert` and
+`ps-execution-bearer-token` secrets from Key Vault, imports the modules, parses
+the app-only certificate (thumbprint `251BDCD5…`), serves on 8080, and passes the
+bearer-token gate. But `Connect-IPPSSession` itself then fails with a **structured
+`502 auth_failed`**, and the container console log shows the real cause:
+
+```
+Connect-compliance session failed:
+Could not load file or assembly 'Microsoft.Identity.Client, Version=4.83.1.0,
+Culture=neutral, PublicKeyToken=0a613f4dd989e8ae'.
+```
+
+This is a **pre-existing defect in the image itself** (an `Microsoft.Identity.Client`
+assembly-version conflict — most likely from importing both
+`ExchangeOnlineManagement` and `MicrosoftTeams` into the same pwsh process, which
+pull different MSAL versions), **not** a tenant/permission problem and **not** a
+consequence of the dev/prod split — the production container is built from the
+identical source and would reproduce it. It affects the real DLP/Label/Teams
+checks equally on both containers and needs its own follow-up issue; it is
+explicitly out of scope for #1385 (which is container isolation). The dev/prod
+separation is exactly what lets that MSAL fix be built and verified on
+`ca-ps-execution-dev` first, without ever touching live production.
+
 ## Phase 2: Key Vault / Managed Identity config
 
 | Env var | Required | Purpose |

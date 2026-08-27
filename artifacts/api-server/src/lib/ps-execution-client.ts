@@ -29,15 +29,46 @@
  */
 
 import { getSecretValue } from "./azure-keyvault";
+import { isProductionEnvironment } from "./env";
 import { logger } from "./logger";
 const log = logger.child({ channel: "integration.ps-execution" });
 
 const BEARER_TOKEN_SECRET_NAME = process.env.PS_EXECUTION_BEARER_TOKEN_SECRET_NAME ?? "ps-execution-bearer-token";
 
+/**
+ * Selects which ps-execution Container App to call, routed by the same real
+ * dev/prod environment-tiering the rest of the platform already uses (env.ts →
+ * isProductionEnvironment → stripe.ts's isReplitDevEnvironment) — exactly as
+ * getStripeKey() picks sk_test_ vs sk_live_ keys off the same signal.
+ *
+ * #1385 — Dev/Production container separation. There used to be a single shared
+ * `ca-ps-execution` Container App serving BOTH dev/testing and live production
+ * traffic, so any redeploy for testing ran PowerShell against real customer
+ * tenants. Now the endpoint is chosen by environment:
+ *   - Production / Staging → PS_EXECUTION_CONTAINER_URL      (the existing
+ *     production `ca-ps-execution` — unchanged, so deployed environments need
+ *     zero reconfiguration)
+ *   - Dev                  → PS_EXECUTION_CONTAINER_URL_DEV  (the isolated
+ *     `ca-ps-execution-dev` Container App)
+ *
+ * Dev NEVER silently falls back to the production URL — reaching the production
+ * container from a dev context is the exact safety gap #1385 closes, so an
+ * unset dev URL throws rather than crossing over.
+ */
 function getContainerUrl(): string {
-  const url = process.env.PS_EXECUTION_CONTAINER_URL;
-  if (!url) throw new Error("PS_EXECUTION_CONTAINER_URL must be set");
-  return url.replace(/\/+$/, "");
+  if (isProductionEnvironment()) {
+    const url = process.env.PS_EXECUTION_CONTAINER_URL;
+    if (!url) throw new Error("PS_EXECUTION_CONTAINER_URL must be set (production ca-ps-execution endpoint)");
+    return url.replace(/\/+$/, "");
+  }
+  const devUrl = process.env.PS_EXECUTION_CONTAINER_URL_DEV;
+  if (!devUrl) {
+    throw new Error(
+      "PS_EXECUTION_CONTAINER_URL_DEV must be set in the dev environment (the isolated ca-ps-execution-dev endpoint). " +
+        "Dev deliberately does NOT fall back to the production PS_EXECUTION_CONTAINER_URL — see #1385.",
+    );
+  }
+  return devUrl.replace(/\/+$/, "");
 }
 
 // The bearer token is a static Key Vault secret (#198) — cached in-process
