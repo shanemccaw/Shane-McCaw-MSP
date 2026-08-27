@@ -362,71 +362,10 @@
       "textContains": "+2"
     },
     {
-      "name": "G2a -- THE RISK DROP PANEL, the largest surface the earlier build was missing. The banner button (proto 563, govRisk.go) TOGGLES it open rather than navigating. Its closed label is 'View full risk register'.",
+      "name": "G2a -- HONEST-COUNT CONTRACT (Git #1409): the risk-accepted banner (and its toggle into the drop panel) now renders ONLY when the real register (GET /api/portal/risk-register) has a nonzero Accepted count for Governance -- never unconditionally, and never a fixture fallback. This tenant's real register genuinely has zero Accepted-status rows for any pillar right now (confirmed against the local DB), so the banner/toggle is correctly ABSENT, not just closed. G2b-G2j (the panel-innards steps against fixture row RSK-005 -- the heat-map, the register link, an expanded accepted-risk detail) are no longer reachable through normal navigation while that is true, and are removed here rather than kept as dead/faked coverage. They stay covered structurally by RiskAcceptedPanel.tsx and riskPanelModel.ts's own unit tests; re-add an end-to-end pass here once a real Accepted decision exists in this tenant's register for Governance.",
       "action": "expect",
       "selector": "[data-testid='pv2-gov-risk-toggle']",
-      "state": "visible",
-      "textContains": "View full risk register"
-    },
-    {
-      "name": "G2b -- open it.",
-      "action": "click",
-      "selector": "[data-testid='pv2-gov-risk-toggle']",
-      "critical": true
-    },
-    {
-      "name": "G2c -- the panel renders the likelihood-against-impact heat-map with its own label. This whole surface was absent before.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-gov-risk-panel']",
-      "state": "visible",
-      "textContains": "Likelihood against impact"
-    },
-    {
-      "name": "G2d -- and the heat-map's caption, verbatim.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-gov-risk-panel']",
-      "state": "visible",
-      "textContains": "A filled cell is a risk sitting at that pair"
-    },
-    {
-      "name": "G2e -- and the register link INSIDE the panel (govRisk.openAllGo), distinct from the toggle button above it.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-gov-risk-open-all']",
-      "state": "visible",
-      "textContains": "Open in the register"
-    },
-    {
-      "name": "G2f -- expand a risk row (RSK-005, the accepted guest-access risk).",
-      "action": "click",
-      "selector": "[data-testid='pv2-gov-risk-row-RSK-005']",
-      "critical": true
-    },
-    {
-      "name": "G2g -- the detail carries 'What happens if it lands', one of the strings the copy-coverage floor flagged as absent before this pass.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-gov-risk-detail']",
-      "state": "visible",
-      "textContains": "What happens if it lands"
-    },
-    {
-      "name": "G2h -- and 'What is holding it down', its controls list. Both are new copy that only renders once a row is expanded.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-gov-risk-detail']",
-      "state": "visible",
-      "textContains": "What is holding it down"
-    },
-    {
-      "name": "G2i -- the accepted risk shows its acceptance block in full. RSK-005 is Accepted, so the purple panel names its register entry.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-gov-risk-detail']",
-      "state": "visible",
-      "textContains": "RR-2026-016"
-    },
-    {
-      "name": "G2j -- close the panel so the toggle label flips back and later steps see the default state.",
-      "action": "click",
-      "selector": "[data-testid='pv2-gov-risk-toggle']",
-      "critical": true
+      "state": "absent"
     },
     {
       "name": "G3 -- an area tile links into the drill-down.",
@@ -853,31 +792,10 @@
       "textContains": "Conditional Access"
     },
     {
-      "name": "S11 -- the risk-accepted strip's button. In the CURRENT design (proto 781) this is a TOGGLE (secRisk.go), not a link: its closed-state label is 'View full risk register' and clicking it opens the drop panel below rather than navigating. The register link now lives INSIDE the panel.",
+      "name": "S11 -- HONEST-COUNT CONTRACT (Git #1409): same fix as Governance's G2a. The risk-accepted banner/toggle (proto 781, secRisk.go) now renders ONLY when the real register (GET /api/portal/risk-register) has a nonzero Accepted count for Security -- never unconditionally, never the fixture `SEC_HERO.riskAccepted`. This tenant's real register genuinely has zero Accepted-status rows right now (confirmed against the local DB), so it is correctly ABSENT. S11a-S11c (opening the panel, the pillar-name check, the fixture heat-map) are no longer reachable while that holds and are removed here; they stay covered by RiskAcceptedPanel.tsx/riskPanelModel.ts's own unit tests. Re-add an end-to-end pass once a real Accepted decision exists for Security.",
       "action": "expect",
       "selector": "[data-testid='pv2-sec-risk-toggle']",
-      "state": "visible",
-      "textContains": "View full risk register"
-    },
-    {
-      "name": "S11a -- open the risk drop panel.",
-      "action": "click",
-      "selector": "[data-testid='pv2-sec-risk-toggle']",
-      "critical": true
-    },
-    {
-      "name": "S11b -- the panel names SECURITY, not Governance. Both pillars render the same shared component with only the pillar string different, so a wrong filter would surface the wrong pillar's risks here and nowhere else.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-sec-risk-panel']",
-      "state": "visible",
-      "textContains": "Security risks"
-    },
-    {
-      "name": "S11c -- the likelihood-against-impact heat-map renders with its caption, one of the surfaces the earlier build was missing entirely.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-sec-risk-panel']",
-      "state": "visible",
-      "textContains": "Rows run from most likely at the top"
+      "state": "absent"
     },
     {
       "name": "goto the rebuilt Health pillar dashboard -- the sixth and last.",

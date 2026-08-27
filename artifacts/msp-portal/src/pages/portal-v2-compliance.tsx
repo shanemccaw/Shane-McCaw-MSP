@@ -62,11 +62,9 @@ import { lastScanLabel } from "@/components/portal-v2/overviewModel";
 import { usePolicyDecisions } from "@/components/portal-v2/riskRegisterLive";
 import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
 import {
-  CMP_ACCEPTED_COUNT,
   CMP_AREA_LINKS,
   CMP_CLUSTERS,
   CMP_HERO,
-  CMP_HISTORY,
   CMP_INSET,
   CMP_SCRUTINY,
   CMP_TIER,
@@ -177,7 +175,8 @@ export default function PortalV2CompliancePage() {
   // `pv2-cmp-source` states which is on screen.
   const score = live.score;
   const hasScore = hasScanValue(score);
-  const trend = trendGeometry(live.history ?? CMP_HISTORY);
+  const hasHistory = Array.isArray(live.history) && live.history.length >= 2;
+  const trend = hasHistory ? trendGeometry(live.history!) : null;
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
@@ -249,50 +248,61 @@ export default function PortalV2CompliancePage() {
             ← Overview
           </Link>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "7px 14px",
-              border: "1px solid rgba(226,232,240,.2)",
-              borderRadius: 9,
-              background: "rgba(226,232,240,.05)",
-            }}
-          >
-            <span style={{ fontSize: "15px", fontWeight: 800, color: "#e2e8f0", fontFamily: MONO }}>
-              {cmpDecisionsCount ?? CMP_ACCEPTED_COUNT}
-            </span>
-            {/* Not "finding risk-accepted in X" — this pillar counts DECISIONS. */}
-            <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
-              documented policy decisions on record
-            </span>
-            {/* Hidden live/fixture marker, same convention as `pv2-cmp-source`. */}
-            <span data-testid="pv2-cmp-decisions-source" style={PV2_SOURCE_CLIP}>
-              {cmpDecisionsCount === null ? "fixture" : "live"}
-            </span>
-            {/* `goRiskCmp` (proto 3876) — a plain link to the register pre-filtered
-                to Compliance. Unlike Governance/Security this button does not
-                toggle a drop panel; Compliance has no such panel in this design. */}
-            <Link
-              href="/portal-v2/risk-register?pillar=Compliance"
-              data-testid="pv2-cmp-risk-register-link"
+          {/* Honest-count contract (#1409): hidden entirely — not "0", not the
+              fixture `CMP_ACCEPTED_COUNT` — unless the real register
+              (`usePolicyDecisions`) has a nonzero decision count on record for
+              this pillar. */}
+          {typeof cmpDecisionsCount === "number" && cmpDecisionsCount > 0 && (
+            <div
               style={{
-                padding: 0,
-                border: "none",
-                background: "none",
-                fontFamily: "inherit",
-                cursor: "pointer",
-                fontSize: "11.5px",
-                fontWeight: 600,
-                color: "#cbd5e1",
-                whiteSpace: "nowrap",
-                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "7px 14px",
+                border: "1px solid rgba(226,232,240,.2)",
+                borderRadius: 9,
+                background: "rgba(226,232,240,.05)",
               }}
             >
-              View risk register →
-            </Link>
-          </div>
+              <span
+                style={{ fontSize: "15px", fontWeight: 800, color: "#e2e8f0", fontFamily: MONO }}
+                data-testid="pv2-cmp-decisions-count"
+              >
+                {cmpDecisionsCount}
+              </span>
+              {/* Not "finding risk-accepted in X" — this pillar counts DECISIONS. */}
+              <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                documented policy decisions on record
+              </span>
+              {/* Hidden live/fixture marker, same convention as `pv2-cmp-source`.
+                  Always "live" now — this strip only renders once real data
+                  confirms a nonzero count. */}
+              <span data-testid="pv2-cmp-decisions-source" style={PV2_SOURCE_CLIP}>
+                live
+              </span>
+              {/* `goRiskCmp` (proto 3876) — a plain link to the register pre-filtered
+                  to Compliance. Unlike Governance/Security this button does not
+                  toggle a drop panel; Compliance has no such panel in this design. */}
+              <Link
+                href="/portal-v2/risk-register?pillar=Compliance"
+                data-testid="pv2-cmp-risk-register-link"
+                style={{
+                  padding: 0,
+                  border: "none",
+                  background: "none",
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  color: "#cbd5e1",
+                  whiteSpace: "nowrap",
+                  textDecoration: "none",
+                }}
+              >
+                View risk register →
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* ── Hero card — proto 3880-3947 ────────────────────────────────── */}
@@ -433,53 +443,72 @@ export default function PortalV2CompliancePage() {
                 {CMP_HERO.trendLabel}
               </span>
               <div style={{ position: "relative" }}>
-                <svg
-                  width="100%"
-                  height={trend.h}
-                  viewBox={`0 0 ${trend.w} ${trend.h}`}
-                  preserveAspectRatio="none"
-                  style={{ overflow: "visible", display: "block" }}
-                  aria-hidden="true"
-                >
-                  <defs>
-                    <linearGradient id="cmpTrendFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={PAPER} stopOpacity={0.22} />
-                      <stop offset="100%" stopColor={PAPER} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <path d={trend.area} fill="url(#cmpTrendFill)" />
-                  <polyline
-                    points={trend.line}
-                    fill="none"
-                    stroke={PAPER}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </svg>
-                {/* Same reason as DriftTrend's: the chart svg is anisotropically
-                    scaled, so a circle inside it renders as an oval. */}
-                <svg
-                  width="100%"
-                  height={trend.h}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    overflow: "visible",
-                    display: "block",
-                    pointerEvents: "none",
-                  }}
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx={`${(trend.lastX / trend.w) * 100}%`}
-                    cy={trend.lastY}
-                    r={3.5}
-                    fill="#f8fafc"
-                  />
-                </svg>
+                {trend ? (
+                  <>
+                    <svg
+                      width="100%"
+                      height={trend.h}
+                      viewBox={`0 0 ${trend.w} ${trend.h}`}
+                      preserveAspectRatio="none"
+                      style={{ overflow: "visible", display: "block" }}
+                      aria-hidden="true"
+                    >
+                      <defs>
+                        <linearGradient id="cmpTrendFill" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={PAPER} stopOpacity={0.22} />
+                          <stop offset="100%" stopColor={PAPER} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <path d={trend.area} fill="url(#cmpTrendFill)" />
+                      <polyline
+                        points={trend.line}
+                        fill="none"
+                        stroke={PAPER}
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </svg>
+                    {/* Same reason as DriftTrend's: the chart svg is anisotropically
+                        scaled, so a circle inside it renders as an oval. */}
+                    <svg
+                      width="100%"
+                      height={trend.h}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        overflow: "visible",
+                        display: "block",
+                        pointerEvents: "none",
+                      }}
+                      aria-hidden="true"
+                    >
+                      <circle
+                        cx={`${(trend.lastX / trend.w) * 100}%`}
+                        cy={trend.lastY}
+                        r={3.5}
+                        fill="#f8fafc"
+                      />
+                    </svg>
+                  </>
+                ) : (
+                  // Honest empty state (#1409) — no real history to plot, never
+                  // the fixture's fabricated `CMP_HISTORY` decline.
+                  <div
+                    data-testid="pv2-cmp-trend-empty"
+                    style={{
+                      height: 84,
+                      display: "flex",
+                      alignItems: "center",
+                      fontSize: "11px",
+                      color: NO_DATA_INK,
+                    }}
+                  >
+                    {NO_SCAN_DATA_LABEL}
+                  </div>
+                )}
                 <div style={{ height: 1, background: "rgba(148,163,184,.14)" }} />
                 <span
                   style={{
@@ -489,7 +518,7 @@ export default function PortalV2CompliancePage() {
                     color: "#64748b",
                   }}
                 >
-                  {CMP_HERO.trendCaption}
+                  {trend ? CMP_HERO.trendCaption : NO_SCAN_DATA_LABEL}
                 </span>
               </div>
             </div>

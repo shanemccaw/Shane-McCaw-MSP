@@ -136,8 +136,8 @@
       "action": "expect", "selector": "[data-testid='pv2-cmp-stat-retention-coverage']", "state": "visible", "textContains": "Not measured yet"
     },
     {
-      "name": "C5 -- REAL (Git #1220): the 'documented policy decisions on record' count reads the real pillar-filtered register (GET /api/portal/policy-decisions), not the fixture 2 -- the hidden source marker reads 'live'.",
-      "action": "expect", "selector": "[data-testid='pv2-cmp-decisions-source']", "state": "visible", "textContains": "live"
+      "name": "C5 -- HONEST-COUNT CONTRACT (Git #1409): the 'documented policy decisions on record' strip now renders ONLY when the real pillar-filtered register (GET /api/portal/policy-decisions) has a nonzero count for Compliance -- never the fixture `CMP_ACCEPTED_COUNT`, never a visible '0'. This tenant's real register genuinely has zero Compliance-pillar decisions right now (confirmed against the local DB), so the whole strip -- and its hidden source marker -- is correctly ABSENT rather than showing the stale fixture 2.",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-decisions-source']", "state": "absent"
     },
     {
       "name": "C6 -- REAL (Git #1338): a confirmed-real area card (Auto-labelling -> governance:auto-labeling-coverage) is wired -- its hidden per-card source marker reads 'live' (a scan has landed, proven by C2).",

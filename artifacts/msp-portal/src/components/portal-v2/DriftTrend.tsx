@@ -26,7 +26,16 @@
  * is 1 CSS px and r=3.5 is a true circle, with `cx` as a percentage so it still
  * tracks the stretched line's last point. Collapsing these back into one svg
  * re-introduces the oval.
+ *
+ * ── Honest empty state (Git #1409) ──────────────────────────────────────────
+ * `trend` is nullable. A caller with no real `live.history` (never-scanned
+ * tenant, or too few points to draw a line) passes `null` instead of falling
+ * back to a fixture's fabricated declining trend line — the leak this fixed.
+ * A null trend renders the label plus `NO_SCAN_DATA_LABEL`, no svg at all,
+ * rather than a chart shape nobody's data produced.
  */
+
+import { NO_SCAN_DATA_LABEL, NO_DATA_INK } from "./NoScanDataState";
 
 /** The geometry `govTrend`/`secTrend` compute — identical IIFEs in the prototype. */
 export interface TrendGeometry {
@@ -62,7 +71,8 @@ export function trendGeometry(history: readonly number[]): TrendGeometry {
 }
 
 export interface DriftTrendProps {
-  trend: TrendGeometry;
+  /** Null when there is no real history to draw — renders the honest empty state. */
+  trend: TrendGeometry | null;
   /** Unique per instance — two charts on one page must not share a gradient. */
   gradientId: string;
   /** Line and area colour. Governance #3B82F6, Security #f87171. */
@@ -119,47 +129,67 @@ export function DriftTrend({
 
       {/* The svg and its baseline rule share a position:relative wrapper. */}
       <div style={{ position: "relative" }}>
-        <svg
-          width="100%"
-          height={trend.h}
-          viewBox={`0 0 ${trend.w} ${trend.h}`}
-          preserveAspectRatio="none"
-          style={{ overflow: "visible", display: "block" }}
-          aria-hidden="true"
-        >
-          <defs>
-            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={lineColor} stopOpacity={fillOpacity} />
-              <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <path d={trend.area} fill={`url(#${gradientId})`} />
-          <polyline
-            points={trend.line}
-            fill="none"
-            stroke={lineColor}
-            strokeWidth={2}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-        {/* See the header note — the dot must NOT live inside the scaled svg. */}
-        <svg
-          width="100%"
-          height={trend.h}
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            overflow: "visible",
-            display: "block",
-            pointerEvents: "none",
-          }}
-          aria-hidden="true"
-        >
-          <circle cx={`${(trend.lastX / trend.w) * 100}%`} cy={trend.lastY} r={3.5} fill={dotColor} />
-        </svg>
+        {trend ? (
+          <>
+            <svg
+              width="100%"
+              height={trend.h}
+              viewBox={`0 0 ${trend.w} ${trend.h}`}
+              preserveAspectRatio="none"
+              style={{ overflow: "visible", display: "block" }}
+              aria-hidden="true"
+            >
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={lineColor} stopOpacity={fillOpacity} />
+                  <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <path d={trend.area} fill={`url(#${gradientId})`} />
+              <polyline
+                points={trend.line}
+                fill="none"
+                stroke={lineColor}
+                strokeWidth={2}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
+            {/* See the header note — the dot must NOT live inside the scaled svg. */}
+            <svg
+              width="100%"
+              height={trend.h}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                overflow: "visible",
+                display: "block",
+                pointerEvents: "none",
+              }}
+              aria-hidden="true"
+            >
+              <circle cx={`${(trend.lastX / trend.w) * 100}%`} cy={trend.lastY} r={3.5} fill={dotColor} />
+            </svg>
+          </>
+        ) : (
+          // Honest empty state (#1409) — no real history to plot. A flat muted
+          // rule at the same 84px slot height, never the fixture's fabricated
+          // declining line.
+          <div
+            data-testid="pv2-drift-trend-empty"
+            style={{
+              height: 84,
+              display: "flex",
+              alignItems: "center",
+              fontSize: "11px",
+              color: NO_DATA_INK,
+            }}
+          >
+            {NO_SCAN_DATA_LABEL}
+          </div>
+        )}
         <div style={{ height: 1, background: "rgba(148,163,184,.14)" }} />
       </div>
     </div>

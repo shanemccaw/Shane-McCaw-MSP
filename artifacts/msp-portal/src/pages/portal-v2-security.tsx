@@ -70,6 +70,7 @@ import { caBandsWithRowsLive } from "@/components/portal-v2/secCaModel";
 import { CA_STATUS_META } from "@/components/portal-v2/secCaData";
 import { useScanStatus } from "@/lib/scan-status-context";
 import { lastScanLabel } from "@/components/portal-v2/overviewModel";
+import { useRiskRegister } from "@/components/portal-v2/riskRegisterLive";
 import {
   pillarSeverity,
   pillarTrendVerdict,
@@ -79,7 +80,6 @@ import {
 import {
   SEC_AREA_LINKS,
   SEC_HERO,
-  SEC_HISTORY,
   SEC_STATUS,
   secAreaGeometry,
   type SecAreaLink,
@@ -205,7 +205,8 @@ export default function PortalV2SecurityPage() {
   // `pv2-sec-source` states which is on screen.
   const score = live.score;
   const hasScore = hasScanValue(score);
-  const trend = trendGeometry(live.history ?? SEC_HISTORY);
+  const hasHistory = Array.isArray(live.history) && live.history.length >= 2;
+  const trend = hasHistory ? trendGeometry(live.history!) : null;
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
@@ -214,6 +215,17 @@ export default function PortalV2SecurityPage() {
   // the same component. The banner button toggles it; a row toggles its detail.
   const [riskOpen, setRiskOpen] = useState(false);
   const [riskRowId, setRiskRowId] = useState<string | null>(null);
+
+  // Honest accepted-risk count (Git #1409): the real register
+  // (`/api/portal/risk-register`, via `useRiskRegister`), not the fixture
+  // `SEC_HERO.riskAccepted`. The banner is hidden entirely — not "0" — while
+  // loading, on a read error, or when the tenant genuinely has none.
+  const { risks: liveRisks, loading: risksLoading, error: risksError } = useRiskRegister();
+  const secAcceptedCount =
+    risksLoading || risksError
+      ? null
+      : liveRisks.filter((r) => r.pillar === "Security" && r.status === "Accepted").length;
+  const showRiskBanner = typeof secAcceptedCount === "number" && secAcceptedCount > 0;
 
   return (
     <PortalV2Shell eyebrow="Pillar" title="Security">
@@ -277,50 +289,58 @@ export default function PortalV2SecurityPage() {
             ← Overview
           </Link>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "7px 14px",
-              border: "1px solid rgba(194,166,61,.25)",
-              borderRadius: 9,
-              background: "rgba(194,166,61,.05)",
-            }}
-          >
-            <span style={{ fontSize: "15px", fontWeight: 800, color: "#a89354", fontFamily: MONO }}>
-              {SEC_HERO.riskAccepted}
-            </span>
-            <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
-              finding risk-accepted in Security
-            </span>
-            {/* Prototype line 781, `secRisk.go` / `secRisk.label` — TOGGLES the
-                risk drop panel below rather than navigating. The register link
-                lives inside the panel, exactly as on Governance. */}
-            <button
-              type="button"
-              onClick={() => setRiskOpen((o) => !o)}
-              data-testid="pv2-sec-risk-toggle"
-              aria-expanded={riskOpen}
+          {/* Honest-accepted-count contract (#1409): hidden entirely — not "0" —
+              unless the real register has a nonzero accepted count for this
+              pillar. Never the fixture `SEC_HERO.riskAccepted`. */}
+          {showRiskBanner && (
+            <div
               style={{
-                padding: 0,
-                border: "none",
-                background: "none",
-                fontFamily: "inherit",
-                cursor: "pointer",
-                fontSize: "11.5px",
-                fontWeight: 600,
-                color: "#c2a63d",
-                whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "7px 14px",
+                border: "1px solid rgba(194,166,61,.25)",
+                borderRadius: 9,
+                background: "rgba(194,166,61,.05)",
               }}
             >
-              {riskOpen ? "Hide the register" : "View full risk register →"}
-            </button>
-          </div>
+              <span
+                style={{ fontSize: "15px", fontWeight: 800, color: "#a89354", fontFamily: MONO }}
+                data-testid="pv2-sec-risk-accepted-count"
+              >
+                {secAcceptedCount}
+              </span>
+              <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                finding{secAcceptedCount === 1 ? "" : "s"} risk-accepted in Security
+              </span>
+              {/* Prototype line 781, `secRisk.go` / `secRisk.label` — TOGGLES the
+                  risk drop panel below rather than navigating. The register link
+                  lives inside the panel, exactly as on Governance. */}
+              <button
+                type="button"
+                onClick={() => setRiskOpen((o) => !o)}
+                data-testid="pv2-sec-risk-toggle"
+                aria-expanded={riskOpen}
+                style={{
+                  padding: 0,
+                  border: "none",
+                  background: "none",
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  color: "#c2a63d",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {riskOpen ? "Hide the register" : "View full risk register →"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Risk drop panel — proto 785-865, shared with Governance. ────── */}
-        {riskOpen && (
+        {showRiskBanner && riskOpen && (
           <RiskAcceptedPanel
             pillar="Security"
             expandedId={riskRowId}

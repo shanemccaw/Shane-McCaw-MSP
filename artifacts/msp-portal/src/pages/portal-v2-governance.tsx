@@ -62,6 +62,7 @@ import {
 } from "@/components/portal-v2/NoScanDataState";
 import { useScanStatus } from "@/lib/scan-status-context";
 import { lastScanLabel } from "@/components/portal-v2/overviewModel";
+import { useRiskRegister } from "@/components/portal-v2/riskRegisterLive";
 import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
 import {
   GOV_AREA_LINKS,
@@ -156,7 +157,8 @@ export default function PortalV2GovernancePage() {
   // replayed series.
   const score = live.score;
   const hasScore = hasScanValue(score);
-  const trend = trendGeometry(live.history ?? GOV_HERO.history);
+  const hasHistory = Array.isArray(live.history) && live.history.length >= 2;
+  const trend = hasHistory ? trendGeometry(live.history!) : null;
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
@@ -166,6 +168,17 @@ export default function PortalV2GovernancePage() {
   // so the toggle button and the panel stay siblings, as the markup places them.
   const [riskOpen, setRiskOpen] = useState(false);
   const [riskRowId, setRiskRowId] = useState<string | null>(null);
+
+  // Honest accepted-risk count (Git #1409): the real register
+  // (`/api/portal/risk-register`, via `useRiskRegister`), not the fixture
+  // `GOV_HERO.riskAccepted`. The banner is hidden entirely — not "0" — while
+  // loading, on a read error, or when the tenant genuinely has none.
+  const { risks: liveRisks, loading: risksLoading, error: risksError } = useRiskRegister();
+  const govAcceptedCount =
+    risksLoading || risksError
+      ? null
+      : liveRisks.filter((r) => r.pillar === "Governance" && r.status === "Accepted").length;
+  const showRiskBanner = typeof govAcceptedCount === "number" && govAcceptedCount > 0;
 
   const clusters = GOV_CLUSTERS.map((name) => ({
     name,
@@ -236,59 +249,65 @@ export default function PortalV2GovernancePage() {
             ← Overview
           </Link>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              padding: "7px 14px",
-              border: "1px solid rgba(194,166,61,.25)",
-              borderRadius: 9,
-              background: "rgba(194,166,61,.05)",
-            }}
-          >
-            <span
+          {/* Honest-accepted-count contract (#1409): hidden entirely — not "0" —
+              unless the real register has a nonzero accepted count for this
+              pillar. Never the fixture `GOV_HERO.riskAccepted`. */}
+          {showRiskBanner && (
+            <div
               style={{
-                fontSize: "15px",
-                fontWeight: 800,
-                color: "#a89354",
-                fontFamily: MONO,
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "7px 14px",
+                border: "1px solid rgba(194,166,61,.25)",
+                borderRadius: 9,
+                background: "rgba(194,166,61,.05)",
               }}
             >
-              {GOV_HERO.riskAccepted}
-            </span>
-            <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
-              finding risk-accepted in Governance
-            </span>
-            {/* Prototype line 563, `govRisk.go` / `govRisk.label` — this button
-                TOGGLES the risk drop panel below rather than navigating. The
-                label follows the state (8205); the "Open in the register →" link
-                that actually leaves for the register lives INSIDE the panel. */}
-            <button
-              type="button"
-              onClick={() => setRiskOpen((o) => !o)}
-              data-testid="pv2-gov-risk-toggle"
-              aria-expanded={riskOpen}
-              style={{
-                padding: 0,
-                border: "none",
-                background: "none",
-                fontFamily: "inherit",
-                cursor: "pointer",
-                fontSize: "11.5px",
-                fontWeight: 600,
-                color: "#c2a63d",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {riskOpen ? "Hide the register" : "View full risk register →"}
-            </button>
-          </div>
+              <span
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 800,
+                  color: "#a89354",
+                  fontFamily: MONO,
+                }}
+                data-testid="pv2-gov-risk-accepted-count"
+              >
+                {govAcceptedCount}
+              </span>
+              <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                finding{govAcceptedCount === 1 ? "" : "s"} risk-accepted in Governance
+              </span>
+              {/* Prototype line 563, `govRisk.go` / `govRisk.label` — this button
+                  TOGGLES the risk drop panel below rather than navigating. The
+                  label follows the state (8205); the "Open in the register →" link
+                  that actually leaves for the register lives INSIDE the panel. */}
+              <button
+                type="button"
+                onClick={() => setRiskOpen((o) => !o)}
+                data-testid="pv2-gov-risk-toggle"
+                aria-expanded={riskOpen}
+                style={{
+                  padding: 0,
+                  border: "none",
+                  background: "none",
+                  fontFamily: "inherit",
+                  cursor: "pointer",
+                  fontSize: "11.5px",
+                  fontWeight: 600,
+                  color: "#c2a63d",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {riskOpen ? "Hide the register" : "View full risk register →"}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── Risk drop panel — proto 567-647. Independent of the all-resolved
             state below: the accepted risk stays visible and tracked. ─────── */}
-        {riskOpen && (
+        {showRiskBanner && riskOpen && (
           <RiskAcceptedPanel
             pillar="Governance"
             expandedId={riskRowId}
