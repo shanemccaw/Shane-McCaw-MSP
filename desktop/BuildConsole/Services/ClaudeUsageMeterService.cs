@@ -36,13 +36,26 @@ namespace BuildConsole.Services
         public string DisplayText { get; set; } = "Claude: --";
         public string ToolTip { get; set; } = string.Empty;
         
-        // Weekly (All Models) status fields
+        // Weekly (All Models) status fields — Primary account
         public int? WeeklyPercent { get; set; }
         public DateTime? WeeklyResetTarget { get; set; }
-        public string WeeklyDisplayText { get; set; } = "Claude Weekly: --";
+        public string WeeklyDisplayText { get; set; } = "Claude Weekly (Primary): --";
         public string WeeklyToolTip { get; set; } = string.Empty;
 
         public DateTime? LastPoll { get; set; }
+
+        // Git #1437 — Weekly (All Models) status fields for the Secondary account, polled and
+        // rendered fully independently of the toggle-followed Primary fields above so both
+        // accounts' headroom are visible at the same time.
+        /// <summary>False when BuildConsoleSettings.SecondaryClaudeConfigDir is unset/blank — the
+        /// secondary meter shows an explicit "not configured" state rather than reusing Primary's numbers.</summary>
+        public bool SecondaryConfigured { get; set; }
+        public ClaudeUsageMeterState SecondaryState { get; set; } = ClaudeUsageMeterState.Unavailable;
+        public int? SecondaryWeeklyPercent { get; set; }
+        public DateTime? SecondaryWeeklyResetTarget { get; set; }
+        public string SecondaryWeeklyDisplayText { get; set; } = "Claude Weekly (Secondary): --";
+        public string SecondaryWeeklyToolTip { get; set; } = string.Empty;
+        public DateTime? SecondaryLastPoll { get; set; }
     }
 
     /// <summary>
@@ -100,6 +113,19 @@ namespace BuildConsole.Services
         private DateTime? _projectedFullTarget;
         private double _projectedRatePerHour;
 
+        // ── Git #1437 — Secondary account weekly (All Models) poll state, entirely independent
+        // of the Primary fields above. Polled via its own CLI call with CLAUDE_CONFIG_DIR pointed
+        // at BuildConsoleSettings.SecondaryClaudeConfigDir (same env-stripping fix pattern as
+        // QueueWatcherService, Git #1420) so it reads the Secondary account's own session.
+        private bool _secondaryConfigured;
+        private ClaudeUsageMeterState _secondaryLastState = ClaudeUsageMeterState.Unavailable;
+        private string? _secondaryLastReason;
+        private int? _secondaryWeeklyPercent;
+        private DateTime? _secondaryWeeklyResetTarget;
+        private DateTime? _secondaryWeeklyProjectedFullTarget;
+        private double _secondaryWeeklyProjectedRatePerHour;
+        private DateTime? _secondaryLastPoll;
+
         public event Action<ClaudeUsageStatus>? StatusChanged;
 
         public ClaudeUsageMeterService(WebView2? webView = null, Func<WebView2, Task<bool>>? ensureInitialized = null)
@@ -150,6 +176,10 @@ namespace BuildConsole.Services
             try
             {
                 Emit(ClaudeUsageMeterState.Polling);
+
+                // Git #1437 — Secondary account poll runs independently of Primary's CLI-then-
+                // WebView2 flow below; it never falls back to Primary's numbers on failure.
+                await PollSecondaryAsync();
 
                 // ── Phase 1: Fast CLI Execution ─────────────────────────────
                 var (cliSuccess, cliOutput, cliError) = await RunClaudeCliUsageAsync();
@@ -272,13 +302,19 @@ namespace BuildConsole.Services
         /// <summary>Fast between-poll tick: updates live countdown text without re-polling.</summary>
         private void OnDisplayTick()
         {
-            if (_lastState != ClaudeUsageMeterState.Ok) return;
+            bool primaryTickNeeded = _lastState == ClaudeUsageMeterState.Ok &&
+                (((_percent.HasValue && _percent.Value >= CountdownThresholdPercent && _resetTarget.HasValue) ||
+                  (_weeklyPercent.HasValue && _weeklyPercent.Value >= CountdownThresholdPercent && _weeklyResetTarget.HasValue)) ||
+                 _projectedFullTarget.HasValue || _weeklyProjectedFullTarget.HasValue);
 
-            bool resetCountdownShown = (_percent.HasValue && _percent.Value >= CountdownThresholdPercent && _resetTarget.HasValue) ||
-                                       (_weeklyPercent.HasValue && _weeklyPercent.Value >= CountdownThresholdPercent && _weeklyResetTarget.HasValue);
-            bool projectionShown = _projectedFullTarget.HasValue || _weeklyProjectedFullTarget.HasValue;
-            if (resetCountdownShown || projectionShown)
-                Emit(ClaudeUsageMeterState.Ok);
+            // Git #1437 — Secondary's countdown/projection ticks independently: it must keep
+            // re-rendering even when Primary is Unavailable/Error (and vice versa).
+            bool secondaryTickNeeded = _secondaryLastState == ClaudeUsageMeterState.Ok &&
+                ((_secondaryWeeklyPercent.HasValue && _secondaryWeeklyPercent.Value >= CountdownThresholdPercent && _secondaryWeeklyResetTarget.HasValue) ||
+                 _secondaryWeeklyProjectedFullTarget.HasValue);
+
+            if (primaryTickNeeded || secondaryTickNeeded)
+                Emit(_lastState);
         }
 
         private void SetUnavailable(string reason, ClaudeUsageMeterState state = ClaudeUsageMeterState.Unavailable)
@@ -315,8 +351,13 @@ namespace BuildConsole.Services
             return userProfileExe;
         }
 
-        /// <summary>Spawns `claude.exe -p --no-session-persistence "/usage"` with immediate stdin close and 20s timeout.</summary>
-        private async Task<(bool success, string output, string error)> RunClaudeCliUsageAsync()
+        /// <summary>Spawns `claude.exe -p --no-session-persistence "/usage"` with immediate stdin close and 20s timeout.
+        /// When <paramref name="secondaryConfigDirOverride"/> is set (Git #1437), the spawned process's
+        /// CLAUDE_CONFIG_DIR is pointed at it and the inherited CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY
+        /// are stripped so the call genuinely authenticates as that config dir's own session instead of
+        /// silently falling through to whatever account the inherited token/env selects — the exact
+        /// env-stripping fix pattern already proven in QueueWatcherService.cs (Git #1420).</summary>
+        private async Task<(bool success, string output, string error)> RunClaudeCliUsageAsync(string? secondaryConfigDirOverride = null)
         {
             string exe = ResolveClaudeExe();
             if (!File.Exists(exe))
@@ -338,6 +379,15 @@ namespace BuildConsole.Services
                 StandardErrorEncoding = Encoding.UTF8,
             };
             psi.Environment.Remove("ELECTRON_RUN_AS_NODE");
+
+            if (!string.IsNullOrWhiteSpace(secondaryConfigDirOverride))
+            {
+                psi.Environment["CLAUDE_CONFIG_DIR"] = secondaryConfigDirOverride;
+                bool hadOAuthToken = psi.Environment.Remove("CLAUDE_CODE_OAUTH_TOKEN");
+                bool hadApiKey = psi.Environment.Remove("ANTHROPIC_API_KEY");
+                ActivityLog.Log(Channel, $"[secondary] usage poll routed to CLAUDE_CONFIG_DIR={secondaryConfigDirOverride}" +
+                    (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")})" : "") + ".");
+            }
 
             using var process = new Process { StartInfo = psi };
             try
@@ -554,6 +604,121 @@ namespace BuildConsole.Services
                 _weeklyProjectedFullTarget = null;
                 _weeklyProjectedRatePerHour = 0;
                 ActivityLog.Log(Channel, $"weekly projection update failed: {ex.Message}");
+            }
+        }
+
+        // ── Git #1437 — Secondary account poll ──────────────────────────────
+
+        /// <summary>Expand a leading `~` in a configured path to the current user's profile
+        /// directory (mirrors QueueWatcherService's ExpandUserPath, Git #1416).</summary>
+        private static string ExpandUserPath(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return "";
+            path = path.Trim();
+            if (path == "~" || path.StartsWith("~/") || path.StartsWith("~\\"))
+            {
+                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string rest = path.Length <= 1 ? "" : path.Substring(2);
+                return string.IsNullOrEmpty(rest) ? home : Path.Combine(home, rest);
+            }
+            return path;
+        }
+
+        /// <summary>One independent poll of the Secondary account's weekly (All Models) usage —
+        /// CLI-only (no WebView2 fallback), run every cycle alongside the Primary poll above. Per
+        /// the issue's standing rule: on any failure this shows an honest Unavailable/Error state,
+        /// it never silently falls back to displaying Primary's numbers under the Secondary label.</summary>
+        private async Task PollSecondaryAsync()
+        {
+            try
+            {
+                var settings = BuildConsoleSettings.Load();
+                string secondaryDir = ExpandUserPath(settings.SecondaryClaudeConfigDir);
+                _secondaryConfigured = !string.IsNullOrWhiteSpace(secondaryDir);
+
+                if (!_secondaryConfigured)
+                {
+                    ActivityLog.Log(Channel, "[secondary] SecondaryClaudeConfigDir is unset/blank — showing 'not configured', not Primary's numbers.");
+                    SetSecondaryUnavailable("not configured");
+                    return;
+                }
+
+                var (cliSuccess, cliOutput, cliError) = await RunClaudeCliUsageAsync(secondaryDir);
+                if (!cliSuccess || string.IsNullOrWhiteSpace(cliOutput))
+                {
+                    ActivityLog.Log(Channel, $"[secondary] CLI poll failed: {cliError}.");
+                    SetSecondaryUnavailable(string.IsNullOrWhiteSpace(cliError) ? "secondary poll failed" : cliError, ClaudeUsageMeterState.Error);
+                    return;
+                }
+
+                var (_, _, parsedWeeklyPercent, parsedWeeklyReset) = ParseCliUsageOutput(cliOutput);
+                if (!parsedWeeklyPercent.HasValue)
+                {
+                    ActivityLog.Log(Channel, $"[secondary] CLI returned output but weekly usage could not be parsed. Output: {Trim(cliOutput)}");
+                    SetSecondaryUnavailable("secondary usage unreadable");
+                    return;
+                }
+
+                _secondaryWeeklyPercent = parsedWeeklyPercent;
+                _secondaryWeeklyResetTarget = ParseResetTarget(parsedWeeklyReset);
+                _secondaryLastPoll = DateTime.Now;
+                _secondaryLastState = ClaudeUsageMeterState.Ok;
+                _secondaryLastReason = null;
+
+                ActivityLog.Log(Channel,
+                    $"[secondary] OK[cli] — Weekly: {_secondaryWeeklyPercent}% used (reset target={(_secondaryWeeklyResetTarget.HasValue ? _secondaryWeeklyResetTarget.Value.ToString("ddd HH:mm") : "unparsed")}).");
+
+                UpdateSecondaryWeeklyProjection(_secondaryWeeklyPercent.Value, _secondaryWeeklyResetTarget, _secondaryLastPoll.Value);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"[secondary] poll threw: {ex.Message}");
+                SetSecondaryUnavailable(ex.Message, ClaudeUsageMeterState.Error);
+            }
+        }
+
+        private void SetSecondaryUnavailable(string reason, ClaudeUsageMeterState state = ClaudeUsageMeterState.Unavailable)
+        {
+            _secondaryWeeklyPercent = null;
+            _secondaryWeeklyResetTarget = null;
+            _secondaryWeeklyProjectedFullTarget = null;
+            _secondaryWeeklyProjectedRatePerHour = 0;
+            _secondaryLastState = state;
+            _secondaryLastReason = reason;
+        }
+
+        private void UpdateSecondaryWeeklyProjection(int percent, DateTime? resetTarget, DateTime pollMoment)
+        {
+            try
+            {
+                var sample = new UsageSample { At = pollMoment, Percent = percent, ResetTarget = resetTarget };
+                bool stored = SecondaryWeeklyUsageHistoryStore.Append(sample);
+                ActivityLog.Log(Channel,
+                    $"[secondary] weekly data-point {(stored ? "stored" : "NOT stored")}: {percent}% at {pollMoment:yyyy-MM-dd HH:mm:ss}"
+                    + (resetTarget.HasValue ? $" (weekly reset target {resetTarget.Value:ddd HH:mm})" : " (weekly reset target unparsed)") + ".");
+
+                var projection = UsageProjection.Compute(SecondaryWeeklyUsageHistoryStore.ReadAll(), pollMoment);
+                if (projection.HasProjection && projection.TimeTo100.HasValue)
+                {
+                    _secondaryWeeklyProjectedFullTarget = pollMoment + projection.TimeTo100.Value;
+                    _secondaryWeeklyProjectedRatePerHour = projection.RatePerHour;
+                    ActivityLog.Log(Channel,
+                        $"[secondary] weekly projection: ~{FormatCountdown(projection.TimeTo100.Value)} to 100% "
+                        + $"(weekly rate {projection.RatePerHour:0.00}%/hr over {projection.WindowSampleCount} current-window points; "
+                        + $"weekly projected 100% at {_secondaryWeeklyProjectedFullTarget.Value:ddd yyyy-MM-dd HH:mm}).");
+                }
+                else
+                {
+                    _secondaryWeeklyProjectedFullTarget = null;
+                    _secondaryWeeklyProjectedRatePerHour = 0;
+                    ActivityLog.Log(Channel, $"[secondary] weekly projection withheld: {projection.Reason}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _secondaryWeeklyProjectedFullTarget = null;
+                _secondaryWeeklyProjectedRatePerHour = 0;
+                ActivityLog.Log(Channel, $"[secondary] weekly projection update failed: {ex.Message}");
             }
         }
 
@@ -813,6 +978,13 @@ namespace BuildConsole.Services
                 ToolTip = BuildToolTip(state, reason),
                 WeeklyDisplayText = BuildWeeklyDisplayText(state),
                 WeeklyToolTip = BuildWeeklyToolTip(state, reason),
+                SecondaryConfigured = _secondaryConfigured,
+                SecondaryState = _secondaryLastState,
+                SecondaryWeeklyPercent = _secondaryWeeklyPercent,
+                SecondaryWeeklyResetTarget = _secondaryWeeklyResetTarget,
+                SecondaryLastPoll = _secondaryLastPoll,
+                SecondaryWeeklyDisplayText = BuildSecondaryWeeklyDisplayText(),
+                SecondaryWeeklyToolTip = BuildSecondaryWeeklyToolTip(),
             };
             StatusChanged?.Invoke(status);
         }
@@ -861,9 +1033,9 @@ namespace BuildConsole.Services
 
         private string BuildWeeklyDisplayText(ClaudeUsageMeterState state)
         {
-            if (!_weeklyPercent.HasValue) return "Claude Weekly: --";
+            if (!_weeklyPercent.HasValue) return "Claude Weekly (Primary): --";
 
-            string text = $"Claude Weekly: {_weeklyPercent.Value}% used";
+            string text = $"Claude Weekly (Primary): {_weeklyPercent.Value}% used";
             if (_weeklyPercent.Value >= CountdownThresholdPercent)
             {
                 var target = _weeklyResetTarget ?? GetNextWeeklyResetTarget();
@@ -898,6 +1070,57 @@ namespace BuildConsole.Services
             if (_weeklyProjectedFullTarget.HasValue)
                 tip.Append($"\nProjected 100%: {_weeklyProjectedFullTarget.Value:ddd MMM d, h:mm tt} (~{_weeklyProjectedRatePerHour:0.0}%/hr at the current rate)");
             tip.Append(_lastPoll.HasValue ? $"\nLast checked: {_lastPoll:HH:mm:ss}" : "\nLast checked: —");
+            return tip.ToString();
+        }
+
+        private string BuildSecondaryWeeklyDisplayText()
+        {
+            if (!_secondaryConfigured) return "Claude Weekly (Secondary): not configured";
+            if (_secondaryLastState == ClaudeUsageMeterState.Error) return "Claude Weekly (Secondary): error";
+            if (!_secondaryWeeklyPercent.HasValue) return "Claude Weekly (Secondary): --";
+
+            string text = $"Claude Weekly (Secondary): {_secondaryWeeklyPercent.Value}% used";
+            if (_secondaryWeeklyPercent.Value >= CountdownThresholdPercent)
+            {
+                var target = _secondaryWeeklyResetTarget ?? GetNextWeeklyResetTarget();
+                var remaining = target - DateTime.Now;
+                if (remaining > TimeSpan.Zero)
+                    text += $" — resets in {FormatCountdown(remaining)}";
+            }
+
+            if (_secondaryWeeklyProjectedFullTarget.HasValue)
+            {
+                var toFull = _secondaryWeeklyProjectedFullTarget.Value - DateTime.Now;
+                if (toFull > TimeSpan.Zero)
+                    text += $" · ~{FormatCountdown(toFull)} to 100%";
+            }
+
+            return text;
+        }
+
+        private string BuildSecondaryWeeklyToolTip()
+        {
+            var tip = new StringBuilder();
+            tip.Append("Claude usage meter (All Models tier, Secondary account)");
+
+            if (!_secondaryConfigured)
+            {
+                tip.Append("\nNot configured — set SecondaryClaudeConfigDir in BuildConsole Settings to enable this meter.");
+                return tip.ToString();
+            }
+
+            tip.Append(_secondaryLastState switch
+            {
+                ClaudeUsageMeterState.Polling => "\nChecking secondary account's Claude usage via CLI (claude -p /usage)…",
+                ClaudeUsageMeterState.Unavailable => $"\nUnavailable{(string.IsNullOrEmpty(_secondaryLastReason) ? "" : $" ({_secondaryLastReason})")} — is the secondary account's claude CLI session logged in?",
+                ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(_secondaryLastReason) ? "" : $": {_secondaryLastReason}")}",
+                _ => _secondaryWeeklyPercent.HasValue ? $"\n{_secondaryWeeklyPercent.Value}% of the All Models window used" : "",
+            });
+            var target = _secondaryWeeklyResetTarget ?? GetNextWeeklyResetTarget();
+            tip.Append($"\nResets: {target:ddd MMM d, h:mm tt}");
+            if (_secondaryWeeklyProjectedFullTarget.HasValue)
+                tip.Append($"\nProjected 100%: {_secondaryWeeklyProjectedFullTarget.Value:ddd MMM d, h:mm tt} (~{_secondaryWeeklyProjectedRatePerHour:0.0}%/hr at the current rate)");
+            tip.Append(_secondaryLastPoll.HasValue ? $"\nLast checked: {_secondaryLastPoll:HH:mm:ss}" : "\nLast checked: —");
             return tip.ToString();
         }
 
