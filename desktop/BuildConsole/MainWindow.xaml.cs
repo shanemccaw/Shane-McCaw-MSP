@@ -7713,6 +7713,31 @@ namespace BuildConsole
                     return;
                 }
 
+                // deployPsExecution → #1277: Docker build + ACR push + revision deploy of the
+                // ps-execution container to the DEV Container App (ca-ps-execution-dev) ONLY —
+                // never production (PsExecutionDeployService is dev-only by construction, #1385).
+                // See MainWindow.ShaneAppDeployPsExecution.cs.
+                if (string.Equals(req.Action, "deployPsExecution", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(req.Action, "deployPsExec", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action '{req.Action}' to deployPsExecution handler (src='{src}').");
+                    await HandleShaneAppDeployPsExecutionAsync(req, src, ch);
+                    return;
+                }
+
+                // psExecutionRevision → #1277: read-only report of the DEV container's current
+                // ACTIVE serving revision (Azure control plane), so a fix is verified against the
+                // revision that is genuinely live and not a stale one (#1434).
+                if (string.Equals(req.Action, "psExecutionRevision", StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(req.Action, "psExecRevision", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action '{req.Action}' to psExecutionRevision handler (src='{src}').");
+                    await HandleShaneAppPsExecutionRevisionAsync(req, src, ch);
+                    return;
+                }
+
                 // reportProgress → explicit progress report from running build
                 if (string.Equals(req.Action, "reportProgress", StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(req.Action, "progress", StringComparison.OrdinalIgnoreCase))
@@ -7726,7 +7751,7 @@ namespace BuildConsole
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / executeCmdlet / reportProgress are handled. Ignoring.");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / executeCmdlet / deployPsExecution / psExecutionRevision / reportProgress are handled. Ignoring.");
                     return;
                 }
 

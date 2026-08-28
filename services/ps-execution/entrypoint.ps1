@@ -86,6 +86,19 @@ $port = if ($env:PORT) { [int]$env:PORT } else { 8080 }
 # specific cmdlet genuinely needs longer.
 $childTimeoutSeconds = if ($env:PS_EXECUTION_CHILD_TIMEOUT_SECONDS) { [int]$env:PS_EXECUTION_CHILD_TIMEOUT_SECONDS } else { 60 }
 
+# #1277 — revision self-report. Azure Container Apps injects CONTAINER_APP_*
+# env vars into every running container; CONTAINER_APP_REVISION is the exact
+# revision name that is serving THIS process. Capturing it here (plus the image
+# tag and this process's start time) lets an unauthenticated GET /healthz caller
+# confirm WHICH revision is actually live from the running code itself — the
+# authoritative answer for #1482's "did my fix actually deploy, or did I verify
+# against a stale revision?" (#1434 failure mode), independent of the Azure
+# control plane's own notion of the active revision.
+$script:ContainerAppRevision = if ($env:CONTAINER_APP_REVISION) { $env:CONTAINER_APP_REVISION } else { "unknown" }
+$script:ContainerAppName     = if ($env:CONTAINER_APP_NAME) { $env:CONTAINER_APP_NAME } else { "unknown" }
+$script:ImageTag             = if ($env:PS_EXECUTION_IMAGE) { $env:PS_EXECUTION_IMAGE } else { "unknown" }
+$script:StartedAtUtc         = (Get-Date).ToUniversalTime().ToString("o")
+
 $childWorkerPath = Join-Path $PSScriptRoot "child-worker.ps1"
 
 # --- Managed Identity token acquisition (IMDS) -------------------------------
@@ -411,6 +424,25 @@ try {
         $context = $listener.GetContext()
         $request = $context.Request
         $response = $context.Response
+
+        # #1277 — unauthenticated revision self-report. Handled BEFORE the bearer
+        # gate on purpose: /healthz returns only deployment metadata (revision
+        # name, image tag, start time) — never tenant data and never anything the
+        # bearer token protects — so a caller can confirm which revision is live
+        # without holding the shared secret. Any HTTP method is accepted for it.
+        $absPath = $request.Url.AbsolutePath
+        if ($absPath -eq "/healthz" -or $absPath -eq "/__revision") {
+            $healthBody = @{
+                revision      = $script:ContainerAppRevision
+                containerApp  = $script:ContainerAppName
+                image         = $script:ImageTag
+                startedAtUtc  = $script:StartedAtUtc
+                port          = $port
+            } | ConvertTo-Json -Compress
+            Write-Log -Level "info" -Message "healthz revision self-report" -Extra @{ revision = $script:ContainerAppRevision; path = $absPath }
+            Send-JsonResponse -Response $response -StatusCode 200 -Body $healthBody
+            continue
+        }
 
         $authHeader = $request.Headers["Authorization"]
         $presentedToken = $null

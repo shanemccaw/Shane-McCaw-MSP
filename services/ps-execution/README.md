@@ -85,6 +85,52 @@ az containerapp update -n ca-ps-execution-dev -g rg-smccaw-2184 \
   --image acrsmccaw2184.azurecr.io/ps-execution:dev --revision-suffix devNNNN
 ```
 
+### Deploy to DEV — automated & agent-callable (#1277)
+
+The two `az` commands above are automated end-to-end by BuildConsole so neither
+Shane nor a build agent has to run them by hand — the whole point of #1277 is to
+remove the manual hand-deploy from the `#1482`/`#1483` diagnose → deploy →
+read-container-logs loop. It is **DEV-only by construction** (`ca-ps-execution-dev`
+is a hardcoded const in `desktop/BuildConsole/Services/PsExecutionDeployService.cs`;
+there is no parameter for the Container App name, so this path can never reach
+production `ca-ps-execution` — the #1385 isolation is structural, not a runtime
+check that could be bypassed).
+
+Agent-callable over the same `shaneapp://` local protocol every other agent action
+uses (see `desktop/BuildConsole/AGENT_PROTOCOLS.md`):
+
+```
+# Build + push + deploy a fresh revision, then confirm the now-active revision.
+# ?path= is the abs path to services/ps-execution in your checkout; ?suffix= optional.
+shaneapp://deployPsExecution?src=claude-code&path=<abs services/ps-execution>
+
+# Read-only: which revision is serving RIGHT NOW (Azure control plane)?
+shaneapp://psExecutionRevision?src=claude-code
+```
+
+Both write a JSON result envelope (default `%TEMP%\shaneapp-<action>.result.json`)
+with the confirmed active revision `{ name, image, trafficWeight, createdTime }`.
+The precondition is #1277's stated one: `az account show` must already succeed
+non-interactively on the build machine — if it doesn't, the handler renders an
+honest `blocked: true` state rather than working around an interactive login.
+
+**Verifying WHICH revision is live — two authoritative sources:**
+
+1. **Azure control plane** — `az containerapp revision list … --query "[?properties.active]"`
+   (what `psExecutionRevision` returns): the revision Azure has switched traffic to.
+2. **The container's own `/healthz`** — an unauthenticated `GET` added in #1277 that
+   returns `{ revision, containerApp, image, startedAtUtc, port }` read from the
+   `CONTAINER_APP_REVISION` env var Azure injects. This reports the revision of the
+   code that is *genuinely executing*. The api-server reads this via
+   `artifacts/api-server/src/lib/ps-execution-revision.ts`
+   (`getServingPsExecutionRevision()`, channel `integration.azure`) so a #1482 fix is
+   verified against the live revision and not a stale one (the #1434 failure mode).
+
+```
+# /healthz needs no bearer token (it exposes only deployment metadata, no tenant data):
+curl -s https://ca-ps-execution-dev.proudstone-22013f89.eastus2.azurecontainerapps.io/healthz
+```
+
 ### One-time DEV container provisioning (for reproducibility)
 
 ```

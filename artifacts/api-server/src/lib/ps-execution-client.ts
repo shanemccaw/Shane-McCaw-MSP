@@ -55,7 +55,7 @@ const BEARER_TOKEN_SECRET_NAME = process.env.PS_EXECUTION_BEARER_TOKEN_SECRET_NA
  * container from a dev context is the exact safety gap #1385 closes, so an
  * unset dev URL throws rather than crossing over.
  */
-function getContainerUrl(): string {
+export function getPsExecutionContainerUrl(): string {
   if (isProductionEnvironment()) {
     const url = process.env.PS_EXECUTION_CONTAINER_URL;
     if (!url) throw new Error("PS_EXECUTION_CONTAINER_URL must be set (production ca-ps-execution endpoint)");
@@ -155,7 +155,7 @@ export async function callPsExecution(
   cmdletKey: string,
   params: Record<string, unknown>,
 ): Promise<PsExecutionResult> {
-  const containerUrl = getContainerUrl();
+  const containerUrl = getPsExecutionContainerUrl();
   let bearerToken = await getBearerToken();
 
   const doRequest = (token: string) =>
