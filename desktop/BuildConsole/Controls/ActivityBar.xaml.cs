@@ -27,6 +27,9 @@ namespace BuildConsole.Controls
         /// <summary>Git #980 — raised when the Build Watch icon is clicked; MainWindow toggles the floaty 8-slot Build Watch window open/closed.</summary>
         public event EventHandler? BuildWatchToggleRequested;
 
+        /// <summary>Git #1472 — raised when the Visual Test Tracker icon is clicked; MainWindow toggles the always-on-top floaty open/closed.</summary>
+        public event EventHandler? VisualTestTrackerToggleRequested;
+
         /// <summary>Raised when the Shelf icon is clicked. MainWindow owns the shelved-tab
         /// state (the live off-screen content), so it responds by calling <see cref="ShowShelf"/>
         /// with the current entries' rows.</summary>
@@ -55,6 +58,10 @@ namespace BuildConsole.Controls
         /// <summary>Git #980 — toggles the floaty 8-slot Build Watch window.</summary>
         private void BtnBuildWatch_Click(object sender, RoutedEventArgs e) =>
             BuildWatchToggleRequested?.Invoke(this, EventArgs.Empty);
+
+        /// <summary>Git #1472 — toggles the always-on-top Visual Test Tracker floaty.</summary>
+        private void BtnVisualTestTracker_Click(object sender, RoutedEventArgs e) =>
+            VisualTestTrackerToggleRequested?.Invoke(this, EventArgs.Empty);
 
         /// <summary>Shelf icon clicked — ask MainWindow (which owns the shelved-tab state)
         /// to populate + open the popout via <see cref="ShowShelf"/>.</summary>

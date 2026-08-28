@@ -151,6 +151,9 @@ namespace BuildConsole
 
         // ── Git #980: floaty 8-slot Build Watch window ──────────────────────────
         private BuildWatchWindow? _buildWatch;
+
+        // ── Git #1472: floaty Visual Test Tracker window (separate from Sticky Notes) ──
+        private VisualTestTrackerWindow? _visualTestTracker;
         // The editor pane (of the four from #893) the user last interacted with —
         // Send targets whatever Claude chat is active THERE. Updated both on tab
         // selection and on keyboard focus entering a pane (clicking into a
@@ -685,6 +688,8 @@ namespace BuildConsole
             ActivityBar.LinkedInComposerToggleRequested += (s, e) => ToggleLinkedInComposer();
             // Git #980 — floaty 8-slot Build Watch window toggle.
             ActivityBar.BuildWatchToggleRequested += (s, e) => ToggleBuildWatch();
+            // Git #1472 — floaty Visual Test Tracker window toggle.
+            ActivityBar.VisualTestTrackerToggleRequested += (s, e) => ToggleVisualTestTracker();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
             // there without changing tab selection — walk up from the newly
@@ -1084,6 +1089,90 @@ namespace BuildConsole
                 onInserted: () => win.ClearNoteText(),
                 logChannel: "sticky-notes",
                 whatSingular: "note");
+        }
+
+        /// <summary>Git #1472 — opens the always-on-top Visual Test Tracker floaty, or closes it if
+        /// already open. A NEW standalone panel, separate from Sticky Notes (#937) — same
+        /// open-or-close-on-toggle + Owner=this lifecycle as every other floaty.</summary>
+        private void ToggleVisualTestTracker()
+        {
+            if (_visualTestTracker != null)
+            {
+                _visualTestTracker.Close(); // Closed handler nulls the ref and logs "close"
+                return;
+            }
+
+            _visualTestTracker = new VisualTestTrackerWindow { Owner = this };
+            _visualTestTracker.Closed += (s, e) =>
+            {
+                _visualTestTracker = null;
+                BuildConsole.Services.ActivityLog.Log("visual-test-tracker", "close");
+            };
+            _visualTestTracker.Show();
+            BuildConsole.Services.ActivityLog.Log("visual-test-tracker", "open");
+
+            // Prime it with whatever tab is active right now, in case it's already sitting
+            // on a watched URL (opening the tracker shouldn't require a fresh navigation).
+            UpdateVisualTestTrackerForActiveTab();
+        }
+
+        /// <summary>Git #1472 — the watched base URLs the Visual Test Tracker checks navigation
+        /// against (BuildConsoleSettings.VisualTestTrackerBaseUrls — configurable, not hardcoded to
+        /// portal-v2). Returns the matching base URL (the configured entry, not the full nav URL) if
+        /// <paramref name="url"/> contains one of them, else null.</summary>
+        private static string? MatchesWatchedVisualTestBaseUrl(string? url)
+        {
+            if (string.IsNullOrEmpty(url)) return null;
+            var bases = BuildConsole.Services.BuildConsoleSettings.Load().VisualTestTrackerBaseUrls;
+            foreach (var b in bases)
+            {
+                if (string.IsNullOrWhiteSpace(b)) continue;
+                int idx = url.IndexOf(b, StringComparison.OrdinalIgnoreCase);
+                if (idx >= 0) return b;
+            }
+            return null;
+        }
+
+        /// <summary>Git #1472 — on every NavigationCompleted (any tab, any pane — see
+        /// WebView_NavigationCompleted), checks whether the navigated tab matches a watched base URL and,
+        /// if the Visual Test Tracker floaty is open, feeds it the (webView, baseUrl, pagePath). Filtered so
+        /// it never fires for e.g. claude.ai chat tabs — only tabs whose URL actually contains one of the
+        /// configured base URLs.</summary>
+        private void UpdateVisualTestTrackerForNavigatedTab(Microsoft.Web.WebView2.Wpf.WebView2? webView)
+        {
+            if (_visualTestTracker == null || webView?.Source == null) return;
+
+            string url = webView.Source.ToString();
+            var matchedBase = MatchesWatchedVisualTestBaseUrl(url);
+            if (matchedBase == null)
+            {
+                // Only clear if this navigation happened on the currently-active pane/tab — an
+                // unwatched background tab navigating shouldn't blank out the tracker.
+                var (activeWv, _) = GetActiveEditorTabWebView();
+                if (ReferenceEquals(activeWv, webView))
+                    _visualTestTracker.ClearActiveTab();
+                return;
+            }
+
+            int baseIdx = url.IndexOf(matchedBase, StringComparison.OrdinalIgnoreCase);
+            string pagePath = url.Substring(baseIdx + matchedBase.Length);
+            if (string.IsNullOrEmpty(pagePath)) pagePath = "/";
+
+            _visualTestTracker.OnTrackedNavigation(webView, matchedBase, pagePath);
+        }
+
+        /// <summary>Git #1472 — re-checks the CURRENTLY active tab (not tied to a fresh nav event) against
+        /// the watched base URLs. Used when the tracker window is first opened, so it doesn't sit blank
+        /// until the next navigation.</summary>
+        private void UpdateVisualTestTrackerForActiveTab()
+        {
+            var (activeWv, _) = GetActiveEditorTabWebView();
+            if (activeWv == null)
+            {
+                _visualTestTracker?.ClearActiveTab();
+                return;
+            }
+            UpdateVisualTestTrackerForNavigatedTab(activeWv);
         }
 
         /// <summary>
@@ -4811,6 +4900,10 @@ namespace BuildConsole
             StatusDot.Fill     = e.IsSuccess ? DotReady : DotError;
             var activeWv = sender as Microsoft.Web.WebView2.Wpf.WebView2 ?? GetActiveWebView();
             UrlStatusText.Text = activeWv.Source?.ToString() ?? string.Empty;
+
+            // Git #1472 — filtered to only fire for tabs matching the configured watched base
+            // URLs, so it never triggers on e.g. claude.ai chat tabs.
+            UpdateVisualTestTrackerForNavigatedTab(sender as Microsoft.Web.WebView2.Wpf.WebView2);
         }
 
         private void WebView_SourceChanged(

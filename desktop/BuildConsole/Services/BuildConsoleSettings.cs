@@ -219,6 +219,33 @@ namespace BuildConsole.Services
         /// <summary>Last height of the Sticky Notes floaty.</summary>
         public double StickyNotesHeight { get; set; } = 340;
 
+        // ── Git #1472 — Visual Test Tracker floaty (separate from Sticky Notes) ──
+        // A NEW standalone panel — StickyNotesWindow stays exactly as-is, untouched.
+        // Watches WebView2 navigation against a configurable list of base URLs
+        // (not hardcoded to portal-v2), so adding e.g. the marketing site's dev URL
+        // later is a config entry, not new code. Same -1-sentinel bounds pattern as
+        // Sticky Notes / Build Watch above.
+
+        /// <summary>Base URLs the Visual Test Tracker watches navigation against (substring match against
+        /// the WebView2's Source host+path) — e.g. "localhost:5175/portal/shane-mccaw-consulting/portal-v2".
+        /// Defaults to that one entry; add more here (or via Settings, once exposed) for other dev apps.</summary>
+        public List<string> VisualTestTrackerBaseUrls { get; set; } = new()
+        {
+            "localhost:5175/portal/shane-mccaw-consulting/portal-v2"
+        };
+
+        /// <summary>Last on-screen X of the Visual Test Tracker window. -1 = never positioned yet (center on first open).</summary>
+        public double VisualTestTrackerLeft { get; set; } = -1;
+
+        /// <summary>Last on-screen Y of the Visual Test Tracker window. -1 = never positioned yet (center on first open).</summary>
+        public double VisualTestTrackerTop { get; set; } = -1;
+
+        /// <summary>Last width of the Visual Test Tracker window.</summary>
+        public double VisualTestTrackerWidth { get; set; } = 380;
+
+        /// <summary>Last height of the Visual Test Tracker window.</summary>
+        public double VisualTestTrackerHeight { get; set; } = 560;
+
         // ── Git #980 — floaty Build Watch panel window bounds ────────────────
         // Shane: "put it off to another monitor and watch as it progresses."
         // Same local %AppData%\BuildConsole\settings.json store / round-trip

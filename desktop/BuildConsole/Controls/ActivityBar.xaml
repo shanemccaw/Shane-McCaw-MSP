@@ -204,6 +204,18 @@
                                Foreground="{StaticResource GreenBrush}"/>
                 </Button>
 
+                <!-- Git #1472 — Shane: per-page checkbox + notes + fast WebView2 screenshots
+                     with history, for testing pages in the WebView2 tab. A NEW standalone
+                     floaty, separate from Sticky Notes above. -->
+                <Button x:Name="BtnVisualTestTracker"
+                        Style="{StaticResource IconButton}"
+                        Width="48" Height="44"
+                        ToolTip="Visual Test Tracker — per-page checkbox/notes + screenshot history (floaty)"
+                        Click="BtnVisualTestTracker_Click">
+                    <TextBlock Text="&#xE722;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                               Foreground="{StaticResource BlueBrush}"/>
+                </Button>
+
                 <!-- Separator -->
                 <Border Height="1" Background="{StaticResource Surface0Brush}" Margin="8,6"/>
 

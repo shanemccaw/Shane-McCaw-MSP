@@ -1,0 +1,33 @@
+<Window x:Class="BuildConsole.RegionSelectOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Draw a region to capture"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        Topmost="True"
+        ShowInTaskbar="False"
+        AllowsTransparency="True"
+        Background="#40000000"
+        Cursor="Cross"
+        KeyDown="Window_KeyDown">
+    <!-- Git #1472 — transparent full-bounds overlay positioned exactly over the
+         active WebView2's on-screen rect (set by the caller before Show()). A
+         drag-a-box crop tool: MouseDown starts the rectangle, MouseMove resizes it,
+         MouseUp finalizes and closes with DialogResult=true; Esc cancels
+         (DialogResult=false). The caller reads SelectedRect (device-independent,
+         relative to this window's own top-left = the WebView2's top-left) and
+         converts to device pixels for VisualTestTrackerCapture.CaptureRegionAsync. -->
+    <Canvas x:Name="RootCanvas"
+            MouseLeftButtonDown="RootCanvas_MouseLeftButtonDown"
+            MouseMove="RootCanvas_MouseMove"
+            MouseLeftButtonUp="RootCanvas_MouseLeftButtonUp">
+        <TextBlock Canvas.Left="12" Canvas.Top="12"
+                   Text="Drag to select a region — Esc to cancel"
+                   Foreground="White" FontSize="13" FontWeight="SemiBold"
+                   Background="#80000000" Padding="6,3,6,3"/>
+        <Rectangle x:Name="SelectionRect"
+                   Stroke="#89B4FA" StrokeThickness="2"
+                   Fill="#3389B4FA"
+                   Visibility="Collapsed"/>
+    </Canvas>
+</Window>
