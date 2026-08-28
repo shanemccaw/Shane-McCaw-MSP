@@ -19,6 +19,8 @@
  * `email-*`, `ca-*`). No bespoke playbooks exist for them yet, so the panel
  * falls back to a complete generic CR flow — the same contract the reference
  * gov-detail drill-down relies on for its own keys.
+ *
+ * NO-BACKEND-TO-WIRE: every page's `topRisks` list and `secondaryRows` tenant-controls panel state fixture, per-tenant-sounding prose (e.g. "9 grants use consentType AllPrincipals") with no per-item check backing any of it — genuine backend gaps, not fixed in this pass (Git #1439 audit; flagged for a follow-up issue). `queries`/`sourceNote` are NOT tagged here: they describe the real Graph/DNS/Exchange query shapes a future wiring pass would run, not a tenant-specific claim.
  */
 
 export type EvSrc = "graph" | "dns" | "exo";
@@ -108,6 +110,8 @@ export const EV_MONO = "'SF Mono',Menlo,Consolas,monospace";
  * semantically-matching check backing them, and why the other three don't).
  * A null/unresolved field leaves that card on its fixture value — same
  * partial-overlay contract `adpWorkloadsWithLive` uses.
+ *
+ * NO-BACKEND-TO-WIRE: "App-only permissions", "Unverified publisher" and "Dormant apps" stat cards have no per-tenant check backing them at all — they render this module's fixture numbers unconditionally (Git #1439 audit; not fixed in this pass, flagged for a follow-up issue rather than redesigned here).
  */
 export function securityOauthPageWithLive(
   page: EvidencePage,
@@ -144,6 +148,8 @@ export function securityOauthPageWithLive(
  * `rows` is unconditionally cleared, live metric or not, so the page never
  * presents fabricated tenant detail as fact. `EvidenceBody` renders an
  * honest empty-state message when `rows.length === 0`.
+ *
+ * NO-BACKEND-TO-WIRE: the five per-record stat cards (Domains sending mail, SPF, SPF lookups, DKIM signing, DMARC) have no per-domain check backing them — they render this module's fixture numbers unconditionally (Git #1439 audit; not fixed in this pass, flagged for a follow-up issue rather than redesigned here).
  */
 export function securityEmailPageWithLive(
   page: EvidencePage,

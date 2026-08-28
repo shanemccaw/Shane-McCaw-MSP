@@ -12,13 +12,13 @@
  * are FIX-PANEL playbook content (`mfa-<key>`), not page content, so — as on the
  * CA page — only the id / label / status / detail the row renders are kept here.
  *
- * `MFA_GAP_USERS` and `MFA_PARTIAL_USERS` are the FALLBACK for the "gaps" and
- * "partial" states — the page prefers real `identity:mfa-registration` rows
- * via `useMfaRegistrationLive` (Git #1234) and only falls back to these
- * fixtures until that first response lands or when the tenant genuinely has
- * no collected rows. `MFA_CONTROLS` stays fixture-only: no current check
- * collects authentication-methods-policy, registration-campaign or break-glass
- * facts at item level.
+ * `MFA_GAP_USERS` and `MFA_PARTIAL_USERS` are design reference / unit-test
+ * content — the page reads real `identity:mfa-registration` rows via
+ * `useMfaRegistrationLive` (Git #1234) and, per Git #1439, no longer falls
+ * back to these when there is nothing real to show: the "gaps"/"partial"
+ * states render an honest empty state instead. `MFA_CONTROLS` stays
+ * fixture-only: no current check collects authentication-methods-policy,
+ * registration-campaign or break-glass facts at item level.
  *
  * ── Design content, not tenant data ─────────────────────────────────────────
  * The named accounts, counts and control states are the prototype's fictional

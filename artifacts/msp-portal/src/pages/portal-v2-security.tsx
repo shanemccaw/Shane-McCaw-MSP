@@ -92,11 +92,14 @@ const RED = "#f87171";
 const slug = (s: string) => s.toLowerCase().replace(/\s+/g, "-");
 
 /**
- * The four hero tiles, bound to REAL data (STEP 3). "Critical Exposures" is the
- * real critical finding count; "Security Findings" the real total. "MFA Coverage"
- * (a %, with no denominator check) and "Secure Score" (real, but served by the
- * separate security-posture route, not this payload) have no real backing here —
- * they resolve an honest "not measured" state rather than the fixture 94% / 68.
+ * The four hero tiles, bound to REAL data (STEP 3, extended by Git #1439).
+ * "Critical Exposures" is the real critical finding count; "Security Findings"
+ * the real total; "Secure Score" is overlaid below from the same
+ * `useSecAreaLinksLive` batch call (`security.secureScore`, real Microsoft
+ * Secure Score) once resolved — its binding here is the pre-resolve/no-data
+ * fallback. "MFA Coverage" has no real backing anywhere: a % needs a
+ * denominator (total user count) no check collects, so it resolves an honest
+ * "not measured" state rather than the fixture's 94%.
  */
 const SEC_TILE_BINDINGS: readonly HeroTileBinding[] = [
   {
@@ -114,6 +117,7 @@ const SEC_TILE_BINDINGS: readonly HeroTileBinding[] = [
     realSub: "From your latest scan",
     source: {
       kind: "unmeasured",
+      // NO-BACKEND-TO-WIRE: no check collects a total-user-count denominator, so an MFA coverage percentage cannot be computed (only a registered-user numerator exists, e.g. via identity:mfa-registration).
       note: "MFA coverage % has no denominator check — only a registered-user count exists, and it is licence-gapped on this tenant.",
     },
   },
@@ -131,7 +135,7 @@ const SEC_TILE_BINDINGS: readonly HeroTileBinding[] = [
     realSub: "From your latest scan",
     source: {
       kind: "unmeasured",
-      note: "Microsoft Secure Score is real but served by the security-posture route, not the war-room-pillars payload these pages read.",
+      note: "Loading your Microsoft Secure Score…",
     },
   },
 ];
@@ -160,9 +164,33 @@ export default function PortalV2SecurityPage() {
   const criticalCount = live.findingCounts.critical;
 
   // Git #1258/#1337: OAuth Apps, Email Security, MFA Gaps and Legacy Auth
-  // category scores overlaid onto the fixture when real (see
-  // useSecAreaLinksLive.ts for which checks were confirmed to match).
+  // category scores, real per useSecAreaLinksLive.ts. The same batched call
+  // also carries "Secure Score" (Git #1439) — overlaid onto the hero tile
+  // `resolveHeroTile` left `unmeasured` above, once it resolves. While the
+  // call is still in flight this stays "Loading…"; once it has (successfully
+  // or not) and there is genuinely no value for this tenant, the note becomes
+  // the same honest no-scan-data phrasing every other unmeasured tile uses —
+  // never a permanent "Loading…" standing in for "there is nothing here".
   const areaLinksLive = useSecAreaLinksLive();
+  const secureScorePct = areaLinksLive.live.secureScorePct;
+  const heroTilesResolved = heroTiles.map((t) => {
+    if (t.label !== "Secure Score") return t;
+    if (secureScorePct != null) {
+      return {
+        ...t,
+        value: Math.round(secureScorePct).toLocaleString(),
+        sub: "From your latest scan",
+        unmeasured: false,
+        note: null,
+      };
+    }
+    return {
+      ...t,
+      note: areaLinksLive.loaded
+        ? "Microsoft Secure Score has not been collected for this tenant yet."
+        : "Loading your Microsoft Secure Score…",
+    };
+  });
 
   // Conditional Access (#1337): reuses `useCaBaselineLive` (#1232) directly —
   // no new resolve metric needed. The card's "N baseline policies missing"
@@ -176,23 +204,19 @@ export default function PortalV2SecurityPage() {
         .filter((r) => r.statusLabel === CA_STATUS_META.missing.label).length
     : null;
 
+  // Git #1439: every category's score is now ALWAYS the real live value (or
+  // `null`) — never `SEC_AREA_LINKS`'s own fixture number. All five checks are
+  // real and wired; the render below only reaches this once both
+  // `areaLinksLive.loaded` and `caLive.loaded` are true (see the loading gate),
+  // so a `null` here is an honest "no scan data for this category yet", not an
+  // in-flight state quietly standing in the fixture's place.
   const secAreaLinks: readonly SecAreaLink[] = SEC_AREA_LINKS.map((a) => {
-    if (a.key === "security-oauth" && areaLinksLive.live.oauthFlaggedGrantCount != null) {
-      return { ...a, score: areaLinksLive.live.oauthFlaggedGrantCount };
-    }
-    if (a.key === "security-email" && areaLinksLive.live.emailAuthFindingCount != null) {
-      return { ...a, score: areaLinksLive.live.emailAuthFindingCount };
-    }
-    if (a.key === "security-mfa" && areaLinksLive.live.mfaGapCount != null) {
-      return { ...a, score: areaLinksLive.live.mfaGapCount };
-    }
-    if (a.key === "security-legacy-auth" && areaLinksLive.live.legacyAuthCount != null) {
-      return { ...a, score: areaLinksLive.live.legacyAuthCount };
-    }
-    if (a.key === "security-ca" && caMissingCount != null) {
-      return { ...a, score: caMissingCount };
-    }
-    return a;
+    if (a.key === "security-oauth") return { ...a, score: areaLinksLive.live.oauthFlaggedGrantCount };
+    if (a.key === "security-email") return { ...a, score: areaLinksLive.live.emailAuthFindingCount };
+    if (a.key === "security-mfa") return { ...a, score: areaLinksLive.live.mfaGapCount };
+    if (a.key === "security-legacy-auth") return { ...a, score: areaLinksLive.live.legacyAuthCount };
+    if (a.key === "security-ca") return { ...a, score: caMissingCount };
+    return { ...a, score: null };
   });
   const secAreaRow1 = secAreaLinks
     .filter((a) => a.key === "security-mfa" || a.key === "security-ca")
@@ -583,7 +607,7 @@ export default function PortalV2SecurityPage() {
               </div>
             </div>
 
-            {heroTiles.map((t) => (
+            {heroTilesResolved.map((t) => (
               <div
                 key={t.label}
                 title={t.note ?? undefined}
@@ -644,14 +668,23 @@ export default function PortalV2SecurityPage() {
           </div>
         </div>
 
-        {/* ── Scan strip — proto 624-628. Red dot, not Governance's green. ── */}
+        {/* ── Scan strip — proto 624-628. Red dot, not Governance's green. ──
+            `lastScan` is real (`useScanStatus`, #1257). `scanNumber` (a
+            sequential "this is scan #N for this tenant" count),
+            `fixedSinceScan1` (a cumulative fixed-since-first-scan count) and
+            `nextScan` (a next-scheduled-scan ETA) have no backing query
+            anywhere in this codebase — `msp_diagnostic_runs` has no per-tenant
+            sequence number, no "fixed since" aggregation, and no schedule
+            table — so `SEC_HERO`'s fixture numbers stayed on screen for every
+            tenant unconditionally. Git #1439:
+            NO-BACKEND-TO-WIRE: no scan-sequence-number / cumulative-fixed-since-scan-1 / next-scheduled-scan query exists for any pillar. */}
         <PillarScanBar
           dotColor={RED}
           pillarLabel="Security"
-          scanNumber={SEC_HERO.scanNumber}
-          fixedSinceScan1={SEC_HERO.fixedSinceScan1}
+          scanNumber={NO_DATA_DASH}
+          fixedSinceScan1={NO_DATA_DASH}
           lastScan={lastScan}
-          nextScan={SEC_HERO.nextScan}
+          nextScan={NO_DATA_DASH}
         />
 
         {/* ── Security Categories — proto 630-661 ───────────────────────── */}
@@ -692,8 +725,9 @@ export default function PortalV2SecurityPage() {
             Security Categories
           </div>
           <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: 10 }}>
-            {!areaLinksLive.loaded ? (
-              // Real per-category read in flight: honest skeleton, never the
+            {!areaLinksLive.loaded || !caLive.loaded ? (
+              // Real per-category read in flight (BOTH the batch resolver and
+              // the CA baseline read, Git #1439): honest skeleton, never the
               // fixture category scores swapping in after the fact (Git #1365).
               <PortalV2LoadingState rows={2} label="Loading your security categories…" testId="pv2-sec-areas-loading" />
             ) : (
@@ -812,18 +846,19 @@ function AreaCard({ link, allLinks }: { link: SecAreaLink; allLinks: readonly Se
         >
           <Glyph size={SEC_STATUS.icon} color={SEC_STATUS.c} aria-hidden="true" />
         </span>
-        <span
+        {/* Git #1439: the real category count, or an honest muted dash — never
+            the design's own fixture number for a category with no live value. */}
+        <NoScanValue
+          value={link.score}
+          testId={`pv2-sec-area-score-${link.key}`}
           style={{
             position: "relative",
             fontSize: `${SEC_STATUS.score}px`,
             fontWeight: 800,
-            color: "#f8fafc",
             letterSpacing: "-.02em",
             fontFamily: MONO,
           }}
-        >
-          {link.score}
-        </span>
+        />
       </div>
       <div
         style={{
@@ -860,15 +895,19 @@ function AreaCard({ link, allLinks }: { link: SecAreaLink; allLinks: readonly Se
           marginTop: 2,
         }}
       >
-        <div
-          style={{
-            height: "100%",
-            borderRadius: 2,
-            width: `${progressPct}%`,
-            background: SEC_STATUS.c,
-            opacity: 0.8,
-          }}
-        />
+        {/* `progressPct` is null for a category with no live score yet (Git
+            #1439) — no fill at all, rather than a guessed severity bar. */}
+        {progressPct != null && (
+          <div
+            style={{
+              height: "100%",
+              borderRadius: 2,
+              width: `${progressPct}%`,
+              background: SEC_STATUS.c,
+              opacity: 0.8,
+            }}
+          />
+        )}
       </div>
     </Link>
   );

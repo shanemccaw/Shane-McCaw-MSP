@@ -102,7 +102,7 @@ export function useCaBaselineLive(): CaBaselineLiveState {
           setHasEntraP2(skuPartNumbers.some((s) => P2_SKU_PART_NUMBERS.includes(s)));
         }
       } catch {
-        // best-effort — the page falls back to its documented fixture on a failed load
+        // best-effort — stays null; the page renders an honest empty state (Git #1439)
       } finally {
         if (!cancelled) setLoaded(true);
       }

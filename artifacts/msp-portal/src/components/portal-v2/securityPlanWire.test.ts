@@ -3,23 +3,32 @@
  *
  * `toSecurityPlan` is the seam between GET /api/portal/security-plan and the
  * page's own `SecurityPlan` shape, and the whole point of it is the decision it
- * makes about WHICH SOURCE renders. These are the properties worth failing a
- * build over:
+ * makes about whether the payload is USABLE at all. These are the properties
+ * worth failing a build over:
  *
- *   1. A NULL / EMPTY read falls back to the fixture (returns null here), so the
- *      page never renders an empty masthead or divides its derived percentage by
- *      zero requirements.
+ *   1. A NULL / EMPTY / malformed read returns null — never the design fixture
+ *      (Git #1439 removed that fallback entirely) — so the page can render its
+ *      own honest empty state instead of an empty masthead or a divide-by-zero
+ *      on its derived percentage.
  *   2. AN UNKNOWN state is coerced to `gap`, never left as a value the row
  *      renderer would index off `SP_STATE_META` and crash on.
  *   3. THE SHAPES ARE REMAPPED, not passed through: to_route → to, updated_label
  *      → updated, and the owner chip is lifted out of the plan object.
+ *   4. `isExplicitlyNoPlan` is the ONLY thing that tells an explicit `{ plan:
+ *      null }` (this customer genuinely has none authored) apart from a
+ *      malformed non-null plan (`toSecurityPlan` returns null for both) — the
+ *      page renders different honest copy for each.
  */
 
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { toSecurityPlan, type WireSecurityPlanPayload } from "./securityPlanWire";
-import { SECURITY_PLAN, SECURITY_PLAN_OWNER } from "./securityPlanData";
+import {
+  isExplicitlyNoPlan,
+  toSecurityPlan,
+  type WireSecPlanSection,
+  type WireSecurityPlanPayload,
+} from "./securityPlanWire";
 
 const goodPayload: WireSecurityPlanPayload = {
   plan: {
@@ -53,44 +62,72 @@ const goodPayload: WireSecurityPlanPayload = {
   },
 };
 
+/** `goodPayload` with its `sections`/`history` swapped out, header fields kept. */
+function withSections(sections: readonly WireSecPlanSection[]): WireSecurityPlanPayload {
+  return { plan: { ...goodPayload.plan, sections, history: [] } };
+}
+
 describe("toSecurityPlan — source selection", () => {
-  it("returns null for a null payload (failed read -> fixture)", () => {
+  it("returns null for a null payload (failed read -> honest error state)", () => {
     assert.equal(toSecurityPlan(null), null);
   });
 
-  it("returns null when the customer has no plan (plan: null -> fixture)", () => {
+  it("returns null when the customer has no plan (plan: null -> honest no-plan state)", () => {
     assert.equal(toSecurityPlan({ plan: null }), null);
   });
 
   it("returns null when the plan has no sections", () => {
-    assert.equal(toSecurityPlan({ plan: { sections: [] } }), null);
+    assert.equal(toSecurityPlan(withSections([])), null);
   });
 
   it("returns null when every section is empty of rows (would divide-by-zero)", () => {
     assert.equal(
-      toSecurityPlan({
-        plan: { sections: [{ k: "governance", n: "02", label: "G", lead: "l", rows: [] }] },
-      }),
+      toSecurityPlan(withSections([{ k: "governance", n: "02", label: "G", lead: "l", rows: [] }])),
       null,
     );
   });
 
-  it("drops sections with no key rather than rendering an unselectable rail item", () => {
-    const out = toSecurityPlan({
-      plan: {
-        sections: [
-          {
-            k: "",
-            n: "02",
-            label: "no key",
-            lead: "l",
-            rows: [{ req: "r", state: "met", detail: "d", to: "/x", toLabel: "X" }],
-          },
-        ],
-      },
-    });
-    // The only section had no key and is dropped, leaving nothing -> fixture.
+  it("drops sections with no key rather than rendering an unselectable rail item, leaving nothing usable", () => {
+    const out = toSecurityPlan(
+      withSections([
+        {
+          k: "",
+          n: "02",
+          label: "no key",
+          lead: "l",
+          rows: [{ req: "r", state: "met", detail: "d", to: "/x", toLabel: "X" }],
+        },
+      ]),
+    );
     assert.equal(out, null);
+  });
+
+  it("Git #1439: returns null (never the design fixture) when a header field is blank on an otherwise-usable plan", () => {
+    const out = toSecurityPlan({ ...goodPayload, plan: { ...goodPayload.plan, tenant: "" } });
+    assert.equal(out, null);
+  });
+
+  it("Git #1439: returns null when the owner chip is missing on an otherwise-usable plan", () => {
+    const out = toSecurityPlan({ ...goodPayload, plan: { ...goodPayload.plan, owner: undefined } });
+    assert.equal(out, null);
+  });
+});
+
+describe("isExplicitlyNoPlan — Git #1439", () => {
+  it("is true for exactly the payload the route sends when a customer has none authored", () => {
+    assert.equal(isExplicitlyNoPlan({ plan: null }), true);
+  });
+
+  it("is false for a null payload (a failed read, not an explicit no-plan answer)", () => {
+    assert.equal(isExplicitlyNoPlan(null), false);
+  });
+
+  it("is false for a usable plan payload", () => {
+    assert.equal(isExplicitlyNoPlan(goodPayload), false);
+  });
+
+  it("is false for a malformed non-null plan (that's the 'error' branch, not 'no-plan')", () => {
+    assert.equal(isExplicitlyNoPlan(withSections([])), false);
   });
 });
 
@@ -109,43 +146,18 @@ describe("toSecurityPlan — mapping", () => {
   });
 
   it("coerces an unknown row state to gap (never crashes the row renderer)", () => {
-    const out = toSecurityPlan({
-      plan: {
-        sections: [
-          {
-            k: "governance",
-            n: "02",
-            label: "G",
-            lead: "l",
-            rows: [{ req: "r", state: "banana", detail: "d", to: "/x", toLabel: "X" }],
-          },
-        ],
-      },
-    });
+    const out = toSecurityPlan(
+      withSections([
+        {
+          k: "governance",
+          n: "02",
+          label: "G",
+          lead: "l",
+          rows: [{ req: "r", state: "banana", detail: "d", to: "/x", toLabel: "X" }],
+        },
+      ]),
+    );
     assert.ok(out);
     assert.equal(out.plan.sections[0]!.rows[0]!.state, "gap");
-  });
-
-  it("falls back to the fixture owner + header fields when the wire omits them", () => {
-    const out = toSecurityPlan({
-      plan: {
-        sections: [
-          {
-            k: "governance",
-            n: "02",
-            label: "G",
-            lead: "l",
-            rows: [{ req: "r", state: "met", detail: "d", to: "/x", toLabel: "X" }],
-          },
-        ],
-      },
-    });
-    assert.ok(out);
-    assert.deepEqual(out.owner, {
-      initials: SECURITY_PLAN_OWNER.initials,
-      tone: SECURITY_PLAN_OWNER.tone,
-    });
-    assert.equal(out.plan.tenant, SECURITY_PLAN.tenant);
-    assert.equal(out.plan.approver, SECURITY_PLAN.approver);
   });
 });

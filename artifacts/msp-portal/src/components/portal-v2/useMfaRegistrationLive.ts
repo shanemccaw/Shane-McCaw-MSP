@@ -112,7 +112,7 @@ export function useMfaRegistrationLive(): MfaRegistrationLiveState {
           setUsers(mapped.filter((u): u is LiveMfaUser => u !== null));
         }
       } catch {
-        // best-effort — the page falls back to its documented fixture on a failed load
+        // best-effort — stays null; the page renders an honest empty state (Git #1439)
       } finally {
         if (!cancelled) setLoaded(true);
       }

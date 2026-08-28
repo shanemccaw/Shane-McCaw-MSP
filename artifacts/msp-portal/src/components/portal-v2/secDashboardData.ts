@@ -23,17 +23,28 @@
  * total; "MFA Coverage" and "Secure Score" are stated gaps — a % with no
  * denominator check, and a real metric that lives on the security-posture route,
  * not this payload). The `SEC_HERO.*` / `SEC_HERO_STATS` scalars below are now
- * only FALLBACKS used before the payload loads / on an unscored tenant.
+ * only design-reference/unit-test content — no runtime path renders them.
  *
- * Still fixture, and a GENUINE GAP: the `SEC_AREA_LINKS` category scores (MFA
- * gaps / OAuth / Conditional Access / legacy auth / email) — no per-category
- * score feed exists server-side. Real backend design work, not a fixture swap.
+ * ── `SEC_AREA_LINKS.score` — design reference only (Git #1439) ──────────────
+ * All FIVE category scores now have a real backend behind them: OAuth Apps,
+ * Email Security, MFA Gaps and Legacy Auth resolve through
+ * `useSecAreaLinksLive` (#1258/#1337), Conditional Access through
+ * `useCaBaselineLive` (#1232/#1337). `portal-v2-security.tsx` no longer falls
+ * back to this module's own numbers when a live value is null after load —
+ * that was the leak Shane's live testing caught ("Security still fake data"):
+ * a licence-gapped or not-yet-collected category silently kept showing the
+ * fixture's `8`/`1`/`17`/`2`/`3` as if real. `SecAreaLink.score` is typed
+ * `number | null` for exactly that reason — the page renders an honest dash
+ * through `NoScanValue` when a category's live value is null, never this
+ * module's own number. `SEC_AREA_LINKS` itself remains the source of the
+ * design content — label, icon, sub-copy and `who` — used as literal design
+ * reference/unit-test fixtures, not swapped for a live category feed.
  */
 
 export interface SecAreaLink {
   key: string;
   label: string;
-  score: number;
+  score: number | null;
   sub: string;
   /** `iconSvg` name — mapped to its lucide-react equivalent at render. */
   icon: "lock" | "key" | "shield-check" | "clipboard-list" | "mail";
@@ -229,9 +240,19 @@ export const SEC_AREA_LINKS: readonly SecAreaLink[] = [
  *
  * `grow` is the flex-grow, so severity drives width as well: the worst card is
  * physically the widest.
+ *
+ * `maxScore` is computed off only the links with a REAL score (Git #1439):
+ * a card with no live value yet must never influence — or be influenced by —
+ * severity math derived from other tenants'/the design's own numbers.
+ * `progressPct` is `null` for such a card; the page renders no fill at all
+ * rather than guess one, and `grow` falls back to the panel's baseline width.
  */
 export function secAreaGeometry(link: SecAreaLink, links: readonly SecAreaLink[] = SEC_AREA_LINKS) {
-  const maxScore = Math.max(...links.map((x) => x.score));
+  const knownScores = links.map((x) => x.score).filter((s): s is number => s != null);
+  const maxScore = knownScores.length ? Math.max(...knownScores) : 0;
+  if (link.score == null) {
+    return { progressPct: null, grow: SEC_STATUS.grow * 0.5 };
+  }
   const severityFrac = maxScore ? link.score / maxScore : 0;
   return {
     progressPct: Math.round((1 - severityFrac) * 100),

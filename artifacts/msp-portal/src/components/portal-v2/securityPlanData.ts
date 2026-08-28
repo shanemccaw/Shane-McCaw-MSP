@@ -1,16 +1,22 @@
 /**
- * securityPlanData.ts — the Security Plan fixture.
+ * securityPlanData.ts — the Security Plan design reference.
  *
  * A faithful transcription of the prototype's `SECPLAN` object
  * ('Customer Portal Shell.dc.html' 7792-7869): the authoritative record of how
  * this tenant must be configured, monitored, governed and changed, as ten
  * numbered sections of requirements plus a version history.
  *
- * ── UI-ONLY ─────────────────────────────────────────────────────────────────
- * There is no plan-of-record endpoint yet, so every value here is the design's
- * own. Kept in one module (not inlined in the .tsx) so the later wiring pass has
- * a single file to swap. Copy is final — every requirement, detail and history
- * note is the prototype's verbatim.
+ * ── Design reference / unit-test content only (Git #1439) ───────────────────
+ * `GET /api/portal/security-plan` (`portal-security-plan.ts`) is real and
+ * wired now, backed by the manual migration
+ * `2026-08-21-portal-v2-security-plan.sql`, which seeded this exact content
+ * verbatim for the one testbed tenant (`customer_id = 1`). No runtime code path
+ * renders `SECURITY_PLAN`/`SECURITY_PLAN_OWNER` for a real customer any more —
+ * `securityPlanLive.ts` resolves an honest "no plan authored yet" or "error"
+ * state instead of ever falling back to this module. It is kept for
+ * `securityPlanWire.test.ts`/`securityPlanModel.test.ts` fixtures and as the
+ * one place documenting the design's original copy. Copy is final — every
+ * requirement, detail and history note is the prototype's verbatim.
  *
  * The header verdict, the section gap counts and the progress percentage are all
  * DERIVED from these rows (a plan must not be able to disagree with itself) and

@@ -9,17 +9,32 @@
  *
  * Every inline style value is the prototype's; no house Card/Badge is used where
  * the numbers differ. Copy is verbatim — including the heading's "22 named"
- * against a fixture of 21 policies, which is the prototype's own wording.
+ * against 21 named baseline definitions in `secCaData.ts`, which is the
+ * prototype's own wording.
+ *
+ * ── Git #1439: no more fixture-as-fallback ───────────────────────────────────
+ * The per-policy rows/stats previously fell back to `caBandsWithRows()` /
+ * `caStatCards()` — the DESIGN's own fixture statuses (a mix of "present" /
+ * "partial" / "missing" per baseline) — whenever `useCaBaselineLive` hadn't
+ * loaded yet OR the tenant genuinely had no collected rows. The second case is
+ * common and real (any tenant not yet scanned for CA policies) and was
+ * indistinguishable on screen from a real live read: a fully fabricated
+ * "18 of 22 baseline policies in place" status board, presented as fact. The
+ * page now shows a real loading skeleton while the read is in flight, and an
+ * honest "No scan data available" state when the read completed with nothing
+ * collected — never the design's own statuses.
  */
 
 import { Link } from "wouter";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
+import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
+import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { CA_MONO } from "@/components/portal-v2/secCaData";
-import { caBandsWithRows, caBandsWithRowsLive, caStatCards, caStatCardsLive } from "@/components/portal-v2/secCaModel";
+import { caBandsWithRowsLive, caStatCardsLive } from "@/components/portal-v2/secCaModel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { useCaBaselineLive } from "@/components/portal-v2/useCaBaselineLive";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
@@ -70,12 +85,14 @@ export default function PortalV2SecurityCaPage() {
 
   // The per-policy band rows: real per-policy Conditional Access status, read
   // via `useCaBaselineLive` (identity:ca-policy-count / license:sku-utilization
-  // item-detail rows, #1232). Falls back to the design fixture only until the
-  // first response lands or when the tenant genuinely has no collected rows.
+  // item-detail rows, #1232). Git #1439: no fixture fallback — a loading
+  // skeleton while `caLive.loaded` is false, an honest empty state once loaded
+  // with nothing collected, and only the real bands/stats otherwise.
   const caLive = useCaBaselineLive();
-  const rowsAreLive = caLive.loaded && caLive.policies !== null;
-  const bands = rowsAreLive ? caBandsWithRowsLive(caLive.policies!, caLive.hasEntraP2) : caBandsWithRows();
-  const stats = rowsAreLive ? caStatCardsLive(bands) : caStatCards();
+  const rowsLoaded = caLive.loaded;
+  const rowsAreLive = rowsLoaded && caLive.policies !== null;
+  const bands = rowsAreLive ? caBandsWithRowsLive(caLive.policies!, caLive.hasEntraP2) : [];
+  const stats = rowsAreLive ? caStatCardsLive(bands) : [];
 
   return (
     <PortalV2Shell eyebrow="Security" title="Conditional Access Baseline">
@@ -130,174 +147,190 @@ export default function PortalV2SecurityCaPage() {
           </span>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }} data-testid="pv2-ca-stats">
-          {stats.map((s) => (
+        {!rowsLoaded ? (
+          // Real per-policy read in flight: honest skeleton, never the design's
+          // own statuses swapping in after the fact (Git #1439).
+          <PortalV2LoadingState rows={4} label="Loading your Conditional Access baseline…" testId="pv2-ca-loading" />
+        ) : !rowsAreLive ? (
+          // Loaded, and this tenant genuinely has no collected CA policy rows —
+          // the honest empty state, never the design's own fabricated statuses.
+          <NoScanDataState
+            label="No scan data available"
+            detail="This tenant hasn't been scanned for Conditional Access policies yet."
+            testId="pv2-ca-empty"
+          />
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }} data-testid="pv2-ca-stats">
+              {stats.map((s) => (
+                <div
+                  key={s.label}
+                  style={{
+                    position: "relative",
+                    overflow: "hidden",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    border: `1px solid ${s.c}38`,
+                    background: `linear-gradient(160deg, ${s.c}12, rgba(15,23,42,.5))`,
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      right: -24,
+                      top: -28,
+                      width: 90,
+                      height: 90,
+                      borderRadius: "50%",
+                      background: `radial-gradient(circle, ${s.c}22, rgba(2,6,23,0) 70%)`,
+                      pointerEvents: "none",
+                    }}
+                  />
+                  <span style={{ position: "relative", fontSize: "9.5px", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#64748b" }}>
+                    {s.label}
+                  </span>
+                  <span style={{ position: "relative", fontSize: "22px", fontWeight: 800, letterSpacing: "-.02em", color: "#f8fafc", fontFamily: CA_MONO }}>
+                    {s.value}
+                  </span>
+                  <span style={{ position: "relative", fontSize: "10.5px", color: "#64748b" }}>{s.sub}</span>
+                </div>
+              ))}
+            </div>
+
             <div
-              key={s.label}
               style={{
-                position: "relative",
-                overflow: "hidden",
                 display: "flex",
-                flexDirection: "column",
-                gap: 4,
-                padding: "12px 14px",
-                borderRadius: 10,
-                border: `1px solid ${s.c}38`,
-                background: `linear-gradient(160deg, ${s.c}12, rgba(15,23,42,.5))`,
+                alignItems: "center",
+                gap: 12,
+                flexWrap: "wrap",
+                padding: "13px 16px",
+                border: "1px solid rgba(0,120,212,.35)",
+                borderRadius: 12,
+                background: "linear-gradient(160deg, rgba(0,120,212,.1), rgba(15,23,42,.35))",
               }}
             >
-              <div
+              <span
                 style={{
-                  position: "absolute",
-                  right: -24,
-                  top: -28,
-                  width: 90,
-                  height: 90,
-                  borderRadius: "50%",
-                  background: `radial-gradient(circle, ${s.c}22, rgba(2,6,23,0) 70%)`,
-                  pointerEvents: "none",
+                  flex: "0 0 30px",
+                  width: 30,
+                  height: 30,
+                  borderRadius: 7,
+                  border: "1px solid rgba(0,120,212,.4)",
+                  background: "rgba(0,120,212,.14)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
-              />
-              <span style={{ position: "relative", fontSize: "9.5px", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#64748b" }}>
-                {s.label}
+              >
+                <WrenchIcon />
               </span>
-              <span style={{ position: "relative", fontSize: "22px", fontWeight: 800, letterSpacing: "-.02em", color: "#f8fafc", fontFamily: CA_MONO }}>
-                {s.value}
+              <span style={{ flex: 1, minWidth: 200, fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.5 }}>
+                The wrench on any policy below opens the same three choices: build it via Graph, hand it to Shane, or follow
+                the exact clicks yourself.
               </span>
-              <span style={{ position: "relative", fontSize: "10.5px", color: "#64748b" }}>{s.sub}</span>
-            </div>
-          ))}
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-            padding: "13px 16px",
-            border: "1px solid rgba(0,120,212,.35)",
-            borderRadius: 12,
-            background: "linear-gradient(160deg, rgba(0,120,212,.1), rgba(15,23,42,.35))",
-          }}
-        >
-          <span
-            style={{
-              flex: "0 0 30px",
-              width: 30,
-              height: 30,
-              borderRadius: 7,
-              border: "1px solid rgba(0,120,212,.4)",
-              background: "rgba(0,120,212,.14)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <WrenchIcon />
-          </span>
-          <span style={{ flex: 1, minWidth: 200, fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.5 }}>
-            The wrench on any policy below opens the same three choices: build it via Graph, hand it to Shane, or follow
-            the exact clicks yourself.
-          </span>
-        </div>
-
-        {bands.map((band) => (
-          <div
-            key={band.range}
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 0,
-              border: "1px solid rgba(30,41,59,.9)",
-              borderRadius: 14,
-              background: "rgba(15,23,42,.35)",
-              overflow: "hidden",
-            }}
-            data-testid={`pv2-ca-band-${band.range}`}
-          >
-            <div style={{ padding: "13px 16px", display: "flex", flexDirection: "column", gap: 3, background: "linear-gradient(160deg, rgba(139,92,246,.07), rgba(15,23,42,0))" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
-                <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".1em", color: "#a78bfa", fontFamily: CA_MONO }}>{band.range}</span>
-                <span style={{ fontSize: "13px", fontWeight: 700, color: "#f1f5f9" }}>{band.label}</span>
-                <span style={{ fontSize: "10.5px", color: "#64748b" }}>{band.count} policies</span>
-              </div>
-              <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.5 }}>{band.desc}</span>
             </div>
 
-            {band.rows.map((cr) => (
+            {bands.map((band) => (
               <div
-                key={cr.id}
+                key={band.range}
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  gap: 5,
-                  padding: "12px 14px",
-                  borderTop: "1px solid rgba(30,41,59,.8)",
-                  background: cr.actionable ? "transparent" : "rgba(52,211,153,.03)",
+                  gap: 0,
+                  border: "1px solid rgba(30,41,59,.9)",
+                  borderRadius: 14,
+                  background: "rgba(15,23,42,.35)",
+                  overflow: "hidden",
                 }}
+                data-testid={`pv2-ca-band-${band.range}`}
               >
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-                  <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: "11.5px", fontWeight: 700, color: cr.actionable ? "#e2e8f0" : "#94a3b8", letterSpacing: "-.01em", lineHeight: 1.4, fontFamily: CA_MONO }}>
-                        {cr.id}
-                      </span>
-                      <span
-                        style={{
-                          flex: "0 0 auto",
-                          padding: "3px 8px",
-                          borderRadius: 4,
-                          border: `1px solid ${cr.statusColor}55`,
-                          background: `${cr.statusColor}14`,
-                          fontSize: "9.5px",
-                          fontWeight: 700,
-                          letterSpacing: ".07em",
-                          textTransform: "uppercase",
-                          color: cr.statusColor,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {cr.statusLabel}
-                      </span>
-                      {cr.showP2 && (
-                        <span
-                          style={{
-                            flex: "0 0 auto",
-                            padding: "3px 8px",
-                            borderRadius: 4,
-                            border: "1px solid rgba(96,165,250,.4)",
-                            background: "rgba(96,165,250,.1)",
-                            fontSize: "9.5px",
-                            fontWeight: 700,
-                            letterSpacing: ".07em",
-                            textTransform: "uppercase",
-                            color: "#60a5fa",
-                            whiteSpace: "nowrap",
-                          }}
+                <div style={{ padding: "13px 16px", display: "flex", flexDirection: "column", gap: 3, background: "linear-gradient(160deg, rgba(139,92,246,.07), rgba(15,23,42,0))" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "10px", fontWeight: 700, letterSpacing: ".1em", color: "#a78bfa", fontFamily: CA_MONO }}>{band.range}</span>
+                    <span style={{ fontSize: "13px", fontWeight: 700, color: "#f1f5f9" }}>{band.label}</span>
+                    <span style={{ fontSize: "10.5px", color: "#64748b" }}>{band.count} policies</span>
+                  </div>
+                  <span style={{ fontSize: "11.5px", color: "#94a3b8", lineHeight: 1.5 }}>{band.desc}</span>
+                </div>
+
+                {band.rows.map((cr) => (
+                  <div
+                    key={cr.id}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 5,
+                      padding: "12px 14px",
+                      borderTop: "1px solid rgba(30,41,59,.8)",
+                      background: cr.actionable ? "transparent" : "rgba(52,211,153,.03)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{ fontSize: "11.5px", fontWeight: 700, color: cr.actionable ? "#e2e8f0" : "#94a3b8", letterSpacing: "-.01em", lineHeight: 1.4, fontFamily: CA_MONO }}>
+                            {cr.id}
+                          </span>
+                          <span
+                            style={{
+                              flex: "0 0 auto",
+                              padding: "3px 8px",
+                              borderRadius: 4,
+                              border: `1px solid ${cr.statusColor}55`,
+                              background: `${cr.statusColor}14`,
+                              fontSize: "9.5px",
+                              fontWeight: 700,
+                              letterSpacing: ".07em",
+                              textTransform: "uppercase",
+                              color: cr.statusColor,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {cr.statusLabel}
+                          </span>
+                          {cr.showP2 && (
+                            <span
+                              style={{
+                                flex: "0 0 auto",
+                                padding: "3px 8px",
+                                borderRadius: 4,
+                                border: "1px solid rgba(96,165,250,.4)",
+                                background: "rgba(96,165,250,.1)",
+                                fontSize: "9.5px",
+                                fontWeight: 700,
+                                letterSpacing: ".07em",
+                                textTransform: "uppercase",
+                                color: "#60a5fa",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Entra ID P2
+                            </span>
+                          )}
+                        </div>
+                        <span style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.55 }}>{cr.purpose}</span>
+                        <span style={{ fontSize: "11.5px", color: "#64748b", lineHeight: 1.55 }}>{cr.note}</span>
+                      </div>
+                      {cr.actionable && (
+                        <button
+                          onClick={() => openFixPanel(cr.fixKey)}
+                          title="Build this policy via Microsoft Graph"
+                          data-testid={`pv2-ca-fix-${cr.id}`}
+                          style={WRENCH_BTN}
                         >
-                          Entra ID P2
-                        </span>
+                          <WrenchIcon />
+                        </button>
                       )}
                     </div>
-                    <span style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.55 }}>{cr.purpose}</span>
-                    <span style={{ fontSize: "11.5px", color: "#64748b", lineHeight: 1.55 }}>{cr.note}</span>
                   </div>
-                  {cr.actionable && (
-                    <button
-                      onClick={() => openFixPanel(cr.fixKey)}
-                      title="Build this policy via Microsoft Graph"
-                      data-testid={`pv2-ca-fix-${cr.id}`}
-                      style={WRENCH_BTN}
-                    >
-                      <WrenchIcon />
-                    </button>
-                  )}
-                </div>
+                ))}
               </div>
             ))}
-          </div>
-        ))}
+          </>
+        )}
       </div>
 
       {fixKey && (
@@ -321,7 +354,7 @@ export default function PortalV2SecurityCaPage() {
       {formElement}
       <PillarLiveSource testId="pv2-ca-source" live={live} />
       <span data-testid="pv2-ca-rows-source" style={PV2_SOURCE_CLIP}>
-        {rowsAreLive ? "live" : "fixture"}
+        {rowsAreLive ? "live" : rowsLoaded ? "empty" : "loading"}
       </span>
     </PortalV2Shell>
   );

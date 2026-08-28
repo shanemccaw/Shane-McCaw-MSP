@@ -1,11 +1,11 @@
 /**
  * useSecAreaLinksLive.ts — real-data seam for four of the Security page's
- * five `SEC_AREA_LINKS` category cards (Git #1258, extended by #1337).
+ * five `SEC_AREA_LINKS` category cards (Git #1258, extended by #1337), plus
+ * the hero's "Secure Score" tile (Git #1439).
  *
- * `secDashboardData.ts` documents ALL FIVE `SEC_AREA_LINKS` scores as fixture
- * ("no per-category score feed exists server-side"). #1258 found two of the
- * five already have a real, correctly-shaped check behind them, and #1337
- * added a third:
+ * `secDashboardData.ts` documents ALL FIVE `SEC_AREA_LINKS` scores as design
+ * reference only. #1258 found two of the five already have a real,
+ * correctly-shaped check behind them, and #1337 added a third:
  *
  *   - "OAuth Apps"      -> governance.riskyPermissionGrantCount
  *     (appgov:risky-permission-grants, registered by #1233 — tenant-wide
@@ -24,14 +24,26 @@
  *     existed in the registry from earlier work but was never overlaid onto
  *     this card).
  *
+ * Git #1439 adds a fifth metric, unrelated to the four category cards but
+ * batched through the same resolver call rather than opening a second round
+ * trip: `security.secureScore` (`dashboard-resolvers.ts` — Microsoft Secure
+ * Score's real `currentScore`/`maxScore`, normalised to a percentage), which
+ * backs the hero's "Secure Score" tile. That tile was previously left
+ * permanently `unmeasured` with a note claiming the metric "lives on the
+ * security-posture route, not this payload" — true of `useLivePillarHero`'s
+ * payload, but this hook was already calling the one route
+ * (`POST /api/dashboard/resolve`) that DOES carry it.
+ *
  * Conditional Access stays out of this hook — #1337 confirmed
  * `useCaBaselineLive` (#1232) is directly reusable for that card's "N
  * baseline policies missing" claim (see portal-v2-security.tsx), so it does
  * not need a `/api/dashboard/resolve` metric of its own.
  *
  * Same generic customer-safe batch resolver pattern as
- * `useSecEvidenceOauthLive.ts` (#1233) — `POST /api/dashboard/resolve`, best-
- * effort with a fixture fallback on any failure or unresolved key.
+ * `useSecEvidenceOauthLive.ts` (#1233) — `POST /api/dashboard/resolve`,
+ * best-effort: a failed call or an unresolved key leaves the corresponding
+ * field `null`, which the page renders as an honest no-data state (Git
+ * #1439) — never the design's own fixture number.
  */
 import { useEffect, useState } from "react";
 
@@ -43,6 +55,7 @@ const METRIC_KEYS = [
   "security.emailAuthFindingCount",
   "identity.mfaGapCount",
   "identity.legacyAuthCount",
+  "security.secureScore",
 ] as const;
 
 export interface SecAreaLinksLiveCounts {
@@ -50,6 +63,8 @@ export interface SecAreaLinksLiveCounts {
   emailAuthFindingCount: number | null;
   mfaGapCount: number | null;
   legacyAuthCount: number | null;
+  /** Microsoft Secure Score, normalised to a 0-100 percentage. */
+  secureScorePct: number | null;
 }
 
 export const SEC_AREA_LINKS_LIVE_EMPTY: SecAreaLinksLiveCounts = {
@@ -57,6 +72,7 @@ export const SEC_AREA_LINKS_LIVE_EMPTY: SecAreaLinksLiveCounts = {
   emailAuthFindingCount: null,
   mfaGapCount: null,
   legacyAuthCount: null,
+  secureScorePct: null,
 };
 
 export interface SecAreaLinksLiveState {
@@ -83,13 +99,13 @@ export function useSecAreaLinksLive(enabled = true): SecAreaLinksLiveState {
           },
           { silent: true },
         );
-        if (!res.ok) return; // 403 for Assessment-role viewers → honest fixture fallback
+        if (!res.ok) return; // 403 for Assessment-role viewers → stays unresolved (honest no-data)
         const data = (await res.json()) as { results?: Record<string, ResolvedMetric> };
         if (!cancelled && data.results && typeof data.results === "object") {
           setMetrics(data.results);
         }
       } catch {
-        // best-effort — the page renders its honest fixture fallback
+        // best-effort — stays unresolved; the page renders an honest no-data state
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -104,6 +120,7 @@ export function useSecAreaLinksLive(enabled = true): SecAreaLinksLiveState {
     emailAuthFindingCount: resolvedValue(metrics["security.emailAuthFindingCount"]),
     mfaGapCount: resolvedValue(metrics["identity.mfaGapCount"]),
     legacyAuthCount: resolvedValue(metrics["identity.legacyAuthCount"]),
+    secureScorePct: resolvedValue(metrics["security.secureScore"]),
   };
 
   return { live, loaded };

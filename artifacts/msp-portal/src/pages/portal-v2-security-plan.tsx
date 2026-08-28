@@ -3,8 +3,8 @@
  *
  * A direct port of the prototype's `isSecPlan` block
  * ('Customer Portal Shell.dc.html' 4258-4343) and its render derivation
- * (20197-20244), transcribed into `securityPlanData.ts` (the fixture) and
- * `securityPlanModel.ts` (the derived tallies).
+ * (20197-20244), transcribed into `securityPlanData.ts` (the design reference)
+ * and `securityPlanModel.ts` (the derived tallies).
  *
  * ── What this page argues ──────────────────────────────────────────────────
  * "The authoritative record of how this tenant must be configured, monitored,
@@ -14,10 +14,18 @@
  * (securityPlanModel.ts), not stated — a plan that could disagree with itself
  * would defeat its own claim.
  *
- * ── UI ONLY ─────────────────────────────────────────────────────────────────
- * There is no plan-of-record endpoint yet; every value is the design's own,
- * kept in `securityPlanData.ts` for the later wiring pass. The one piece of real
- * interactivity — selecting a section in the left rail — is driven by the model.
+ * ── Real backend, real honest states (Git #1439) ───────────────────────────
+ * `GET /api/portal/security-plan` (`artifacts/api-server/src/routes/
+ * portal-security-plan.ts`, admin-authored via the manual migration
+ * `2026-08-21-portal-v2-security-plan.sql`) is real and wired through
+ * `useSecurityPlan`. `securityPlanData.ts`'s `SECURITY_PLAN` is design
+ * reference / unit-test content only now — no runtime path renders it. Shane's
+ * live testing ("Security Plan fake data") caught the prior version silently
+ * rendering that fixture for every customer besides the one seeded testbed
+ * tenant, since most real customers genuinely have no plan authored yet. The
+ * page now resolves one of four honest states off `dataState`: a loading
+ * skeleton, the real plan, an honest "no plan authored yet" empty state, or an
+ * honest error state — never the fixture.
  *
  * ── Cross-links to pages that do not exist yet ─────────────────────────────
  * Each requirement points at the module that proves it, and the version history
@@ -33,6 +41,7 @@ import { useLocation } from "wouter";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
+import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import { type SecPlanRow } from "@/components/portal-v2/securityPlanData";
 import { useSecurityPlan } from "@/components/portal-v2/securityPlanLive";
@@ -66,15 +75,15 @@ const LIVE_ROUTES = new Set<string>([
 
 export default function PortalV2SecurityPlanPage() {
   const [, navigate] = useLocation();
-  // Live from GET /api/portal/security-plan, falling back to the design fixture
-  // (SECURITY_PLAN / SECURITY_PLAN_OWNER) on a failed read or a customer with no
-  // plan authored yet. `dataState` says which source is on screen.
-  const { plan, owner, dataState } = useSecurityPlan();
+  // Live from GET /api/portal/security-plan. `dataState` is one of four honest
+  // states (see the header). Kept as one object, not destructured, until after
+  // the state checks below — `SecurityPlanState` is a discriminated union on
+  // `dataState`, and only checking `secPlan.dataState` (the same reference)
+  // lets the compiler narrow `secPlan.plan`/`secPlan.owner` to non-null for the
+  // "live" branch, rather than the widened `| null` every other branch carries.
+  const secPlan = useSecurityPlan();
 
   const [selected, setSelected] = useState<string>("governance");
-  const section = spSelectedSection(plan, selected);
-  const counts = spCounts(plan);
-  const pct = spPct(plan);
 
   const go = (to: string) => {
     if (LIVE_ROUTES.has(to)) navigate(to);
@@ -85,7 +94,7 @@ export default function PortalV2SecurityPlanPage() {
   // fixture, so showing it here then swapping to real data would flicker a
   // confident-but-fake plan; a stable skeleton is the honest state. The source
   // marker stays in the DOM reading "loading" so the manifest can assert it.
-  if (dataState === "loading") {
+  if (secPlan.dataState === "loading") {
     return (
       <PortalV2Shell eyebrow="Governance" title="Security Plan">
         <div
@@ -101,7 +110,7 @@ export default function PortalV2SecurityPlanPage() {
           }}
         >
           <span data-testid="pv2-sp-source" style={PV2_SOURCE_CLIP}>
-            {dataState}
+            {secPlan.dataState}
           </span>
           <PortalV2LoadingState
             rows={6}
@@ -112,6 +121,54 @@ export default function PortalV2SecurityPlanPage() {
       </PortalV2Shell>
     );
   }
+
+  // Honest empty states (Git #1439) — never the design fixture. "no-plan" is the
+  // expected, common case for any real customer besides the one seeded testbed
+  // tenant; "error" is a genuinely failed or malformed read.
+  if (secPlan.dataState === "no-plan" || secPlan.dataState === "error") {
+    const isNoPlan = secPlan.dataState === "no-plan";
+    return (
+      <PortalV2Shell eyebrow="Governance" title="Security Plan">
+        <div
+          data-testid="pv2-sp-page"
+          style={{
+            maxWidth: 1180,
+            margin: "0 auto",
+            padding: "26px 28px 60px",
+            display: "flex",
+            flexDirection: "column",
+            gap: 18,
+            boxSizing: "border-box",
+          }}
+        >
+          <span data-testid="pv2-sp-source" style={PV2_SOURCE_CLIP}>
+            {secPlan.dataState}
+          </span>
+          <NoScanDataState
+            label={
+              isNoPlan
+                ? "No security plan has been authored for your tenant yet"
+                : "Your security plan could not be loaded"
+            }
+            detail={
+              isNoPlan
+                ? "Your account manager authors and signs this plan for your tenant. Reach out if you believe one is overdue."
+                : "Please refresh the page. If this keeps happening, contact support."
+            }
+            testId="pv2-sp-empty"
+          />
+        </div>
+      </PortalV2Shell>
+    );
+  }
+
+  // secPlan.dataState === "live" from here down — `plan`/`owner` are real and
+  // non-null (the compiler enforces it: SecurityPlanState is a discriminated
+  // union and every other member was returned above).
+  const { plan, owner, dataState } = secPlan;
+  const section = spSelectedSection(plan, selected);
+  const counts = spCounts(plan);
+  const pct = spPct(plan);
 
   return (
     <PortalV2Shell eyebrow="Governance" title="Security Plan">
@@ -128,13 +185,12 @@ export default function PortalV2SecurityPlanPage() {
         }}
       >
         {/*
-          Which source the plan came from — "live" once GET /api/portal/security-plan
-          returned a usable plan, "fixture" while it falls back to the design's own,
-          "loading" before the first response. The seeded plan is a verbatim copy of
-          the design fixture, so its text alone cannot tell the two apart; this is the
-          one signal that proves the page is reading the endpoint, and is what the
-          test manifest asserts. Off-screen, not display:none, so its textContent is
-          still readable by the harness.
+          Which of the four honest states rendered this pass — always "live" here,
+          since the loading/no-plan/error states return earlier. The seeded plan is
+          a verbatim copy of the design reference content, so text alone cannot
+          prove which source rendered it; this marker is the one signal that does,
+          and is what the test manifest asserts. Off-screen, not display:none, so
+          its textContent is still readable by the harness.
         */}
         <span
           data-testid="pv2-sp-source"
