@@ -26,9 +26,20 @@
  * `resolveCmpArea` seam the dashboard card uses, and `pv2-cmparea-source` states
  * which is on screen — the finding BODY stays design fixture (no per-sub-area
  * server producer exists), exactly as the Governance detail page documents.
+ *
+ * Git #1433: that fixture body is gated on `!nodata`, not just "has a
+ * finding". Of the 6 finding-backed cards, 3 (compliance-disposition,
+ * compliance-preservation-lock, compliance-holds) are classified `nodata` by
+ * `cmpAreaWiring.ts` — no producing check exists for them at all — and used
+ * to render the honest "Not measured" status pill directly above a fully
+ * fabricated finding body with invented counts (#1415's finding). Those 3
+ * now fall through to the same honest register-pointer block the inert
+ * (non-finding) cards render. The other 3 finding-backed cards stay `live`
+ * status + fixture body, the documented lower-priority case (matches
+ * security/oauth in #1414).
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "wouter";
 
 import NotFound from "@/pages/not-found";
@@ -38,6 +49,8 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+import { useAuth } from "@/lib/auth-context";
+import { reportClientEvent } from "@/lib/report-client-event";
 import { cmpAreaFor } from "@/components/portal-v2/cmpAreaModel";
 import { CMP_MONO, type CmpFinding } from "@/components/portal-v2/cmpDrilldownData";
 import { cmpSevMeta } from "@/components/portal-v2/cmpDrilldownModel";
@@ -49,6 +62,16 @@ import { CMP_STATUS_META } from "@/components/portal-v2/cmpDashboardData";
 
 /** The muted slate an honest no-data card paints itself in (matches the dashboard). */
 const NODATA_COLOR = "#64748b";
+
+/**
+ * Same telemetry channel the rest of the Compliance/Dashboard journey beacons
+ * on (`engine.dashboard`, reserved for the Dashboard / Web Part System) — see
+ * useCopilotJourney.ts's own note: there is no client-side `logger.child` in
+ * this app, so `reportClientEvent` posting to `/api/client-events` (which the
+ * server binds to a real `logger.child({ channel })`) is how a client
+ * component reaches the log stream.
+ */
+const CMP_AREA_CHANNEL = "engine.dashboard";
 
 function WrenchIcon({ color = "#60a5fa", size = 13 }: { color?: string; size?: number }) {
   return (
@@ -74,7 +97,8 @@ export default function PortalV2ComplianceAreaPage() {
 
   // Same live seam the dashboard card uses, so the status pill on this page and
   // the card that linked here agree. The finding BODY has no per-sub-area server
-  // producer, so it stays design fixture (documented gap), like gov-detail.
+  // producer, so it stays design fixture (documented gap) UNLESS the card is
+  // itself classified `nodata` (Git #1433) — see `showFinding` below.
   const live = useLivePillarHero("compliance");
   const cmpFindingSeverity = buildCmpFindingSeverityMap(live.pillars);
 
@@ -112,13 +136,48 @@ export default function PortalV2ComplianceAreaPage() {
       doneNote: f.id + " recorded as a policy decision, awaiting sign-off.",
     });
 
+  // areaRes/nodata computed unconditionally (guarded for an unresolved slug)
+  // so every hook below runs on every render, unknown-slug or not — the
+  // `if (!resolved) return <NotFound />` below must stay AFTER every hook
+  // call, never between them.
+  const areaRes = resolved ? resolveCmpArea(resolved.link.key, cmpFindingSeverity, live.loaded) : null;
+  const nodata = areaRes?.dataState === "nodata";
+  // Git #1433: a finding-backed card whose real check is classified `nodata`
+  // must never render the fabricated finding body underneath its own honest
+  // "Not measured" pill — that was a direct on-page contradiction (#1415).
+  // Those 3 cards (compliance-disposition, compliance-preservation-lock,
+  // compliance-holds) fall through to the same honest register-pointer block
+  // the inert (no-finding) cards already render.
+  const showFinding = resolved?.finding != null && !nodata;
+
+  const { accessToken } = useAuth();
+  useEffect(() => {
+    // Defensive: `finding` comes from `cmpAreaFor`'s static index into
+    // CMP_AREA_LINKS/CMP_FINDINGS, independent of cmpAreaWiring.ts's
+    // classification map. If a finding-backed card ever resolves nodata with
+    // no real backing entry at all (the "No backing classification for this
+    // card." fallback, not one of the documented nodata reasons), that is a
+    // classification-completeness bug the unit test only catches at test
+    // time — beacon it so it also shows up in the live log stream.
+    if (
+      resolved?.finding &&
+      areaRes?.dataState === "nodata" &&
+      areaRes.reason === "No backing classification for this card."
+    ) {
+      reportClientEvent(
+        accessToken,
+        "CmpAreaFindingUnclassified",
+        `Finding-backed area "${resolved.link.key}" has no CMP_AREA_BACKING entry at all.`,
+        CMP_AREA_CHANNEL,
+        { key: resolved.link.key },
+      );
+    }
+  }, [resolved, areaRes, accessToken]);
+
   // Unknown slug → NotFound, exactly as the Governance detail page does.
-  if (!resolved) return <NotFound />;
+  if (!resolved || !areaRes) return <NotFound />;
 
   const { link, finding } = resolved;
-  const areaRes = resolveCmpArea(link.key, cmpFindingSeverity, live.loaded);
-  const nodata = areaRes.dataState === "nodata";
-
   const statusMeta = CMP_STATUS_META[
     areaRes.dataState === "live" && areaRes.liveStatus ? areaRes.liveStatus : link.status
   ];
@@ -218,8 +277,8 @@ export default function PortalV2ComplianceAreaPage() {
           </span>
         </div>
 
-        {/* ── A finding-backed card renders the finding's real detail ───────── */}
-        {finding ? (
+        {/* ── A live finding-backed card renders the finding's real detail ─── */}
+        {showFinding && finding ? (
           <FindingBlock
             finding={finding}
             open={findingOpen}
