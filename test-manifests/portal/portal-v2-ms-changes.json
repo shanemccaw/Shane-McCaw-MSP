@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- MICROSOFT CHANGES (/portal-v2/ms-changes), now reading the customer's REAL Microsoft 365 Message Center from GET /api/portal/message-center instead of the msChangesData.ts design fixture. Microsoft ships in waves; pick a wave and the page becomes that wave. The eleven-bucket density grid, the five wave bands, the stat cards, the workload rows, the post corpus and the scan time are all derived from the posts message-center-sync.ts pulls from Graph /admin/serviceAnnouncement/messages. This manifest proves the DOM shows what the ENDPOINT returned: every data value it asserts is EXTRACTED FROM THE API RESPONSE at run time and interpolated, so it cannot pass against a stale fixture and does not need re-pinning when Microsoft posts again.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "a8abe937",
+  "lastVerifiedAgainstCommit": "34c5f3278",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/ms-changes/{wave}. App.tsx declares '/portal-v2/ms-changes/:wave' BEFORE '/portal-v2/ms-changes', and both before '/portal-v2/:pillar'.",
