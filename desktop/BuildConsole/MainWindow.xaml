@@ -532,7 +532,9 @@
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- Claude usage meter (Current Session) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
-                                <ColumnDefinition Width="Auto"/>  <!-- Claude Weekly usage meter (All Models) -->
+                                <ColumnDefinition Width="Auto"/>  <!-- Claude Weekly usage meter (All Models, Primary account) -->
+                                <ColumnDefinition Width="Auto"/>  <!-- sep -->
+                                <ColumnDefinition Width="Auto"/>  <!-- Claude Weekly usage meter (Secondary account, Git #1437) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
                                 <ColumnDefinition Width="Auto"/>  <!-- Claude online status (status.anthropic.com) -->
                                 <ColumnDefinition Width="Auto"/>  <!-- sep -->
@@ -666,13 +668,13 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="15"/>
-                <!-- Claude Weekly usage meter -->
+                <!-- Claude Weekly usage meter (Primary account) -->
                 <StatusBarItem Grid.Column="16">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="WeeklyUsageDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
                                  Margin="0,0,6,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="WeeklyUsageStatusText" Text="Claude Weekly: --" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="WeeklyUsageStatusText" Text="Claude Weekly (Primary): --" VerticalAlignment="Center"/>
                         <Button x:Name="BtnWeeklyUsageRefresh"
                                 Style="{StaticResource IconButton}"
                                 ToolTip="Refresh Claude weekly usage now"
@@ -683,8 +685,27 @@
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="17"/>
-                <!-- Claude Service Health Status (source: status.anthropic.com) -->
+                <!-- Claude Weekly usage meter (Secondary account, Git #1437) — always visible alongside
+                     Primary, independent of the title-bar account toggle, so Shane can see both accounts'
+                     headroom at once and route accordingly. -->
                 <StatusBarItem Grid.Column="18">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse x:Name="SecondaryWeeklyUsageDot" Width="8" Height="8"
+                                 Fill="{StaticResource Surface2Brush}"
+                                 Margin="0,0,6,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="SecondaryWeeklyUsageStatusText" Text="Claude Weekly (Secondary): --" VerticalAlignment="Center"/>
+                        <Button x:Name="BtnSecondaryWeeklyUsageRefresh"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Refresh Claude weekly usage now (Secondary account)"
+                                Padding="4,0,0,0"
+                                Margin="4,0,0,0"
+                                Content="↻"
+                                Click="BtnWeeklyUsageRefresh_Click"/>
+                    </StackPanel>
+                </StatusBarItem>
+                <Separator Grid.Column="19"/>
+                <!-- Claude Service Health Status (source: status.anthropic.com) -->
+                <StatusBarItem Grid.Column="20">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse x:Name="ClaudeOnlineDot" Width="8" Height="8"
                                  Fill="{StaticResource Surface2Brush}"
@@ -701,8 +722,8 @@
                                 Click="BtnClaudeOnlineRefresh_Click"/>
                     </StackPanel>
                 </StatusBarItem>
-                <Separator Grid.Column="19"/>
-                <StatusBarItem Grid.Column="20" Padding="6,0,10,0">
+                <Separator Grid.Column="21"/>
+                <StatusBarItem Grid.Column="22" Padding="6,0,10,0">
                     <TextBlock x:Name="ClockText" Text="00:00:00" VerticalAlignment="Center"/>
                 </StatusBarItem>
             </StatusBar>
