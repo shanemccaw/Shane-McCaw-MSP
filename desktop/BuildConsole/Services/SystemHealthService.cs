@@ -148,7 +148,7 @@ namespace BuildConsole.Services
             {
                 url = "http://localhost:8080";
             }
-            string healthUrl = url.TrimEnd('/') + "/api/health";
+            string healthUrl = url.TrimEnd('/') + "/api/healthz";
 
             var sw = Stopwatch.StartNew();
             try
