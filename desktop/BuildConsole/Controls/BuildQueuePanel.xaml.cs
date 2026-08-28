@@ -2395,13 +2395,9 @@ namespace BuildConsole.Controls
 
                 var miChangeModel = new MenuItem { Header = "⚙ Change Model" };
                 
-                var miSonnet = new MenuItem { Header = "Sonnet 3.5", IsChecked = string.Equals(item.Model, "claude-3-5-sonnet", StringComparison.OrdinalIgnoreCase) };
-                miSonnet.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-3-5-sonnet", item.Effort, runNow: false); };
+                var miSonnet = new MenuItem { Header = "Sonnet 5", IsChecked = string.Equals(item.Model, "claude-sonnet-5", StringComparison.OrdinalIgnoreCase) };
+                miSonnet.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-sonnet-5", item.Effort, runNow: false); };
                 miChangeModel.Items.Add(miSonnet);
-
-                var miHaiku = new MenuItem { Header = "Haiku 3.5", IsChecked = string.Equals(item.Model, "claude-3-5-haiku", StringComparison.OrdinalIgnoreCase) };
-                miHaiku.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-3-5-haiku", item.Effort, runNow: false); };
-                miChangeModel.Items.Add(miHaiku);
 
                 cm.Items.Add(miChangeModel);
 
@@ -2422,13 +2418,9 @@ namespace BuildConsole.Controls
                 cm.Items.Add(miChangeEffort);
                 cm.Items.Add(new Separator());
 
-                var miRunNowSonnetMed = new MenuItem { Header = "🚀 Run Now (Sonnet 3.5, Medium)" };
-                miRunNowSonnetMed.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-3-5-sonnet", "medium", runNow: true); };
+                var miRunNowSonnetMed = new MenuItem { Header = "🚀 Run Now (Sonnet 5, Medium)" };
+                miRunNowSonnetMed.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-sonnet-5", "medium", runNow: true); };
                 cm.Items.Add(miRunNowSonnetMed);
-
-                var miRunNowHaikuMed = new MenuItem { Header = "🚀 Run Now (Haiku 3.5, Medium)" };
-                miRunNowHaikuMed.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-3-5-haiku", "medium", runNow: true); };
-                cm.Items.Add(miRunNowHaikuMed);
             }
             else
             {

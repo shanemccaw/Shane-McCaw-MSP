@@ -2068,7 +2068,7 @@ namespace BuildConsole.Controls
 
             try
             {
-                string model = _associatedBuild?.Model ?? "claude-3-5-sonnet";
+                string model = _associatedBuild?.Model ?? "claude-sonnet-5";
                 string effort = _associatedBuild?.Effort ?? "normal";
                 string cwd = _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot() ?? "";
                 List<int>? blockedBy = _associatedBuild?.BlockedByNumbers;

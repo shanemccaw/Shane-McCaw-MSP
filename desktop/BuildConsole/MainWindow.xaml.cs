@@ -2238,6 +2238,8 @@ namespace BuildConsole
                 }
             };
 
+            var wrappedWv = CreateChatContextWrapper(wv);
+
             var webContainer = new Grid
             {
                 Background = (Brush)FindResource("BaseBrush")
@@ -2246,10 +2248,10 @@ namespace BuildConsole
             webContainer.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
             Grid.SetRow(navBar, 0);
-            Grid.SetRow(wv, 1);
+            Grid.SetRow(wrappedWv, 1);
 
             webContainer.Children.Add(navBar);
-            webContainer.Children.Add(wv);
+            webContainer.Children.Add(wrappedWv);
             webContainer.Children.Add(popup);
 
             var newTab = new TabItem
@@ -2369,6 +2371,7 @@ namespace BuildConsole
             headerPanel.Children.Add(closeBtn);
 
             var wv = BuildChatWebView(chat);
+            var wrappedWv = CreateChatContextWrapper(wv);
 
             // Split grid: chat WebView2 in column 0, build output pane in
             // column 1 (starts collapsed - PollChatTabBuildStateAsync opens it
@@ -2379,8 +2382,8 @@ namespace BuildConsole
             var buildCol = new ColumnDefinition { Width = new GridLength(0) };
             splitGrid.ColumnDefinitions.Add(col0);
             splitGrid.ColumnDefinitions.Add(buildCol);
-            Grid.SetColumn(wv, 0);
-            splitGrid.Children.Add(wv);
+            Grid.SetColumn(wrappedWv, 0);
+            splitGrid.Children.Add(wrappedWv);
 
             var buildPane = new Grid { Background = (Brush)FindResource("MantleBrush") };
             buildPane.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -2767,15 +2770,21 @@ namespace BuildConsole
             return Guid.NewGuid().ToString();
         }
 
+        public FrameworkElement BuildChatWebViewWrapped(BuildConsole.Services.BoardChat chat)
+        {
+            var wv = BuildChatWebView(chat);
+            return CreateChatContextWrapper(wv);
+        }
+
         /// <summary>
         /// Local #47 — resolve the Claude chat linked to a child issue and return a
-        /// ready-to-host chat WebView2 for the immersive Focus view's OWN centre panel.
+        /// ready-to-host chat WebView2 wrapper for the immersive Focus view's OWN centre panel.
         /// Returns null (and toasts) when no chat is linked yet, so the immersive view can
         /// fall back to its own calm empty state. Crucially this does NOT touch the normal
         /// tab bar and does NOT exit immersive mode — that exit-then-open-in-main-tabs
         /// behaviour (via OpenChatForIssue) was the whole bug this fixes.
         /// </summary>
-        public Microsoft.Web.WebView2.Wpf.WebView2? BuildImmersiveChatView(int githubNumber)
+        public FrameworkElement? BuildImmersiveChatView(int githubNumber)
         {
             var chat = LeftSidebar.FindChatForIssue(githubNumber);
             if (chat == null)
@@ -2783,7 +2792,8 @@ namespace BuildConsole
                 ToastEngine.Warning("Open Chat", $"No chat linked to #{githubNumber} yet.");
                 return null;
             }
-            return BuildChatWebView(chat);
+            var wv = BuildChatWebView(chat);
+            return CreateChatContextWrapper(wv);
         }
 
         /// <summary>Git #874 — "Where you left off" click: reconstruct the BoardChat identity from the persisted snapshot and open/focus it through the same OpenChatTab path (dedupes on ConversationId).</summary>
@@ -5077,9 +5087,6 @@ namespace BuildConsole
                 // Issue #1424 — inject the chat context DOM scraper script
                 await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildConsole.Services.ChatContextMeterScript.Script);
 
-                // Set up the context meter progress bar + banner UI wrapper
-                SetupContextMeterUi(wv);
-
                 wv.WebMessageReceived -= ChatWv_WebMessageReceived;
                 wv.WebMessageReceived += ChatWv_WebMessageReceived;
                 return true;
@@ -5087,13 +5094,10 @@ namespace BuildConsole
             catch { return false; }
         }
 
-        private void SetupContextMeterUi(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        private FrameworkElement CreateChatContextWrapper(Microsoft.Web.WebView2.Wpf.WebView2 wv)
         {
-            if (wv == ClaudeWebView || wv == ReplitWatcherWebView || wv == UsageMeterWebView) return;
-            if (_contextMeters.ContainsKey(wv)) return;
-
-            var parent = wv.Parent as Panel;
-            if (parent == null) return;
+            if (wv == ClaudeWebView || wv == ReplitWatcherWebView || wv == UsageMeterWebView) return wv;
+            if (_contextMeters.TryGetValue(wv, out var existing)) return existing.ProgressBar.Parent as FrameworkElement ?? wv;
 
             // Create Banner
             var banner = new Border
@@ -5145,42 +5149,18 @@ namespace BuildConsole
                 Visibility = Visibility.Collapsed
             };
 
-            // Wrap wv inside chatContextGrid
-            int index = parent.Children.IndexOf(wv);
-            if (index < 0) return; // safety check
-
-            int gridRow = Grid.GetRow(wv);
-            int gridCol = Grid.GetColumn(wv);
-            int gridRowSpan = Grid.GetRowSpan(wv);
-            int gridColSpan = Grid.GetColumnSpan(wv);
-
-            parent.Children.RemoveAt(index);
-
             var chatContextGrid = new Grid();
             chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
 
-            // Clear Grid properties from wv
-            Grid.SetRow(wv, 2);
-            Grid.SetColumn(wv, 0);
-            Grid.SetRowSpan(wv, 1);
-            Grid.SetColumnSpan(wv, 1);
-
             Grid.SetRow(banner, 0);
             Grid.SetRow(progressBar, 1);
+            Grid.SetRow(wv, 2);
 
             chatContextGrid.Children.Add(banner);
             chatContextGrid.Children.Add(progressBar);
             chatContextGrid.Children.Add(wv);
-
-            // Re-apply parent grid properties to wrapper
-            Grid.SetRow(chatContextGrid, gridRow);
-            Grid.SetColumn(chatContextGrid, gridCol);
-            Grid.SetRowSpan(chatContextGrid, gridRowSpan);
-            Grid.SetColumnSpan(chatContextGrid, gridColSpan);
-
-            parent.Children.Insert(index, chatContextGrid);
 
             var meterState = new ChatContextMeterState
             {
@@ -5198,6 +5178,7 @@ namespace BuildConsole
             };
 
             _contextMeters[wv] = meterState;
+            return chatContextGrid;
         }
 
         private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, double cost, double remainingBuffer)
