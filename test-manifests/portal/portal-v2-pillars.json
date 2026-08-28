@@ -819,8 +819,8 @@
       "textContains": "Risk Register"
     },
     {
-      "sessionTag": "hlt-1273",
-      "name": "reset (#1273) -- back to Health for the remaining steps.",
+      "sessionTag": "setup",
+      "name": "reset (#1273) -- back to Health for the remaining steps. Retagged 'setup' (Git #1282 live-run found onlyTag scoping genuinely excludes untagged steps too -- only the literal 'setup' tag is always included alongside whatever tag onlyTag names, same as the login flow above) -- every later Health step past this point depends on this navigation having happened, so it is a real prerequisite for any onlyTag-scoped rerun of this page, not #1273-specific.",
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2/health"
     },
