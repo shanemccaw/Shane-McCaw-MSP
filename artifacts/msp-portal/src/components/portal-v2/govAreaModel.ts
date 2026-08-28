@@ -8,6 +8,8 @@
  */
 
 import {
+  GOV_AREA_DETAILS,
+  GOV_AREA_TITLES,
   GOV_DRIFT_PAGES,
   GOV_INVENTORY_PAGES,
   GOV_LIST_PAGES,
@@ -82,4 +84,20 @@ export function govAreaFor(slug: string | undefined): GovAreaResolved | null {
   const inv = GOV_INVENTORY_PAGES[key];
   if (inv) return { kind: "inventory", page: inv, rows: govInventoryRows(inv) };
   return null;
+}
+
+/**
+ * Git #1427 — the honest, count-free page title for a resolved slug. Returns
+ * null for a slug `govAreaFor` doesn't resolve, same contract as `govAreaFor`
+ * itself; the page only calls this once it already knows the slug is valid.
+ */
+export function govAreaTitleFor(slug: string | undefined): string | null {
+  if (!slug) return null;
+  return GOV_AREA_TITLES[`governance-${slug}`] ?? null;
+}
+
+/** Git #1427 — the honest `detail` line paired with `govAreaTitleFor`. */
+export function govAreaDetailFor(slug: string | undefined): string | null {
+  if (!slug) return null;
+  return GOV_AREA_DETAILS[`governance-${slug}`] ?? null;
 }

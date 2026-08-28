@@ -21,6 +21,24 @@
  * (`grid-template-columns:1.7fr 1fr;gap:22px`, collapsing to one column under
  * 900px), declared in portal-v2.css rather than approximated with Tailwind
  * fractions.
+ *
+ * ── Stat cards + evidence table are honest-empty on real data (Git #1428) ───
+ * #1413's audit confirmed no live counterpart exists anywhere for per-sub-area
+ * evidence rows — not a `??` fallback overriding a real value, a genuine backend
+ * gap. The stat cards and the evidence table (drift events, anonymous-link
+ * counts, named actors/IPs, all of it) are the design's fictional worked
+ * example, same class of leak #1342/#1364 fixed on Ownership and Change
+ * Control. They render only while `useLivePillarHero`'s `dataState` is
+ * "fixture" (this tenant is genuinely unscored yet, same case the hero score
+ * itself falls back for); the moment this page is on real, scored governance
+ * data (`dataState === "live"`, the same signal `pv2-gd-source` already
+ * reports) a real customer sees the platform's honest `NoScanDataState`
+ * instead of invented drift events — the same `dataState === "live"` gate
+ * Change Control's freeze-calendar/notification sections use for their own
+ * no-backend-at-all content (Git #1364), not the narrower Shane-only
+ * `isTestbed` QA flag. The heading/purpose/note copy, risks list, policy block
+ * and provenance stay fixture unconditionally — they're either static labels
+ * or, for risks/policy, a separate documented gap outside this issue's scope.
  */
 
 import { useState } from "react";
@@ -42,6 +60,7 @@ import {
 } from "@/components/portal-v2/govPages";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 
 /* ── Expression-built styles, transcribed from the prototype's builders ───── */
 
@@ -255,6 +274,18 @@ export default function PortalV2GovDetailPage() {
   // fixture — a documented backend gap, not fabricated per-area numbers.
   const live = useLivePillarHero("governance");
 
+  // Git #1428: the stat cards and evidence table ARE fabricated per-area
+  // numbers, unlike the rest of this page — #1413 confirmed no live producer
+  // exists anywhere for per-sub-area evidence rows, on any tenant. Gate on the
+  // SAME `live.dataState` this page's own `pv2-gd-source` marker already
+  // reports (the real/scored-vs-unscored signal `useLivePillarHero` computes),
+  // exactly the way Change Control's freeze-calendar/notification-rules
+  // sections gate their own no-backend-at-all content on `dataState === "live"`
+  // (Git #1364) rather than the narrower Shane-only `isTestbed` QA flag — so
+  // the honest state proves out on the SAME shared testbed tenant the
+  // regression manifest already logs into, not just in production.
+  const showFixture = live.dataState === "fixture";
+
   if (!page) return <NotFound />;
 
   const gridCss = page.table.cols.map((c) => c.w).join(" ");
@@ -272,6 +303,7 @@ export default function PortalV2GovDetailPage() {
         setProvOpen={setProvOpen}
         onFix={openFixPanel}
         onAskShaneBot={askShaneBot}
+        showFixture={showFixture}
       />
 
       {fixKey && (
@@ -311,6 +343,7 @@ function GovDetailBody({
   setProvOpen,
   onFix,
   onAskShaneBot,
+  showFixture,
 }: {
   page: GovPage;
   rowGrid: string;
@@ -320,6 +353,8 @@ function GovDetailBody({
   setProvOpen: (b: boolean) => void;
   onFix: (key: string) => void;
   onAskShaneBot: (topic: string) => void;
+  /** True only while this tenant is genuinely unscored (Git #1428). */
+  showFixture: boolean;
 }) {
   return (
     <div
@@ -416,75 +451,91 @@ function GovDetailBody({
       </div>
 
       {/* ── Stat cards ─────────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
-          gap: 10,
-        }}
-      >
-        {page.stats.map((s) => (
-          <div key={s.label} style={statCardStyle(s.tone)} data-testid="pv2-gd-stat">
-            <div style={statGlowStyle(s.tone)} />
-            <div
-              style={{
-                position: "relative",
-                display: "flex",
-                alignItems: "flex-start",
-                justifyContent: "space-between",
-                gap: 8,
-              }}
-            >
-              <span
+      {showFixture ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
+            gap: 10,
+          }}
+        >
+          {page.stats.map((s) => (
+            <div key={s.label} style={statCardStyle(s.tone)} data-testid="pv2-gd-stat">
+              <div style={statGlowStyle(s.tone)} />
+              <div
                 style={{
-                  fontSize: "9.5px",
-                  fontWeight: 700,
-                  letterSpacing: ".11em",
-                  textTransform: "uppercase",
-                  color: "#64748b",
-                  lineHeight: 1.3,
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "flex-start",
+                  justifyContent: "space-between",
+                  gap: 8,
                 }}
               >
-                {s.label}
-              </span>
-              <div style={{ display: "flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}>
-                <button
-                  style={SPARK_BTN}
-                  title="Ask ShaneBot about this"
-                  onClick={() =>
-                    onAskShaneBot(
-                      `Explain this from my tenant: ${s.label} is ${s.value} (${s.sub})`,
-                    )
-                  }
+                <span
+                  style={{
+                    fontSize: "9.5px",
+                    fontWeight: 700,
+                    letterSpacing: ".11em",
+                    textTransform: "uppercase",
+                    color: "#64748b",
+                    lineHeight: 1.3,
+                  }}
                 >
-                  <SparkIcon />
-                </button>
-                {s.fixKey && (
+                  {s.label}
+                </span>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, flex: "0 0 auto" }}>
                   <button
-                    style={fixBtnStyle(s.tone)}
-                    title="Fix this"
-                    data-testid={`pv2-gd-stat-fix-${s.fixKey}`}
-                    onClick={() => onFix(s.fixKey!)}
+                    style={SPARK_BTN}
+                    title="Ask ShaneBot about this"
+                    onClick={() =>
+                      onAskShaneBot(
+                        `Explain this from my tenant: ${s.label} is ${s.value} (${s.sub})`,
+                      )
+                    }
                   >
-                    <WrenchIcon color={GOV_TONE[s.tone]} size={12} />
+                    <SparkIcon />
                   </button>
-                )}
+                  {s.fixKey && (
+                    <button
+                      style={fixBtnStyle(s.tone)}
+                      title="Fix this"
+                      data-testid={`pv2-gd-stat-fix-${s.fixKey}`}
+                      onClick={() => onFix(s.fixKey!)}
+                    >
+                      <WrenchIcon color={GOV_TONE[s.tone]} size={12} />
+                    </button>
+                  )}
+                </div>
               </div>
+              <span style={STAT_VALUE}>{s.value}</span>
+              <span
+                style={{
+                  position: "relative",
+                  fontSize: "10px",
+                  color: "#64748b",
+                  lineHeight: 1.35,
+                }}
+              >
+                {s.sub}
+              </span>
             </div>
-            <span style={STAT_VALUE}>{s.value}</span>
-            <span
-              style={{
-                position: "relative",
-                fontSize: "10px",
-                color: "#64748b",
-                lineHeight: 1.35,
-              }}
-            >
-              {s.sub}
-            </span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div
+          style={{
+            border: "1px solid rgba(30,41,59,.9)",
+            borderRadius: 12,
+            background: "rgba(15,23,42,.4)",
+          }}
+        >
+          <NoScanDataState
+            testId="pv2-gd-stats-no-data"
+            label="No live data available"
+            detail="Per-sub-area evidence isn't wired to a live scan yet. No example stats are shown."
+          />
+        </div>
+      )}
 
       {/* ── Evidence table (left) + risks/policy/provenance (right) ────── */}
       <div className="pv2-gov-grid">
@@ -524,6 +575,8 @@ function GovDetailBody({
             }}
             data-testid="pv2-gd-table"
           >
+            {showFixture ? (
+              <>
             <div
               style={{
                 display: "grid",
@@ -824,6 +877,14 @@ function GovDetailBody({
                 </div>
               );
             })}
+              </>
+            ) : (
+              <NoScanDataState
+                testId="pv2-gd-table-no-data"
+                label="No scan data yet"
+                detail="Sharing-drift evidence isn't wired to a live scan yet. No example events are shown."
+              />
+            )}
           </div>
         </div>
 

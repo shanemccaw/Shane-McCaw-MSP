@@ -35,7 +35,9 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import {
   EV_MONO,
+  securityEmailPageWithLive,
   securityOauthPageWithLive,
+  securityLegacyAuthPageWithLive,
   type EvidencePage,
   type EvRow,
   type EvStatCard,
@@ -44,6 +46,9 @@ import { evSrc, evTone, evTopRisksCount, evidencePageFor } from "@/components/po
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 import { useSecEvidenceOauthLive } from "@/components/portal-v2/useSecEvidenceOauthLive";
+import { useSecEvidenceEmailLive } from "@/components/portal-v2/useSecEvidenceEmailLive";
+import { useSecEvidenceLegacyAuthLive } from "@/components/portal-v2/useSecEvidenceLegacyAuthLive";
+import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 
 /* ── Icons ─────────────────────────────────────────────────────────────────── */
 
@@ -101,8 +106,20 @@ export default function PortalV2SecurityEvidencePage() {
   const slug = location.split("/").filter(Boolean).pop();
   const fixturePage = evidencePageFor(slug);
   const isOauthPage = slug === "oauth";
+  const isEmailPage = slug === "email";
+  const isLegacyAuthPage = slug === "legacy-auth";
   const { live: oauthLive } = useSecEvidenceOauthLive(isOauthPage);
-  const page = fixturePage && isOauthPage ? securityOauthPageWithLive(fixturePage, oauthLive) : fixturePage;
+  const { live: emailLive } = useSecEvidenceEmailLive(isEmailPage);
+  const { live: legacyAuthLive } = useSecEvidenceLegacyAuthLive(isLegacyAuthPage);
+  const page = !fixturePage
+    ? fixturePage
+    : isOauthPage
+      ? securityOauthPageWithLive(fixturePage, oauthLive)
+      : isEmailPage
+        ? securityEmailPageWithLive(fixturePage, emailLive)
+        : isLegacyAuthPage
+          ? securityLegacyAuthPageWithLive(fixturePage, legacyAuthLive)
+          : fixturePage;
 
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
@@ -156,6 +173,18 @@ export default function PortalV2SecurityEvidencePage() {
         <PillarLiveSource
           testId="pv2-ev-oauth-stats-source"
           live={{ dataState: oauthLive.enterpriseAppCount != null || oauthLive.riskyPermissionGrantCount != null ? "live" : "fixture" }}
+        />
+      )}
+      {isEmailPage && (
+        <PillarLiveSource
+          testId="pv2-ev-email-stats-source"
+          live={{ dataState: emailLive.emailAuthFindingCount != null ? "live" : "fixture" }}
+        />
+      )}
+      {isLegacyAuthPage && (
+        <PillarLiveSource
+          testId="pv2-ev-legacy-stats-source"
+          live={{ dataState: legacyAuthLive.legacyAuthCount != null ? "live" : "fixture" }}
         />
       )}
     </PortalV2Shell>
@@ -311,9 +340,21 @@ function EvidenceBody({
       <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
         <span style={SECTION_LABEL}>{page.listLabel}</span>
         <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid rgba(30,41,59,.9)", borderRadius: 12, background: "rgba(15,23,42,.35)", overflow: "hidden" }} data-testid="pv2-ev-rows">
-          {page.rows.map((row, i) => (
-            <EvidenceRow key={row.name} row={row} index={i} expanded={expanded === i} onToggle={() => setExpanded(expanded === i ? null : i)} onFix={onFix} />
-          ))}
+          {page.rows.length > 0 ? (
+            page.rows.map((row, i) => (
+              <EvidenceRow key={row.name} row={row} index={i} expanded={expanded === i} onToggle={() => setExpanded(expanded === i ? null : i)} onFix={onFix} />
+            ))
+          ) : (
+            <NoScanDataState
+              label="No live data available"
+              detail={
+                page.heading === "Email Security"
+                  ? "A domain-by-domain SPF/DKIM/DMARC breakdown isn't wired to real data for your tenant here yet."
+                  : "No per-account check exists yet for legacy authentication usage."
+              }
+              testId="pv2-ev-rows-empty"
+            />
+          )}
         </div>
       </div>
 

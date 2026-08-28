@@ -16,9 +16,18 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useAuth } from "@/lib/auth-context";
+import { reportClientEvent } from "@/lib/report-client-event";
 
 const TENANT_CHECK_ITEMS_URL = "/api/portal/tenant-check-items";
 const MFA_REGISTRATION_CHECK_KEY = "identity:mfa-registration";
+
+/**
+ * There is no client-side `logger.child` in this app; the browser posts to
+ * `/api/client-events` and the server binds the channel (same convention as
+ * `useCopilotJourney`/`useRemediationPillarScores`). `engine.dashboard` is
+ * this app's existing channel for this pillar-dashboard family of hooks.
+ */
+const MFA_REGISTRATION_CHANNEL = "engine.dashboard";
 
 export interface LiveMfaUser {
   readonly name: string;
@@ -57,7 +66,7 @@ export interface MfaRegistrationLiveState {
 }
 
 export function useMfaRegistrationLive(): MfaRegistrationLiveState {
-  const { fetchWithAuth } = useAuth();
+  const { fetchWithAuth, accessToken } = useAuth();
   const [users, setUsers] = useState<readonly LiveMfaUser[] | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -65,6 +74,11 @@ export function useMfaRegistrationLive(): MfaRegistrationLiveState {
   useEffect(() => {
     fetchRef.current = fetchWithAuth;
   }, [fetchWithAuth]);
+
+  const tokenRef = useRef(accessToken);
+  useEffect(() => {
+    tokenRef.current = accessToken;
+  }, [accessToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -81,7 +95,21 @@ export function useMfaRegistrationLive(): MfaRegistrationLiveState {
 
         const rawUsers = usableItems(body.items?.[MFA_REGISTRATION_CHECK_KEY]);
         if (rawUsers) {
-          setUsers(rawUsers.map(toLiveMfaUser).filter((u): u is LiveMfaUser => u !== null));
+          const mapped = rawUsers.map(toLiveMfaUser);
+          const dropped = mapped.filter((u) => u === null).length;
+          if (dropped > 0) {
+            // The hero banner's accounts-without-MFA / admin counts (Git #1431)
+            // come straight from this array's length — a malformed row dropped
+            // here silently is a wrong number on screen, not just a missing row.
+            reportClientEvent(
+              tokenRef.current,
+              "MfaRegistrationRowsMalformed",
+              `${dropped} of ${rawUsers.length} identity:mfa-registration rows missing userDisplayName/isAdmin/isMfaRegistered`,
+              MFA_REGISTRATION_CHANNEL,
+              { dropped, total: rawUsers.length },
+            );
+          }
+          setUsers(mapped.filter((u): u is LiveMfaUser => u !== null));
         }
       } catch {
         // best-effort — the page falls back to its documented fixture on a failed load
