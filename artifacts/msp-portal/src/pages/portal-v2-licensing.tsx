@@ -26,8 +26,6 @@
  *    "Licensing Health" heading anywhere on the page.
  *  • The ring delta is GREEN (#34d399) and positive. Every other pillar's is red
  *    or muted.
- *  • The trend has its OWN maths — see `licTrendGeometry`. Reusing DriftTrend
- *    would draw a different line, so it is deliberately not used here.
  *  • It is the only pillar HERO with a provenance block, which the README
  *    places on drill-downs only.
  *  • Its stat grid is `minmax(140px,1fr)` — Governance and Compliance are 130,
@@ -44,8 +42,29 @@
  * same sentence's own "$1,470/mo" value. It was flagged rather than silently
  * corrected, and Shane confirmed on 2026-08-19 that it should be "$". The
  * "copy is final" rule was not bypassed here; it was overruled by the copy's
- * owner, which is the only way it should ever move. Manifest step L5b asserts
- * the corrected string so a future re-transcription cannot quietly undo it.
+ * owner, which is the only way it should ever move. Now recorded only in
+ * `LIC_BUCKETS` (licDashboardData.ts) — see the next section for why that
+ * object, and the bucket copy generally, no longer renders.
+ *
+ * ── Git #1446 strict pass — every NO-BACKEND-TO-WIRE field now renders
+ *    visibly, not just under a hidden test marker ───────────────────────────
+ * Shane's live-testing report was blunt: "Licensing still fake data." #1230/
+ * #1411 had already confirmed onTable, recoveredTotal, ackMonthly, the 3
+ * recovery buckets, the acknowledged-spend cards, the savings ledger and the
+ * "why the waste recurs" policy list have no real backend anywhere in this
+ * platform's schema — but #1411's fix was a HIDDEN `PV2_SOURCE_CLIP` marker
+ * layered UNDER the same fabricated dollar figures and specifics, provable
+ * only by reading `el.innerText` in a test, not by looking at the page. This
+ * pass replaces every one of those with a visible `NoScanDataState` ("No live
+ * data available" + the specific reason) instead — the fixture data those
+ * sections used to render (`LIC_BUCKETS`, `LIC_BUCKET_LINES`, `LIC_ACK`,
+ * `LIC_LEDGER`, `LIC_POLICY`, the fixture half of `LIC_HERO`, `LIC_HERO_STATS`
+ * pre-#1446) is retained in licDashboardData.ts as design-fixture reference
+ * only, each marked `NO-BACKEND-TO-WIRE:` at its declaration. The per-SKU
+ * licence LEDGER below is unaffected — Git #1230 already wired it to real
+ * `/subscribedSkus` + `sku_price_reference` data with its own considered,
+ * tested live/fixture threshold, which is a separate matter from the fields
+ * this issue named.
  */
 
 import { useState } from "react";
@@ -60,31 +79,25 @@ import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import {
   NoScanValue,
+  NoScanDataState,
   hasScanValue,
   NO_DATA_DASH,
   NO_DATA_INK,
 } from "@/components/portal-v2/NoScanDataState";
 import { useLicenseSkuLedgerLive } from "@/components/portal-v2/usePortalV2Pillars";
 import {
-  LIC_ACK,
-  LIC_ACK_COUNT,
-  LIC_BUCKETS,
+  LIC_BUCKET_GAPS,
   LIC_HERO,
   LIC_HERO_STATS,
-  LIC_LEDGER,
   LIC_LEDGER_KBI,
   LIC_LEDGER_LEGEND,
-  LIC_POLICY,
   LIC_PROV,
   LIC_SKU_TOTALS,
   LIC_TEAL,
   LIC_TONE,
-  licAckMeta,
-  licBucketPanel,
   licFmt,
   licLedgerCards,
   licLedgerCardsFromLive,
-  licTrendGeometry,
 } from "@/components/portal-v2/licDashboardData";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
@@ -101,14 +114,6 @@ const SECTION_LABEL: React.CSSProperties = {
 };
 
 const SECTION_NOTE: React.CSSProperties = { fontSize: "10.5px", color: "#475569" };
-
-const MICRO_LABEL: React.CSSProperties = {
-  fontSize: "9.5px",
-  fontWeight: 700,
-  letterSpacing: ".09em",
-  textTransform: "uppercase",
-  color: "#64748b",
-};
 
 /**
  * The knowledge-base info dot (`kbInfo`, proto 7776-7789). A small "i" that
@@ -178,7 +183,6 @@ function LicInfoDot({ title, summary }: { title: string; summary: string }) {
 }
 
 export default function PortalV2LicensingPage() {
-  const trend = licTrendGeometry();
   // Real pillar score/delta from the live health engine, with the fixture as the
   // honest-null fallback. The ring is wired here; the per-SKU ledger below is
   // wired separately via useLicenseSkuLedgerLive (Git #1230). The 3 recovery
@@ -221,7 +225,6 @@ export default function PortalV2LicensingPage() {
 
   /** `licSku` (14071) — which ledger card is open, keyed by SKU part number. */
   const [openSku, setOpenSku] = useState<string | null>(null);
-  const [openBucket, setOpenBucket] = useState<"today" | "renewal" | "reassign" | null>(null);
   const [provOpen, setProvOpen] = useState(false);
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
@@ -323,23 +326,23 @@ export default function PortalV2LicensingPage() {
               background: "rgba(20,184,166,.06)",
             }}
           >
-            <span style={{ fontSize: "15px", fontWeight: 800, color: TEAL_TEXT, fontFamily: MONO }}>
-              {LIC_HERO.ackMonthly}/mo
+            {/* NO-BACKEND-TO-WIRE: (Git #1446) no acknowledged-spend/finance-
+                decision table exists anywhere in this platform's schema
+                (confirmed by search, and by the "finance register is a later
+                phase" comment on the link below). #1411 closed the "zero
+                gating" gap with a HIDDEN test-only "fixture" marker while the
+                fabricated $900/mo and "2 decisions" kept rendering visibly —
+                Shane's live-testing report ("Licensing still fake data")
+                confirmed that is not honest. This renders a real dash and
+                says so on screen instead. */}
+            <span style={{ fontSize: "15px", fontWeight: 800, color: NO_DATA_INK, fontFamily: MONO }}>
+              {NO_DATA_DASH}/mo
             </span>
-            <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
-              recorded as intentional spend · {LIC_ACK_COUNT} decisions
+            <span style={{ fontSize: "11.5px", color: NO_DATA_INK, whiteSpace: "nowrap" }}>
+              No acknowledged-spend data available
             </span>
-            {/* Git #1411 — no acknowledged-spend/finance-decision table exists
-                anywhere in this platform's schema (confirmed by grep, and by
-                the "finance register is a later phase" comment on the link
-                below, which predates this audit). ackMonthly/LIC_ACK_COUNT
-                can never be live today, so this closes the "zero gating" gap
-                flagged in the issue with the same honest, hidden
-                live/fixture marker every other data value on this page
-                carries (pv2-lic-source, pv2-lic-ledger-source) — never a
-                silent, unmarked fixture. */}
             <span data-testid="pv2-lic-finance-source" style={PV2_SOURCE_CLIP}>
-              fixture
+              empty
             </span>
             {/* The prototype makes this an <a href="#">, not a button (3521) —
                 every other pillar's equivalent is a button. Rendered as a real
@@ -431,37 +434,43 @@ export default function PortalV2LicensingPage() {
                     fontSize: "38px",
                     fontWeight: 800,
                     letterSpacing: "-.03em",
-                    color: "#f8fafc",
+                    color: NO_DATA_INK,
                     lineHeight: 1,
                     fontFamily: MONO,
                   }}
                   data-testid="pv2-lic-on-table"
                 >
-                  {LIC_HERO.onTable}
+                  {NO_DATA_DASH}
                 </span>
                 <span style={{ fontSize: "14px", fontWeight: 700, color: "#94a3b8" }}>/month</span>
               </div>
-              <span style={{ fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.5 }}>
-                {LIC_HERO.onTableSentence}
+              {/* NO-BACKEND-TO-WIRE: (Git #1446) onTable/onTableSentence, the
+                  trend label/caption below, and the 3 HERO_STATS values
+                  (recovered this quarter, seat utilisation, next renewal) all
+                  derive from the same recovery-bucket arithmetic #1230
+                  confirmed cannot be sourced live: no billing-term (monthly
+                  vs. annual commitment) or usage-activity data exists
+                  anywhere in this platform's schema. #1411 closed the "zero
+                  gating" gap with a HIDDEN test-only marker while the
+                  fabricated $2,679/mo sentence kept rendering visibly —
+                  Shane's live-testing report ("Licensing still fake data")
+                  confirmed that is not honest. The score/delta above ARE
+                  live (`pv2-lic-source`); this body is not. */}
+              <span style={{ fontSize: "12.5px", color: NO_DATA_INK, lineHeight: 1.5 }}>
+                No live data available — no billing-term or usage-activity data exists in this
+                platform's schema to classify licence spend as removable today, recoverable at
+                renewal, or reassignable.
               </span>
-              {/* Git #1411 — onTable/onTableSentence, the trend label/caption
-                  below, and the 3 HERO_STATS values (recovered this quarter,
-                  seat utilisation, next renewal) are all derived from the
-                  same recovery-bucket arithmetic #1230 already confirmed
-                  cannot be sourced live: no billing-term (monthly vs. annual
-                  commitment) or usage-activity data exists anywhere in this
-                  platform's schema. One hidden marker for the whole hero
-                  body closes the "zero gating" gap this issue flagged,
-                  matching the ring's own pv2-lic-source marker two elements
-                  over — the score/delta ARE live; nothing else in this hero
-                  ever can be without that new backend data, which is the
-                  honest reason it stays "fixture" rather than toggling. */}
               <span data-testid="pv2-lic-hero-money-source" style={PV2_SOURCE_CLIP}>
-                fixture
+                empty
               </span>
             </div>
 
-            {/* Trend — its own geometry, and a caption below the rule. */}
+            {/* Trend — proto's own geometry when live, honest empty otherwise.
+                NO-BACKEND-TO-WIRE: (Git #1446) no backend records a
+                recovered-spend history to plot — the cumulative-savings
+                series (`LIC_SAVED_HISTORY`) is design fixture with nothing
+                real behind it, same gap as the hero figure beside it. */}
             <div
               style={{
                 flex: "1 1 260px",
@@ -481,62 +490,17 @@ export default function PortalV2LicensingPage() {
                   color: "#64748b",
                 }}
               >
-                {LIC_HERO.trendLabel}
+                Cumulative recovered
               </span>
-              <div style={{ position: "relative" }}>
-                <svg
-                  width="100%"
-                  height={trend.h}
-                  viewBox={`0 0 ${trend.w} ${trend.h}`}
-                  preserveAspectRatio="none"
-                  style={{ overflow: "visible", display: "block" }}
-                  aria-hidden="true"
-                >
-                  <defs>
-                    <linearGradient id="licTrendFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={LIC_TEAL} stopOpacity={0.38} />
-                      <stop offset="100%" stopColor={LIC_TEAL} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <path d={trend.area} fill="url(#licTrendFill)" />
-                  <polyline
-                    points={trend.line}
-                    fill="none"
-                    stroke={LIC_TEAL}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </svg>
-                {/* Dot in its own unscaled overlay, same reason as DriftTrend's. */}
-                <svg
-                  width="100%"
-                  height={trend.h}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    overflow: "visible",
-                    display: "block",
-                    pointerEvents: "none",
-                  }}
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx={`${(trend.lastX / trend.w) * 100}%`}
-                    cy={trend.lastY}
-                    r={3.5}
-                    fill={TEAL_EYEBROW}
-                  />
-                </svg>
-                <div style={{ height: 1, background: "rgba(148,163,184,.14)" }} />
-                <span
-                  style={{ display: "block", paddingTop: 5, fontSize: "10.5px", color: "#64748b" }}
-                >
-                  {LIC_HERO.trendCaption}
-                </span>
-              </div>
+              <NoScanDataState
+                compact
+                icon={false}
+                align="start"
+                label="No live data available"
+                detail="No recovered-spend history exists to plot a trend."
+                testId="pv2-lic-trend-empty"
+                style={{ padding: "8px 0 0" }}
+              />
             </div>
           </div>
 
@@ -658,6 +622,9 @@ export default function PortalV2LicensingPage() {
                 >
                   {s.label}
                 </span>
+                {/* NO-BACKEND-TO-WIRE: (Git #1446) see LIC_HERO_STATS's header
+                    note in licDashboardData.ts — no backend sources any of
+                    these three stats. */}
                 <span
                   style={
                     s.small
@@ -667,7 +634,7 @@ export default function PortalV2LicensingPage() {
                           position: "relative",
                           fontSize: "15px",
                           fontWeight: 800,
-                          color: "#f8fafc",
+                          color: NO_DATA_INK,
                           letterSpacing: "-.01em",
                           lineHeight: 1.3,
                         }
@@ -675,16 +642,16 @@ export default function PortalV2LicensingPage() {
                           position: "relative",
                           fontSize: "22px",
                           fontWeight: 800,
-                          color: "#f8fafc",
+                          color: NO_DATA_INK,
                           letterSpacing: "-.02em",
                           fontFamily: MONO,
                         }
                   }
                 >
-                  {s.value}
+                  {NO_DATA_DASH}
                 </span>
-                <span style={{ position: "relative", fontSize: "10.5px", color: "#64748b" }}>
-                  {s.sub}
+                <span style={{ position: "relative", fontSize: "10.5px", color: NO_DATA_INK }}>
+                  {s.reason}
                 </span>
               </div>
             ))}
@@ -692,10 +659,17 @@ export default function PortalV2LicensingPage() {
         </div>
 
         {/* ── The three recovery buckets — proto 3593-3612 ───────────────── */}
-        {/* Clickable: each opens its own "How X is arrived at" breakdown below
-            (proto 3644-3683). The panel is where the gross-versus-net figure is
-            shown, not hidden — the renewal bucket's $2,280 headline nets down to
-            $1,560 once the 12 hiring seats are held back. */}
+        {/* NO-BACKEND-TO-WIRE: (Git #1446) see LIC_BUCKET_GAPS's header note
+            in licDashboardData.ts — no billing-term (monthly vs. annual
+            commitment) or usage-activity data exists anywhere in this
+            platform's schema to classify a seat as today/renewal/reassign
+            (#1230's investigation, reconfirmed here). These previously
+            rendered real-looking dollar figures ($399/mo, $2,280/mo,
+            $1,470/mo) with only a hidden test marker over the whole hero two
+            sections up — Shane's live-testing report ("Licensing still fake
+            data") confirmed that is not honest. There is nothing to disclose
+            in a "how is this arrived at" breakdown either, so these cards are
+            no longer clickable. */}
         <div
           style={{
             display: "grid",
@@ -704,239 +678,67 @@ export default function PortalV2LicensingPage() {
           }}
           data-testid="pv2-lic-buckets"
         >
-          {LIC_BUCKETS.map((b) => {
-            const isOpen = openBucket === b.key;
-            return (
-              <button
-                key={b.key}
-                onClick={() => setOpenBucket(isOpen ? null : b.key)}
-                title="Show the workings"
-                data-testid={`pv2-lic-bucket-${b.key}`}
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 7,
-                  padding: "14px 16px",
-                  border: `1px solid rgba(20,184,166,${isOpen ? ".55" : ".24"})`,
-                  borderLeft: `2px solid ${LIC_TEAL}`,
-                  borderRadius: 10,
-                  background: `linear-gradient(160deg, rgba(20,184,166,${isOpen ? ".13" : ".07"}), rgba(15,23,42,.45))`,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  textAlign: "left",
-                  width: "100%",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    justifyContent: "space-between",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    width: "100%",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "9.5px",
-                      fontWeight: 700,
-                      letterSpacing: ".14em",
-                      textTransform: "uppercase",
-                      color: TEAL_EYEBROW,
-                    }}
-                  >
-                    {b.label}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "9.5px",
-                      fontWeight: 700,
-                      letterSpacing: ".05em",
-                      textTransform: "uppercase",
-                      color: "#64748b",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {b.when}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "baseline",
-                    gap: 8,
-                    flexWrap: "wrap",
-                    width: "100%",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "22px",
-                      fontWeight: 800,
-                      color: "#f8fafc",
-                      letterSpacing: "-.02em",
-                      fontFamily: MONO,
-                    }}
-                  >
-                    {b.value}
-                  </span>
-                  <span
-                    style={{ fontSize: "11px", fontWeight: 600, color: "#64748b", fontFamily: MONO }}
-                  >
-                    {b.annual}
-                  </span>
-                  <span
-                    style={{
-                      marginLeft: "auto",
-                      display: "flex",
-                      transform: `rotate(${isOpen ? 180 : 0}deg)`,
-                      transition: "transform 180ms",
-                    }}
-                  >
-                    <ChevronDown size={12} color={TEAL_EYEBROW} aria-hidden="true" />
-                  </span>
-                </div>
-                <span
-                  style={{
-                    fontSize: "11.5px",
-                    color: "#94a3b8",
-                    lineHeight: 1.55,
-                    textWrap: "pretty",
-                  }}
-                >
-                  {b.what}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* The open bucket's breakdown — proto 3660-3683. */}
-        {openBucket &&
-          (() => {
-            const panel = licBucketPanel(openBucket);
-            if (!panel) return null;
-            return (
+          {LIC_BUCKET_GAPS.map((b) => (
+            <div
+              key={b.key}
+              data-testid={`pv2-lic-bucket-${b.key}`}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 7,
+                padding: "14px 16px",
+                border: "1px solid rgba(20,184,166,.24)",
+                borderLeft: `2px solid ${LIC_TEAL}`,
+                borderRadius: 10,
+                background: "linear-gradient(160deg, rgba(20,184,166,.07), rgba(15,23,42,.45))",
+              }}
+            >
               <div
-                data-testid="pv2-lic-bucket-panel"
                 style={{
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 11,
-                  padding: "15px 17px",
-                  border: "1px solid rgba(20,184,166,.35)",
-                  borderRadius: 11,
-                  background: "rgba(2,6,23,.55)",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  width: "100%",
                 }}
               >
                 <span
                   style={{
                     fontSize: "9.5px",
-                    fontWeight: 800,
+                    fontWeight: 700,
                     letterSpacing: ".14em",
                     textTransform: "uppercase",
                     color: TEAL_EYEBROW,
                   }}
                 >
-                  {panel.title}
-                </span>
-                <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
-                  {panel.lines.map((ln) => (
-                    <div
-                      key={ln.what}
-                      style={{
-                        display: "flex",
-                        alignItems: "flex-start",
-                        gap: 14,
-                        padding: "9px 0",
-                        borderBottom: "1px solid rgba(30,41,59,.7)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          flex: 1,
-                          minWidth: 0,
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: 2,
-                        }}
-                      >
-                        <span
-                          style={{ fontSize: "12px", fontWeight: 700, color: "#e2e8f0", lineHeight: 1.4 }}
-                        >
-                          {ln.what}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            color: "#94a3b8",
-                            lineHeight: 1.5,
-                            textWrap: "pretty",
-                          }}
-                        >
-                          {ln.detail}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "9.5px",
-                            color: "#475569",
-                            lineHeight: 1.45,
-                            fontFamily: MONO,
-                          }}
-                        >
-                          {ln.src}
-                        </span>
-                      </div>
-                      <span
-                        style={{
-                          flex: "0 0 auto",
-                          fontSize: "12.5px",
-                          fontWeight: 800,
-                          fontFamily: MONO,
-                          color: ln.negative ? "#64748b" : TEAL_TEXT,
-                        }}
-                      >
-                        {ln.amt}
-                      </span>
-                    </div>
-                  ))}
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "11px 0 0" }}>
-                    <span
-                      style={{
-                        flex: 1,
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        letterSpacing: ".1em",
-                        textTransform: "uppercase",
-                        color: "#64748b",
-                      }}
-                    >
-                      What that leaves
-                    </span>
-                    <span
-                      style={{ fontSize: "15px", fontWeight: 800, color: TEAL_TEXT, fontFamily: MONO }}
-                    >
-                      {panel.totalLabel}
-                    </span>
-                    <span style={{ fontSize: "11px", color: "#64748b", fontFamily: MONO }}>
-                      {panel.totalAnnual}
-                    </span>
-                  </div>
-                </div>
-                <span
-                  style={{ fontSize: "12px", color: "#cbd5e1", lineHeight: 1.6, textWrap: "pretty" }}
-                >
-                  {panel.why}
+                  {b.label}
                 </span>
                 <span
-                  style={{ fontSize: "11px", color: "#64748b", lineHeight: 1.55, textWrap: "pretty" }}
+                  style={{
+                    fontSize: "9.5px",
+                    fontWeight: 700,
+                    letterSpacing: ".05em",
+                    textTransform: "uppercase",
+                    color: "#64748b",
+                    whiteSpace: "nowrap",
+                  }}
                 >
-                  {panel.proof}
+                  {b.when}
                 </span>
               </div>
-            );
-          })()}
+              <NoScanDataState
+                compact
+                icon={false}
+                align="start"
+                label="No live data available"
+                detail={b.reason}
+                testId={`pv2-lic-bucket-${b.key}-empty`}
+                style={{ padding: 0 }}
+              />
+            </div>
+          ))}
+        </div>
 
         {/* ── The licence ledger — proto 3614-3650 ───────────────────────── */}
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1299,159 +1101,20 @@ export default function PortalV2LicensingPage() {
                 Money you have decided to keep spending, with the reason recorded.
               </span>
             </div>
-            <div
+            {/* NO-BACKEND-TO-WIRE: (Git #1446) see LIC_ACK's header note in
+                licDashboardData.ts — no acknowledged-spend/finance-decision
+                table exists anywhere in this platform's schema. */}
+            <NoScanDataState
+              label="No live data available"
+              detail="No acknowledged-spend/finance-decision table exists in this platform's schema."
+              testId="pv2-lic-ack-cards"
               style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))",
-                gap: 10,
                 marginTop: 6,
+                border: "1px solid rgba(20,184,166,.22)",
+                borderRadius: 12,
+                background: "rgba(15,23,42,.4)",
               }}
-              data-testid="pv2-lic-ack-cards"
-            >
-              {LIC_ACK.map((a) => (
-                <div
-                  key={a.id}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 9,
-                    padding: "15px 16px",
-                    border: "1px solid rgba(20,184,166,.22)",
-                    borderRadius: 12,
-                    background: "linear-gradient(160deg, rgba(20,184,166,.06), rgba(15,23,42,.5))",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span
-                        style={{
-                          fontSize: "10.5px",
-                          fontWeight: 700,
-                          color: "#64748b",
-                          letterSpacing: ".06em",
-                          fontFamily: MONO,
-                        }}
-                      >
-                        {a.id}
-                      </span>
-                      <span
-                        style={{
-                          padding: "2px 8px",
-                          borderRadius: 4,
-                          border: "1px solid rgba(20,184,166,.4)",
-                          background: "rgba(20,184,166,.1)",
-                          fontSize: "9.5px",
-                          fontWeight: 700,
-                          letterSpacing: ".06em",
-                          textTransform: "uppercase",
-                          color: TEAL_TEXT,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Intentional spend
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "flex-end",
-                        gap: 0,
-                      }}
-                    >
-                      <span
-                        style={{ fontSize: "14px", fontWeight: 800, color: "#e2e8f0", fontFamily: MONO }}
-                      >
-                        {licFmt(a.monthly)}/mo
-                      </span>
-                      <span style={{ fontSize: "10px", color: "#64748b", fontFamily: MONO }}>
-                        {licFmt(a.monthly * 12)}/yr
-                      </span>
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "12.5px",
-                      fontWeight: 700,
-                      color: "#f1f5f9",
-                      lineHeight: 1.45,
-                      textWrap: "pretty",
-                    }}
-                  >
-                    {a.title}
-                  </span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span style={MICRO_LABEL}>Rationale</span>
-                    <span
-                      style={{
-                        fontSize: "11.5px",
-                        color: "#cbd5e1",
-                        lineHeight: 1.55,
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {a.rationale}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span style={MICRO_LABEL}>Cost of keeping it versus releasing it</span>
-                    <span
-                      style={{
-                        fontSize: "11.5px",
-                        color: "#cbd5e1",
-                        lineHeight: 1.55,
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {a.offset}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 8,
-                      paddingTop: 9,
-                      borderTop: "1px solid rgba(20,184,166,.16)",
-                    }}
-                  >
-                    {licAckMeta(a).map((m) => (
-                      <div key={m.k} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        <span
-                          style={{
-                            fontSize: "9.5px",
-                            fontWeight: 700,
-                            letterSpacing: ".07em",
-                            textTransform: "uppercase",
-                            color: "#64748b",
-                          }}
-                        >
-                          {m.k}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "11.5px",
-                            fontWeight: 600,
-                            color: "#e2e8f0",
-                            fontFamily: MONO,
-                          }}
-                        >
-                          {m.v}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+            />
           </div>
 
           {/* ── Right column — proto 3743-3804 ───────────────────────────── */}
@@ -1490,62 +1153,25 @@ export default function PortalV2LicensingPage() {
                 >
                   Savings ledger
                 </span>
-                <span
-                  style={{ fontSize: "11px", fontWeight: 700, color: TEAL_TEXT, fontFamily: MONO }}
-                >
-                  {LIC_HERO.recoveredTotal}/mo
-                </span>
-                {/* Git #1411 — recoveredTotal is the sum of the LIC_LEDGER
-                    rows below it, itself a design-fixture recovery log with
-                    no backing table (nothing in this schema records "an
-                    action was taken and it saved $X/mo"). Same honest
-                    fixture marker as the rest of this hero. */}
-                <span data-testid="pv2-lic-savings-source" style={PV2_SOURCE_CLIP}>
-                  fixture
+                <span style={{ fontSize: "11px", fontWeight: 700, color: NO_DATA_INK, fontFamily: MONO }}>
+                  {NO_DATA_DASH}/mo
                 </span>
               </div>
-              {LIC_LEDGER.map((l) => (
-                <div
-                  key={l.what}
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    gap: 10,
-                    padding: "10px 14px",
-                    borderBottom: "1px solid rgba(20,184,166,.1)",
-                  }}
-                >
-                  <div
-                    style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "11.5px",
-                        fontWeight: 600,
-                        color: "#e2e8f0",
-                        lineHeight: 1.45,
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {l.what}
-                    </span>
-                    <span style={{ fontSize: "10.5px", color: "#64748b" }}>
-                      {l.when} · {l.by}
-                    </span>
-                  </div>
-                  <span
-                    style={{
-                      flex: "0 0 auto",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      color: "#34d399",
-                      fontFamily: MONO,
-                    }}
-                  >
-                    {licFmt(l.amount)}/mo
-                  </span>
-                </div>
-              ))}
+              {/* NO-BACKEND-TO-WIRE: (Git #1446) see LIC_LEDGER's header note
+                  in licDashboardData.ts — no table anywhere in this schema
+                  records "an action was taken and it saved $X/mo", which is
+                  also what the header figure above was summed from. #1411
+                  closed the "zero gating" gap with a HIDDEN test-only marker
+                  while the fabricated recovery rows kept rendering visibly —
+                  Shane's live-testing report ("Licensing still fake data")
+                  confirmed that is not honest. */}
+              <NoScanDataState
+                compact
+                label="No live data available"
+                detail="No table records a licence-recovery action or its dollar amount."
+                testId="pv2-lic-savings-source"
+                style={{ padding: "16px 14px" }}
+              />
             </div>
 
             {/* Why the waste recurs */}
@@ -1585,93 +1211,23 @@ export default function PortalV2LicensingPage() {
                   Settings and process gaps that refill this page every quarter.
                 </span>
               </div>
-              {LIC_POLICY.map((p) => {
-                const c = LIC_TONE[p.tone];
-                return (
-                  <div
-                    key={p.name}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      padding: "11px 14px",
-                      borderBottom: "1px solid rgba(30,41,59,.8)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 4,
-                      }}
-                    >
-                      <div
-                        style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}
-                      >
-                        <span
-                          style={{
-                            fontSize: "11.5px",
-                            fontWeight: 700,
-                            color: "#e2e8f0",
-                            overflowWrap: "break-word",
-                          }}
-                        >
-                          {p.name}
-                        </span>
-                        <span
-                          style={{
-                            flex: "0 0 auto",
-                            padding: "3px 8px",
-                            borderRadius: 4,
-                            border: `1px solid ${c}55`,
-                            background: `${c}14`,
-                            fontSize: "9.5px",
-                            fontWeight: 700,
-                            letterSpacing: ".06em",
-                            textTransform: "uppercase",
-                            color: c,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {p.status}
-                        </span>
-                      </div>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "#94a3b8",
-                          lineHeight: 1.5,
-                          textWrap: "pretty",
-                        }}
-                      >
-                        {p.detail}
-                      </span>
-                    </div>
-                    <button
-                      title="Fix this"
-                      onClick={() => openFixPanel(p.fixKey)}
-                      data-testid={`pv2-lic-policy-fix-${p.fixKey}`}
-                      style={{
-                        flex: "0 0 28px",
-                        width: 28,
-                        height: 28,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderRadius: 7,
-                        border: "1px solid rgba(20,184,166,.4)",
-                        background: "rgba(20,184,166,.12)",
-                        cursor: "pointer",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      <Wrench size={13} color={TEAL_TEXT} aria-hidden="true" />
-                    </button>
-                  </div>
-                );
-              })}
+              {/* NO-BACKEND-TO-WIRE: (Git #1446) see LIC_POLICY's header note
+                  in licDashboardData.ts — none of these seven rows (self-
+                  service purchase, offboarding licence removal, group-based
+                  licensing coverage, idle-seat reclamation, licence
+                  assignment errors, renewal calendar, cost-centre
+                  attribution) has a live source anywhere in this platform's
+                  schema. Since none is known to be true for any given
+                  tenant, the "Fix this" wrenches are gone too — offering a
+                  fix for a policy gap that was never verified for this
+                  tenant would be as dishonest as the fixture status text it
+                  used to sit next to. */}
+              <NoScanDataState
+                label="No live data available"
+                detail="No self-service-purchase, offboarding, group-licensing, idle-seat-rule, assignment-error, renewal-calendar, or cost-centre data exists in this schema."
+                testId="pv2-lic-policy-empty"
+                style={{ padding: "18px 14px" }}
+              />
             </div>
 
             {/* How the figures are derived — the only provenance block on a hero. */}
@@ -1727,8 +1283,16 @@ export default function PortalV2LicensingPage() {
                   >
                     How the figures are derived
                   </span>
+                  {/* Reworded (Git #1446): every dollar figure above this
+                      block now renders an honest "No live data available"
+                      state, so this can no longer claim present tense that
+                      the page's figures trace to these calls — see LIC_PROV's
+                      header note in licDashboardData.ts. The calls and scopes
+                      listed below are real; only what they currently power on
+                      this page changed. */}
                   <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.45 }}>
-                    Every dollar traces to a call, a unit cost, and a billing term.
+                    None of the figures above are sourced from these calls today — this is what a
+                    future wiring pass would use.
                   </span>
                 </span>
               </button>

@@ -30,6 +30,7 @@ import {
   LIC_ACK,
   LIC_ACK_COUNT,
   LIC_BUCKETS,
+  LIC_BUCKET_GAPS,
   LIC_BUCKET_LINES,
   LIC_FINDINGS,
   LIC_FINDING_COUNT,
@@ -67,14 +68,20 @@ describe("Licensing hero", () => {
     assert.equal("statusLabel" in LIC_HERO, false);
   });
 
-  it("renders the renewal date as prose, not as a figure", () => {
+  it("renders the renewal stat's value as prose sizing, not as a figure — Git #1446: no live value, but the prose SIZING still applies to the honest dash", () => {
     const renewal = LIC_HERO_STATS.find((s) => s.label === "Next renewal")!;
-    assert.equal(renewal.value, "14 March 2027");
     assert.equal(renewal.small, true);
+    assert.ok(renewal.reason.length > 0, "Next renewal must state why there is no live source");
     // The other two are figures and must NOT get the prose treatment.
     LIC_HERO_STATS.filter((s) => s.label !== "Next renewal").forEach((s) =>
       assert.notEqual(s.small, true),
     );
+  });
+
+  it("Git #1446: every hero stat states a NO-BACKEND-TO-WIRE reason, since none has a live source", () => {
+    LIC_HERO_STATS.forEach((s) => {
+      assert.ok(s.reason.length > 10, `${s.label} has no real reason text`);
+    });
   });
 });
 
@@ -126,6 +133,26 @@ describe("The three recovery buckets", () => {
   it("labels each bucket with when it reaches the bill, not just how much", () => {
     assert.equal(LIC_BUCKETS[0].when, "Next invoice");
     assert.equal(LIC_BUCKETS[1].when, LIC_HERO.renewal);
+  });
+});
+
+describe("LIC_BUCKET_GAPS — Git #1446's honest replacement, actually rendered", () => {
+  it("keeps the same 3 categories in the same order as the retained fixture", () => {
+    assert.deepEqual(
+      LIC_BUCKET_GAPS.map((b) => b.key),
+      LIC_BUCKETS.map((b) => b.key),
+    );
+    assert.deepEqual(
+      LIC_BUCKET_GAPS.map((b) => b.label),
+      LIC_BUCKETS.map((b) => b.label),
+    );
+  });
+
+  it("states a real NO-BACKEND-TO-WIRE reason for every bucket, never a dollar figure", () => {
+    LIC_BUCKET_GAPS.forEach((b) => {
+      assert.ok(b.reason.length > 10, `${b.key} has no real reason text`);
+      assert.doesNotMatch(b.reason, /\$\d/, `${b.key}'s reason must not carry a fabricated dollar figure`);
+    });
   });
 });
 

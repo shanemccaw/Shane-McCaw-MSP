@@ -41,37 +41,35 @@ export function licFmt(n: number): string {
 /**
  * Hero scalars — 12281-12282 and the renderVals literals at 17504-17512.
  *
- * ── Git #1411 audit — every field's live/fixture status, checked one by one ──
+ * ── Git #1446 strict pass — this object is design fixture, kept for reference,
+ *    NO LONGER RENDERED as if it were data (superseding the #1411 approach) ──
  * `score` and `delta` are overlaid live in the page (`useLivePillarHero`,
  * #1387's honest-null contract) — never read as literals off this object once
- * a real score exists. Every OTHER field here is confirmed non-sourceable
- * today, not merely unwired:
+ * a real score exists. Every OTHER field below is a confirmed genuine backend
+ * gap (#1230's investigation, reconfirmed #1446): no billing-term (monthly vs.
+ * annual commitment), usage-activity, or acknowledged-spend/finance-decision
+ * data exists anywhere in this platform's schema to compute it. #1411 closed
+ * the "zero gating" gap by adding a HIDDEN test-only "fixture" marker over each
+ * region while leaving the dollar figures themselves visibly on screen — Shane's
+ * live-testing report ("Licensing still fake data") confirmed a hidden marker
+ * is not the same as an honest on-screen state. #1446 replaces every one of
+ * these with a visible "No live data available" state instead, so the object
+ * below is retained ONLY as documentation of the prototype's original shape —
+ * the page (`portal-v2-licensing.tsx`) no longer reads these fields at all,
+ * except `eyebrow`, which is a static UI section label, not data:
  *
- *  • `onTable` / `onTableAnnual` / `onTableSentence` / `recoveredQuarter` /
- *    `recoveredTotal` / `utilisation` / `trendLabel` / `trendCaption` all
- *    derive from the 3 recovery buckets (today/renewal/reassign), which
- *    #1230's investigation confirmed cannot be built from anything in this
- *    platform's schema — no billing-term (monthly vs. annual commitment) or
- *    usage-activity data exists to classify a seat by timing. Shane reviewed
- *    and accepted that finding on #1230 (comment, 2026-08-24): these stay
- *    design fixture, not a temporary gap waiting on wiring.
- *  • `ackMonthly` (paired with `LIC_ACK`/`LIC_ACK_COUNT` below) needs an
- *    acknowledged-spend / finance-decision record. No such table exists
- *    anywhere in this schema (confirmed by search) — the finance-register
- *    link next to it in the page has always rendered as a dead link with a
- *    comment saying so ("the finance register is a later phase"). Same
- *    category as the buckets: no backend to wire to, not an oversight.
- *  • `renewal` is a licence commitment/renewal date — also not a field
- *    Microsoft's `/subscribedSkus` returns or this platform stores (#1230).
- *
- * Every one of the fields above previously rendered in the page with NO
- * indicator that it was fixture rather than live — the "zero gating" gap
- * #1411 was filed to close. The page now carries a hidden (test-only, same
- * `PV2_SOURCE_CLIP` technique as `pv2-lic-source`/`pv2-lic-ledger-source`)
- * "fixture" marker over each screen region these feed, so the distinction is
- * honest and provable rather than silent. `eyebrow` is the one true static
- * UI label in this object — it names the page section, carries no data, and
- * needs no marker.
+ *  • NO-BACKEND-TO-WIRE: `onTable` / `onTableAnnual` / `onTableSentence` /
+ *    `recoveredQuarter` / `recoveredTotal` / `utilisation` / `trendLabel` /
+ *    `trendCaption` all derive from the 3 recovery buckets (today/renewal/
+ *    reassign) — no billing-term or usage-activity data exists to classify a
+ *    seat by timing.
+ *  • NO-BACKEND-TO-WIRE: `ackMonthly` (paired with `LIC_ACK`/`LIC_ACK_COUNT`
+ *    below) needs an acknowledged-spend/finance-decision record. No such
+ *    table exists anywhere in this schema — the finance-register link next to
+ *    it in the page has always rendered as a dead link with a comment saying
+ *    so ("the finance register is a later phase").
+ *  • NO-BACKEND-TO-WIRE: `renewal` is a licence commitment/renewal date — not
+ *    a field Microsoft's `/subscribedSkus` returns or this platform stores.
  */
 export const LIC_HERO = {
   score: 71,
@@ -129,29 +127,39 @@ export function licTrendGeometry() {
   };
 }
 
-/** The three hero stats (3572-3588). The third's value is 15px, not 22px — it is a date. */
+/**
+ * The three hero stats (3572-3588). The third's value is 15px, not 22px — it
+ * is a date.
+ *
+ * NO-BACKEND-TO-WIRE: (Git #1446) all three previously carried a fixture
+ * `value` (`${LIC_HERO.recoveredQuarter}/mo}`, `LIC_HERO.utilisation`,
+ * `LIC_HERO.renewal`) and a `sub` caption that stated fabricated specifics —
+ * "5 actions, all verified on re-scan" describes actions that never happened.
+ * No backend records a recovered-spend action + re-scan verification, a
+ * per-seat 30-day usage-activity ratio, or a licence commitment/renewal date
+ * anywhere in this schema. `reason` replaces both `value` and `sub`: the page
+ * renders an honest dash for the value and this sentence as the visible
+ * detail line, instead of the old fixture pair.
+ */
 export const LIC_HERO_STATS: readonly {
   label: string;
-  value: string;
-  sub: string;
   /** The renewal date renders smaller because it is prose, not a figure. */
   small?: boolean;
+  reason: string;
 }[] = [
   {
     label: "Recovered this quarter",
-    value: `${LIC_HERO.recoveredQuarter}/mo`,
-    sub: "5 actions, all verified on re-scan",
+    reason: "No backend records a licence-recovery action or its re-scan verification.",
   },
   {
     label: "Seat utilisation",
-    value: LIC_HERO.utilisation,
-    sub: "of purchased seats active in 30 days",
+    reason:
+      "No per-seat usage-activity data (Copilot/app launches) is retained to compute a 30-day utilisation ratio.",
   },
   {
     label: "Next renewal",
-    value: LIC_HERO.renewal,
-    sub: "Reductions must be lodged before this date",
     small: true,
+    reason: "No billing-term / commitment-renewal date is stored anywhere in this platform's schema.",
   },
 ];
 
@@ -161,6 +169,15 @@ export const LIC_HERO_STATS: readonly {
  * can only leave AT RENEWAL, and value that never leaves the bill at all but can
  * be REASSIGNED. Note the third has no annualised figure — it says "value
  * already paid" instead, because annualising it would imply a saving.
+ *
+ * NO-BACKEND-TO-WIRE: (Git #1446) no billing-term (monthly vs. annual
+ * commitment) or usage-activity data exists anywhere in this platform's schema
+ * to classify a seat as today/renewal/reassign (#1230's investigation,
+ * reconfirmed here). This object, `LIC_BUCKET_LINES` and `licBucketPanel`
+ * below are retained as design-fixture reference only — `portal-v2-licensing.
+ * tsx` no longer renders them. `LIC_BUCKET_GAPS` further below is the honest
+ * replacement the page actually renders: the same 3 categories, same order,
+ * with a `reason` instead of a dollar figure.
  */
 export const LIC_BUCKETS: readonly {
   /** `licBucketsRaw[].key` (12303) — keys the breakdown panel in `LIC_BUCKET_LINES`. */
@@ -280,6 +297,44 @@ export function licBucketPanel(key: "today" | "renewal" | "reassign") {
     proof: d.proof,
   };
 }
+
+/**
+ * NO-BACKEND-TO-WIRE: (Git #1446) — the honest replacement for `LIC_BUCKETS` the
+ * page actually renders. Same 3 categories in the same order (today/renewal/
+ * reassign is the pillar's whole argument, structurally worth keeping even
+ * with no live figures behind it yet), each with `reason` instead of a dollar
+ * value/annual/what — no billing-term or usage-activity data exists anywhere
+ * in this schema to classify a seat by timing, so there is nothing to show
+ * inside a "how is this arrived at" breakdown either; the page renders no
+ * click-to-expand affordance for these cards.
+ */
+export const LIC_BUCKET_GAPS: readonly {
+  key: "today" | "renewal" | "reassign";
+  label: string;
+  when: string;
+  reason: string;
+}[] = [
+  {
+    key: "today",
+    label: "Removable today",
+    when: "Next invoice",
+    reason:
+      "No billing-term data exists to identify monthly-billed SKUs that duplicate an entitlement or sit idle.",
+  },
+  {
+    key: "renewal",
+    label: "Recoverable at renewal",
+    when: "At renewal",
+    reason:
+      "No billing-term (annual commitment) or renewal-date data exists to classify a seat as recoverable only at renewal.",
+  },
+  {
+    key: "reassign",
+    label: "Reassignable now",
+    when: "Ongoing",
+    reason: "No usage-activity data exists to identify seats that are assigned but idle and therefore reassignable.",
+  },
+];
 
 /**
  * `kbInfo('lic-recover')` (8111-8112) — the info-dot tooltip on the ledger
@@ -629,7 +684,12 @@ export const LIC_FINDINGS: readonly LicFinding[] = [
   },
 ];
 
-/* ── Intentional spend — LIC_ACK (12446-12455) ────────────────────────────── */
+/* ── Intentional spend — LIC_ACK (12446-12455) ────────────────────────────── *
+ * NO-BACKEND-TO-WIRE: (Git #1446) no acknowledged-spend/finance-decision
+ * record exists anywhere in this schema — same gap as `LIC_HERO.ackMonthly`
+ * above. Retained as design-fixture reference only; the page renders an
+ * honest "No live data available" block in place of these cards.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 export interface LicAck {
   id: string;
@@ -682,7 +742,13 @@ export function licAckMeta(a: LicAck) {
   ];
 }
 
-/* ── Savings ledger — LIC_LEDGER (12467-12473) ────────────────────────────── */
+/* ── Savings ledger — LIC_LEDGER (12467-12473) ────────────────────────────── *
+ * NO-BACKEND-TO-WIRE: (Git #1446) no table anywhere in this schema records
+ * "an action was taken and it saved $X/mo" — the same gap `LIC_HERO.
+ * recoveredTotal` (the header figure summed from this list) inherits.
+ * Retained as design-fixture reference only; the page renders an honest
+ * "No live data available" block in place of this row list.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 export const LIC_LEDGER: readonly { what: string; when: string; amount: number; by: string }[] = [
   { what: "Retired 14 unused Yammer/Viva Engage add-ons", when: "Scan 13 · 3 weeks ago", amount: 650, by: "Automated via Graph" },
@@ -692,7 +758,17 @@ export const LIC_LEDGER: readonly { what: string; when: string; amount: number; 
   { what: "Removed self-service Power BI purchases", when: "Scan 4 · 6 months ago", amount: 680, by: "Automated via Graph" },
 ];
 
-/* ── Why the waste recurs — LIC_POLICY (12478-12486) ──────────────────────── */
+/* ── Why the waste recurs — LIC_POLICY (12478-12486) ──────────────────────── *
+ * NO-BACKEND-TO-WIRE: (Git #1446) none of these seven rows has a live source
+ * anywhere in this platform's schema — confirmed by search, not assumed.
+ * Self-service-purchase state and licence-assignment-error counts
+ * (`licenseAssignmentStates`) are Graph/MSCommerce fields this platform's
+ * ingestion pipeline never stores; group-based-licensing coverage %,
+ * offboarding-runbook state, idle-seat-reclamation rules and cost-centre
+ * attribution have no computed value anywhere either. Retained as
+ * design-fixture reference only; the page renders an honest "No live data
+ * available" block in place of this list.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 export const LIC_POLICY: readonly {
   name: string;
@@ -710,7 +786,15 @@ export const LIC_POLICY: readonly {
   { name: "Cost centre attribution", detail: "No usage location or department attribution on assignments, so licence spend cannot be split by cost centre for the finance review.", status: "Unattributed", tone: "amber", fixKey: "lic-cost-centre" },
 ];
 
-/* ── How the figures are derived — LIC_PROV (12497-12506) ─────────────────── */
+/* ── How the figures are derived — LIC_PROV (12497-12506) ─────────────────── *
+ * NOTE (Git #1446): this is genuine documentation of the real Graph/PowerShell
+ * calls and scopes a FUTURE wiring pass would use — the calls themselves are
+ * real and correctly described. It is not itself a NO-BACKEND-TO-WIRE gap.
+ * What changed: with every dollar figure on this page now rendering an honest
+ * "No live data available" state, the page's intro copy for this block no
+ * longer claims present tense ("every dollar traces to a call") — it says
+ * plainly that none of the figures above are sourced from these calls today.
+ * ─────────────────────────────────────────────────────────────────────────── */
 
 export const LIC_PROV: readonly {
   src: "graph" | "ps" | "derived";

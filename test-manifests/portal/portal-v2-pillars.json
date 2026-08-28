@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "df03ce645",
+  "lastVerifiedAgainstCommit": "c462d1647",
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
     "THE API TESTS ARE THE REAL CONTRACT ASSERTIONS. A1-A4 exercise GET /api/portal/assessment/war-room-pillars -- the exact endpoint and payload these pages render -- so they verify the data layer independently of whether the new UI has been deployed yet.",
@@ -1216,11 +1216,11 @@
       "target": "/portal/shane-mccaw-consulting/portal-v2/licensing"
     },
     {
-      "name": "L1 -- the hero leads with a FIGURE, not a health title. This pillar has no 'Licensing Health' heading and no status pill anywhere; a port that assumed the other three pillars' hero shape would have invented both.",
+      "name": "L1 (Git #1446) -- the hero leads with a FIGURE, not a health title -- and that figure is now an honest dash, not the fixture's $2,679. No billing-term or usage-activity data exists anywhere in this schema to compute a real removable-today/at-renewal/reassignable total (#1230, reconfirmed #1446), so this renders the real NO_DATA_DASH instead of a fabricated dollar amount. This pillar still has no 'Licensing Health' heading and no status pill anywhere.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-on-table']",
       "state": "visible",
-      "textContains": "$2,679"
+      "textContains": "—"
     },
     {
       "name": "L2 -- the ring shows the REAL engine score, not the design fixture 71. {{licScore}} is extracted from war-room-pillars pillars[1].score at run time. The score's DELTA colour now follows the real score movement (green up, red down) rather than being hardcoded green.",
@@ -1230,55 +1230,48 @@
       "textContains": "{{licScore}}"
     },
     {
-      "name": "L2-src -- the hidden source indicator reads 'live', proving the real numeric score is on screen rather than the fixture fallback. The 3 recovery buckets, savings ledger and provenance below stay fixture -- no billing-term or usage-activity data exists to classify a seat as today/renewal/reassign (Git #1230). The per-SKU LEDGER is now wired to real data too (see L6b below) but only overlays once the tenant's real estate has genuine recoverable waste; this testbed tenant's one priced SKU is fully assigned, so the ledger below still renders the illustrative fixture -- an honest, documented threshold, not a gap.",
+      "name": "L2-src -- the hidden source indicator reads 'live', proving the real numeric score is on screen rather than the fixture fallback. The 3 recovery buckets, acknowledged spend, savings ledger and 'why the waste recurs' below now render an honest 'No live data available' state (Git #1446) -- no billing-term or usage-activity data exists to classify a seat as today/renewal/reassign, or to back any of those other sections (#1230, reconfirmed #1446). The per-SKU LEDGER is now wired to real data too (see L6b below) but only overlays once the tenant's real estate has genuine recoverable waste; this testbed tenant's one priced SKU is fully assigned, so the ledger below still renders the illustrative fixture -- an honest, documented threshold #1446 deliberately left unchanged, not a gap.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-source']",
       "state": "present",
       "textContains": "live"
     },
     {
-      "name": "L2f (Git #1411) -- the hero's OWN body (onTable, onTableSentence, trend label/caption, and the 3 HERO_STATS values) was rendering with zero gating before this issue -- no marker anywhere distinguished it from the live score two elements over. Confirmed non-sourceable (#1230: no billing-term/usage data exists to source it), so it stays fixture, but now says so.",
+      "name": "L2f (Git #1446, supersedes #1411) -- the hero's OWN body (onTable, onTableSentence, trend label/caption, and the 3 HERO_STATS values) previously stayed 'fixture' behind a HIDDEN test-only marker while the fabricated $2,679/mo sentence kept rendering visibly -- Shane's live-testing report ('Licensing still fake data') confirmed that is not honest. The hidden marker now reads 'empty', matching the visible honest dash it sits beside.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-hero-money-source']",
       "state": "present",
-      "textContains": "fixture",
-      "sessionTag": "1411"
+      "textContains": "empty",
+      "sessionTag": "1446"
     },
     {
-      "name": "L2g (Git #1411) -- the confirmed leak the issue was filed against: ackMonthly rendered completely unconditionally, with no live/fixture distinction at all. No acknowledged-spend/finance-decision table exists in this schema (confirmed by search), matching the finance-register link's own pre-existing 'later phase' comment -- so it stays fixture, gated the same honest way as everything else on this page.",
+      "name": "L2g (Git #1446, supersedes #1411) -- ackMonthly used to render completely unconditionally (the confirmed leak #1411 was filed against), then stayed visibly-fixture behind a hidden marker. No acknowledged-spend/finance-decision table exists in this schema (confirmed by search) -- this now renders an honest dash and 'No acknowledged-spend data available' visibly, with the hidden marker reading 'empty'.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-finance-source']",
       "state": "present",
-      "textContains": "fixture",
-      "sessionTag": "1411"
+      "textContains": "empty",
+      "sessionTag": "1446"
     },
     {
-      "name": "L3 -- the renewal stat renders the DATE, which is the deadline the largest recovery on the page depends on.",
+      "name": "L3 (Git #1446) -- the renewal stat used to render a fixture DATE (14 March 2027). No billing-term/commitment-renewal date is stored anywhere in this platform's schema, so it now renders an honest dash and the specific reason instead.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-stat-next-renewal']",
       "state": "visible",
-      "textContains": "14 March 2027"
+      "textContains": "No billing-term / commitment-renewal date"
     },
     {
-      "name": "L4 -- THE PILLAR'S ARGUMENT, on screen. Three buckets, not one savings number: money that leaves the bill next invoice, money that can only leave at renewal, and value that never leaves the bill at all.",
+      "name": "L4 -- THE PILLAR'S ARGUMENT, still on screen as three cards: money that leaves the bill next invoice, money that can only leave at renewal, and value that never leaves the bill at all. The label structure is real; the dollar figures are not (Git #1446).",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-buckets']",
       "state": "visible",
       "textContains": "Removable today"
     },
     {
-      "name": "L5 -- and the third bucket says 'value already paid' where the other two annualise. Annualising it would imply a saving that does not exist.",
+      "name": "L5 (Git #1446) -- and the third bucket no longer fabricates 'value already paid' or a specific $1,470-worth figure (the ONE sanctioned copy deviation Shane approved 2026-08-19 is still recorded, but only in LIC_BUCKETS's retained fixture in licDashboardData.ts, since the bucket panel that carried it no longer renders). Each of the three cards now shows the honest empty state instead.",
       "action": "expect",
-      "selector": "[data-testid='pv2-lic-buckets']",
+      "selector": "[data-testid='pv2-lic-bucket-reassign']",
       "state": "visible",
-      "textContains": "value already paid"
-    },
-    {
-      "name": "L5b -- THE ONE SANCTIONED COPY DEVIATION. The prototype writes '£1,470-worth' here (12311) on a page denominated in dollars everywhere else, including this sentence's own '$1,470/mo' value. It was flagged rather than silently corrected; Shane confirmed on 2026-08-19 that it should be '$'. Asserted so the correction cannot be lost to a future re-transcription from the prototype.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-lic-buckets']",
-      "state": "visible",
-      "textContains": "$1,470-worth of monthly capability"
+      "textContains": "No live data available"
     },
     {
       "name": "L6b -- the ledger's own hidden source marker reads 'fixture' for this tenant (Git #1230) -- the real per-SKU resolver ran (proven by the API test below) but this testbed tenant's one priced SKU (ENTERPRISEPACK) is fully assigned with nothing recoverable, so the page correctly kept the illustrative fixture rather than replacing it with a single Right-sized row.",
@@ -1392,39 +1385,26 @@
       "target": "/portal/shane-mccaw-consulting/portal-v2/licensing"
     },
     {
-      "name": "L20 -- the savings ledger records what has already been recovered, with who did it.",
+      "name": "L20 (Git #1446, supersedes #1411) -- the savings ledger used to render a fixture recovery log ('Reclaimed 22 licences from disabled accounts', etc.) with no backing table. No table anywhere in this schema records 'an action was taken and it saved $X/mo', so the card now shows an honest 'No live data available' state instead.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-savings']",
       "state": "visible",
-      "textContains": "Reclaimed 22 licences from disabled accounts"
+      "textContains": "No live data available"
     },
     {
-      "name": "L20b (Git #1411) -- recoveredTotal (the header figure above the ledger rows) is the sum of this same fixture recovery log -- no backing table records 'an action was taken and it saved $X/mo'. Same honest fixture marker, closing the last unconditional LIC_HERO gap this audit found.",
+      "name": "L20b (Git #1446, supersedes #1411) -- recoveredTotal (the header figure above the ledger rows) used to be the sum of this same fixture recovery log; it is now an honest dash, and the testid that used to be a hidden fixture marker is now the visible honest block itself.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-savings-source']",
-      "state": "present",
-      "textContains": "fixture",
-      "sessionTag": "1411"
+      "state": "visible",
+      "textContains": "No table records a licence-recovery action",
+      "sessionTag": "1446"
     },
     {
-      "name": "L21 -- 'Why the waste recurs' is the pillar's structural claim: recovering the money once is one fix, stopping it recurring is a different one. Seven policy rows, each with its own wrench.",
+      "name": "L21 (Git #1446) -- 'Why the waste recurs' used to render seven fixture policy rows (self-service purchase, offboarding, etc.), each with a 'Fix this' wrench offering a remediation for a gap never verified for this tenant. None of the seven has a live source anywhere in this schema, so the section now shows a single honest 'No live data available' state and no wrenches -- offering a fix for an unverified gap would be as dishonest as the fixture status text it used to sit next to.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-policy']",
       "state": "visible",
-      "textContains": "Self-service purchase"
-    },
-    {
-      "name": "L22 -- a policy wrench opens its own playbook, distinct from the six recovery ones.",
-      "action": "click",
-      "selector": "[data-testid='pv2-lic-policy-fix-lic-self-service']",
-      "critical": true
-    },
-    {
-      "name": "L23 -- and it is the real one.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-panel']",
-      "state": "visible",
-      "textContains": "Turn off self-service purchase"
+      "textContains": "No live data available"
     },
     {
       "name": "reset -- reload before the provenance block.",
