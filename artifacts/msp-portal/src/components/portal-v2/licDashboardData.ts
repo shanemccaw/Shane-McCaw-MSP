@@ -38,7 +38,41 @@ export function licFmt(n: number): string {
   return "$" + n.toLocaleString("en-US");
 }
 
-/** Hero scalars — 12281-12282 and the renderVals literals at 17504-17512. */
+/**
+ * Hero scalars — 12281-12282 and the renderVals literals at 17504-17512.
+ *
+ * ── Git #1411 audit — every field's live/fixture status, checked one by one ──
+ * `score` and `delta` are overlaid live in the page (`useLivePillarHero`,
+ * #1387's honest-null contract) — never read as literals off this object once
+ * a real score exists. Every OTHER field here is confirmed non-sourceable
+ * today, not merely unwired:
+ *
+ *  • `onTable` / `onTableAnnual` / `onTableSentence` / `recoveredQuarter` /
+ *    `recoveredTotal` / `utilisation` / `trendLabel` / `trendCaption` all
+ *    derive from the 3 recovery buckets (today/renewal/reassign), which
+ *    #1230's investigation confirmed cannot be built from anything in this
+ *    platform's schema — no billing-term (monthly vs. annual commitment) or
+ *    usage-activity data exists to classify a seat by timing. Shane reviewed
+ *    and accepted that finding on #1230 (comment, 2026-08-24): these stay
+ *    design fixture, not a temporary gap waiting on wiring.
+ *  • `ackMonthly` (paired with `LIC_ACK`/`LIC_ACK_COUNT` below) needs an
+ *    acknowledged-spend / finance-decision record. No such table exists
+ *    anywhere in this schema (confirmed by search) — the finance-register
+ *    link next to it in the page has always rendered as a dead link with a
+ *    comment saying so ("the finance register is a later phase"). Same
+ *    category as the buckets: no backend to wire to, not an oversight.
+ *  • `renewal` is a licence commitment/renewal date — also not a field
+ *    Microsoft's `/subscribedSkus` returns or this platform stores (#1230).
+ *
+ * Every one of the fields above previously rendered in the page with NO
+ * indicator that it was fixture rather than live — the "zero gating" gap
+ * #1411 was filed to close. The page now carries a hidden (test-only, same
+ * `PV2_SOURCE_CLIP` technique as `pv2-lic-source`/`pv2-lic-ledger-source`)
+ * "fixture" marker over each screen region these feed, so the distinction is
+ * honest and provable rather than silent. `eyebrow` is the one true static
+ * UI label in this object — it names the page section, carries no data, and
+ * needs no marker.
+ */
 export const LIC_HERO = {
   score: 71,
   /** Hardcoded in the ring markup (3568) and GREEN — the only pillar with a positive delta. */

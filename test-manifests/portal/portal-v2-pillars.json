@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "69fa79d80",
+  "lastVerifiedAgainstCommit": "ec6d7db78",
 
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
@@ -1401,6 +1401,22 @@
       "textContains": "live"
     },
     {
+      "name": "L2f (Git #1411) -- the hero's OWN body (onTable, onTableSentence, trend label/caption, and the 3 HERO_STATS values) was rendering with zero gating before this issue -- no marker anywhere distinguished it from the live score two elements over. Confirmed non-sourceable (#1230: no billing-term/usage data exists to source it), so it stays fixture, but now says so.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-hero-money-source']",
+      "state": "present",
+      "textContains": "fixture",
+      "sessionTag": "1411"
+    },
+    {
+      "name": "L2g (Git #1411) -- the confirmed leak the issue was filed against: ackMonthly rendered completely unconditionally, with no live/fixture distinction at all. No acknowledged-spend/finance-decision table exists in this schema (confirmed by search), matching the finance-register link's own pre-existing 'later phase' comment -- so it stays fixture, gated the same honest way as everything else on this page.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-finance-source']",
+      "state": "present",
+      "textContains": "fixture",
+      "sessionTag": "1411"
+    },
+    {
       "name": "L3 -- the renewal stat renders the DATE, which is the deadline the largest recovery on the page depends on.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-stat-next-renewal']",
@@ -1545,6 +1561,14 @@
       "selector": "[data-testid='pv2-lic-savings']",
       "state": "visible",
       "textContains": "Reclaimed 22 licences from disabled accounts"
+    },
+    {
+      "name": "L20b (Git #1411) -- recoveredTotal (the header figure above the ledger rows) is the sum of this same fixture recovery log -- no backing table records 'an action was taken and it saved $X/mo'. Same honest fixture marker, closing the last unconditional LIC_HERO gap this audit found.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-savings-source']",
+      "state": "present",
+      "textContains": "fixture",
+      "sessionTag": "1411"
     },
     {
       "name": "L21 -- 'Why the waste recurs' is the pillar's structural claim: recovering the money once is one fix, stopping it recurring is a different one. Seven policy rows, each with its own wrench.",
