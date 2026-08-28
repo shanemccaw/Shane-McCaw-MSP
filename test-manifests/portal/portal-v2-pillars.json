@@ -1401,6 +1401,22 @@
       "textContains": "live"
     },
     {
+      "name": "L2f (Git #1411) -- the hero's OWN body (onTable, onTableSentence, trend label/caption, and the 3 HERO_STATS values) was rendering with zero gating before this issue -- no marker anywhere distinguished it from the live score two elements over. Confirmed non-sourceable (#1230: no billing-term/usage data exists to source it), so it stays fixture, but now says so.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-hero-money-source']",
+      "state": "present",
+      "textContains": "fixture",
+      "sessionTag": "1411"
+    },
+    {
+      "name": "L2g (Git #1411) -- the confirmed leak the issue was filed against: ackMonthly rendered completely unconditionally, with no live/fixture distinction at all. No acknowledged-spend/finance-decision table exists in this schema (confirmed by search), matching the finance-register link's own pre-existing 'later phase' comment -- so it stays fixture, gated the same honest way as everything else on this page.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-finance-source']",
+      "state": "present",
+      "textContains": "fixture",
+      "sessionTag": "1411"
+    },
+    {
       "name": "L3 -- the renewal stat renders the DATE, which is the deadline the largest recovery on the page depends on.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-stat-next-renewal']",
@@ -1545,6 +1561,14 @@
       "selector": "[data-testid='pv2-lic-savings']",
       "state": "visible",
       "textContains": "Reclaimed 22 licences from disabled accounts"
+    },
+    {
+      "name": "L20b (Git #1411) -- recoveredTotal (the header figure above the ledger rows) is the sum of this same fixture recovery log -- no backing table records 'an action was taken and it saved $X/mo'. Same honest fixture marker, closing the last unconditional LIC_HERO gap this audit found.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-lic-savings-source']",
+      "state": "present",
+      "textContains": "fixture",
+      "sessionTag": "1411"
     },
     {
       "name": "L21 -- 'Why the waste recurs' is the pillar's structural claim: recovering the money once is one fix, stopping it recurring is a different one. Seven policy rows, each with its own wrench.",

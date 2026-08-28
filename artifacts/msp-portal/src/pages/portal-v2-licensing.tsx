@@ -329,6 +329,18 @@ export default function PortalV2LicensingPage() {
             <span style={{ fontSize: "11.5px", color: "#94a3b8", whiteSpace: "nowrap" }}>
               recorded as intentional spend · {LIC_ACK_COUNT} decisions
             </span>
+            {/* Git #1411 — no acknowledged-spend/finance-decision table exists
+                anywhere in this platform's schema (confirmed by grep, and by
+                the "finance register is a later phase" comment on the link
+                below, which predates this audit). ackMonthly/LIC_ACK_COUNT
+                can never be live today, so this closes the "zero gating" gap
+                flagged in the issue with the same honest, hidden
+                live/fixture marker every other data value on this page
+                carries (pv2-lic-source, pv2-lic-ledger-source) — never a
+                silent, unmarked fixture. */}
+            <span data-testid="pv2-lic-finance-source" style={PV2_SOURCE_CLIP}>
+              fixture
+            </span>
             {/* The prototype makes this an <a href="#">, not a button (3521) —
                 every other pillar's equivalent is a button. Rendered as a real
                 link with no destination yet, since the finance register is a
@@ -431,6 +443,21 @@ export default function PortalV2LicensingPage() {
               </div>
               <span style={{ fontSize: "12.5px", color: "#cbd5e1", lineHeight: 1.5 }}>
                 {LIC_HERO.onTableSentence}
+              </span>
+              {/* Git #1411 — onTable/onTableSentence, the trend label/caption
+                  below, and the 3 HERO_STATS values (recovered this quarter,
+                  seat utilisation, next renewal) are all derived from the
+                  same recovery-bucket arithmetic #1230 already confirmed
+                  cannot be sourced live: no billing-term (monthly vs. annual
+                  commitment) or usage-activity data exists anywhere in this
+                  platform's schema. One hidden marker for the whole hero
+                  body closes the "zero gating" gap this issue flagged,
+                  matching the ring's own pv2-lic-source marker two elements
+                  over — the score/delta ARE live; nothing else in this hero
+                  ever can be without that new backend data, which is the
+                  honest reason it stays "fixture" rather than toggling. */}
+              <span data-testid="pv2-lic-hero-money-source" style={PV2_SOURCE_CLIP}>
+                fixture
               </span>
             </div>
 
@@ -1467,6 +1494,14 @@ export default function PortalV2LicensingPage() {
                   style={{ fontSize: "11px", fontWeight: 700, color: TEAL_TEXT, fontFamily: MONO }}
                 >
                   {LIC_HERO.recoveredTotal}/mo
+                </span>
+                {/* Git #1411 — recoveredTotal is the sum of the LIC_LEDGER
+                    rows below it, itself a design-fixture recovery log with
+                    no backing table (nothing in this schema records "an
+                    action was taken and it saved $X/mo"). Same honest
+                    fixture marker as the rest of this hero. */}
+                <span data-testid="pv2-lic-savings-source" style={PV2_SOURCE_CLIP}>
+                  fixture
                 </span>
               </div>
               {LIC_LEDGER.map((l) => (
