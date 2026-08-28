@@ -37,6 +37,8 @@ import { deriveHoldClock, type HoldState } from "./holds/holdState";
 import { RR_RISKS, type RiskEntry } from "./riskRegisterData";
 import { stateTone, type ChangeRequest } from "./ccPageData";
 import type { HoldWindow } from "./holds/useRunbooks";
+import { NO_SCAN_DATA_LABEL } from "./NoScanDataState";
+import type { PortalV2EvaluationStatus } from "./portalV2Model";
 
 /* ────────────────────────────────────────────────────────────────────────────
    The mini bar — prototype `ovBar`, 8106-8119
@@ -469,8 +471,19 @@ export function pillarDeltaTone(delta: number | null): string {
  * spend — is NOT reproduced: inventing a dollar figure from a finding count
  * would be a fabricated number on a money line, which is exactly the kind of
  * thing the no-hardcoding rule exists to stop.
+ *
+ * #1406: a zero-findings count is ambiguous on its own — it means either "a
+ * real scan found nothing" or "nothing was ever measured". #1392 already
+ * resolved that same ambiguity for the score itself via `evaluation`; this
+ * takes the same signal so the sub-line can't lie when the number above it is
+ * honestly blank. Only `"scored"` is real enough to claim "On track" — the
+ * generic `not_evaluated` / `insufficient_data` gate.
  */
-export function pillarStripSub(counts: { critical: number; warning: number }): string {
+export function pillarStripSub(
+  counts: { critical: number; warning: number },
+  evaluation: PortalV2EvaluationStatus,
+): string {
+  if (evaluation !== "scored") return NO_SCAN_DATA_LABEL;
   const open = counts.critical + counts.warning;
   if (open === 0) return "On track";
   return `${open} open finding${open === 1 ? "" : "s"}`;

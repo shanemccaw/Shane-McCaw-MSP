@@ -316,16 +316,27 @@ describe("the pillar strip is derived from LIVE data", () => {
   });
 
   it("derives the sub-line from the real finding counts", () => {
-    assert.equal(pillarStripSub({ critical: 2, warning: 0 }), "2 open findings");
-    assert.equal(pillarStripSub({ critical: 1, warning: 2 }), "3 open findings");
+    assert.equal(pillarStripSub({ critical: 2, warning: 0 }, "scored"), "2 open findings");
+    assert.equal(pillarStripSub({ critical: 1, warning: 2 }, "scored"), "3 open findings");
   });
 
   it("singularises one finding", () => {
-    assert.equal(pillarStripSub({ critical: 1, warning: 0 }), "1 open finding");
+    assert.equal(pillarStripSub({ critical: 1, warning: 0 }, "scored"), "1 open finding");
   });
 
-  it("says 'On track' when a pillar is clean, matching the design's own word", () => {
-    assert.equal(pillarStripSub({ critical: 0, warning: 0 }), "On track");
+  it("says 'On track' when a real scan found nothing, matching the design's own word", () => {
+    assert.equal(pillarStripSub({ critical: 0, warning: 0 }, "scored"), "On track");
+  });
+
+  it("#1406: says 'No scan data available' for a never-scanned pillar, not 'On track'", () => {
+    assert.equal(
+      pillarStripSub({ critical: 0, warning: 0 }, "not_evaluated"),
+      "No scan data available",
+    );
+    assert.equal(
+      pillarStripSub({ critical: 0, warning: 0 }, "insufficient_data"),
+      "No scan data available",
+    );
   });
 });
 

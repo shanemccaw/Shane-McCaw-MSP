@@ -1095,7 +1095,7 @@ export default function PortalV2OverviewPage() {
                         whiteSpace: "normal",
                       }}
                     >
-                      {pillarStripSub(p.findingCounts)}
+                      {pillarStripSub(p.findingCounts, p.evaluation)}
                     </div>
                   </Link>
                 );
