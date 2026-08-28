@@ -6,7 +6,7 @@ This document is written for **Claude Design**, which has **no access to this re
 
 **Evidence discipline.** Every claim below traces to one of: (a) a live SQL query against the platform's PostgreSQL database (`shanemccawmsp`), run 2026-08-28; (b) a real file path + line in this repo (pinned at commit `83519d8d`, re-based to `39a2a0ba` mid-session); (c) a live protocol call against the running platform (a fresh diagnostic scan of the testbed tenant, a live `shaneapp://executeCmdlet` PowerShell execution, and a live authenticated capture of the portal's own pillar payload). Where something could not be verified live, it is labelled as such with the exact blocker — never presented as observed. §10 is the full evidence log; §11 the explicit unknowns.
 
-**Environment caveat, stated once so every claim inherits it:** all live observations are against the **local dev platform** (local PostgreSQL 18, dev api-server on `localhost:8080`, dev ps-execution container `ca-ps-execution-dev`) and two real Microsoft 365 tenants: the **testbed** `mccawsoft2.onmicrosoft.com` (customers table id 1, Entra tenant `c4c814d4-3afe-441e-9145-62461d0a4fd3`, `is_testbed=true`) and `shanemccaw.onmicrosoft.com` (id 3, `0a361ab2-…`, a real non-testbed tenant with observations dated 2026-08-09 → 2026-08-24). The owner cleaned old run/snapshot history from this database earlier on 2026-08-28 and then ran a **fresh full diagnostic scan** (run 437, package `assess:copilot-readiness`, 101 checks) against the testbed mid-investigation, so the freshest evidence in this file is from a scan a few hours old. A third tenant id (`e2e13170-…`) exists in the observation table; it is a **synthetic E2E-harness tenant**, and nothing in this document treats its rows as real-tenant evidence. Gov/GCC tenants are out of platform scope and are not mapped.
+**Environment caveat, stated once so every claim inherits it:** all live observations are against the **local dev platform** (local PostgreSQL 18, dev api-server on `localhost:8080`, dev ps-execution container `ca-ps-execution-dev`) and two real Microsoft 365 tenants: the **testbed** `mccawsoft2.onmicrosoft.com` (customers table id 1, Entra tenant `c4c814d4-3afe-441e-9145-62461d0a4fd3`, `is_testbed=true`) and `shanemccaw.onmicrosoft.com` (id 3, `0a361ab2-…`, a real non-testbed tenant with observations dated 2026-08-09 → 2026-08-24). The owner cleaned old run/snapshot history from this database earlier on 2026-08-28 and then ran **fresh diagnostic scans against the testbed mid-investigation**: several `assess:copilot-readiness` runs (437, 443, 444; 101 checks each) and — decisively — a full **`core:premier` run (run 445, 151 checks, the fullest package in the catalog: 109 ok / 18 error / 22 license_gap)**. The freshest evidence in this file is from scans hours old, and nearly every active check now has a same-day observation. A third tenant id (`e2e13170-…`) exists in the observation table; it is a **synthetic E2E-harness tenant**, and nothing in this document treats its rows as real-tenant evidence. Gov/GCC tenants are out of platform scope and are not mapped.
 
 ---
 
@@ -22,30 +22,30 @@ The platform's backend check catalog is a **database table, not code**: `monitor
 | `sharepoint-admin` (SharePoint admin API, app-only cert) | 1 | 0 | 1 |
 | **Total** | **155** | **2** | **157** |
 
-**Three-state classification of the 157 catalog checks: 96 REAL · 61 PARTIAL · (ABSENT applies to referenced-but-nonexistent checks, §8).**
+**Three-state classification of the 157 catalog checks: 134 REAL · 23 PARTIAL · (ABSENT applies to referenced-but-nonexistent checks, §8).** (Before the `core:premier` run landed mid-investigation this stood at 96/61 — a single full-package run flipped 38 checks from "wired but never exercised" to observed-REAL, which is itself evidence of how much of the catalog was one run away from proven.)
 
 Headline findings, most consequential first:
 
-1. **The entire PowerShell execution layer is PARTIAL today — all 17 checks.** They ARE genuinely invoked by real scan runs (the package runner does not filter them out — `artifacts/api-server/src/lib/monitor-executor.ts:2919-2951` filters only on `status='active'`), which settles #1386's open question. But every live execution observed on a real tenant errors with *"The request-handling child process produced malformed output."* This was proven end-to-end during this investigation with a live `shaneapp://executeCmdlet` call running the trivial `get-connection-info` cmdlet against the testbed: it failed with the same error (`kind: script_error`, container `ca-ps-execution-dev`, 4.8s round trip). The failure is in the container's child-process layer, before any cmdlet specifics — no PowerShell check can currently deliver data. Five compliance PS checks additionally license-gate honestly *before* reaching the container (the Graph-side SKU probe runs first), which is why customer 3 shows `license_gap` for them rather than `error`.
-2. **A second large PARTIAL class is "wired but never once run": 34 active Graph checks have zero observations on any real tenant** — they belong only to packages (`core:growth`, `core:premier`, `core:enhanced-monitoring`, `core:foundation`, `detail:full-item-collection`, both `assess:*` scans other than copilot-readiness) that **no real run has ever executed**. The only packages ever observed running are `assess:copilot-readiness` (the assessment scan — runs 362 and 437) and `core:security-baseline` (the recurring monitoring workflow — every `wf-run-*` trigger's row set is exactly its membership, verified by join). Every `devices:*` check is in this never-run class: **the portal has never collected a single Intune device fact for any real tenant.**
+1. **The entire PowerShell execution layer is PARTIAL today — all 17 checks.** They ARE genuinely invoked by real scan runs (the package runner does not filter them out — `artifacts/api-server/src/lib/monitor-executor.ts:2919-2951` filters only on `status='active'`), which settles #1386's open question; the `core:premier` run (445) invoked 15 of them live, including the first-ever executions of `compliance:audit-log-retention` and `exchange:litigation-hold-coverage`. But every live execution on a real tenant errors: 14 with *"The request-handling child process produced malformed output."* and `adoption:teams-phone-provisioning` with a distinct *"Could not establish a Microsoft Teams session for the target tenant."* The child-process failure was proven end-to-end with a live `shaneapp://executeCmdlet` call running the trivial `get-connection-info` cmdlet against the testbed: same error (`kind: script_error`, container `ca-ps-execution-dev`, 4.8s round trip) — the failure sits in the container's child-process layer, before any cmdlet specifics. No PowerShell check can currently deliver data. Five compliance PS checks additionally license-gate honestly *before* reaching the container (the Graph-side SKU probe runs first), which is why customer 3 shows `license_gap` for them rather than `error`.
+2. **The "wired but never once run" class collapsed mid-investigation — from 34 Graph checks to effectively 2.** Before run 445, 34 active Graph checks had zero real-tenant observations because their packages (`core:growth`, `core:premier`, `core:enhanced-monitoring`, `core:foundation`, the small `assess:*` scans) had never been executed; the `core:premier` run exercised them, and the first Intune device facts ever collected for a real tenant landed with it (the architecture/Health pillar score jumped 8 → 63 on real device data). What remains never-invoked: `onedrive:overshared-files` (member only of the `detail:full-item-collection` collection mode) and `diagnostics:ps-execution-test`, plus the 3 structurally unreachable checks (2 `inactive` sharepoint checks and package-less `exchange:auto-forwarding-rules`). Two Graph checks are PARTIAL on a different ground — observed only as errors: `adoption:planner-usage` (fan-out 0/104 items succeeded on the testbed) and `platform:branding-config` (Graph 404 `Request_ResourceNotFound` — an unconfigured-branding tenant reads as an error rather than an honest empty state; a real product nuance). Observed run sources are now: `assess:copilot-readiness` (runs 362, 437, 443, 444), `core:premier` (run 445), and `core:security-baseline` (the recurring monitoring workflow — every `wf-run-*` trigger's row set is exactly its membership, verified by join).
 3. **The dashboard registry names 67 checks that do not exist** (§8). These resolve — live-verified — to the resolver's literal `unknown_check_key` outcome. Eleven of them surface directly on the portal's pillar heroes today (captured live in the war-room payload, §9.1): every hero tile for oversharing/blast-radius (`copilot:overshare-exposure`, referenced by three different pillars), SharePoint inventory (`compliance:sharepoint-sites`, `compliance:overshared-sites`, `compliance:public-channels`), and the Health pillar's four device tiles (`intune:*` names that don't match the real `devices:*` catalog vocabulary). Some phantoms are pure naming drift — a same-meaning check exists under another key (`intune:non-compliant-devices` vs real `devices:compliant-vs-noncompliant`, `licensing:duplicate-assignments` vs real `cost:duplicate-assignments`); most have no counterpart at all (`dynamics:*`, `power-platform:*`, `collaboration:*`, the `security:*` alert family).
 4. **The pillar model has three vocabularies, and they do not line up 1:1** (§2). Design should treat the **7 display pillars** as canonical: `governance, compliance, adoption, copilot, architecture (labelled "Health"), licensing, security`. The check catalog tags checks with **engine tags** (`security, governance, adoption, health, compliance, priority, cost, copilot, licensing, architecture, monitoring`) where `health` ≈ the architecture pillar and `cost` feeds licensing; `priority` is a ranking engine, not a pillar.
-5. **Pillar scores are real and freshly proven.** Run 437 wrote one `tenant_pillar_snapshots` row per pillar for the testbed (security 54, licensing 54, architecture 8, copilot 50, adoption 89, compliance 73, governance 54), and the live authenticated portal payload returns exactly those scores with per-pillar evaluation metadata (`evaluableSignalCount`, `reason`). The **raw engine score layer is a different story**: `tenant_engine_snapshots` is written only when engines run through Mission Control or admin routes (`engine-registry.ts:478-482` wraps `runForTenant`); the scan path and the pillar payload never write it. It held 0 rows all session, so all 16 `engine.*` registry metrics resolve `not_available` right now.
-6. **Config-drift is newly real but empty.** Run 437 captured the platform's first 2 drift baselines for the testbed (`ca-policy` and `email-authentication` `tracked`; `eeeu-site-sharing` honestly `not_comparable`). `drift_events` = 0 — nothing has changed since baseline. 5 of the 18 registry drift domains have a collection spec; the other 13 can never produce data until specs are written.
-7. **What is genuinely REAL is substantial**: 96 checks observed executing against real tenants with real data — the identity/CA family, secure score, Teams governance, SharePoint site facts, licensing SKU truth, adoption activity reports, app governance, DNS email-auth — plus a real findings pipeline (98 findings on the testbed run), real per-item evidence (`tenant_check_item_details`, 98 checks' item lists for run 437), and honest `license_gap` states for the 21 checks the testbed's SKUs can't feed (it has no AAD P1/P2 and no Defender for Office 365).
+5. **Pillar scores are real and freshly proven — with real history now.** Each of today's coverage-sufficient runs wrote one `tenant_pillar_snapshots` row per pillar for the testbed (63 rows accumulated), and after run 445 the latest set carries genuine deltas: security 58 (+4), licensing 57 (+3), **architecture 63 (+55 — the premier run's device data)**, copilot 51 (+1), adoption 82 (−7), compliance 74 (+1), governance 54 (0). The live authenticated portal payload returns exactly these scores with per-pillar evaluation metadata (`evaluableSignalCount`, `reason`). Hero trend sparklines still render null — the UI requires ≥5 real checkpoints, and this tenant has fewer; that is the honest designed state, not a bug. The **raw engine score layer is a different story**: `tenant_engine_snapshots` is written only when engines run through Mission Control or admin routes (`engine-registry.ts:478-482` wraps `runForTenant`); the scan path and the pillar payload never write it. It held 0 rows all session, so all 16 `engine.*` registry metrics resolve `not_available` right now.
+6. **Config-drift is newly real but empty.** Today's runs captured the platform's first 3 drift baselines for the testbed (`ca-policy`, `email-authentication`, and — from the premier run — `public-teams-discoverable`, all `tracked`; `eeeu-site-sharing` honestly `not_comparable`). `drift_events` = 0 — nothing has changed since baseline. 5 of the 18 registry drift domains have a collection spec (the 5th, `tenant-sharing-capability`, is blocked on its parent check's cert failure); the other 13 can never produce data until specs are written.
+7. **What is genuinely REAL is substantial**: 134 checks observed executing against real tenants with real data — the identity/CA family, secure score, Teams governance, SharePoint site facts, the full Intune device family, licensing SKU truth, adoption activity reports, app governance, DNS email-auth — plus a real findings pipeline, real per-item evidence (`tenant_check_item_details`, 143 distinct checks' item lists for the testbed), and honest `license_gap` states for the ~22 checks the testbed's SKUs can't feed (it has no AAD P1/P2 and no Defender for Office 365).
 
 Per-pillar totals for the 157 catalog checks (a check tagged with two pillar engines counts once per pillar; "architecture/Health" merges the `health` + `architecture` tags; "licensing/cost" merges `licensing` + `cost`; `priority`/`monitoring`/untagged listed separately):
 
 | Pillar (from engine tags) | REAL | PARTIAL | Total |
 |---|---|---|---|
-| Security | 46 | 16 | 62 |
-| Governance | 33 | 11 | 44 |
+| Security | 55 | 7 | 62 |
+| Governance | 39 | 5 | 44 |
 | Compliance | 7 | 8 | 15 |
-| Adoption | 7 | 9 | 16 |
+| Adoption | 14 | 2 | 16 |
 | Copilot Readiness | 9 | 0 | 9 |
-| Health (architecture) | 8 | 17 | 25 |
-| Licensing & Cost | 5 | 9 | 14 |
-| priority (ranking engine, cross-cutting) | 14 | 3 | 17 |
+| Health (architecture) | 23 | 2 | 25 |
+| Licensing & Cost | 11 | 3 | 14 |
+| priority (ranking engine, cross-cutting) | 16 | 1 | 17 |
 | monitoring (engine-internal) | 1 | 0 | 1 |
 | (untagged) | 2 | 1 | 3 |
 
@@ -72,12 +72,12 @@ Per-pillar totals for the 157 catalog checks (a check tagged with two pillar eng
 
 | Table | Written by | State observed 2026-08-28 |
 |---|---|---|
-| `tenant_monitor_profiles` | every check execution (`persistCheckProfile`, monitor-executor.ts:1738) | 727 rows, 3 tenant ids; the per-check observation store (status, extracted_properties, severity, raw_response) |
-| `tenant_pillar_snapshots` | `capturePillarDisplaySnapshots` on `diagnostics.run_completed`, gated on graded coverage (`pillar-snapshot.ts:51-109`, invoked diagnostics-runner.ts:1085) | 7 rows for customer 1, written by run 437 — scores match the live payload exactly |
+| `tenant_monitor_profiles` | every check execution (`persistCheckProfile`, monitor-executor.ts:1738) | 1,585 rows, 3 tenant ids; the per-check observation store (status, extracted_properties, severity, raw_response) |
+| `tenant_pillar_snapshots` | `capturePillarDisplaySnapshots` on `diagnostics.run_completed`, gated on graded coverage (`pillar-snapshot.ts:51-109`, invoked diagnostics-runner.ts:1085) | 63 rows for customer 1 across today's runs — latest set matches the live payload exactly, with real deltas after run 445 |
 | `tenant_engine_snapshots` | ONLY the wrapped `runForTenant` (engine-registry.ts:478-482), reached via `portal-mission-control.ts` / `admin-engines.ts` — **not** by scans, **not** by the war-room payload | **0 rows** all session, before and after both the scan and a live war-room fetch |
-| `msp_diagnostic_runs` / `msp_diagnostic_findings` | diagnostics-runner.ts | 2 runs (362 customer-3 2026-08-09; 437 testbed today); 98 findings for 437 |
-| `tenant_check_item_details` | item-detail-collector.ts (the `detail:full-item-collection` collection mode) | 98 distinct checks' full item lists for customer 1 |
-| `drift_baseline_snapshots` / `drift_events` / `drift_collection_status` | `collectDriftForCompletedCheck` (monitor-executor.ts:153) per completed check with a spec in `drift-check-specs.ts` | 2 baselines + 3 status rows (from run 437); 0 events |
+| `msp_diagnostic_runs` / `msp_diagnostic_findings` | diagnostics-runner.ts | runs 362 (customer 3, 2026-08-09), 437/443/444 (copilot-readiness) and **445 (`core:premier`, 151 checks)** for the testbed today |
+| `tenant_check_item_details` | item-detail-collector.ts (the `detail:full-item-collection` collection mode) | 143 distinct checks' full item lists for customer 1 |
+| `drift_baseline_snapshots` / `drift_events` / `drift_collection_status` | `collectDriftForCompletedCheck` (monitor-executor.ts:153) per completed check with a spec in `drift-check-specs.ts` | 3 baselines + 4 status rows (ca-policy / email-authentication / public-teams-discoverable tracked; eeeu-site-sharing not_comparable); 0 events |
 | `engine_baseline_history`, `engine_score_daily_rollup`, `engine_score_signal_deltas` | engine snapshot side-effects | 0 rows each |
 
 **How a pillar score is computed:** `getPillarCoverage(packageKey, customerId)` (`pillar-coverage.ts`) — the same function the live dashboard calls — evaluates intelligence signals over the tenant's `tenant_monitor_profiles` rows, producing a 0-100 display score per pillar with an evaluation record. Observed live for the testbed: e.g. governance `{score: 54, evaluableSignalCount: 30, minRequiredSignals: 2, theoreticalMax: 154, status: "scored", reason: "scored from 30 evaluable governance signals"}`. A pillar with too few evaluable signals returns `status !== "scored"` and the UI must render its unscored state — this is a real state, not an error.
@@ -95,7 +95,7 @@ One dispatcher: `executeMonitorCheck` (`monitor-executor.ts:2532`), branching on
 - **Check statuses** (the complete observed + declared set): `ok | error | license_gap | partial | consent_revoked | requires_script`. Observed distribution across all real-tenant rows on 2026-08-28: ok 234+, error, license_gap 78+, partial 4 (pre-cleanup counts), plus run 437's 72 ok / 6 error / 21 license_gap / 2 partial.
 
 **What actually triggers real runs** (all callers of `executeMonitoringPackage`, verified by grep + live trigger ids):
-1. **Assessment/diagnostics scan** — `diagnostics-runner.ts:736` (trigger ids `diag-run-<uuid>`). Observed packages: `assess:copilot-readiness` only.
+1. **Assessment/diagnostics scan** — `diagnostics-runner.ts:736` (trigger ids `diag-run-<uuid>`). Observed packages: `assess:copilot-readiness` (runs 362/437/443/444) and `core:premier` (run 445).
 2. **Recurring monitoring workflow** — `workflow-executor.ts:8354` `execute_pkg` node (trigger ids `wf-run-<n>-node-execute_pkg`). Observed package: `core:security-baseline` (verified: every row set of a wf-run trigger is exactly its 23-24 member checks).
 3. **Item-detail collection** — `item-detail-collector.ts:244` (runs alongside scoring scans; never contributes to scoring).
 4. **Simulator Studio single-check run** — `admin-monitor-check-runs.ts:184` (also reachable as `shaneapp://executeScan`). **A check runnable only here is PARTIAL by definition (#1386)** — this path is an operator tool, not a scan.
@@ -108,167 +108,167 @@ One dispatcher: `executeMonitorCheck` (`monitor-executor.ts:2532`), branching on
 
 Columns: check key · executor · Graph endpoint (or cmdlet) · engine tags · packages · classification · evidence note. Every row's classification derives from live observation data (real tenants only — the synthetic e2e tenant excluded) plus package-run reality; the generation script and inputs are in the evidence log. `freq` is `daily` for every check except `m365:service-health` (`hourly`).
 
-**Package legend:** SB=core:security-baseline · F=core:foundation · G=core:growth · P=core:premier · EM=core:enhanced-monitoring · CR=assess:copilot-readiness · LCO/TG/AM=the three small assess scans · DC=detail:full-item-collection (collection mode). **Bold packages have actually run for a real tenant** (CR, SB, DC only).
+**Package legend:** SB=core:security-baseline · F=core:foundation · G=core:growth · P=core:premier · EM=core:enhanced-monitoring · CR=assess:copilot-readiness · LCO/TG/AM=the three small assess scans · DC=detail:full-item-collection (collection mode). **Bold packages have actually run for a real tenant** (CR, SB, P, DC).
 
 | Check | Exec | Endpoint / cmdlet | Engine tags | Pkgs | Class | Evidence note |
 |---|---|---|---|---|---|---|
-| `adoption:email-activity-trend` | graph | /reports/getEmailActivityUserDetail(period='D7') | ["adoption"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=1 |
-| `adoption:m365-mobile-app-usage` | graph | /reports/getM365AppUserDetail(period='D7') | ["adoption"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `adoption:overall-active-rate` | graph | /reports/getOffice365ActiveUserDetail(period='D7') | ["adoption"] | **CR** EM F G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=8 |
-| `adoption:planner-usage` | graph | /groups/{itemId}/planner/plans | ["adoption"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `adoption:sharepoint-onedrive-trend` | graph | /reports/getSharePointSiteUsageDetail(period='D7') | ["adoption"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=99 |
-| `adoption:sharepoint-user-activity` | graph | /reports/getSharePointActivityUserDetail(period='D7') | ["adoption"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `adoption:teams-activity-trend` | graph | /reports/getTeamsUserActivityUserDetail(period='D7') | ["adoption"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=1 |
-| `adoption:teams-phone-provisioning` | powershell | cmdlet get-cs-online-user | ["adoption"] | EM G P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:growth,core:premier,detail:full-item-collection) — never invoked by any real … |
-| `adoption:viva-engage-health` | graph | /employeeExperience/communities | ["adoption"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `adoption:viva-engage-user-activity` | graph | /reports/getYammerActivityUserDetail(period='D7') | ["adoption"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `appgov:cert-secret-expiration` | graph | /applications | ["health"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=11 |
-| `appgov:consent-policy-status` | graph | /policies/authorizationPolicy | ["security", "governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=1 |
-| `appgov:dormant-service-principals` | graph | /servicePrincipals?$expand=appRoleAssignedTo($select=id)&$select=id,di… | ["governance"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `appgov:enterprise-app-count` | graph | /servicePrincipals | ["security"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `appgov:enterprise-app-registration-list` | graph | servicePrincipals | ["monitoring"] | **CR** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=1 |
-| `appgov:risky-permission-grants` | graph | /oauth2PermissionGrants | ["security", "priority"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=37 |
-| `appgov:stale-app-registrations` | graph | /applications | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=11 |
-| `appgov:unreviewed-consents` | graph | /oauth2PermissionGrants | ["security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=37 |
-| `appgov:workload-identity-risk` | graph | /identityProtection/riskyServicePrincipals | ["security"] | **CR** EM G P **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `compliance:audit-log-retention` | powershell | cmdlet get-audit-retention-policy | ["compliance"] | P | **PARTIAL** | PowerShell; only in packages never run (core:premier) — never invoked by any real run; ps-execution pipeline also broken (live §9 proof) |
-| `compliance:dlp-incidents` | powershell | cmdlet get-dlp-incidents | ["compliance"] | **CR** P **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
-| `compliance:eeeu-site-sharing` | graph | /sites/{itemId}/drive/root/permissions | ["compliance"] | **CR** F G P **DC** | **REAL** | observed partial (last 2026-08-28); run 437 testbed: partial items=93 |
-| `compliance:label-errors` | powershell | cmdlet get-label-policies | ["compliance"] | **CR** P | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
-| `compliance:missing-labels` | powershell | cmdlet get-labels | ["compliance"] | **CR** F G P **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
-| `compliance:weak-dlp-policies` | powershell | cmdlet get-dlp-policies | ["compliance"] | **CR** G P **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
-| `compliance:zero-dlp-policies` | powershell | cmdlet get-all-dlp-policies | ["compliance"] | **CR** G P **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
-| `copilot:active-usage-rate` | graph | /copilot/reports/getMicrosoft365CopilotUsageUserDetail(period='D7') | ["copilot", "adoption"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `copilot:data-exposure-risk` | graph | /sites/{itemId}/drive/root/permissions | ["copilot", "security"] | **CR** EM F G P **DC** | **REAL** | observed partial (last 2026-08-28); run 437 testbed: partial items=93 |
-| `copilot:license-vs-total-users` | graph | /subscribedSkus | ["copilot", "cost"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=4 |
-| `copilot:licensed-but-inactive` | graph | /copilot/reports/getMicrosoft365CopilotUsageUserDetail(period='D30') | ["copilot"] | AM **CR** G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `copilot:readiness-prerequisite` | graph | /subscribedSkus | ["copilot"] | **CR** EM F G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=4 |
-| `copilot:sensitivity-labels-exist` | graph | /security/dataSecurityAndGovernance/sensitivityLabels | ["copilot", "governance"] | **CR** G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `copilot:usage-activity` | graph | /copilot/reports/getMicrosoft365CopilotUsageUserDetail(period='D30') | ["copilot", "priority"] | AM **CR** G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `copilot:usage-by-app` | graph | /copilot/reports/getMicrosoft365CopilotUserCountTrend(period='D7') | ["copilot", "adoption"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `cost:duplicate-assignments` | graph | /users | ["cost"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=24 |
-| `cost:entra-license-tier-distribution` | graph | /subscribedSkus | ["cost", "security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=4 |
-| `cost:group-based-licensing-adoption` | graph | /groups | ["cost", "governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=104 |
-| `cost:license-count-by-sku` | graph | /subscribedSkus | ["cost"] | G P | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:growth,core:premier) |
-| `cost:underutilized-premium` | graph | /users | ["cost"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=24 |
-| `cost:unused-unassigned-licenses` | graph | /subscribedSkus | ["cost", "priority"] | F G P | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:foundation,core:growth,core:premier) |
-| `cost:utilization-by-sku` | graph | /subscribedSkus | ["cost"] | G P | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:growth,core:premier) |
-| `devices:app-protection-coverage` | graph | /deviceAppManagement/managedAppPolicies | ["security"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:autopilot-coverage` | graph | /deviceManagement/windowsAutopilotDeploymentProfiles | ["health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:bitlocker-key-escrow` | graph | /informationProtection/bitlocker/recoveryKeys | ["security"] | EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-24) |
-| `devices:compliance-policy-coverage` | graph | /deviceManagement/deviceCompliancePolicies | ["security", "health"] | EM F G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:foundation,core:growth,core:premier,detail… |
-| `devices:compliant-vs-noncompliant` | graph | /deviceManagement/managedDevices | ["security", "priority"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:encryption-status` | graph | /deviceManagement/managedDevices | ["security"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:enrollment-status` | graph | /deviceManagement/managedDevices | ["health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:kfm-configuration` | graph | /deviceManagement/deviceConfigurations | ["health", "adoption"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:os-patch-compliance` | graph | /deviceManagement/managedDevices | ["security", "health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:stale-duplicate-records` | graph | /devices?$select=id,displayName,deviceId,approximateLastSignInDateTime… | ["health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:unassigned-intune-profiles` | graph | /deviceManagement/deviceConfigurations?$expand=assignments($select=id)… | ["health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `devices:update-rings-config` | graph | /deviceManagement/deviceConfigurations | ["health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
+| `adoption:email-activity-trend` | graph | /reports/getEmailActivityUserDetail(period='D7') | ["adoption"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `adoption:m365-mobile-app-usage` | graph | /reports/getM365AppUserDetail(period='D7') | ["adoption"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `adoption:overall-active-rate` | graph | /reports/getOffice365ActiveUserDetail(period='D7') | ["adoption"] | **CR** EM F G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=8 |
+| `adoption:planner-usage` | graph | /groups/{itemId}/planner/plans | ["adoption"] | EM G **P** **DC** | **PARTIAL** | observed only status=error on real tenants (error) |
+| `adoption:sharepoint-onedrive-trend` | graph | /reports/getSharePointSiteUsageDetail(period='D7') | ["adoption"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=99 |
+| `adoption:sharepoint-user-activity` | graph | /reports/getSharePointActivityUserDetail(period='D7') | ["adoption"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `adoption:teams-activity-trend` | graph | /reports/getTeamsUserActivityUserDetail(period='D7') | ["adoption"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `adoption:teams-phone-provisioning` | powershell | cmdlet get-cs-online-user | ["adoption"] | EM G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `adoption:viva-engage-health` | graph | /employeeExperience/communities | ["adoption"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `adoption:viva-engage-user-activity` | graph | /reports/getYammerActivityUserDetail(period='D7') | ["adoption"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=8 |
+| `appgov:cert-secret-expiration` | graph | /applications | ["health"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=11 |
+| `appgov:consent-policy-status` | graph | /policies/authorizationPolicy | ["security", "governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `appgov:dormant-service-principals` | graph | /servicePrincipals?$expand=appRoleAssignedTo($select=id)&$select=id,di… | ["governance"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=498 |
+| `appgov:enterprise-app-count` | graph | /servicePrincipals | ["security"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=498 |
+| `appgov:enterprise-app-registration-list` | graph | servicePrincipals | ["monitoring"] | **CR** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `appgov:risky-permission-grants` | graph | /oauth2PermissionGrants | ["security", "priority"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=37 |
+| `appgov:stale-app-registrations` | graph | /applications | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=11 |
+| `appgov:unreviewed-consents` | graph | /oauth2PermissionGrants | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=37 |
+| `appgov:workload-identity-risk` | graph | /identityProtection/riskyServicePrincipals | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `compliance:audit-log-retention` | powershell | cmdlet get-audit-retention-policy | ["compliance"] | **P** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `compliance:dlp-incidents` | powershell | cmdlet get-dlp-incidents | ["compliance"] | **CR** **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `compliance:eeeu-site-sharing` | graph | /sites/{itemId}/drive/root/permissions | ["compliance"] | **CR** F G **P** **DC** | **REAL** | observed partial (last 2026-08-28); latest testbed obs: partial items=93 |
+| `compliance:label-errors` | powershell | cmdlet get-label-policies | ["compliance"] | **CR** **P** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `compliance:missing-labels` | powershell | cmdlet get-labels | ["compliance"] | **CR** F G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `compliance:weak-dlp-policies` | powershell | cmdlet get-dlp-policies | ["compliance"] | **CR** G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `compliance:zero-dlp-policies` | powershell | cmdlet get-all-dlp-policies | ["compliance"] | **CR** G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `copilot:active-usage-rate` | graph | /copilot/reports/getMicrosoft365CopilotUsageUserDetail(period='D7') | ["copilot", "adoption"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `copilot:data-exposure-risk` | graph | /sites/{itemId}/drive/root/permissions | ["copilot", "security"] | **CR** EM F G **P** **DC** | **REAL** | observed partial (last 2026-08-28); latest testbed obs: partial items=93 |
+| `copilot:license-vs-total-users` | graph | /subscribedSkus | ["copilot", "cost"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `copilot:licensed-but-inactive` | graph | /copilot/reports/getMicrosoft365CopilotUsageUserDetail(period='D30') | ["copilot"] | AM **CR** G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `copilot:readiness-prerequisite` | graph | /subscribedSkus | ["copilot"] | **CR** EM F G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `copilot:sensitivity-labels-exist` | graph | /security/dataSecurityAndGovernance/sensitivityLabels | ["copilot", "governance"] | **CR** G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `copilot:usage-activity` | graph | /copilot/reports/getMicrosoft365CopilotUsageUserDetail(period='D30') | ["copilot", "priority"] | AM **CR** G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `copilot:usage-by-app` | graph | /copilot/reports/getMicrosoft365CopilotUserCountTrend(period='D7') | ["copilot", "adoption"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `cost:duplicate-assignments` | graph | /users | ["cost"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=24 |
+| `cost:entra-license-tier-distribution` | graph | /subscribedSkus | ["cost", "security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `cost:group-based-licensing-adoption` | graph | /groups | ["cost", "governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=104 |
+| `cost:license-count-by-sku` | graph | /subscribedSkus | ["cost"] | G **P** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `cost:underutilized-premium` | graph | /users | ["cost"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=24 |
+| `cost:unused-unassigned-licenses` | graph | /subscribedSkus | ["cost", "priority"] | F G **P** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `cost:utilization-by-sku` | graph | /subscribedSkus | ["cost"] | G **P** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `devices:app-protection-coverage` | graph | /deviceAppManagement/managedAppPolicies | ["security"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:autopilot-coverage` | graph | /deviceManagement/windowsAutopilotDeploymentProfiles | ["health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:bitlocker-key-escrow` | graph | /informationProtection/bitlocker/recoveryKeys | ["security"] | EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:compliance-policy-coverage` | graph | /deviceManagement/deviceCompliancePolicies | ["security", "health"] | EM F G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:compliant-vs-noncompliant` | graph | /deviceManagement/managedDevices | ["security", "priority"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:encryption-status` | graph | /deviceManagement/managedDevices | ["security"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:enrollment-status` | graph | /deviceManagement/managedDevices | ["health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:kfm-configuration` | graph | /deviceManagement/deviceConfigurations | ["health", "adoption"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:os-patch-compliance` | graph | /deviceManagement/managedDevices | ["security", "health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:stale-duplicate-records` | graph | /devices?$select=id,displayName,deviceId,approximateLastSignInDateTime… | ["health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=8 |
+| `devices:unassigned-intune-profiles` | graph | /deviceManagement/deviceConfigurations?$expand=assignments($select=id)… | ["health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `devices:update-rings-config` | graph | /deviceManagement/deviceConfigurations | ["health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
 | `diagnostics:ps-execution-test` | powershell | cmdlet get-connection-info | [] | **DC** | **PARTIAL** | PowerShell; only in packages never run (detail:full-item-collection) — never invoked by any real run; ps-execution pipeline also broken (live §9 pr… |
-| `exchange:antispam-policy-coverage` | powershell | cmdlet get-antispam-policies | ["security"] | EM G P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:growth,core:premier,detail:full-item-collection) — never invoked by any real … |
-| `exchange:archive-mailbox-rate` | powershell | cmdlet get-archive-mailbox-gap | ["cost", "health"] | EM G P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:growth,core:premier,detail:full-item-collection) — never invoked by any real … |
+| `exchange:antispam-policy-coverage` | powershell | cmdlet get-antispam-policies | ["security"] | EM G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `exchange:archive-mailbox-rate` | powershell | cmdlet get-archive-mailbox-gap | ["cost", "health"] | EM G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
 | `exchange:auto-forwarding-rules` | powershell | cmdlet get-auto-forward-risk-policies | ["security", "priority"] | **NONE** | **PARTIAL** | PowerShell; only in packages never run ((none)) — never invoked by any real run; ps-execution pipeline also broken (live §9 proof) |
-| `exchange:connector-health` | powershell | cmdlet get-inbound-connector-tls-gap | ["security"] | EM G P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:growth,core:premier,detail:full-item-collection) — never invoked by any real … |
-| `exchange:distribution-list-count` | graph | /groups?$filter=mailEnabled eq true and securityEnabled eq false and N… | ["governance"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `exchange:dkim-spf-dmarc-status` | dns | TXT: SPF/_dmarc/DKIM selectors | ["security"] | **CR** F G P | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=1 |
-| `exchange:litigation-hold-coverage` | powershell | cmdlet get-litigation-hold-gap | ["compliance"] | EM P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:premier,detail:full-item-collection) — never invoked by any real run; ps-exec… |
-| `exchange:mail-flow-rule-review` | powershell | cmdlet get-transport-rules | ["security", "governance"] | EM G P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:growth,core:premier,detail:full-item-collection) — never invoked by any real … |
-| `exchange:mailbox-quota-utilization` | powershell | cmdlet get-mailbox-quota-utilization | ["cost", "health"] | EM G P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:growth,core:premier,detail:full-item-collection) — never invoked by any real … |
-| `exchange:shared-mailbox-licensing` | powershell | cmdlet get-shared-mailboxes | ["cost"] | EM G P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:growth,core:premier,detail:full-item-collection) — never invoked by any real … |
-| `exchange:transport-rule-count` | powershell | cmdlet get-transport-rules | ["security"] | EM G P **DC** | **PARTIAL** | PowerShell; only in packages never run (core:enhanced-monitoring,core:growth,core:premier,detail:full-item-collection) — never invoked by any real … |
-| `governance:access-review-completion` | graph | /identityGovernance/accessReviews/definitions | ["governance", "compliance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `governance:auto-labeling-coverage` | graph | /security/dataSecurityAndGovernance/sensitivityLabels | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `governance:dynamic-group-usage` | graph | /groups | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=104 |
-| `governance:empty-security-groups` | graph | /groups?$filter=securityEnabled eq true and mailEnabled eq false&$sele… | ["governance"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `governance:group-expiration-policy` | graph | /groupSettings | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `governance:guest-access-reviews` | graph | /identityGovernance/accessReviews/definitions | ["governance", "compliance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `governance:guest-count` | graph | /users | ["governance"] | **CR** EM F G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=24 |
-| `governance:guest-staleness` | graph | /users | ["governance", "security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=24 |
-| `governance:overdue-access-reviews` | graph | /identityGovernance/accessReviews/definitions | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `governance:ownerless-groups` | graph | /groups?$expand=owners($select=id) | ["governance"] | **CR** EM F G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=104 |
-| `governance:public-groups-discoverable` | graph | /groups?$filter=groupTypes/any(c:c eq 'Unified')&$select=id,displayNam… | ["governance"] | G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:growth,core:premier,detail:full-item-collection) |
-| `governance:public-teams-discoverable` | graph | /groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$select… | ["governance"] | G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:growth,core:premier,detail:full-item-collection) |
-| `governance:retention-label-adoption` | graph | /security/labels/retentionLabels | ["compliance"] | **CR** EM G P **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `governance:retention-policy-coverage` | graph | /security/labels/retentionLabels | ["compliance", "governance"] | **CR** F G P | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `governance:sensitivity-label-adoption` | graph | /security/dataSecurityAndGovernance/sensitivityLabels | ["governance", "compliance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:b2b-collaboration-settings` | graph | /policies/authorizationPolicy | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=1 |
-| `identity:break-glass-health` | graph | /users | ["security"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=24 |
-| `identity:ca-device-compliance` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:ca-legacy-auth-block` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:ca-mfa-coverage` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:ca-policy-count` | graph | /identity/conditionalAccess/policies | ["security", "health"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:ca-report-only` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:continuous-access-evaluation` | graph | /identity/conditionalAccess/policies?$select=id,displayName,sessionCon… | ["security"] | **CR** EM G P **SB** **DC** | **REAL** | observed error,ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:cross-tenant-access` | graph | /policies/crossTenantAccessPolicy | ["governance", "security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=1 |
-| `identity:department-directory` | graph | /users?$select=id,userPrincipalName,department,accountEnabled&$top=999 | ["adoption"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `identity:global-admin-count` | graph | /directoryRoles(roleTemplateId='62e90394-69f5-4237-9190-012177145e10')… | ["security", "priority"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=6 |
-| `identity:guest-mfa-enforcement` | graph | /identity/conditionalAccess/policies | ["security", "governance"] | **CR** EM G P **DC** | **REAL** | observed error,ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:hybrid-sync-health` | graph | /organization | ["architecture", "health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `identity:legacy-auth-usage` | graph | /auditLogs/signIns | ["security", "priority"] | **CR** EM F G P **SB** **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `identity:mfa-method-breakdown` | graph | /reports/authenticationMethods/userRegistrationDetails | ["security"] | **CR** EM G P **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `identity:mfa-registration` | graph | /reports/authenticationMethods/userRegistrationDetails | ["priority", "security"] | AM **CR** EM F G P **SB** **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `identity:named-locations` | graph | /identity/conditionalAccess/namedLocations | ["security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:password-expiration-policy` | graph | /domains | ["security"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `identity:pim-eligible-roles` | graph | /roleManagement/directory/roleEligibilitySchedules?$expand=principal | ["security", "health"] | **CR** EM G P **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `identity:pim-groups` | graph | /identityGovernance/privilegedAccess/group/eligibilitySchedules?$filte… | ["security"] | **CR** EM G P **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `identity:pim-permanent-roles` | graph | /roleManagement/directory/roleAssignments | ["security", "priority"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `identity:privileged-mfa-gap` | graph | /reports/authenticationMethods/userRegistrationDetails | ["priority", "security"] | **CR** EM F G P **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `identity:risky-signins` | graph | /identityProtection/riskDetections?$filter=activity eq 'signin' | ["security"] | **CR** EM G P **SB** **DC** | **REAL** | observed error,license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `identity:risky-users` | graph | /identityProtection/riskyUsers | ["security", "priority"] | **CR** EM F G P **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `identity:signin-risk-policy` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:sspr-config` | graph | /policies/authorizationPolicy | ["security"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=1 |
-| `identity:stale-accounts` | graph | /users | ["governance", "security"] | AM **CR** EM G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=24 |
-| `identity:terms-of-use` | graph | /identityGovernance/termsOfUse/agreements | ["compliance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `identity:user-risk-policy` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=0 |
-| `license:copilot-assignment` | graph | /subscribedSkus | ["copilot"] | **CR** LCO G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=4 |
-| `license:sku-utilization` | graph | /subscribedSkus | ["priority", "governance"] | **CR** LCO G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=4 |
-| `license:unused-assigned` | graph | /users?$select=id,accountEnabled,assignedLicenses,signInActivity | ["priority", "governance"] | **CR** LCO F G P **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `licensing:project-online-detection` | graph | /subscribedSkus | ["licensing"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `m365:message-center` | graph | /admin/serviceAnnouncement/messages?$orderby=lastModifiedDateTime desc | [] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=486 |
-| `m365:service-health` | graph | /admin/serviceAnnouncement/healthOverviews | [] | **CR** EM F G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=25 |
-| `onedrive:active-users` | graph | /reports/getOneDriveUsageAccountDetail(period='D7') | ["adoption"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `onedrive:departed-user-access` | graph | /users?$expand=manager($select=id)&$select=id,accountEnabled,signInAct… | ["governance"] | **CR** EM G P **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `onedrive:external-sharing-settings` | graph | /sites | ["governance"] | G P | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:growth,core:premier) |
+| `exchange:connector-health` | powershell | cmdlet get-inbound-connector-tls-gap | ["security"] | EM G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `exchange:distribution-list-count` | graph | /groups?$filter=mailEnabled eq true and securityEnabled eq false and N… | ["governance"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=17 |
+| `exchange:dkim-spf-dmarc-status` | dns | TXT: SPF/_dmarc/DKIM selectors | ["security"] | **CR** F G **P** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `exchange:litigation-hold-coverage` | powershell | cmdlet get-litigation-hold-gap | ["compliance"] | EM **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `exchange:mail-flow-rule-review` | powershell | cmdlet get-transport-rules | ["security", "governance"] | EM G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `exchange:mailbox-quota-utilization` | powershell | cmdlet get-mailbox-quota-utilization | ["cost", "health"] | EM G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `exchange:shared-mailbox-licensing` | powershell | cmdlet get-shared-mailboxes | ["cost"] | EM G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `exchange:transport-rule-count` | powershell | cmdlet get-transport-rules | ["security"] | EM G **P** **DC** | **PARTIAL** | PowerShell; IS invoked by real runs but every observed live execution errors (child process malformed output) or license-gates before reaching the c… |
+| `governance:access-review-completion` | graph | /identityGovernance/accessReviews/definitions | ["governance", "compliance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `governance:auto-labeling-coverage` | graph | /security/dataSecurityAndGovernance/sensitivityLabels | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `governance:dynamic-group-usage` | graph | /groups | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=104 |
+| `governance:empty-security-groups` | graph | /groups?$filter=securityEnabled eq true and mailEnabled eq false&$sele… | ["governance"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=9 |
+| `governance:group-expiration-policy` | graph | /groupSettings | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `governance:guest-access-reviews` | graph | /identityGovernance/accessReviews/definitions | ["governance", "compliance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `governance:guest-count` | graph | /users | ["governance"] | **CR** EM F G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=24 |
+| `governance:guest-staleness` | graph | /users | ["governance", "security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=24 |
+| `governance:overdue-access-reviews` | graph | /identityGovernance/accessReviews/definitions | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `governance:ownerless-groups` | graph | /groups?$expand=owners($select=id) | ["governance"] | **CR** EM F G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=104 |
+| `governance:public-groups-discoverable` | graph | /groups?$filter=groupTypes/any(c:c eq 'Unified')&$select=id,displayNam… | ["governance"] | G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=78 |
+| `governance:public-teams-discoverable` | graph | /groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$select… | ["governance"] | G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `governance:retention-label-adoption` | graph | /security/labels/retentionLabels | ["compliance"] | **CR** EM G **P** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `governance:retention-policy-coverage` | graph | /security/labels/retentionLabels | ["compliance", "governance"] | **CR** F G **P** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `governance:sensitivity-label-adoption` | graph | /security/dataSecurityAndGovernance/sensitivityLabels | ["governance", "compliance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:b2b-collaboration-settings` | graph | /policies/authorizationPolicy | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `identity:break-glass-health` | graph | /users | ["security"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=24 |
+| `identity:ca-device-compliance` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:ca-legacy-auth-block` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:ca-mfa-coverage` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:ca-policy-count` | graph | /identity/conditionalAccess/policies | ["security", "health"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:ca-report-only` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:continuous-access-evaluation` | graph | /identity/conditionalAccess/policies?$select=id,displayName,sessionCon… | ["security"] | **CR** EM G **P** **SB** **DC** | **REAL** | observed error,ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:cross-tenant-access` | graph | /policies/crossTenantAccessPolicy | ["governance", "security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `identity:department-directory` | graph | /users?$select=id,userPrincipalName,department,accountEnabled&$top=999 | ["adoption"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=24 |
+| `identity:global-admin-count` | graph | /directoryRoles(roleTemplateId='62e90394-69f5-4237-9190-012177145e10')… | ["security", "priority"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=6 |
+| `identity:guest-mfa-enforcement` | graph | /identity/conditionalAccess/policies | ["security", "governance"] | **CR** EM G **P** **DC** | **REAL** | observed error,ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:hybrid-sync-health` | graph | /organization | ["architecture", "health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `identity:legacy-auth-usage` | graph | /auditLogs/signIns | ["security", "priority"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `identity:mfa-method-breakdown` | graph | /reports/authenticationMethods/userRegistrationDetails | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `identity:mfa-registration` | graph | /reports/authenticationMethods/userRegistrationDetails | ["priority", "security"] | AM **CR** EM F G **P** **SB** **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `identity:named-locations` | graph | /identity/conditionalAccess/namedLocations | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:password-expiration-policy` | graph | /domains | ["security"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=9 |
+| `identity:pim-eligible-roles` | graph | /roleManagement/directory/roleEligibilitySchedules?$expand=principal | ["security", "health"] | **CR** EM G **P** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `identity:pim-groups` | graph | /identityGovernance/privilegedAccess/group/eligibilitySchedules?$filte… | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `identity:pim-permanent-roles` | graph | /roleManagement/directory/roleAssignments | ["security", "priority"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `identity:privileged-mfa-gap` | graph | /reports/authenticationMethods/userRegistrationDetails | ["priority", "security"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `identity:risky-signins` | graph | /identityProtection/riskDetections?$filter=activity eq 'signin' | ["security"] | **CR** EM G **P** **SB** **DC** | **REAL** | observed error,license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `identity:risky-users` | graph | /identityProtection/riskyUsers | ["security", "priority"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `identity:signin-risk-policy` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:sspr-config` | graph | /policies/authorizationPolicy | ["security"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `identity:stale-accounts` | graph | /users | ["governance", "security"] | AM **CR** EM G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=24 |
+| `identity:terms-of-use` | graph | /identityGovernance/termsOfUse/agreements | ["compliance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `identity:user-risk-policy` | graph | /identity/conditionalAccess/policies | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed error,ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `license:copilot-assignment` | graph | /subscribedSkus | ["copilot"] | **CR** LCO G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `license:sku-utilization` | graph | /subscribedSkus | ["priority", "governance"] | **CR** LCO G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `license:unused-assigned` | graph | /users?$select=id,accountEnabled,assignedLicenses,signInActivity | ["priority", "governance"] | **CR** LCO F G **P** **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `licensing:project-online-detection` | graph | /subscribedSkus | ["licensing"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=4 |
+| `m365:message-center` | graph | /admin/serviceAnnouncement/messages?$orderby=lastModifiedDateTime desc | [] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=486 |
+| `m365:service-health` | graph | /admin/serviceAnnouncement/healthOverviews | [] | **CR** EM F G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=25 |
+| `onedrive:active-users` | graph | /reports/getOneDriveUsageAccountDetail(period='D7') | ["adoption"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `onedrive:departed-user-access` | graph | /users?$expand=manager($select=id)&$select=id,accountEnabled,signInAct… | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed license_gap,ok (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `onedrive:external-sharing-settings` | graph | /sites | ["governance"] | G **P** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=99 |
 | `onedrive:overshared-files` | graph | /sites/{itemId}/drive/root/permissions | ["compliance"] | **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: detail:full-item-collection) |
-| `onedrive:storage-utilization` | graph | /reports/getOneDriveUsageAccountDetail(period='D7') | ["cost", "health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `onedrive:sync-errors` | graph | /reports/getOneDriveUsageAccountDetail(period='D30') | ["health"] | G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:growth,core:premier,detail:full-item-collection) |
-| `platform:branding-config` | graph | /organization/{id}/branding | ["governance"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `platform:multi-geo-status` | graph | /admin/sharepoint/settings | ["architecture"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `platform:tenant-password-expiration` | graph | /domains | ["security"] | G P | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:growth,core:premier) |
-| `security:alert-count-by-severity` | graph | /security/alerts_v2 | ["security", "priority"] | **CR** EM G P **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `security:antiphishing-coverage` | graph | /security/alerts_v2 | ["security"] | **CR** EM F G P **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `security:automated-investigation` | graph | /security/incidents | ["security"] | **CR** EM G P **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `security:azure-roleDefinitions-compliance` | graph | /roleManagement/directory/roleDefinitions | ["security"] | **CR** G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=145 |
-| `security:dlp-true-positive-rate` | graph | /security/alerts_v2 | ["security"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `security:dlp-violations` | graph | /security/alerts_v2 | ["security", "priority"] | **CR** EM G P **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `security:insider-risk-alerts` | graph | /security/alerts_v2?$filter=detectionSource eq 'microsoftInsiderRiskMa… | ["security"] | **CR** EM P **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `security:open-incidents` | graph | /security/incidents | ["security", "priority"] | **CR** EM F G P **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `security:password-protection-policy` | graph | /domains | ["security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=9 |
-| `security:safe-attachments-coverage` | graph | /security/alerts_v2 | ["security"] | **CR** EM F G P **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `security:safe-links-coverage` | graph | /security/alerts_v2 | ["security"] | **CR** EM F G P **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); run 437 testbed: license_gap items=0 |
-| `security:secure-score` | graph | /security/secureScores | ["health", "priority"] | **CR** EM F G P **SB** **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=90 |
-| `security:secure-score-by-category` | graph | /security/secureScores | ["health"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=90 |
+| `onedrive:storage-utilization` | graph | /reports/getOneDriveUsageAccountDetail(period='D7') | ["cost", "health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `onedrive:sync-errors` | graph | /reports/getOneDriveUsageAccountDetail(period='D30') | ["health"] | G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `platform:branding-config` | graph | /organization/{id}/branding | ["governance"] | EM G **P** **DC** | **PARTIAL** | observed only status=error on real tenants (error) |
+| `platform:multi-geo-status` | graph | /admin/sharepoint/settings | ["architecture"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=1 |
+| `platform:tenant-password-expiration` | graph | /domains | ["security"] | G **P** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=9 |
+| `security:alert-count-by-severity` | graph | /security/alerts_v2 | ["security", "priority"] | **CR** EM G **P** **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:antiphishing-coverage` | graph | /security/alerts_v2 | ["security"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:automated-investigation` | graph | /security/incidents | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:azure-roleDefinitions-compliance` | graph | /roleManagement/directory/roleDefinitions | ["security"] | **CR** G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=145 |
+| `security:dlp-true-positive-rate` | graph | /security/alerts_v2 | ["security"] | EM G **P** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:dlp-violations` | graph | /security/alerts_v2 | ["security", "priority"] | **CR** EM G **P** **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:insider-risk-alerts` | graph | /security/alerts_v2?$filter=detectionSource eq 'microsoftInsiderRiskMa… | ["security"] | **CR** EM **P** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:open-incidents` | graph | /security/incidents | ["security", "priority"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:password-protection-policy` | graph | /domains | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=9 |
+| `security:safe-attachments-coverage` | graph | /security/alerts_v2 | ["security"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:safe-links-coverage` | graph | /security/alerts_v2 | ["security"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed license_gap (last 2026-08-28); latest testbed obs: license_gap items=0 |
+| `security:secure-score` | graph | /security/secureScores | ["health", "priority"] | **CR** EM F G **P** **SB** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=90 |
+| `security:secure-score-by-category` | graph | /security/secureScores | ["health"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=90 |
 | `sharepoint:anonymous-links` (INACTIVE) | graph | /sites | ["security", "governance"] | **NONE** | **PARTIAL** | inactive (status=inactive) and in no package — structurally cannot run |
-| `sharepoint:inactive-sites` | graph | /sites | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=99 |
+| `sharepoint:inactive-sites` | graph | /sites | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed error,ok (last 2026-08-28); latest testbed obs: ok items=99 |
 | `sharepoint:orgwide-links` (INACTIVE) | graph | /sites | ["governance"] | **NONE** | **PARTIAL** | inactive (status=inactive) and in no package — structurally cannot run |
-| `sharepoint:site-count` | graph | /sites | ["health"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=99 |
-| `sharepoint:site-label-coverage` | graph | /sites | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=99 |
-| `sharepoint:storage-near-limit` | graph | /sites | ["health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `sharepoint:storage-utilization` | graph | /sites | ["health", "cost"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `sharepoint:tenant-sharing-capability` | sharepoint-admin | SP admin: tenant-sharing-capability | ["governance", "security"] | **CR** EM F G P **SB** **DC** | **PARTIAL** | invoked by real runs; every observation errors on MT_APP_* SharePoint app-only cert config |
-| `teams:app-permission-policy` | graph | /teams | ["security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:channel-sprawl` | graph | /teams/{itemId}/channels | ["governance"] | **CR** TG G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=27 |
-| `teams:external-access-settings` | graph | /teams | ["governance", "security"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:guest-membership` | graph | /teams | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:guest-settings-governance` | graph | /teams/{itemId} | ["governance", "security"] | **CR** TG G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:inactive-teams` | graph | /teams | ["governance", "adoption"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:inventory-count` | graph | /groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team') | ["governance", "health"] | AM **CR** TG G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:meeting-policy-coverage` | graph | /teams | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:messaging-policy-coverage` | graph | /teams | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:ownerless-teams` | graph | /groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$expand… | ["governance"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
-| `teams:rooms-device-health` | graph | /deviceManagement/managedDevices | ["health"] | EM G P **DC** | **PARTIAL** | active Graph check with ZERO observations on any real tenant (only package: core:enhanced-monitoring,core:growth,core:premier,detail:full-item-colle… |
-| `teams:team-count` | graph | /teams | ["health"] | **CR** EM G P **DC** | **REAL** | observed ok (last 2026-08-28); run 437 testbed: ok items=18 |
+| `sharepoint:site-count` | graph | /sites | ["health"] | **CR** EM G **P** **DC** | **REAL** | observed error,ok (last 2026-08-28); latest testbed obs: ok items=99 |
+| `sharepoint:site-label-coverage` | graph | /sites | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed error,ok (last 2026-08-28); latest testbed obs: ok items=99 |
+| `sharepoint:storage-near-limit` | graph | /sites | ["health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=99 |
+| `sharepoint:storage-utilization` | graph | /sites | ["health", "cost"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=99 |
+| `sharepoint:tenant-sharing-capability` | sharepoint-admin | SP admin: tenant-sharing-capability | ["governance", "security"] | **CR** EM F G **P** **SB** **DC** | **PARTIAL** | invoked by real runs; every observation errors on MT_APP_* SharePoint app-only cert config |
+| `teams:app-permission-policy` | graph | /teams | ["security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:channel-sprawl` | graph | /teams/{itemId}/channels | ["governance"] | **CR** TG G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=27 |
+| `teams:external-access-settings` | graph | /teams | ["governance", "security"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:guest-membership` | graph | /teams | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:guest-settings-governance` | graph | /teams/{itemId} | ["governance", "security"] | **CR** TG G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:inactive-teams` | graph | /teams | ["governance", "adoption"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:inventory-count` | graph | /groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team') | ["governance", "health"] | AM **CR** TG G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:meeting-policy-coverage` | graph | /teams | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:messaging-policy-coverage` | graph | /teams | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:ownerless-teams` | graph | /groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$expand… | ["governance"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
+| `teams:rooms-device-health` | graph | /deviceManagement/managedDevices | ["health"] | EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=0 |
+| `teams:team-count` | graph | /teams | ["health"] | **CR** EM G **P** **DC** | **REAL** | observed ok (last 2026-08-28); latest testbed obs: ok items=18 |
 
 
 ### 4.1 The PowerShell seventeen (all PARTIAL)
@@ -277,30 +277,30 @@ Cmdlet resolution is container-side from `services/ps-execution/cmdlet-catalog.p
 
 | Check | cmdletKey | Real cmdlet | Session | Invoked by a real run? |
 |---|---|---|---|---|
-| `adoption:teams-phone-provisioning` | get-cs-online-user | Get-CsOnlineUser | teams (Connect-MicrosoftTeams) | never (packages never run) |
-| `compliance:audit-log-retention` | get-audit-retention-policy | Get-UnifiedAuditLogRetentionPolicy | compliance (Connect-IPPSSession) | never (packages never run) |
+| `adoption:teams-phone-provisioning` | get-cs-online-user | Get-CsOnlineUser | teams (Connect-MicrosoftTeams) | yes — errors (child-process failure) or license-gates first |
+| `compliance:audit-log-retention` | get-audit-retention-policy | Get-UnifiedAuditLogRetentionPolicy | compliance (Connect-IPPSSession) | yes — errors (child-process failure) or license-gates first |
 | `compliance:dlp-incidents` | get-dlp-incidents | Export-ActivityExplorerData | compliance (Connect-IPPSSession) | yes — errors (child-process failure) or license-gates first |
 | `compliance:label-errors` | get-label-policies | Get-LabelPolicy | compliance (Connect-IPPSSession) | yes — errors (child-process failure) or license-gates first |
 | `compliance:missing-labels` | get-labels | Get-Label | compliance (Connect-IPPSSession) | yes — errors (child-process failure) or license-gates first |
 | `compliance:weak-dlp-policies` | get-dlp-policies | Get-DlpCompliancePolicy (PostFilter: Mode≠Enable or disabled) | compliance (Connect-IPPSSession) | yes — errors (child-process failure) or license-gates first |
 | `compliance:zero-dlp-policies` | get-all-dlp-policies | Get-DlpCompliancePolicy (unfiltered) | compliance (Connect-IPPSSession) | yes — errors (child-process failure) or license-gates first |
 | `diagnostics:ps-execution-test` | get-connection-info | Get-ConnectionInformation | compliance (Connect-IPPSSession) | never (packages never run) |
-| `exchange:antispam-policy-coverage` | get-antispam-policies | Get-HostedContentFilterPolicy | exchange (Connect-ExchangeOnline) | never (packages never run) |
-| `exchange:archive-mailbox-rate` | get-archive-mailbox-gap | Get-Mailbox | exchange (Connect-ExchangeOnline) | never (packages never run) |
+| `exchange:antispam-policy-coverage` | get-antispam-policies | Get-HostedContentFilterPolicy | exchange (Connect-ExchangeOnline) | yes — errors (child-process failure) or license-gates first |
+| `exchange:archive-mailbox-rate` | get-archive-mailbox-gap | Get-Mailbox | exchange (Connect-ExchangeOnline) | yes — errors (child-process failure) or license-gates first |
 | `exchange:auto-forwarding-rules` | get-auto-forward-risk-policies | Get-HostedOutboundSpamFilterPolicy | exchange (Connect-ExchangeOnline) | never (packages never run) |
-| `exchange:connector-health` | get-inbound-connector-tls-gap | Get-InboundConnector | exchange (Connect-ExchangeOnline) | never (packages never run) |
-| `exchange:litigation-hold-coverage` | get-litigation-hold-gap | Get-Mailbox | exchange (Connect-ExchangeOnline) | never (packages never run) |
-| `exchange:mail-flow-rule-review` | get-transport-rules | Get-TransportRule | exchange (Connect-ExchangeOnline) | never (packages never run) |
-| `exchange:mailbox-quota-utilization` | get-mailbox-quota-utilization | Get-Mailbox (+stats) | exchange (Connect-ExchangeOnline) | never (packages never run) |
-| `exchange:shared-mailbox-licensing` | get-shared-mailboxes | Get-Mailbox | exchange (Connect-ExchangeOnline) | never (packages never run) |
-| `exchange:transport-rule-count` | get-transport-rules | Get-TransportRule | exchange (Connect-ExchangeOnline) | never (packages never run) |
+| `exchange:connector-health` | get-inbound-connector-tls-gap | Get-InboundConnector | exchange (Connect-ExchangeOnline) | yes — errors (child-process failure) or license-gates first |
+| `exchange:litigation-hold-coverage` | get-litigation-hold-gap | Get-Mailbox | exchange (Connect-ExchangeOnline) | yes — errors (child-process failure) or license-gates first |
+| `exchange:mail-flow-rule-review` | get-transport-rules | Get-TransportRule | exchange (Connect-ExchangeOnline) | yes — errors (child-process failure) or license-gates first |
+| `exchange:mailbox-quota-utilization` | get-mailbox-quota-utilization | Get-Mailbox (+stats) | exchange (Connect-ExchangeOnline) | yes — errors (child-process failure) or license-gates first |
+| `exchange:shared-mailbox-licensing` | get-shared-mailboxes | Get-Mailbox | exchange (Connect-ExchangeOnline) | yes — errors (child-process failure) or license-gates first |
+| `exchange:transport-rule-count` | get-transport-rules | Get-TransportRule | exchange (Connect-ExchangeOnline) | yes — errors (child-process failure) or license-gates first |
 
 
-Live pipeline proof (this session): `shaneapp://executeCmdlet?cmdletKey=get-connection-info&tenantId=c4c814d4-…` → `{ok:false, error:"The request-handling child process produced malformed output.", kind:"script_error", containerErrorKind:"script_error", organization:"mccawsoft2.onmicrosoft.com", customerId:1, elapsedMs:4795}`. `get-connection-info` is the trivial no-tenant-data placeholder that exercises only connect→invoke→capture→disconnect — its failure means the container's child-process layer is broken for **every** cmdlet and session type, superseding the narrower #1389 MSAL diagnosis for current state.
+Live pipeline proof (this session): `shaneapp://executeCmdlet?cmdletKey=get-connection-info&tenantId=c4c814d4-…` → `{ok:false, error:"The request-handling child process produced malformed output.", kind:"script_error", containerErrorKind:"script_error", organization:"mccawsoft2.onmicrosoft.com", customerId:1, elapsedMs:4795}`. `get-connection-info` is the trivial no-tenant-data placeholder that exercises only connect→invoke→capture→disconnect — its failure means the container's child-process layer is broken for **every** cmdlet and session type, superseding the narrower #1389 MSAL diagnosis for current state. The `core:premier` run (445) then confirmed this at scale: 14 PS checks errored with the same message — including the first-ever invocations of `compliance:audit-log-retention` and `exchange:litigation-hold-coverage` — and the one teams-session check, `adoption:teams-phone-provisioning`, failed differently: *"Could not establish a Microsoft Teams session for the target tenant."*
 
 ## 5. Findings, items, and the assessment run shape
 
-A real run writes `msp_diagnostic_runs` (observed run 437: `{status:"partial", run_status:"partial_failure", checks_total:101, checks_ok:72, checks_error:6, checks_requires_script:0, checks_license_gap:21}` — `license_gap` deliberately does not make a run partial; the 6 errors + 2 fan-out partials do). Per-check findings land in `msp_diagnostic_findings` (98 rows for run 437) and reach the portal inside the pillar payload. Real observed finding shape (§9.1 capture):
+A real run writes `msp_diagnostic_runs` (observed run 437: `{status:"partial", run_status:"partial_failure", checks_total:101, checks_ok:72, checks_error:6, checks_requires_script:0, checks_license_gap:21}`; run 445 `core:premier`: `checks_total:151, checks_ok:109, checks_error:18, checks_license_gap:22` — of the 18 errors, 15 are the PowerShell/Teams-session failures, 1 the SP-admin cert, plus `adoption:planner-usage`'s total fan-out failure and `platform:branding-config`'s Graph 404. `license_gap` deliberately does not make a run partial; errors and fan-out partials do). Per-check findings land in `msp_diagnostic_findings` and reach the portal inside the pillar payload. Real observed finding shape (§9.1 capture):
 
 ```json
 {"severity":"warning","checkKey":"governance:ownerless-groups",
@@ -382,25 +382,34 @@ Real example, `exchange:dkim-spf-dmarc-status` on the testbed (run 437, redacted
 
 (The `spfRecord`/`dmarcRecord` values above are the shape as persisted; this tenant's observed severity was `warning` with label *"No DMARC record found at _dmarc.<domain>"*.)
 
-### 7.3 Per-check observed shapes — testbed run 437 (all 101 checks)
+### 7.3 Per-check observed shapes — latest observation per check across the 2026-08-28 testbed runs (152 checks)
 
-For every check the fresh testbed run executed: status, item count, and the real `extracted_properties` field names observed. This is observation, not declaration — a check not listed here was not in that run's package (its evidence, if any, is the master table's dated note).
+For every check any of today's testbed runs executed (copilot-readiness 437/443/444 + `core:premier` 445): the latest status, item count, and the real `extracted_properties` field names observed. This is observation, not declaration — a check not listed here has never been executed against this tenant (its evidence, if any, is the master table's dated note).
 
 Convention reminder: for every listed base property `p`, the triplets `p_count`/`p_first`/`p_values` follow §7.2 — `_values` variants are omitted below for width.
 
 | Check | Status | Items | Observed extracted_properties fields |
 |---|---|---|---|
 | `adoption:email-activity-trend` | ok | 1 | _itemCount, emailActiveUserCount, emailLicensedUserCount, lastActivityDate_count, lastActivityDate_first, userPrincipalName_count, userPrincipalName_first |
+| `adoption:m365-mobile-app-usage` | ok | 1 | _itemCount, mobileActiveUserCount, mobileLicensedUserCount |
 | `adoption:overall-active-rate` | ok | 8 | _itemCount, overallActiveUserCount, userPrincipalName_count, userPrincipalName_first, hasExchangeLicense_count, hasExchangeLicense_first |
+| `adoption:planner-usage` | error | 0 | (null — error: Fan-out coverage: 0/104 items succeeded, 104 failed…) |
 | `adoption:sharepoint-onedrive-trend` | ok | 99 | _itemCount, lastActivityDate_count, lastActivityDate_first, sharepointSitesScanned, userPrincipalName_count, userPrincipalName_first, sharepointActiveUserCount |
+| `adoption:sharepoint-user-activity` | ok | 1 | _itemCount, sharepointUserActiveCount, sharepointUsersScannedCount |
 | `adoption:teams-activity-trend` | ok | 1 | _itemCount, teamsActiveUserCount, lastActivityDate_count, lastActivityDate_first, teamsLicensedUserCount, userPrincipalName_count, userPrincipalName_first |
+| `adoption:teams-phone-provisioning` | error | 0 | (null — error: Could not establish a Microsoft Teams session for the target tenant.…) |
+| `adoption:viva-engage-health` | ok | 1 | id_count, id_first, _itemCount, displayName_count, displayName_first, vivaEngageCommunityCount |
+| `adoption:viva-engage-user-activity` | ok | 8 | _itemCount, vivaEngageUserActiveCount, vivaEngageUsersScannedCount |
 | `appgov:cert-secret-expiration` | ok | 11 | id_count, id_first, _itemCount, keyCredentialCount, keyCredentials_count, keyCredentials_first, passwordCredentialCount, expiredKeyCredentialCount, passwordCredent… |
 | `appgov:consent-policy-status` | ok | 1 | id_count, id_first, _itemCount, userConsentAllowed, defaultUserRolePermissions_count, defaultUserRolePermissions_first |
+| `appgov:dormant-service-principals` | ok | 498 | id_count, id_first, _itemCount, displayName_count, displayName_first, accountEnabled_count, accountEnabled_first, servicePrincipalCount, servicePrincipalType_count… |
+| `appgov:enterprise-app-count` | ok | 498 | id_count, id_first, _itemCount, displayName_count, displayName_first, enterpriseAppCount |
 | `appgov:enterprise-app-registration-list` | ok | 1 | id_count, id_first, _itemCount, appId_count, appId_first, displayName_count, displayName_first |
 | `appgov:risky-permission-grants` | ok | 37 | id_count, id_first, _itemCount, scope_count, scope_first, totalConsentGrantCount, riskyPermissionGrantCount |
 | `appgov:stale-app-registrations` | ok | 11 | id_count, id_first, _itemCount, appId_count, appId_first, displayName_count, displayName_first, createdDateTime_count, createdDateTime_first, appRegistrationsOver1… |
 | `appgov:unreviewed-consents` | ok | 37 | id_count, id_first, _itemCount, consentType_count, consentType_first, totalConsentGrantCount, unreviewedConsentCount |
 | `appgov:workload-identity-risk` | license_gap | 0 | _licenseGap, _licenseGapCode, _licenseGapFeature |
+| `compliance:audit-log-retention` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
 | `compliance:dlp-incidents` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
 | `compliance:eeeu-site-sharing` | partial | 93 | _fanOut, _itemCount, sitesScanned, eeeuSiteCount, everyoneSiteCount, oversharedSiteCount, anonymousLinkSiteCount, organizationLinkSiteCount, sitesByHighestSharingL… |
 | `compliance:label-errors` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
@@ -418,17 +427,44 @@ Convention reminder: for every listed base property `p`, the triplets `p_count`/
 | `cost:duplicate-assignments` | ok | 24 | id_count, id_first, _itemCount, assignedLicenses_count, assignedLicenses_first, duplicateLicenseAssignmentCount |
 | `cost:entra-license-tier-distribution` | ok | 4 | _itemCount, licenseInventory, skuPartNumber_count, skuPartNumber_first |
 | `cost:group-based-licensing-adoption` | ok | 104 | id_count, id_first, _itemCount, assignedLicenses_count, assignedLicenses_first, groupBasedLicensingGroupCount |
+| `cost:license-count-by-sku` | ok | 4 | _itemCount, licenseSkuCount, prepaidUnits_count, prepaidUnits_first, consumedUnits_count, consumedUnits_first, skuPartNumber_count, skuPartNumber_first |
 | `cost:underutilized-premium` | ok | 24 | id_count, id_first, _itemCount, assignedLicenses_count, assignedLicenses_first, underutilizedPremiumLicenseCount |
+| `cost:unused-unassigned-licenses` | ok | 4 | _itemCount, prepaidUnits_count, prepaidUnits_first, unusedLicenseCount, consumedUnits_count, consumedUnits_first, skuPartNumber_count, skuPartNumber_first |
+| `cost:utilization-by-sku` | ok | 4 | _itemCount, skuPartNumber_count, skuPartNumber_first, licenseUtilizationBySku |
+| `devices:app-protection-coverage` | ok | 0 | id_count, id_first, _itemCount, displayName_count, displayName_first, appProtectionPolicyAssignedCount |
+| `devices:autopilot-coverage` | ok | 0 | id_count, id_first, _itemCount, displayName_count, displayName_first, autopilotProfileCount |
+| `devices:bitlocker-key-escrow` | ok | 0 | id_count, id_first, _itemCount, deviceId_count, deviceId_first, bitlockerKeysEscrowedCount |
+| `devices:compliance-policy-coverage` | ok | 0 | id_count, id_first, _itemCount, displayName_count, displayName_first, devicesWithoutCompliancePolicyCount |
+| `devices:compliant-vs-noncompliant` | ok | 0 | id_count, id_first, _itemCount, complianceState_count, complianceState_first, nonCompliantDeviceCount |
+| `devices:encryption-status` | ok | 0 | id_count, id_first, _itemCount, isEncrypted_count, isEncrypted_first, unencryptedDeviceCount |
+| `devices:enrollment-status` | ok | 0 | id_count, id_first, _itemCount, enrolledDeviceCount, enrolledDateTime_count, enrolledDateTime_first |
+| `devices:kfm-configuration` | ok | 0 | _itemCount, deviceConfigProfileCount, kfmConfiguredProfileCount |
+| `devices:os-patch-compliance` | ok | 0 | id_count, id_first, _itemCount, osVersion_count, osVersion_first, outdatedOsDeviceCount |
+| `devices:stale-duplicate-records` | ok | 8 | id_count, id_first, _itemCount, deviceId_count, deviceId_first, displayName_count, displayName_first, staleDeviceRecordCount, duplicateDeviceRecordCount, approxima… |
+| `devices:unassigned-intune-profiles` | ok | 0 | id_count, id_first, _itemCount, displayName_count, displayName_first, intuneProfileCount, unassignedIntuneProfileCount |
+| `devices:update-rings-config` | ok | 0 | id_count, id_first, _itemCount, updateRingCount, displayName_count, displayName_first |
+| `exchange:antispam-policy-coverage` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
+| `exchange:archive-mailbox-rate` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
+| `exchange:connector-health` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
+| `exchange:distribution-list-count` | ok | 17 | Name_count, Name_first, _itemCount, distributionListCount |
 | `exchange:dkim-spf-dmarc-status` | ok | 1 | domain, spfRecord, _itemCount, dmarcRecord, spfConfigured, dmarcConfigured, dkimCheckedSelectors, dkimFoundAtDefaultSelectors, dkimConfiguredAtDefaultSelectors |
+| `exchange:litigation-hold-coverage` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
+| `exchange:mail-flow-rule-review` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
+| `exchange:mailbox-quota-utilization` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
+| `exchange:shared-mailbox-licensing` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
+| `exchange:transport-rule-count` | error | 0 | (null — error: The request-handling child process produced malformed output.…) |
 | `governance:access-review-completion` | ok | 0 | id_count, id_first, _itemCount, status_count, status_first, accessReviewCompletedCount |
 | `governance:auto-labeling-coverage` | ok | 0 | id_count, id_first, _itemCount, autoLabelingPolicyExists |
 | `governance:dynamic-group-usage` | ok | 104 | id_count, id_first, _itemCount, groupTypes_count, groupTypes_first, dynamicGroupCount, membershipRule_count, membershipRule_first |
+| `governance:empty-security-groups` | ok | 9 | id_count, id_first, _itemCount, displayName_count, displayName_first, securityGroupCount, createdDateTime_count, createdDateTime_first, emptySecurityGroupCount |
 | `governance:group-expiration-policy` | ok | 0 | id_count, id_first, _itemCount, values_count, values_first, groupExpirationPolicyConfigured |
 | `governance:guest-access-reviews` | ok | 0 | id_count, id_first, _itemCount, scope_count, scope_first, guestAccessReviewExists |
 | `governance:guest-count` | ok | 24 | id_count, id_first, _itemCount, userType_count, userType_first, guestAccountCount |
 | `governance:guest-staleness` | ok | 24 | id_count, id_first, _itemCount, userType_count, userType_first, staleGuestCount, signInActivity_count, signInActivity_first |
 | `governance:overdue-access-reviews` | ok | 0 | id_count, id_first, _itemCount, status_count, status_first, overdueAccessReviewCount |
 | `governance:ownerless-groups` | ok | 104 | id_count, id_first, _itemCount, displayName_count, displayName_first, ownerlessGroupCount |
+| `governance:public-groups-discoverable` | ok | 78 | id_count, id_first, _itemCount, groupsScanned, publicGroupCount, visibility_count, visibility_first, displayName_count, displayName_first |
+| `governance:public-teams-discoverable` | ok | 18 | id_count, id_first, _itemCount, teamsScanned, publicTeamCount, visibility_count, visibility_first, displayName_count, displayName_first |
 | `governance:retention-label-adoption` | license_gap | 0 | _licenseGap, _licenseGapCode, _licenseGapFeature |
 | `governance:retention-policy-coverage` | license_gap | 0 | _licenseGap, _licenseGapCode, _licenseGapFeature |
 | `governance:sensitivity-label-adoption` | ok | 0 | id_count, id_first, _itemCount, name_count, name_first, sensitivityLabelCount |
@@ -441,12 +477,15 @@ Convention reminder: for every listed base property `p`, the triplets `p_count`/
 | `identity:ca-report-only` | ok | 0 | id_count, id_first, _itemCount, state_count, state_first, caReportOnlyPolicyCount |
 | `identity:continuous-access-evaluation` | ok | 0 | id_count, id_first, _itemCount, caePolicyTotal, displayName_count, displayName_first, caeDisabledPolicyCount, caeConfiguredPolicyCount |
 | `identity:cross-tenant-access` | ok | 1 | id_count, id_first, _itemCount, crossTenantAccessConfigured |
+| `identity:department-directory` | ok | 24 | id_count, id_first, _itemCount, totalUserCount, department_count, department_first, accountEnabled_count, accountEnabled_first, userPrincipalName_count, userPrinci… |
 | `identity:global-admin-count` | ok | 6 | id_count, id_first, _itemCount, mail_count, mail_first, globalAdminCount, @odata.type_count, @odata.type_first, displayName_count, displayName_first, globalAdminUs… |
 | `identity:guest-mfa-enforcement` | ok | 0 | id_count, id_first, _itemCount, conditions_count, conditions_first, guestMfaPolicyExists |
+| `identity:hybrid-sync-health` | ok | 1 | id_count, id_first, _itemCount, lastSyncDateTime, hybridSyncEnabled, onPremisesSyncEnabled_count, onPremisesSyncEnabled_first, onPremisesLastSyncDateTime_count, on… |
 | `identity:legacy-auth-usage` | license_gap | 0 | _licenseGap, hasAADP1orP2, _licenseGapCode, _licenseGapFeature |
 | `identity:mfa-method-breakdown` | license_gap | 0 | _licenseGap, hasAADP1orP2, _licenseGapCode, _licenseGapFeature |
 | `identity:mfa-registration` | license_gap | 0 | _licenseGap, hasAADP1orP2, _licenseGapCode, _licenseGapFeature |
 | `identity:named-locations` | ok | 0 | id_count, id_first, _itemCount, displayName_count, displayName_first, namedLocationCount |
+| `identity:password-expiration-policy` | ok | 9 | id_count, id_first, _itemCount, passwordExpirationDays, passwordValidityPeriodInDays_count, passwordValidityPeriodInDays_first |
 | `identity:pim-eligible-roles` | license_gap | 0 | _licenseGap, hasAADP1orP2, _licenseGapCode, _licenseGapFeature |
 | `identity:pim-groups` | license_gap | 0 | _licenseGap, hasAADP1orP2, _licenseGapCode, _licenseGapFeature |
 | `identity:pim-permanent-roles` | ok | 18 | id_count, id_first, _itemCount, principalId_count, principalId_first, roleDefinitionId_count, roleDefinitionId_first, permanentRoleAssignmentCount |
@@ -461,13 +500,22 @@ Convention reminder: for every listed base property `p`, the triplets `p_count`/
 | `license:copilot-assignment` | ok | 4 | _itemCount, copilotSkuData, consumedUnits_count, consumedUnits_first, skuPartNumber_count, skuPartNumber_first |
 | `license:sku-utilization` | ok | 4 | skuData, _itemCount, prepaidUnits_count, prepaidUnits_first, consumedUnits_count, consumedUnits_first, skuPartNumber_count, skuPartNumber_first |
 | `license:unused-assigned` | license_gap | 0 | _licenseGap, hasAADP1orP2, _licenseGapCode, _licenseGapFeature |
+| `licensing:project-online-detection` | ok | 4 | _itemCount, skuId_count, skuId_first, projectPlanOneCount, skuPartNumber_count, skuPartNumber_first, projectPlanFiveCount, projectPlanThreeCount, capabilityStatus_… |
 | `m365:message-center` | ok | 486 | id_count, id_first, _itemCount, title_count, title_first, category_count, category_first, severity_count, severity_first, majorChangeCount |
 | `m365:service-health` | ok | 25 | id_count, id_first, _itemCount, status_count, status_first, service_count, service_first, totalServiceCount, operationalServiceCount |
+| `onedrive:active-users` | ok | 1 | _itemCount, oneDriveAccountsScanned, oneDriveActiveUserCount |
 | `onedrive:departed-user-access` | license_gap | 0 | _licenseGap, hasAADP1orP2, _licenseGapCode, _licenseGapFeature |
+| `onedrive:external-sharing-settings` | ok | 99 | id_count, id_first, _itemCount, onedriveExternalSharingEnabled |
+| `onedrive:storage-utilization` | ok | 1 | _itemCount, onedriveStorageUsedBytes, ownerPrincipalName_count, ownerPrincipalName_first, storageUsedInBytes_count, storageUsedInBytes_first |
+| `onedrive:sync-errors` | ok | 1 | _itemCount, oneDriveAccountsScanned, oneDriveStaleSyncAccountCount |
+| `platform:branding-config` | error | 0 | (null — error: Graph API error 404: {"error":{"code":"Request_ResourceNotFound","message":"Reso…) |
+| `platform:multi-geo-status` | ok | 1 | id_count, id_first, _itemCount, multiGeoEnabled |
+| `platform:tenant-password-expiration` | ok | 9 | id_count, id_first, _itemCount, tenantPasswordExpirationDays, passwordValidityPeriodInDays_count, passwordValidityPeriodInDays_first |
 | `security:alert-count-by-severity` | license_gap | 0 | _licenseGap, hasDefender, _licenseGapCode, _licenseGapFeature |
 | `security:antiphishing-coverage` | license_gap | 0 | _licenseGap, hasDefender, _licenseGapCode, _licenseGapFeature |
 | `security:automated-investigation` | license_gap | 0 | _licenseGap, hasDefender, _licenseGapCode, _licenseGapFeature |
 | `security:azure-roleDefinitions-compliance` | ok | 145 | id_count, id_first, _itemCount |
+| `security:dlp-true-positive-rate` | license_gap | 0 | _licenseGap, hasDefender, _licenseGapCode, _licenseGapFeature |
 | `security:dlp-violations` | license_gap | 0 | _licenseGap, hasDefender, _licenseGapCode, _licenseGapFeature |
 | `security:insider-risk-alerts` | license_gap | 0 | _licenseGap, hasDefender, _licenseGapCode, _licenseGapFeature |
 | `security:open-incidents` | license_gap | 0 | _licenseGap, hasDefender, _licenseGapCode, _licenseGapFeature |
@@ -479,6 +527,8 @@ Convention reminder: for every listed base property `p`, the triplets `p_count`/
 | `sharepoint:inactive-sites` | ok | 99 | id_count, id_first, _itemCount, inactiveSiteCount, lastModifiedDateTime_count, lastModifiedDateTime_first |
 | `sharepoint:site-count` | ok | 99 | id_count, id_first, _itemCount, webUrl_count, webUrl_first, sharepointSiteCount |
 | `sharepoint:site-label-coverage` | ok | 99 | id_count, id_first, _itemCount, sitesWithLabelCount |
+| `sharepoint:storage-near-limit` | ok | 99 | id_count, id_first, _itemCount, sitesNearStorageLimitCount |
+| `sharepoint:storage-utilization` | ok | 99 | id_count, id_first, _itemCount, sharepointStorageUsagePercent |
 | `sharepoint:tenant-sharing-capability` | error | 0 | (null — error: monitor check sharepoint:tenant-sharing-capability needs SharePoint app-only cre…) |
 | `teams:app-permission-policy` | ok | 18 | id_count, id_first, _itemCount, appPermissionPolicyAssignedCount |
 | `teams:channel-sprawl` | ok | 27 | _fanOut, id_count, id_first, _itemCount, channelCount, displayName_count, displayName_first |
@@ -490,12 +540,13 @@ Convention reminder: for every listed base property `p`, the triplets `p_count`/
 | `teams:meeting-policy-coverage` | ok | 18 | id_count, id_first, _itemCount, meetingPolicyAssignedCount |
 | `teams:messaging-policy-coverage` | ok | 18 | id_count, id_first, _itemCount, messagingPolicyAssignedCount |
 | `teams:ownerless-teams` | ok | 18 | id_count, id_first, _itemCount, displayName_count, displayName_first, ownerlessTeamCount |
+| `teams:rooms-device-health` | ok | 0 | id_count, id_first, _itemCount, deviceType_count, deviceType_first, complianceState_count, complianceState_first, nonCompliantTeamsRoomsCount |
 | `teams:team-count` | ok | 18 | id_count, id_first, teamCount, _itemCount, displayName_count, displayName_first |
 
 
 ### 7.4 The portal pillar payload (`GET /api/portal/assessment/war-room-pillars`) — captured live, authenticated, 2026-08-28
 
-Top-level: `{pillars: PillarCard[7], licenseSkuLedger, licenseGapPurchase, findingsRunId, findingsRunStatus, activeRunId, scannedPackageKeys, scannedCheckCount, scannedCheckKeys, checkKeyPillars, generatedAt}`. Observed: `scannedPackageKeys: ["assess:copilot-readiness"]`, `scannedCheckCount: 101`, `findingsRunStatus: "partial"`, `checkKeyPillars` = a real check→pillar routing map.
+Top-level: `{pillars: PillarCard[7], licenseSkuLedger, licenseGapPurchase, findingsRunId, findingsRunStatus, activeRunId, scannedPackageKeys, scannedCheckCount, scannedCheckKeys, checkKeyPillars, generatedAt}`. Observed post-premier: `scannedPackageKeys: ["assess:copilot-readiness","core:premier"]`, `scannedCheckCount: 152`, `findingsRunStatus: "partial"`, `checkKeyPillars` = a real check→pillar routing map. Note the payload accumulates across scanned packages — a stat tile's `checkKey` source can upgrade when a fuller package runs (observed live: the licensing tiles re-sourced from `license:sku-utilization` to `cost:utilization-by-sku` after run 445).
 
 `PillarCard`: `{pillar, enginePillar, score (0-100 | null), evaluation {score, evaluableSignalCount, minRequiredSignals, theoreticalMax, status: "scored"|…, reason}, rawRiskScore, stats: StatTile[], findings: Finding[], findingCounts {critical, warning}, trend (null until ≥2 scans — observed null on this 1-scan tenant), licenseGapUpgrades}`.
 
@@ -505,7 +556,7 @@ Top-level: `{pillars: PillarCard[7], licenseSkuLedger, licenseGapPurchase, findi
 
 ### 7.5 `tenant_pillar_snapshots` row (pillar history)
 
-`{customer_id, msp_id, pillar_key, score int 0-100, previous_score, delta, trend_direction "up"|"down"|"flat"|null, package_key, run_id, captured_at}` — one row per scored pillar per coverage-sufficient run. Real rows (run 437, customer 1): security 54 · licensing 54 · architecture 8 · copilot 50 · adoption 89 · compliance 73 · governance 54, all `previous_score` null (first post-cleanup scan). A dark/partial run writes nothing (the coverage gate), so absence of history = "not enough history yet", never zero.
+`{customer_id, msp_id, pillar_key, score int 0-100, previous_score, delta, trend_direction "up"|"down"|"flat"|null, package_key, run_id, captured_at}` — one row per scored pillar per coverage-sufficient run. Real latest rows (after `core:premier` run 445, customer 1, with genuine deltas vs the prior run): security 58 (+4) · licensing 57 (+3) · architecture 63 (+55 — first device data) · copilot 51 (+1) · adoption 82 (−7) · compliance 74 (+1) · governance 54 (0). The first post-cleanup set (run 437) had all `previous_score` null. A dark/partial run writes nothing (the coverage gate), so absence of history = "not enough history yet", never zero.
 
 ### 7.6 Drift shapes
 
@@ -602,26 +653,26 @@ Captured from the authenticated live payload for the testbed. **value** = what a
 | governance | overshared sites | `compliance:overshared-sites` | **UNBACKED — unknown_check_key** |
 | governance | items over-exposed | `copilot:overshare-exposure` | **UNBACKED — unknown_check_key** |
 | governance | public channels | `compliance:public-channels` | **UNBACKED — unknown_check_key** |
-| licensing | paid seats provisioned | `license:sku-utilization` | **1** (real) |
-| licensing | paid, unassigned | `license:sku-utilization` | **0** (real) |
-| licensing | annual waste | `license:sku-utilization` | null — `no_sku_prices` (honest; this tenant's SKUs lack price data) |
+| licensing | paid seats provisioned | `cost:utilization-by-sku` (re-sourced from `license:sku-utilization` after the premier run) | **1** (real) |
+| licensing | paid, unassigned | `cost:utilization-by-sku` | **0** (real) |
+| licensing | annual waste | `cost:utilization-by-sku` | null — `no_sku_prices` (honest; this tenant's SKUs lack price data) |
 | licensing | inactive licences | `licensing:inactive-user-licenses` | **UNBACKED — unknown_check_key** |
 | adoption | active Teams users | `adoption:teams-activity-trend` | **0** (real) |
 | adoption | active SharePoint users | `adoption:sharepoint-onedrive-trend` | **0** (real) |
-| adoption | active OneDrive users | `onedrive:active-users` | null — `not_in_scan_package` (check exists, wasn't in this run's package) |
+| adoption | active OneDrive users | `onedrive:active-users` | **0** (real — went live once the premier run included the check; was `not_in_scan_package` before) |
 | adoption | active email users | `adoption:email-activity-trend` | **1** (real) |
 | compliance | missing sensitivity labels | `compliance:missing-labels` | null — `no_data` (PS check errored; real check, broken pipeline) |
 | compliance | weak DLP policies | `compliance:weak-dlp-policies` | null — `no_data` (same) |
 | compliance | guest users | `compliance:guest-users` | **UNBACKED — unknown_check_key** (real check exists as `governance:guest-count`) |
-| health | non-compliant devices | `intune:non-compliant-devices` | **UNBACKED** (real: `devices:compliant-vs-noncompliant`, never run) |
+| health | non-compliant devices | `intune:non-compliant-devices` | **UNBACKED** — but real data now EXISTS under `devices:compliant-vs-noncompliant` (collected by the premier run); re-point candidate |
 | health | device config drift | `intune:config-drift` | **UNBACKED — no counterpart at all** |
-| health | unencrypted devices | `intune:unencrypted-devices` | **UNBACKED** (real: `devices:encryption-status`, never run) |
-| health | outdated OS devices | `intune:outdated-devices` | **UNBACKED** (real: `devices:os-patch-compliance`, never run) |
+| health | unencrypted devices | `intune:unencrypted-devices` | **UNBACKED** — real data now exists under `devices:encryption-status`; re-point candidate |
+| health | outdated OS devices | `intune:outdated-devices` | **UNBACKED** — real data now exists under `devices:os-patch-compliance`; re-point candidate |
 | security | MFA-registered users | `identity:mfa-registration` | null — `license_gap` (no AAD P1/P2 on testbed; real & ok on customer 3) |
 | security | global administrators | `identity:global-admin-count` | **6** (real) |
 | security | legacy auth sign-ins | `identity:legacy-auth-usage` | null — `license_gap` (same; 35 real items on customer 3) |
 | security | items in blast radius | `copilot:overshare-exposure` | **UNBACKED — unknown_check_key** |
-| copilot | readiness score | (composite) | **50** (real) |
+| copilot | readiness score | (composite) | **51** (real) |
 | copilot | items Copilot could reach | `copilot:overshare-exposure` | **UNBACKED — unknown_check_key** |
 | copilot | risky users | `identity:risky-users` | null — `license_gap` |
 | copilot | duplicate licences | `licensing:duplicate-assignments` | **UNBACKED** (real: `cost:duplicate-assignments`, observed ok items=24) |
@@ -681,25 +732,25 @@ Stat-tile definitions live server-side in `artifacts/api-server/src/lib/copilot-
 | **Ownership** | ownership panels | `/api/portal/ownership` (`portal-ownership.ts`) — route exists; not live-executed this session | REAL (route) |
 | **Webhooks / PII / Documents / Billing / Retainer / Account security / Alert prefs** | | `/api/portal/webhooks`, `/api/portal/pii-governance`, doc library, `/api/portal/invoices` + Stripe receipts, `/api/portal/retainer`, `/api/auth/*`, `/api/portal/alert-preferences` — all present server-side | REAL (routes) |
 
-**Deletion-candidate summary for Design** (everything above marked UNBACKED): the four governance hero tiles' oversharing/site-inventory numbers, the Health hero's four `intune:*` device tiles (or re-point to the real `devices:*` checks once those packages actually run), Security's blast-radius tile, Copilot's exposure tile, Licensing's "inactive licences" tile and all three recovery buckets with their timing chips, Compliance's "Retention Coverage" + "Audit Retention (days)" tiles and six unproduced area cards, Governance's "Overdue Access Reviews" hero tile (note: the *check* `governance:overdue-access-reviews` is real — only this tile's wiring is absent), the Health department heat-map and debt-trend series, Adoption's six fixture workload rows + department matrix + plays, and Change Control's fictional CAB staffing. Fixture content that remains must keep its honest `dataState="fixture"` marker until deleted or wired.
+**Deletion-candidate summary for Design** (everything above marked UNBACKED): the four governance hero tiles' oversharing/site-inventory numbers, the Health hero's four `intune:*` device tiles (three have real, now-collected `devices:*` counterparts to re-point to; `intune:config-drift` has none), Security's blast-radius tile, Copilot's exposure tile, Licensing's "inactive licences" tile and all three recovery buckets with their timing chips, Compliance's "Retention Coverage" + "Audit Retention (days)" tiles and six unproduced area cards, Governance's "Overdue Access Reviews" hero tile (note: the *check* `governance:overdue-access-reviews` is real — only this tile's wiring is absent), the Health department heat-map and debt-trend series, Adoption's six fixture workload rows + department matrix + plays, and Change Control's fictional CAB staffing. Fixture content that remains must keep its honest `dataState="fixture"` marker until deleted or wired.
 
 ## 10. Evidence log
 
 Live DB queries (2026-08-28, database `shanemccawmsp`): via `shaneapp://executeSql` (BuildConsole → `POST /api/simulator/sql/execute`, ActivityLog channel `sql-runner.protocol`) for the first five batches — bt_build_queue lookup + schema introspection; monitoring tables enumeration; `monitor_checks` full dump; executor/status/package aggregations; tenants + trigger prefixes + table counts; latest-per-check with `extracted_properties`. Mid-session the owner authorized **direct psql** over `DATABASE_URL` for the remainder: per-check observation matrix for PS/DNS/SP-admin; run rows + PS error literals + package membership of never-observed checks + fresh pillar/engine snapshot reads; wf-run↔`core:security-baseline` membership join (23/23); package-membership dump; drift/item-detail counts; never-run-package check list; classification input dump. Raw result files preserved in the session scratchpad (`sql-*.result.json`, `*.tsv`, `testbed-run-437-observations.jsonl`, `classification.json`, `war-room-pillars.json`).
 
-Live protocol/API calls: `shaneapp://executeCmdlet` (§9 contract, AGENT_PROTOCOLS.md) `get-connection-info` vs testbed → the §4.1 failure envelope. Authenticated portal capture: `POST /api/auth/login` (test portal account) → `GET /api/portal/assessment/war-room-pillars` (customer 1) → §7.4/§9.1. Fresh scan: run 437 was triggered by the owner during this investigation; its rows/snapshots/findings were read directly.
+Live protocol/API calls: `shaneapp://executeCmdlet` (§9 contract, AGENT_PROTOCOLS.md) `get-connection-info` vs testbed → the §4.1 failure envelope. Authenticated portal capture: `POST /api/auth/login` (test portal account) → `GET /api/portal/assessment/war-room-pillars` (customer 1) → §7.4/§9.1. Fresh scans: runs 437/443/444 (`assess:copilot-readiness`) and 445 (`core:premier`) were triggered by the owner during this investigation; their rows/snapshots/findings were read directly, and the war-room payload was re-captured after run 445.
 
 Key code citations: `artifacts/api-server/src/lib/monitor-executor.ts` (:1029 applyMapping, :1504 graphFetchPaginated, :1761 runPowerShellCheck, :1980 runSharePointAdminCheck, :2095-2184 DNS, :2277 runFanOutCheck, :2532/2635/2645/2655 dispatch, :2919 loadOrderedPackageChecks, :2962 executeMonitoringPackage, :153 drift collection) · `diagnostics-runner.ts` (:736 package execution, :1085 pillar snapshot capture) · `workflow-executor.ts` (:8354 execute_pkg) · `item-detail-collector.ts` (:244) · `admin-monitor-check-runs.ts` (:184 Simulator path) · `engine-registry.ts` (:181 ENGINE_DEFS, :324-353 writeEngineSnapshot, :478-482 wrap) · `pillar-snapshot.ts` (:51-109) · `pillar-coverage.ts` (:110-122 pillar vocabulary) · `health-engine.ts` (:53) · `dashboard-resolvers.ts` (:261, :271-353, :592-659, :678, :769-915) · `lib/dashboard-registry/src/metrics.ts` (registry + its own phantom-key history at :21-49) · `services/ps-execution/cmdlet-catalog.ps1` + `child-worker.ps1` (:86-130) · portal wiring files cited inline in §9.
 
 ## 11. Explicit unknowns — what could not be verified, and why
 
 1. **No PowerShell check's real output shape has ever been observed.** The catalog declares cmdlets and mappings, but with the container's child-process layer broken (§4.1), no `extracted_properties` for any PS check exists anywhere. Their shapes in this document are **declared in code, never observed live**. Unblocks when the ps-execution container is fixed.
-2. **The 34 never-run Graph checks' shapes are likewise declared-only** (mapping targetFields exist in the catalog rows) — no real run has included their packages. A single `core:premier` (or `core:growth`) run against the testbed would close most of this; the checks themselves look wired (same executor code path as the 96 proven ones), but per the standing rule they are not marked REAL on plumbing resemblance.
+2. **CLOSED mid-investigation:** the previously-34-strong never-run Graph class was exercised by the owner's `core:premier` run (445) and its shapes are now observed (§7.3). Still declared-only: `onedrive:overshared-files` (collection-mode-only membership) and `diagnostics:ps-execution-test`, plus the 3 structurally unreachable checks (§4).
 3. **`sharepoint:tenant-sharing-capability`** cannot be verified until valid `MT_APP_CERT_*` SharePoint app-only credentials are configured locally (every observation, including run 437, errors on cert parsing/absence).
 4. **`tenant_engine_snapshots` / Mission Control engine runs** were not exercised (no Mission Control fetch was made; the table stayed empty). The engine-metric behavior in §6 is code-read plus the empty-table observation, not an observed engine run.
 5. **Per-check Graph permission scopes** are not recorded per-check anywhere in the platform; only the tenant-level granted consent set (§3) is real data. Attributing an exact scope to each of the 138 Graph endpoints would be inference, so it was not done.
 6. **`requires_script` and `consent_revoked` statuses** were never observed live this session (both runs had 0); their semantics are code-declared (monitor-executor.ts:3019-3030).
-7. **Trend series** (`pillar.trend`, ≥5 checkpoints) could not be observed — the post-cleanup testbed has exactly one scan of history. Shape is declared (series of numbers, replayed score history).
+7. **Trend series** (`pillar.trend`, ≥5 checkpoints) still renders null — the post-cleanup testbed has several same-day scans but fewer than the 5 checkpoints the trend requires. Real per-scan deltas ARE now observed in `tenant_pillar_snapshots` (§7.5); the trend's series shape remains declared-only.
 8. **The `e2e13170-…` tenant's rows were deliberately excluded** from all REAL evidence as synthetic; if any future audit counts them, its numbers will differ from §4's.
 9. **Progress reporting for this build** (`shaneapp://reportProgress`) was skipped: `bt_build_queue` has no row for issue #1481 (checked live), so there was no valid `buildId` to report against — reporting against another build's id would have corrupted its Build Watch panel.
 
