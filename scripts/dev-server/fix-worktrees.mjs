@@ -47,9 +47,21 @@ function parseArgs(argv) {
   return a;
 }
 
+// worktree-lifecycle.mjs's markWorktreeStale() drops this untracked marker file
+// into a worktree it's retaining for debugging (see cleanup-worktree.mjs
+// --mark-stale). It is BuildConsole's own bookkeeping, never real uncommitted
+// work, so it must not by itself count as "dirty" -- a worktree whose ONLY
+// change is this file has nothing an agent needs to review.
+const STALE_MARKER = ".stale-worktree.json";
+
 function isDirty(cwd) {
   const r = git(cwd, ["status", "--porcelain"]);
-  return r.code !== 0 || r.stdout.trim().length > 0;
+  if (r.code !== 0) return true;
+  const realChanges = r.stdout
+    .split(/\r?\n/)
+    .filter((line) => line.trim().length > 0)
+    .filter((line) => line.slice(3) !== STALE_MARKER);
+  return realChanges.length > 0;
 }
 
 /**
@@ -140,8 +152,17 @@ export function fixWorktrees({ dryRun = false } = {}) {
     }
 
     if (wt.detached || !wt.branch) {
-      entry.status = "needs_agent";
-      entry.detail = "Detached HEAD — no branch to merge. Get an agent to look at it.";
+      // No branch to merge from, but the detached commit itself might already be
+      // an ancestor of origin/main (e.g. a scratch/merge worktree left behind
+      // after its work already landed) -- check before giving up on it.
+      const headSha = revParse(wt.path, "HEAD");
+      if (headSha && isAncestor(repo, headSha, originMain)) {
+        entry.status = "already_merged";
+        entry.detail = "Detached HEAD, but that commit is already an ancestor of origin/main — nothing to do.";
+      } else {
+        entry.status = "needs_agent";
+        entry.detail = "Detached HEAD with commits not on origin/main — no branch to merge from. Get an agent to look at it.";
+      }
       results.push(entry);
       continue;
     }
@@ -152,13 +173,10 @@ export function fixWorktrees({ dryRun = false } = {}) {
       continue;
     }
 
-    if (isDirty(wt.path)) {
-      entry.status = "needs_agent";
-      entry.detail = "Uncommitted changes in the worktree — too risky to auto-merge. Get an agent to review, commit or discard, then re-run.";
-      results.push(entry);
-      continue;
-    }
-
+    // Resolve merge status BEFORE the dirty gate -- a worktree can be genuinely
+    // dirty (or carry the harmless stale-debug marker) and STILL already be fully
+    // merged; checking ancestry first means that case reports as already_merged
+    // instead of being masked as needs_agent by an unrelated dirty check.
     const branchSha = revParse(wt.path, wt.branch);
     if (!branchSha) {
       entry.status = "needs_agent";
@@ -176,6 +194,13 @@ export function fixWorktrees({ dryRun = false } = {}) {
 
     const aheadRes = git(repo, ["rev-list", "--count", `origin/main..${branchSha}`]);
     entry.ahead = aheadRes.code === 0 ? Number(aheadRes.stdout.trim()) || 0 : null;
+
+    if (isDirty(wt.path)) {
+      entry.status = "needs_agent";
+      entry.detail = `Uncommitted changes in the worktree (on top of ${entry.ahead ?? "?"} unmerged commit(s)) — too risky to auto-merge. Get an agent to review, commit or discard, then re-run.`;
+      results.push(entry);
+      continue;
+    }
 
     if (dryRun) {
       entry.status = "would_merge";
