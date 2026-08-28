@@ -1537,13 +1537,20 @@ router.post(
         return;
       }
 
-      // Resolve packageKey off the customer's active Copilot entitlement
-      // (copilot-readiness-snapshot FREE / copilot-readiness-assessment PAID —
-      // the same client_services row #240's entitlement gate checks), not the
-      // unrelated monitoring_subscription join. Both slugs carry the same
-      // real packageKey ("assess:copilot-readiness" — confirmed live, see
-      // admin-simulator-assessments.test.ts's REAL_ASSESSMENT_SERVICES), so no
-      // FREE vs PAID branching is needed here.
+      // Resolve packageKey the SAME way msp-diagnostics.ts's real
+      // POST /msp/customers/:customerId/diagnostics/run does — off the
+      // customer's active monitoring subscription (fulfillmentTypeKey ===
+      // "monitoring_subscription"), not a Copilot-specific slug filter.
+      //
+      // This route's own comment always claimed to reuse "the exact packageKey
+      // resolution... from msp-diagnostics.ts", but it had actually forked to a
+      // narrower query scoped only to copilot-readiness-snapshot /
+      // copilot-readiness-assessment. That drift meant this debug scan button
+      // could never resolve any OTHER purchased tier (e.g. a Premier monitoring
+      // subscription) — it would keep re-running Copilot Readiness for as long
+      // as that old entitlement existed, then silently fall back to
+      // core:security-baseline once it didn't, regardless of what the customer
+      // actually holds. Fixed to genuinely match msp-diagnostics.ts.
       const [pkgRow] = await db
         .select({ packageKey: sql<string | null>`${servicesTable.typeAttributes}->>'packageKey'` })
         .from(usersTable)
@@ -1552,11 +1559,11 @@ router.post(
         .where(
           and(
             eq(usersTable.tenantId, customerId),
-            inArray(servicesTable.slug, ["copilot-readiness-snapshot", "copilot-readiness-assessment"]),
+            eq(servicesTable.fulfillmentTypeKey, "monitoring_subscription"),
             eq(clientServicesTable.status, "active"),
           )
         )
-        // Deterministic: most recent active entitlement wins when a customer
+        // Deterministic: most recent active subscription wins when a customer
         // holds more than one (unordered LIMIT 1 was arbitrary).
         .orderBy(desc(clientServicesTable.id))
         .limit(1);

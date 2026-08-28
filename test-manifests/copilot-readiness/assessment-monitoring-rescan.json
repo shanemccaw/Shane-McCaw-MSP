@@ -2,7 +2,7 @@
   "issue": 454,
   "feature": "Assessment Monitoring / weekly-rescan surface (Git #454, area:shane-mccaw-consulting) — access gate, real testbed rescan trigger, and the real weekly cron cadence. Written to be honest about the gap between the requested framing ('weekly re-scan gated behind a signed SOW') and what actually exists in code (see notes). RESCORE block (Git #1048, epic #1045) added the customer-facing rescoring-status panel backend.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "2fd999e9",
+  "lastVerifiedAgainstCommit": "5749c7a12",
 
   "notes": [
     "RESCORE (#1048, epic #1045) — GET /api/portal/customer/rescoring-status is the new Monitoring Dashboard 'Rescoring status panel' backend: it returns lastScan/nextScheduledRun/coverage sourced from msp_diagnostic_runs and the REAL '__system__: Weekly Copilot Assessment Rescan' (#1058) wf_triggers.next_run_at row — NOT the '__system__: Weekly Retargeting Rescan' workflow the CADENCE block below asserts (a different, older schedule, Monday cron '0 3 * * 1', retargeting-only). Verified directly against the live dev DB via shaneapp://executeSql before writing these steps: the Copilot Assessment Rescan trigger is enabled, type='schedule', with a real stamped next_run_at (2026-08-23T03:00:00Z at verification time, cron '0 3 * * 0' — every Sunday); the testbed customer (tenants.id=1) has Graph consent='granted' and an active Assessment-role user, so it is genuinely enrolled and nextScheduledRun.status is 'ok' for it; its latest completed/partial msp_diagnostic_runs row (73/99 checksOk, 19 checksLicenseGap at verification time) real-world produces coverage.label 'Partial coverage (some checks unavailable on your current Microsoft 365 licensing)'. No internal engine names, check keys, or per-check failure breakdown are on the wire — only the aggregate checksOk/checksTotal already exposed elsewhere (e.g. scan-status) and a plain-language label. Does not touch the rescan add-on purchase/checkout flow (assessment-flow-rescan-addon.ts) — SOW/billing pipeline's own concern, untouched here.",
@@ -23,6 +23,8 @@
     "TESTBED-ONLY / DEV-ORIGIN-ONLY SAFETY: this manifest never touches raw DB and performs no real M365 Graph writes. The only write it causes is debug-trigger-scan inserting an msp_diagnostic_runs row on the TESTBED tenant — additive read-only-scan telemetry on a testbed account, identical to what money-path-e2e.json and remediation-tracker-e2e.json already leave, so no teardown is required. The manual trigger is server-side hard-gated to testbed tenants (202 only for a genuinely testbed-flagged account — a 202 here also PROVES the account is testbed-flagged, not merely asserted client-side). Run against the .replit.dev dev origin (same origin the other copilot-readiness manifests target).",
 
     "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the .replit.dev dev origin serving /api). TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the designated TESTBED Assessment-role account — same account money-path-e2e.json + remediation-tracker-e2e.json drive; it must be isTestbed=true or the RESCAN block's 202 becomes a 403). TEST_PORTAL_SLUG (#1051 — the account's real branded portal slug, e.g. 'shane-mccaw-consulting'; needed by DRIFT D3 and PILLARS G1's goto targets, both slug-scoped SlugInnerSwitch routes — same var money-path-e2e.json/live-document-pdf-export.json/m365-health-breakdown-gate.json already use). SECRET_KEY (= BUILD_TRACKER_INGEST_TOKEN) — used ONLY to prove the strict admin surface REJECTS it. TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD (a role='admin' account) — REQUIRED for the CADENCE block, because GET /api/admin/workflows/triggers is guarded by requireAdmin (strict: req.user.role==='admin'), which — unlike the requireAdminOrIngestToken testbed endpoints — does NOT honor the ingest token (requireAuth.ts:158,183). If TEST_ADMIN_EMAIL/PASSWORD are not provisioned, the admin login returns 401, {{adminToken}} stays unset, and every CADENCE step fails LOUDLY (by design — that failure means 'provision a testbed admin account', it is not a false negative about the cron). This is the manifest's one Shane To-Do.",
+
+    "REAL BUG FIXED (2026-08-28) — debug-trigger-scan's packageKey resolution had silently forked from its own documented intent. Its comment always claimed to reuse msp-diagnostics.ts's exact resolution (the customer's active monitoring_subscription entitlement), but the query underneath actually filtered on services.slug IN ('copilot-readiness-snapshot','copilot-readiness-assessment') — a Copilot-only carve-out that never considered any other purchased tier. Reported live by Shane: a customer newly assigned Premier monitoring (services.id=12, packageKey core:premier) still had every scan-button click resolve to assess:copilot-readiness, purely because an old Copilot Readiness Assessment client_services row (services.id=25, fulfillmentTypeKey='assessment', NOT 'monitoring_subscription') was still active for the same tenant. Removing that old Copilot entitlement alone would NOT have fixed it — the query would have simply fallen back to its core:security-baseline default, never resolving Premier, because it structurally never looked at monitoring-tier entitlements. Fixed by rewriting the query to match msp-diagnostics.ts's real join (fulfillmentTypeKey='monitoring_subscription'), matching what the comment always claimed. See RESCAN B1b below for the regression guard.",
 
     "AUTH-BOUNDARY FACTS asserted below (all real, all deterministic with the creds above): (1) anonymous (no bearer) -> 401 on the trigger, the scan-status read, and the SOW read (requireRole/requireAuth). (2) valid Assessment-role bearer -> 403 on the admin trigger-config surface (requireAdmin, wrong role). (3) the ingest token (SECRET_KEY) -> 401 on the admin trigger-config surface (requireAdmin runs requireAuth first and the ingest token is not a valid JWT) — proving the workflow-config surface is strictly admin-gated, NOT ingest-openable like the testbed reset endpoints. These three together are the honest, real answer to 'a caller without the right entitlement cannot trigger/read monitoring' — the entitlement that matters is testbed-flag + role + auth, not a signed SOW.",
 
@@ -47,7 +49,8 @@
       "headers": { "Content-Type": "application/json" },
       "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
-      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" },
+      "sessionTag": "debug-scan-packagekey-fix"
     },
     {
       "name": "SETUP 2/2 — log in as the TESTBED ADMIN account (role='admin') for the CADENCE block's requireAdmin-guarded trigger-inspection endpoint; extract {{adminToken}}. PRECONDITION: needs TEST_ADMIN_EMAIL/PASSWORD provisioned (the one Shane To-Do). If unset, this 401s and the CADENCE steps fail loudly — that is the signal to provision the account, not a cron regression.",
@@ -101,7 +104,16 @@
       "path": "/api/portal/assessment/debug-trigger-scan",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 202, "jsonPath": "$.runId", "exists": true },
-      "extract": { "as": "scanRunId", "jsonPath": "$.runId" }
+      "extract": { "as": "scanRunId", "jsonPath": "$.runId" },
+      "sessionTag": "debug-scan-packagekey-fix"
+    },
+    {
+      "name": "RESCAN B1b (regression guard) — debug-trigger-scan's packageKey resolution genuinely follows the customer's active MONITORING SUBSCRIPTION (fulfillmentTypeKey='monitoring_subscription'), not a Copilot-slug-specific query. This route's own comment always claimed to reuse msp-diagnostics.ts's exact resolution logic but had silently forked to filter on services.slug IN ('copilot-readiness-snapshot','copilot-readiness-assessment') instead — so a customer holding BOTH an old Copilot Readiness Assessment entitlement AND a real monitoring-tier subscription (e.g. Premier) kept getting re-scanned for Copilot Readiness forever, regardless of what tier they actually held. GET scan-plan reads the packageKey stamped on B1's just-created run; asserting it is NOT 'assess:copilot-readiness' is deliberately state-independent (doesn't hardcode which tier is active today) while still proving the fix — see admin note below and Shane's live report that this exact scenario shipped him a Premier tenant that still only ever scanned Copilot Readiness.",
+      "method": "GET",
+      "path": "/api/portal/scan-plan",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.packageKey", "containsNone": ["assess:copilot-readiness"] },
+      "sessionTag": "debug-scan-packagekey-fix"
     },
     {
       "name": "RESCAN B2 — the trigger reports the pending status contract on the wire (real 202 envelope, not a mocked 200).",
