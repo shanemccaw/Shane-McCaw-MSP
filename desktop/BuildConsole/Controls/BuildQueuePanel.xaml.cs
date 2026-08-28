@@ -920,7 +920,7 @@ namespace BuildConsole.Controls
             // Git #1418 — "held" (Sonnet+ Overflow) items stay visible under Active, per
             // Shane's own requirement: capped-off builds must stay "visible in the Build
             // Queue but not actively executing", not disappear into a filter nobody checks.
-            "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or AccountCapPolicy.HeldStatus)).ToList(),
+            "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or AccountCapPolicy.HeldStatus or Services.SessionLimitAutoRestartService.LimitPausedStatus)).ToList(),
             "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             "Canceled" => items.Where(i => i.Status == "canceled" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
@@ -944,7 +944,7 @@ namespace BuildConsole.Controls
 
             string targetFilter = item.Status switch
             {
-                "queued" or "running" or AccountCapPolicy.HeldStatus => "Active",
+                "queued" or "running" or AccountCapPolicy.HeldStatus or Services.SessionLimitAutoRestartService.LimitPausedStatus => "Active",
                 "done"                => "Done",
                 "canceled"            => "Canceled",
                 _                     => "All",
@@ -1950,6 +1950,27 @@ namespace BuildConsole.Controls
                     VerticalAlignment = VerticalAlignment.Center
                 };
             }
+            else if (item.Status == Services.SessionLimitAutoRestartService.LimitPausedStatus)
+            {
+                // Session-limit auto-restart — parked by a "hit your session limit"
+                // message; auto re-queued 10 minutes after the parsed reset.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x2A, 0x3A)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "⏸ LIMIT — AUTO-RESTARTS",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+            }
             else
             {
                 statusPill = new Border
@@ -2355,6 +2376,68 @@ namespace BuildConsole.Controls
                     await RefreshAsync();
                 };
                 cm.Items.Add(miCancel);
+            }
+            else if (item.Status == Services.SessionLimitAutoRestartService.LimitPausedStatus)
+            {
+                // Session-limit park — normally re-queued automatically after the
+                // reset; Resume Now skips the wait for just this build.
+                var miResumeNow = new MenuItem { Header = "▶ Resume Now (skip the wait)" };
+                miResumeNow.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Resume", "No direct DB connection — can't resume.");
+                        return;
+                    }
+                    try
+                    {
+                        if (await _db.RequeueLimitPausedAsync(item.Id))
+                        {
+                            ToastEngine.Success("Resumed", $"Back in the queue: {item.Title}");
+                            ActivityLog.Log("session-limit", $"Manually resumed limit-paused queue item #{item.Id} ({item.Title}) ahead of the auto-restart.");
+                        }
+                        else
+                            ToastEngine.Warning("Resume", $"No longer limit-paused: {item.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Resume Failed", $"Couldn't resume: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miResumeNow);
+
+                var miCancelLp = new MenuItem { Header = "✕ Cancel Build" };
+                miCancelLp.Click += async (_, _) =>
+                {
+                    if (_db == null && _api == null)
+                    {
+                        ToastEngine.Warning("Cancel", "Not connected — can't cancel.");
+                        return;
+                    }
+                    try
+                    {
+                        bool canceled;
+                        if (_db != null)
+                            canceled = await _db.CancelAsync(item.Id);
+                        else
+                            canceled = (await _api!.CancelQueueItemAsync(item.Id)).IsSuccessStatusCode;
+
+                        if (canceled)
+                        {
+                            ToastEngine.Success("Canceled", $"Canceled: {item.Title}");
+                            ActivityLog.Log("session-limit", $"Canceled limit-paused queue item #{item.Id} ({item.Title}) — it will NOT auto-restart.");
+                        }
+                        else
+                            ToastEngine.Warning("Cancel", $"Couldn't cancel: {item.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Cancel Failed", $"Couldn't cancel: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miCancelLp);
             }
             else if (item.Status == AccountCapPolicy.HeldStatus)
             {

@@ -404,6 +404,21 @@ namespace BuildConsole.Services
         /// <summary>IDs of build queue items that have been paused by the user.</summary>
         public List<int> PausedBuildIds { get; set; } = new List<int>();
 
+        /// <summary>Session-limit auto-restart — when a build's output shows the CLI's
+        /// "hit your session limit · resets …" message, park it limit-paused and
+        /// automatically re-queue it after the parsed reset + the delay below.
+        /// See SessionLimitAutoRestartService. Off = limit-paused builds wait for a manual resume.</summary>
+        public bool SessionLimitAutoRestartEnabled { get; set; } = true;
+
+        /// <summary>Minutes AFTER the parsed session-limit reset moment to wait before auto-restarting (Shane: "10 minutes after the reset").</summary>
+        public int SessionLimitAutoRestartDelayMinutes { get; set; } = 10;
+
+        /// <summary>The armed auto-restart moment (local time, ISO-8601 round-trip), persisted so an app restart re-arms it. Empty = nothing armed.</summary>
+        public string SessionLimitRestartAtIso { get; set; } = "";
+
+        /// <summary>One-shot: true once the first-set bootstrap (Git #1446/#1439/#1441/#1442/#1452/#1444, capped until 2:40am ET) has run. Never reset by the app.</summary>
+        public bool SessionLimitFirstSetBootstrapDone { get; set; } = false;
+
         /// <summary>
         /// Git #800 must still hold: an interactive queue build must still auto-complete so the queue/concurrency
         /// slot frees and completion (sound, DB row) fires. After a turn finishes (a stream-json "result") the build
