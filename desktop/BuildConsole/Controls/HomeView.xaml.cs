@@ -917,10 +917,12 @@ namespace BuildConsole.Controls
             if (report.StrandedBranches.StrandedCount > 0)
             {
                 SetStatusBadge(StrandedBranchesStatusBadge, StrandedBranchesBadgeText, HealthStatus.Degraded, $"{report.StrandedBranches.StrandedCount} STRANDED");
+                BtnRecheckStranded.Visibility = Visibility.Visible;
             }
             else
             {
                 SetStatusBadge(StrandedBranchesStatusBadge, StrandedBranchesBadgeText, HealthStatus.Healthy, "CLEAN");
+                BtnRecheckStranded.Visibility = Visibility.Collapsed;
             }
 
             // 6. Staging SSH
@@ -992,6 +994,30 @@ namespace BuildConsole.Controls
             {
                 BtnCleanWorktrees.IsEnabled = true;
                 BtnCleanWorktrees.Content = "🧹 Clean";
+            }
+        }
+
+        private async void BtnRecheckStranded_Click(object sender, RoutedEventArgs e)
+        {
+            // Read-only re-sweep only (Git #1466) -- StrandedBranchService/
+            // check-stranded-branches.mjs deliberately never deletes or merges a
+            // branch (a stranded branch by definition has commits main does not
+            // have, so auto-cleanup would risk real data loss). This button just
+            // re-runs the detection sweep on demand so the badge/diagnostics log
+            // reflect the latest state without waiting for the next auto-refresh;
+            // actually resolving a stranded branch (merge or intentional delete)
+            // stays a manual decision made from the diagnostics log below.
+            BtnRecheckStranded.IsEnabled = false;
+            BtnRecheckStranded.Content = "Rechecking…";
+            try
+            {
+                await RefreshHealthAsync();
+                ToastEngine.Show("Stranded Branches", "Re-ran the sweep — see the badge/diagnostics log for current results.", ToastKind.Info);
+            }
+            finally
+            {
+                BtnRecheckStranded.IsEnabled = true;
+                BtnRecheckStranded.Content = "🔀 Recheck";
             }
         }
 
