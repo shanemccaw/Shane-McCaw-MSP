@@ -72,6 +72,7 @@ import {
 } from "@/components/portal-v2/NoScanDataState";
 import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
 import { useHltObjectsLive } from "@/components/portal-v2/useHltObjectsLive";
+import { useHltDriftLive } from "@/components/portal-v2/useHltDriftLive";
 import { PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
 import {
   HLT_DRIFT_KBI,
@@ -88,8 +89,10 @@ import {
   HLT_SEV_META,
   HLT_TONE,
   hltAcceptedStripSuffix,
+  hltDriftRowsFromLive,
   hltFindingRowsFromLive,
   hltHeroStatsHonest,
+  hltHeroStatsWithDriftLive,
   hltHeroStatsWithObjectTotal,
   hltObjectTotalFor,
   hltObjectsWithLive,
@@ -231,7 +234,37 @@ export default function PortalV2HealthPage() {
   const liveObjects = hltObjectsWithLive(HLT_OBJECTS, objectsLive.live);
   const objectTotal = hltObjectTotalFor(liveObjects);
   const objectsDataState: "live" | "fixture" = liveObjects === HLT_OBJECTS ? "fixture" : "live";
-  const heroStats = hltHeroStatsHonest(hltHeroStatsWithObjectTotal(HLT_HERO_STATS, objectTotal), NO_DATA_DASH);
+
+  // Configuration drift (Git #1282) — the real drift_events store, now
+  // populated across 5 domains by #1287's collector. See useHltDriftLive.ts's
+  // own header for the full "why this shape, not the fixture's" rationale.
+  const driftLive = useHltDriftLive();
+  const driftRows = hltDriftRowsFromLive(driftLive.events);
+  const driftTrackedDomains = driftLive.domainStatuses.filter((d) => d.status === "ok");
+  // "no_data" means the domain has simply never been scanned yet (nothing
+  // wrong to report); "not_requested" is this hook's own pre-load state, not
+  // a real reason — only a genuine not_comparable/error reason from the
+  // collector (#1287) is worth a footer note.
+  const driftUntrackedReasons = driftLive.loaded
+    ? driftLive.domainStatuses.filter(
+        (d) => d.status !== "ok" && d.reason !== "no_data" && d.reason !== "not_requested" && d.reason !== null,
+      )
+    : [];
+
+  const heroStats = hltHeroStatsHonest(
+    hltHeroStatsWithDriftLive(
+      hltHeroStatsWithObjectTotal(HLT_HERO_STATS, objectTotal),
+      driftLive.loaded
+        ? {
+            eventCount: driftRows.length,
+            trackedDomainCount: driftLive.trackedDomainCount,
+            totalDomainCount: driftLive.totalDomainCount,
+          }
+        : null,
+      NO_DATA_DASH,
+    ),
+    NO_DATA_DASH,
+  );
 
   // The "Service health & incoming changes" panel has a real per-item feed —
   // this tenant's own synced Message Center posts (portal-message-center.ts,
@@ -746,14 +779,22 @@ export default function PortalV2HealthPage() {
                     {objectsDataState}
                   </span>
                 )}
-                {/* NO-BACKEND-TO-WIRE: "Directory sync" (HLT_SYNC) and "Config
-                    drift" (HLT_DRIFT) have no wiring path — see the tags in
-                    hltDashboardData.ts. Hidden marker so a test can prove the
-                    honest state rendered, same PV2_SOURCE_CLIP convention the
-                    live hero stats use. */}
-                {(s.label === "Directory sync" || s.label === "Config drift") && (
-                  <span data-testid={`pv2-hlt-stat-${s.label.toLowerCase().replace(/\s+/g, "-")}-source`} style={PV2_SOURCE_CLIP}>
+                {/* NO-BACKEND-TO-WIRE: "Directory sync" (HLT_SYNC) has no wiring
+                    path — see the tag in hltDashboardData.ts. Hidden marker so a
+                    test can prove the honest state rendered, same PV2_SOURCE_CLIP
+                    convention the live hero stats use. */}
+                {s.label === "Directory sync" && (
+                  <span data-testid="pv2-hlt-stat-directory-sync-source" style={PV2_SOURCE_CLIP}>
                     empty
+                  </span>
+                )}
+                {/* Config drift is real now (Git #1282) — see useHltDriftLive.ts. */}
+                {s.label === "Config drift" && (
+                  <span
+                    data-testid="pv2-hlt-stat-config-drift-source"
+                    style={PV2_SOURCE_CLIP}
+                  >
+                    {driftLive.loaded && driftLive.trackedDomainCount > 0 ? "live" : "empty"}
                   </span>
                 )}
               </div>
@@ -894,16 +935,12 @@ export default function PortalV2HealthPage() {
               <HltInfoDot title={HLT_DRIFT_KBI.title} summary={HLT_DRIFT_KBI.summary} />
             </span>
           </div>
-          {/* NO-BACKEND-TO-WIRE: see the tag above HLT_DRIFT in
-              hltDashboardData.ts. A real drift-events engine exists
-              (drift_events + dashboard-resolvers.ts's resolveDriftEvents,
-              portal-reachable via POST /api/dashboard/resolve against the 17
-              drift.*DriftCount metric keys already consumed elsewhere in this
-              app, m365-health/useM365HealthLive.ts), but it has no shape that
-              maps to this "N of 47 tracked settings, including clean/accepted
-              rows" inventory — that needs a product decision on verdict-
-              taxonomy mapping this pass does not make unilaterally. Renders
-              the honest no-live-data state rather than this invented table. */}
+          {/* Real drift_events rows (Git #1282) — resolveDriftEvents via
+              POST /api/dashboard/resolve, wired through useHltDriftLive.ts.
+              See that file's header for why this renders the real store's
+              own shape (detected deviations only, real 4-value verdict
+              taxonomy) rather than the fixture's invented "N of 47 tracked
+              settings" inventory. */}
           <div
             style={{
               border: "1px solid rgba(30,41,59,.9)",
@@ -913,12 +950,65 @@ export default function PortalV2HealthPage() {
             }}
             data-testid="pv2-hlt-drift"
           >
-            <NoScanDataState
-              testId="pv2-hlt-drift-empty"
-              label="No live data available"
-              detail="No per-setting drift inventory is wired for this tenant yet."
-            />
+            {driftLive.loaded && driftRows.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {driftRows.map((r, i) => (
+                  <div
+                    key={`${r.domainKey}-${r.setting}-${i}`}
+                    data-testid="pv2-hlt-drift-row"
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      padding: "12px 16px",
+                      borderTop: i === 0 ? "none" : "1px solid rgba(30,41,59,.7)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#e2e8f0" }}>{r.setting}</span>
+                      <span
+                        data-testid="pv2-hlt-drift-verdict"
+                        style={{ fontSize: "10.5px", fontWeight: 700, color: r.verdictMeta.c }}
+                      >
+                        {r.verdictMeta.label}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: "10.5px", color: "#64748b" }}>
+                      {r.domainLabel} · {r.baseline} → {r.current}
+                    </span>
+                    <span style={{ fontSize: "10.5px", color: "#475569" }}>
+                      {r.who} · {r.when}
+                      {r.crRef ? ` · ${r.crRef}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : driftTrackedDomains.length > 0 ? (
+              <NoScanDataState
+                testId="pv2-hlt-drift-clean"
+                label="No drift events in the tracked domains"
+                detail={`${driftTrackedDomains.length} of ${driftLive.totalDomainCount} settings domains are being diffed against a signed baseline — none has deviated since the last scan.`}
+              />
+            ) : (
+              <NoScanDataState
+                testId="pv2-hlt-drift-empty"
+                label="No live data available"
+                detail="No settings domain has captured a drift baseline for this tenant yet."
+              />
+            )}
           </div>
+          {driftUntrackedReasons.length > 0 && (
+            <div
+              data-testid="pv2-hlt-drift-reasons"
+              style={{ display: "flex", flexDirection: "column", gap: 3, padding: "2px 2px 0" }}
+            >
+              {driftUntrackedReasons.map((d) => (
+                <span key={d.domainKey} style={{ fontSize: "10px", color: NO_DATA_INK, lineHeight: 1.4 }}>
+                  {d.domainLabel}: {d.detail ?? "could not be compared on the most recent scan"}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* ── Debt items (left) + service/provenance (right) ─────────────── */}

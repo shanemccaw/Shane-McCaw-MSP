@@ -38,6 +38,8 @@
  */
 
 import type { PortalV2Finding } from "./portalV2Model";
+import type { HltDriftLiveEvent } from "./useHltDriftLive";
+import { timeAgo } from "./overviewModel";
 
 export type HltTone = "red" | "amber" | "green";
 export type HltServiceTone = "red" | "amber" | "green" | "blue";
@@ -293,29 +295,22 @@ export function hltHeroStatsWithObjectTotal(
 
 /* ── Configuration drift — HLT_DRIFT (14835-14888) ────────────────────────── */
 
-// NO-BACKEND-TO-WIRE: this 12-row table (and the "N of 47 tracked settings"
-// hero stat / alert / approved counts derived from it) has no wiring path
-// today, even though a REAL configuration-drift engine genuinely exists —
-// investigated before tagging, per this issue's own instruction not to guess.
-// `drift_events` (lib/db/src/schema/msp.ts) + `dashboard-resolvers.ts`'s
-// `resolveDriftEvents` are real and portal-reachable today via
-// `POST /api/dashboard/resolve` against the 17 `drift.*DriftCount` metric keys
-// (lib/dashboard-registry/src/metrics.ts) — `m365-health/useM365HealthLive.ts`
-// already consumes those same keys elsewhere in this app, as aggregate
-// counts. But the SHAPE this table needs is a different, larger thing than an
-// aggregate count: a per-setting inventory of all 47 tracked settings,
-// including the ones that currently MATCH baseline ("clean" rows) and the
-// ones recorded as a deliberate "accepted position" — neither of which
-// `drift_events` represents at all (it only stores rows for settings that
-// have actually deviated). Its own real verdict enum
+// WIRED (Git #1282): the table below this fixture is no longer rendered — see
+// `useHltDriftLive.ts` for the real seam. #1442 tagged this `NO-BACKEND-TO-
+// WIRE:` because `drift_events` had no shape matching this fixture's "N of 47
+// tracked settings, including clean/accepted rows" inventory, and left the
+// verdict-taxonomy mapping as an explicit open product decision rather than
+// guess at one. #1287 has since landed a general drift-spec registry feeding
+// `drift_events` for real, which makes the real shape unambiguous: the store
+// only ever holds DETECTED deviations (no "clean"/"accepted" row concept
+// exists in it at all), and its verdict enum
 // (`approved` / `attributed_unapproved` / `unattributed` / `informational`)
-// is also not a 1:1 match for this table's six-value `HltVerdict` scale.
-// Wiring this properly needs a product decision on that verdict-taxonomy
-// mapping and on how (or whether) to represent "clean"/"accepted" rows the
-// real engine doesn't track — the same "check exists, wiring is separate
-// scoped follow-up" split #1260's own migration used. Until that decision is
-// made, this table stays on fixture and the page renders an honest
-// no-live-data state in its place rather than this invented inventory.
+// is real data, not a stand-in for this fixture's six-value `HltVerdict`
+// scale. `useHltDriftLive.ts` and `HLT_LIVE_DRIFT_VERDICT` below render that
+// real shape on its own honest terms instead of force-fitting it into this
+// fixture's taxonomy. This fixture (and its 6-value verdict scale) is kept
+// only as the historical design reference the earlier investigation
+// documented — it is not read by the live page.
 export type HltVerdict =
   | "unapproved"
   | "unattributed"
@@ -455,6 +450,100 @@ export const HLT_DRIFT_KBI = {
   summary: "A setting that moved. The question is whether a change request moved it.",
 } as const;
 
+/**
+ * The real 4-value `DRIFT_EVENT_VERDICTS` taxonomy (msp.ts), given its own
+ * honest display terms (Git #1282) rather than force-fit into the fixture's
+ * six-value `HLT_VERDICT` above — see this file's `WIRED (Git #1282):`
+ * comment above `HltVerdict` for why. `group` sorts the same way `HLT_VERDICT`
+ * does: unresolved changes float to the top, approved changes next,
+ * informational (benign, non-security-relevant) changes last — there is no
+ * "clean" group here because `drift_events` never emits one.
+ */
+export const HLT_LIVE_DRIFT_VERDICT: Readonly<
+  Record<string, { c: string; label: string; lead: string; group: number }>
+> = {
+  attributed_unapproved: { c: "#f87171", label: "Changed without approval", lead: "No change request covers this", group: 0 },
+  unattributed: { c: "#f87171", label: "Nobody owns this change", lead: "No actor and no change request recorded", group: 0 },
+  approved: { c: "#34d399", label: "Approved", lead: "A linked change request covers this", group: 1 },
+  informational: { c: "#94a3b8", label: "Informational", lead: "Recorded as non-security-relevant", group: 2 },
+};
+
+/** Fallback for a verdict string the taxonomy doesn't recognise — should never
+ * fire against real data (the DB column is enum-constrained), but keeps a row
+ * rendering honestly rather than throwing if the taxonomy ever widens. */
+const HLT_LIVE_DRIFT_VERDICT_FALLBACK = { c: "#94a3b8", label: "Unclassified", lead: "", group: 3 } as const;
+
+export function hltLiveDriftVerdict(verdict: string): { c: string; label: string; lead: string; group: number } {
+  return HLT_LIVE_DRIFT_VERDICT[verdict] ?? HLT_LIVE_DRIFT_VERDICT_FALLBACK;
+}
+
+/** Real JSON `oldValue`/`newValue` drift-event payloads → a short display
+ * string. `null`/`undefined` render as an em dash (the setting didn't exist
+ * on that side of the diff, e.g. an `add`/`remove`), primitives render
+ * verbatim, and objects/arrays render as compact JSON rather than
+ * `[object Object]` — real values, never invented ones. */
+export function hltDriftValueDisplay(v: unknown): string {
+  if (v === null || v === undefined) return "—";
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "—";
+  }
+}
+
+/** Real row shape the live drift table renders, built from a `useHltDriftLive`
+ * event. Deliberately NOT `HltDriftRow` — this is the real store's own shape,
+ * not the fixture's (no owner/fixKey concept exists in `drift_events`; the
+ * fixture's per-row wrench routing was a fixture-authored convenience with no
+ * real backing to route from). */
+export interface HltLiveDriftRow {
+  readonly domainKey: string;
+  readonly domainLabel: string;
+  readonly setting: string;
+  readonly baseline: string;
+  readonly current: string;
+  readonly who: string;
+  readonly when: string;
+  readonly verdict: string;
+  readonly verdictMeta: { c: string; label: string; lead: string; group: number };
+  readonly crRef: string | null;
+  readonly op: string;
+}
+
+/** `useHltDriftLive`'s raw event → the row the live table renders. `who`
+ * reuses the fixture's own "Unknown — pre-baseline" phrasing for an
+ * unattributed change (real absence of an actor, same meaning as the
+ * fixture's pre-baseline rows) rather than inventing new copy for the same
+ * concept. `when` uses the same relative-time formatter the rest of this
+ * page's live sections use (`overviewModel.ts`'s `timeAgo`). */
+export function hltDriftRowFromLive(e: HltDriftLiveEvent): HltLiveDriftRow {
+  return {
+    domainKey: e.domainKey,
+    domainLabel: e.domainLabel,
+    setting: e.setting,
+    baseline: hltDriftValueDisplay(e.oldValue),
+    current: hltDriftValueDisplay(e.newValue),
+    who: e.changedBy ?? (e.verdict === "unattributed" ? "Unknown — pre-baseline" : "Unknown"),
+    when: e.t ? timeAgo(e.t) : "—",
+    verdict: e.verdict,
+    verdictMeta: hltLiveDriftVerdict(e.verdict),
+    crRef: e.crRef,
+    op: e.op,
+  };
+}
+
+/** Verdict-group sorted, same ordering rule `hltDriftRows` uses on the
+ * fixture: unresolved changes float to the top. Stable, so rows inside a
+ * group keep the order the events resolved in (newest domain-scan first). */
+export function hltDriftRowsFromLive(events: readonly HltDriftLiveEvent[]): readonly HltLiveDriftRow[] {
+  return events
+    .map(hltDriftRowFromLive)
+    .slice()
+    .sort((a, b) => a.verdictMeta.group - b.verdictMeta.group);
+}
+
 /** `hltMcCount` (19819) — the Message Center notice count on the service-health header. */
 export const HLT_MC_COUNT = "452";
 
@@ -489,24 +578,50 @@ export const HLT_HERO_STATS: readonly { label: string; value: string; sub: strin
 ];
 
 /**
- * Overlay the honest no-live-data state onto the 2 of 3 hero stats with no
+ * Overlay the honest no-live-data state onto the one hero stat left with no
  * backend at all (#1442) — "Directory sync" (see the `NO-BACKEND-TO-WIRE:` tag
- * above `HLT_SYNC`) and "Config drift" (see the tag above `HLT_DRIFT`). Only
- * "Stale objects" has any real backing (`hltHeroStatsWithObjectTotal`), so
- * this always runs AFTER that overlay, replacing the other two unconditionally
- * rather than leaving them as silent fixture numbers.
+ * above `HLT_SYNC`). "Stale objects" has real backing
+ * (`hltHeroStatsWithObjectTotal`) and "Config drift" now does too
+ * (`hltHeroStatsWithDriftLive`, Git #1282) — this runs AFTER both of those
+ * overlays and only ever touches "Directory sync".
  */
 export function hltHeroStatsHonest(
   stats: typeof HLT_HERO_STATS,
   noDataValue: string,
 ): typeof HLT_HERO_STATS {
   return stats.map((s) =>
-    s.label === "Directory sync"
-      ? { ...s, value: noDataValue, sub: "No live data available" }
-      : s.label === "Config drift"
-        ? { ...s, value: noDataValue, sub: "No live data available" }
-        : s,
+    s.label === "Directory sync" ? { ...s, value: noDataValue, sub: "No live data available" } : s,
   );
+}
+
+/**
+ * Overlay the "Config drift" hero stat with real numbers from
+ * `useHltDriftLive.ts` (Git #1282), replacing the fixture's invented "N of 47
+ * tracked settings" framing outright — always, never leaving the fixture
+ * number in place. `drift` is null while the live resolve hasn't landed yet,
+ * or once it has, when it genuinely tracked zero domains (no spec has ever
+ * captured a baseline for this tenant); both render the same honest
+ * no-live-data state `hltHeroStatsHonest` gives "Directory sync". When at
+ * least one domain is tracked, the real event count and real domain coverage
+ * replace it — "of 47" was never a real settings count, so there is no
+ * honest way to keep quoting it once live data exists.
+ */
+export function hltHeroStatsWithDriftLive(
+  stats: typeof HLT_HERO_STATS,
+  drift: { eventCount: number; trackedDomainCount: number; totalDomainCount: number } | null,
+  noDataValue: string,
+): typeof HLT_HERO_STATS {
+  return stats.map((s) => {
+    if (s.label !== "Config drift") return s;
+    if (!drift || drift.trackedDomainCount === 0) {
+      return { ...s, value: noDataValue, sub: "No live data available" };
+    }
+    return {
+      ...s,
+      value: `${drift.eventCount} event${drift.eventCount === 1 ? "" : "s"}`,
+      sub: `Across ${drift.trackedDomainCount} of ${drift.totalDomainCount} tracked domains`,
+    };
+  });
 }
 
 /**

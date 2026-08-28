@@ -43,15 +43,22 @@ import {
   HLT_SEV_META,
   HLT_SYNC,
   HLT_VERDICT,
+  HLT_LIVE_DRIFT_VERDICT,
   hltAcceptedMeta,
   hltAcceptedStripSuffix,
   hltDriftOwner,
+  hltDriftRowFromLive,
+  hltDriftRowsFromLive,
   hltDriftRows,
+  hltDriftValueDisplay,
+  hltHeroStatsWithDriftLive,
   hltHeroStatsWithObjectTotal,
+  hltLiveDriftVerdict,
   hltObjectTotalFor,
   hltObjectsWithLive,
   hltTrendGeometry,
 } from "./hltDashboardData";
+import type { HltDriftLiveEvent } from "./useHltDriftLive";
 
 // Mirrors useHltObjectsLive.ts's HLT_OBJECTS_LIVE_EMPTY shape without
 // importing that hook module — it pulls in @/lib/auth-context, which needs a
@@ -251,6 +258,97 @@ describe("Health configuration drift — verdict sort and owners", () => {
     assert.equal(HLT_VERDICT.unattributed.label, "Nobody owns this change");
     assert.equal(HLT_VERDICT.drifted.label, "Drifted on its own");
     assert.equal(HLT_VERDICT.clean.lead, "");
+  });
+});
+
+describe("Health configuration drift — LIVE wiring (Git #1282)", () => {
+  const mkEvent = (over: Partial<HltDriftLiveEvent> = {}): HltDriftLiveEvent => ({
+    domainKey: "ca-policy",
+    domainLabel: "Conditional Access policy",
+    t: "2026-08-27T12:00:00.000Z",
+    label: "state changed",
+    setting: "/policies/0/state",
+    op: "replace",
+    oldValue: "On",
+    newValue: "Report-only",
+    changedBy: "a.reyes@tenant.com",
+    verdict: "attributed_unapproved",
+    crRef: null,
+    ...over,
+  });
+
+  it("gives the real 4-value verdict taxonomy its own honest labels, not the fixture's 6-value scale", () => {
+    assert.equal(Object.keys(HLT_LIVE_DRIFT_VERDICT).length, 4);
+    assert.equal(hltLiveDriftVerdict("attributed_unapproved").label, "Changed without approval");
+    assert.equal(hltLiveDriftVerdict("unattributed").label, "Nobody owns this change");
+    assert.equal(hltLiveDriftVerdict("approved").label, "Approved");
+    assert.equal(hltLiveDriftVerdict("informational").label, "Informational");
+    // No "clean" verdict exists in the live taxonomy — drift_events never emits one.
+    assert.equal(HLT_LIVE_DRIFT_VERDICT.clean, undefined);
+    // An unrecognised verdict degrades honestly rather than throwing.
+    assert.equal(hltLiveDriftVerdict("made_up").label, "Unclassified");
+  });
+
+  it("displays real JSON drift values as short strings, never [object Object]", () => {
+    assert.equal(hltDriftValueDisplay(null), "—");
+    assert.equal(hltDriftValueDisplay(undefined), "—");
+    assert.equal(hltDriftValueDisplay("Report-only"), "Report-only");
+    assert.equal(hltDriftValueDisplay(true), "true");
+    assert.equal(hltDriftValueDisplay(3), "3");
+    assert.equal(hltDriftValueDisplay({ visibility: "Public" }), '{"visibility":"Public"}');
+  });
+
+  it("maps a real drift_events row to a display row honestly", () => {
+    const row = hltDriftRowFromLive(mkEvent());
+    assert.equal(row.setting, "/policies/0/state");
+    assert.equal(row.baseline, "On");
+    assert.equal(row.current, "Report-only");
+    assert.equal(row.who, "a.reyes@tenant.com");
+    assert.equal(row.verdictMeta.label, "Changed without approval");
+    assert.equal(row.domainLabel, "Conditional Access policy");
+  });
+
+  it("reuses the fixture's own pre-baseline phrasing for a real unattributed change", () => {
+    const row = hltDriftRowFromLive(mkEvent({ changedBy: null, verdict: "unattributed" }));
+    assert.equal(row.who, "Unknown — pre-baseline");
+  });
+
+  it("sorts live rows unresolved-first, same group ordering rule as the fixture", () => {
+    const rows = hltDriftRowsFromLive([
+      mkEvent({ setting: "informational-one", verdict: "informational" }),
+      mkEvent({ setting: "approved-one", verdict: "approved" }),
+      mkEvent({ setting: "unattributed-one", verdict: "unattributed" }),
+    ]);
+    assert.deepEqual(
+      rows.map((r) => r.setting),
+      ["unattributed-one", "approved-one", "informational-one"],
+    );
+  });
+
+  it("overlays the hero's Config drift stat with real numbers, replacing the fixture's invented 'of 47'", () => {
+    const live = hltHeroStatsWithDriftLive(HLT_HERO_STATS, { eventCount: 3, trackedDomainCount: 5, totalDomainCount: 18 }, "—");
+    assert.equal(live[2].value, "3 events");
+    assert.equal(live[2].sub, "Across 5 of 18 tracked domains");
+    // Untouched stats survive the overlay.
+    assert.equal(live[0].value, HLT_HERO_STATS[0].value);
+    assert.equal(live[1].value, HLT_HERO_STATS[1].value);
+  });
+
+  it("falls back to the honest no-live-data state when no domain is tracked yet", () => {
+    const untracked = hltHeroStatsWithDriftLive(HLT_HERO_STATS, null, "—");
+    assert.equal(untracked[2].value, "—");
+    assert.equal(untracked[2].sub, "No live data available");
+    const zeroTracked = hltHeroStatsWithDriftLive(
+      HLT_HERO_STATS,
+      { eventCount: 0, trackedDomainCount: 0, totalDomainCount: 18 },
+      "—",
+    );
+    assert.equal(zeroTracked[2].value, "—");
+  });
+
+  it("singularizes a lone event honestly", () => {
+    const live = hltHeroStatsWithDriftLive(HLT_HERO_STATS, { eventCount: 1, trackedDomainCount: 1, totalDomainCount: 18 }, "—");
+    assert.equal(live[2].value, "1 event");
   });
 });
 
