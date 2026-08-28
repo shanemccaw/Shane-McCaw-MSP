@@ -104,6 +104,11 @@ namespace BuildConsole
             public double Cost;
             public double RemainingBuffer;
             public bool HandoffFired;
+            /// <summary>Git #1436 — set once the injected scraper (ChatContextMeterScript) reports
+            /// sustained zero-turn detection on what otherwise looks like a real populated chat page,
+            /// i.e. its selectors likely no longer match claude.ai's current DOM. Latches true so the
+            /// warning stays visible even if a later poll happens to find something transiently.</summary>
+            public bool SelectorsLikelyStale;
         }
 
         private readonly Dictionary<Microsoft.Web.WebView2.Wpf.WebView2, ChatContextMeterState> _contextMeters = new();
@@ -5181,7 +5186,7 @@ namespace BuildConsole
             return chatContextGrid;
         }
 
-        private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, double cost, double remainingBuffer)
+        private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, double cost, double remainingBuffer, bool selectorsLikelyStale = false)
         {
             if (!_contextMeters.TryGetValue(wv, out var meterState)) return;
 
@@ -5191,6 +5196,35 @@ namespace BuildConsole
             meterState.HeavyTurnCount = heavyTurnCount;
             meterState.Cost = cost;
             meterState.RemainingBuffer = remainingBuffer;
+
+            // Git #1436 — the scraper reported it can no longer find any messages on what
+            // looks like a real, populated chat. Log it once (loud, discoverable) and flip the
+            // meter into an explicit "broken" visual state instead of quietly sitting at 0/green
+            // forever, which is exactly what read as "not working" in the original report.
+            if (selectorsLikelyStale && !meterState.SelectorsLikelyStale)
+            {
+                meterState.SelectorsLikelyStale = true;
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context",
+                    "Chat context meter: DOM scraper found zero messages on a populated chat page for ~10s straight — claude.ai's markup likely drifted and ChatContextMeterScript's selectors need updating (Git #1436).");
+            }
+
+            if (meterState.SelectorsLikelyStale)
+            {
+                meterState.ProgressBar.Visibility = Visibility.Visible;
+                meterState.ProgressBar.Value = 0;
+                meterState.ProgressBar.Foreground = (Brush)FindResource("OverlayBrush");
+                meterState.ProgressBar.ToolTip = "Chat context meter: message detection isn't finding any turns on this chat. claude.ai's DOM likely changed — selectors in ChatContextMeterScript need updating (Git #1436).";
+                if (!meterState.BannerDismissed)
+                {
+                    meterState.Banner.Background = (Brush)FindResource("YellowBrush");
+                    meterState.BannerText.Text = "Context meter can't read this chat (selectors likely stale) — see Git #1436.";
+                    meterState.BannerText.Foreground = (Brush)FindResource("CrustBrush");
+                    meterState.BannerCloseBtn.Visibility = Visibility.Visible;
+                    meterState.BannerCloseBtn.Foreground = (Brush)FindResource("CrustBrush");
+                    meterState.Banner.Visibility = Visibility.Visible;
+                }
+                return;
+            }
 
             // Make progress bar visible
             meterState.ProgressBar.Visibility = Visibility.Visible;
@@ -5409,6 +5443,7 @@ namespace BuildConsole
 
                 string? Str(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String ? v.GetString() : null;
                 int? Int(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : null;
+                bool Bool(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
 
                 if (type == "BT_CHAT_STATS")
                 {
@@ -5418,12 +5453,13 @@ namespace BuildConsole
                         int turnCount = Int("turnCount") ?? 0;
                         int charCount = Int("charCount") ?? 0;
                         int heavyTurnCount = Int("heavyTurnCount") ?? 0;
+                        bool selectorsLikelyStale = Bool("selectorsLikelyStale");
 
                         double estTokens = charCount / 4.0;
                         double cost = estTokens * (3.00 / 1000000.0);
                         double remainingBuffer = 100000.0 - estTokens;
 
-                        UpdateContextMeter(activeWv, estTokens, turnCount, heavyTurnCount, cost, remainingBuffer);
+                        UpdateContextMeter(activeWv, estTokens, turnCount, heavyTurnCount, cost, remainingBuffer, selectorsLikelyStale);
                     }
                 }
                 else if (type == "BT_EDIT_BUILD")
