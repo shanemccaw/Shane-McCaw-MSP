@@ -14,6 +14,15 @@ namespace BuildConsole.Services
     ///
     /// Raised from Sonnet Medium to Sonnet High per Shane's follow-up request —
     /// only xhigh (and any Opus model) is now held; High effort launches normally.
+    ///
+    /// Git #1479 — Shane upgraded the secondary account to Claude Max 20x (same
+    /// tier as primary). The whole reason for the cap was the secondary account's
+    /// limited capacity, which no longer exists, so `ExceedsSonnetHigh` is now a
+    /// permanent no-op (always returns false). `HeldStatus`,
+    /// `SonnetPlusOverflowMilestoneTitle`, and the `IsOpusModel`/
+    /// `IsAboveHighEffort` helpers are deliberately left in place, unused by the
+    /// no-op, so a future cap — if the account tier ever changes again — is a
+    /// one-line flip back to `IsOpusModel(model) || IsAboveHighEffort(effort)`.
     /// </summary>
     public static class AccountCapPolicy
     {
@@ -36,8 +45,13 @@ namespace BuildConsole.Services
             !string.IsNullOrWhiteSpace(effort) &&
             effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>True when this model/effort combination genuinely requires more than Sonnet High — an Opus model at any effort, or anything run at xhigh effort.</summary>
-        public static bool ExceedsSonnetHigh(string? model, string? effort) =>
-            IsOpusModel(model) || IsAboveHighEffort(effort);
+        /// <summary>
+        /// Git #1479 — permanent no-op now that the secondary account is Claude
+        /// Max 20x: always false, regardless of model/effort. Left as a real
+        /// method (not deleted) so QueueWatcherService and BuildQueuePanel stay
+        /// wired to a single gate that can be flipped back on in one line if a
+        /// real cap is ever needed again.
+        /// </summary>
+        public static bool ExceedsSonnetHigh(string? model, string? effort) => false;
     }
 }
