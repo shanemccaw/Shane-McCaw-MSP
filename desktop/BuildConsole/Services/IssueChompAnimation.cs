@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -8,6 +9,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Shapes;
+using BuildConsole.Controls;
 
 namespace BuildConsole.Services
 {
@@ -121,6 +123,78 @@ namespace BuildConsole.Services
             }
         }
         private static readonly Random Rng = new();
+
+        // Copilot-designed critters (#1435, Controls/CritterFactory.cs + CritterRegistry.cs) added into the
+        // BuildMascot() rotation (Git #1452) — additive alongside the 5 original hand-built mascots below.
+        // Only the Positive-category critters are eligible here: this rotation is for the celebratory
+        // build-done/issue-closed chomp, not the grumpy "new issue created" critters used elsewhere
+        // (see LeftSidebar.xaml.cs's separate "git-board.critters" grump spawn).
+        private static readonly List<CritterInfo> CopilotMascotPool =
+            CritterRegistry.All.Where(c => c.Category == CritterCategory.Positive).ToList();
+
+        private static readonly Dictionary<string, string> CopilotMascotSounds = new()
+        {
+            ["blueberry"] = "SPLAT!",
+            ["moonmouse"] = "SQUEAK!",
+            ["starlet"] = "TWINKLE!",
+            ["daisy"] = "SNIP!",
+            ["whirlpix"] = "WHIRL!",
+            ["aurora"] = "SPARKLE!",
+            ["puffinette"] = "FLUFF!",
+            ["sproutbunny"] = "MUNCH!",
+            ["buzzybee"] = "BUZZ!",
+            ["glimmerfox"] = "SWIPE!",
+            ["pompom"] = "POOF!",
+            ["nibbles"] = "NIBBLE!",
+            ["dragonet"] = "ROAR!",
+            ["nimbus"] = "ZAP!",
+            ["sparkle"] = "SHIMMER!",
+            ["peony"] = "POP!",
+            ["chirp"] = "TWEET!",
+            ["marigold"] = "FLUTTER!",
+            ["comet"] = "ZOOM!",
+            ["sunny"] = "SLURP!"
+        };
+
+        // Total mascot rotation size — the 5 original hand-built mascots plus every eligible Copilot critter.
+        // Callers that need a random index into the FULL rotation (not just the original 5) use this.
+        private static int MascotCount => 5 + CopilotMascotPool.Count;
+
+        // Picks `count` distinct mascot indices at random from the full rotation (original 5 + Copilot
+        // critters), for the Milestone parade / party-stage variants (Git #1452) — previously these always
+        // hardcoded indices 0-4, so the Copilot critters never appeared there.
+        private static int[] PickParadeMascotIndices(int count)
+        {
+            var pool = Enumerable.Range(0, MascotCount).ToList();
+            var picked = new int[count];
+            for (int i = 0; i < count; i++)
+            {
+                if (pool.Count == 0) pool = Enumerable.Range(0, MascotCount).ToList(); // wrap if count > MascotCount
+                int pick = Rng.Next(pool.Count);
+                picked[i] = pool[pick];
+                pool.RemoveAt(pick);
+            }
+            return picked;
+        }
+
+        // Wraps a CritterFactory canvas (which ships at its own native size) to the ~60x56 canvas size the
+        // 5 original hand-built mascots use, so it reads at a consistent scale in the chomp animation
+        // regardless of which native size the Copilot critter was designed at (Git #1452).
+        private static FrameworkElement WrapCopilotMascot(Canvas critter, double targetW = 60, double targetH = 56)
+        {
+            double nativeW = critter.Width > 0 ? critter.Width : targetW;
+            double nativeH = critter.Height > 0 ? critter.Height : targetH;
+            double scale = Math.Min(targetW / nativeW, targetH / nativeH);
+
+            critter.RenderTransform = new ScaleTransform(scale, scale);
+            critter.RenderTransformOrigin = new Point(0, 0);
+            Canvas.SetLeft(critter, (targetW - nativeW * scale) / 2);
+            Canvas.SetTop(critter, (targetH - nativeH * scale) / 2);
+
+            var wrapper = new Canvas { Width = targetW, Height = targetH };
+            wrapper.Children.Add(critter);
+            return wrapper;
+        }
 
         private static readonly string[] ChompPhrases =
         {
@@ -289,8 +363,8 @@ namespace BuildConsole.Services
                     Canvas.SetTop(issueCard, targetPos.Y - (isEpic ? 20 : 15));
                     canvas.Children.Add(issueCard);
 
-                    // Mascot Selection
-                    int charIndex = Rng.Next(5);
+                    // Mascot Selection — full rotation, original 5 + eligible Copilot critters (Git #1452)
+                    int charIndex = Rng.Next(MascotCount);
                     var (character, _) = BuildMascot(charIndex);
 
                     if (isEpic)
@@ -523,13 +597,15 @@ namespace BuildConsole.Services
                     bannerScale.BeginAnimation(ScaleTransform.ScaleXProperty, bannerPop);
                     bannerScale.BeginAnimation(ScaleTransform.ScaleYProperty, bannerPop);
 
-                    // 2. Spawn All 5 Mascots in a Marching Parade Line
+                    // 2. Spawn All 5 Mascots in a Marching Parade Line — drawn from the full rotation
+                    // (original 5 + Copilot critters, Git #1452), not just hardcoded indices 0-4.
                     double paradeY = winH * 0.55;
                     var paradeMascots = new List<(FrameworkElement Critter, TranslateTransform Trans, ScaleTransform Scale)>();
+                    int[] paradeIndices = PickParadeMascotIndices(5);
 
                     for (int i = 0; i < 5; i++)
                     {
-                        var (critter, _) = BuildMascot(i);
+                        var (critter, _) = BuildMascot(paradeIndices[i]);
 
                         // Attach party decoration (balloon or party hat emoji above head)
                         var decor = new TextBlock
@@ -952,8 +1028,18 @@ namespace BuildConsole.Services
                     return (BuildCatMascot(), "CRUNCH!");
                 case 3: // 🐦 Scout Bird
                     return (BuildBirdMascot(), "PECK!");
-                default: // 🦆 Sprocket Runner
+                case 4: // 🦆 Sprocket Runner
                     return (BuildSprocketMascot(), "CHOMP!");
+                default:
+                    // Copilot-designed critters (#1435/#1452) fill out the rest of the rotation.
+                    int copilotIndex = type - 5;
+                    if (copilotIndex < 0 || copilotIndex >= CopilotMascotPool.Count)
+                        return (BuildSprocketMascot(), "CHOMP!"); // out-of-range fallback, never crash the animation
+
+                    var info = CopilotMascotPool[copilotIndex];
+                    string sound = CopilotMascotSounds.TryGetValue(info.Id, out var s) ? s : "NOM!";
+                    ActivityLog.Log("git-board.critters", $"Copilot critter '{info.Name}' ({info.Id}) selected for build-done chomp — {sound}");
+                    return (WrapCopilotMascot(info.Factory()), sound);
             }
         }
 
@@ -1419,15 +1505,17 @@ namespace BuildConsole.Services
                     bannerScale.BeginAnimation(ScaleTransform.ScaleXProperty, bannerPop);
                     bannerScale.BeginAnimation(ScaleTransform.ScaleYProperty, bannerPop);
 
-                    // ── 3. ALL CRITTERS DANCING ON STAGE ──
+                    // ── 3. ALL CRITTERS DANCING ON STAGE ── drawn from the full rotation (original 5 +
+                    // Copilot critters, Git #1452), not just hardcoded indices 0-4.
                     double stageY = winH * 0.52;
                     double stageStartX = (winW - 5 * 100) / 2;
 
                     string[] partyEmojis = { "👑", "🎈", "🎉", "🎺", "⭐", "🥳", "💃", "🕺" };
+                    int[] stageIndices = PickParadeMascotIndices(5);
 
                     for (int i = 0; i < 5; i++)
                     {
-                        var (critter, _) = BuildMascot(i);
+                        var (critter, _) = BuildMascot(stageIndices[i]);
 
                         // Party hat / decoration above
                         var decor = new TextBlock
