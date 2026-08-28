@@ -534,15 +534,16 @@ namespace BuildConsole.Services
                        claimed_at = NOW(),
                        updated_at = NOW()
                  WHERE id     = @id
-                   AND status = 'queued'
+                   AND (status = 'queued' OR status = @heldStatus)
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
                           originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
             cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@heldStatus", AccountCapPolicy.HeldStatus);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (!await reader.ReadAsync())
-                throw new InvalidOperationException($"Queue item {id} is not in 'queued' status — cannot force-claim.");
+                throw new InvalidOperationException($"Queue item {id} is not in 'queued' or 'held' status — cannot force-claim.");
             // Git #1384 — this RETURNING must select the SAME columns (now through
             // account at ordinal 18, added #1416) that every other SELECT/RETURNING in
             // this file does, because MapRow reads the highest ordinal. It was once

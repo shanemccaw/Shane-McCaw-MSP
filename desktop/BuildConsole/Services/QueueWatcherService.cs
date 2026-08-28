@@ -273,14 +273,14 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Git #820 — "Run Now": launches an item this app just force-claimed (bypassing the blocker/free-slot check GetNextQueueItemsAsync would normally enforce). Same launch path as the normal poll loop, just triggered directly instead of discovered.</summary>
-        public void ForceLaunch(QueueItem item) => _ = SafeLaunch(item);
+        public void ForceLaunch(QueueItem item) => _ = SafeLaunch(item, isForced: true);
 
         /// <summary>Fire-and-forget wrapper for the now-async <see cref="LaunchItem"/> — used by the
         /// non-awaiting entry points (Run Now, Build Watch resume). Observes any exception so an
         /// unawaited launch (e.g. a worktree-provisioning hiccup, Git #1371) can't crash the app.</summary>
-        private async Task SafeLaunch(QueueItem item, int? buildSetExpected = null)
+        private async Task SafeLaunch(QueueItem item, int? buildSetExpected = null, bool isForced = false)
         {
-            try { await LaunchItem(item, buildSetExpected); }
+            try { await LaunchItem(item, buildSetExpected, isForced); }
             catch (Exception ex) { ActivityLog.Log("watcher", $"LaunchItem threw for queue #{item.Id} ({item.Title}): {ex.Message}"); }
         }
 
@@ -808,7 +808,7 @@ namespace BuildConsole.Services
         /// stream-json, and deliver the prompt as the first stdin message
         /// instead of a positional arg — see the class doc comment.
         /// </summary>
-        private async Task LaunchItem(QueueItem item, int? buildSetExpected = null)
+        private async Task LaunchItem(QueueItem item, int? buildSetExpected = null, bool isForced = false)
         {
             var settings = BuildConsoleSettings.Load();
             bool interactive = settings.InteractiveBuilds;
@@ -825,8 +825,15 @@ namespace BuildConsole.Services
             if (string.Equals(item.Account, "secondary", StringComparison.OrdinalIgnoreCase) &&
                 AccountCapPolicy.ExceedsSonnetMedium(item.Model, item.Effort))
             {
-                await HoldForSonnetOverflowAsync(item);
-                return;
+                if (isForced)
+                {
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) requests secondary account and exceeds Sonnet Medium, but is launched anyway because it was triggered manually (Run Now override).");
+                }
+                else
+                {
+                    await HoldForSonnetOverflowAsync(item);
+                    return;
+                }
             }
 
             // Git #1203 — the launched session must be TOLD its own buildId. The
@@ -1294,7 +1301,7 @@ namespace BuildConsole.Services
         }
 
         /// <summary>Immediately launches a claimed queue item (e.g. when resuming or continuing an interactive session from Build Watch).</summary>
-        public void LaunchItemExplicit(QueueItem item) => _ = SafeLaunch(item);
+        public void LaunchItemExplicit(QueueItem item) => _ = SafeLaunch(item, isForced: true);
 
         /// <summary>Approximate current context-window token usage for a live or just-exited (retained) interactive build — real numbers read from the CLI's own stream-json `usage` field, or null if unknown/not an interactive build/nothing seen yet.</summary>
         public long? GetContextTokens(int id)

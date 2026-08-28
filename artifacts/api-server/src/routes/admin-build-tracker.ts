@@ -1901,9 +1901,9 @@ router.post("/admin/build-tracker/extension/queue/:id/force-claim", ingestAuth, 
     const [row] = await db
       .update(btBuildQueueTable)
       .set({ status: "running", claimedAt: new Date(), updatedAt: new Date() })
-      .where(and(eq(btBuildQueueTable.id, id), eq(btBuildQueueTable.status, "queued")))
+      .where(and(eq(btBuildQueueTable.id, id), inArray(btBuildQueueTable.status, ["queued", "held"])))
       .returning();
-    if (!row) { res.status(409).json({ error: "Only a still-queued item can be force-claimed" }); return; }
+    if (!row) { res.status(409).json({ error: "Only a still-queued or held item can be force-claimed" }); return; }
     res.json(row);
   } catch (err) {
     log.error({ err, id }, "POST /extension/queue/:id/force-claim failed");

@@ -2418,8 +2418,15 @@ namespace BuildConsole.Controls
                 cm.Items.Add(miChangeEffort);
                 cm.Items.Add(new Separator());
 
-                var miRunNowSonnetMed = new MenuItem { Header = "🚀 Run Now (Sonnet 5, Medium)" };
-                miRunNowSonnetMed.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-sonnet-5", "medium", runNow: true); };
+                string effortVal = string.IsNullOrEmpty(item.Effort) ? "medium" : item.Effort.ToLowerInvariant();
+                string effortTitle = "Medium";
+                if (effortVal == "low") effortTitle = "Low";
+                else if (effortVal == "high") effortTitle = "High";
+                else if (effortVal == "xhigh") effortTitle = "XHigh";
+                else if (effortVal.Length > 0) effortTitle = char.ToUpper(effortVal[0]) + effortVal.Substring(1);
+
+                var miRunNowSonnetMed = new MenuItem { Header = $"🚀 Run Now (Sonnet 5, {effortTitle})" };
+                miRunNowSonnetMed.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-sonnet-5", effortVal, runNow: true); };
                 cm.Items.Add(miRunNowSonnetMed);
             }
             else
