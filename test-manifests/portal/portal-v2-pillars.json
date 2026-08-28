@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- isolated parallel build of the Overview (/portal-v2) and the six pillar dashboards (/portal-v2/:pillar) in the new navy/journeyTokens design language. Deliberately separate routes from the live /governance, /security-overview, /m365-health, /compliance, /adoption, /licensing pages, which this build does not touch. Data comes from GET /api/portal/assessment/war-room-pillars via components/portal-v2/usePortalV2Pillars.ts, which wraps the EXISTING components/war-room/useWarRoomPillarStats.ts hook rather than reimplementing fetching, retry/backoff or scoring. Pillar identity colours and the 82 gate constant come from components/copilot-journey/journeyTokens.ts (PILLARS, COPILOT_GATE_TARGET); components/ui/score-ring.tsx is reused verbatim, with .pv2-root redefining the --status-*/--muted tokens it reads so it resolves against the navy palette.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "78841b4f5",
+  "lastVerifiedAgainstCommit": "87f6743c2",
 
   "notes": [
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
@@ -35,7 +35,8 @@
     "LOADING-STATE FIXTURE FLASH FIX (Git #1365) -- the Security page's whole 'Security Categories' panel (S8-S10c's pv2-sec-area-* cards) now renders PortalV2LoadingState while useSecAreaLinksLive's POST /api/dashboard/resolve is in flight, instead of immediately showing the SEC_AREA_LINKS fixture scores that previously flashed before any live overlay landed. S8-S10c are expected to still pass: their `expect` steps poll for the selector rather than checking once, and the real resolve call typically settles well inside that window. Not asserted directly: the loading skeleton itself, since the window is sub-200ms against the dev/test API and gating a step on it would be a flaky race rather than reliable coverage.",
     "GOVERNANCE :area WILDCARD -- STAT CARDS + EVIDENCE TABLE HONEST-EMPTY (Git #1428, follow-up to #1413's audit) -- portal-v2-gov-detail.tsx's stat cards (pv2-gd-stat) and evidence table (pv2-gd-table's header+rows) were the design's fictional 'External Sharing Drift' worked example (23 drift events, named actors, IPs) rendered UNCONDITIONALLY, with no live counterpart anywhere for per-sub-area evidence rows -- confirmed by #1413's audit, not a `??` fallback overriding a real value. Both sections now gate on the SAME `live.dataState` the page's own pv2-gd-source marker already reports (useLivePillarHero's real/scored-vs-unscored signal): while 'live' (this testbed's governance pillar IS scored, per G6-LIVE below), a real customer sees the platform's honest NoScanDataState (pv2-gd-stats-no-data / pv2-gd-table-no-data) instead of invented drift events; the fixture only renders while genuinely unscored ('fixture'), the same honest-null case the hero score itself already falls back for. G6b/G6c below assert the honest-empty testids are what actually render on THIS session (dataState 'live', per G6-LIVE), proving the fix end-to-end on the same shared testbed tenant rather than only in theory. Untouched, a separate documented gap outside this issue's scope: the heading/purpose/note copy (static labels), and the risks list / policy block / provenance (still fixture, no live producer either, but not what #1428 asked for). NOT LIVE-RUN this session: the shane-msp MCP server (shaneapp://runTest's courier) failed to connect (CONNECTION_CLOSED) for the whole session, so G6b/G6c are freshly added and unconfirmed against the real DOM -- verification instead rests on tsc --noEmit clean on the touched file and a full `PORT=5173 vite build` clean (2m44s, 5862 modules). Whoever next runs this file live should treat G6b/G6c the same way #1340's note above already treats H6b-H6d.",
     "GOVERNANCE OVERSHARING HONEST-NULL PASS (Git #1426, follow-up to #1413's audit) -- three unconditional-fixture leaks on the Overshared SharePoint drill-down now render the platform's honest NoScanDataState instead: the stat cards band (Sharing Capability / External Users / Anonymous Links / Sharing Drift -- confirmed no portal-facing endpoint exposes this set; the one real tenant sharing-capability read, getTenantSharingCapability, lives in monitor-executor.ts's scan-time drift machinery, not behind any customer route), the Top Risks band (no per-object risk feed exists anywhere, so the band is no longer a collapsible toggle -- OV4 and 'pv2-ovr-top-risks-toggle' are gone, the honest state renders unconditionally on arrival), and the Anonymous Links panel (a live endpoint DOES exist -- useOversharingItemsLive, #1275 -- but its wire row has no expiry/active field and 'Edit vs View' would have to be inferred from grant.roles, a real schema decision flagged rather than guessed at). The Sharing Capability stat card's wrench-to-fix-panel gate (OV17-OV20) is removed along with the stat cards it lived on -- there is no live fixKey left to gate on. The Affected Sites panel and its whole accept-risk/runbook flow (OV6-OV16, OV22) are UNCHANGED -- #1413's audit found that panel already clean (real useOversharingSitesLive feed with a proper loading/live/fixture dataState). New steps carry sessionTag 'oversharing-1426'; run with shaneapp://runTest?file=test-manifests/portal/portal-v2-pillars.json&onlyTag=oversharing-1426 to exercise just this pass without a full-file run.",
-    "HEALTH STRICT PASS -- EVERY REMAINING FAKE DATA VALUE ELIMINATED (Git #1442) -- the full-page strict pass this issue asked for. WIRED (case 1, real live data): debt items (HLT_FINDINGS) now read the tenant's own real Health findings via hltFindingRowFromLive (the same #1255 pattern portal-v2-compliance-gaps.tsx already proved for Compliance), including a real empty list when the tenant genuinely has none; the stale-object inventory widened from 3 of 9 to 7 of 9 real rows (#1260's own migration had already added devices:unassigned-intune-profiles, governance:empty-security-groups and appgov:dormant-service-principals, plus the pre-existing identity:disabled-accounts -- none of it had been wired to the page until now). HONEST 'No scan data available' (case 2, real backend but this tenant unscanned): debt items and the service-health panel both gate on a real present/live flag now, rather than silently falling back to fixture forever. HONEST 'No live data available' + NO-BACKEND-TO-WIRE (case 3, genuine gaps, each investigated before tagging rather than assumed): the config-drift table and its hero stat (a real drift_events engine exists and is portal-reachable for AGGREGATE counts via the 17 drift.*DriftCount metric keys already consumed by m365-health/useM365HealthLive.ts, but it has no shape matching this table's 'N of 47 tracked settings, including clean/accepted rows' inventory -- a product decision this pass does not make unilaterally); the debt-trend history graph (no per-scan time series of 'open debt item count' exists anywhere -- pillar.trend.series is the pillar's SCORE history, a different measurement); the 'Directory sync' hero stat (Entra Connect/hybrid data lives on-premises via PowerShell, no requires_customer_script check exists); the accepted-risk register (no persistence anywhere -- openAcceptRisk's onConfirm is a no-op and the standalone Risk Register page is itself 100% fixture); and 2 of 9 stale-object rows (App registrations with no owner, Credentials expiring in 30 days -- confirmed no check can answer either). RETIRED test coverage, stated plainly rather than silently dropped: H10-H11d (drift-row expand/verdict detail) and H14-H23 (the debt-item-to-FixPanel click-through keyed to the retired synthetic fixKey 'hlt-exchange-eol') no longer have anything to click through, since both sections' content is now either real (unpredictable per-tenant) or an honest empty state. New steps carry sessionTag 'hlt-1442'; run with shaneapp://runTest?file=test-manifests/portal/portal-v2-pillars.json&onlyTag=hlt-1442 to exercise just this pass without a full-file run. NOT LIVE-RUN this session: this worktree's (and the shared main checkout's) node_modules for msp-portal were incomplete/mid-reinstall for the whole session (missing core deps like react/wouter even in the main checkout, confirmed pre-existing and not caused by this session's file edits), so neither tsc --noEmit nor shaneapp://runTest could be executed. Verification instead rests on a careful manual re-read of the full diff for syntax/JSX balance and import correctness. Whoever next runs this file live should treat every hlt-1442-tagged step as freshly-added and unconfirmed against the real DOM."
+    "HEALTH STRICT PASS -- EVERY REMAINING FAKE DATA VALUE ELIMINATED (Git #1442) -- the full-page strict pass this issue asked for. WIRED (case 1, real live data): debt items (HLT_FINDINGS) now read the tenant's own real Health findings via hltFindingRowFromLive (the same #1255 pattern portal-v2-compliance-gaps.tsx already proved for Compliance), including a real empty list when the tenant genuinely has none; the stale-object inventory widened from 3 of 9 to 7 of 9 real rows (#1260's own migration had already added devices:unassigned-intune-profiles, governance:empty-security-groups and appgov:dormant-service-principals, plus the pre-existing identity:disabled-accounts -- none of it had been wired to the page until now). HONEST 'No scan data available' (case 2, real backend but this tenant unscanned): debt items and the service-health panel both gate on a real present/live flag now, rather than silently falling back to fixture forever. HONEST 'No live data available' + NO-BACKEND-TO-WIRE (case 3, genuine gaps, each investigated before tagging rather than assumed): the config-drift table and its hero stat (a real drift_events engine exists and is portal-reachable for AGGREGATE counts via the 17 drift.*DriftCount metric keys already consumed by m365-health/useM365HealthLive.ts, but it has no shape matching this table's 'N of 47 tracked settings, including clean/accepted rows' inventory -- a product decision this pass does not make unilaterally); the debt-trend history graph (no per-scan time series of 'open debt item count' exists anywhere -- pillar.trend.series is the pillar's SCORE history, a different measurement); the 'Directory sync' hero stat (Entra Connect/hybrid data lives on-premises via PowerShell, no requires_customer_script check exists); the accepted-risk register (no persistence anywhere -- openAcceptRisk's onConfirm is a no-op and the standalone Risk Register page is itself 100% fixture); and 2 of 9 stale-object rows (App registrations with no owner, Credentials expiring in 30 days -- confirmed no check can answer either). RETIRED test coverage, stated plainly rather than silently dropped: H10-H11d (drift-row expand/verdict detail) and H14-H23 (the debt-item-to-FixPanel click-through keyed to the retired synthetic fixKey 'hlt-exchange-eol') no longer have anything to click through, since both sections' content is now either real (unpredictable per-tenant) or an honest empty state. New steps carry sessionTag 'hlt-1442'; run with shaneapp://runTest?file=test-manifests/portal/portal-v2-pillars.json&onlyTag=hlt-1442 to exercise just this pass without a full-file run. NOT LIVE-RUN this session: this worktree's (and the shared main checkout's) node_modules for msp-portal were incomplete/mid-reinstall for the whole session (missing core deps like react/wouter even in the main checkout, confirmed pre-existing and not caused by this session's file edits), so neither tsc --noEmit nor shaneapp://runTest could be executed. Verification instead rests on a careful manual re-read of the full diff for syntax/JSX balance and import correctness. Whoever next runs this file live should treat every hlt-1442-tagged step as freshly-added and unconfirmed against the real DOM.",
+    "ADOPTION FULL STRICT PASS (Git #1441, supersedes the #1412 hero-copy-only fix) -- every remaining ADP_* fixture leak on portal-v2-adoption.tsx now resolves to one of the three states Shane's standing rule requires. REAL WIRING (case 1, new this pass): the hero TREND CHART now draws real `live.history` (war-room-pillar-stats.ts computes `trend` generically for every WAR_ROOM_PILLAR_KEYS entry, adoption included -- the page's own prior #1409 comment claiming Adoption has no live.history no longer matched the code), honest-empty when the tenant lacks enough real checkpoints; the 'Copilot weekly active' hero stat tile is now wired off the SAME real copilotActive/copilotLicensed counts useAdpWorkloadsLive already resolves for the workload row overlay (#1284), previously fetched but unused for this tile. NO-BACKEND-TO-WIRE (case 3, tagged in code): the 'Workloads in real use' and 'Open plays' hero stat tiles (no aggregation across all 10 workloads is honest when only 6 are wireable; no recommendation engine exists), the 4 always-fixture workload rows (Teams channels / Power BI / Teams Phone / Planner-Tasks -- distinct now via a new `hasLiveFeed` field on AdpWorkload so they read 'No live data available' rather than the wireable rows' 'No scan data available'), the parked-count strip and parked-plays list (no persistence exists for a park decision -- parkPlay's AcceptRiskPanel confirm was always a no-op), the department heat-map (a confirmed, well-cited genuine gap -- #1254 investigated the join and found it blocked on a tenant-wide displayConcealedNames privacy decision even after #1266 landed the department-directory check) and its coverage badge (the check IS real and collecting per #1266, but the dashboard-registry resolver can't yet safely disambiguate its two count fields for a shared sourceKey -- wiring it risked showing the WRONG number, worse than none), the plays panel (ADP_PLAYS is 6 hand-written recommendation cards with tenant-shaped numbers baked into the copy -- no recommendation engine exists to generate a real equivalent), the wins panel (no before/after tracking exists for ADP_WINS's six deltas) and the enablers panel (no change-management/programme-status backend exists for ADP_ENABLERS). Because the plays/enablers fixture content is gone, the FixPanel/AcceptRiskPanel/ShaneBot-form wiring nothing on this page could still trigger was removed rather than left as dead plumbing (parkPlay, useFixPanel, useAcceptRisk, useFormDrawer, askShaneBot, and their render block). Test coverage: A-1b/A-4b/A-5/A-5b/A-5d/A-5f/A-5h/A-6/A-6b/A-8/A-24/A-25/A-26 updated or added below (new/changed steps tagged sessionTag '1441'); the old A-8..A-23 CR-gate walkthrough exercised the now-removed plays fixture end-to-end and is replaced by a single honest-empty assertion rather than kept as faked coverage -- the CR-gate mechanism itself stays covered by every other pillar's own steps. adpDashboardData.test.ts is unaffected (it pins the underlying fixture CONSTANTS, which are unchanged; only the page's own rendering of them changed). NOT LIVE-RUN this session -- see this file's own commit for the honest verification result."
   ],
 
   "apiTests": [
@@ -1041,11 +1042,12 @@
       "textContains": "You have climbed 27 points in ten scans."
     },
     {
-      "name": "A-1b (Git #1412) -- same honest-null gate on the trend caption: 'X → Y since scan 1' is a fixture history claim, gated on the same hasScore signal. LIVE branch asserted here for the same reason as A-1.",
+      "name": "A-1b (Git #1441, supersedes the #1412 version) -- the trend caption ('X → Y since scan 1') and the chart geometry are now gated on REAL `live.history` (>=2 real checkpoints) rather than `hasScore` -- #1409's claim that Adoption has no live.history to plot no longer matches war-room-pillar-stats.ts, which computes `trend` generically for every WAR_ROOM_PILLAR_KEYS entry including adoption. Honest either/or: the fixture caption text when this tenant has enough real history, or NO_SCAN_DATA_LABEL when it doesn't -- asserted this way rather than picking one branch because whether THIS testbed's adoption pillar has crossed the real history-point floor is independent of whether it has a score at all (A-3 below).",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-trend']",
       "state": "visible",
-      "textContains": "since scan 1"
+      "textContains": ["since scan 1", "No scan data available"],
+      "sessionTag": "1441"
     },
     {
       "name": "A-2 -- THE PILLAR'S DISPOSITION, stated on the page. Everything below has to be read through this sentence, which is why nothing here is coloured as danger.",
@@ -1069,18 +1071,26 @@
       "textContains": "live"
     },
     {
-      "name": "A-4 -- the parked strip says plainly that nothing is at risk. That clause is the difference between this pillar and every other one.",
+      "name": "A-4 -- the parked strip's link is unchanged.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-programme-record-link']",
       "state": "visible",
       "textContains": "Programme record"
     },
     {
-      "name": "A-5 -- the workload utilisation list renders, including the one at zero.",
+      "name": "A-4b (Git #1441) -- the parked-count strip itself is now honest-empty ('No live data available'), not the fixture 'N plays parked as business decisions · nothing at risk'. No persistence exists for a parked-play decision on this pillar (`parkPlay`'s AcceptRiskPanel confirm was a no-op even before this pass) -- see the strip's own NO-BACKEND-TO-WIRE comment in portal-v2-adoption.tsx.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-adp-parked-strip']",
+      "state": "visible",
+      "textContains": "No live data available",
+      "sessionTag": "1441"
+    },
+    {
+      "name": "A-5 (Git #1441) -- the workload utilisation list renders the fixed 10-workload catalog. 'Teams Phone' is a genuine backend gap (no per-item feed at all -- see hasLiveFeed in adpDashboardData.ts), so its fixture note 'Licensed on 41 seats, never provisioned.' no longer renders; only the real, fixed workload NAME is asserted here.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-workloads']",
       "state": "visible",
-      "textContains": "Licensed on 41 seats, never provisioned."
+      "textContains": "Teams Phone"
     },
     {
       "name": "A-5a (#1252) -- expand the Exchange / Outlook row, the first of the 4 workloads now wired to a real check (usage.exchangeActiveCount).",
@@ -1089,11 +1099,11 @@
       "critical": true
     },
     {
-      "name": "A-5b (#1252) -- the expanded detail's source string reflects the REAL check window (D7) once the tenant has scanned adoption:email-activity-trend, or the design fixture's D30 string otherwise -- an honest either/or rather than asserting one and risking a false failure on an unscanned testbed. adpWorkloadsWithLive overlays this row independently of the other nine, which stay fixture.",
+      "name": "A-5b (#1252, updated #1441) -- the expanded detail's source string reflects the REAL check window (D7) once the tenant has scanned adoption:email-activity-trend, or the honest case-2 empty state otherwise -- an honest either/or rather than asserting one and risking a false failure on an unscanned testbed. Since #1441, the not-yet-scanned branch is NoScanDataState (NO_SCAN_DATA_LABEL), not the old design fixture's D30 string -- Exchange is one of the 6 hasLiveFeed:true rows, so an unresolved metric here is case 2 (no scan yet), never case 3.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-workloads']",
       "state": "visible",
-      "textContains": ["getEmailActivityUserDetail(period=D7)", "getEmailActivityUserDetail(period=D30)"]
+      "textContains": ["getEmailActivityUserDetail(period=D7)", "No scan data available"]
     },
     {
       "name": "A-5c (#1284) -- expand the SharePoint row (index 2), now wired to the real per-USER activity check (adoption:sharepoint-user-activity), replacing the per-site proxy #1252 originally overlaid it with.",
@@ -1103,11 +1113,11 @@
       "sessionTag": "1284"
     },
     {
-      "name": "A-5d (#1284) -- honest either/or: the real per-user endpoint string once adoption:sharepoint-user-activity has scanned, or the design fixture's D30 string otherwise -- never the old per-site 'getSharePointSiteUsageDetail' string, which this row no longer overlays with.",
+      "name": "A-5d (#1284, updated #1441) -- honest either/or: the real per-user endpoint string once adoption:sharepoint-user-activity has scanned, or the honest case-2 empty state otherwise -- never the old fixture D30 string, and never the old per-site 'getSharePointSiteUsageDetail' string, which this row no longer overlays with.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-workloads']",
       "state": "visible",
-      "textContains": ["getSharePointActivityUserDetail(period=D7)", "getSharePointActivityUserDetail(period=D30)"],
+      "textContains": ["getSharePointActivityUserDetail(period=D7)", "No scan data available"],
       "sessionTag": "1284"
     },
     {
@@ -1118,11 +1128,11 @@
       "sessionTag": "1284"
     },
     {
-      "name": "A-5f (#1284) -- honest either/or on the Copilot row's rendered source string.",
+      "name": "A-5f (#1284, updated #1441) -- honest either/or on the Copilot row's rendered source string: the real D7 endpoint, or the honest case-2 empty state (not the old D30 fixture string).",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-workloads']",
       "state": "visible",
-      "textContains": ["getMicrosoft365CopilotUsageUserDetail(period=D7)", "getMicrosoft365CopilotUsageUserDetail(period=D30)"],
+      "textContains": ["getMicrosoft365CopilotUsageUserDetail(period=D7)", "No scan data available"],
       "sessionTag": "1284"
     },
     {
@@ -1133,159 +1143,60 @@
       "sessionTag": "1284"
     },
     {
-      "name": "A-5h (#1284) -- honest either/or on the Viva Engage row's rendered source string.",
+      "name": "A-5h (#1284, updated #1441) -- honest either/or on the Viva Engage row's rendered source string: the real D7 endpoint, or the honest case-2 empty state (not the old D30 fixture string).",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-workloads']",
       "state": "visible",
-      "textContains": ["getYammerActivityUserDetail(period=D7)", "getYammerActivityUserDetail(period=D30)"],
+      "textContains": ["getYammerActivityUserDetail(period=D7)", "No scan data available"],
       "sessionTag": "1284"
     },
     {
-      "name": "A-6 -- the department HEATMAP renders, a section no other pillar has.",
+      "name": "A-6 (Git #1441, supersedes the pre-#1441 version) -- the department heat-map is now honest-empty. #1254 confirmed the department x usage join is a genuine, well-documented backend gap (blocked on a tenant-wide displayConcealedNames privacy decision, not something to wire silently) -- the fixture 'Teams channels' column header no longer renders.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-matrix']",
       "state": "visible",
-      "textContains": "Teams channels"
+      "textContains": "No live data available",
+      "sessionTag": "1441"
     },
     {
-      "name": "A-7 -- and its reading is stated rather than left to the reader, naming the three departments the plays start with.",
+      "name": "A-6b (Git #1441) -- the department-mapping coverage badge above the heat-map is honest-empty too, for a related but distinct reason: identity:department-directory (#1266) landed and DOES compute the real coverage figures server-side, but the dashboard-registry resolver can't yet safely disambiguate its two count fields for this check -- wiring it now risked showing the WRONG number rather than none at all.",
       "action": "expect",
-      "selector": "[data-testid='pv2-adp-matrix']",
+      "selector": "[data-testid='pv2-adp-dept-coverage-no-data']",
       "state": "visible",
-      "textContains": "Finance, Operations and Legal sit at the bottom of every column"
+      "textContains": "No live data available",
+      "sessionTag": "1441"
     },
     {
-      "name": "A-8 -- plays carry a now-to-target pair rather than a severity. Nothing on this pillar is graded as bad.",
+      "name": "A-8 (Git #1441, supersedes the pre-#1441 A-8..A-23 CR-gate walkthrough) -- THE PLAYS PANEL IS NOW HONEST-EMPTY. ADP_PLAYS was 6 hand-written recommendation cards with tenant-shaped numbers ('68 people', '$810/mo') baked into the copy and presented as this tenant's own analysis -- no recommendation engine exists anywhere in this platform to generate a real per-tenant equivalent, so the fixture cards (and the FixPanel/park buttons pointed at them) are gone, not half-kept. The old A-9..A-23 steps exercised THIS fixture content end-to-end (expand a play, open its playbook, walk the people-play/enabler-play CR-gate branches, park a play) -- that flow no longer exists on this page and is removed rather than faked green. The CR-gate mechanism itself (FixPanel, AcceptRiskPanel, the change-request drawer) is UNCHANGED and stays covered by every other pillar's own manifest steps (e.g. Governance's CR1-CR7 above) -- only Adoption's fixture content pointed at it is gone.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-plays']",
       "state": "visible",
-      "textContains": "60 weekly active · 40 using it in Word or Excel"
+      "textContains": "No live data available",
+      "sessionTag": "1441"
     },
     {
-      "name": "A-9 -- expand a PEOPLE play (ADP-01, canAutomate false).",
-      "action": "click",
-      "selector": "[data-testid='pv2-adp-play-ADP-01']",
-      "critical": true
-    },
-    {
-      "name": "A-10 -- its expansion carries 'Where the value is' rather than a risk statement.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-adp-plays']",
-      "state": "visible",
-      "textContains": "Where the value is"
-    },
-    {
-      "name": "A-11 -- open its playbook.",
-      "action": "click",
-      "selector": "[data-testid='pv2-adp-action-ADP-01']",
-      "critical": true
-    },
-    {
-      "name": "A-12 -- it resolved to the real playbook.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-panel']",
-      "state": "visible",
-      "textContains": "Copilot enablement play"
-    },
-    {
-      "name": "A-13 -- THE PROPERTY THAT MAKES THIS PILLAR DIFFERENT. A people play has NO Graph route: `canAutomate: false` flows from the play through the mapper into the panel, so the automate button must be ABSENT. Forcing it true would put 'Automate via Microsoft Graph' on a training session.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-route-graph']",
-      "state": "absent"
-    },
-    {
-      "name": "A-14 -- the manual route IS offered, and its first step says why there is nothing to automate.",
-      "action": "click",
-      "selector": "[data-testid='pv2-fix-route-manual']",
-      "critical": true
-    },
-    {
-      "name": "A-15 -- the CR gate still applies even to a people play.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-panel']",
-      "state": "visible",
-      "textContains": "Nothing changes in your tenant without a change request behind it"
-    },
-    {
-      "name": "A-16 -- arm the CR confirmation.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-confirm']",
-      "critical": true
-    },
-    {
-      "name": "A-17 -- submit it.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-submit']",
-      "critical": true
-    },
-    {
-      "name": "A-18 -- continue to the procedure.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-continue']",
-      "critical": true
-    },
-    {
-      "name": "A-19 -- ADOPTION'S OWN WRAPPER, and it is the BRANCHING one. Compliance prepends a Purview sign-in and Licensing a commerce note; Adoption prepends a different sentence depending on canAutomate, and this is the people-play branch.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-manual']",
-      "state": "visible",
-      "textContains": "This is a people play, not a write action"
-    },
-    {
-      "name": "A-20 -- and its closer says adoption is reviewed monthly rather than confirmed by a re-scan.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-manual']",
-      "state": "visible",
-      "textContains": "Adoption moves on a monthly rhythm, not on a re-scan"
-    },
-    {
-      "name": "reset -- reload, then take the OTHER branch.",
-      "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/adoption"
-    },
-    {
-      "name": "A-21 -- expand the ENABLER play ADP-02 (canAutomate true).",
-      "action": "click",
-      "selector": "[data-testid='pv2-adp-play-ADP-02']",
-      "critical": true
-    },
-    {
-      "name": "A-22 -- open its playbook.",
-      "action": "click",
-      "selector": "[data-testid='pv2-adp-action-ADP-02']",
-      "critical": true
-    },
-    {
-      "name": "A-23 -- THE OTHER BRANCH. This one HAS a technical enabler, so the Graph route is offered where ADP-01's was absent. Same component, same pillar, opposite answer.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-route-graph']",
-      "state": "visible"
-    },
-    {
-      "name": "reset -- reload before the parked cards.",
-      "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/adoption"
-    },
-    {
-      "name": "A-24 -- parked plays are recorded in full, and state what parking costs in UPSIDE terms rather than as an accepted risk.",
+      "name": "A-24 (Git #1441, supersedes the pre-#1441 version) -- the parked-plays list is honest-empty. No persistence exists for a parked-play decision on this pillar (parkPlay's AcceptRiskPanel confirm was always a no-op), so ADP_PARKED's two hand-written 'already parked' records (owner, register id) no longer render as if real.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-parked']",
       "state": "visible",
-      "textContains": "Nothing degrades and nothing is exposed"
+      "textContains": "No live data available",
+      "sessionTag": "1441"
     },
     {
-      "name": "A-25 -- 'How far you have come' is the only positive-framed panel in the portal, and it is measured rather than asserted.",
+      "name": "A-25 (Git #1441, supersedes the pre-#1441 version) -- 'How far you have come' is honest-empty. No before/after tracking exists for ADP_WINS's six hand-written 'since scan 1' deltas.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-wins']",
       "state": "visible",
-      "textContains": "Measured, not asserted"
+      "textContains": "No live data available",
+      "sessionTag": "1441"
     },
     {
-      "name": "A-26 -- the enablers panel carries the change-management scaffolding.",
+      "name": "A-26 (Git #1441, supersedes the pre-#1441 version) -- the enablers panel is honest-empty. No change-management/programme-status backend exists for Adoption; ADP_ENABLERS ('Champions network', 'Training delivered') described a specific fictional programme's state, not anything read from this tenant.",
       "action": "expect",
       "selector": "[data-testid='pv2-adp-enablers']",
       "state": "visible",
-      "textContains": "Champions network"
+      "textContains": "No live data available",
+      "sessionTag": "1441"
     },
     {
       "name": "A-27 -- open the provenance block.",

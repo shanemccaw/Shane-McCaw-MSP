@@ -108,19 +108,39 @@ export interface AdpWorkload {
    * fixture's "30 days"; a live-overlaid row states its own check's real
    * window (#1252 — these checks run at D7, not D30). */
   window?: string;
+  /**
+   * #1441: true only for a row `adpWorkloadsWithLive` genuinely overlaid with a
+   * real resolved metric. Undefined/false on every fixture row, including the
+   * 6 rows the live hook CAN overlay when their metric hasn't resolved yet
+   * (never scanned) — the page's own honest-null gate, not a design fixture
+   * pretending to be real.
+   */
+  isLive?: boolean;
+  /**
+   * #1441: true for the 6 rows `adpWorkloadsWithLive` CAN overlay in
+   * principle (Exchange, Teams, SharePoint, OneDrive, Copilot, Viva Engage —
+   * a real `monitor_checks` row exists). Distinct from `isLive`: a wireable
+   * row with `isLive` false means the tenant genuinely hasn't been scanned
+   * for that check yet (case 2 — "No scan data available"), while
+   * `hasLiveFeed: false` (Teams channels, Power BI, Teams Phone, Planner/
+   * Tasks) means no per-item feed exists AT ALL (case 3 — a genuine
+   * NO-BACKEND-TO-WIRE gap). Conflating the two would show the wrong honest
+   * message on the 6 wireable-but-unscanned rows.
+   */
+  hasLiveFeed: boolean;
 }
 
 export const ADP_WORKLOADS: readonly AdpWorkload[] = [
-  { name: "Exchange / Outlook", active: 98, tone: "green", note: "Universal. Nothing to do here.", of: "1,215 of 1,240 sent or read mail in 30 days", src: "getEmailActivityUserDetail(period=D30)", reading: "The 25 who did not are shared and resource mailboxes, which is correct." },
-  { name: "Teams chat & meetings", active: 94, tone: "green", note: "Strong. The gap is where the work lands, not whether Teams is used.", of: "1,166 of 1,240 posted or joined a meeting", src: "getTeamsUserActivityUserDetail(period=D30)", reading: "Usage is high but 1:1 chat dominates. Work is happening in Teams and landing nowhere durable." },
-  { name: "SharePoint", active: 81, tone: "green", note: "Healthy after the intranet refresh.", of: "1,004 of 1,240 viewed or edited a file", src: "getSharePointActivityUserDetail(period=D30)", reading: "Up 14 points since the intranet refresh in March. The remaining fifth are mostly manufacturing floor accounts." },
-  { name: "OneDrive", active: 60, tone: "amber", note: "Sync configured on 60% of devices. The rest keep work on local disks.", of: "127 of 212 devices have sync configured", src: "getOneDriveUsageAccountDetail + Intune device config", reading: "Eighty-five devices keep work on local disks. That is a backup problem before it is an adoption one." },
-  { name: "Teams channels", active: 38, tone: "amber", note: "Most collaboration still happens in 1:1 chat.", of: "471 of 1,240 posted in a channel", src: "getTeamsUserActivityUserDetail — channel messages", reading: "Channel posting is the single best predictor of whether content is findable later. This is the number to move." },
-  { name: "Copilot", active: 55, tone: "amber", note: "41 of 68 assigned seats active, concentrated in meeting recap.", of: "41 of 68 assigned seats used it in 30 days", src: "getMicrosoft365CopilotUsageUserDetail(period=D30)", reading: "Eighty per cent of all Copilot use is meeting recap. Nobody is using it in Excel or Word, which is where the licence pays for itself." },
-  { name: "Power BI (in E5)", active: 6, tone: "red", note: "12 of 202 E5 holders. Paid for, effectively unused.", of: "12 of 202 E5 holders opened it", src: "getOffice365ActiveUserDetail(period=D30)", reading: "You also hold 12 standalone Power BI Pro licences for people who already have it inside E5. See the licence ledger." },
-  { name: "Teams Phone", active: 0, tone: "red", note: "Licensed on 41 seats, never provisioned.", of: "0 of 41 licensed seats provisioned", src: "getPstnCalls + subscribedSkus", reading: "Never set up. No numbers assigned and no calling plan attached, so the licence has produced nothing since it was bought." },
-  { name: "Planner / Tasks", active: 22, tone: "amber", note: "Two departments only. Project tracking still lives in spreadsheets.", of: "273 of 1,240 have an assigned task", src: "Planner plan and task enumeration", reading: "Engineering and Sales only. Operations deliberately runs project tracking elsewhere — that is a parked decision, not a gap." },
-  { name: "Viva Engage", active: 4, tone: "red", note: "Deliberately not launched — see the parked play.", of: "50 of 1,240 posted or read", src: "getYammerActivityUserDetail(period=D30)", reading: "Not launched on purpose. Leadership parked it this quarter, so this number staying flat is the expected outcome." },
+  { name: "Exchange / Outlook", active: 98, tone: "green", note: "Universal. Nothing to do here.", of: "1,215 of 1,240 sent or read mail in 30 days", src: "getEmailActivityUserDetail(period=D30)", reading: "The 25 who did not are shared and resource mailboxes, which is correct.", hasLiveFeed: true },
+  { name: "Teams chat & meetings", active: 94, tone: "green", note: "Strong. The gap is where the work lands, not whether Teams is used.", of: "1,166 of 1,240 posted or joined a meeting", src: "getTeamsUserActivityUserDetail(period=D30)", reading: "Usage is high but 1:1 chat dominates. Work is happening in Teams and landing nowhere durable.", hasLiveFeed: true },
+  { name: "SharePoint", active: 81, tone: "green", note: "Healthy after the intranet refresh.", of: "1,004 of 1,240 viewed or edited a file", src: "getSharePointActivityUserDetail(period=D30)", reading: "Up 14 points since the intranet refresh in March. The remaining fifth are mostly manufacturing floor accounts.", hasLiveFeed: true },
+  { name: "OneDrive", active: 60, tone: "amber", note: "Sync configured on 60% of devices. The rest keep work on local disks.", of: "127 of 212 devices have sync configured", src: "getOneDriveUsageAccountDetail + Intune device config", reading: "Eighty-five devices keep work on local disks. That is a backup problem before it is an adoption one.", hasLiveFeed: true },
+  { name: "Teams channels", active: 38, tone: "amber", note: "Most collaboration still happens in 1:1 chat.", of: "471 of 1,240 posted in a channel", src: "getTeamsUserActivityUserDetail — channel messages", reading: "Channel posting is the single best predictor of whether content is findable later. This is the number to move.", hasLiveFeed: false },
+  { name: "Copilot", active: 55, tone: "amber", note: "41 of 68 assigned seats active, concentrated in meeting recap.", of: "41 of 68 assigned seats used it in 30 days", src: "getMicrosoft365CopilotUsageUserDetail(period=D30)", reading: "Eighty per cent of all Copilot use is meeting recap. Nobody is using it in Excel or Word, which is where the licence pays for itself.", hasLiveFeed: true },
+  { name: "Power BI (in E5)", active: 6, tone: "red", note: "12 of 202 E5 holders. Paid for, effectively unused.", of: "12 of 202 E5 holders opened it", src: "getOffice365ActiveUserDetail(period=D30)", reading: "You also hold 12 standalone Power BI Pro licences for people who already have it inside E5. See the licence ledger.", hasLiveFeed: false },
+  { name: "Teams Phone", active: 0, tone: "red", note: "Licensed on 41 seats, never provisioned.", of: "0 of 41 licensed seats provisioned", src: "getPstnCalls + subscribedSkus", reading: "Never set up. No numbers assigned and no calling plan attached, so the licence has produced nothing since it was bought.", hasLiveFeed: false },
+  { name: "Planner / Tasks", active: 22, tone: "amber", note: "Two departments only. Project tracking still lives in spreadsheets.", of: "273 of 1,240 have an assigned task", src: "Planner plan and task enumeration", reading: "Engineering and Sales only. Operations deliberately runs project tracking elsewhere — that is a parked decision, not a gap.", hasLiveFeed: false },
+  { name: "Viva Engage", active: 4, tone: "red", note: "Deliberately not launched — see the parked play.", of: "50 of 1,240 posted or read", src: "getYammerActivityUserDetail(period=D30)", reading: "Not launched on purpose. Leadership parked it this quarter, so this number staying flat is the expected outcome.", hasLiveFeed: true },
 ];
 
 /**
@@ -227,6 +247,7 @@ export function adpWorkloadsWithLive(live: AdpWorkloadLiveCounts): readonly AdpW
       of: `${fmtCount(active)} of ${fmtCount(total)} ${ofSuffix}`,
       src,
       window: "7 days",
+      isLive: true,
     };
   };
 
@@ -255,6 +276,7 @@ export function adpWorkloadsWithLive(live: AdpWorkloadLiveCounts): readonly AdpW
           : rows[3].reading,
       src: "getOneDriveUsageAccountDetail(period=D7, D30)",
       window: "7 days",
+      isLive: true,
     };
   }
 
