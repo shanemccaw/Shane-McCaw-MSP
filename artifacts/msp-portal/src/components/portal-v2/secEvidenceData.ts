@@ -160,6 +160,42 @@ export function securityEmailPageWithLive(
   return { ...honestRows, statCards: [findingsCard, ...page.statCards] };
 }
 
+/**
+ * Overlay the real `identity.legacyAuthCount` count onto the Legacy
+ * Authentication evidence page's "Legacy sign-ins" stat card (Git #1429 —
+ * follow-up from #1414's audit), and unconditionally strip the fabricated
+ * evidence-row list.
+ *
+ * `identity.legacyAuthCount` (`identity:legacy-auth-usage`) is a real, already
+ * live-reachable 30-day legacy-protocol sign-in count (proven via
+ * `useSecAreaLinksLive` on the Security overview page, #1258/#1337) — it
+ * matches exactly what "Legacy sign-ins" claims, so that's the only stat card
+ * safe to overlay; the other four (Protocols reachable, Accounts using legacy,
+ * CA block policy, Legacy from odd geos) have no real per-tenant producer and
+ * stay on their fixture values, same documented-gap treatment
+ * `securityOauthPageWithLive` uses for its three unbacked OAuth cards.
+ *
+ * The evidence-row list (fictional accounts like `svc-scanner@tenant.com`
+ * with invented sign-in counts) has no per-account producer at all — this is
+ * always stripped, live or not, rather than presented as fact (CLAUDE.md's
+ * hard rule against fixture-as-real content). The page renders an honest
+ * `NoScanDataState` in its place (see `portal-v2-security-evidence.tsx`).
+ */
+export function securityLegacyAuthPageWithLive(
+  page: EvidencePage,
+  live: { legacyAuthCount: number | null },
+): EvidencePage {
+  return {
+    ...page,
+    statCards: page.statCards.map((s) =>
+      s.label === "Legacy sign-ins" && live.legacyAuthCount != null
+        ? { ...s, value: live.legacyAuthCount.toLocaleString() }
+        : s,
+    ),
+    rows: [],
+  };
+}
+
 export const EVIDENCE_PAGES: Readonly<Record<string, EvidencePage>> = {
   "security-oauth": {
     heading: "OAuth Apps & Consent Grants",
