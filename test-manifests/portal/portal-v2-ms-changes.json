@@ -155,6 +155,12 @@
     { "name": "MSC39 -- while the retrospective is up, the live wave card is gone.", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "state": "absent" },
 
     { "name": "MSC40 -- an unrecognised wave slug falls back to the first wave AND drops out of the retrospective.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/ms-changes/not-a-wave" },
-    { "name": "MSC41 -- ...proved by the live wave card returning on the FIRST wave (see MSC14 for why this is the wave's own name and not the design's status label).", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Late August wave" }
+    { "name": "MSC41 -- ...proved by the live wave card returning on the FIRST wave (see MSC14 for why this is the wave's own name and not the design's status label).", "action": "expect", "selector": "[data-testid='pv2-msc-wave-card']", "textContains": "Late August wave" },
+
+    { "sessionTag": "1464", "name": "MSC42 -- Git #1464: on THIS live, scoped tenant, the top-level data-status banner does NOT render -- it is reserved for a tenant with no scoped Message Center at all.", "action": "expect", "selector": "[data-testid='pv2-msc-data-status']", "state": "absent" },
+    { "sessionTag": "1464", "name": "MSC43 -- Git #1464: the fixture-only 'Decide before it lands' queue is now labelled illustrative on screen (it was previously indistinguishable from the real posts around it -- see MSC25/MSC30/MSC36's pre-existing FIXTURE SURFACE notes, which only documented the gap in this manifest, not on the page itself).", "action": "expect", "selector": "[data-testid='pv2-msc-decide-illustrative']", "textContains": "Illustrative" },
+    { "sessionTag": "1464", "name": "MSC44 -- ...the 'Who feels it' group panel is labelled the same way.", "action": "expect", "selector": "[data-testid='pv2-msc-groups-illustrative']", "textContains": "Illustrative" },
+    { "sessionTag": "1464", "name": "MSC45 -- ...the ownership/RACI names are labelled the same way.", "action": "expect", "selector": "[data-testid='pv2-msc-ownership-illustrative']", "textContains": "Illustrative" },
+    { "sessionTag": "1464", "name": "MSC46 -- ...and the Landed retrospective nav is labelled the same way.", "action": "expect", "selector": "[data-testid='pv2-msc-landed-illustrative']", "textContains": "illustrative" }
   ]
 }

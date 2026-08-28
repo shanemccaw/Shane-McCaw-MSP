@@ -603,8 +603,15 @@ export default function PortalV2MsChangesPage() {
    * the design fixture, so the page renders rather than flickering through an
    * empty state. See `useMessageCenter.ts` for what is real in it and what stays
    * fixture.
+   *
+   * `ds.live` is only true for a scoped tenant with at least one real post
+   * (Overview's `mcMotionLanes` reads the same field the same way, Git #1409).
+   * Once loaded, an honest banner below states outright when the page is
+   * showing example content rather than this tenant's own Message Center —
+   * Shane's standing hard rule against a fixture silently standing in for
+   * "no real data" (Git #1464).
    */
-  const { dataset: ds, loaded } = useMessageCenter();
+  const { dataset: ds, loaded, error: mcError } = useMessageCenter();
 
   const bands = useMemo(() => waveBands(ds.buckets), [ds]);
   const slugIndex = params?.wave ? WAVE_SLUGS.indexOf(params.wave as (typeof WAVE_SLUGS)[number]) : 0;
@@ -881,9 +888,44 @@ export default function PortalV2MsChangesPage() {
             straight from the header to the landed-wave nav and the wave itself.
           */}
 
+          {/* Honest data-status banner (Git #1464) — everything below reads `ds`,
+              which is always a WHOLE dataset, live or fixture (see the header
+              comment above and `useMessageCenter.ts`). Without this, a tenant
+              with no connected Message Center — or a read that failed — would
+              see the design's own fixture wave rendered as if it were their
+              real posts, with nothing on screen saying so. */}
+          {!ds.live && (
+            <div
+              data-testid="pv2-msc-data-status"
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: "12px",
+                lineHeight: 1.5,
+                border: `1px solid ${mcError ? "rgba(248,113,113,.4)" : "rgba(148,163,184,.25)"}`,
+                background: mcError ? "rgba(248,113,113,.08)" : "rgba(148,163,184,.06)",
+                color: mcError ? "#f87171" : "#94a3b8",
+              }}
+            >
+              {mcError
+                ? `Your Microsoft 365 Message Center could not be loaded, so the waves below are example content, not your tenant's own posts. (${mcError})`
+                : "Your Microsoft 365 Message Center is not yet connected, or has no posts for this tenant. The waves below are example content, not your own data."}
+            </div>
+          )}
+
           {/* Landed waves — the way into the retrospective — prototype pastNav 2087-2094 */}
+          {/* NO-BACKEND-TO-WIRE: `ds.landed` (and the retrospective it opens,
+              `pastWave`) has no live source — nothing in this build tracks
+              whether a past wave's posts actually shipped as announced or what
+              it cost the help desk, live or not. See `useMessageCenter.ts`'s
+              "tenant-analysis surfaces" note. */}
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".12em", textTransform: "uppercase", color: "#475569", paddingRight: 2 }}>Landed</span>
+            {ds.live && (
+              <span data-testid="pv2-msc-landed-illustrative" style={{ fontSize: "10px", color: "#64748b" }}>
+                (illustrative retrospective)
+              </span>
+            )}
             {ds.landed.map((w, i) => {
               const on = past === i;
               return (
@@ -1150,6 +1192,16 @@ export default function PortalV2MsChangesPage() {
                   <Kicker colour="#fbbf24">Decide before it lands</Kicker>
                   <span style={{ fontSize: "11px", color: "#64748b" }}>{decideMeta(wave, services, bands)}</span>
                 </div>
+                {/* NO-BACKEND-TO-WIRE: the decision queue itself (`ds.queue`) has
+                    no live source even when `ds.live` is true — Message Center
+                    posts carry no structured "decision needed" field, so this
+                    stays example content regardless of connection state. See
+                    `useMessageCenter.ts`'s "tenant-analysis surfaces" note. */}
+                {ds.live && (
+                  <span data-testid="pv2-msc-decide-illustrative" style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.5 }}>
+                    Illustrative — this queue is not yet built from your tenant's own posts.
+                  </span>
+                )}
                 {wQueue.map((q) => (
                   <div key={q.item.id} data-testid={`pv2-msc-queue-${q.item.id}`} style={{ display: "grid", gridTemplateColumns: "150px minmax(0,1fr) auto", gap: 16, alignItems: "center", padding: "14px 16px", border: `1px solid ${q.item.tone}33`, borderLeft: `3px solid ${q.item.tone}`, borderRadius: 11, background: "#0b1524", minWidth: 0 }}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
@@ -1207,6 +1259,15 @@ export default function PortalV2MsChangesPage() {
                   <Kicker colour="#2dd4bf">Who feels it</Kicker>
                   <span style={{ fontSize: "11px", color: "#64748b" }}>Microsoft told your administrators. These are the people who actually feel it.</span>
                 </div>
+                {/* NO-BACKEND-TO-WIRE: `ds.groups` has no live source — nothing
+                    maps a Message Center post to the tenant's own user groups
+                    yet, live or not. See `useMessageCenter.ts`'s "tenant-analysis
+                    surfaces" note. */}
+                {ds.live && (
+                  <span data-testid="pv2-msc-groups-illustrative" style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.5 }}>
+                    Illustrative — your tenant's own user groups are not yet wired here.
+                  </span>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))", gap: 12 }}>
                   {ds.groups.map((g, gi) => {
                     const strip = groupStrip(g.items, ds);
@@ -1251,6 +1312,14 @@ export default function PortalV2MsChangesPage() {
                 <span key={r.wl} title={`${r.name} · ${r.r}`} style={pill(`${r.name.split(" &")[0].split(" ·")[0]} · ${r.r}`, r.gap ? "#f87171" : "#94a3b8", "rgba(148,163,184,.08)")}>{r.name.split(" &")[0].split(" ·")[0]} · {r.r}</span>
               ))}
             </div>
+            {/* NO-BACKEND-TO-WIRE: `ds.raci` has no live source — there is no
+                real RACI register behind this page yet, live or not. See
+                `useMessageCenter.ts`'s "tenant-analysis surfaces" note. */}
+            {ds.live && (
+              <span data-testid="pv2-msc-ownership-illustrative" style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.5 }}>
+                Illustrative names
+              </span>
+            )}
             <Link href="/portal-v2/ownership" style={{ marginLeft: "auto", fontSize: "11.5px", fontWeight: 700, color: "#2dd4bf", whiteSpace: "nowrap", textDecoration: "none" }}>Open the RACI matrix →</Link>
           </div>
         </div>
