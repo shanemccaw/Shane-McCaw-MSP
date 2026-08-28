@@ -73,7 +73,23 @@ git commit` is safe: this file is yours alone, so no re-read/CAS discipline is n
 
 ### Last step — after all real work is done, tested, and typechecked
 
-Flip that file's status to:
+**Before writing DONE, verify your own branch's HEAD is actually an ancestor of
+`main` (Git #1447).** A live check across 12 `agent/*` branches (the #1434
+follow-up) found several sitting with unmerged commits main never got, with
+nothing catching it — the branch *looked* done because a session had claimed it
+was, not because the commits had actually landed. Run:
+
+```
+node scripts/dev-server/verify-branch-merged.mjs
+```
+
+(or `git merge-base --is-ancestor <branch> main` directly). Exit code 0 means the
+branch is genuinely merged — safe to write DONE. Exit code 1 means it is not: do
+**not** write DONE. Either retry the merge/push and re-run the check, or write an
+honest `MERGE-BLOCKED` / still-`⏳ IN FLIGHT` bookend state instead, and say so
+explicitly in the completion comment — never silently claim DONE while orphaned.
+
+Once verified, flip that file's status to:
 
 ```
 - **Status:** ✅ DONE
