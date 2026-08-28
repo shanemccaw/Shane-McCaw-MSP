@@ -4339,6 +4339,10 @@ export const btChatsTable = pgTable("bt_chats", {
   /** Soft-hide from the default Chats panel view — the real row + all associations (bt_chat_issues, epic/issue links) stay intact; reversible via unarchive. */
   archived:        boolean("archived").notNull().default(false),
   archivedAt:      timestamp("archived_at", { withTimezone: true }),
+  /** Git #1480 — "primary" | "secondary", the BuildConsole title-bar account toggle's value at
+   * the moment this chat was created. Stamped once at creation, never reassigned on re-link.
+   * NOT NULL DEFAULT 'primary' so every chat that predates this column backfills as Primary. */
+  account:         text("account").notNull().default("primary"),
   createdAt:       timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt:       timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -4948,6 +4948,13 @@ namespace BuildConsole
             settings.DefaultAccount = nowSecondary ? "secondary" : "primary";
             settings.Save();
             RefreshTopAccountToggleUi();
+
+            // Git #1480 — the Chats panel + In Progress list scope to this same toggle; flipping
+            // it must refresh both live, no app restart / manual refresh required. Both re-render
+            // from already-cached data (no re-fetch) — see LeftSidebar.RefreshForAccountToggle
+            // and FocusModeService.NotifyAccountToggleChanged.
+            try { LeftSidebar.RefreshForAccountToggle(); } catch { /* best-effort */ }
+            try { BuildConsole.Services.FocusModeService.Instance.NotifyAccountToggleChanged(); } catch { /* best-effort */ }
         }
 
         /// <summary>Repaints the title-bar account toggle from the persisted global default.</summary>

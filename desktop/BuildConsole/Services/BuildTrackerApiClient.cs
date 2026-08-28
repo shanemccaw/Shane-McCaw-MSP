@@ -97,12 +97,23 @@ namespace BuildConsole.Services
         /// <summary>Soft-hidden from the default Chats panel view — the real row + all associations stay intact. Reversible via Unarchive.</summary>
         public bool Archived { get; set; }
         public DateTime? ArchivedAt { get; set; }
+        /// <summary>Git #1480 — "primary" or "secondary", the title-bar account toggle's value
+        /// when this chat was created (bt_chats.account). Defaults to "primary" C#-side so a
+        /// row from before this column existed (or a response missing the field) still reads as
+        /// Primary, matching the DB column's own NOT NULL DEFAULT 'primary' backfill.</summary>
+        public string Account { get; set; } = "primary";
     }
 
     public class BoardResponse
     {
         public List<BoardEpic> Epics { get; set; } = new();
         public List<BoardChat> Chats { get; set; } = new();
+        /// <summary>Git #1480 — set true only by the direct-Postgres path
+        /// (<see cref="BuildQueuePostgresClient.GetBoardAsync"/>) when bt_chats.account doesn't
+        /// exist yet (the #1480 migration hasn't been run). The Chats panel must show an honest
+        /// "database not ready" state rather than silently rendering as if every chat were
+        /// scoped to Primary — same rule as #1472.</summary>
+        public bool AccountColumnMissing { get; set; }
     }
 
     /// <summary>Git #829 — matches GET /admin/build-tracker/issues's real row shape.</summary>
@@ -477,6 +488,9 @@ namespace BuildConsole.Services
                 conversation_id = conversationId,
                 issue_number = issueNumber,
                 title,
+                // Git #1480 — only actually applied server-side when this call creates a NEW
+                // bt_chats row; re-linking an existing chat never overwrites its stamped account.
+                account = BuildConsoleSettings.CurrentAccountLabel(),
             }));
 
         /// <summary>

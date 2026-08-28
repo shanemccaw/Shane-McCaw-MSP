@@ -718,6 +718,9 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
           updatedAt: btChatsTable.updatedAt,
           archived: btChatsTable.archived,
           archivedAt: btChatsTable.archivedAt,
+          // Git #1480 — the BuildConsole title-bar account toggle's value when this chat was
+          // created, so the Chats panel can scope to the currently-selected account.
+          account: btChatsTable.account,
         })
         .from(btChatsTable)
         .orderBy(desc(btChatsTable.updatedAt)),
@@ -908,6 +911,8 @@ router.get("/admin/build-tracker/extension/board", ingestAuth, async (req: Reque
         updatedAt: c.updatedAt,
         archived: c.archived,
         archivedAt: c.archivedAt,
+        // Git #1480 — see the select() above; "primary" | "secondary".
+        account: c.account,
       };
     });
 
@@ -2175,10 +2180,11 @@ router.post("/admin/build-tracker/chats/unassign-epic", ingestAuth, async (req: 
  * Auth: ingestAuth
  */
 router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: Request, res: Response) => {
-  const { conversation_id, issue_number, title } = req.body as {
+  const { conversation_id, issue_number, title, account } = req.body as {
     conversation_id?: string;
     issue_number?: number;
     title?: string;
+    account?: string;
   };
   if (!conversation_id?.trim() || typeof issue_number !== "number") {
     res.status(400).json({ error: "conversation_id and numeric issue_number are required" });
@@ -2194,11 +2200,16 @@ router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: R
 
     let chat = existingChats[0];
     if (!chat) {
+      // Git #1480 — stamps the BuildConsole title-bar toggle's value (sent by the desktop
+      // client) on a genuinely NEW chat row only; re-linking an existing chat below never
+      // touches its already-stamped account. Anything but exactly "secondary" reads as primary,
+      // matching bt_chats.account's own NOT NULL DEFAULT 'primary'.
       const [inserted] = await db
         .insert(btChatsTable)
         .values({
           conversationId: convId,
           title: title?.trim() || `[#${issue_number}] Chat`,
+          account: account === "secondary" ? "secondary" : "primary",
         })
         .returning();
       chat = inserted;
