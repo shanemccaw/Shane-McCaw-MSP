@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- the SETTINGS page (/portal-v2/settings), recreated from the prototype's own `isSettings` section ('Customer Portal Shell.dc.html' 4345-4576). Four sections -- Ownership routing, Change control policy, People & roles, Departments -- each a real deep link under the same page. This page is NEW: the round-one handoff had no Settings page at all, so the Round Two entries that read as MOVES ('change control policy moved into Settings', 'People & roles moved from Ownership into Settings') are its first appearance rather than a relocation.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "07b860468",
+  "lastVerifiedAgainstCommit": "4101dfca4",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/settings/{section}. App.tsx declares '/portal-v2/settings/:section' BEFORE '/portal-v2/settings', and both before '/portal-v2/:pillar'.",
