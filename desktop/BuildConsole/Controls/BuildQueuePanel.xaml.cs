@@ -2356,6 +2356,80 @@ namespace BuildConsole.Controls
                 };
                 cm.Items.Add(miCancel);
             }
+            else if (item.Status == AccountCapPolicy.HeldStatus)
+            {
+                var miCancel = new MenuItem { Header = "✕ Cancel Build" };
+                miCancel.Click += async (_, _) =>
+                {
+                    if (_db == null && _api == null)
+                    {
+                        ToastEngine.Warning("Cancel", "Not connected — can't cancel.");
+                        return;
+                    }
+                    try
+                    {
+                        bool canceled;
+                        if (_db != null)
+                            canceled = await _db.CancelAsync(item.Id);
+                        else
+                            canceled = (await _api!.CancelQueueItemAsync(item.Id)).IsSuccessStatusCode;
+
+                        if (canceled)
+                        {
+                            ToastEngine.Success("Canceled", $"Canceled: {item.Title}");
+                            ActivityLog.Log("build-queue", $"Canceled held queue item #{item.Id} ({item.Title}) before it ran.");
+                        }
+                        else
+                        {
+                            ToastEngine.Warning("Cancel", $"Couldn't cancel: {item.Title}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Cancel Failed", $"Couldn't cancel: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miCancel);
+                cm.Items.Add(new Separator());
+
+                var miChangeModel = new MenuItem { Header = "⚙ Change Model" };
+                
+                var miSonnet = new MenuItem { Header = "Sonnet 3.5", IsChecked = string.Equals(item.Model, "claude-3-5-sonnet", StringComparison.OrdinalIgnoreCase) };
+                miSonnet.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-3-5-sonnet", item.Effort, runNow: false); };
+                miChangeModel.Items.Add(miSonnet);
+
+                var miHaiku = new MenuItem { Header = "Haiku 3.5", IsChecked = string.Equals(item.Model, "claude-3-5-haiku", StringComparison.OrdinalIgnoreCase) };
+                miHaiku.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-3-5-haiku", item.Effort, runNow: false); };
+                miChangeModel.Items.Add(miHaiku);
+
+                cm.Items.Add(miChangeModel);
+
+                var miChangeEffort = new MenuItem { Header = "⚡ Change Effort" };
+                
+                var miLow = new MenuItem { Header = "Low", IsChecked = string.Equals(item.Effort, "low", StringComparison.OrdinalIgnoreCase) };
+                miLow.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, item.Model, "low", runNow: false); };
+                miChangeEffort.Items.Add(miLow);
+
+                var miMedium = new MenuItem { Header = "Medium", IsChecked = string.Equals(item.Effort, "medium", StringComparison.OrdinalIgnoreCase) };
+                miMedium.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, item.Model, "medium", runNow: false); };
+                miChangeEffort.Items.Add(miMedium);
+
+                var miHigh = new MenuItem { Header = "High", IsChecked = string.Equals(item.Effort, "high", StringComparison.OrdinalIgnoreCase) };
+                miHigh.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, item.Model, "high", runNow: false); };
+                miChangeEffort.Items.Add(miHigh);
+
+                cm.Items.Add(miChangeEffort);
+                cm.Items.Add(new Separator());
+
+                var miRunNowSonnetMed = new MenuItem { Header = "🚀 Run Now (Sonnet 3.5, Medium)" };
+                miRunNowSonnetMed.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-3-5-sonnet", "medium", runNow: true); };
+                cm.Items.Add(miRunNowSonnetMed);
+
+                var miRunNowHaikuMed = new MenuItem { Header = "🚀 Run Now (Haiku 3.5, Medium)" };
+                miRunNowHaikuMed.Click += async (_, _) => { await UpdateModelAndEffortHelperAsync(item, "claude-3-5-haiku", "medium", runNow: true); };
+                cm.Items.Add(miRunNowHaikuMed);
+            }
             else
             {
                 // Crash/orphan recovery (see BuildQueuePostgresClient.UpdateSessionIdAsync
@@ -2413,6 +2487,79 @@ namespace BuildConsole.Controls
             cm.Items.Add(miLocalIds);
 
             return cm;
+        }
+
+        private async System.Threading.Tasks.Task UpdateModelAndEffortHelperAsync(QueueItem item, string? model, string? effort, bool runNow)
+        {
+            if (_db == null)
+            {
+                ToastEngine.Warning("Edit Held Build", "Not connected (no direct DB) — cannot edit model/effort.");
+                return;
+            }
+
+            try
+            {
+                bool exceeds = AccountCapPolicy.ExceedsSonnetMedium(model, effort);
+                if (!exceeds)
+                {
+                    await _db.UpdateModelAndEffortAsync(item.Id, model, effort, status: "queued");
+                    ActivityLog.Log("build-queue", $"Held item #{item.Id} changed to Model: {model ?? "default"}, Effort: {effort ?? "default"} (no longer exceeds cap). Re-queued.");
+                }
+                else
+                {
+                    await _db.UpdateModelAndEffortAsync(item.Id, model, effort);
+                    ActivityLog.Log("build-queue", $"Held item #{item.Id} changed to Model: {model ?? "default"}, Effort: {effort ?? "default"}. Still held.");
+                }
+
+                // Clear GitHub milestone if it is no longer held
+                if (!exceeds && item.GithubNumber.HasValue)
+                {
+                    var settings = Services.BuildConsoleSettings.Load();
+                    if (!string.IsNullOrWhiteSpace(settings.GitHubPat))
+                    {
+                        var gh = new Services.GitHubApiClient(settings.GitHubPat);
+                        try
+                        {
+                            await gh.SetIssueMilestoneAsync(item.GithubNumber.Value, null);
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log("build-queue", $"Update Model/Effort: couldn't clear milestone off issue #{item.GithubNumber.Value}: {ex.Message}");
+                        }
+                    }
+                }
+
+                if (runNow)
+                {
+                    if (_watcher == null || _api == null)
+                    {
+                        ToastEngine.Info("Run Now", "The in-app watcher isn't active, so Run Now can't launch locally. The background service will pick it up.");
+                        await RefreshAsync();
+                        return;
+                    }
+
+                    var settings = BuildConsoleSettings.Load();
+                    if (settings.PausedBuildIds.Contains(item.Id))
+                    {
+                        settings.PausedBuildIds.Remove(item.Id);
+                        settings.Save();
+                    }
+
+                    QueueItem claimed = await _db.ForceClaimAsync(item.Id);
+                    _watcher.ForceLaunch(claimed);
+                    ToastEngine.Success("Run Now", $"Launched with changes: {item.Title}");
+                }
+                else
+                {
+                    ToastEngine.Success("Changes Saved", $"Updated build model/effort to {model ?? "default"}/{effort ?? "default"}.");
+                }
+
+                await RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Update Failed", $"Failed to update model/effort: {ex.Message}");
+            }
         }
 
         /// <summary>

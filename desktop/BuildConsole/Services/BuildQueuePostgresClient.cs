@@ -1256,6 +1256,24 @@ namespace BuildConsole.Services
             }
         }
 
+        public async Task UpdateModelAndEffortAsync(int id, string? model, string? effort, string? status = null)
+        {
+            await using var conn = await OpenAsync();
+            string sql = @"
+                UPDATE bt_build_queue
+                   SET model = @model, effort = @effort" + (status != null ? ", status = @status" : "") + @", updated_at = NOW()
+                 WHERE id = @id";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@model", string.IsNullOrWhiteSpace(model) ? DBNull.Value : (object)model.Trim());
+            cmd.Parameters.AddWithValue("@effort", string.IsNullOrWhiteSpace(effort) ? DBNull.Value : (object)effort.Trim());
+            if (status != null)
+            {
+                cmd.Parameters.AddWithValue("@status", status);
+            }
+            await cmd.ExecuteNonQueryAsync();
+        }
+
         /// <summary>
         /// Creates a client from the DATABASE_URL found in:
         ///   1. The config's own databaseUrl field (if non-empty), OR
