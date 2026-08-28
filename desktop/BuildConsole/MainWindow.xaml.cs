@@ -98,13 +98,18 @@ namespace BuildConsole
             public Border Banner = null!;
             public TextBlock BannerText = null!;
             public Button BannerCloseBtn = null!;
+            /// <summary>Git #1470 — "Hand Off Now" button shown only in the critical (red) banner.
+            /// Handoff never fires automatically anymore; this is the sole way it fires, on Shane's
+            /// own click, so he's never force-navigated away or blocked from reading/opening other chats.</summary>
+            public Button HandoffBtn = null!;
             public bool BannerDismissed;
             public double EstimatedTokens;
             public int TurnCount;
             public int HeavyTurnCount;
             public double Cost;
             public double RemainingBuffer;
-            public bool HandoffFired;
+            /// <summary>Guards against double-firing while a click-triggered handoff is already in flight (not an "already fired" latch — Shane can retry from the button again if one attempt fails).</summary>
+            public bool HandoffInProgress;
             /// <summary>Git #1436 — set once the injected scraper (ChatContextMeterScript) reports
             /// sustained zero-turn detection on what otherwise looks like a real populated chat page,
             /// i.e. its selectors likely no longer match claude.ai's current DOM. Latches true so the
@@ -5171,6 +5176,7 @@ namespace BuildConsole
             var bannerGrid = new Grid();
             bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            bannerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var bannerText = new TextBlock
             {
@@ -5184,6 +5190,24 @@ namespace BuildConsole
             Grid.SetColumn(bannerText, 0);
             bannerGrid.Children.Add(bannerText);
 
+            // Git #1470 — the only way handoff ever fires: a real button Shane clicks himself.
+            // Never shown outside the critical (red) banner state; collapsed by default here.
+            var handoffBtn = new Button
+            {
+                Content = "Hand Off Now",
+                FontSize = 11,
+                FontWeight = FontWeights.Bold,
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(8, 0, 8, 0),
+                Foreground = (Brush)FindResource("CrustBrush"),
+                Background = Brushes.Transparent,
+                BorderBrush = (Brush)FindResource("CrustBrush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Visibility = Visibility.Collapsed
+            };
+            Grid.SetColumn(handoffBtn, 1);
+            bannerGrid.Children.Add(handoffBtn);
+
             var bannerCloseBtn = new Button
             {
                 Content = "✕",
@@ -5193,7 +5217,7 @@ namespace BuildConsole
                 Foreground = (Brush)FindResource("CrustBrush"),
                 VerticalAlignment = VerticalAlignment.Center
             };
-            Grid.SetColumn(bannerCloseBtn, 1);
+            Grid.SetColumn(bannerCloseBtn, 2);
             bannerGrid.Children.Add(bannerCloseBtn);
             banner.Child = bannerGrid;
 
@@ -5228,7 +5252,8 @@ namespace BuildConsole
                 ProgressBar = progressBar,
                 Banner = banner,
                 BannerText = bannerText,
-                BannerCloseBtn = bannerCloseBtn
+                BannerCloseBtn = bannerCloseBtn,
+                HandoffBtn = handoffBtn
             };
 
             bannerCloseBtn.Click += (s, e) =>
@@ -5236,6 +5261,18 @@ namespace BuildConsole
                 banner.Visibility = Visibility.Collapsed;
                 meterState.BannerDismissed = true;
                 BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "User dismissed context warning banner.");
+            };
+
+            // Git #1470 — handoff fires ONLY here, on Shane's explicit click. Never automatic,
+            // never forces navigation on its own, never blocks him from reading/opening other chats
+            // while the banner sits there waiting.
+            handoffBtn.Click += (s, e) =>
+            {
+                if (meterState.HandoffInProgress) return;
+                meterState.HandoffInProgress = true;
+                handoffBtn.IsEnabled = false;
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Critical context reached ({meterState.EstimatedTokens:N0} tokens). Shane clicked Hand Off Now.");
+                _ = TriggerHandoffAsync(wv, meterState, handoffBtn);
             };
 
             _contextMeters[wv] = meterState;
@@ -5270,6 +5307,7 @@ namespace BuildConsole
                 meterState.ProgressBar.Value = 0;
                 meterState.ProgressBar.Foreground = (Brush)FindResource("OverlayBrush");
                 meterState.ProgressBar.ToolTip = "Chat context meter: message detection isn't finding any turns on this chat. claude.ai's DOM likely changed — selectors in ChatContextMeterScript need updating (Git #1436).";
+                meterState.HandoffBtn.Visibility = Visibility.Collapsed;
                 if (!meterState.BannerDismissed)
                 {
                     meterState.Banner.Background = (Brush)FindResource("YellowBrush");
@@ -5285,6 +5323,10 @@ namespace BuildConsole
             // Make progress bar visible
             meterState.ProgressBar.Visibility = Visibility.Visible;
             meterState.ProgressBar.Value = Math.Min(estTokens, 130000);
+            // Git #1470 — the handoff button only belongs in the critical (red) banner; reset it
+            // here so it doesn't linger visible if tokens drop back below critical (e.g. new turn
+            // recount) between polls, and only the >=100000 branch below turns it back on.
+            meterState.HandoffBtn.Visibility = Visibility.Collapsed;
 
             // Format tooltip
             meterState.ProgressBar.ToolTip = $"Turns: {turnCount}\n" +
@@ -5331,22 +5373,17 @@ namespace BuildConsole
             {
                 meterState.ProgressBar.Foreground = (Brush)FindResource("RedBrush");
                 meterState.Banner.Background = (Brush)FindResource("RedBrush");
-                meterState.BannerText.Text = "Critical context reached! Wrapping up now and handing off to a new chat...";
+                // Git #1470 — never auto-fires and never forces navigation. This is now purely a
+                // loud "please hand off soon" prompt; the button below is the only trigger.
+                meterState.BannerText.Text = "Critical context reached! Hand off to a new chat when you're ready.";
                 meterState.BannerText.Foreground = (Brush)FindResource("CrustBrush");
-                meterState.BannerCloseBtn.Visibility = Visibility.Collapsed; // Non-dismissible!
+                meterState.BannerCloseBtn.Visibility = Visibility.Collapsed; // Non-dismissible — stays visible until Shane hands off.
+                meterState.HandoffBtn.Visibility = Visibility.Visible;
                 meterState.Banner.Visibility = Visibility.Visible;
-
-                // Auto-fire handoff exactly once
-                if (!meterState.HandoffFired)
-                {
-                    meterState.HandoffFired = true;
-                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Critical context reached ({estTokens:N0} tokens). Triggering auto-handoff.");
-                    _ = TriggerAutoHandoffAsync(wv);
-                }
             }
         }
 
-        private async System.Threading.Tasks.Task TriggerAutoHandoffAsync(Microsoft.Web.WebView2.Wpf.WebView2 oldWv)
+        private async System.Threading.Tasks.Task TriggerHandoffAsync(Microsoft.Web.WebView2.Wpf.WebView2 oldWv, ChatContextMeterState meterState, Button handoffBtn)
         {
             try
             {
@@ -5378,7 +5415,7 @@ namespace BuildConsole
 
                 if (oldTab == null)
                 {
-                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "Auto-handoff failed: old chat tab could not be identified.");
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "Handoff failed: old chat tab could not be identified.");
                     return;
                 }
 
@@ -5410,23 +5447,23 @@ namespace BuildConsole
 
                 if (!targetIssue.HasValue)
                 {
-                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "Auto-handoff aborted: no resolved epic associated with the current chat.");
-                    ToastEngine.Warning("Auto-Handoff", "Cannot auto-handoff: chat has no associated epic.");
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", "Handoff aborted: no resolved epic associated with the current chat.");
+                    ToastEngine.Warning("Handoff", "Cannot hand off: chat has no associated epic.");
                     return;
                 }
 
                 var settings = BuildConsole.Services.BuildConsoleSettings.Load();
                 if (settings == null || string.IsNullOrWhiteSpace(settings.EpicChatProjectUrl))
                 {
-                    ToastEngine.Warning("Auto-Handoff", "New Chat Project URL is not configured in Settings.");
+                    ToastEngine.Warning("Handoff", "New Chat Project URL is not configured in Settings.");
                     return;
                 }
 
                 var baseUrl = settings.EpicChatProjectUrl.Trim();
                 if (!System.Uri.TryCreate(baseUrl, System.UriKind.Absolute, out _))
                 {
-                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Auto-handoff aborted — invalid New Chat Project URL '{baseUrl}'");
-                    ToastEngine.Warning("Auto-Handoff", "The configured New Chat Project URL isn't a valid URL.");
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Handoff aborted — invalid New Chat Project URL '{baseUrl}'");
+                    ToastEngine.Warning("Handoff", "The configured New Chat Project URL isn't a valid URL.");
                     return;
                 }
 
@@ -5458,15 +5495,23 @@ namespace BuildConsole
                     try { LeftSidebar.PopulateChatsTree(); } catch { }
                 }
 
-                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Auto-firing new chat for Epic #{targetIssue.Value}...");
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Firing new chat for Epic #{targetIssue.Value}...");
                 OpenWebTab(fullUrl, $"#{targetIssue.Value} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue.Value, associateIssueType: "Epic", associateDefaultTitle: $"[#{targetIssue.Value}] New Chat");
 
                 CloseTab(oldTab);
-                ToastEngine.Success("Auto-Handoff", $"Handoff fired for Epic #{targetIssue.Value}! Old chat archived.");
+                ToastEngine.Success("Handoff", $"Handoff fired for Epic #{targetIssue.Value}! Old chat archived.");
             }
             catch (Exception ex)
             {
-                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Auto-handoff failed: {ex.Message}");
+                BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Handoff failed: {ex.Message}");
+            }
+            finally
+            {
+                // Git #1470 — re-arm the button so a failed/aborted attempt (missing settings,
+                // no resolved epic, etc.) can be retried by clicking again, rather than leaving
+                // it permanently disabled. Harmless no-op if the old tab/wrapper was already closed.
+                meterState.HandoffInProgress = false;
+                handoffBtn.IsEnabled = true;
             }
         }
 
