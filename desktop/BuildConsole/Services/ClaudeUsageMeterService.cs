@@ -82,6 +82,15 @@ namespace BuildConsole.Services
         /// <summary>Poll cadence for automatic background usage checks.</summary>
         private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(10);
 
+        /// <summary>
+        /// Timeout for a single `claude.exe -p /usage` CLI call inside <see cref="RunClaudeCliUsageAsync"/>.
+        /// Was hardcoded at 20s (Git #1449) which Shane confirmed the CLI sometimes exceeds under real
+        /// load, killing the process mid-poll and surfacing as a flat "error" state on the usage meter
+        /// with no indication it was just slow rather than genuinely broken. Raised to 45s and pulled out
+        /// to a named constant so it can be retuned again without hunting for a magic number.
+        /// </summary>
+        private static readonly TimeSpan CliUsagePollTimeout = TimeSpan.FromSeconds(45);
+
         /// <summary>How often the visible countdown re-renders between polls. Only the text ticks; the percentage is untouched until the next real poll.</summary>
         private static readonly TimeSpan DisplayTickInterval = TimeSpan.FromSeconds(30);
 
@@ -401,13 +410,15 @@ namespace BuildConsole.Services
 
                 var completedTask = await Task.WhenAny(
                     Task.WhenAll(outputTask, errorTask),
-                    Task.Delay(TimeSpan.FromSeconds(20))
+                    Task.Delay(CliUsagePollTimeout)
                 );
 
                 if (completedTask != Task.WhenAll(outputTask, errorTask))
                 {
                     try { process.Kill(entireProcessTree: true); } catch { }
-                    return (false, string.Empty, "Timed out waiting for claude CLI after 20s");
+                    string timeoutReason = $"timed out after {(int)CliUsagePollTimeout.TotalSeconds}s";
+                    ActivityLog.Log(Channel, $"claude CLI usage poll {timeoutReason} (claude.exe -p /usage); killing process.");
+                    return (false, string.Empty, timeoutReason);
                 }
 
                 await process.WaitForExitAsync();
