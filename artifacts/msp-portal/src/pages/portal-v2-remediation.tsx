@@ -22,14 +22,26 @@
  * `reverifyRemediationTrackerSteps()` inside a real scan can mark a step
  * verified; this page never derives verified from a tick or a filter.
  *
- * ── WHAT IS SESSION-ONLY IN THIS SHELL PASS ────────────────────────────────
- * The Round Four affordances the platform does not persist yet — advancing a
- * CR, releasing/closing a hold, filing/approving evidence, running a runbook,
- * accepting/re-opening/ticking a task — are SESSION-ONLY overrides layered over
- * the real baseline (`RtOverrides`), exactly as the prototype's client state
- * was. Wiring them to real persistence is the separate data pass; this pass is
- * the shell. The filter state (phase from the URL, task state, open row) is
- * client UI, same as the prototype.
+ * ── WHAT IS SESSION-ONLY IN THIS SHELL PASS (Git #1476 audit) ──────────────
+ * Advancing a CR stage, releasing/closing a hold and filing/approving evidence
+ * are SESSION-ONLY — no backend models a per-task CR-stage pipeline, hold
+ * window or evidence set for THIS catalogue (see remediationData.ts's header;
+ * each spot is marked `NO-BACKEND-TO-WIRE` below). Re-scanning ("run the check
+ * now") is also session-only: only a real scan's own
+ * reverifyRemediationTrackerSteps() may produce `verified`, and no
+ * trigger-a-scan-now endpoint exists for this page to call.
+ *
+ * Ticking/re-opening/rolling back a task, accepting it, handing it to Shane,
+ * and a runbook's completion DO now write real status through
+ * `useRemediationTracker`'s `toggleComplete`/`setAction` (Git #1476 — these
+ * were previously session-only too, despite the hook being imported and read
+ * from: the mutators existed but nothing on this page ever called them, so a
+ * "completed" task here silently reverted on reload). `RtOverrides` remains
+ * the optimistic paint layer for all of the above — it still wins in the UI
+ * the instant a button is clicked — but the ticking/accept/hand-off/rollback
+ * fields on it now have a real write riding alongside, for any task whose
+ * `stepId` is non-null. The filter state (phase from the URL, task state, open
+ * row) is client UI only, same as the prototype.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -169,6 +181,10 @@ export default function PortalV2RemediationPage() {
           ev: { ...o.ev, [row.id]: "missing" as RtEvidenceState },
           exec: { ...o.exec, [row.id]: null },
         }));
+        // Real write-back (Git #1476): the same customer-scoped status this
+        // task's stepId resolves to elsewhere (the Full Remediation Guide) —
+        // re-opening here must not leave that guide still showing it complete.
+        if (row.task.stepId) tracker.setAction(row.task.stepId, "not_started");
       },
       doneNote: "Re-opened. The points are withdrawn, the evidence is marked missing again, and the reason is filed against the change request.",
     });
@@ -176,7 +192,10 @@ export default function PortalV2RemediationPage() {
   const tick = (row: RtRow) => {
     if (row.done) {
       if (row.signedOff) reopenForm(row);
-      else patch("ticked", row.id, false);
+      else {
+        patch("ticked", row.id, false);
+        if (row.task.stepId) tracker.setAction(row.task.stepId, "not_started");
+      }
       return;
     }
     if (!row.canTick) {
@@ -184,10 +203,25 @@ export default function PortalV2RemediationPage() {
       return;
     }
     patch("ticked", row.id, true);
+    // Real write-back (Git #1476): previously this only ever painted the
+    // session override — a genuinely real mutator (useRemediationTracker,
+    // GET/PUT /api/portal/remediation-tracker) was imported and read from but
+    // never called, so a completed task here never actually reached the
+    // server and reverted on reload despite the page's own header claiming
+    // full real-data wiring. Tasks with no platform step (stepId === null —
+    // the three Discovery reads, the two removed adoption items, the drift
+    // re-close) have nowhere real to write and stay session-only, honestly.
+    if (row.task.stepId) tracker.toggleComplete(row.task.stepId);
   };
 
+  // NO-BACKEND-TO-WIRE (Git #1476): no table models a per-task CR-stage
+  // pipeline for this catalogue (see remediationData.ts's header) — advancing
+  // a stage is session-only.
   const crAdvance = (row: RtRow) => patch("cr", row.id, Math.min(7, row.crStage + 1));
 
+  // NO-BACKEND-TO-WIRE (Git #1476): `portal_hold_windows` is real schema, but
+  // backs the Active Runbooks page, not this catalogue's `hold` seed (see
+  // remediationData.ts's header) — closing a hold here is session-only.
   const holdClose = (row: RtRow) =>
     openForm({
       kicker: "Hold window · close early",
@@ -199,6 +233,8 @@ export default function PortalV2RemediationPage() {
       doneNote: "Window closed. The gated step is released and the reason is filed against the CR.",
     });
 
+  // NO-BACKEND-TO-WIRE (Git #1476): no evidence table exists for this
+  // catalogue — filing/approving evidence is session-only.
   const evAct = (row: RtRow) => {
     if (row.evidence.state === "missing") {
       openForm({
@@ -234,6 +270,15 @@ export default function PortalV2RemediationPage() {
         { id: "scope", label: "Scope", kind: "select", value: "This check only", options: ["This check only", "This check and its pillar", "Full tenant scan"].map((o) => ({ value: o, label: o })) },
         { id: "notify", label: "Tell me the result", kind: "select", value: "Portal and email", options: ["Portal only", "Portal and email", "Portal, email and the webhook"].map((o) => ({ value: o, label: o })) },
       ],
+      // NO-BACKEND-TO-WIRE (Git #1476): there is no real "trigger a re-scan
+      // now" endpoint. remediationLive.ts's own header is explicit that only
+      // the server's reverifyRemediationTrackerSteps(), fired from inside a
+      // REAL scan, may ever produce `verified` — "nothing in this module...
+      // may promote a step to verified from a status, a tick, a filter or any
+      // other UI state." This form submit does exactly that today (a session
+      // override, not a real scan) — a real "run this check now" action needs
+      // a real synchronous re-scan endpoint, which does not exist. Left
+      // session-only rather than building that endpoint under this issue.
       onSubmit: () => patch("verified", row.id, true),
       doneNote: `Check passed. ${row.pillarLabel} moves +${row.points}, and those points are scored rather than pending.`,
     });
@@ -248,6 +293,15 @@ export default function PortalV2RemediationPage() {
         { id: "window", label: "Preferred change window", kind: "select", value: "Next available", options: ["Next available", "Out of hours only", "Weekend only", "Agree on a call"].map((o) => ({ value: o, label: o })) },
         { id: "approver", label: "Who approves the change", kind: "text", value: "jordan.diaz@tenant.com", placeholder: "name@tenant.com" },
       ],
+      // Real write-back (Git #1476): "shane_handles" is a real status in the
+      // wire vocabulary (REMEDIATION_TRACKER_STEP_STATUS) — this hand-off
+      // previously changed no state at all, real or session. The CR/Active
+      // Runbooks appearance the doneNote promises is still NO-BACKEND-TO-WIRE
+      // (no CR is actually raised, no runbook actually created) — only the
+      // step's own status is real.
+      onSubmit: () => {
+        if (row.task.stepId) tracker.setAction(row.task.stepId, "shane_handles");
+      },
       doneNote: "Handed over. It appears in Change Control as a CR and in Active Runbooks once the window is approved.",
     });
 
@@ -261,7 +315,13 @@ export default function PortalV2RemediationPage() {
     });
   };
 
-  /** The stepped runbook run — prototype rtRunbook (shell 8547-8564). Session only. */
+  /**
+   * The stepped runbook run — prototype rtRunbook (shell 8547-8564).
+   * NO-BACKEND-TO-WIRE (Git #1476): the step-by-step "Calling GET /sites..."
+   * animation is a timed simulation, not a real call — no backend executes
+   * `task.gr`'s Graph calls on this page's behalf. What its completion marks
+   * done IS real (below): the underlying task's stepId, if it has one.
+   */
   const runRunbook = (row: RtRow) => {
     const labels = (row.task.gr ?? []).map((g) => `Calling ${g}`);
     const n = labels.length;
@@ -276,6 +336,8 @@ export default function PortalV2RemediationPage() {
           ticked: { ...o.ticked, [row.id]: true },
           ev: { ...o.ev, [row.id]: "submitted" as RtEvidenceState },
         }));
+        // Real write-back (Git #1476) — same reasoning as tick().
+        if (row.task.stepId) tracker.setAction(row.task.stepId, "completed");
         return;
       }
       i += 1;
@@ -285,7 +347,7 @@ export default function PortalV2RemediationPage() {
     window.setTimeout(step, 620);
   };
 
-  const rollback = (row: RtRow) =>
+  const rollback = (row: RtRow) => {
     setOv((o) => ({
       ...o,
       exec: { ...o.exec, [row.id]: null },
@@ -293,8 +355,19 @@ export default function PortalV2RemediationPage() {
       verified: { ...o.verified, [row.id]: false },
       ev: { ...o.ev, [row.id]: "missing" as RtEvidenceState },
     }));
+    // Real write-back (Git #1476) — same reasoning as reopenForm's onSubmit.
+    if (row.task.stepId) tracker.setAction(row.task.stepId, "not_started");
+  };
 
-  const skip = (row: RtRow) => patch("skipped", row.id, !row.accepted);
+  const skip = (row: RtRow) => {
+    patch("skipped", row.id, !row.accepted);
+    // Real write-back (Git #1476): "not_applicable" is the real status
+    // RemediationGuideBody's own action picker already uses for "Accept
+    // as-is" ("Not applicable to this tenant") — same vocabulary, same
+    // per-customer store, so accepting a task here must not disagree with
+    // what the guide shows for the same underlying step.
+    if (row.task.stepId) tracker.setAction(row.task.stepId, row.accepted ? "not_started" : "not_applicable");
+  };
 
   return (
     <PortalV2Shell eyebrow="Operate" title="Remediation Tracker">

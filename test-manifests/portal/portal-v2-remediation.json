@@ -1,8 +1,9 @@
 {
   "feature": "Customer Portal v2 -- Operate -> Remediation Tracker (/portal-v2/remediation), Round Four shell, STILL WIRED TO REAL DATA. The page was rebuilt from a 3-phase checklist into the 7-phase working tracker ('Customer Portal Shell.dc.html' 5961-6228 markup, 20678-21173 derivation): the phases live in the LEFT NAV, tasks carry a CR gate / hold window / evidence state, and the headline/pillar cells/Copilot gate now show REAL scores off GET /api/portal/remediation-tracker/pillar-scores (#1381): the rolling before/now pair from the last two real scans (tenant_pillar_snapshots), the permanent day-one baseline, the real computeCopilotGate verdict, and per-task point chips from each task's real underlying finding severity -- with an honest no-data state for single-scan / unscanned pillars. CRITICAL AND UNCHANGED BY THE REBUILD: whether a task is DONE, VERIFIED or ACCEPTED still comes off the customer's own `remediation_tracker_steps` rows over GET /api/portal/remediation-tracker (customer-scoped off the JWT), read through the same `useRemediationTracker` hook the Full Remediation Guide writes with, per task via its `stepId` (remediationLive.ts). The new CR-gate / hold / evidence structure is fixture seed + session-only interactivity for this shell pass; the finding CATALOGUE is the design's fixture.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "5e036100c",
+  "lastVerifiedAgainstCommit": "PENDING-1476",
   "notes": [
+    "GIT #1476 AUDIT. Investigated whether a real backend exists for THIS page's CR-numbered/7-phase/pillar task catalogue (RT_TASKS) and its Message Center widget (RT_MESSAGE_CENTER). Verdict: the catalogue's descriptive content (title/problem/fix/severity/fee/CR-stage seed/hold-window seed/evidence list/playbook fields) has NO live backend anywhere in this platform's schema, for any tenant -- marked NO-BACKEND-TO-WIRE at each declaration in remediationData.ts / remediationModel.ts / portal-v2-remediation.tsx. RT_MESSAGE_CENTER is similar: a REAL M365 Message Center feed exists (GET /api/portal/message-center, used elsewhere) but nothing correlates a real post to a specific remediation task, so the three MC posts here stay fixture. Separately, the audit found ticking/re-opening/rolling-back/accepting a task, handing it to Shane, and a runbook's completion were ALSO only session-only despite useRemediationTracker's real toggleComplete/setAction mutators being imported and read from -- those five actions now write real status (API7-API9, sessionTag 'rt1476'). CR-stage advance, hold-window close and evidence file/approve remain genuinely session-only (no backend models them for this catalogue) and are NOT claimed otherwise.",
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/remediation. Round Four also added /portal-v2/remediation/:phase (the left-nav phase filter), declared BEFORE the bare route so the param form matches first.",
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree; deploy before running this.",
@@ -63,6 +64,32 @@
       "path": "/api/portal/remediation-tracker/pillar-scores",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.taskPoints", "exists": true }
+    },
+    {
+      "name": "API7 (#1476, sessionTag rt1476) -- ticking task 'b1' on this page now writes a REAL status through useRemediationTracker.setAction, where before it only ever painted the session override. b1's stepId is 's27'.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
+      "body": { "status": "completed" },
+      "expect": { "status": 200 },
+      "sessionTag": "rt1476"
+    },
+    {
+      "name": "API8 (#1476, sessionTag rt1476) -- ...and it actually persisted: a fresh GET shows s27 as completed, proving the write reached the server rather than staying client-side.",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.steps[?(@.stepId=='s27')].status", "equals": "completed" },
+      "sessionTag": "rt1476"
+    },
+    {
+      "name": "API9 (#1476, sessionTag rt1476, cleanup) -- reset s27 back to not_started so this run does not leave the testbed permanently marked complete.",
+      "method": "PUT",
+      "path": "/api/portal/remediation-tracker/steps/s27",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{authToken}}" },
+      "body": { "status": "not_started" },
+      "expect": { "status": 200 },
+      "sessionTag": "rt1476"
     }
   ],
   "uiSteps": [

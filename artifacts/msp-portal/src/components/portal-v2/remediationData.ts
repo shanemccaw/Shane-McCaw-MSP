@@ -36,6 +36,29 @@
  * the correspondence the previous build held in remediationLive.ts's RT_STEP_ID
  * map, re-keyed onto the Round Four task ids — same real steps, same real
  * connection, through the new structure.
+ *
+ * NO-BACKEND-TO-WIRE (Git #1476): everything on a `RemediationTask` OTHER than
+ * `stepId` — title (`t`), problem (`pr`), fix (`fx`), severity (`sv`), effort/fee
+ * (`ef`/`fee`/`bill`), the CR-stage seed (`crs`), the hold-window seed (`hold`),
+ * the evidence list (`ev`/`evst`), the playbook/runbook fields (`pb`/`gr`/`mn`)
+ * and the dependency graph (`dep`) — is the design's fixture, transcribed
+ * verbatim from the prototype, and has NO live counterpart anywhere in this
+ * platform's schema for any tenant. `lib/db/src/schema/msp.ts`'s
+ * `remediation_tracker_steps` (Git #730) only ever tracks a step's
+ * status/verification (wired below via remediationLive.ts) — it has no columns
+ * for a finding's title, prose, severity, fee, CR-stage pipeline, hold window or
+ * evidence artefacts. `msp_change_requests` tracks real change requests, but
+ * nothing associates a specific row of it with a specific one of these 31 task
+ * ids at this 7-stage granularity. `portal_hold_windows`
+ * (2026-08-19-portal-v2-runbooks-and-hold-windows.sql) is real schema, but backs
+ * a DIFFERENT page (Operate → Active Runbooks), not this task model. So every
+ * task's descriptive content — including the specific tenant-shaped numbers in
+ * its prose ("1,847 sites", "14 accounts had no MFA", "$18,400 a year") — is
+ * fixture for every tenant, live or not; there is no tenant for which this
+ * content is real. Building the real thing (a per-tenant finding catalogue with
+ * a CR-stage pipeline, hold windows and evidence tracking, keyed the way this
+ * page needs) is new backend architecture, not a display fix — see Git #1476's
+ * completion comment for the full investigation and scoping notes.
  */
 
 export type RtSeverity = "Critical" | "Attention" | "Low risk";
@@ -135,7 +158,11 @@ export const RT_PHASES: readonly RemediationPhase[] = [
   { k: "identity", n: "07", name: "Identity Hygiene", due: "18 November", status: "On Track" },
 ];
 
-/** prototype `T` 20691-20793. */
+/**
+ * prototype `T` 20691-20793.
+ * NO-BACKEND-TO-WIRE (Git #1476): this whole catalogue — every field below
+ * except `stepId` — is fixture with no live counterpart. See the module header.
+ */
 export const RT_TASKS: readonly RemediationTask[] = [
   { id: "d1", ph: "discovery", pl: "governance", t: "Baseline read of all 1,847 sites and 96 teams", pr: "212 sites are shared org-wide and no inventory existed.", fx: "Read-only Graph enumeration of every site, team and sharing link, filed as the scan-1 baseline.",
     sv: "Low risk", ef: "4h", fee: 0, bill: "Retainer", cr: false, crs: 7, evst: "approved", ev: ["Graph response set, 1,847 sites", "Scan 1 verdict, 3 August 06:00"], hold: null, dep: [],
@@ -351,7 +378,23 @@ export interface RtMessageCenterPost {
   readonly task: string;
 }
 
-/** prototype `MC` (21131-21134). Message Center posts with tenant impact. */
+/**
+ * prototype `MC` (21131-21134). Message Center posts with tenant impact.
+ *
+ * NO-BACKEND-TO-WIRE (Git #1476): a REAL Microsoft 365 Message Center feed
+ * exists and is already wired elsewhere — `GET /api/portal/message-center`
+ * (`useMessageCenter.ts`, powering `/portal-v2/ms-changes`) serves the tenant's
+ * actual Graph `/admin/serviceAnnouncement/messages` posts. What has no backend
+ * is the CORRELATION this widget depends on: which real MC post maps to which
+ * remediation task (`task`), and the tailored "your tenant's impact" prose
+ * (`impact`) that references specific finding numbers. Nothing in this
+ * platform associates a real MC post id with a specific remediation task id —
+ * these three posts and their task mappings are hand-written fixture pairs
+ * matched to the fixture RT_TASKS catalogue above, not derived from anything
+ * live. Wiring the raw feed in without the correlation would produce a
+ * disconnected list; building the correlation is new backend work — see Git
+ * #1476's completion comment.
+ */
 export const RT_MESSAGE_CENTER: readonly RtMessageCenterPost[] = [
   { id: "MC1098234", title: "Anonymous sharing links will default to a 30-day expiry", when: "Rolling out from 14 September", impact: "Your 2,940 non-expiring links keep working until an owner edits them, then inherit the new default with no warning.", need: "Remediation required", task: "s5" },
   { id: "MC1102771", title: "Teams private channel retention behaviour changes", when: "Rolling out from 2 October", impact: "12 private channels sit outside retention scope today. After the change their backing sites are treated separately for eDiscovery.", need: "Remediation required", task: "i7" },

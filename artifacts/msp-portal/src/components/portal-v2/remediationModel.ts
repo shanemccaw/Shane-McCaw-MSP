@@ -79,6 +79,16 @@ export type RtHoldStateKey = "running" | "closing" | "extended" | "released";
  * The session-only overrides layered over the real baseline. Every field
  * defaults to empty; an entry present for a task id wins over the real fact (for
  * done/verified/accepted) or the design seed (for cr/hold/evidence/exec).
+ *
+ * NO-BACKEND-TO-WIRE (Git #1476): `cr`/`hold`/`ev`/`exec`/`rescan` exist because
+ * advancing a task's CR stage, releasing/closing its hold window, filing
+ * evidence or running its playbook have nowhere real to persist to — no table
+ * models a per-task CR-stage pipeline, hold window or evidence set for THIS
+ * catalogue (see remediationData.ts's header). A click on any of these actions
+ * only ever updates this in-memory map; it is gone on reload and was never
+ * written to the server. `ticked`/`verified`/`skipped` are different: those are
+ * genuinely wired (remediationLive.ts → `PUT /api/portal/remediation-tracker`)
+ * and this map is only their optimistic-paint layer, not their source of truth.
  */
 export interface RtOverrides {
   readonly ticked: Readonly<Record<string, boolean>>;
