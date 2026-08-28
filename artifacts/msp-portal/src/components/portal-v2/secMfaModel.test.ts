@@ -10,7 +10,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
 import { MFA_CONTROLS } from "./secMfaData";
-import { mfaControlRows, mfaGapUserRowsLive, mfaPartialUserRows, mfaPartialUserRowsLive, mfaStatePill, mfaWizardStepFlags } from "./secMfaModel";
+import { isAdminGapUser, mfaControlRows, mfaGapUserRowsLive, mfaPartialUserRows, mfaPartialUserRowsLive, mfaStatePill, mfaUnregisteredCount, mfaWizardStepFlags } from "./secMfaModel";
 import type { LiveMfaUser } from "./useMfaRegistrationLive";
 
 describe("mfaControlRows", () => {
@@ -56,6 +56,28 @@ describe("mfaPartialUserRowsLive", () => {
       { name: "L. Mercer", registered: true, badgeLabel: "Registered", badgeColor: "#34d399" },
       { name: "B. Ferris", registered: false, badgeLabel: "Not registered", badgeColor: "#f87171" },
     ]);
+  });
+});
+
+describe("isAdminGapUser", () => {
+  it("matches the trailing (admin) suffix both MFA_GAP_USERS and mfaGapUserRowsLive bake in", () => {
+    assert.equal(isAdminGapUser("D. Cho (admin)"), true);
+    assert.equal(isAdminGapUser("R. Delgado"), false);
+  });
+});
+
+describe("mfaUnregisteredCount", () => {
+  it("counts only the not-registered rows, live or fixture", () => {
+    // MFA_PARTIAL_USERS has 3 unregistered (B. Ferris, C. Obi, D. Cho) of 5 —
+    // the hardcoded "2 of 5" copy this replaces (Git #1431) didn't even match
+    // its own fixture, let alone a real tenant's live count.
+    const rows = mfaPartialUserRows();
+    assert.equal(mfaUnregisteredCount(rows), 3);
+    assert.equal(mfaUnregisteredCount([]), 0);
+    assert.equal(
+      mfaUnregisteredCount(mfaPartialUserRowsLive([{ name: "A", isAdmin: false, isMfaRegistered: false }])),
+      1,
+    );
   });
 });
 

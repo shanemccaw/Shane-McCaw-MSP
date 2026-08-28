@@ -66,6 +66,26 @@ export function mfaGapUserRowsLive(users: readonly LiveMfaUser[]): string[] {
 }
 
 /**
+ * True if a "gaps" state row string is an admin account. Both `MFA_GAP_USERS`
+ * and `mfaGapUserRowsLive` bake `isAdmin` into the display name as a trailing
+ * "(admin)" — by the time a gap user is a plain string, this suffix is the
+ * only place that flag survives, so the hero banner's admin count (Git #1431)
+ * filters on it directly instead of a separate structured field.
+ */
+export function isAdminGapUser(name: string): boolean {
+  return name.endsWith("(admin)");
+}
+
+/**
+ * How many of the "partial" state's enrollment roster still haven't
+ * registered a method — drives both the headline ("N of M users...") and the
+ * reminder button's count (Git #1431), instead of the fixture's literal "2".
+ */
+export function mfaUnregisteredCount(partialUsers: readonly MfaPartialUserRow[]): number {
+  return partialUsers.filter((u) => !u.registered).length;
+}
+
+/**
  * The "partial" state's enrollment roster, from the same real item rows —
  * `isMfaRegistered` stands in for the fixture's `registered` flag.
  */

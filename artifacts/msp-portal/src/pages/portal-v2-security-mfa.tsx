@@ -29,7 +29,7 @@ import {
   MFA_WIZARD_STEPS,
   type MfaState,
 } from "@/components/portal-v2/secMfaData";
-import { mfaControlRows, mfaGapUserRowsLive, mfaPartialUserRows, mfaPartialUserRowsLive, mfaStatePill, mfaWizardStepFlags } from "@/components/portal-v2/secMfaModel";
+import { isAdminGapUser, mfaControlRows, mfaGapUserRowsLive, mfaPartialUserRows, mfaPartialUserRowsLive, mfaStatePill, mfaUnregisteredCount, mfaWizardStepFlags } from "@/components/portal-v2/secMfaModel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { useMfaRegistrationLive } from "@/components/portal-v2/useMfaRegistrationLive";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
@@ -133,6 +133,13 @@ export default function PortalV2SecurityMfaPage() {
   const rowsAreLive = mfaLive.loaded && mfaLive.users !== null;
   const gapUsers = rowsAreLive ? mfaGapUserRowsLive(mfaLive.users!) : MFA_GAP_USERS;
   const partialUsers = rowsAreLive ? mfaPartialUserRowsLive(mfaLive.users!) : mfaPartialUserRows();
+
+  // Hero/banner counts (Git #1431) — derived from the same gapUsers/partialUsers
+  // the row lists already render, live or fixture, instead of the literal
+  // "8"/"2"/"5" strings the prototype's copy hardcoded. A real tenant with a
+  // different gap/partial count now gets a headline that matches its rows.
+  const gapAdminCount = gapUsers.filter(isAdminGapUser).length;
+  const partialUnregisteredCount = mfaUnregisteredCount(partialUsers);
 
   return (
     <PortalV2Shell eyebrow="Security" title="Multi-factor authentication">
@@ -298,7 +305,7 @@ export default function PortalV2SecurityMfaPage() {
                 MFA is configured correctly — now let's get everyone enrolled.
               </span>
               <span style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.5 }}>
-                We verified the policy itself is set up right. 2 of 5 users still haven't registered a method.
+                We verified the policy itself is set up right. {partialUnregisteredCount} of {partialUsers.length} users still haven't registered a method.
               </span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid rgba(30,41,59,.9)", borderRadius: 14, background: "rgba(15,23,42,.35)", overflow: "hidden" }}>
@@ -308,7 +315,7 @@ export default function PortalV2SecurityMfaPage() {
                   <span style={{ fontSize: "11.5px", color: "#34d399", fontWeight: 600 }}>Reminder sent</span>
                 ) : (
                   <button onClick={() => setReminderSent(true)} style={{ ...PRIMARY_BLUE, padding: "6px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700 }}>
-                    Send enrollment reminder to 2 users
+                    Send enrollment reminder to {partialUnregisteredCount} users
                   </button>
                 )}
               </div>
@@ -346,17 +353,17 @@ export default function PortalV2SecurityMfaPage() {
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <span style={statePillStyle(mfaStatePill("gaps").color)}>{mfaStatePill("gaps").label}</span>
               <span style={{ fontSize: "20px", fontWeight: 800, color: "#f8fafc", lineHeight: 1.3 }} data-testid="pv2-mfa-heading">
-                MFA is enforced tenant-wide — 8 accounts still don't have it.
+                MFA is enforced tenant-wide — {gapUsers.length} accounts still don't have it.
               </span>
               <span style={{ fontSize: "13px", color: "#94a3b8", lineHeight: 1.5 }}>
-                These accounts were likely created or reactivated after enforcement went live. 2 are admin accounts —
+                These accounts were likely created or reactivated after enforcement went live. {gapAdminCount} are admin accounts —
                 treat those as the priority.
               </span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 0, border: "1px solid rgba(30,41,59,.9)", borderRadius: 14, background: "rgba(15,23,42,.35)", overflow: "hidden" }} data-testid="pv2-mfa-gap-users">
               <div style={{ padding: "14px 20px", borderBottom: "1px solid rgba(30,41,59,.9)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                <span style={SECTION_HEADER_LABEL}>8 accounts without MFA</span>
-                <button style={{ ...PRIMARY_BLUE, padding: "6px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700 }}>Enable MFA for all 8</button>
+                <span style={SECTION_HEADER_LABEL}>{gapUsers.length} accounts without MFA</span>
+                <button style={{ ...PRIMARY_BLUE, padding: "6px 12px", borderRadius: 6, fontSize: "11px", fontWeight: 700 }}>Enable MFA for all {gapUsers.length}</button>
               </div>
               {gapUsers.map((u) => (
                 <div key={u} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderTop: "1px solid rgba(30,41,59,.8)" }}>
