@@ -122,6 +122,31 @@ namespace BuildConsole.Services
         /// <summary>Chats marked as In Progress for quick access during Focus Mode.</summary>
         public IReadOnlyList<PersistedInProgressChat> InProgressChats => _state.InProgressChats ?? (IReadOnlyList<PersistedInProgressChat>)Array.Empty<PersistedInProgressChat>();
 
+        /// <summary>Git #1480 — <see cref="InProgressChats"/> filtered to the given account
+        /// (resolved against the last board snapshot's real bt_chats.account, from
+        /// <see cref="UpdateChatSnapshot"/>). Fail-open like this project's other closed-state
+        /// filters (#839/#1450): an entry whose chat isn't in the snapshot yet — freshly marked
+        /// before the next Chats poll, or the account column doesn't exist locally — stays
+        /// visible rather than being hidden on a guess.</summary>
+        public IReadOnlyList<PersistedInProgressChat> InProgressChatsForAccount(string account)
+        {
+            var list = InProgressChats;
+            if (list.Count == 0 || _chats.Count == 0) return list;
+            var accountByConvId = _chats
+                .Where(c => !string.IsNullOrWhiteSpace(c.ConversationId))
+                .GroupBy(c => c.ConversationId, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Account, StringComparer.OrdinalIgnoreCase);
+            return list
+                .Where(pc => !accountByConvId.TryGetValue(pc.ConversationId, out var acc)
+                             || string.Equals(acc, account, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        /// <summary>Git #1480 — forces FocusModeBar to re-render its In Progress strip when the
+        /// title-bar account toggle flips, even though the underlying marked-chat list itself
+        /// hasn't changed (just which slice of it should now be visible).</summary>
+        public void NotifyAccountToggleChanged() => InProgressChatsChanged?.Invoke();
+
         // ---- events (UI reacts on the same UI thread) ------------------
         /// <summary>Active milestone / points / progress / achievements changed — refresh the bar.</summary>
         public event Action? StateChanged;

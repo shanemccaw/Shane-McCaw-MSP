@@ -193,6 +193,17 @@ namespace BuildConsole.Services
         /// every build. The per-build Account selector (#1416) always wins when it's explicitly set.</summary>
         public string DefaultAccount { get; set; } = "primary";
 
+        /// <summary>Git #1480 — the title-bar toggle's current value, normalized to a concrete
+        /// "primary"/"secondary" label (never null/blank). Used to stamp bt_chats.account on
+        /// newly-created chats and to scope the Chats panel / In Progress list. Unlike
+        /// <see cref="DefaultAccount"/>'s raw stored string (and unlike bt_build_queue.account,
+        /// which uses NULL to mean primary), bt_chats.account is NOT NULL — every caller needs
+        /// a real literal value, not null-means-primary.</summary>
+        public static string CurrentAccountLabel() =>
+            string.Equals(Load().DefaultAccount, "secondary", StringComparison.OrdinalIgnoreCase)
+                ? "secondary"
+                : "primary";
+
         // ── Git #937 (Epic #803) — always-on-top Sticky Notes floaty ──────────
         // Shane: "a floaty sticky notes... take notes for... Then I should be
         // able to send what I note down into a Claude chat that I'm typing into

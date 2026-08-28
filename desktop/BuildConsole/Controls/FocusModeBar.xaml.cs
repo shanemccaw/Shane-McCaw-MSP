@@ -118,7 +118,8 @@ namespace BuildConsole.Controls
         private void RefreshInProgressChats()
         {
             var svc = FocusModeService.Instance;
-            var list = svc.InProgressChats;
+            // Git #1480 — scoped to the title-bar Primary/Secondary toggle's current value.
+            var list = svc.InProgressChatsForAccount(BuildConsoleSettings.CurrentAccountLabel());
             if (list == null || list.Count == 0)
             {
                 InProgressStrip.Visibility = Visibility.Collapsed;

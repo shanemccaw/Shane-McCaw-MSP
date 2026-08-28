@@ -1094,46 +1094,62 @@ namespace BuildConsole.Services
                 SELECT c.id, c.conversation_id, c.title, c.epic_id, c.updated_at,
                        i.github_number AS issue_github_number,
                        e.github_number AS epic_github_number,
-                       c.archived, c.archived_at
+                       c.archived, c.archived_at, c.account
                 FROM bt_chats c
                 LEFT JOIN bt_issues i ON c.issue_id = i.id
                 LEFT JOIN bt_epics e ON c.epic_id = e.id
                 ORDER BY c.updated_at DESC";
-            
+
             var chatsTemp = new List<BoardChat>();
             var chatIdToChat = new Dictionary<int, BoardChat>();
 
-            await using var cmdChats = new NpgsqlCommand(sqlChats, conn);
-            await using (var reader = await cmdChats.ExecuteReaderAsync())
+            // Git #1480 — bt_chats.account doesn't exist until Shane runs the migration
+            // (lib/db/migrations/manual/2026-08-28-bt-chats-account-1480.sql). Fail honest: the
+            // Chats panel must show an explicit "database not ready" state rather than silently
+            // dropping back to the pre-#1480 query and letting a filtered-looking UI imply
+            // account scoping that isn't real (same rule as #1472). Only this block is guarded —
+            // epics already loaded fine above.
+            try
             {
-                while (await reader.ReadAsync())
+                await using var cmdChats = new NpgsqlCommand(sqlChats, conn);
+                await using (var reader = await cmdChats.ExecuteReaderAsync())
                 {
-                    var id = reader.GetInt32(0);
-                    var convId = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                    var chat = new BoardChat
+                    while (await reader.ReadAsync())
                     {
-                        ConversationId = convId,
-                        Title = reader.IsDBNull(2) ? "" : reader.GetString(2),
-                        EpicId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
-                        UpdatedAt = reader.IsDBNull(4) ? null : (DateTime?)reader.GetDateTime(4),
-                        ClaudeUrl = $"https://claude.ai/chat/{convId}",
-                        Archived = !reader.IsDBNull(7) && reader.GetBoolean(7),
-                        ArchivedAt = reader.IsDBNull(8) ? null : (DateTime?)reader.GetDateTime(8),
-                    };
+                        var id = reader.GetInt32(0);
+                        var convId = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                        var chat = new BoardChat
+                        {
+                            ConversationId = convId,
+                            Title = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                            EpicId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                            UpdatedAt = reader.IsDBNull(4) ? null : (DateTime?)reader.GetDateTime(4),
+                            ClaudeUrl = $"https://claude.ai/chat/{convId}",
+                            Archived = !reader.IsDBNull(7) && reader.GetBoolean(7),
+                            ArchivedAt = reader.IsDBNull(8) ? null : (DateTime?)reader.GetDateTime(8),
+                            Account = reader.IsDBNull(9) ? "primary" : reader.GetString(9),
+                        };
 
-                    int? issueGithubNum = reader.IsDBNull(5) ? null : reader.GetInt32(5);
-                    int? epicGithubNum = reader.IsDBNull(6) ? null : reader.GetInt32(6);
+                        int? issueGithubNum = reader.IsDBNull(5) ? null : reader.GetInt32(5);
+                        int? epicGithubNum = reader.IsDBNull(6) ? null : reader.GetInt32(6);
 
-                    chat.IssueGithubNumber = issueGithubNum;
+                        chat.IssueGithubNumber = issueGithubNum;
 
-                    if (issueGithubNum.HasValue)
-                        chat.AssociatedIssueNumbers.Add(issueGithubNum.Value);
-                    if (epicGithubNum.HasValue)
-                        chat.AssociatedIssueNumbers.Add(epicGithubNum.Value);
+                        if (issueGithubNum.HasValue)
+                            chat.AssociatedIssueNumbers.Add(issueGithubNum.Value);
+                        if (epicGithubNum.HasValue)
+                            chat.AssociatedIssueNumbers.Add(epicGithubNum.Value);
 
-                    chatsTemp.Add(chat);
-                    chatIdToChat[id] = chat;
+                        chatsTemp.Add(chat);
+                        chatIdToChat[id] = chat;
+                    }
                 }
+            }
+            catch (PostgresException pex) when (pex.SqlState == PostgresErrorCodes.UndefinedColumn)
+            {
+                board.AccountColumnMissing = true;
+                board.Chats = new List<BoardChat>();
+                return board;
             }
 
             // 3. Fetch associated issue numbers from bt_chat_issues
@@ -1241,13 +1257,37 @@ namespace BuildConsole.Services
             // Step 2: If it doesn't exist, insert it and get the new ID
             if (chatId == null)
             {
+                // Git #1480 — stamp the title-bar toggle's CURRENT value on a genuinely new chat
+                // row only; re-linking an existing chat (chatId already found above) never
+                // touches its account. Falls back to "primary" if bt_chats.account doesn't exist
+                // yet (pre-#1480 migration) — see the catch below.
                 const string insertChatSql = @"
-                    INSERT INTO bt_chats (conversation_id, title)
-                    VALUES (@convId, @title)
+                    INSERT INTO bt_chats (conversation_id, title, account)
+                    VALUES (@convId, @title, @account)
                     RETURNING id";
-                
-                await using (var cmd = new NpgsqlCommand(insertChatSql, conn))
+
+                try
                 {
+                    await using var cmd = new NpgsqlCommand(insertChatSql, conn);
+                    cmd.Parameters.AddWithValue("@convId", conversationId);
+                    cmd.Parameters.AddWithValue("@title", title?.Trim() ?? $"[#{issueNumber}] Chat");
+                    cmd.Parameters.AddWithValue("@account", BuildConsoleSettings.CurrentAccountLabel());
+                    var val = await cmd.ExecuteScalarAsync();
+                    if (val != null && val != DBNull.Value)
+                    {
+                        chatId = Convert.ToInt32(val);
+                    }
+                }
+                catch (PostgresException pex) when (pex.SqlState == PostgresErrorCodes.UndefinedColumn)
+                {
+                    // bt_chats.account doesn't exist yet — insert without it (schema default,
+                    // once the migration runs, is 'primary' anyway) rather than failing the
+                    // whole chat-link action over a column this specific write doesn't strictly need.
+                    const string insertChatSqlLegacy = @"
+                        INSERT INTO bt_chats (conversation_id, title)
+                        VALUES (@convId, @title)
+                        RETURNING id";
+                    await using var cmd = new NpgsqlCommand(insertChatSqlLegacy, conn);
                     cmd.Parameters.AddWithValue("@convId", conversationId);
                     cmd.Parameters.AddWithValue("@title", title?.Trim() ?? $"[#{issueNumber}] Chat");
                     var val = await cmd.ExecuteScalarAsync();

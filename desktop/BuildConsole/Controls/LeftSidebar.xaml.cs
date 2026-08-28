@@ -2228,6 +2228,19 @@ namespace BuildConsole.Controls
                 return;
             }
 
+            // Git #1480 — bt_chats.account doesn't exist yet (migration not run). Show an
+            // explicit "database not ready" state rather than rendering a Chats panel that
+            // LOOKS scoped to the current account but isn't really — same honest-failure
+            // pattern as #1472. Only the direct-Postgres path (_db) detects this; see
+            // BuildQueuePostgresClient.GetBoardAsync's PostgresException catch.
+            if (board.AccountColumnMissing)
+            {
+                ActivityLog.Log("git-board.chats",
+                    "Chats panel blocked: bt_chats.account column missing — run lib/db/migrations/manual/2026-08-28-bt-chats-account-1480.sql (Git #1480)");
+                ShowChatsMessage("Chats panel database not ready — the `account` column hasn't been added to bt_chats yet. Ask Shane to run lib/db/migrations/manual/2026-08-28-bt-chats-account-1480.sql.");
+                return;
+            }
+
             // Git #851 — cached even when the signature is unchanged below
             // (that check only guards the TREE rebuild) so BuildQueuePanel's
             // "open the chat for this issue" click always has the latest
@@ -2418,9 +2431,24 @@ namespace BuildConsole.Controls
             // number whose closed state isn't confirmed yet, is never hidden by this filter.
             int hiddenClosedChats1450 = 0;
 
+            // Git #1480 — the title-bar Primary/Secondary toggle scopes the Chats panel to
+            // whichever account is currently selected. Composes with every filter above/below
+            // (focus mode, archived, #1450 closed-issue) rather than replacing any of them.
+            string currentAccount = BuildConsole.Services.BuildConsoleSettings.CurrentAccountLabel();
+            string otherAccount = string.Equals(currentAccount, "secondary", StringComparison.OrdinalIgnoreCase) ? "primary" : "secondary";
+
+            // Cross-account badge (#1480, requirement 5) — computed from the FULL unfiltered
+            // (minus archived) board, not the account-scoped list below, so Shane sees the other
+            // account's real in-progress count regardless of focus-mode/closed-issue filtering.
+            int otherAccountInProgress = _lastBoardChats
+                .Where(c => !c.Archived)
+                .Where(c => string.Equals(c.Account, otherAccount, StringComparison.OrdinalIgnoreCase))
+                .Count(c => BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(c.ConversationId));
+
             // Focus Mode — hard-hide chats that don't belong to the active milestone
             // (resolved via the chat's issue / epic issue number). Off-focus = all chats.
             var focusChats = _lastBoardChats
+                .Where(c => string.Equals(c.Account, currentAccount, StringComparison.OrdinalIgnoreCase))
                 .Where(c => BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
                 .Where(c => showArchivedOnly ? c.Archived : !c.Archived)
                 .Where(c =>
@@ -2518,9 +2546,11 @@ namespace BuildConsole.Controls
                 totalWaiting += s.waiting;
             }
 
-            // Top summary strip — the at-a-glance "what am I working on" answer.
-            if (shown > 0)
-                ChatsHost.Children.Add(BuildChatsSummaryStrip(shown, visibleGroups.Count, totalInProgress, totalWaiting));
+            // Top summary strip — the at-a-glance "what am I working on" answer. Shown whenever
+            // there's something to say: real chats under the current account, OR (#1480) the
+            // other account has in-progress work parked even if the current one is empty.
+            if (shown > 0 || otherAccountInProgress > 0)
+                ChatsHost.Children.Add(BuildChatsSummaryStrip(shown, visibleGroups.Count, totalInProgress, totalWaiting, otherAccountInProgress, otherAccount));
 
             // One collapsible card section per epic group (colour-coded, same stable-hash
             // convention #984's areas use so an epic keeps its colour session to session).
@@ -2638,13 +2668,23 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>Top-of-panel at-a-glance strip: total chats, in-progress, waiting-on-you.</summary>
-        private Border BuildChatsSummaryStrip(int chatCount, int groupCount, int inProgress, int waiting)
+        /// <summary>Top-of-panel at-a-glance strip: total chats, in-progress, waiting-on-you,
+        /// plus (#1480) a count-only badge for the OTHER account's in-progress chats — never
+        /// listed here, just a number, so Shane can see there's work parked over there without
+        /// this panel actually showing it. Clicking it does nothing in v1 (per #1480 spec).</summary>
+        private Border BuildChatsSummaryStrip(int chatCount, int groupCount, int inProgress, int waiting, int otherAccountInProgress = 0, string? otherAccountLabel = null)
         {
             var sp = new WrapPanel { Orientation = Orientation.Horizontal };
             void AddStat(string text, string bk, string tip) => sp.Children.Add(new TextBlock { Text = text, FontSize = 11, Foreground = GetBrush(bk), Margin = new Thickness(0, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = tip });
             AddStat($"{chatCount} chats", "Subtext1Brush", $"{chatCount} chat(s) across {groupCount} group(s)");
             if (inProgress > 0) AddStat($"⚡ {inProgress} in progress", "YellowBrush", $"{inProgress} chat(s) marked In Progress");
             if (waiting > 0) AddStat($"⏳ {waiting} waiting on you", "PeachBrush", $"{waiting} item(s) need your attention");
+            if (otherAccountInProgress > 0 && !string.IsNullOrEmpty(otherAccountLabel))
+            {
+                string otherLabelTitleCase = char.ToUpperInvariant(otherAccountLabel[0]) + otherAccountLabel.Substring(1);
+                AddStat($"{otherAccountInProgress} in progress on {otherLabelTitleCase}", "Subtext0Brush",
+                    $"{otherAccountInProgress} chat(s) marked In Progress on the {otherLabelTitleCase} account — switch the title-bar toggle to see them");
+            }
             return new Border
             {
                 Background = GetBrush("MantleBrush"),
@@ -3312,6 +3352,12 @@ namespace BuildConsole.Controls
         /// <summary>Git: Chats panel Archive — "Show Archived" toggle above the tree; re-renders from the already-cached board, no re-fetch.</summary>
         private void ChatShowArchived_Changed(object sender, RoutedEventArgs e) => RenderChatsTree();
 
+        /// <summary>Git #1480 — MainWindow calls this when the title-bar Primary/Secondary
+        /// account toggle flips, so the Chats panel re-scopes immediately from the already-
+        /// cached board (no re-fetch needed — same re-render-only pattern as the search box
+        /// and the Show Archived toggle above).</summary>
+        public void RefreshForAccountToggle() => RenderChatsTree();
+
         // Git #932 — the Chats tree's CharacterEllipsis trimming (from #885)
         // never engaged visually: a TreeViewItem with HorizontalContentAlignment
         // = Stretch still measures its header content with effectively unbounded
@@ -3858,7 +3904,11 @@ namespace BuildConsole.Controls
                                         ConversationId = conversationId,
                                         Title = $"[Milestone #{m.GithubNumber.Value}] {m.Title}",
                                         ClaudeUrl = chatUrl,
-                                        AssociatedIssueNumbers = new List<int> { m.GithubNumber.Value }
+                                        AssociatedIssueNumbers = new List<int> { m.GithubNumber.Value },
+                                        // Git #1480 — optimistic add, immediately superseded by the real
+                                        // fetch below (PopulateChatsTree); stamped so it doesn't flash out
+                                        // of view for that one frame if the current toggle is Secondary.
+                                        Account = BuildConsole.Services.BuildConsoleSettings.CurrentAccountLabel(),
                                     });
                                 }
                                 PopulateChatsTree();
@@ -4675,7 +4725,9 @@ namespace BuildConsole.Controls
                                 ConversationId = conversationId,
                                 Title = $"[#{issue.IssueNumber}] {issue.RawTitle}",
                                 ClaudeUrl = chatUrl,
-                                AssociatedIssueNumbers = new List<int> { issue.IssueNumber }
+                                AssociatedIssueNumbers = new List<int> { issue.IssueNumber },
+                                // Git #1480 — see the milestone-assign optimistic add above.
+                                Account = BuildConsole.Services.BuildConsoleSettings.CurrentAccountLabel(),
                             });
                         }
 
