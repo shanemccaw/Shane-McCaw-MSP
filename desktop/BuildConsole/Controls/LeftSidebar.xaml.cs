@@ -2326,6 +2326,47 @@ namespace BuildConsole.Controls
         /// collapsed by default; while searching, epics with a match auto-expand and
         /// non-matching epics/leaves drop out (an epic whose own title matches shows
         /// all of its chats).</summary>
+        /// <summary>Git #1450: the real-GitHub-closed signal shared by the closed-epic
+        /// filter (#839), the closed-chat filter, and the closed-build-badge filter
+        /// below — the board's own OPEN-only issue numbers from the last successful
+        /// fetch (<see cref="_lastBoardIssues"/>), or null when no live board data has
+        /// loaded yet. Fail-open: every caller must hide nothing when this is null.</summary>
+        private HashSet<int>? ComputeOpenGithubNumbersOrNull() =>
+            _lastBoardIssues.Count > 0
+                ? new HashSet<int>(_lastBoardIssues.Where(i => !i.IsClosed).Select(i => i.Number))
+                : null;
+
+        /// <summary>Git #1450: true only when the board has loaded (<paramref
+        /// name="openGithubNumbers"/> non-null), the issue number is actually known to
+        /// the board, AND it isn't in the open set — i.e. CONFIRMED closed on real
+        /// GitHub state. A number the board has never seen fails open (returns false)
+        /// rather than being assumed closed.</summary>
+        private bool IsIssueConfirmedClosed(int issueNumber, HashSet<int>? openGithubNumbers) =>
+            openGithubNumbers != null
+            && _lastBoardIssues.Any(i => i.Number == issueNumber)
+            && !openGithubNumbers.Contains(issueNumber);
+
+        /// <summary>Git #1450 — extends the closed-epic filter (#839) down to the
+        /// individual chat: true only when EVERY GitHub issue number linked to this
+        /// chat (its own <see cref="BoardChat.AssociatedIssueNumbers"/>, plus any
+        /// linked build's own issue number) is <see cref="IsIssueConfirmedClosed"/>. A
+        /// chat with no linked issue numbers at all is never considered closed by this
+        /// filter.</summary>
+        private bool AreAllLinkedIssuesClosed(BoardChat chat, IReadOnlyList<QueueItem> queueItems, HashSet<int>? openGithubNumbers)
+        {
+            var linkedNumbers = chat.AssociatedIssueNumbers
+                .Concat(queueItems
+                    .Where(qi => (qi.OriginatingChatId != null && string.Equals(qi.OriginatingChatId, chat.ConversationId, StringComparison.OrdinalIgnoreCase))
+                              || (qi.GithubNumber.HasValue && chat.AssociatedIssueNumbers.Contains(qi.GithubNumber.Value)))
+                    .Where(qi => qi.GithubNumber.HasValue)
+                    .Select(qi => qi.GithubNumber!.Value))
+                .Distinct()
+                .ToList();
+
+            if (linkedNumbers.Count == 0) return false;
+            return linkedNumbers.All(n => IsIssueConfirmedClosed(n, openGithubNumbers));
+        }
+
         private void RenderChatsTree()
         {
             if (ChatsHost == null) return;
@@ -2362,12 +2403,37 @@ namespace BuildConsole.Controls
             // (default): archived chats drop out entirely, same as today.
             // On: ONLY archived chats show, so Shane can find and unarchive one.
             bool showArchivedOnly = ChatShowArchived?.IsChecked == true;
+
+            // Closed-issue/build filtering (Git #1450) and closed-epic filtering below both
+            // need the SAME live open-issue signal, so it's computed once, up front, and
+            // reused by both. Fail-open per #839: null means the board hasn't loaded yet,
+            // and every consumer below must hide nothing when it's null.
+            var openGithubNumbers = ComputeOpenGithubNumbersOrNull();
+            var queueItemsForClosure = GetQueueItems?.Invoke() ?? Array.Empty<QueueItem>();
+
+            // Git #1450 — extends the closed-epic pattern down to the individual chat: a
+            // chat drops out of the Chats panel entirely once EVERY GitHub issue number
+            // linked to it (directly, or via one of its linked builds) is CONFIRMED closed
+            // on the real board. A chat with no linked issue numbers, or with at least one
+            // number whose closed state isn't confirmed yet, is never hidden by this filter.
+            int hiddenClosedChats1450 = 0;
+
             // Focus Mode — hard-hide chats that don't belong to the active milestone
             // (resolved via the chat's issue / epic issue number). Off-focus = all chats.
             var focusChats = _lastBoardChats
                 .Where(c => BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
                 .Where(c => showArchivedOnly ? c.Archived : !c.Archived)
+                .Where(c =>
+                {
+                    bool closed = AreAllLinkedIssuesClosed(c, queueItemsForClosure, openGithubNumbers);
+                    if (closed) hiddenClosedChats1450++;
+                    return !closed;
+                })
                 .ToList();
+            if (hiddenClosedChats1450 > 0)
+                ActivityLog.Log("git-board.chats",
+                    $"closed-issue filter hid {hiddenClosedChats1450} chat(s) whose linked GitHub issue(s) are all confirmed closed (#1450, extends #839 convention)");
+
             var chatsWithEpic = focusChats.Select(c => new { Chat = c, Epic = GetEpicForChat(c) }).ToList();
             var byEpic = chatsWithEpic.Where(x => x.Epic != null).GroupBy(x => x.Epic!.Id, x => x.Chat);
             var unlinked = chatsWithEpic.Where(x => x.Epic == null).Select(x => x.Chat).ToList();
@@ -2399,10 +2465,6 @@ namespace BuildConsole.Controls
             // PAT is set, the fetch succeeded). With no live data we know nothing
             // and hide nothing, so a chat is never wrongly removed for lack of
             // knowledge; the next poll (once the board loads) removes it then.
-            var openGithubNumbers = _lastBoardIssues.Count > 0
-                ? new HashSet<int>(_lastBoardIssues.Where(i => !i.IsClosed).Select(i => i.Number))
-                : null;
-
             bool IsEpicClosed(int epicId)
             {
                 if (!epicById.TryGetValue(epicId, out var ep)) return true;               // (A)
@@ -2465,7 +2527,7 @@ namespace BuildConsole.Controls
             foreach (var (title, githubNumber, chats) in visibleGroups)
             {
                 string brushKey = AreaBrushKey(title);
-                ChatsHost.Children.Add(BuildEpicSection(title, githubNumber, chats, brushKey, forceExpanded: searching));
+                ChatsHost.Children.Add(BuildEpicSection(title, githubNumber, chats, brushKey, forceExpanded: searching, openGithubNumbers));
             }
 
             bool empty = shown == 0;
@@ -2494,7 +2556,7 @@ namespace BuildConsole.Controls
         /// a collapsible body of per-chat cards. Collapsed by default; a search force-expands
         /// matching sections; expansion state is remembered in <see cref="_expandedEpicKeys"/>.
         /// </summary>
-        private FrameworkElement BuildEpicSection(string title, int? githubNumber, List<BoardChat> chats, string brushKey, bool forceExpanded)
+        private FrameworkElement BuildEpicSection(string title, int? githubNumber, List<BoardChat> chats, string brushKey, bool forceExpanded, HashSet<int>? openGithubNumbers)
         {
             var accent = GetBrush(brushKey);
             string epicKey = "epic:" + title;
@@ -2560,7 +2622,7 @@ namespace BuildConsole.Controls
             header.Child = hStack;
 
             var body = new StackPanel { Margin = new Thickness(2, 5, 0, 0), Visibility = expanded ? Visibility.Visible : Visibility.Collapsed };
-            foreach (var chat in chats) body.Children.Add(BuildChatCard(chat, brushKey));
+            foreach (var chat in chats) body.Children.Add(BuildChatCard(chat, brushKey, openGithubNumbers));
 
             header.MouseLeftButtonUp += (s, e) =>
             {
@@ -2661,7 +2723,7 @@ namespace BuildConsole.Controls
         /// registered for #932's MaxWidth trim. Retains #828's "Assign to Epic..."
         /// right-click, now sourcing its epic list from the cached <see cref="_chatEpicById"/>
         /// instead of the fetch's board.Epics (identical data, no second round-trip).</summary>
-        private Border BuildChatCard(BoardChat chat, string brushKey)
+        private Border BuildChatCard(BoardChat chat, string brushKey, HashSet<int>? openGithubNumbers)
         {
             bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(chat.ConversationId);
             var accent = GetBrush(brushKey);
@@ -2804,6 +2866,10 @@ namespace BuildConsole.Controls
             var chatBuilds = queueItems
                 .Where(item => (item.OriginatingChatId != null && string.Equals(item.OriginatingChatId, chat.ConversationId, StringComparison.OrdinalIgnoreCase))
                             || (item.GithubNumber.HasValue && chat.AssociatedIssueNumbers.Contains(item.GithubNumber.Value)))
+                // Git #1450: a build badge drops out once its own linked GitHub issue is
+                // CONFIRMED closed on the real board — same fail-open signal as the
+                // chat/epic-level filters (never hides on missing/stale board data).
+                .Where(item => !(item.GithubNumber.HasValue && IsIssueConfirmedClosed(item.GithubNumber.Value, openGithubNumbers)))
                 .OrderByDescending(item => item.Id)
                 .ToList();
 
@@ -2826,6 +2892,11 @@ namespace BuildConsole.Controls
                 switch (statusText)
                 {
                     case "DONE":
+                        // Git #1450: "DONE" read as fully finished when it really only means
+                        // "code landed, still needs Shane/chat to verify and close the GitHub
+                        // issue" — display text changes to VERIFY (same green styling) to read
+                        // as an open action item instead.
+                        statusText = "VERIFY";
                         statusFg = GetBrush("GreenBrush");
                         statusBg = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1AA6E3A1"));
                         break;
