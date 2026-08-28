@@ -7,10 +7,13 @@ namespace BuildConsole.Services
     /// Sonnet Medium so I can get 40 hours of build time out of it through the
     /// weekend. Is there a way to say if using secondary, never push a build that
     /// requires anything more than Sonnet Medium." Centralizes the real "exceeds
-    /// Sonnet Medium" test — any Opus model, or Sonnet run at High/xhigh effort —
-    /// so QueueWatcherService (the launch-time gate) and BuildQueuePanel (the
-    /// bulk-resume/held-item display) share exactly one definition instead of
-    /// two independently-drifting copies.
+    /// the secondary account's cap" test — any Opus model, or Sonnet run above
+    /// High effort — so QueueWatcherService (the launch-time gate) and
+    /// BuildQueuePanel (the bulk-resume/held-item display) share exactly one
+    /// definition instead of two independently-drifting copies.
+    ///
+    /// Raised from Sonnet Medium to Sonnet High per Shane's follow-up request —
+    /// only xhigh (and any Opus model) is now held; High effort launches normally.
     /// </summary>
     public static class AccountCapPolicy
     {
@@ -20,7 +23,7 @@ namespace BuildConsole.Services
         /// <summary>
         /// bt_build_queue.status value for an item that was claimed off the queue but
         /// deliberately never launched because it would have exceeded the secondary
-        /// account's Sonnet Medium cap. Distinct from "queued" (so GetNextAsync's
+        /// account's Sonnet High cap. Distinct from "queued" (so GetNextAsync's
         /// `WHERE status = 'queued'` naturally never reclaims it) and from "failed"
         /// (this isn't an error — it's parked on purpose, pending a manual bulk resume).
         /// </summary>
@@ -29,13 +32,12 @@ namespace BuildConsole.Services
         public static bool IsOpusModel(string? model) =>
             !string.IsNullOrWhiteSpace(model) && model.Contains("opus", StringComparison.OrdinalIgnoreCase);
 
-        public static bool IsHighOrAboveEffort(string? effort) =>
+        public static bool IsAboveHighEffort(string? effort) =>
             !string.IsNullOrWhiteSpace(effort) &&
-            (effort.Equals("high", StringComparison.OrdinalIgnoreCase) ||
-             effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase));
+            effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>True when this model/effort combination genuinely requires more than Sonnet Medium — an Opus model at any effort, or Sonnet (or anything else) run at High/xhigh effort.</summary>
-        public static bool ExceedsSonnetMedium(string? model, string? effort) =>
-            IsOpusModel(model) || IsHighOrAboveEffort(effort);
+        /// <summary>True when this model/effort combination genuinely requires more than Sonnet High — an Opus model at any effort, or anything run at xhigh effort.</summary>
+        public static bool ExceedsSonnetHigh(string? model, string? effort) =>
+            IsOpusModel(model) || IsAboveHighEffort(effort);
     }
 }

@@ -598,7 +598,7 @@ namespace BuildConsole.Services
         /// <summary>
         /// Parks a claimed-but-never-launched row as <see cref="AccountCapPolicy.HeldStatus"/> —
         /// used when a queued item requested the secondary account but its real
-        /// model/effort exceeds Sonnet Medium (AccountCapPolicy.ExceedsSonnetMedium).
+        /// model/effort exceeds Sonnet High (AccountCapPolicy.ExceedsSonnetHigh).
         /// The row stays visible in the Build Queue (BuildQueuePanel's "Active" filter
         /// includes "held") but WHERE status = 'queued' means GetNextAsync can never
         /// reclaim/relaunch it — only an explicit bulk resume (<see cref="ResumeHeldOverflowAsync"/>)

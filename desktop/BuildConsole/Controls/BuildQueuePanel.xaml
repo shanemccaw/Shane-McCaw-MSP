@@ -288,8 +288,8 @@
                             </Border>
 
                             <!-- Git #1418 — Sonnet+ Overflow bulk-resume banner. Builds queued
-                                 against the secondary account that exceed Sonnet Medium (any
-                                 Opus model, or Sonnet at High/xhigh effort) are held instead of
+                                 against the secondary account that exceed Sonnet High (any
+                                 Opus model, or anything at xhigh effort) are held instead of
                                  launched and reassigned to the real "Sonnet+ Overflow" GitHub
                                  milestone. Shane's own words: "when Sunday 9pm happens and my
                                  primary 20x account is refreshed, I can kick them off quick" —
@@ -303,7 +303,7 @@
                                     Padding="8,6"
                                     Margin="0,0,0,8"
                                     Visibility="Collapsed"
-                                    ToolTip="Held because the secondary account's build cap (Sonnet Medium) would have been exceeded">
+                                    ToolTip="Held because the secondary account's build cap (Sonnet High) would have been exceeded">
                                 <StackPanel>
                                     <TextBlock x:Name="SonnetOverflowText"
                                                Text="0 builds held on Sonnet+ Overflow"

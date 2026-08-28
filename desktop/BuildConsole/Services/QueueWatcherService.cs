@@ -338,7 +338,7 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// Git #1418 — parks a queue item that requested the secondary account but
-        /// whose model/effort exceeds Sonnet Medium: marks the DB row "held" (never
+        /// whose model/effort exceeds Sonnet High: marks the DB row "held" (never
         /// re-claimed by GetNextAsync's WHERE status='queued'; still visible in the
         /// Build Queue panel) and, when the build is linked to a real GitHub issue,
         /// reassigns that issue onto the real "Sonnet+ Overflow" milestone (lazily
@@ -349,7 +349,7 @@ namespace BuildConsole.Services
         /// </summary>
         private async Task HoldForSonnetOverflowAsync(QueueItem item)
         {
-            ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) requests the secondary account but its model/effort ({item.Model ?? "default"}/{item.Effort ?? "default"}) exceeds Sonnet Medium — holding instead of launching, parked on the '{AccountCapPolicy.SonnetPlusOverflowMilestoneTitle}' milestone.");
+            ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) requests the secondary account but its model/effort ({item.Model ?? "default"}/{item.Effort ?? "default"}) exceeds Sonnet High — holding instead of launching, parked on the '{AccountCapPolicy.SonnetPlusOverflowMilestoneTitle}' milestone.");
             try
             {
                 if (_db != null)
@@ -372,7 +372,7 @@ namespace BuildConsole.Services
                         var gh = new GitHubApiClient(settings.GitHubPat);
                         var milestone = await gh.GetOrCreateMilestoneAsync(
                             AccountCapPolicy.SonnetPlusOverflowMilestoneTitle,
-                            "Builds that require more than Sonnet Medium but are currently capped off the secondary Claude account — bulk-resume onto primary once it resets.");
+                            "Builds that require more than Sonnet High but are currently capped off the secondary Claude account — bulk-resume onto primary once it resets.");
                         await gh.SetIssueMilestoneAsync(item.GithubNumber.Value, milestone.Number);
                         ActivityLog.Log("watcher", $"Queue #{item.Id}: issue #{item.GithubNumber.Value} reassigned to milestone '{milestone.Title}'.");
                     }
@@ -823,11 +823,11 @@ namespace BuildConsole.Services
             // use — it's simply parked "held" and (when issue-linked) reassigned to
             // the real Sonnet+ Overflow milestone instead of launched.
             if (string.Equals(item.Account, "secondary", StringComparison.OrdinalIgnoreCase) &&
-                AccountCapPolicy.ExceedsSonnetMedium(item.Model, item.Effort))
+                AccountCapPolicy.ExceedsSonnetHigh(item.Model, item.Effort))
             {
                 if (isForced)
                 {
-                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) requests secondary account and exceeds Sonnet Medium, but is launched anyway because it was triggered manually (Run Now override).");
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) requests secondary account and exceeds Sonnet High, but is launched anyway because it was triggered manually (Run Now override).");
                 }
                 else
                 {

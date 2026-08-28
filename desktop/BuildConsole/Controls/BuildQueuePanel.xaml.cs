@@ -795,7 +795,7 @@ namespace BuildConsole.Controls
         /// <summary>
         /// Git #1418 — shows/hides the bulk "Resume All on Primary" banner based on how
         /// many rows are currently parked at AccountCapPolicy.HeldStatus (capped off the
-        /// secondary account for exceeding Sonnet Medium). Called after every RefreshAsync,
+        /// secondary account for exceeding Sonnet High). Called after every RefreshAsync,
         /// same pattern as UpdateOrphanRecoveryBanner.
         /// </summary>
         private void UpdateSonnetOverflowBanner()
@@ -807,7 +807,7 @@ namespace BuildConsole.Controls
                 SonnetOverflowBanner.Visibility = Visibility.Collapsed;
                 return;
             }
-            SonnetOverflowText.Text = $"{count} build{(count == 1 ? "" : "s")} held on '{AccountCapPolicy.SonnetPlusOverflowMilestoneTitle}' (exceeds secondary's Sonnet Medium cap)";
+            SonnetOverflowText.Text = $"{count} build{(count == 1 ? "" : "s")} held on '{AccountCapPolicy.SonnetPlusOverflowMilestoneTitle}' (exceeds secondary's Sonnet High cap)";
             SonnetOverflowBanner.Visibility = Visibility.Visible;
         }
 
@@ -1931,7 +1931,7 @@ namespace BuildConsole.Controls
             }
             else if (item.Status == AccountCapPolicy.HeldStatus)
             {
-                // Git #1418 — held for exceeding the secondary account's Sonnet Medium
+                // Git #1418 — held for exceeding the secondary account's Sonnet High
                 // cap; parked on the real "Sonnet+ Overflow" milestone, not launched.
                 statusPill = new Border
                 {
@@ -2498,7 +2498,7 @@ namespace BuildConsole.Controls
 
             try
             {
-                bool exceeds = AccountCapPolicy.ExceedsSonnetMedium(model, effort);
+                bool exceeds = AccountCapPolicy.ExceedsSonnetHigh(model, effort);
                 if (!exceeds)
                 {
                     await _db.UpdateModelAndEffortAsync(item.Id, model, effort, status: "queued");
