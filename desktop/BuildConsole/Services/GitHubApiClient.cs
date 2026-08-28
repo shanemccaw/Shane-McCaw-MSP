@@ -400,10 +400,9 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Git #1418 — finds the real milestone with the given title (case-insensitive), creating
-        /// it if it doesn't exist yet. Used to lazily provision the "Sonnet+ Overflow" milestone
-        /// the first time a build actually needs to be parked on it, rather than requiring a
-        /// separate one-time setup step.
+        /// Finds the real milestone with the given title (case-insensitive), creating it if it
+        /// doesn't exist yet. Generic helper for lazily provisioning a milestone on demand
+        /// rather than requiring a separate one-time setup step.
         /// </summary>
         public async Task<GitHubMilestoneInfo> GetOrCreateMilestoneAsync(string title, string? description = null)
         {

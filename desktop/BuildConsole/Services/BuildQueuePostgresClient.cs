@@ -613,19 +613,18 @@ namespace BuildConsole.Services
                        claimed_at = NOW(),
                        updated_at = NOW()
                  WHERE id     = @id
-                   AND (status = 'queued' OR status = @heldStatus)
+                   AND status = 'queued'
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
                           originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
             cmd.Parameters.AddWithValue("@id", id);
-            cmd.Parameters.AddWithValue("@heldStatus", AccountCapPolicy.HeldStatus);
 
             QueueItem row;
             await using (var reader = await cmd.ExecuteReaderAsync())
             {
                 if (!await reader.ReadAsync())
-                    throw new InvalidOperationException($"Queue item {id} is not in 'queued' or 'held' status — cannot force-claim.");
+                    throw new InvalidOperationException($"Queue item {id} is not in 'queued' status — cannot force-claim.");
                 // Git #1384 — this RETURNING must select the SAME columns (now through
                 // account at ordinal 18, added #1416) that every other SELECT/RETURNING in
                 // this file does, because MapRow reads the highest ordinal. It was once
@@ -659,7 +658,7 @@ namespace BuildConsole.Services
                    SET status     = 'canceled',
                        updated_at = NOW()
                  WHERE id     = @id
-                   AND status IN ('queued', 'held', 'limit-paused')", conn);
+                   AND status IN ('queued', 'limit-paused')", conn);
             cmd.Parameters.AddWithValue("@id", id);
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
             return rowsAffected > 0;
@@ -673,78 +672,30 @@ namespace BuildConsole.Services
         /// </summary>
         public Task MarkOrphanedFailedAsync(int id) => MarkCompleteAsync(id, -2, null);
 
-        // ── Sonnet+ Overflow (Git #1418) ─────────────────────────────────────────────
         /// <summary>
-        /// Parks a claimed-but-never-launched row as <see cref="AccountCapPolicy.HeldStatus"/> —
-        /// used when a queued item requested the secondary account but its real
-        /// model/effort exceeds Sonnet High (AccountCapPolicy.ExceedsSonnetHigh).
-        /// The row stays visible in the Build Queue (BuildQueuePanel's "Active" filter
-        /// includes "held") but WHERE status = 'queued' means GetNextAsync can never
-        /// reclaim/relaunch it — only an explicit bulk resume (<see cref="ResumeHeldOverflowAsync"/>)
-        /// or a manual per-item action moves it forward again.
+        /// Git #1479 — one-shot startup reclaim of any row left at the retired 'held'
+        /// status. 'held' was the secondary-account Sonnet+ Overflow cap's park status;
+        /// the cap and all machinery that could ever set it are now deleted, but a row
+        /// parked before the removal would otherwise be stranded forever — GetNextAsync
+        /// only ever reclaims WHERE status = 'queued'. This flips every leftover 'held'
+        /// row straight back to 'queued', PRESERVING its real account/model/effort (it
+        /// only touches status/claimed_at/updated_at — it does NOT null the account the
+        /// way the removed bulk-resume did). Normally a no-op (nothing creates 'held'
+        /// anymore); returns the reclaimed rows for logging. Run once at watcher startup.
         /// </summary>
-        public async Task MarkHeldForOverflowAsync(int id)
-        {
-            await using var conn = await OpenAsync();
-            await using var cmd = new NpgsqlCommand(@"
-                UPDATE bt_build_queue
-                   SET status     = @status,
-                       claimed_at = NULL,
-                       updated_at = NOW()
-                 WHERE id = @id", conn);
-            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.HeldStatus);
-            cmd.Parameters.AddWithValue("@id", id);
-            await cmd.ExecuteNonQueryAsync();
-        }
-
-        /// <summary>All rows currently parked at <see cref="AccountCapPolicy.HeldStatus"/> — the
-        /// real contents of the Sonnet+ Overflow milestone, used to drive the Build Queue
-        /// panel's bulk-resume banner/count.</summary>
-        public async Task<List<QueueItem>> GetHeldOverflowAsync()
-        {
-            await using var conn = await OpenAsync();
-            await using var cmd = new NpgsqlCommand(@"
-                SELECT id, title, prompt, model, effort, cwd,
-                       github_number, blocked_by_number, blocked_by_numbers,
-                       status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set, cli, account
-                FROM bt_build_queue
-                WHERE status = @status
-                ORDER BY created_at ASC", conn);
-            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.HeldStatus);
-            var items = new List<QueueItem>();
-            await using (var reader = await cmd.ExecuteReaderAsync())
-            {
-                while (await reader.ReadAsync())
-                    items.Add(MapRow(reader));
-            }
-            await PopulateAssociatedIssueNumbersAsync(items, conn);
-            return items;
-        }
-
-        /// <summary>
-        /// The bulk-resume action Shane asked for: "a single action that switches them
-        /// back to the primary account and pushes them all into the live queue at
-        /// once... so I can kick them off quick" the moment his primary account resets.
-        /// Flips every held row back to account = NULL (primary) and status = 'queued'
-        /// in one statement, so the very next tick's GetNextAsync picks them all up
-        /// normally. Returns the resumed rows (their github_number, if any, is what the
-        /// caller uses to clear the Sonnet+ Overflow milestone back off the real issue).
-        /// </summary>
-        public async Task<List<QueueItem>> ResumeHeldOverflowAsync()
+        public async Task<List<QueueItem>> ReclaimLegacyHeldRowsAsync()
         {
             await using var conn = await OpenAsync();
             await using var cmd = new NpgsqlCommand(@"
                 UPDATE bt_build_queue
                    SET status     = 'queued',
-                       account    = NULL,
+                       claimed_at = NULL,
                        updated_at = NOW()
-                 WHERE status = @status
+                 WHERE status = 'held'
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
                           originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
-            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.HeldStatus);
             var items = new List<QueueItem>();
             await using (var reader = await cmd.ExecuteReaderAsync())
             {
@@ -834,8 +785,8 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// First-set bootstrap: parks the MOST RECENT row for this GitHub issue as
-        /// limit-paused, but only when that row is sitting failed/canceled/held (a
-        /// cap-killed or manually-stopped attempt). A row already queued, running or
+        /// limit-paused, but only when that row is sitting failed/canceled (a
+        /// manually-stopped or errored attempt). A row already queued, running or
         /// genuinely done is left alone. Returns true when a row was parked.
         /// </summary>
         public async Task<bool> MarkLatestRowLimitPausedForIssueAsync(int githubNumber)
@@ -851,7 +802,7 @@ namespace BuildConsole.Services
                               WHERE github_number = @num
                               ORDER BY created_at DESC
                               LIMIT 1)
-                   AND status IN ('failed', 'canceled', 'held')", conn);
+                   AND status IN ('failed', 'canceled')", conn);
             cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
             cmd.Parameters.AddWithValue("@num", githubNumber);
             return await cmd.ExecuteNonQueryAsync() > 0;

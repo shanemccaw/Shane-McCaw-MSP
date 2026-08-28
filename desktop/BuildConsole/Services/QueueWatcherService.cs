@@ -343,50 +343,26 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Git #1418 — parks a queue item that requested the secondary account but
-        /// whose model/effort exceeds Sonnet High: marks the DB row "held" (never
-        /// re-claimed by GetNextAsync's WHERE status='queued'; still visible in the
-        /// Build Queue panel) and, when the build is linked to a real GitHub issue,
-        /// reassigns that issue onto the real "Sonnet+ Overflow" milestone (lazily
-        /// created the first time this fires) so it's visibly distinct from the
-        /// existing product milestones. Best-effort on the GitHub side — a milestone
-        /// API hiccup still leaves the item correctly held in the DB, just without the
-        /// milestone label; logged either way, never blocks the hold itself.
+        /// Git #1479 — one-shot startup reclaim of any row still parked at the retired
+        /// 'held' status (the secondary-account Sonnet+ Overflow cap's park). The cap and
+        /// every code path that could set 'held' are deleted; a row parked before the
+        /// removal would otherwise be stranded forever, since GetNextAsync only reclaims
+        /// WHERE status = 'queued'. Flips leftover 'held' rows back to 'queued', preserving
+        /// their real account/model/effort. Normally a no-op. Only the direct-DB path can
+        /// do this; HTTP-fallback mode never created 'held' rows in the first place.
         /// </summary>
-        private async Task HoldForSonnetOverflowAsync(QueueItem item)
+        private async Task ReclaimLegacyHeldRowsAsync()
         {
-            ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) requests the secondary account but its model/effort ({item.Model ?? "default"}/{item.Effort ?? "default"}) exceeds Sonnet High — holding instead of launching, parked on the '{AccountCapPolicy.SonnetPlusOverflowMilestoneTitle}' milestone.");
+            if (_db == null) return;
             try
             {
-                if (_db != null)
-                    await _db.MarkHeldForOverflowAsync(item.Id);
-                else
-                    ActivityLog.Log("watcher", $"No direct DB connection — cannot hold queue #{item.Id} for Sonnet+ Overflow (HTTP-fallback mode doesn't support the held status). Marking launch-failed instead so it's not silently skipped forever.");
+                var reclaimed = await _db.ReclaimLegacyHeldRowsAsync();
+                foreach (var item in reclaimed)
+                    ActivityLog.Log("watcher", $"Reclaimed queue #{item.Id} ({item.Title}) from the retired 'held' status back to 'queued' — account/model/effort preserved ({item.Account ?? "primary"}/{item.Model ?? "default"}/{item.Effort ?? "default"}).");
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("watcher", $"Couldn't mark queue #{item.Id} held for Sonnet+ Overflow: {ex.Message}");
-            }
-
-            if (item.GithubNumber.HasValue)
-            {
-                try
-                {
-                    var settings = BuildConsoleSettings.Load();
-                    if (!string.IsNullOrWhiteSpace(settings.GitHubPat))
-                    {
-                        var gh = new GitHubApiClient(settings.GitHubPat);
-                        var milestone = await gh.GetOrCreateMilestoneAsync(
-                            AccountCapPolicy.SonnetPlusOverflowMilestoneTitle,
-                            "Builds that require more than Sonnet High but are currently capped off the secondary Claude account — bulk-resume onto primary once it resets.");
-                        await gh.SetIssueMilestoneAsync(item.GithubNumber.Value, milestone.Number);
-                        ActivityLog.Log("watcher", $"Queue #{item.Id}: issue #{item.GithubNumber.Value} reassigned to milestone '{milestone.Title}'.");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    ActivityLog.Log("watcher", $"Queue #{item.Id}: couldn't reassign issue #{item.GithubNumber.Value} to the Sonnet+ Overflow milestone: {ex.Message}");
-                }
+                ActivityLog.Log("watcher", $"Couldn't reclaim legacy 'held' rows: {ex.Message}");
             }
         }
 
@@ -432,6 +408,7 @@ namespace BuildConsole.Services
             }
             ActivityLog.Log("watcher", $"In-app build queue watcher starting - max {_maxConcurrent} concurrent, polling every 10s.");
             await RecoverOrphanedRunningItemsAsync();
+            await ReclaimLegacyHeldRowsAsync();
             // Git #1371 — reclaim agent worktrees orphaned by a prior BuildConsole session (their
             // build processes are, by definition, gone once this fresh instance starts). Ownership-
             // gated + non-force, so a live build from a concurrently-open instance (its worktree's
@@ -858,29 +835,6 @@ namespace BuildConsole.Services
         {
             var settings = BuildConsoleSettings.Load();
             bool interactive = settings.InteractiveBuilds;
-
-            // Git #1418 — Shane: "The secondary account needs to be limited to a max
-            // of Sonnet Medium so I can get 40 hours of build time out of it through
-            // the weekend... if the build requires anything above that... it gets
-            // chained to the new Sonnet+ [milestone] so that when Sunday 9pm happens
-            // and my primary 20x account is refreshed, I can kick them off quick."
-            // Checked FIRST, before any worktree provisioning or process spawn, so a
-            // capped-off build never eats a worktree/slot it's not actually going to
-            // use — it's simply parked "held" and (when issue-linked) reassigned to
-            // the real Sonnet+ Overflow milestone instead of launched.
-            if (string.Equals(item.Account, "secondary", StringComparison.OrdinalIgnoreCase) &&
-                AccountCapPolicy.ExceedsSonnetHigh(item.Model, item.Effort))
-            {
-                if (isForced)
-                {
-                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) requests secondary account and exceeds Sonnet High, but is launched anyway because it was triggered manually (Run Now override).");
-                }
-                else
-                {
-                    await HoldForSonnetOverflowAsync(item);
-                    return;
-                }
-            }
 
             // Git #1203 — the launched session must be TOLD its own buildId. The
             // `--title N` header a build was queued with (and any GitHub number it

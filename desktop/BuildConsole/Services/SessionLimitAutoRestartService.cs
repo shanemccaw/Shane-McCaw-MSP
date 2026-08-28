@@ -43,10 +43,9 @@ namespace BuildConsole.Services
     {
         /// <summary>
         /// bt_build_queue.status for a build parked by a session-limit hit. Distinct
-        /// from 'queued' (GetNextAsync's WHERE status = 'queued' never reclaims it),
-        /// from 'failed' (this isn't an error — it's waiting for the cap to reset),
-        /// and from AccountCapPolicy.HeldStatus (that's the Sonnet+ Overflow park,
-        /// resumed manually; this one resumes itself on a timer).
+        /// from 'queued' (GetNextAsync's WHERE status = 'queued' never reclaims it)
+        /// and from 'failed' (this isn't an error — it's waiting for the session
+        /// limit to reset; this one resumes itself on a timer).
         /// </summary>
         public const string LimitPausedStatus = "limit-paused";
 
@@ -54,7 +53,7 @@ namespace BuildConsole.Services
         /// The first set this feature applies to (Shane, 2026-08-28): six builds all
         /// capped off the 5-hour session limit until 2:40am America/New_York. A
         /// one-shot startup bootstrap (see <see cref="StartAsync"/>) parks their
-        /// latest failed/canceled/held rows as limit-paused and arms the restart for
+        /// latest failed/canceled rows as limit-paused and arms the restart for
         /// that reset — after which the flag
         /// <see cref="BuildConsoleSettings.SessionLimitFirstSetBootstrapDone"/> keeps
         /// it from ever running again.
