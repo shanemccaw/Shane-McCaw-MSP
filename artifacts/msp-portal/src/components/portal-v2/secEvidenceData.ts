@@ -128,6 +128,38 @@ export function securityOauthPageWithLive(
   };
 }
 
+/**
+ * Overlay the real `security.emailAuthFindingCount` count onto the Email
+ * Security evidence page (Git #1430, follow-up to #1414's audit — see
+ * `useSecEvidenceEmailLive.ts` for the full seam writeup).
+ *
+ * The metric is a single aggregate count with no per-domain breakdown, so it
+ * can only honestly back one new "Open findings" stat card, prepended when
+ * the count resolves — the existing five per-record stat cards have no
+ * matching live producer and are left as-is, same partial-overlay contract
+ * `securityOauthPageWithLive` uses for its own non-matching cards.
+ *
+ * The "Domains" evidence-row list (a fabricated `tenant.com` and invented
+ * per-domain SPF/DKIM/DMARC records) has no per-domain producer at all —
+ * `rows` is unconditionally cleared, live metric or not, so the page never
+ * presents fabricated tenant detail as fact. `EvidenceBody` renders an
+ * honest empty-state message when `rows.length === 0`.
+ */
+export function securityEmailPageWithLive(
+  page: EvidencePage,
+  live: { emailAuthFindingCount: number | null },
+): EvidencePage {
+  const honestRows: EvidencePage = { ...page, rows: [] };
+  if (live.emailAuthFindingCount == null) return honestRows;
+  const findingsCard: EvStatCard = {
+    label: "Open findings",
+    value: live.emailAuthFindingCount.toLocaleString(),
+    sub: "SPF, DKIM, DMARC checks failing tenant-wide",
+    tone: live.emailAuthFindingCount > 0 ? "red" : "green",
+  };
+  return { ...honestRows, statCards: [findingsCard, ...page.statCards] };
+}
+
 export const EVIDENCE_PAGES: Readonly<Record<string, EvidencePage>> = {
   "security-oauth": {
     heading: "OAuth Apps & Consent Grants",
