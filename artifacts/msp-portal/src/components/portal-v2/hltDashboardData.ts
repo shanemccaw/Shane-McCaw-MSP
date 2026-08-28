@@ -26,7 +26,18 @@
  *
  * ── Design content, not tenant data ─────────────────────────────────────────
  * The prototype's fictional Halden Materials figures, in one module.
+ *
+ * ── Debt items are now real (Git #1442) ──────────────────────────────────────
+ * Same #1255 pattern `cmpDrilldownModel.ts`'s `cmpFindingRowFromLive` already
+ * proved for Compliance's Open gaps page: `HLT_FINDINGS` stays as the
+ * loading-state placeholder only. Once the tenant's own Health pillar card
+ * (`live.pillars.find(p => p.key === "health")`) is `present`, its real
+ * `findings` render through `hltFindingRowFromLive` below, including a real
+ * empty list when the tenant genuinely has none — never the fixture's Halden
+ * Materials copy once a real payload has arrived.
  */
+
+import type { PortalV2Finding } from "./portalV2Model";
 
 export type HltTone = "red" | "amber" | "green";
 export type HltServiceTone = "red" | "amber" | "green" | "blue";
@@ -65,6 +76,13 @@ export const HLT_HERO = {
     "128 → 71 → 78. The last point is red because the direction changed, not because the number is high.",
 } as const;
 
+// NO-BACKEND-TO-WIRE: no per-scan historical time series of "open debt item
+// count" exists anywhere in the platform. `pillar.trend.series` (the real,
+// replayed history `useLivePillarHero` exposes) is the pillar's SCORE history,
+// a different measurement — plotting it here would silently answer a
+// question the design never asked. `HLT_DEBT_HISTORY` and the trend drawn
+// from it stay fixture-only, and the page renders an honest no-live-data
+// state for this widget rather than this invented 10-point series.
 export const HLT_DEBT_HISTORY: readonly number[] = [128, 121, 113, 104, 96, 88, 79, 71, 74, 78];
 
 /**
@@ -101,6 +119,13 @@ export function hltTrendGeometry() {
 
 /* ── Directory sync & hybrid — HLT_SYNC (12982-12991) ─────────────────────── */
 
+// NO-BACKEND-TO-WIRE: no check anywhere in the catalog reads Entra Connect /
+// hybrid sync state (Get-ADSyncScheduler, Connect Health agent status, sync
+// error counts) — that data lives on the customer's own on-premises sync
+// server via PowerShell, not Microsoft Graph, and no `requires_customer_script`
+// check for it has been built. This table is not rendered anywhere on the
+// current page (dead fixture, kept for the prototype's own record); the hero
+// stat it would have backed ("Directory sync" below) is tagged separately.
 export const HLT_SYNC: readonly { stage: string; state: string; tone: HltTone; detail: string }[] = [
   { stage: "Entra Connect Sync", state: "Running · v2.1.20.0", tone: "red", detail: "Two versions behind. Microsoft only supports the current and previous release, and builds older than 18 months stop syncing without warning." },
   { stage: "Last successful sync", state: "3 hours ago", tone: "amber", detail: "Delta sync runs every 30 minutes. A 3-hour gap means the last four cycles did not complete cleanly." },
@@ -147,13 +172,11 @@ export function hltObjectTotalFor(objects: readonly { count: number }[]): number
 export const HLT_OBJECT_TOTAL = hltObjectTotalFor(HLT_OBJECTS);
 
 /**
- * Overlay real counts onto the itemized inventory's rows 1-5 (Git #1340,
- * following Shane's own comment scoping the drill-down's 5 line items to
- * #1260's checks plus 2 additional `appgov:*` checks). Investigated all 5
- * against the real check each maps to and only 3 survive semantic
- * verification — a count matching the fixture row's LABEL is not the same as
- * a count matching what the row actually CLAIMS, same standard #1233's OAuth
- * evidence page wiring already applied:
+ * Overlay real counts onto the itemized inventory (Git #1340, then widened by
+ * #1442). Investigated all 9 rows against the real check each maps to — a
+ * count matching the fixture row's LABEL is not the same as a count matching
+ * what the row actually CLAIMS, same standard #1233's OAuth evidence page
+ * wiring already applied:
  *
  *   - "Stale device records"        -> intune.staleDeviceRecordCount
  *     (devices:stale-duplicate-records) — matches exactly.
@@ -163,33 +186,67 @@ export const HLT_OBJECT_TOTAL = hltObjectTotalFor(HLT_OBJECTS);
  *     + governance.expiredKeyCredentialCount (appgov:cert-secret-expiration,
  *     #541) — matches exactly; the fixture row does not split by credential
  *     type, so the two real halves are summed.
- *   - "App registrations with no owner" -> NOT WIRED. Shane's comment proposed
- *     appgov:stale-app-registrations, but that check (#551, "Aging App
- *     Registrations") counts `createdDateTime` AGE bands (over 180/365 days),
- *     with NO ownership expand at all in its stored properties — it cannot
- *     answer "does this registration have an owner" no matter how it's read.
- *     A real "ownerless app registration" check does not exist anywhere in
- *     the catalog today (the one ownerless-* check that does exist,
- *     `governance:ownerless-groups`, is GROUPS, a different Graph resource).
- *     Stays fixture.
- *   - "Credentials expiring in 30 days" -> NOT WIRED. #541's own migration
- *     file states plainly that `evalClause`'s day-operators are anchored
- *     backward from now only (`olderThanDays`/`newerThanDays`), so the check
- *     can express "already expired" but has no forward-looking window — a
- *     genuine "expiring within N days" signal does not exist yet (that
- *     migration calls it an explicit follow-up needing a new operator and a
- *     product decision on N). Stays fixture.
+ *   - "Unassigned Intune profiles"  -> intune.unassignedProfileCount
+ *     (devices:unassigned-intune-profiles, #1260) — matches exactly: a
+ *     profile with an empty `assignments` expand targets nothing, exactly the
+ *     fixture row's own description.
+ *   - "Empty security groups"       -> governance.emptySecurityGroupCount
+ *     (governance:empty-security-groups, #1260) — matches exactly, filtered to
+ *     pure security groups so it never counts M365 groups or DLs.
+ *   - "Service principals with no sign-in" -> governance.dormantServicePrincipalCount
+ *     (appgov:dormant-service-principals, #1260) — the closest REAL, non-beta
+ *     v1.0 proxy available (a provisioning-state signal: zero app-role
+ *     assignments), not literal observed sign-in activity. See that
+ *     migration's own HONESTY NOTE before assuming this counts sign-in
+ *     events; the fixture row's locked copy is reproduced as-is regardless.
+ *   - "Disabled accounts never removed" -> identity.disabledAccountCount
+ *     (identity:disabled-accounts) — matches exactly.
+ *   - "App registrations with no owner" -> NOT WIRED.
+ *     // NO-BACKEND-TO-WIRE: no check anywhere in the catalog can answer
+ *     // "does this app registration have an owner" — appgov:stale-app-
+ *     // registrations (#551) counts createdDateTime AGE bands only, with no
+ *     // ownership expand in its stored properties, and the one ownerless-*
+ *     // check that exists (governance:ownerless-groups) is GROUPS, a
+ *     // different Graph resource. Stays on fixture, rendered as an honest
+ *     // no-live-data row rather than a silent fixture number.
+ *   - "Credentials expiring in 30 days" -> NOT WIRED.
+ *     // NO-BACKEND-TO-WIRE: appgov:cert-secret-expiration (#541) can only
+ *     // express "already expired" — its migration states plainly that
+ *     // evalClause's day-operators are anchored backward from now only
+ *     // (olderThanDays/newerThanDays), so a forward-looking "expiring within
+ *     // N days" window does not exist as a signal yet. Stays on fixture,
+ *     // rendered as an honest no-live-data row rather than a silent fixture
+ *     // number.
  *
  * A null/unresolved field leaves that row on its fixture value — same
  * partial-overlay contract `securityOauthPageWithLive` and
  * `adpWorkloadsWithLive` use. Returns the SAME array reference when nothing
  * resolved, so a caller can tell "live" from "fixture" with `===`.
  */
+export interface HltObjectsLive {
+  staleDeviceRecordCount: number | null;
+  duplicateDeviceRecordCount: number | null;
+  expiredCredentialCount: number | null;
+  unassignedIntuneProfileCount: number | null;
+  emptySecurityGroupCount: number | null;
+  dormantServicePrincipalCount: number | null;
+  disabledAccountCount: number | null;
+}
+
+/** The 2 of 9 stale-object-inventory rows with no real check to overlay — see
+ * the `NO-BACKEND-TO-WIRE:` comments above `hltObjectsWithLive`. Exported so
+ * the page can render these two specific rows as an honest no-live-data state
+ * instead of a silent fixture count. */
+export const HLT_OBJECTS_NO_BACKEND: ReadonlySet<string> = new Set([
+  "App registrations with no owner",
+  "Credentials expiring in 30 days",
+]);
+
 export function hltObjectsWithLive(
   objects: readonly HltObject[],
-  live: { staleDeviceRecordCount: number | null; duplicateDeviceRecordCount: number | null; expiredCredentialCount: number | null },
+  live: HltObjectsLive,
 ): readonly HltObject[] {
-  if (live.staleDeviceRecordCount == null && live.duplicateDeviceRecordCount == null && live.expiredCredentialCount == null) {
+  if (Object.values(live).every((v) => v == null)) {
     return objects;
   }
   return objects.map((o) => {
@@ -201,6 +258,18 @@ export function hltObjectsWithLive(
     }
     if (o.type === "Credentials already expired" && live.expiredCredentialCount != null) {
       return { ...o, count: live.expiredCredentialCount };
+    }
+    if (o.type === "Unassigned Intune profiles" && live.unassignedIntuneProfileCount != null) {
+      return { ...o, count: live.unassignedIntuneProfileCount };
+    }
+    if (o.type === "Empty security groups" && live.emptySecurityGroupCount != null) {
+      return { ...o, count: live.emptySecurityGroupCount };
+    }
+    if (o.type === "Service principals with no sign-in" && live.dormantServicePrincipalCount != null) {
+      return { ...o, count: live.dormantServicePrincipalCount };
+    }
+    if (o.type === "Disabled accounts never removed" && live.disabledAccountCount != null) {
+      return { ...o, count: live.disabledAccountCount };
     }
     return o;
   });
@@ -224,6 +293,29 @@ export function hltHeroStatsWithObjectTotal(
 
 /* ── Configuration drift — HLT_DRIFT (14835-14888) ────────────────────────── */
 
+// NO-BACKEND-TO-WIRE: this 12-row table (and the "N of 47 tracked settings"
+// hero stat / alert / approved counts derived from it) has no wiring path
+// today, even though a REAL configuration-drift engine genuinely exists —
+// investigated before tagging, per this issue's own instruction not to guess.
+// `drift_events` (lib/db/src/schema/msp.ts) + `dashboard-resolvers.ts`'s
+// `resolveDriftEvents` are real and portal-reachable today via
+// `POST /api/dashboard/resolve` against the 17 `drift.*DriftCount` metric keys
+// (lib/dashboard-registry/src/metrics.ts) — `m365-health/useM365HealthLive.ts`
+// already consumes those same keys elsewhere in this app, as aggregate
+// counts. But the SHAPE this table needs is a different, larger thing than an
+// aggregate count: a per-setting inventory of all 47 tracked settings,
+// including the ones that currently MATCH baseline ("clean" rows) and the
+// ones recorded as a deliberate "accepted position" — neither of which
+// `drift_events` represents at all (it only stores rows for settings that
+// have actually deviated). Its own real verdict enum
+// (`approved` / `attributed_unapproved` / `unattributed` / `informational`)
+// is also not a 1:1 match for this table's six-value `HltVerdict` scale.
+// Wiring this properly needs a product decision on that verdict-taxonomy
+// mapping and on how (or whether) to represent "clean"/"accepted" rows the
+// real engine doesn't track — the same "check exists, wiring is separate
+// scoped follow-up" split #1260's own migration used. Until that decision is
+// made, this table stays on fixture and the page renders an honest
+// no-live-data state in its place rather than this invented inventory.
 export type HltVerdict =
   | "unapproved"
   | "unattributed"
@@ -397,6 +489,27 @@ export const HLT_HERO_STATS: readonly { label: string; value: string; sub: strin
 ];
 
 /**
+ * Overlay the honest no-live-data state onto the 2 of 3 hero stats with no
+ * backend at all (#1442) — "Directory sync" (see the `NO-BACKEND-TO-WIRE:` tag
+ * above `HLT_SYNC`) and "Config drift" (see the tag above `HLT_DRIFT`). Only
+ * "Stale objects" has any real backing (`hltHeroStatsWithObjectTotal`), so
+ * this always runs AFTER that overlay, replacing the other two unconditionally
+ * rather than leaving them as silent fixture numbers.
+ */
+export function hltHeroStatsHonest(
+  stats: typeof HLT_HERO_STATS,
+  noDataValue: string,
+): typeof HLT_HERO_STATS {
+  return stats.map((s) =>
+    s.label === "Directory sync"
+      ? { ...s, value: noDataValue, sub: "No live data available" }
+      : s.label === "Config drift"
+        ? { ...s, value: noDataValue, sub: "No live data available" }
+        : s,
+  );
+}
+
+/**
  * The five object classes the DEBT count covers — the ones with no debt item of
  * their own. Their sum is the 78 that HLT-05 and the trend series quote.
  */
@@ -548,7 +661,102 @@ export const HLT_FINDINGS: readonly HltFinding[] = [
 
 export const HLT_FINDING_COUNT = HLT_FINDINGS.length;
 
+/**
+ * Real evidence field names the server sends for Health-pillar checks, mapped
+ * to the human label the row shows — the same `CMP_EVIDENCE_LABELS` idiom
+ * `cmpDrilldownModel.ts` uses (#1255). A `checkKey` this catalogue doesn't
+ * recognise still renders — humanised from the field name — rather than being
+ * dropped.
+ */
+const HLT_EVIDENCE_LABELS: Readonly<Record<string, string>> = {
+  staleDeviceRecordCount: "Stale device records",
+  duplicateDeviceRecordCount: "Duplicate device records",
+  unassignedIntuneProfileCount: "Unassigned Intune profiles",
+  emptySecurityGroupCount: "Empty security groups",
+  dormantServicePrincipalCount: "Service principals with no assigned access",
+  disabledAccountCount: "Disabled accounts never removed",
+  expiredPasswordCredentialCount: "Expired app secrets",
+  expiredKeyCredentialCount: "Expired app certificates",
+};
+
+/** camelCase field name -> "Field name", for an evidence key not in the catalogue above. */
+function hltHumanizeEvidenceKey(key: string): string {
+  const spaced = key.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase();
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+/** The evidence rows a live finding's `evidence` object produces — same
+ * curated name-list-subset contract #1255 established (never the raw
+ * `extractedProperties` blob). Empty when the finding carries no evidence. */
+function hltLiveEvidenceRows(evidence: Record<string, unknown> | null | undefined): { k: string; v: string }[] {
+  if (!evidence) return [];
+  const rows: { k: string; v: string }[] = [];
+  for (const [key, value] of Object.entries(evidence)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      rows.push({ k: HLT_EVIDENCE_LABELS[key] ?? hltHumanizeEvidenceKey(key), v: String(value) });
+      continue;
+    }
+    const names = Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
+    if (names.length > 0) {
+      rows.push({ k: HLT_EVIDENCE_LABELS[key] ?? hltHumanizeEvidenceKey(key), v: names.join(", ") });
+    }
+  }
+  return rows;
+}
+
+/**
+ * Map one real `war-room-pillars` Health finding (#1255's widened
+ * `PortalV2Finding`) into the same `HltFinding` shape the page already
+ * renders, so `portal-v2-health.tsx` needs no separate rendering path for
+ * live vs fixture rows — the exact same seam `cmpFindingRowFromLive` proved
+ * for Compliance.
+ *
+ * Honest-gap fields: this pillar's fixture carries a THIRD severity band
+ * (Housekeeping/"low") that the real payload's `critical`/`warning` scale has
+ * no signal for, so a live finding is always Degrading or Accruing, never
+ * Housekeeping — an honest byproduct of what the engine actually measures,
+ * not a fabrication. `debt` (the short state line under the severity chip)
+ * and `why` fall back to the server's own `description`/`whyItMatters` when
+ * present, and to an explicit "not authored yet" statement when they are not
+ * — never an invented sentence. Same for `action`/`actionSub`: absent a
+ * bespoke fix mapping, `fixKey` is the checkKey itself, which `playbookFor`
+ * resolves to the generic "Apply the recommended change" flow.
+ */
+export function hltFindingRowFromLive(f: PortalV2Finding): HltFinding {
+  const why = f.whyItMatters ?? f.description ?? "No further narrative is available for this finding yet.";
+  const evidence = hltLiveEvidenceRows(f.evidence);
+  return {
+    id: f.checkKey,
+    sev: f.severity === "critical" ? "high" : "medium",
+    title: f.title,
+    debt: f.recommendation?.category ?? (f.severity === "critical" ? "Open, unaddressed" : "Accruing"),
+    why,
+    evidence:
+      evidence.length > 0
+        ? evidence
+        : [{ k: "Where this comes from", v: f.description ?? "Detected by the last scan; no further detail captured." }],
+    action: f.recommendation?.action ?? "Apply the recommended change",
+    actionSub: f.recommendation?.estimatedEffort
+      ? `Estimated effort: ${f.recommendation.estimatedEffort}`
+      : "Opens the fix flow for this finding",
+    fixKey: f.checkKey,
+  };
+}
+
+/** Map every real Health finding into the debt-item row shape, worst first (server order preserved). */
+export function hltFindingRowsFromLive(findings: readonly PortalV2Finding[]): HltFinding[] {
+  return findings.map(hltFindingRowFromLive);
+}
+
 /* ── Accepted risk — HLT_ACCEPTED (13150-13156) ───────────────────────────── */
+
+// NO-BACKEND-TO-WIRE: there is no accepted-risk persistence anywhere in the
+// platform. `openAcceptRisk`'s `onConfirm` on this page is a no-op (`() =>
+// {}`), and the standalone Risk Register page (`portal-v2-risk-register.tsx`)
+// this strip links to is itself 100% fixture with no write path either — the
+// "Accept this risk" flow records nothing today, so there is no real decision
+// to read back. This card and the strip's leading count render an honest
+// no-live-data state rather than this invented "AD FS retained" example.
 
 export const HLT_ACCEPTED: readonly {
   id: string;
@@ -611,6 +819,14 @@ export function hltAcceptedMeta(a: (typeof HLT_ACCEPTED)[number]) {
 }
 
 /* ── Service health & incoming changes — HLT_SERVICE (13166-13172) ────────── */
+
+// NO-BACKEND-TO-WIRE: the tenant's real Message Center POSTS are wired
+// (useMessageCenter.ts, shared with /portal-v2/ms-changes) and render live
+// when the tenant has real posts. The two other row kinds this fixture mixes
+// in — service INCIDENT and ADVISORY status — have no backend anywhere in
+// this platform; Message Center carries posts only, never incident/advisory
+// status. When there are no real live posts, the page renders an honest
+// no-live-data state for this panel rather than this invented 5-row mix.
 
 export const HLT_SERVICE: readonly {
   title: string;

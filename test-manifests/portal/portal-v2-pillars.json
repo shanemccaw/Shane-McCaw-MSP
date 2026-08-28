@@ -34,7 +34,8 @@
     "#1340 STALE OBJECT INVENTORY WIRING 2026-08-26 -- the Health hero's 'Stale objects' stat and its itemized 9-row drill-down are now overlaid with real per-row checks via hltObjectsWithLive() (hltDashboardData.ts) + useHltObjectsLive.ts, per #1229's own finding that this section had no per-item backend. Shane's own follow-up comment on #1340 proposed 2 more appgov:* checks beyond #1260's 3; each of the resulting 5 itemized-row candidates was checked for SEMANTIC correctness (does the check actually answer what the row claims), not just a name match, same standard #1233's OAuth evidence page wiring used -- only 3 of 5 survived: Stale/Duplicate device records (devices:stale-duplicate-records, #1260) and Credentials already expired (appgov:cert-secret-expiration, summed expiredPasswordCredentialCount + expiredKeyCredentialCount). App registrations with no owner (appgov:stale-app-registrations is AGE-based, not ownership -- no real check exists) and Credentials expiring in 30 days (the check has no forward-looking window, #541's own migration says so) stay fixture, DELIBERATELY. Directory Sync/hybrid stays fixture too -- #1259 confirmed (comment-only) that 6 of its 8 rows need on-premises remote-execution infrastructure that does not exist anywhere in the platform; the 2 Graph-reachable fields Shane flagged as an optional low-cost add (password hash sync / writeback via /v1.0/directory/onPremisesSynchronization) were investigated this session and found to NOT actually be low-cost: no monitor_checks precedent exists for mapping a single-object (non-collection) Graph resource, and the dashboard-registry has no boolean valueType -- both would need new plumbing, not just a new catalog row, so left as a flagged follow-up rather than risking a silently-wrong check (the #541 postmortem this same file's notes reference above is exactly that failure mode). VERIFIED AGAINST REAL LOCAL POSTGRES (tenant c4c814d4-3afe-441e-9145-62461d0a4fd3, the is_testbed=true row): appgov:cert-secret-expiration is live and collecting (expiredPasswordCredentialCount=3, expiredKeyCredentialCount=1 as of this session), so the 'Credentials already expired' row and the hero total ARE live on this testbed today; devices:stale-duplicate-records currently errors on every attempt for this tenant, so the two device rows correctly stay on their fixture fallback (31 / 9) -- both paths (live success AND graceful fixture fallback) are exercised by H6b/H6c/H6d below rather than assuming either. The pre-existing H6 step's hardcoded '166' total is REMOVED here because it is no longer stable once any of the 3 rows can go live (this testbed now renders 169, not 166) -- same reasoning as the honest-either/or pattern #1252 established, extended to a hardcoded aggregate rather than a hardcoded string. hltDashboardData.test.ts gained 5 new unit tests pinning hltObjectsWithLive/hltHeroStatsWithObjectTotal (full/partial overlay, same-reference no-op, total arithmetic) -- 28/28 green. New data-testid `pv2-hlt-object-count-{index}` added to portal-v2-health.tsx's itemized row count span (scoped to just the number, not the whole row, since the row's own note text for index 4 already contains other digits) so H6b-H6d can assert the exact rendered count rather than a whole-block substring that could pass by coincidence. NOT LIVE-RUN this session: shaneapp://runTest was triggered (full file, no onlyTag -- the new H6b-H6d/H6-src steps sit behind an untagged 'goto Health page' step the tag filter can't reach, the same real limitation #1273's H1a already has) but produced no result file after a genuine 500s bounded wait -- no BuildConsole instance was actively servicing the protocol trigger during this session. Verification instead rests on: 28/28 green node:test (hltObjectsWithLive/hltHeroStatsWithObjectTotal unit tests), tsc --noEmit clean on the touched files, and the exact live/fixture values pinned above confirmed by direct query against the real local Postgres tenant_monitor_profiles table -- not a full UI-rendered confirmation. Whoever next runs this file live should treat H6b/H6c/H6d as freshly-added and unconfirmed against the real DOM.",
     "LOADING-STATE FIXTURE FLASH FIX (Git #1365) -- the Security page's whole 'Security Categories' panel (S8-S10c's pv2-sec-area-* cards) now renders PortalV2LoadingState while useSecAreaLinksLive's POST /api/dashboard/resolve is in flight, instead of immediately showing the SEC_AREA_LINKS fixture scores that previously flashed before any live overlay landed. S8-S10c are expected to still pass: their `expect` steps poll for the selector rather than checking once, and the real resolve call typically settles well inside that window. Not asserted directly: the loading skeleton itself, since the window is sub-200ms against the dev/test API and gating a step on it would be a flaky race rather than reliable coverage.",
     "GOVERNANCE :area WILDCARD -- STAT CARDS + EVIDENCE TABLE HONEST-EMPTY (Git #1428, follow-up to #1413's audit) -- portal-v2-gov-detail.tsx's stat cards (pv2-gd-stat) and evidence table (pv2-gd-table's header+rows) were the design's fictional 'External Sharing Drift' worked example (23 drift events, named actors, IPs) rendered UNCONDITIONALLY, with no live counterpart anywhere for per-sub-area evidence rows -- confirmed by #1413's audit, not a `??` fallback overriding a real value. Both sections now gate on the SAME `live.dataState` the page's own pv2-gd-source marker already reports (useLivePillarHero's real/scored-vs-unscored signal): while 'live' (this testbed's governance pillar IS scored, per G6-LIVE below), a real customer sees the platform's honest NoScanDataState (pv2-gd-stats-no-data / pv2-gd-table-no-data) instead of invented drift events; the fixture only renders while genuinely unscored ('fixture'), the same honest-null case the hero score itself already falls back for. G6b/G6c below assert the honest-empty testids are what actually render on THIS session (dataState 'live', per G6-LIVE), proving the fix end-to-end on the same shared testbed tenant rather than only in theory. Untouched, a separate documented gap outside this issue's scope: the heading/purpose/note copy (static labels), and the risks list / policy block / provenance (still fixture, no live producer either, but not what #1428 asked for). NOT LIVE-RUN this session: the shane-msp MCP server (shaneapp://runTest's courier) failed to connect (CONNECTION_CLOSED) for the whole session, so G6b/G6c are freshly added and unconfirmed against the real DOM -- verification instead rests on tsc --noEmit clean on the touched file and a full `PORT=5173 vite build` clean (2m44s, 5862 modules). Whoever next runs this file live should treat G6b/G6c the same way #1340's note above already treats H6b-H6d.",
-    "GOVERNANCE OVERSHARING HONEST-NULL PASS (Git #1426, follow-up to #1413's audit) -- three unconditional-fixture leaks on the Overshared SharePoint drill-down now render the platform's honest NoScanDataState instead: the stat cards band (Sharing Capability / External Users / Anonymous Links / Sharing Drift -- confirmed no portal-facing endpoint exposes this set; the one real tenant sharing-capability read, getTenantSharingCapability, lives in monitor-executor.ts's scan-time drift machinery, not behind any customer route), the Top Risks band (no per-object risk feed exists anywhere, so the band is no longer a collapsible toggle -- OV4 and 'pv2-ovr-top-risks-toggle' are gone, the honest state renders unconditionally on arrival), and the Anonymous Links panel (a live endpoint DOES exist -- useOversharingItemsLive, #1275 -- but its wire row has no expiry/active field and 'Edit vs View' would have to be inferred from grant.roles, a real schema decision flagged rather than guessed at). The Sharing Capability stat card's wrench-to-fix-panel gate (OV17-OV20) is removed along with the stat cards it lived on -- there is no live fixKey left to gate on. The Affected Sites panel and its whole accept-risk/runbook flow (OV6-OV16, OV22) are UNCHANGED -- #1413's audit found that panel already clean (real useOversharingSitesLive feed with a proper loading/live/fixture dataState). New steps carry sessionTag 'oversharing-1426'; run with shaneapp://runTest?file=test-manifests/portal/portal-v2-pillars.json&onlyTag=oversharing-1426 to exercise just this pass without a full-file run."
+    "GOVERNANCE OVERSHARING HONEST-NULL PASS (Git #1426, follow-up to #1413's audit) -- three unconditional-fixture leaks on the Overshared SharePoint drill-down now render the platform's honest NoScanDataState instead: the stat cards band (Sharing Capability / External Users / Anonymous Links / Sharing Drift -- confirmed no portal-facing endpoint exposes this set; the one real tenant sharing-capability read, getTenantSharingCapability, lives in monitor-executor.ts's scan-time drift machinery, not behind any customer route), the Top Risks band (no per-object risk feed exists anywhere, so the band is no longer a collapsible toggle -- OV4 and 'pv2-ovr-top-risks-toggle' are gone, the honest state renders unconditionally on arrival), and the Anonymous Links panel (a live endpoint DOES exist -- useOversharingItemsLive, #1275 -- but its wire row has no expiry/active field and 'Edit vs View' would have to be inferred from grant.roles, a real schema decision flagged rather than guessed at). The Sharing Capability stat card's wrench-to-fix-panel gate (OV17-OV20) is removed along with the stat cards it lived on -- there is no live fixKey left to gate on. The Affected Sites panel and its whole accept-risk/runbook flow (OV6-OV16, OV22) are UNCHANGED -- #1413's audit found that panel already clean (real useOversharingSitesLive feed with a proper loading/live/fixture dataState). New steps carry sessionTag 'oversharing-1426'; run with shaneapp://runTest?file=test-manifests/portal/portal-v2-pillars.json&onlyTag=oversharing-1426 to exercise just this pass without a full-file run.",
+    "HEALTH STRICT PASS -- EVERY REMAINING FAKE DATA VALUE ELIMINATED (Git #1442) -- the full-page strict pass this issue asked for. WIRED (case 1, real live data): debt items (HLT_FINDINGS) now read the tenant's own real Health findings via hltFindingRowFromLive (the same #1255 pattern portal-v2-compliance-gaps.tsx already proved for Compliance), including a real empty list when the tenant genuinely has none; the stale-object inventory widened from 3 of 9 to 7 of 9 real rows (#1260's own migration had already added devices:unassigned-intune-profiles, governance:empty-security-groups and appgov:dormant-service-principals, plus the pre-existing identity:disabled-accounts -- none of it had been wired to the page until now). HONEST 'No scan data available' (case 2, real backend but this tenant unscanned): debt items and the service-health panel both gate on a real present/live flag now, rather than silently falling back to fixture forever. HONEST 'No live data available' + NO-BACKEND-TO-WIRE (case 3, genuine gaps, each investigated before tagging rather than assumed): the config-drift table and its hero stat (a real drift_events engine exists and is portal-reachable for AGGREGATE counts via the 17 drift.*DriftCount metric keys already consumed by m365-health/useM365HealthLive.ts, but it has no shape matching this table's 'N of 47 tracked settings, including clean/accepted rows' inventory -- a product decision this pass does not make unilaterally); the debt-trend history graph (no per-scan time series of 'open debt item count' exists anywhere -- pillar.trend.series is the pillar's SCORE history, a different measurement); the 'Directory sync' hero stat (Entra Connect/hybrid data lives on-premises via PowerShell, no requires_customer_script check exists); the accepted-risk register (no persistence anywhere -- openAcceptRisk's onConfirm is a no-op and the standalone Risk Register page is itself 100% fixture); and 2 of 9 stale-object rows (App registrations with no owner, Credentials expiring in 30 days -- confirmed no check can answer either). RETIRED test coverage, stated plainly rather than silently dropped: H10-H11d (drift-row expand/verdict detail) and H14-H23 (the debt-item-to-FixPanel click-through keyed to the retired synthetic fixKey 'hlt-exchange-eol') no longer have anything to click through, since both sections' content is now either real (unpredictable per-tenant) or an honest empty state. New steps carry sessionTag 'hlt-1442'; run with shaneapp://runTest?file=test-manifests/portal/portal-v2-pillars.json&onlyTag=hlt-1442 to exercise just this pass without a full-file run. NOT LIVE-RUN this session: this worktree's (and the shared main checkout's) node_modules for msp-portal were incomplete/mid-reinstall for the whole session (missing core deps like react/wouter even in the main checkout, confirmed pre-existing and not caused by this session's file edits), so neither tsc --noEmit nor shaneapp://runTest could be executed. Verification instead rests on a careful manual re-read of the full diff for syntax/JSX balance and import correctness. Whoever next runs this file live should treat every hlt-1442-tagged step as freshly-added and unconfirmed against the real DOM."
   ],
 
   "apiTests": [
@@ -823,11 +824,12 @@
       "target": "/portal/shane-mccaw-consulting/portal-v2/health"
     },
     {
-      "name": "H2 -- the configuration-drift section is now verdict-sorted, leading with the changes that carry no request behind them. 'Changed without approval' is a group-0 verdict label that only exists once the flat table became this expandable list.",
+      "sessionTag": "hlt-1442",
+      "name": "H2 (Git #1442, was 'Changed without approval') -- the strict pass found the real configuration-drift engine (drift_events + resolveDriftEvents) has no shape matching this table's 'N of 47 tracked settings, including clean/accepted rows' inventory, so the whole section now renders the honest no-live-data state rather than the invented verdict-sorted list.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-drift']",
       "state": "visible",
-      "textContains": "Changed without approval"
+      "textContains": "No live data available"
     },
     {
       "name": "H3 -- the LOCATOR chip row marks this pillar 'you are here'. It exists only because of the naming collision.",
@@ -856,6 +858,22 @@
       "selector": "[data-testid='pv2-hlt-source']",
       "state": "present",
       "textContains": "live"
+    },
+    {
+      "sessionTag": "hlt-1442",
+      "name": "H5a (Git #1442) -- the 'Directory sync' hero stat has no backend anywhere (Entra Connect / hybrid sync data lives on the customer's own on-premises server via PowerShell, not Graph, and no requires_customer_script check for it exists) -- always the honest no-live-data state, never the fixture's '14 errors'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-stat-directory-sync-source']",
+      "state": "present",
+      "textContains": "empty"
+    },
+    {
+      "sessionTag": "hlt-1442",
+      "name": "H5b (Git #1442) -- the 'Config drift' hero stat has the same gap as the drift table itself (H2) -- always the honest no-live-data state, never the fixture's 'N of 47'.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-stat-config-drift-source']",
+      "state": "present",
+      "textContains": "empty"
     },
     {
       "name": "H6 (updated #1340) -- THE TWO OBJECT COUNTS. The hero binds the FULL nine-class inventory sum; HLT-05 and the trend quote 78, the same inventory minus the three classes with their own debt items. The first transcription hardcoded 78 here and the unit test caught it -- that arithmetic pin now lives in hltDashboardData.test.ts against the fixture constants. State-only here (no textContains) since #1340 wired 3 of the 9 classes to real checks: on a tenant/scan-state where any of them resolve, this card's total is a genuine partial-live number that legitimately differs from the fixture 166, same reasoning as OV22 dropping its fixed sites-pager count once real data could flow in.",
@@ -896,11 +914,35 @@
       "textContains": ["4", "1"]
     },
     {
-      "name": "H7 -- the trend is labelled lower-is-better and explains its own red dot in words. Colouring that dot green, as every other pillar would, would state the opposite of the caption.",
+      "sessionTag": "hlt-1442",
+      "name": "H6e (Git #1442) -- 'App registrations with no owner' (row 2) has no check anywhere in the catalog that can answer what it claims (appgov:stale-app-registrations is age-based, not ownership) -- confirmed, not assumed. Always the honest dash, never the fixture's 61.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-object-count-2']",
+      "state": "visible",
+      "textContains": "—"
+    },
+    {
+      "sessionTag": "hlt-1442",
+      "name": "H6f (Git #1442) -- 'Credentials expiring in 30 days' (row 3) has no forward-looking check either (appgov:cert-secret-expiration can only express 'already expired'). Always the honest dash, never the fixture's 3.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-object-count-3']",
+      "state": "visible",
+      "textContains": "—"
+    },
+    {
+      "sessionTag": "hlt-1442",
+      "name": "H6g (Git #1442) -- 'Service principals with no sign-in' (row 5), 'Empty security groups' (row 6), 'Unassigned Intune profiles' (row 7) and 'Disabled accounts never removed' (row 8) all gained real checks this pass (#1260's 3 new checks + the pre-existing identity:disabled-accounts). Honest either/or against the fixture counts (14/18/6/23) since this testbed's real scan state for these 4 new metric keys was not independently re-confirmed this session the way H6b-d's 3 were.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-hlt-object-count-5']",
+      "state": "visible"
+    },
+    {
+      "sessionTag": "hlt-1442",
+      "name": "H7 (Git #1442, was the red-dot caption) -- no per-scan history of 'open debt item count' exists anywhere in the platform (confirmed, not assumed), so the invented 128->71->78 series and its red-dot-on-green-line graphic are gone; the widget now renders the honest no-live-data state.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-trend']",
       "state": "visible",
-      "textContains": "red because the direction changed, not because the number is high"
+      "textContains": "No live data available"
     },
     {
       "name": "H9 -- the stale-object inventory renders all nine classes.",
@@ -910,134 +952,33 @@
       "textContains": "App registrations with no owner"
     },
     {
-      "name": "H10 -- the drift table carries the full audit trail: baseline, current, WHO changed it and WHEN.",
+      "sessionTag": "hlt-1442",
+      "name": "H10 (Git #1442) -- H10-H11d/H14-H23 RETIRED. They asserted the config-drift table's fixture rows (DefaultSharingLinkType, expand/verdict detail) and a debt-item fix-panel click-through keyed to the retired synthetic fixKey 'hlt-exchange-eol'. Both are gone: the drift table is now an honest no-live-data state (H2 above covers it), and debt items are now the tenant's REAL findings (H12/H13 below) whose id/fixKey is the server's own checkKey, not a fixed fixture string a manifest can hardcode without coupling to one particular tenant's scan result. A generic FixPanel-from-a-debt-item flow is exercised elsewhere (H16-style clicks are proven live on Compliance's Open gaps page, portal-v2-compliance-gaps.json) so this is a reduction in per-pillar depth, not a loss of FixPanel coverage overall -- stated plainly rather than silently deleted.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-drift']",
-      "state": "visible",
-      "textContains": "DefaultSharingLinkType"
+      "state": "visible"
     },
     {
-      "name": "H11 -- expand an UNEXPLAINED drift row (unattributed, no change request). Sorted index 1 is TransportConfig · SmtpClientAuthenticationDisabled.",
-      "action": "click",
-      "selector": "[data-testid='pv2-hlt-drift-1']",
-      "critical": true
-    },
-    {
-      "name": "H11a -- it is honest where the audit log cannot answer, in the 'Changed by' detail, rather than guessing an actor.",
+      "sessionTag": "hlt-1442",
+      "name": "H12 (Git #1442) -- debt items now resolve to one of three honest states: the tenant's real findings (this pillar's own severity vocabulary, Degrading/Accruing -- never Housekeeping/'low', since the real critical/warning scale has no third-band signal), a real 'no open debt items' empty notice, or 'No scan data available' when this tenant has not been scanned for Health yet. Asserted as an honest either/or across all three rather than pinning the fixture's retired HLT-01/HOUSEKEEPING copy, which no longer renders in any state.",
       "action": "expect",
-      "selector": "[data-testid='pv2-hlt-drift']",
-      "state": "visible",
-      "textContains": "Unknown — pre-baseline"
+      "selector": "[data-testid='pv2-hlt-debt'], [data-testid='pv2-hlt-debt-empty'], [data-testid='pv2-hlt-debt-clear']",
+      "state": "visible"
     },
     {
-      "name": "H11b -- and an alert row offers the change to RAISE. This copy exists ONLY on a drift with no request behind it, which is why the copy-coverage floor missed it until the drift section was rebuilt from a flat table into this verdict list.",
+      "sessionTag": "hlt-1442",
+      "name": "H13 (Git #1442) -- the debt-items header count is a real number (once scanned) or the honest dash, never the fixture's fixed count.",
       "action": "expect",
-      "selector": "[data-testid='pv2-hlt-drift']",
-      "state": "visible",
-      "textContains": "Raise the change that should have covered it"
+      "selector": "[data-testid='pv2-hlt-debt'], [data-testid='pv2-hlt-debt-empty']",
+      "state": "visible"
     },
     {
-      "name": "H11c -- expand a drift that DID move under a change record (sorted index 7, CA301). Opening it closes the previous row -- the list opens one at a time.",
-      "action": "click",
-      "selector": "[data-testid='pv2-hlt-drift-7']",
-      "critical": true
-    },
-    {
-      "name": "H11d -- it names the change record and why it is still open: process working, not a finding. The whole verdict split is 'drift only means something next to the change record'.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-hlt-drift']",
-      "state": "visible",
-      "textContains": "Change record · CR-0098"
-    },
-    {
-      "name": "H12 -- debt items use this pillar's OWN severity vocabulary. Not Critical/High/Low: debt accrues, it does not threaten.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-hlt-debt']",
-      "state": "visible",
-      "textContains": "DEGRADING"
-    },
-    {
-      "name": "H13 -- including the third band no other pillar has.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-hlt-debt']",
-      "state": "visible",
-      "textContains": "HOUSEKEEPING"
-    },
-    {
-      "name": "H14 -- expand the end-of-support finding.",
-      "action": "click",
-      "selector": "[data-testid='pv2-hlt-debt-HLT-01']",
-      "critical": true
-    },
-    {
-      "name": "H15 -- its evidence states the option nobody wants to say out loud: there are no mailboxes left on-premises.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-hlt-debt']",
-      "state": "visible",
-      "textContains": "0 — every mailbox is already in the cloud"
-    },
-    {
-      "name": "H16 -- THE GATE FROM A DEBT ITEM.",
-      "action": "click",
-      "selector": "[data-testid='pv2-hlt-fix-hlt-exchange-eol']",
-      "critical": true
-    },
-    {
-      "name": "H17 -- it resolved to the real Health playbook.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-panel']",
-      "state": "visible",
-      "textContains": "Deal with the out-of-support Exchange hybrid server"
-    },
-    {
-      "name": "H18 -- take the manual route toward the CR gate.",
-      "action": "click",
-      "selector": "[data-testid='pv2-fix-route-manual']",
-      "critical": true
-    },
-    {
-      "name": "H19 -- arm the CR confirmation.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-confirm']",
-      "critical": true
-    },
-    {
-      "name": "H20 -- submit it.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-submit']",
-      "critical": true
-    },
-    {
-      "name": "H21 -- continue to the procedure.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-continue']",
-      "critical": true
-    },
-    {
-      "name": "H22 -- HEALTH'S OWN WRAPPER, the fourth distinct one. It draws the line this pillar turns on: some of this work cannot be done from the container at all, because it runs on the sync server or on-premises Exchange.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-manual']",
-      "state": "visible",
-      "textContains": "Anything touching the sync server or on-premises Exchange runs locally"
-    },
-    {
-      "name": "H23 -- and its closer is about the debt count, not an evidence pack or a savings ledger.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-manual']",
-      "state": "visible",
-      "textContains": "drop out of the debt count on the next scan"
-    },
-    {
-      "name": "reset -- reload before the right column.",
-      "action": "goto",
-      "target": "/portal/shane-mccaw-consulting/portal-v2/health"
-    },
-    {
-      "name": "H24 -- the accepted risk is recorded in full, reviewed against a vendor roadmap rather than a calendar date.",
+      "sessionTag": "hlt-1442",
+      "name": "H24 (Git #1442, was 'AD FS retained alongside cloud authentication') -- there is no accepted-risk persistence anywhere in the platform (openAcceptRisk's onConfirm is a no-op, and the standalone Risk Register page this strip links to is itself 100% fixture with no write path either), so this section now ALWAYS renders the honest no-live-data state -- a deterministic assertion, not an either/or, since the gap is structural rather than scan-state-dependent.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-accepted']",
       "state": "visible",
-      "textContains": "AD FS retained alongside cloud authentication"
+      "textContains": "No live data available"
     },
     {
       "name": "H25 -- service health panel renders rows sourced from the Message Center. #1229 wired this panel to the tenant's REAL synced Message Center posts (portal-message-center.ts) when live, honest-empty fallback to the design fixture otherwise -- both branches' row `kind` text is 'Message Center · <id>', so this assertion is true either way rather than pinning one branch's exact fixture copy.",
@@ -1054,11 +995,11 @@
       "textContains": "Straight from the Message Center, filtered to services you use."
     },
     {
-      "name": "H25s (#1229) -- the hidden live/fixture source marker for the service-health panel, same clipped-marker pattern the hero score uses (pv2-hlt-source). Asserted as an honest either/or -- a testbed without a synced Message Center for this tenant legitimately falls back to fixture, and that is not a defect.",
+      "name": "H25s (#1229, updated Git #1442) -- the hidden live/fixture source marker for the service-health panel, same clipped-marker pattern the hero score uses (pv2-hlt-source). Asserted as an honest either/or -- a testbed without a synced Message Center for this tenant legitimately renders the honest 'No scan data available' state (marker reads 'empty', not the old 'fixture' -- #1442 found there is no live equivalent for the incident/advisory row kinds the fixture used to mix in, so that branch is now an honest empty state rather than invented rows), and that is not a defect.",
       "action": "expect",
       "selector": "[data-testid='pv2-hlt-service-source']",
       "state": "present",
-      "textContains": ["live", "fixture"]
+      "textContains": ["live", "empty"]
     },
     {
       "name": "H25b -- the header carries the 'All N notices' link into the full Message Center. #1229 makes N the real dataset.itemCount when live (previously always the fixture 452), so this asserts the stable suffix rather than the number.",

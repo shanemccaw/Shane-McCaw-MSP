@@ -17,23 +17,39 @@
  *  • a LOCATOR CHIP ROW of all six pillars, with "· you are here" appended to
  *    this one and every other chip navigable.
  *
- * ── The red dot on a green line is deliberate ──────────────────────────────
- * The trend counts OPEN DEBT ITEMS, where lower is better, and its end-point dot
- * is `#f87171` on a `#22C55E` line. The caption says why: "The last point is red
- * because the direction changed, not because the number is high." Colouring it
- * green — the obvious choice from the other five pillars — would state the
- * opposite of what the page says in words.
+ * ── The red dot on a green line was deliberate in the design ────────────────
+ * The prototype's trend counted OPEN DEBT ITEMS, where lower is better, with its
+ * end-point dot `#f87171` on a `#22C55E` line — red because the direction
+ * changed, not because the number was high. Git #1442's strict pass found no
+ * per-scan history of that count exists anywhere in the platform, so the graphic
+ * (and its invented 128→71→78 series) is now an honest no-live-data state; see
+ * the `NO-BACKEND-TO-WIRE:` tag above `HLT_DEBT_HISTORY` in hltDashboardData.ts.
  *
  * ── Severity vocabulary is the pillar's own ────────────────────────────────
  * Degrading / Accruing / Housekeeping, not Critical / High / Low, and it is the
- * only pillar with a third band. Debt accrues; it does not threaten.
+ * only pillar with a third band. Debt accrues; it does not threaten. A live
+ * finding (Git #1442) is always Degrading or Accruing — the real payload's
+ * critical/warning scale has no third-band signal to promote a live row to
+ * Housekeeping.
  *
  * ── Where its wrenches go ──────────────────────────────────────────────────
- * The drift table and the stale-object inventory carry keys belonging to OTHER
- * pillars — drift is detected here and remediated where the setting lives. Those
- * route to the owning pillar's playbook; several of those pillars are not built
- * yet, so a few wrenches resolve to the generic fallback for now. That is
- * recorded rather than papered over with invented Health copies.
+ * The stale-object inventory carries keys belonging to OTHER pillars — several
+ * of those pillars are not built yet, so a few wrenches resolve to the generic
+ * fallback for now. That is recorded rather than papered over with invented
+ * Health copies. The config-drift table's own wrenches went with it: Git #1442
+ * found the real drift engine has no shape matching this table's "N of 47
+ * tracked settings" inventory, so the whole section renders an honest
+ * no-live-data state instead — see the `NO-BACKEND-TO-WIRE:` tag above
+ * `HLT_DRIFT` in hltDashboardData.ts for the full investigation.
+ *
+ * ── Git #1442 strict pass — every value now resolves to one of three states ─
+ * Real live data (score, delta, debt items, 7 of 9 stale-object rows, Message
+ * Center service rows), an honest "No scan data available" when a real backend
+ * exists but this tenant hasn't been scanned (debt items, service rows), or an
+ * honest "No live data available" plus a `NO-BACKEND-TO-WIRE:` tag at the exact
+ * fixture source for a genuine backend gap (config drift, the debt trend
+ * history, the directory-sync stat, the accepted-risk register, 2 of 9
+ * stale-object rows). Nothing on this page silently falls back to fixture.
  */
 
 import { useState } from "react";
@@ -48,18 +64,16 @@ import { GOV_SRC_META } from "@/components/portal-v2/govPages";
 import { useLivePillarHero, PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 import {
   NoScanValue,
+  NoScanDataState,
   hasScanValue,
   NO_DATA_DASH,
   NO_DATA_INK,
+  NO_SCAN_DATA_LABEL,
 } from "@/components/portal-v2/NoScanDataState";
 import { useMessageCenter } from "@/components/portal-v2/useMessageCenter";
 import { useHltObjectsLive } from "@/components/portal-v2/useHltObjectsLive";
 import { PILLAR_ORDER } from "@/components/copilot-journey/journeyTokens";
 import {
-  HLT_ACCEPTED,
-  HLT_DRIFT_ALERTS,
-  HLT_DRIFT_APPROVED,
-  HLT_DRIFT_COUNT,
   HLT_DRIFT_KBI,
   HLT_FINDINGS,
   HLT_FINDING_COUNT,
@@ -67,22 +81,18 @@ import {
   HLT_GREEN_TEXT,
   HLT_HERO,
   HLT_HERO_STATS,
-  HLT_MC_COUNT,
   HLT_OBJECTS,
+  HLT_OBJECTS_NO_BACKEND,
   HLT_PROV,
-  HLT_SERVICE,
   HLT_SERVICE_TONE,
   HLT_SEV_META,
   HLT_TONE,
-  HLT_VERDICT,
-  hltAcceptedMeta,
   hltAcceptedStripSuffix,
-  hltDriftOwner,
-  hltDriftRows,
+  hltFindingRowsFromLive,
+  hltHeroStatsHonest,
   hltHeroStatsWithObjectTotal,
   hltObjectTotalFor,
   hltObjectsWithLive,
-  hltTrendGeometry,
   type HltFinding,
   type HltServiceTone,
 } from "@/components/portal-v2/hltDashboardData";
@@ -103,23 +113,6 @@ const PANEL_HEAD_LABEL: React.CSSProperties = {
   fontSize: "9.5px",
   fontWeight: 700,
   letterSpacing: ".16em",
-  textTransform: "uppercase",
-  color: "#64748b",
-};
-
-const MICRO_LABEL: React.CSSProperties = {
-  fontSize: "9.5px",
-  fontWeight: 700,
-  letterSpacing: ".09em",
-  textTransform: "uppercase",
-  color: "#64748b",
-};
-
-/** The small uppercase key labels inside an expanded drift row (proto 3056). */
-const DRIFT_DETAIL_LABEL: React.CSSProperties = {
-  fontSize: "9px",
-  fontWeight: 700,
-  letterSpacing: ".09em",
   textTransform: "uppercase",
   color: "#64748b",
 };
@@ -192,13 +185,13 @@ function HltInfoDot({ title, summary }: { title: string; summary: string }) {
 }
 
 export default function PortalV2HealthPage() {
-  const trend = hltTrendGeometry();
   // Real pillar score/delta from the live health engine (the engine calls this
   // pillar "architecture"; the payload keys it "health"), fixture as the
-  // honest-null fallback. Only the ring is wired — the sync table, stale-object
-  // inventory, drift list and debt items below have no per-item server feed and
-  // stay fixture. The RING delta tracks the score (up = green), which is separate
-  // from the debt TREND chart below that is red-because-rising by design.
+  // honest-null fallback. The ring, the debt items and the stale-object
+  // inventory are wired (see below); the drift table, the debt trend, the
+  // directory-sync stat and the accepted-risk register are genuine backend
+  // gaps, tagged `NO-BACKEND-TO-WIRE:` at their fixture source in
+  // hltDashboardData.ts (Git #1442).
   const live = useLivePillarHero("health");
   // Honest-null contract (#1387): real score/delta when scored, muted "—"
   // otherwise — never the design fixture.
@@ -207,33 +200,48 @@ export default function PortalV2HealthPage() {
   const delta = live.delta?.text ?? NO_DATA_DASH;
   const deltaColor = live.delta?.color ?? NO_DATA_INK;
 
+  // Debt items (Git #1442) — the SAME #1255 pattern `portal-v2-compliance-
+  // gaps.tsx` already proved: once this tenant's Health pillar card is
+  // `present`, its real findings render (including a real empty list), never
+  // the fixture. `HLT_FINDINGS` is the loading/never-scanned placeholder only,
+  // and a never-scanned tenant gets the honest "No scan data available" state
+  // instead of that placeholder (a stricter contract than compliance-gaps'
+  // own loading-only fallback — see Git #1442).
+  const healthPillar = live.pillars.find((p) => p.key === "health");
+  const healthPillarFindings = healthPillar?.findings ?? [];
+  const liveDebtItems = healthPillar?.present ? hltFindingRowsFromLive(healthPillarFindings) : null;
+  const debtItemsScanned = !!healthPillar?.present;
+  const debtItems = liveDebtItems ?? HLT_FINDINGS;
+  const debtItemCount = liveDebtItems ? liveDebtItems.length : HLT_FINDING_COUNT;
+
   // The accepted-risk strip's sentence (#1273): the worst real finding on this
   // tenant's own Health payload, off the SAME `pillars` array `live` already
   // carries from usePortalV2Pillars — no second fetch. `findings[0]` is the
   // server's own worst-first order (severity, then real signal weight); see
   // `hltAcceptedStripSuffix`'s header for why that stands in for "most recent".
-  const healthPillarFindings = live.pillars.find((p) => p.key === "health")?.findings ?? [];
   const acceptedStripSuffix = hltAcceptedStripSuffix(healthPillarFindings[0]?.title);
 
-  // Stale object inventory summary card + itemized drill-down (Git #1340).
-  // 3 of the 5 itemized rows have a real, semantically-verified check behind
-  // them; see hltDashboardData.ts's hltObjectsWithLive for the full mapping
-  // and the 2 rows that stayed fixture after verification found a mismatch.
-  // The hero's "Stale objects" stat and this section's own total are computed
-  // from the SAME liveObjects array, so they can never drift from each other.
+  // Stale object inventory summary card + itemized drill-down (Git #1340,
+  // widened to 7 of 9 rows by #1442). See hltDashboardData.ts's
+  // `hltObjectsWithLive` for the full per-row mapping and the 2 rows
+  // (`HLT_OBJECTS_NO_BACKEND`) tagged `NO-BACKEND-TO-WIRE:` there. The hero's
+  // "Stale objects" stat and this section's own total are computed from the
+  // SAME liveObjects array, so they can never drift from each other.
   const objectsLive = useHltObjectsLive();
   const liveObjects = hltObjectsWithLive(HLT_OBJECTS, objectsLive.live);
   const objectTotal = hltObjectTotalFor(liveObjects);
   const objectsDataState: "live" | "fixture" = liveObjects === HLT_OBJECTS ? "fixture" : "live";
-  const heroStats = hltHeroStatsWithObjectTotal(HLT_HERO_STATS, objectTotal);
+  const heroStats = hltHeroStatsHonest(hltHeroStatsWithObjectTotal(HLT_HERO_STATS, objectTotal), NO_DATA_DASH);
 
   // The "Service health & incoming changes" panel has a real per-item feed —
   // this tenant's own synced Message Center posts (portal-message-center.ts,
   // the same route the Microsoft Changes page reads). It replaces the design's
   // fictional incident/advisory rows with the tenant's own highest-scoring
   // real posts. There is no live equivalent for the incident/advisory ROWS
-  // themselves (Message Center carries posts only, not incident status), so
-  // the fixture stays whole when there is no real, scoped data to show instead.
+  // themselves (Message Center carries posts only, not incident status) — see
+  // the `NO-BACKEND-TO-WIRE:` tag above `HLT_SERVICE` — so when there are no
+  // real live posts this panel renders the honest empty state rather than
+  // that invented 5-row mix.
   const messageCenter = useMessageCenter();
   const liveServiceRows = messageCenter.dataset.live
     ? messageCenter.dataset.posts
@@ -248,18 +256,17 @@ export default function PortalV2HealthPage() {
           tone: (p.hard ? "amber" : "blue") as HltServiceTone,
         }))
     : null;
-  const serviceRows = liveServiceRows && liveServiceRows.length > 0 ? liveServiceRows : HLT_SERVICE;
+  const serviceRows = liveServiceRows && liveServiceRows.length > 0 ? liveServiceRows : null;
   const mcAllCount =
     messageCenter.dataset.live && messageCenter.dataset.itemCount > 0
       ? String(messageCenter.dataset.itemCount)
-      : HLT_MC_COUNT;
+      : NO_DATA_DASH;
 
   const ringR = 46;
   const ringC = 2 * Math.PI * ringR;
   const ringOffset = hasScore ? ringC - (score / 100) * ringC : ringC;
 
   const [expanded, setExpanded] = useState<number | null>(null);
-  const [driftOpen, setDriftOpen] = useState<number | null>(null);
   const [provOpen, setProvOpen] = useState(false);
   const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
@@ -381,8 +388,12 @@ export default function PortalV2HealthPage() {
               background: "rgba(148,163,184,.05)",
             }}
           >
-            <span style={{ fontSize: "15px", fontWeight: 800, color: "#cbd5e1", fontFamily: MONO }}>
-              {HLT_ACCEPTED.length}
+            {/* NO-BACKEND-TO-WIRE: see the tag above HLT_ACCEPTED in
+                hltDashboardData.ts — there is no accepted-risk persistence to
+                count, so this reads as an honest dash rather than the
+                fixture's "1". */}
+            <span style={{ fontSize: "15px", fontWeight: 800, color: NO_DATA_INK, fontFamily: MONO }}>
+              {NO_DATA_DASH}
             </span>
             <span
               data-testid="pv2-hlt-accepted-strip-suffix"
@@ -584,60 +595,19 @@ export default function PortalV2HealthPage() {
               >
                 {HLT_HERO.trendLabel}
               </span>
-              <div style={{ position: "relative" }}>
-                <svg
-                  width="100%"
-                  height={trend.h}
-                  viewBox={`0 0 ${trend.w} ${trend.h}`}
-                  preserveAspectRatio="none"
-                  style={{ overflow: "visible", display: "block" }}
-                  aria-hidden="true"
-                >
-                  <defs>
-                    <linearGradient id="hltTrendFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={HLT_GREEN} stopOpacity={0.3} />
-                      <stop offset="100%" stopColor={HLT_GREEN} stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <path d={trend.area} fill="url(#hltTrendFill)" />
-                  <polyline
-                    points={trend.line}
-                    fill="none"
-                    stroke={HLT_GREEN}
-                    strokeWidth={2}
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </svg>
-                <svg
-                  width="100%"
-                  height={trend.h}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    overflow: "visible",
-                    display: "block",
-                    pointerEvents: "none",
-                  }}
-                  aria-hidden="true"
-                >
-                  {/* RED on a green line, and the caption below says why. */}
-                  <circle
-                    cx={`${(trend.lastX / trend.w) * 100}%`}
-                    cy={trend.lastY}
-                    r={3.5}
-                    fill="#f87171"
-                  />
-                </svg>
-                <div style={{ height: 1, background: "rgba(148,163,184,.14)" }} />
-                <span
-                  style={{ display: "block", paddingTop: 5, fontSize: "10.5px", color: "#64748b" }}
-                >
-                  {HLT_HERO.trendCaption}
-                </span>
-              </div>
+              {/* NO-BACKEND-TO-WIRE: no per-scan historical time series of
+                  "open debt item count" exists (see the tag above
+                  HLT_DEBT_HISTORY in hltDashboardData.ts) — the invented
+                  128→71→78 series and its red-dot-on-green-line graphic are
+                  replaced with the honest no-live-data state rather than
+                  drawn from fixture numbers. */}
+              <NoScanDataState
+                testId="pv2-hlt-trend-empty"
+                label="No live data available"
+                detail="No historical series of open debt items exists yet."
+                compact
+                align="start"
+              />
             </div>
           </div>
 
@@ -761,7 +731,7 @@ export default function PortalV2HealthPage() {
                     position: "relative",
                     fontSize: "22px",
                     fontWeight: 800,
-                    color: "#f8fafc",
+                    color: s.value === NO_DATA_DASH ? NO_DATA_INK : "#f8fafc",
                     letterSpacing: "-.02em",
                     fontFamily: MONO,
                   }}
@@ -774,6 +744,16 @@ export default function PortalV2HealthPage() {
                 {s.label === "Stale objects" && (
                   <span data-testid="pv2-hlt-objects-source" style={PV2_SOURCE_CLIP}>
                     {objectsDataState}
+                  </span>
+                )}
+                {/* NO-BACKEND-TO-WIRE: "Directory sync" (HLT_SYNC) and "Config
+                    drift" (HLT_DRIFT) have no wiring path — see the tags in
+                    hltDashboardData.ts. Hidden marker so a test can prove the
+                    honest state rendered, same PV2_SOURCE_CLIP convention the
+                    live hero stats use. */}
+                {(s.label === "Directory sync" || s.label === "Config drift") && (
+                  <span data-testid={`pv2-hlt-stat-${s.label.toLowerCase().replace(/\s+/g, "-")}-source`} style={PV2_SOURCE_CLIP}>
+                    empty
                   </span>
                 )}
               </div>
@@ -817,6 +797,12 @@ export default function PortalV2HealthPage() {
             >
               {liveObjects.map((o, i) => {
                 const c = HLT_TONE[o.tone];
+                // NO-BACKEND-TO-WIRE: see the tag above `hltObjectsWithLive`
+                // in hltDashboardData.ts — these 2 of 9 rows have no check
+                // anywhere in the catalog that can answer what they claim, so
+                // they render an honest no-live-data count rather than this
+                // fixture number.
+                const noBackend = HLT_OBJECTS_NO_BACKEND.has(o.type);
                 return (
                   <div
                     key={o.type}
@@ -838,7 +824,7 @@ export default function PortalV2HealthPage() {
                         {o.type}
                       </span>
                       <span style={{ fontSize: "10px", color: "#64748b", fontFamily: MONO }}>
-                        {o.where} · {o.oldest}
+                        {noBackend ? "No live data available" : `${o.where} · ${o.oldest}`}
                       </span>
                       <span
                         style={{
@@ -856,12 +842,12 @@ export default function PortalV2HealthPage() {
                       style={{
                         fontSize: "15px",
                         fontWeight: 800,
-                        color: c,
+                        color: noBackend ? NO_DATA_INK : c,
                         textAlign: "right",
                         fontFamily: MONO,
                       }}
                     >
-                      {o.count}
+                      {noBackend ? NO_DATA_DASH : o.count}
                     </span>
                     <button
                       onClick={() => openFixPanel(o.fixKey)}
@@ -904,19 +890,22 @@ export default function PortalV2HealthPage() {
             }}
           >
             <span style={{ ...SECTION_LABEL, display: "flex", alignItems: "center", gap: 8 }}>
-              Configuration drift · {HLT_DRIFT_COUNT} of 47 tracked settings{" "}
+              Configuration drift
               <HltInfoDot title={HLT_DRIFT_KBI.title} summary={HLT_DRIFT_KBI.summary} />
             </span>
-            <span style={SECTION_NOTE}>
-              {HLT_DRIFT_ALERTS} changed with no request behind them · {HLT_DRIFT_APPROVED} tied to a
-              change record
-            </span>
           </div>
+          {/* NO-BACKEND-TO-WIRE: see the tag above HLT_DRIFT in
+              hltDashboardData.ts. A real drift-events engine exists
+              (drift_events + dashboard-resolvers.ts's resolveDriftEvents,
+              portal-reachable via POST /api/dashboard/resolve against the 17
+              drift.*DriftCount metric keys already consumed elsewhere in this
+              app, m365-health/useM365HealthLive.ts), but it has no shape that
+              maps to this "N of 47 tracked settings, including clean/accepted
+              rows" inventory — that needs a product decision on verdict-
+              taxonomy mapping this pass does not make unilaterally. Renders
+              the honest no-live-data state rather than this invented table. */}
           <div
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 0,
               border: "1px solid rgba(30,41,59,.9)",
               borderRadius: 12,
               background: "rgba(15,23,42,.4)",
@@ -924,287 +913,11 @@ export default function PortalV2HealthPage() {
             }}
             data-testid="pv2-hlt-drift"
           >
-            {hltDriftRows().map((d, i) => {
-              const v = HLT_VERDICT[d.verdict];
-              const isOpen = driftOpen === i;
-              const owner = hltDriftOwner(d.owner);
-              return (
-                <div
-                  key={d.setting}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 0,
-                    borderLeft: `2px solid ${v.c}`,
-                    borderTop: "1px solid rgba(30,41,59,.8)",
-                    background: isOpen ? "rgba(148,163,184,.04)" : "transparent",
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setDriftOpen(isOpen ? null : i)}
-                    data-testid={`pv2-hlt-drift-${i}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 11,
-                      padding: "11px 15px",
-                      border: "none",
-                      background: "none",
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      textAlign: "left",
-                      width: "100%",
-                    }}
-                  >
-                    <span
-                      style={{
-                        flex: "0 0 auto",
-                        display: "flex",
-                        marginTop: 3,
-                        transform: `rotate(${isOpen ? 180 : -90}deg)`,
-                        transition: "transform 180ms",
-                      }}
-                    >
-                      <ChevronDown size={12} color="#64748b" aria-hidden="true" />
-                    </span>
-                    <div
-                      style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 5 }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span
-                          style={{
-                            flex: "0 0 auto",
-                            padding: "2px 8px",
-                            borderRadius: 5,
-                            border: `1px solid ${v.c}55`,
-                            background: `${v.c}14`,
-                            fontSize: "9px",
-                            fontWeight: 800,
-                            letterSpacing: ".06em",
-                            textTransform: "uppercase",
-                            color: v.c,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {v.label}
-                        </span>
-                        {d.hasCr && (
-                          <span
-                            onClick={(e) => e.stopPropagation()}
-                            data-testid={`pv2-hlt-drift-cr-${i}`}
-                            style={{
-                              flex: "0 0 auto",
-                              padding: "2px 8px",
-                              borderRadius: 5,
-                              border: "1px solid rgba(96,165,250,.45)",
-                              background: "rgba(96,165,250,.12)",
-                              fontSize: "9.5px",
-                              fontWeight: 800,
-                              color: "#93c5fd",
-                              whiteSpace: "nowrap",
-                              fontFamily: MONO,
-                            }}
-                          >
-                            {d.cr}
-                          </span>
-                        )}
-                        <span
-                          style={{
-                            flex: "0 0 auto",
-                            padding: "2px 7px",
-                            borderRadius: 4,
-                            border: "1px solid rgba(148,163,184,.22)",
-                            background: "rgba(148,163,184,.06)",
-                            fontSize: "9px",
-                            fontWeight: 700,
-                            letterSpacing: ".06em",
-                            textTransform: "uppercase",
-                            color: "#94a3b8",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {d.scope}
-                        </span>
-                        {v.lead && (
-                          <span style={{ fontSize: "10.5px", color: "#475569" }}>{v.lead}</span>
-                        )}
-                      </div>
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          color: "#e2e8f0",
-                          lineHeight: 1.4,
-                          overflowWrap: "break-word",
-                          fontFamily: MONO,
-                        }}
-                      >
-                        {d.setting}
-                      </span>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: "11px", color: "#64748b", fontFamily: MONO }}>
-                          {d.baseline}
-                        </span>
-                        <span style={{ fontSize: "11px", color: "#475569" }}>→</span>
-                        <span
-                          style={{
-                            fontSize: "11.5px",
-                            fontWeight: 700,
-                            color: v.c,
-                            lineHeight: 1.4,
-                            fontFamily: MONO,
-                          }}
-                        >
-                          {d.current}
-                        </span>
-                      </div>
-                    </div>
-                    <span
-                      title={owner.name}
-                      style={{
-                        flex: "0 0 auto",
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: 22,
-                        height: 22,
-                        borderRadius: "50%",
-                        fontSize: "9.5px",
-                        fontWeight: 800,
-                        letterSpacing: ".02em",
-                        color: "#0b1524",
-                        background: owner.tone,
-                      }}
-                    >
-                      {owner.init}
-                    </span>
-                  </button>
-                  {isOpen && (
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 11,
-                        padding: "0 15px 15px 38px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
-                          gap: 10,
-                        }}
-                      >
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <span style={DRIFT_DETAIL_LABEL}>Changed by</span>
-                          <span
-                            style={{ fontSize: "11.5px", color: "#e2e8f0", overflowWrap: "break-word" }}
-                          >
-                            {d.who}
-                          </span>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <span style={DRIFT_DETAIL_LABEL}>When</span>
-                          <span style={{ fontSize: "11.5px", color: "#e2e8f0" }}>{d.when}</span>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                          <span style={DRIFT_DETAIL_LABEL}>Answers for it</span>
-                          <span style={{ fontSize: "11.5px", color: "#e2e8f0" }}>{owner.name}</span>
-                        </div>
-                      </div>
-                      {d.hasCr && (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 3,
-                            padding: "11px 13px",
-                            borderRadius: 9,
-                            border: "1px solid rgba(96,165,250,.28)",
-                            background: "rgba(96,165,250,.06)",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "9px",
-                              fontWeight: 700,
-                              letterSpacing: ".1em",
-                              textTransform: "uppercase",
-                              color: "#60a5fa",
-                            }}
-                          >
-                            Change record · {d.cr}
-                          </span>
-                          <span
-                            style={{
-                              fontSize: "11.5px",
-                              color: "#cbd5e1",
-                              lineHeight: 1.6,
-                              textWrap: "pretty",
-                            }}
-                          >
-                            {d.crNote}
-                          </span>
-                        </div>
-                      )}
-                      {(d.fixKey || d.isAlert) && (
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          {d.fixKey && (
-                            <button
-                              type="button"
-                              onClick={() => openFixPanel(d.fixKey!)}
-                              data-testid={`pv2-hlt-drift-fix-${d.fixKey}`}
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 8,
-                                padding: "8px 12px",
-                                borderRadius: 8,
-                                border: "1px solid rgba(34,197,94,.4)",
-                                background: "rgba(34,197,94,.1)",
-                                cursor: "pointer",
-                                fontFamily: "inherit",
-                              }}
-                            >
-                              <Wrench size={12} color={HLT_GREEN_TEXT} aria-hidden="true" />
-                              <span
-                                style={{ fontSize: "11.5px", fontWeight: 700, color: HLT_GREEN_TEXT }}
-                              >
-                                Reconcile this setting
-                              </span>
-                            </button>
-                          )}
-                          {/* Design `d.raiseGo` (14880) opens Change Control's
-                              register with a new-change intent — reproduced as a
-                              real link into that module. */}
-                          {d.isAlert && (
-                            <Link
-                              href="/portal-v2/change-control"
-                              data-testid={`pv2-hlt-drift-raise-${i}`}
-                              style={{
-                                padding: "8px 12px",
-                                borderRadius: 8,
-                                border: "1px solid rgba(148,163,184,.24)",
-                                background: "transparent",
-                                color: "#94a3b8",
-                                fontSize: "11.5px",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                fontFamily: "inherit",
-                                textDecoration: "none",
-                              }}
-                            >
-                              Raise the change that should have covered it
-                            </Link>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            <NoScanDataState
+              testId="pv2-hlt-drift-empty"
+              label="No live data available"
+              detail="No per-setting drift inventory is wired for this tenant yet."
+            />
           </div>
         </div>
 
@@ -1220,24 +933,50 @@ export default function PortalV2HealthPage() {
                 flexWrap: "wrap",
               }}
             >
-              <span style={SECTION_LABEL}>Debt items · {HLT_FINDING_COUNT}</span>
+              <span style={SECTION_LABEL}>Debt items · {debtItemsScanned ? debtItemCount : NO_DATA_DASH}</span>
               <span style={SECTION_NOTE}>
                 Ordered by how quickly leaving it alone gets worse.
               </span>
             </div>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 0,
-                border: "1px solid rgba(30,41,59,.9)",
-                borderRadius: 12,
-                background: "rgba(15,23,42,.4)",
-                overflow: "hidden",
-              }}
-              data-testid="pv2-hlt-debt"
-            >
-              {HLT_FINDINGS.map((f, i) => {
+            {!debtItemsScanned && (
+              <NoScanDataState
+                testId="pv2-hlt-debt-empty"
+                label={NO_SCAN_DATA_LABEL}
+                detail="This tenant has not been scanned for Health yet."
+                compact
+                align="start"
+              />
+            )}
+            {debtItemsScanned && liveDebtItems && liveDebtItems.length === 0 && (
+              <div
+                data-testid="pv2-hlt-debt-clear"
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: 10,
+                  fontSize: "12px",
+                  lineHeight: 1.6,
+                  border: "1px solid rgba(148,163,184,.18)",
+                  background: "rgba(148,163,184,.05)",
+                  color: "#94a3b8",
+                }}
+              >
+                No open debt items from your last scan.
+              </div>
+            )}
+            {debtItemsScanned && debtItems.length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 0,
+                  border: "1px solid rgba(30,41,59,.9)",
+                  borderRadius: 12,
+                  background: "rgba(15,23,42,.4)",
+                  overflow: "hidden",
+                }}
+                data-testid="pv2-hlt-debt"
+              >
+              {debtItems.map((f, i) => {
                 const sev = HLT_SEV_META[f.sev];
                 const isExpanded = expanded === i;
                 return (
@@ -1497,9 +1236,14 @@ export default function PortalV2HealthPage() {
                   </div>
                 );
               })}
-            </div>
+              </div>
+            )}
 
-            {/* Accepted risk cards — proto 3140-3166. */}
+            {/* Accepted risk cards — proto 3140-3166. NO-BACKEND-TO-WIRE: see
+                the tag above HLT_ACCEPTED in hltDashboardData.ts — there is
+                no accepted-risk persistence anywhere in the platform, so this
+                section renders the honest no-live-data state rather than the
+                fixture "AD FS retained" example. */}
             <div
               style={{
                 display: "grid",
@@ -1509,131 +1253,11 @@ export default function PortalV2HealthPage() {
               }}
               data-testid="pv2-hlt-accepted"
             >
-              {HLT_ACCEPTED.map((a) => (
-                <div
-                  key={a.id}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 9,
-                    padding: "15px 16px",
-                    border: "1px solid rgba(148,163,184,.2)",
-                    borderRadius: 12,
-                    background: "linear-gradient(160deg, rgba(148,163,184,.05), rgba(15,23,42,.5))",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span
-                      style={{
-                        fontSize: "10.5px",
-                        fontWeight: 700,
-                        color: "#64748b",
-                        letterSpacing: ".06em",
-                        fontFamily: MONO,
-                      }}
-                    >
-                      {a.id}
-                    </span>
-                    <span
-                      style={{
-                        padding: "2px 8px",
-                        borderRadius: 4,
-                        border: "1px solid rgba(148,163,184,.35)",
-                        background: "rgba(148,163,184,.08)",
-                        fontSize: "9.5px",
-                        fontWeight: 700,
-                        letterSpacing: ".06em",
-                        textTransform: "uppercase",
-                        color: "#cbd5e1",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      Accepted risk
-                    </span>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "12.5px",
-                      fontWeight: 700,
-                      color: "#f1f5f9",
-                      lineHeight: 1.45,
-                    }}
-                  >
-                    {a.title}
-                  </span>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span style={MICRO_LABEL}>Operational reason</span>
-                    <span
-                      style={{
-                        fontSize: "11.5px",
-                        color: "#cbd5e1",
-                        lineHeight: 1.55,
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {a.rationale}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span style={MICRO_LABEL}>Compensating controls</span>
-                    <span
-                      style={{
-                        fontSize: "11.5px",
-                        color: "#cbd5e1",
-                        lineHeight: 1.55,
-                        textWrap: "pretty",
-                      }}
-                    >
-                      {a.compensating}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 8,
-                      paddingTop: 9,
-                      borderTop: "1px solid rgba(148,163,184,.14)",
-                    }}
-                  >
-                    {hltAcceptedMeta(a).map((m) => (
-                      <div key={m.k} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                        <span
-                          style={{
-                            fontSize: "9.5px",
-                            fontWeight: 700,
-                            letterSpacing: ".07em",
-                            textTransform: "uppercase",
-                            color: "#64748b",
-                          }}
-                        >
-                          {m.k}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 600,
-                            color: "#e2e8f0",
-                            fontFamily: MONO,
-                          }}
-                        >
-                          {m.v}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      color: "#64748b",
-                      lineHeight: 1.5,
-                      textWrap: "pretty",
-                    }}
-                  >
-                    {a.note}
-                  </span>
-                </div>
-              ))}
+              <NoScanDataState
+                testId="pv2-hlt-accepted-empty"
+                label="No live data available"
+                detail="Accepting a risk records nothing yet — there is no accepted-risk storage to read back."
+              />
             </div>
           </div>
 
@@ -1667,7 +1291,7 @@ export default function PortalV2HealthPage() {
                     Straight from the Message Center, filtered to services you use.
                   </span>
                   <span data-testid="pv2-hlt-service-source" style={PV2_SOURCE_CLIP}>
-                    {liveServiceRows && liveServiceRows.length > 0 ? "live" : "fixture"}
+                    {serviceRows ? "live" : "empty"}
                   </span>
                 </div>
                 {/* Design `hltMcGo` (3185) opens the Message Center drill-down,
@@ -1692,7 +1316,16 @@ export default function PortalV2HealthPage() {
                   All {mcAllCount} notices →
                 </button>
               </div>
-              {serviceRows.map((s) => {
+              {!serviceRows && (
+                <NoScanDataState
+                  testId="pv2-hlt-service-empty"
+                  label={NO_SCAN_DATA_LABEL}
+                  detail="No Message Center posts scored for your services yet. Incident/advisory status has no data source in this platform yet."
+                  compact
+                  align="start"
+                />
+              )}
+              {serviceRows && serviceRows.map((s) => {
                 const c = HLT_SERVICE_TONE[s.tone];
                 return (
                   <div
