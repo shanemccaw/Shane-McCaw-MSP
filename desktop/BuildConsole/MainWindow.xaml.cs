@@ -48,6 +48,7 @@ namespace BuildConsole
         private BuildConsole.Services.BuildTrackerApiClient? _buildTrackerApi;
         public BuildConsole.Services.BuildTrackerApiClient? BuildTrackerApi => _buildTrackerApi;
         private BuildConsole.Services.QueueWatcherService? _queueWatcher;
+        private BuildConsole.Services.SessionLimitAutoRestartService? _sessionLimitAutoRestart;
         public BuildConsole.Services.QueueWatcherService? QueueWatcher => _queueWatcher;
         private BuildConsole.Services.BuildQueuePostgresClient? _queueDb;
         public BuildConsole.Services.BuildQueuePostgresClient? QueueDb => _queueDb;
@@ -361,6 +362,22 @@ namespace BuildConsole
                 _queueWatcher = new BuildConsole.Services.QueueWatcherService(
                     _buildTrackerApi, _queueDb, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
                 _queueWatcher.BuildFinished += QueueWatcher_BuildFinished;
+
+                // Session-limit auto-restart — detects the CLI's "hit your session
+                // limit · resets …" message in build output, parks those builds
+                // limit-paused, and re-queues them (resuming the global pause toggle
+                // too) 10 minutes after the parsed reset. StartAsync re-arms a
+                // persisted restart across app runs and runs the one-shot first-set
+                // bootstrap (Git #1446/#1439/#1441/#1442/#1452/#1444).
+                _sessionLimitAutoRestart = new BuildConsole.Services.SessionLimitAutoRestartService(
+                    _queueDb, () => _queueWatcher?.SetPaused(false));
+                _queueWatcher.SessionLimitAutoRestart = _sessionLimitAutoRestart;
+                _sessionLimitAutoRestart.LimitPausedResumed += count => Dispatcher.BeginInvoke(() =>
+                {
+                    try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
+                });
+                _ = _sessionLimitAutoRestart.StartAsync();
+
                 _queueWatcher.Start();
 
                 // Git #898 — same "app is already open for the build queue" assumption:

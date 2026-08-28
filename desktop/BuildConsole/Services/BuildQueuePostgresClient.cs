@@ -580,7 +580,7 @@ namespace BuildConsole.Services
                    SET status     = 'canceled',
                        updated_at = NOW()
                  WHERE id     = @id
-                   AND status = 'queued'", conn);
+                   AND status IN ('queued', 'held', 'limit-paused')", conn);
             cmd.Parameters.AddWithValue("@id", id);
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
             return rowsAffected > 0;
@@ -674,6 +674,123 @@ namespace BuildConsole.Services
             }
             await PopulateAssociatedIssueNumbersAsync(items, conn);
             return items;
+        }
+
+        // ── Session-limit auto-restart (SessionLimitAutoRestartService) ──────────
+
+        /// <summary>
+        /// Parks a build whose CLI output hit the session limit: status 'limit-paused'
+        /// (never reclaimed by GetNextAsync's WHERE status = 'queued'), claim released,
+        /// and resume_session_id backfilled from the captured session_id so the
+        /// auto-restart RESUMES the conversation instead of starting from scratch.
+        /// </summary>
+        public async Task MarkLimitPausedAsync(int id, string? sessionId)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status            = @status,
+                       claimed_at        = NULL,
+                       session_id        = COALESCE(@sessionId, session_id),
+                       resume_session_id = COALESCE(resume_session_id, @sessionId, session_id),
+                       updated_at        = NOW()
+                 WHERE id = @id", conn);
+            cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
+            cmd.Parameters.AddWithValue("@sessionId", (object?)sessionId ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        /// <summary>All rows currently parked limit-paused — drives the Build Queue panel's countdown banner.</summary>
+        public async Task<List<QueueItem>> GetLimitPausedAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, title, prompt, model, effort, cwd,
+                       github_number, blocked_by_number, blocked_by_numbers,
+                       status, exit_code, session_id, resume_session_id,
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account
+                FROM bt_build_queue
+                WHERE status = @status
+                ORDER BY created_at ASC", conn);
+            cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items;
+        }
+
+        /// <summary>
+        /// The auto-restart itself: every limit-paused row back to 'queued' in one
+        /// statement (resume_session_id already set by MarkLimitPausedAsync), so the
+        /// next tick's GetNextAsync picks them all up and resumes their sessions.
+        /// Returns the resumed rows for logging/UI refresh.
+        /// </summary>
+        public async Task<List<QueueItem>> ResumeLimitPausedAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'queued',
+                       updated_at = NOW()
+                 WHERE status = @status
+                RETURNING id, title, prompt, model, effort, cwd,
+                          github_number, blocked_by_number, blocked_by_numbers,
+                          status, exit_code, session_id, resume_session_id,
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+            cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items;
+        }
+
+        /// <summary>
+        /// First-set bootstrap: parks the MOST RECENT row for this GitHub issue as
+        /// limit-paused, but only when that row is sitting failed/canceled/held (a
+        /// cap-killed or manually-stopped attempt). A row already queued, running or
+        /// genuinely done is left alone. Returns true when a row was parked.
+        /// </summary>
+        public async Task<bool> MarkLatestRowLimitPausedForIssueAsync(int githubNumber)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status            = @status,
+                       claimed_at        = NULL,
+                       resume_session_id = COALESCE(resume_session_id, session_id),
+                       updated_at        = NOW()
+                 WHERE id = (SELECT id FROM bt_build_queue
+                              WHERE github_number = @num
+                              ORDER BY created_at DESC
+                              LIMIT 1)
+                   AND status IN ('failed', 'canceled', 'held')", conn);
+            cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
+            cmd.Parameters.AddWithValue("@num", githubNumber);
+            return await cmd.ExecuteNonQueryAsync() > 0;
+        }
+
+        /// <summary>Per-item "Resume Now": flips ONE limit-paused row back to 'queued' ahead of the timer (resume_session_id already preserved). Returns true when the row was actually limit-paused.</summary>
+        public async Task<bool> RequeueLimitPausedAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'queued',
+                       updated_at = NOW()
+                 WHERE id     = @id
+                   AND status = @status", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
+            return await cmd.ExecuteNonQueryAsync() > 0;
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────────

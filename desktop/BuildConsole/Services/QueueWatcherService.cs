@@ -97,6 +97,10 @@ namespace BuildConsole.Services
             public string Title = "";
             /// <summary>Git #826 — filled in as soon as the run's stream-json output reveals it (usually the very first line); reported at completion so a later Reply can resume this exact conversation.</summary>
             public string? SessionId;
+            /// <summary>Session-limit auto-restart — set the moment any output line matches the CLI's "hit your session limit · resets …" message. Read at reap time: a flagged build is parked limit-paused (not failed) and the auto-restart timer is armed. Guarded by _gate.</summary>
+            public bool SessionLimitHit;
+            /// <summary>The captured reset label ("2:40am (America/New_York)") from the limit message, when present. Guarded by _gate.</summary>
+            public string? SessionLimitResetLabel;
             /// <summary>Build Sets — the set name this build belongs to (null = ungrouped). When set, once this build's wave has fully drained the watcher tells the dev-server coordinator to `close` the set as a backstop.</summary>
             public string? BuildSet;
             /// <summary>Build Sets — this build's member key within its set (github number, else queue id) so a failed member can be dropped/accounted for.</summary>
@@ -158,6 +162,8 @@ namespace BuildConsole.Services
         private readonly string _claudeExe;
         private readonly string _geminiExe;
         private readonly Dictionary<int, RunningEntry> _running = new();
+        /// <summary>Session-limit auto-restart coordinator (wired by MainWindow right after construction; null in tests). Receives RegisterLimitHit when a limit-flagged build is reaped.</summary>
+        public SessionLimitAutoRestartService? SessionLimitAutoRestart { get; set; }
         /// <summary>Interactive builds that have exited but whose slot may still be on screen — kept so the Build Watch window can drain the final output tail and hold the slot in interactive-render mode (never falling back to a double-rendering file-tail). Evicted when the window dismisses the slot (ReleaseInteractive) or capped defensively.</summary>
         private readonly Dictionary<int, RunningEntry> _retained = new();
         /// <summary>Guards the mutable interactive fields of a RunningEntry and its Events/_retained — the process output thread and the UI thread both touch these. (_running membership itself is only ever mutated on the UI thread, same as before.)</summary>
@@ -617,40 +623,80 @@ namespace BuildConsole.Services
                     int exitCode = entry.Process.ExitCode;
                     ActivityLog.Log("watcher", $"Finished: {entry.Title} (exit {exitCode})");
 
+                    // Session-limit auto-restart: a build whose output hit the CLI's
+                    // session/usage-limit message is parked limit-paused (resume
+                    // session preserved) instead of marked failed, and the restart
+                    // timer is armed for its parsed reset + delay. Everything a
+                    // normal completion fires (BuildFinished → post-build deploy,
+                    // build-set close, worktree merge-back) is skipped — the build
+                    // isn't done, it's coming back.
+                    bool limitParked = false;
+                    bool limitHit;
+                    string? limitResetLabel;
+                    lock (_gate)
+                    {
+                        limitHit = entry.SessionLimitHit;
+                        limitResetLabel = entry.SessionLimitResetLabel;
+                    }
+                    if (limitHit)
+                    {
+                        if (_db != null)
+                        {
+                            try
+                            {
+                                await _db.MarkLimitPausedAsync(id, entry.SessionId);
+                                limitParked = true;
+                                ActivityLog.Log("session-limit", $"Parked queue #{id} ({entry.Title}) limit-paused (exit {exitCode}); it will be re-queued automatically after the session-limit reset.");
+                                SessionLimitAutoRestart?.RegisterLimitHit(id, limitResetLabel);
+                            }
+                            catch (Exception ex)
+                            {
+                                ActivityLog.Log("session-limit", $"Couldn't park queue #{id} limit-paused: {ex.Message} — falling back to the normal failed path.");
+                            }
+                        }
+                        else
+                        {
+                            ActivityLog.Log("session-limit", $"Queue #{id} hit the session limit but there is no direct DB connection (HTTP-fallback mode doesn't support limit-paused) — marking it via the normal completion path instead.");
+                        }
+                    }
+
                     // Report completion — direct Postgres when available (always-on Neon,
                     // no nap/sleep issue), HTTP fallback otherwise. The fallback path is
                     // kept for environments where DATABASE_URL isn't configured.
                     // It MUST NOT gate the local BuildFinished fan-out below:
                     // that fan-out drives PostBuildDeployPipeline (Epic #803/#911).
-                    try
+                    if (!limitParked)
                     {
-                        if (_db != null)
+                        try
                         {
-                            await _db.MarkCompleteAsync(id, exitCode, entry.SessionId);
-                            ActivityLog.Log("watcher", $"Reported completion of queue item {id} to Postgres.");
+                            if (_db != null)
+                            {
+                                await _db.MarkCompleteAsync(id, exitCode, entry.SessionId);
+                                ActivityLog.Log("watcher", $"Reported completion of queue item {id} to Postgres.");
+                            }
+                            else
+                            {
+                                await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId);
+                                ActivityLog.Log("watcher", $"Reported completion of queue item {id} to the dev server.");
+                            }
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            await _api.MarkQueueItemCompleteAsync(id, exitCode, entry.SessionId);
-                            ActivityLog.Log("watcher", $"Reported completion of queue item {id} to the dev server.");
+                            _pendingCompletions.Add((id, exitCode, entry.SessionId));
+                            ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id}: {ex.Message} — queued for retry.");
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _pendingCompletions.Add((id, exitCode, entry.SessionId));
-                        ActivityLog.Log("watcher", $"Couldn't report completion for queue item {id}: {ex.Message} — queued for retry.");
-                    }
 
-                    // Fire the local completion listeners REGARDLESS of the remote report
-                    // outcome above. Wrapped separately so a subscriber throwing can't take
-                    // down the reap loop, and so it always runs.
-                    try
-                    {
-                        BuildFinished?.Invoke(id, entry.Title, exitCode);
-                    }
-                    catch (Exception ex)
-                    {
-                        ActivityLog.Log("watcher", $"A BuildFinished handler threw for queue item {id}: {ex.Message}");
+                        // Fire the local completion listeners REGARDLESS of the remote report
+                        // outcome above. Wrapped separately so a subscriber throwing can't take
+                        // down the reap loop, and so it always runs.
+                        try
+                        {
+                            BuildFinished?.Invoke(id, entry.Title, exitCode);
+                        }
+                        catch (Exception ex)
+                        {
+                            ActivityLog.Log("watcher", $"A BuildFinished handler threw for queue item {id}: {ex.Message}");
+                        }
                     }
 
                     // Build Sets — backstop: once this build's wave has fully drained (no
@@ -659,7 +705,7 @@ namespace BuildConsole.Services
                     // even if a member failed without ever reporting to request-restart. On
                     // the happy path the set already auto-completed via the expected-count,
                     // so this close is a harmless single-shot no-op. Best-effort.
-                    if (!string.IsNullOrWhiteSpace(entry.BuildSet))
+                    if (!limitParked && !string.IsNullOrWhiteSpace(entry.BuildSet))
                     {
                         try { await MaybeCloseDrainedBuildSetAsync(entry.BuildSet!, id); }
                         catch (Exception ex) { ActivityLog.Log("watcher", $"Build-set close backstop for '{entry.BuildSet}' failed: {ex.Message}"); }
@@ -673,7 +719,7 @@ namespace BuildConsole.Services
                     // once its process is gone and a short grace window has passed (so a quick Reply
                     // /resume can still reuse it). Merge-back is left to the session for ungrouped
                     // non-BuildConsole runs; here it is automatic.
-                    if (!string.IsNullOrWhiteSpace(entry.WorktreeName))
+                    if (!limitParked && !string.IsNullOrWhiteSpace(entry.WorktreeName))
                     {
                         var wtName = entry.WorktreeName!;
                         var wtPath = entry.WorktreePath;
@@ -1042,7 +1088,7 @@ namespace BuildConsole.Services
                 WorktreeName = worktreeName,
             };
             proc.OutputDataReceived += (_, e) => HandleOutput(entry, item.Id, e.Data);
-            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) HandleStderr(entry, e.Data); };
+            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) HandleStderr(entry, item.Id, e.Data); };
             proc.Start();
             proc.BeginOutputReadLine();
             proc.BeginErrorReadLine();
@@ -1105,6 +1151,10 @@ namespace BuildConsole.Services
 
             var ctxTokens = TryExtractContextTokens(data);
             if (ctxTokens.HasValue) lock (_gate) entry.ContextTokens = ctxTokens;
+
+            // Session-limit auto-restart: the CLI's limit message can land on stdout
+            // (inside a stream-json string) or stderr — match the raw line either way.
+            DetectSessionLimit(entry, id, data, fromStderr: false);
 
             // (1) Human-readable per-item log FILE — for BOTH interactive and legacy builds
             //     (#802 BuildLogView + the foreign/legacy file-tail render path). Unchanged:
@@ -1229,10 +1279,34 @@ namespace BuildConsole.Services
 
 
 
+        /// <summary>Session-limit auto-restart: flags this build the first time a raw output line matches the CLI's session/usage-limit message (see <see cref="SessionLimitAutoRestartService.TryDetectLimitMessage"/>). The reap loop reads the flag to park the row limit-paused instead of failed.</summary>
+        private void DetectSessionLimit(RunningEntry entry, int id, string data, bool fromStderr)
+        {
+            // Guard against false positives: a build that merely READS code or docs
+            // mentioning the limit message (e.g. this feature's own source) streams
+            // that text back as "type":"user" tool_result lines. The CLI's REAL limit
+            // notice arrives as a "result"/"system" stream-json event or on stderr —
+            // only those are eligible.
+            if (!fromStderr
+                && data.IndexOf("\"type\":\"result\"", StringComparison.Ordinal) < 0
+                && data.IndexOf("\"type\":\"system\"", StringComparison.Ordinal) < 0) return;
+            if (!SessionLimitAutoRestartService.TryDetectLimitMessage(data, out var resetLabel)) return;
+            bool first;
+            lock (_gate)
+            {
+                first = !entry.SessionLimitHit;
+                entry.SessionLimitHit = true;
+                if (resetLabel != null) entry.SessionLimitResetLabel = resetLabel;
+            }
+            if (first)
+                ActivityLog.Log("session-limit", $"Queue #{id} ({entry.Title}) hit the Claude session limit (resets {resetLabel ?? "label not captured"}) — will park limit-paused when its process exits and auto-restart after the reset.");
+        }
+
         /// <summary>A raw stderr line (not stream-json): tee it to the log FILE and, for an interactive build, surface it in the Build Watch render as an error-tinted text event.</summary>
-        private void HandleStderr(RunningEntry entry, string data)
+        private void HandleStderr(RunningEntry entry, int id, string data)
         {
             AppendToLogFile(entry, data);
+            DetectSessionLimit(entry, id, data, fromStderr: true);
             if (entry.Interactive) AppendEvent(entry, new InteractiveEvent { Kind = InteractiveEventKind.AssistantText, Text = data, IsError = true });
         }
 
