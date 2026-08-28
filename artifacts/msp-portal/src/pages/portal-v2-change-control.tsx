@@ -120,16 +120,13 @@ function StatsBand({ ctrl }: { ctrl: CcController }) {
   const incomplete = all.filter((c) => (c.missing || []).length).length;
   // NO-BACKEND-TO-WIRE: no freeze-window table exists (see useChangeControl.ts's
   // header), so CC_FREEZE ("ERP go-live freeze", 24-28 Aug, Halden Materials) is
-  // always a fixture — never a live tenant's real declared freeze. Whether
-  // anything COLLIDES with it comes from the same live-aware set the
-  // register/briefing already use rather than a fixture code (`CR-0142`) that a
-  // live tenant will not have, so `freezeClash`/`freezeSet` are honest either
-  // way; only the label/value text below needed the same live/fixture split
-  // CalendarView, ReviewView and SettingsView already give this same gap
-  // (Git #1364) — added here to close that gap on the stat card itself.
-  const freezeSet = sets.freeze || [];
-  const freezeClash = freezeSet.length > 0 && !s.freezeException;
-
+  // always a fixture, never a live tenant's real declared freeze — and there is
+  // no honest "scanned but empty" freeze to fall back to either, because the
+  // table it would come from doesn't exist. So unlike the other cards on this
+  // band, the freeze stat does NOT split on `isLive`: it reads "None declared" /
+  // "No freeze declared for your tenant." in every data state, live or not
+  // (Git #1475 — the previous live/fixture split here showed CC_FREEZE's
+  // fictional Halden banner as fact whenever the tenant had no live scan data).
   const scheduledSet = sets.scheduled || [];
   const closedCrs = all.filter((c) => (sets.closed || []).includes(c.code));
   const rolledBackCount = closedCrs.filter((c) => c.state === "Rolled back").length;
@@ -181,10 +178,8 @@ function StatsBand({ ctrl }: { ctrl: CcController }) {
     {
       key: "freeze",
       label: "Change freeze",
-      value: isLive ? "None declared" : "24–28 Aug",
-      sub: isLive
-        ? "No freeze declared for your tenant."
-        : CC_FREEZE.label + (freezeClash ? " · " + freezeSet.length + (freezeSet.length === 1 ? " change collides" : " changes collide") : " · clear"),
+      value: "None declared",
+      sub: "No freeze declared for your tenant.",
       tone: "#f87171",
     },
   ];
@@ -196,7 +191,7 @@ function StatsBand({ ctrl }: { ctrl: CcController }) {
     incomplete: "Required sections are empty, so these cannot be approved or given a window.",
     scheduled: "Windows already agreed. Anything that collides with the freeze is marked.",
     closed: "Deployed in the last 30 days, with what held and what did not.",
-    freeze: isLive ? "No freeze declared for your tenant." : CC_FREEZE.label + ". Nothing may change inside it without a granted exception.",
+    freeze: "No freeze declared for your tenant.",
   };
   const decByCode: Record<string, (typeof CC_DECISIONS)[number]> = {};
   CC_DECISIONS.forEach((d) => (decByCode[d.code] = d));
@@ -353,16 +348,16 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
   const sets = ctrl.statSets();
   const FZ = CC_FREEZE;
 
-  // isLive guard: FZ.from/FZ.to are the fixture freeze's fixed days (24-28,
-  // see the NO-BACKEND-TO-WIRE note on the banner below) — striping the
-  // timeline for those days on a live tenant would draw a freeze that was
-  // never declared, so the whole-day striping only fires in fixture mode.
-  const isFz = (d: number) => !isLive && d >= FZ.from && d <= FZ.to;
-  const fzStripe =
-    "repeating-linear-gradient(135deg,rgba(248,113,113,.20),rgba(248,113,113,.20) 5px,rgba(248,113,113,.06) 5px,rgba(248,113,113,.06) 10px)";
+  // NO-BACKEND-TO-WIRE: no freeze-window table exists, so FZ.from/FZ.to are
+  // only the fixture freeze's fixed days (24-28 Aug) — never a real tenant's
+  // declared freeze. Striping the timeline for those days would draw a freeze
+  // that was never declared no matter which data state is on screen, so this
+  // never fires (previously it fired whenever the tenant had no live scan
+  // data, which is exactly the fictional-freeze-as-fact leak Git #1475 fixed).
+  const isFz = (_d: number) => false;
   const dayBg = (d: number) =>
     isFz(d)
-      ? fzStripe
+      ? ""
       : CC_BLACKOUT.indexOf(d) >= 0
         ? "rgba(251,191,36,.05)"
         : CC_WIN_DAYS.indexOf(d) >= 0
@@ -591,19 +586,6 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
       ];
   const tray = trayDefs.filter((tD) => matchSF(tD.code, SF));
 
-  const fzClashes = order.filter((c) => stateInFreeze(c, s.movedOv) && !s.freezeException);
-  const freezeStrip = s.freezeOpen ? "" : FZ.label + " · " + FZ.owner.split(" · ")[0] + " owns it";
-  const freezeClashLabel = s.freezeException
-    ? "Exception granted for CR-0142 by " + FZ.owner.split(" · ")[0]
-    : fzClashes.length
-      ? fzClashes.join(", ") + " sits inside it"
-      : "Nothing is aimed at it";
-  const freezeClashPill = s.freezeException
-    ? { text: "Exception granted", tone: "#34d399" }
-    : fzClashes.length
-      ? { text: fzClashes.length + " change collides", tone: "#f87171" }
-      : { text: "Clear", tone: "#34d399" };
-
   // ── Focus expansion cards ──
   const kindStyle = (kind: string) => "font-size:16.5px;line-height:1.7;letter-spacing:-.005em;" + CC_KIND_CSS[kind];
   const briefCards: FocusCard[] = order
@@ -761,76 +743,47 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
           </div>
         </div>
 
-        {/* Change freeze — collapsible.
-            NO-BACKEND-TO-WIRE: no freeze-window table exists, so FZ (CC_FREEZE)
-            is always the design's fixture ("ERP go-live freeze", Halden
-            Materials, MC1051144). On a live tenant this banner would otherwise
-            state a fictional freeze as fact, the same class of leak Git #1364
-            fixed for the calendar/review/notif views — so it collapses to a
-            single honest line instead. */}
+        {/* Change freeze.
+            NO-BACKEND-TO-WIRE: no freeze-window table exists, so FZ (CC_FREEZE,
+            "ERP go-live freeze", Halden Materials, MC1051144) is always the
+            design's fixture — never a live tenant's real declared freeze, and
+            there is no honest "scanned but empty" freeze to show for an
+            unscanned tenant either, because the table it would come from
+            doesn't exist. Rendering FZ as fact in EITHER data state is the same
+            class of leak Git #1364 fixed for the calendar/review/notif views —
+            so this collapses to a single honest line in every state, live or
+            not (Git #1475; the previous version only did this for `isLive`,
+            which meant an unscanned tenant saw the fictional Halden banner as
+            fact — the exact bug Shane's live-testing caught). */}
         {isLive ? (
           <div style={css("display:flex;align-items:center;gap:10px;padding:9px 13px;border:1px solid rgba(30,41,59,.9);border-left:3px solid #475569;border-radius:10px;background:rgba(2,6,23,.45)")} data-testid="cc-freeze-toggle">
             <span style={css("font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#64748b;white-space:nowrap")}>Change freeze</span>
             <span style={css("font-size:11.5px;color:#94a3b8")}>No freeze declared for your tenant.</span>
           </div>
         ) : (
-        <div style={css("display:flex;flex-direction:column;gap:0;border:1px solid rgba(30,41,59,.9);border-left:3px solid #f87171;border-radius:10px;background:rgba(2,6,23,.45);overflow:hidden")}>
-          <button onClick={() => ctrl.patch({ freezeOpen: !s.freezeOpen })} style={css("display:flex;align-items:center;gap:10px;padding:9px 13px;border:none;background:transparent;cursor:pointer;font-family:inherit;text-align:left;width:100%;min-width:0")} data-testid="cc-freeze-toggle">
-            <span style={css("flex:0 0 auto;display:flex;gap:2px")}>
-              <span style={css("width:4px;height:13px;border-radius:1px;background:rgba(248,113,113,.85)")} />
-              <span style={css("width:4px;height:13px;border-radius:1px;background:rgba(248,113,113,.55)")} />
-              <span style={css("width:4px;height:13px;border-radius:1px;background:rgba(248,113,113,.3)")} />
-            </span>
-            <span style={css("flex:0 0 auto;font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#f87171;white-space:nowrap")}>Change freeze</span>
-            <span style={css("flex:0 0 auto;font-size:11.5px;font-weight:600;color:#e2e8f0;white-space:nowrap")}>{FZ.range}</span>
-            <span style={css("flex:1;min-width:0;font-size:11px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap")}>{freezeStrip}</span>
-            <span style={css(pill(freezeClashPill.text, freezeClashPill.tone, "rgba(148,163,184,.08)"))}>{freezeClashPill.text}</span>
-            <span style={css("flex:0 0 auto;font-size:9px;color:#64748b;transition:transform .15s;transform:rotate(" + (s.freezeOpen ? "90deg" : "0deg") + ")")}>▸</span>
-          </button>
-          {s.freezeOpen && (
-            <div style={css("display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:0 13px 13px 13px")}>
-              <div style={css("display:flex;flex-direction:column;gap:4px;min-width:0")}>
-                <span style={css("font-size:13px;font-weight:700;color:#f1f5f9;letter-spacing:-.01em")}>{FZ.label} · {FZ.range} · {freezeClashLabel}</span>
-                <span style={css("font-size:11.5px;color:#94a3b8;line-height:1.6;max-width:88ch;text-wrap:pretty")}>{FZ.reason} {FZ.policy}</span>
-                <span style={css("font-size:10.5px;color:#64748b")}>Freeze owner · {FZ.owner}</span>
-                <span style={css("font-size:11px;font-weight:600;color:#fbbf24;line-height:1.5")}>
-                  Microsoft does not observe it. MC1051144 lands on 26 August, four days in, and there is no approval path to stop it.
-                </span>
-              </div>
-              <div style={css("display:flex;gap:8px;flex-wrap:wrap;flex:0 0 auto")}>
-                {fzClashes.length > 0 && (
-                  <button onClick={() => ctrl.exceptionForm("CR-0142")} style={css("padding:7px 12px;border-radius:6px;border:1px solid rgba(251,191,36,.4);background:transparent;color:#fbbf24;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap")}>
-                    Grant a freeze exception
-                  </button>
-                )}
-                {s.freezeException && (
-                  <button onClick={() => ctrl.patch({ freezeException: false, toast: "Exception revoked. CR-0142 is blocked inside the freeze again." })} style={css("padding:7px 12px;border-radius:6px;border:1px solid rgba(148,163,184,.28);background:transparent;color:#94a3b8;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap")}>
-                    Revoke the exception
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
+          <div style={css("border:1px solid rgba(30,41,59,.9);border-radius:10px;background:rgba(2,6,23,.45)")} data-testid="cc-freeze-toggle">
+            <NoScanDataState
+              compact
+              testId="cc-freeze-no-data"
+              label="No scan data available"
+              detail="Change freeze status isn't tracked for your tenant yet. No example freeze is shown."
+            />
+          </div>
         )}
 
         {/* The timeline */}
         <div style={css("display:flex;flex-direction:column;gap:0")}>
           <div style={css("display:grid;grid-template-columns:186px minmax(0,1fr);gap:0")}>
             <span style={css("font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569;align-self:end;padding-bottom:6px")}>Change request</span>
-            <div style={css("display:grid;grid-template-columns:repeat(15,1fr)")}>
-              <div
-                style={css(
-                  "grid-row:1;grid-column:" +
-                    (FZ.from - 16) +
-                    " / span " +
-                    (FZ.to - FZ.from + 1) +
-                    ";display:flex;align-items:center;justify-content:center;margin:0 1px 3px;padding:3px 6px;border-radius:4px;border:1px solid rgba(248,113,113,.55);background:repeating-linear-gradient(135deg,rgba(248,113,113,.28),rgba(248,113,113,.28) 5px,rgba(248,113,113,.12) 5px,rgba(248,113,113,.12) 10px);overflow:hidden",
-                )}
-              >
-                <span style={css("font-size:9px;font-weight:700;letter-spacing:.06em;color:#a78bfa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis")}>FROZEN · {FZ.label}</span>
-              </div>
-            </div>
+            {/* NO-BACKEND-TO-WIRE: no freeze-window table exists, so this row used
+                to draw a "FROZEN · {FZ.label}" band across FZ.from–FZ.to
+                unconditionally — regardless of data state — stating the fixture
+                freeze as fact even on a live tenant with nothing declared. That
+                was a second, independently-unconditional leak alongside the
+                isLive-gated banner above (Git #1475). There is no real
+                freeze-window data to draw here in any state, so this row is
+                intentionally left empty. */}
+            <div style={css("display:grid;grid-template-columns:repeat(15,1fr)")} />
             <span />
             <div style={css("display:grid;grid-template-columns:repeat(15,1fr)")}>
               {days.map((d, i) => (
@@ -2395,12 +2348,17 @@ function SettingsView({ ctrl }: { ctrl: CcController }) {
   // NO-BACKEND-TO-WIRE: no notification-rule table or freeze-window table
   // exists. The notification rules and the freeze itself have NO backing table — `notif`
   // only ever returns the design's fixture rules (all to "Priya Raman"), and the
-  // "Active freeze" field below is `CC_FREEZE` ("ERP go-live freeze"), fictional
-  // to the Halden worked example. On a real, scoped tenant both are a leak, so on
-  // LIVE they show the honest no-data state / an em dash rather than invented
-  // people and events (Git #1364). The change-control POLICY copy itself (the
-  // request-and-two-signatures statement, the change window, separation of
-  // duties) is a genuine, tenant-agnostic policy statement and stays.
+  // "Active freeze" field below would otherwise read `CC_FREEZE` ("ERP go-live
+  // freeze"), fictional to the Halden worked example. On a real, scoped tenant
+  // both are a leak, so notifications show the honest no-data state on LIVE
+  // (Git #1364), and the freeze field is honest in EVERY data state — there is
+  // no live freeze table to report on, and no honest "scanned but empty"
+  // freeze either, so "No freeze declared for your tenant." is not gated on
+  // `isLive` the way the notification rules are (Git #1475 — the previous
+  // `isLive` split here showed the fictional Halden freeze as fact whenever
+  // the tenant had no live scan data). The change-control POLICY copy itself
+  // (the request-and-two-signatures statement, the change window, separation
+  // of duties) is a genuine, tenant-agnostic policy statement and stays.
   const isLive = ctrl.dataState === "live";
   return (
     <div style={css("display:flex;flex-direction:column;gap:20px")} data-testid="cc-view-settings">
@@ -2423,7 +2381,7 @@ function SettingsView({ ctrl }: { ctrl: CcController }) {
           </div>
           <div style={css("display:flex;flex-direction:column;gap:3px;min-width:0")}>
             <span style={css("font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569")}>Active freeze</span>
-            <span style={css(valCss())} data-testid="cc-settings-active-freeze">{isLive ? "No freeze declared for your tenant." : FZ.label + " · " + FZ.range}</span>
+            <span style={css(valCss())} data-testid="cc-settings-active-freeze">No freeze declared for your tenant.</span>
           </div>
           <div style={css("display:flex;flex-direction:column;gap:3px;min-width:0")}>
             <span style={css("font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569")}>Emergency changes</span>
