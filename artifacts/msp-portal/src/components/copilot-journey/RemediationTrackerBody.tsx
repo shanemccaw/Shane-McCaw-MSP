@@ -79,6 +79,22 @@
  *   customer last opened this page, so the digest states real CURRENT totals
  *   (verified / drifted / handed to Shane / still open) rather than a
  *   session-to-session delta it cannot honestly compute.
+ *
+ * SCORING SOURCE — GIT #1460. The Copilot Gate hero and the six-pillar strip
+ * below no longer read `view.readinessScore` / `view.pillars[].score` (the
+ * pre-purchase assessment scan's own numbers, still real and still correct
+ * for the OTHER three journey screens — Reveal, Documents, Proposal/Checkout
+ * all legitimately show "how ready were you at the scan"). This screen is a
+ * POST-purchase remediation project dashboard, so it now reads its score off
+ * `useRemediationPillarScores()` (Git #1381's `tenant_pillar_snapshots` /
+ * `GET /api/portal/remediation-tracker/pillar-scores`) — the same real
+ * day-one-baseline model `/portal-v2/remediation` uses, via `scores` below.
+ * `view` stays for everything that is NOT a score: tenant/scan identity, the
+ * real step catalogue (`buildLiveRemediationSteps`), and the digest — #1460
+ * ported this screen onto the shared scoring model rather than redirecting
+ * the route, because this journey's chrome, checkout hand-off and per-signed-
+ * phase pricing are a real, separately-linked customer flow the portal-v2
+ * Operate tool does not replicate; only the scoring duplication was the bug.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -116,6 +132,8 @@ import { useRemediationTracker, type RemediationTrackerState } from "./useRemedi
 import { useSignedRemediationScope, type SignedRemediationScope } from "./useSignedRemediationScope.ts";
 import { useTenantCheckItems, type TenantCheckItemsState } from "./useTenantCheckItems.ts";
 import type { JourneySowPhase } from "./journeyScopeFromSow.ts";
+import { useRemediationPillarScores } from "@/components/portal-v2/useRemediationPillarScores";
+import type { RtLiveScores } from "@/components/portal-v2/remediationScores";
 
 /** `"$" + Math.round(n).toLocaleString("en-US")` — same formatting the design/backend both use. */
 function money(n: number): string {
@@ -567,6 +585,7 @@ function PillarMiniCard({
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   return (
     <div
+      data-testid={`remediation-tracker-pillar-${pillarKey}`}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -610,6 +629,7 @@ export function RemediationTrackerBody({
   progress,
   checkItems,
   scope,
+  scores,
   onOpenSow,
   onOpenDocuments,
 }: {
@@ -618,6 +638,8 @@ export function RemediationTrackerBody({
   readonly checkItems: TenantCheckItemsState;
   /** The tenant's real signed phases (see this file's own header) — never the fixed design template. */
   readonly scope: SignedRemediationScope;
+  /** The real day-one-baseline pillar/gate scores (Git #1381) — see this file's header. */
+  readonly scores: RtLiveScores;
   readonly onOpenSow?: () => void;
   readonly onOpenDocuments?: () => void;
 }) {
@@ -658,11 +680,15 @@ export function RemediationTrackerBody({
     return map;
   }, [steps]);
 
+  // #1460: the NUMBER is the real day-one-baseline score (#1381), not the
+  // assessment scan's `p.score` — `view.pillars` still supplies which of the
+  // six pillars this tenant's scan actually covers (the set/order), it just
+  // no longer supplies the score value itself.
   const pillarScoreOf = useMemo(() => {
     const map = new Map<PillarKey, number | null>();
-    for (const p of view.pillars) map.set(p.key, p.score);
+    for (const p of view.pillars) map.set(p.key, scores.pillars[p.key]?.now ?? null);
     return map;
-  }, [view.pillars]);
+  }, [view.pillars, scores.pillars]);
 
   // Digest — real current totals across every rendered step.
   const digest = useMemo(() => {
@@ -820,7 +846,7 @@ export function RemediationTrackerBody({
         </div>
       ) : null}
 
-      <GateHero score={view.readinessScore} resolvedCount={resolvedCount} total={total} />
+      <GateHero score={scores.copilotGate?.score ?? null} resolvedCount={resolvedCount} total={total} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
         {view.pillars.map((p) => {
@@ -1019,12 +1045,16 @@ export function LiveRemediationTrackerBody({
   const progress = useRemediationTracker();
   const checkItems = useTenantCheckItems();
   const scope = useSignedRemediationScope();
+  // #1460: the real day-one-baseline scores (#1381) — same source
+  // `/portal-v2/remediation` reads, see this file's header.
+  const scores = useRemediationPillarScores();
   return (
     <RemediationTrackerBody
       view={view}
       progress={progress}
       checkItems={checkItems}
       scope={scope}
+      scores={scores}
       onOpenSow={onOpenSow}
       onOpenDocuments={onOpenDocuments}
     />

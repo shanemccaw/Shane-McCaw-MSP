@@ -2,9 +2,10 @@
   "issue": 792,
   "feature": "Remediation Tracker + Guide end-to-end (dynamic guide selection #658, script parameterization #776/#782, persistent tracker state #730-734, s24/s25 removal #757) — #792's browser-test checklist, written under #925, upgraded to real-selector textContains under #792, then corrected under #792 to READ THE GENERATED PROSE OFF THE LIVE SCREEN (the guide renders as client-side generated prose, not fetched by a numeric preview doc id — the fabricated {{TEST_REMEDIATION_PREVIEW_DOC_ID}} + ?preview=design mechanism was removed)",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "4e576160456d62b939e23fa24ac14d635da7f04a",
+  "lastVerifiedAgainstCommit": "72471b94ddf492e50c1738192fc7b1455b0085de",
 
   "notes": [
+    "GIT #1460: the standalone Remediation Tracker DESTINATION page (/copilot-readiness/remediation-tracker, CopilotReadinessRemediationTrackerPage.tsx — a DIFFERENT screen from the Full Remediation Guide document covered by the rest of this manifest above/below) had its Copilot Gate hero + six-pillar strip re-pointed from the pre-purchase assessment scan's own score (`view.readinessScore`/`view.pillars`, `GET /api/portal/assessment/war-room-pillars`) onto the real day-one-baseline scoring model (Git #1381, `GET /api/portal/remediation-tracker/pillar-scores`) that `/portal-v2/remediation` already uses — Shane's #1445 finding was two Remediation Tracker screens quietly running two different real scoring systems; #1460 ports this screen onto the shared one instead of redirecting the route, since this journey's chrome/checkout hand-off/per-signed-phase pricing are a real, separately-linked customer flow the portal-v2 Operate tool does not replicate. Tagged `git-1460` below: the endpoint contract plus that the gate score and pillar strip actually render off it on the real page (not the document-reader guide the rest of this file covers).",
     "PROVENANCE: written under Git #925 (Epic #803) to make #792's browser-test checklist executable. Writing the manifest is #925's deliverable; the actual end-to-end browser RUN remains #792's own Shane To-Do. Sources read before writing: #658 (remediationLiveGuide.ts), #776/#782 (remediationScriptParams.ts + portal-tenant-check-items.ts), #730-734 (portal-remediation-tracker.ts, remediation-tracker-pricing.ts, remediation-tracker-verification.ts, portal-remediation-tracker-export.ts), #757 (the s24/s25 removal migration).",
 
     "SELECTORS (updated under #792): two scoped data-testids were ADDED to RemediationGuideBody.tsx to make the two text-content claims #925 could only cover indirectly directly assertable — `[data-testid=\"remediation-progress\"]` on the \"N of M steps resolved\" span (RemediationGuideBody.tsx, the standfirst progress row) and `[data-testid=\"remediation-selection-notice\"]` on the #658 no-findings notice banner div (rendered only when the live guide collapsed to the two standing steps). Per-step assertions still target the one pre-existing stable hook — each step's `<button role=\"checkbox\" aria-checked aria-label=\"Mark Step N complete: <title>\">` — via `[role=\"checkbox\"][aria-label^=\"Mark Step N complete\"]` plus `[aria-checked=\"true\"|\"false\"]` (assumes step.label === \"Step N\", true for the current catalogue). No per-step <code>-block testid was added, so the script-parameterization real-value-vs-<placeholder> claim stays a DATA-level assertion via /api/portal/tenant-check-items (see the #776/#782 note below), not a DOM assertion.",
@@ -267,6 +268,23 @@
       "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
       "body": { "status": "not_started" },
       "expect": { "status": 200, "jsonPath": "$.step.status", "value": "not_started" }
+    },
+
+    {
+      "name": "GIT #1460: the endpoint the standalone Remediation Tracker page now reads its Copilot Gate + pillar scores off (Git #1381) is real and reachable for this tenant — $.copilotGate key exists (a real gate object or JSON null; either way the route resolves).",
+      "sessionTag": "git-1460",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.copilotGate", "exists": true }
+    },
+    {
+      "name": "GIT #1460: the same endpoint's $.pillars key exists — the map the six pillar mini-cards below read their `now` score off.",
+      "sessionTag": "git-1460",
+      "method": "GET",
+      "path": "/api/portal/remediation-tracker/pillar-scores",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.pillars", "exists": true }
     }
   ],
 
@@ -430,6 +448,37 @@
       "selector": "[role='checkbox'][aria-label^='Mark Step 1 complete']",
       "state": "absent"
     },
-    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 7 complete']", "state": "absent" }
+    { "action": "expect", "selector": "[role='checkbox'][aria-label^='Mark Step 7 complete']", "state": "absent" },
+
+    {
+      "name": "GIT #1460: back to the SCANNED tenant's standalone Remediation Tracker DESTINATION page (a different screen from the document-reader guide above) — its Copilot Gate hero now renders off the #1381 endpoint asserted above, not the assessment scan's own score.",
+      "sessionTag": "git-1460",
+      "action": "goto",
+      "target": "/login"
+    },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "sessionTag": "git-1460" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "sessionTag": "git-1460" },
+    {
+      "action": "click",
+      "selector": "[data-testid='login-submit']",
+      "sessionTag": "git-1460",
+      "critical": true,
+      "captureResponse": { "urlPattern": "/api/auth/login", "expect": { "status": 200 } }
+    },
+    { "action": "goto", "target": "/portal/shane-mccaw-consulting/copilot-readiness/remediation-tracker", "sessionTag": "git-1460" },
+    {
+      "name": "GIT #1460: the gate hero score renders (a real number or the honest '—' — either way the element is present and reading from the real #1381 payload, never a fixture).",
+      "action": "expect",
+      "selector": "[data-testid='remediation-tracker-gate-score']",
+      "state": "visible",
+      "sessionTag": "git-1460"
+    },
+    {
+      "name": "GIT #1460: at least one of the six pillar mini-cards renders (governance is always first in PILLAR_KEYS order).",
+      "action": "expect",
+      "selector": "[data-testid='remediation-tracker-pillar-governance']",
+      "state": "visible",
+      "sessionTag": "git-1460"
+    }
   ]
 }

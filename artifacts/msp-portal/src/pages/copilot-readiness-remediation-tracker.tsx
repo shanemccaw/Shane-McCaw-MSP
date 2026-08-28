@@ -37,6 +37,7 @@ import { useAuth } from "@/lib/auth-context";
 
 import { LiveRemediationTrackerBody } from "@/components/copilot-journey/RemediationTrackerBody";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney.ts";
+import { useRemediationPillarScores } from "@/components/portal-v2/useRemediationPillarScores";
 import {
   BRAND,
   COPILOT_GATE_TARGET,
@@ -135,6 +136,15 @@ export default function CopilotReadinessRemediationTrackerPage() {
 
   const { view } = useCopilotJourney({ tenantName: customerName });
 
+  // #1460: the header chip restates the SAME Copilot Gate number the body
+  // now renders (Git #1381's real day-one-baseline score) — this page is the
+  // POST-purchase remediation dashboard, not the pre-purchase assessment
+  // reveal, so it reads the remediation-tracker score here too rather than
+  // `view.readinessScore` (the assessment scan's own number, still correct
+  // for the other three journey screens). See RemediationTrackerBody.tsx's
+  // header for the full rationale.
+  const gateScore = useRemediationPillarScores();
+
   // This page has no document switcher of its own, so "Ready to fix this?"
   // hands off to the document reader, which is still the one place the real
   // 9-document set — including the SOW — lives and can be opened by id.
@@ -193,8 +203,8 @@ export default function CopilotReadinessRemediationTrackerPage() {
             <ArrowLeft size={15} strokeWidth={1.8} color={INK.micro} aria-hidden="true" />
           </button>
 
-          {view.readinessScore !== null ? (
-            <GateChip score={view.readinessScore} tenantName={view.tenant.name} />
+          {gateScore.copilotGate?.score !== null && gateScore.copilotGate?.score !== undefined ? (
+            <GateChip score={gateScore.copilotGate.score} tenantName={view.tenant.name} />
           ) : null}
 
           <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, overflow: "hidden" }}>
