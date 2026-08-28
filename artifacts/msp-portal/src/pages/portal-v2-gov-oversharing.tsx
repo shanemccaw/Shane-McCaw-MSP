@@ -48,20 +48,11 @@
 import { useMemo, useState } from "react";
 import { Link } from "wouter";
 
-import {
-  ChevronDown,
-  Eye,
-  GitCommitHorizontal,
-  Key,
-  Mail,
-  Pencil,
-  Users,
-  Wrench,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
-import { FixPanel, useFixPanel } from "@/components/portal-v2/FixPanel";
+import { NoScanDataState } from "@/components/portal-v2/NoScanDataState";
 import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk, type AcceptRiskSpec } from "@/components/portal-v2/AcceptRiskPanel";
 import { Pager } from "@/components/portal-v2/Pager";
@@ -69,38 +60,23 @@ import { RunbookSteps } from "@/components/portal-v2/RunbookSteps";
 import {
   ADMIN_HEADER,
   ADMIN_WORD,
-  ANON_LINKS_PAGE_SIZE,
   CONVERT_TO_PRIVATE_STEPS,
   GUEST_HEADER,
   GUEST_WORD,
-  LINK_STATUS_FILTERS,
   MANAGE_GUESTS_STEPS,
-  OVERSHARING_ANON_LINKS,
   OVERSHARING_DESC,
   OVERSHARING_HEADING,
   OVERSHARING_LIST_LABEL,
   OVERSHARING_SITES,
-  OVERSHARING_STATS,
-  OVERSHARING_STATUS_VISUAL,
-  OVERSHARING_TOP_RISKS,
   REDUCE_ADMINS_STEPS,
   SITES_PAGE_SIZE,
   SITE_VIS_FILTERS,
-  type OversharingStat,
   type SitePrincipal,
 } from "@/components/portal-v2/govOversharingData";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 import { useOversharingSitesLive, type OversharingSiteWire } from "@/components/portal-v2/govOversharingSitesLive";
 import { useOversharingRunbooksLive } from "@/components/portal-v2/govOversharingRunbooksLive";
-
-/** Which lucide glyph each `iconSvg` name in the fixture maps to. 1:1 per README. */
-const STAT_ICON = {
-  mail: Mail,
-  users: Users,
-  key: Key,
-  "git-commit": GitCommitHorizontal,
-} as const;
 
 /** The runbook a per-site action opens. `sopKind` in the prototype (11341-11346). */
 type SopKind = "convert" | "reduceAdmins" | "manageGuests";
@@ -112,41 +88,6 @@ const RUNBOOKS: Record<SopKind, readonly string[]> = {
 };
 
 /* ── Expression-built styles, transcribed from the prototype's builders ───── */
-
-/** `sc.cardCss` / `sc.glowCss` (11178-11179) — note the pad and value size vary by tone. */
-function statCardStyle(stat: OversharingStat): React.CSSProperties {
-  const v = OVERSHARING_STATUS_VISUAL[stat.status];
-  return {
-    position: "relative",
-    overflow: "hidden",
-    display: "flex",
-    flexDirection: "column",
-    gap: 5,
-    background: v.wash,
-    border: `1px solid ${v.c}38`,
-    borderRadius: 10,
-    padding: v.pad,
-  };
-}
-
-function statGlowStyle(stat: OversharingStat): React.CSSProperties {
-  const v = OVERSHARING_STATUS_VISUAL[stat.status];
-  return {
-    position: "absolute",
-    inset: 0,
-    background: `radial-gradient(ellipse 140% 100% at 0% 0%, ${v.c}18, transparent 60%)`,
-    pointerEvents: "none",
-  };
-}
-
-const STAT_LABEL: React.CSSProperties = {
-  position: "relative",
-  fontSize: "9.5px",
-  fontWeight: 700,
-  letterSpacing: ".08em",
-  textTransform: "uppercase",
-  color: "#64748b",
-};
 
 /** `opt.css` on both filter groups (11254 / 11261). */
 function filterPillStyle(isActive: boolean): React.CSSProperties {
@@ -231,18 +172,6 @@ const RUNBOOK_BTN: React.CSSProperties = {
   fontFamily: "inherit",
 };
 
-const MENU_ITEM: React.CSSProperties = {
-  width: "100%",
-  textAlign: "left",
-  padding: "8px 12px",
-  border: "none",
-  background: "none",
-  color: "#e2e8f0",
-  fontSize: "12px",
-  cursor: "pointer",
-  fontFamily: "inherit",
-};
-
 function Chevron({ deg, color, size }: { deg: number; color: string; size: number }) {
   return (
     <span
@@ -261,14 +190,14 @@ function Chevron({ deg, color, size }: { deg: number; color: string; size: numbe
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
 export default function PortalV2GovOversharingPage() {
-  const { fixKey, openFixPanel, closeFixPanel } = useFixPanel();
   const { openForm, formElement } = useFormDrawer();
 
-  // `manuallyAcceptedSiteIds` / `manuallyAcceptedLinkIds` (6415-6416). A
-  // fixture site's id is numeric; a real site's is a Graph GUID string —
-  // `string[]` covers both via `String(id)`.
+  // `manuallyAcceptedSiteIds` (6415). A fixture site's id is numeric; a real
+  // site's is a Graph GUID string — `string[]` covers both via `String(id)`.
+  // The prototype's parallel `manuallyAcceptedLinkIds` state is gone with the
+  // Anonymous Links panel itself (Git #1426) — there is no live link row left
+  // to accept a risk against.
   const [acceptedSiteIds, setAcceptedSiteIds] = useState<string[]>([]);
-  const [acceptedLinkIds, setAcceptedLinkIds] = useState<number[]>([]);
 
   const askShaneBot = (topic: string) =>
     openForm({
@@ -295,19 +224,19 @@ export default function PortalV2GovOversharingPage() {
       if (spec.kind === "site" && spec.id != null) {
         setAcceptedSiteIds((ids) => [...ids, String(spec.id)]);
       }
-      if (spec.kind === "link" && spec.id != null) {
-        setAcceptedLinkIds((ids) => [...ids, Number(spec.id)]);
-      }
     },
     onAskShaneBot: askShaneBot,
   });
 
   // Reads the governance pillar's live war-room-pillars payload through the shared
-  // `useLivePillarHero` seam; `pv2-ovr-source` proves the page is on real data. The
-  // per-anonymous-link inventory and the top-risks list still need a per-object
-  // feed the war-room-pillars payload does not carry, so those rows stay
-  // fixture — a documented backend gap, not fabricated data. The per-site
-  // admins/guests list below has its OWN real feed (#1286) — see `sitesLive`.
+  // `useLivePillarHero` seam; `pv2-ovr-source` proves the page is on real data.
+  // The stat cards band, the Top Risks band, and the Anonymous Links panel all
+  // need a per-object feed the war-room-pillars payload does not carry, and no
+  // such feed exists anywhere yet — confirmed backend gaps (Git #1413's audit,
+  // Git #1426), so all three render the platform's honest no-data state below
+  // rather than the fixture content they used to render unconditionally. The
+  // per-site admins/guests list below has its OWN real feed (#1286) — see
+  // `sitesLive`.
   const live = useLivePillarHero("governance");
   const sitesLive = useOversharingSitesLive();
 
@@ -318,32 +247,9 @@ export default function PortalV2GovOversharingPage() {
         sitesDataState={sitesLive.dataState}
         sitesLoading={sitesLive.loading}
         acceptedSiteIds={acceptedSiteIds}
-        acceptedLinkIds={acceptedLinkIds}
-        onFix={openFixPanel}
         onAcceptRisk={openAcceptRisk}
       />
 
-      {fixKey && (
-        <FixPanel
-          fixKey={fixKey}
-          onClose={closeFixPanel}
-          onAskShaneBot={(playbook) =>
-            askShaneBot(
-              `Explain this finding to me before I approve the change: ${playbook.title}`,
-            )
-          }
-          onAcceptRisk={(playbook) => {
-            closeFixPanel();
-            openAcceptRisk({
-              title: playbook.title,
-              description: playbook.description,
-              details:
-                "Accepting instead of fixing suppresses this finding’s points in the pillar score and mutes its alerts, and puts it on the risk register with your name, a rationale and a review date. It stays visible as an accepted risk. No change request is raised because nothing changes in the tenant.",
-              kicker: "Accept instead of fixing",
-            });
-          }}
-        />
-      )}
       {acceptRiskElement}
       {formElement}
       <PillarLiveSource testId="pv2-ovr-source" live={live} />
@@ -370,25 +276,17 @@ function OversharingBody({
   sitesDataState,
   sitesLoading,
   acceptedSiteIds,
-  acceptedLinkIds,
-  onFix,
   onAcceptRisk,
 }: {
   sites: readonly OversharingSiteWire[];
   sitesDataState: "live" | "fixture";
   sitesLoading: boolean;
   acceptedSiteIds: string[];
-  acceptedLinkIds: number[];
-  onFix: (key: string) => void;
   onAcceptRisk: (spec: AcceptRiskSpec) => void;
 }) {
-  const [topRisksOpen, setTopRisksOpen] = useState(false);
   const [siteVisFilter, setSiteVisFilter] = useState("all");
-  const [linkStatusFilter, setLinkStatusFilter] = useState("all");
   const [sitesPage, setSitesPage] = useState(1);
-  const [linksPage, setLinksPage] = useState(1);
   const [siteExpanded, setSiteExpanded] = useState<string | null>(null);
-  const [linkMenuOpen, setLinkMenuOpen] = useState<number | null>(null);
 
   // The runbook open/checked state is per-KIND and global in the prototype
   // (6402-6409), not per-site — the same design this hook's own header
@@ -443,22 +341,6 @@ function OversharingBody({
     sitesPageClamped * SITES_PAGE_SIZE,
   );
 
-  /* ── Links: filter → page → slice (11220-11224) ─────────────────────────── */
-
-  const linksFiltered = useMemo(
-    () =>
-      OVERSHARING_ANON_LINKS.filter(
-        (l) => linkStatusFilter === "all" || l.status === linkStatusFilter,
-      ),
-    [linkStatusFilter],
-  );
-  const linksTotalPages = Math.max(1, Math.ceil(linksFiltered.length / ANON_LINKS_PAGE_SIZE));
-  const linksPageClamped = Math.min(linksPage, linksTotalPages);
-  const linkRows = linksFiltered.slice(
-    (linksPageClamped - 1) * ANON_LINKS_PAGE_SIZE,
-    linksPageClamped * ANON_LINKS_PAGE_SIZE,
-  );
-
   return (
     <div
       style={{
@@ -506,152 +388,44 @@ function OversharingBody({
         </span>
       </div>
 
-      {/* ── Stat cards (4696-4713) ──────────────────────────────────────── */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))",
-          gap: 10,
-        }}
-        data-testid="pv2-ovr-stats"
-      >
-        {OVERSHARING_STATS.map((s) => {
-          const v = OVERSHARING_STATUS_VISUAL[s.status];
-          const Glyph = STAT_ICON[s.icon];
-          return (
-            <div key={s.label} style={statCardStyle(s)} data-testid="pv2-ovr-stat">
-              <div style={statGlowStyle(s)} />
-              <div
-                style={{
-                  position: "relative",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <span style={{ display: "flex" }}>
-                  <Glyph size={13} color={v.c} strokeWidth={2} aria-hidden="true" />
-                </span>
-                {s.showFix && s.fixKey && (
-                  <button
-                    onClick={() => onFix(s.fixKey!)}
-                    title="Fix via Graph"
-                    data-testid={`pv2-ovr-stat-fix-${s.fixKey}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      width: 22,
-                      height: 22,
-                      borderRadius: 5,
-                      border: "1px solid rgba(248,113,113,.4)",
-                      background: "rgba(248,113,113,.08)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <Wrench size={12} color={v.c} strokeWidth={2} aria-hidden="true" />
-                  </button>
-                )}
-              </div>
-              <span style={STAT_LABEL}>{s.label}</span>
-              <span
-                style={{
-                  position: "relative",
-                  fontSize: `${v.valSize}px`,
-                  fontWeight: 800,
-                  color: "#f8fafc",
-                  letterSpacing: "-.01em",
-                  overflowWrap: "anywhere",
-                  lineHeight: 1.25,
-                }}
-              >
-                {s.value}
-              </span>
-              <span
-                style={{ position: "relative", fontSize: "10px", color: "#64748b", lineHeight: 1.3 }}
-              >
-                {s.sub}
-              </span>
-            </div>
-          );
-        })}
+      {/*
+        ── Stat cards (4696-4713) ────────────────────────────────────────
+        No endpoint exposes Sharing Capability / External Users / Anonymous
+        Links summary / Sharing Drift as a computed set — confirmed via
+        #1413's audit and a fresh check of war-room-pillar-stats.ts /
+        sharepoint-admin.ts: the tenant sharing-capability read that does
+        exist (`getTenantSharingCapability`) lives in monitor-executor.ts's
+        scan-time drift machinery, not behind any portal-facing endpoint.
+        Per Git #1426, this band renders the platform's honest no-data
+        state instead of the fixture `OVERSHARING_STATS` cards it used to
+        render unconditionally.
+      */}
+      <div style={LIST_PANEL} data-testid="pv2-ovr-stats">
+        <NoScanDataState
+          testId="pv2-ovr-stats-no-data"
+          label="No live sharing-posture data available"
+          detail="Sharing capability, external users, anonymous links, and sharing-drift stats aren't wired to a live scan yet. No example data is shown."
+        />
       </div>
 
-      {/* ── "View Top Risks (n)" rule-and-label toggle (4715-4741) ───────── */}
-      <button
-        onClick={() => setTopRisksOpen((o) => !o)}
-        data-testid="pv2-ovr-top-risks-toggle"
-        style={{
-          width: "100%",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
-          background: "none",
-          border: "none",
-          padding: "2px 0",
-          cursor: "pointer",
-          fontFamily: "inherit",
-        }}
-      >
-        <span style={{ flex: 1, height: 1, background: "rgba(30,41,59,.9)" }} />
-        <span
-          style={{
-            flex: "0 0 auto",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            whiteSpace: "nowrap",
-          }}
-        >
-          <span
-            style={{
-              fontSize: "10.5px",
-              fontWeight: 700,
-              letterSpacing: ".06em",
-              textTransform: "uppercase",
-              color: "#f87171",
-              whiteSpace: "nowrap",
-            }}
-          >
-            View Top Risks ({OVERSHARING_TOP_RISKS.length})
-          </span>
-          <Chevron deg={topRisksOpen ? 180 : 0} color="#f87171" size={11} />
-        </span>
-        <span style={{ flex: 1, height: 1, background: "rgba(30,41,59,.9)" }} />
-      </button>
-
-      {topRisksOpen && (
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 0,
-            border: "1px solid rgba(248,113,113,.25)",
-            borderRadius: 12,
-            background: "rgba(248,113,113,.04)",
-            overflow: "hidden",
-          }}
-          data-testid="pv2-ovr-top-risks"
-        >
-          {OVERSHARING_TOP_RISKS.map((risk, i) => (
-            <div
-              key={risk}
-              style={{
-                display: "flex",
-                gap: 10,
-                padding: "9px 18px",
-                borderTop: i === 0 ? "none" : "1px solid rgba(248,113,113,.15)",
-                fontSize: "12.5px",
-                color: "#e2e8f0",
-                lineHeight: 1.5,
-              }}
-            >
-              <span style={{ color: "#f87171", flex: "0 0 auto" }}>·</span>
-              {risk}
-            </div>
-          ))}
+      {/*
+        ── Top Risks (4715-4741) ────────────────────────────────────────
+        No per-object risk feed exists anywhere for this band — confirmed
+        via #1413's audit. Per Git #1426, it renders the platform's honest
+        no-data state instead of the fixture `OVERSHARING_TOP_RISKS` list
+        (and the "(n)" count it used to advertise, which was itself fixture
+        content) it used to render unconditionally.
+      */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <span style={SECTION_LABEL}>Top Risks</span>
+        <div style={LIST_PANEL} data-testid="pv2-ovr-top-risks">
+          <NoScanDataState
+            testId="pv2-ovr-top-risks-no-data"
+            label="No live top-risks data available"
+            detail="There's no per-object risk feed behind this band yet. No example risks are shown."
+          />
         </div>
-      )}
+      </div>
 
       {/* ── Affected Sites (left) + Anonymous Links (right) ──────────────── */}
       <div className="pv2-gov-grid">
@@ -913,185 +687,29 @@ function OversharingBody({
           />
         </div>
 
-        {/* ── Anonymous Links (4936-5005) ──────────────────────────────── */}
+        {/*
+          ── Anonymous Links (4936-5005) ────────────────────────────────
+          A live endpoint DOES exist for this data (`useOversharingItemsLive`,
+          Git #1275, already powers -all.tsx's real paginated read) but its
+          wire row (`portal-oversharing-items.ts`) has no expiry/`active`-vs-
+          `expired` field at all, and "Edit vs View" would have to be
+          inferred from `grant.roles` rather than a direct field. That's a
+          real schema/product decision, not a mechanical rewire, so per
+          Git #1426 this panel renders the platform's honest no-data state
+          rather than guess at the mapping or keep the fixture
+          `OVERSHARING_ANON_LINKS` rows it used to render unconditionally.
+        */}
         <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              <span style={SECTION_LABEL}>Anonymous Links</span>
-              <div style={{ display: "flex", gap: 5 }}>
-                {LINK_STATUS_FILTERS.map((o) => (
-                  <button
-                    key={o.key}
-                    onClick={() => {
-                      setLinkStatusFilter(o.key);
-                      setLinksPage(1);
-                    }}
-                    data-testid={`pv2-ovr-link-filter-${o.key}`}
-                    style={filterPillStyle(linkStatusFilter === o.key)}
-                  >
-                    {o.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <span style={SECTION_LABEL}>Anonymous Links</span>
 
             <div style={LIST_PANEL} data-testid="pv2-ovr-links">
-              {linkRows.map((l) => {
-                const riskAccepted = acceptedLinkIds.includes(l.id);
-                const isEdit = l.type === "Edit";
-                const typeColor = isEdit ? "#f87171" : "#94a3b8";
-                const TypeGlyph = isEdit ? Pencil : Eye;
-                return (
-                  <div
-                    key={l.id}
-                    style={{
-                      position: "relative",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "stretch",
-                      gap: 8,
-                      padding: "11px 18px",
-                      borderTop: "1px solid rgba(30,41,59,.7)",
-                      ...(riskAccepted
-                        ? { opacity: 0.75, background: "rgba(52,211,153,.03)" }
-                        : null),
-                    }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                      <span style={{ fontSize: "13px", fontWeight: 600, color: "#e2e8f0" }}>
-                        {l.file}
-                      </span>
-                      <span style={{ fontSize: "11px", color: "#64748b" }}>{l.site}</span>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
-                        flexWrap: "wrap",
-                      }}
-                    >
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                        <span style={{ fontSize: "11px", color: "#475569" }}>Permissions:</span>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            fontSize: "11.5px",
-                            fontWeight: 500,
-                            color: typeColor,
-                          }}
-                        >
-                          <TypeGlyph size={10} color={typeColor} strokeWidth={2} aria-hidden="true" />
-                          {l.type}
-                        </span>
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "10.5px",
-                          color: l.status === "expired" ? "#64748b" : "#34d399",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {l.status === "expired" ? "Expired" : "Active"}
-                      </span>
-                      {riskAccepted && <span style={ACCEPTED_PILL}>Risk accepted</span>}
-                      <div style={{ position: "relative", marginLeft: "auto" }}>
-                        <button
-                          onClick={() => setLinkMenuOpen(linkMenuOpen === l.id ? null : l.id)}
-                          data-testid={`pv2-ovr-link-options-${l.id}`}
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 5,
-                            padding: "6px 10px",
-                            borderRadius: 6,
-                            border: "1px solid rgba(30,41,59,.9)",
-                            background: "rgba(255,255,255,.02)",
-                            color: "#cbd5e1",
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Options
-                          <ChevronDown size={11} color="#94a3b8" strokeWidth={2} aria-hidden="true" />
-                        </button>
-                        {linkMenuOpen === l.id && (
-                          <div
-                            style={{
-                              position: "absolute",
-                              right: 0,
-                              top: 36,
-                              zIndex: 20,
-                              width: 130,
-                              border: "1px solid rgba(30,41,59,.9)",
-                              borderRadius: 8,
-                              background: "#0b1524",
-                              boxShadow: "0 12px 30px rgba(2,6,23,.5)",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <button style={MENU_ITEM}>View</button>
-                            <button
-                              style={{ ...MENU_ITEM, borderTop: "1px solid rgba(30,41,59,.7)" }}
-                            >
-                              Expire
-                            </button>
-                            <button
-                              onClick={() => {
-                                setLinkMenuOpen(null);
-                                onAcceptRisk({
-                                  kind: "link",
-                                  id: l.id,
-                                  title: `Accept risk — ${l.file}`,
-                                  description: `This anonymous link grants ${isEdit ? "edit" : "view"} access to anyone with the URL, no sign-in required. Accepting this risk records that your organization has reviewed this exposure and chosen not to remove the link right now.`,
-                                  details: l.site,
-                                });
-                              }}
-                              data-testid={`pv2-ovr-link-accept-${l.id}`}
-                              style={{
-                                ...MENU_ITEM,
-                                color: "#94a3b8",
-                                borderTop: "1px solid rgba(30,41,59,.7)",
-                              }}
-                            >
-                              Accept risk
-                            </button>
-                            <button
-                              style={{
-                                ...MENU_ITEM,
-                                color: "#f87171",
-                                borderTop: "1px solid rgba(30,41,59,.7)",
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              <NoScanDataState
+                testId="pv2-ovr-links-no-data"
+                label="No live anonymous-links data available"
+                detail="This panel needs an expiry/active-status mapping decision before it can wire to the real oversharing-items feed. No example links are shown."
+              />
             </div>
-
-            <Pager
-              page={linksPageClamped}
-              totalPages={linksTotalPages}
-              onPage={setLinksPage}
-              testIdPrefix="pv2-ovr-links"
-            />
           </div>
         </div>
       </div>
