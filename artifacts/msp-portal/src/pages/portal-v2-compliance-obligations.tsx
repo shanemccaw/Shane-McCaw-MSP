@@ -3,29 +3,45 @@
  * drill-down.
  *
  * A direct port of the prototype's `isCmpObligations` section
- * (`Customer Portal Shell.dc.html` 4783-4814), driven by `CMP_OBLIGATIONS` and
- * the `cmpObligations` mapper (13871-13878). The scope chip and the state text
+ * (`Customer Portal Shell.dc.html` 4783-4814). The scope chip and the state text
  * both branch on tone; the out-of-scope PCI-DSS row is the `slate` tone and gets
- * the muted styling.
+ * the muted styling. Copy is verbatim.
  *
- * Every inline style value is the prototype's. Copy is verbatim.
+ * ── Wired (Git #1432, off #1223/#1256's catalog) ────────────────────────────
+ * The register used to render the raw `CMP_OBLIGATIONS` design fixture
+ * unconditionally — no loading state, no honest empty/error state, every row's
+ * `state` text a specific tenant-shaped claim presented as fact. #1415's audit
+ * found this and #1432 was filed to fix it. Investigation for #1432 found the
+ * premise "no register endpoint exists" was stale by one day: Git #1223/#1333
+ * (commit `8f0d71788`) had already built a real endpoint
+ * (`GET /api/portal/compliance-obligations`, joining `compliance_frameworks` /
+ * `compliance_obligations` / `tenant_compliance_scope` to the tenant's open
+ * `msp_risk_decisions`) and a real client hook (`useComplianceObligationsLive`)
+ * — but the route was never mounted into `routes/index.ts` and this page never
+ * called the hook, so it was dead code and the fixture kept rendering as if
+ * real. This page now reads that hook directly; the fixture is never rendered.
  */
 
 import { Link } from "wouter";
 
 import { PortalV2Shell } from "@/components/portal-v2/PortalV2Shell";
 import { CMP_MONO } from "@/components/portal-v2/cmpDrilldownData";
-import { CMP_OBLIGATIONS, cmpObligationColor, cmpObligationScopeMuted } from "@/components/portal-v2/cmpDrilldownModel";
+import { cmpObligationColor, cmpObligationScopeMuted } from "@/components/portal-v2/cmpDrilldownModel";
+import { useComplianceObligationsLive } from "@/components/portal-v2/complianceObligationsLive";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
 
 export default function PortalV2ComplianceObligationsPage() {
   // Reads the compliance pillar's live payload through `useLivePillarHero`; the
-  // `pv2-cmpobl-source` marker proves the page is on real data. The obligation
-  // REGISTER (frameworks in scope + per-framework state) is onboarding scope
-  // config with no server producer on the war-room-pillars payload, so those rows
-  // stay fixture — a documented backend gap, not a fabricated state.
+  // `pv2-cmpobl-source` marker proves the hero score is on real data.
   const live = useLivePillarHero("compliance");
+  // The real obligation register (Git #1223) — a separate endpoint from the
+  // pillar hero, so it gets its own `pv2-cmpobl-rows-source` marker below.
+  // `rows` is ONLY the real, live catalog; the fixture is never rendered — a
+  // failed/never-resolved fetch or an empty live catalog both fall through to
+  // an honest on-screen state instead.
+  const { obligations, dataState, loading } = useComplianceObligationsLive();
+  const rows = dataState === "live" ? obligations : [];
   return (
     <PortalV2Shell eyebrow="Compliance" title="Obligations we check against">
       <div
@@ -80,6 +96,41 @@ export default function PortalV2ComplianceObligationsPage() {
             <span style={{ fontSize: "11px", color: "#475569" }}>Scope set by you at onboarding. Change it and every check re-evaluates.</span>
           </div>
 
+          {(loading || dataState !== "live") && (
+            <div
+              data-testid="pv2-cmpobl-status"
+              style={{
+                padding: "9px 12px",
+                borderRadius: 8,
+                fontSize: "12px",
+                border: `1px solid ${loading ? "rgba(148,163,184,.25)" : "rgba(248,113,113,.4)"}`,
+                background: loading ? "transparent" : "rgba(248,113,113,.08)",
+                color: loading ? "#94a3b8" : "#f87171",
+              }}
+            >
+              {loading
+                ? "Loading your obligation register…"
+                : "Your obligation register could not be loaded — no live data available."}
+            </div>
+          )}
+
+          {!loading && dataState === "live" && rows.length === 0 && (
+            <div
+              data-testid="pv2-cmpobl-empty"
+              style={{
+                padding: "14px 16px",
+                borderRadius: 10,
+                fontSize: "12px",
+                lineHeight: 1.6,
+                border: "1px solid rgba(148,163,184,.18)",
+                background: "rgba(148,163,184,.05)",
+                color: "#94a3b8",
+              }}
+            >
+              No obligations are catalogued yet — not yet measured.
+            </div>
+          )}
+
           <div
             style={{
               display: "flex",
@@ -93,7 +144,7 @@ export default function PortalV2ComplianceObligationsPage() {
             }}
             data-testid="pv2-cmpobl-rows"
           >
-            {CMP_OBLIGATIONS.map((o) => {
+            {rows.map((o) => {
               const muted = cmpObligationScopeMuted(o.tone);
               return (
                 <div
@@ -139,6 +190,7 @@ export default function PortalV2ComplianceObligationsPage() {
         </div>
       </div>
       <PillarLiveSource testId="pv2-cmpobl-source" live={live} />
+      <PillarLiveSource testId="pv2-cmpobl-rows-source" live={{ dataState }} />
     </PortalV2Shell>
   );
 }
