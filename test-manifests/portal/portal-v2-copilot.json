@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- COPILOT READINESS (/portal-v2/copilot). The assessment verdict page and, since the rebuilt Overview has no Copilot gate band, the ONLY surface for the Copilot gate anywhere in the portal. WIRED TO LIVE DATA (Git #1213): every figure and the tenant name come from the real Copilot assessment engine via useCopilotJourney() -> JourneyView -- pillar scores, findings, the gate score and the tenant name are all real and tenant-specific. It used to render copilotData.ts's hardcoded fixture (six literal before/after scores, a '41 -> 68' gate, and the prototype's fictional 'Halden Materials' tenant name shown to every real customer). None of that survives.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "03d1b2ca",
+  "lastVerifiedAgainstCommit": "3921372cb",
   "notes": [
     "Git #1443: the 'What the assessment produced' card used to render CP_DELIVERABLES -- a hardcoded 5-item list under invented 'DOC-01'..'DOC-08' numbers -- next to a fixed 'Nine documents, all issued' note, even though the list only ever showed five. The card now renders the tenant's real document set off view.generation (withLiveDocuments/generationView, the same source RevealFullPicture/Scene 9 renders from), and the note is the real, computed generationView() note. CP19-CP21 assert the real set and the real note; the old fixture would fail both.",
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
