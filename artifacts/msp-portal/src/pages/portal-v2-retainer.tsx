@@ -23,13 +23,16 @@
  * two show the real bucket numbers; "unconfigured" and "error" render an
  * honest no-data state (`NoScanDataState`) instead of the design fixture. A
  * hidden `pv2-ret-source` marker states which of the five is on screen. The
- * weekly report card (summary, per-line work log, deliverables, asks) has no
- * backend source at all and stays on `retainerData.ts`'s fixture, as do
- * RET_OUTCOMES / RET_TERMS / RET_DOCS, and — separately, a known,
- * still-open gap — the "Findings closed" / "Next scheduled" SmallCards below
- * (see #1398's follow-up). The week selector is real local state; the ask box
- * and the document/PDF buttons are visual, to be wired in a later pass. Copy
- * is FINAL and reproduced verbatim.
+ * weekly report card (summary, per-line work log, asks) and the "What the
+ * retainer has produced" / "Documents" rails are now REAL (#1410), off the
+ * caller's own sent `status_reports` rows — see `useRetainerLive.ts`'s header
+ * for exactly which fields are and aren't backed by a real column.
+ * RET_TERMS / RET_DOCS stay design fixture where used as static shape
+ * (`RET_TERMS`, "How the retainer works" — policy copy, not per-customer
+ * data), and — separately, a known, still-open gap — the "Findings closed" /
+ * "Next scheduled" SmallCards below (see #1398's follow-up). The week
+ * selector is real local state; the ask box and the document/PDF buttons are
+ * visual, to be wired in a later pass. Copy is FINAL and reproduced verbatim.
  *
  * ── Header line + rollover text (#1401) ──────────────────────────────────
  * The heading's month/year, the architect/billing line, and the rolled-hours
@@ -426,12 +429,11 @@ export default function PortalV2RetainerPage() {
             </div>
           </div>
 
-          {/* Week detail + right rail (Git #1407) — gated on the same
-              retainerConfigured flag as the top section. No backend exists for
-              the weekly report / outcomes / documents / terms yet, so a
-              configured retainer with none shows an honest "no reports yet"
-              state and the design fixture is never rendered. The populated
-              shape below is preserved for a future real weekly-report source. */}
+          {/* Week detail + right rail (Git #1407, real data since #1410) —
+              gated on the same retainerConfigured flag as the top section.
+              weeklyReports/outcomes/documents are real, off the caller's own
+              sent status_reports; a configured retainer with none sent yet
+              shows an honest "no reports yet" state, never the design fixture. */}
           {retainerLoading ? (
             <PortalV2LoadingState rows={5} label="Loading your architect's weekly reports…" testId="pv2-ret-week-loading" />
           ) : !retainerConfigured ? (
