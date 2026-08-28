@@ -62,9 +62,11 @@
  * pre-#1446) is retained in licDashboardData.ts as design-fixture reference
  * only, each marked `NO-BACKEND-TO-WIRE:` at its declaration. The per-SKU
  * licence LEDGER below is unaffected — Git #1230 already wired it to real
- * `/subscribedSkus` + `sku_price_reference` data with its own considered,
- * tested live/fixture threshold, which is a separate matter from the fields
- * this issue named.
+ * `/subscribedSkus` + `sku_price_reference` data, a separate matter from the
+ * fields this issue named. (Git #1474: that ledger's own live/fixture gate
+ * used to require `totalUnassigned > 0`, which silently fell back to fixture
+ * for a real, fully-assigned/zero-waste tenant — fixed to `Boolean(liveLedger)`
+ * alone, since a real zero-waste ledger is still real data.)
  */
 
 import { useState } from "react";
@@ -203,13 +205,13 @@ export default function PortalV2LicensingPage() {
   // (monthly vs. annual commitment) or usage-activity data exists anywhere in
   // this platform's schema to classify a seat as today/renewal/reassign — see
   // licDashboardData.ts's header on `licLedgerCardsFromLive`.
-  // Only overlays once the live estate has something genuinely recoverable to
-  // report — a thin tenant whose one priced SKU is fully assigned has nothing a
-  // money page can tell them yet, and switching to an all-Right-sized live
-  // ledger would be a worse, less complete answer than the illustrative
-  // fixture for a tenant this early in its estate.
+  // Overlays whenever real ledger data exists at all — including a tenant
+  // whose seats are fully assigned. That's still real data (Git #1474): a
+  // fully-assigned tenant's correctly boring, zero-waste ledger is the true
+  // answer, and the fixture is never a substitute for a genuinely
+  // uninteresting real value.
   const { ledger: liveLedger } = useLicenseSkuLedgerLive();
-  const ledgerIsLive = Boolean(liveLedger && liveLedger.totalUnassigned > 0);
+  const ledgerIsLive = Boolean(liveLedger);
   const ledgerCards = ledgerIsLive ? licLedgerCardsFromLive(liveLedger!.rows) : licLedgerCards();
   const ledgerTotals = ledgerIsLive
     ? {

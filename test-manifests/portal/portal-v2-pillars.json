@@ -3,6 +3,7 @@
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "feecb7e97",
   "notes": [
+    "LICENSING LEDGER LIVE-DATA GATE FIX (Git #1474) -- portal-v2-licensing.tsx's `ledgerIsLive` used to require `liveLedger.totalUnassigned > 0`, so a real, fully-assigned tenant (this testbed tenant's ENTERPRISEPACK SKU, 0 unassigned) silently fell all the way back to the illustrative SPE_E5/AAD_PREMIUM fixture instead of showing its real, correctly boring zero-waste ledger -- a violation of the platform's standing no-fixture-as-fallback rule (fixture is never a substitute for a genuinely uninteresting real value, even $0). Fixed to `Boolean(liveLedger)` alone; ledgerCards/ledgerTotals follow from that same gate, so a real ledger now overlays whenever real data exists at all. L6b/L6/L7/L8/L8b updated to assert the new 'live' source and real, extracted totals (A2c/A2d) instead of the fixture literals. RETIRED, stated plainly rather than silently dropped: the old L9-L19 walkthrough (expand the SPE_E5 fixture card -> its recovery action -> FixPanel -> manual CR-gate route -> Licensing's own playbook-wrapper copy) can no longer be reached through THIS tenant, because its real ledger now renders live and real cards have `hasActions: false` (no per-SKU recovery action exists for real data -- see licLedgerCardsFromLive's own header note). The generic FixPanel/CR-gate MECHANISM stays covered via other pillars (e.g. Compliance, whose own wrapper copy L18/L19 explicitly contrasted with); Licensing's specific wrapper-copy assertions (the 'commerce actions' / 'savings ledger' sentences) have no live-tenant path to exercise them until a genuinely-unscanned or unpriced-SKU test fixture is set up for this suite, which is a real, named gap for a future session -- not built here as it was out of this issue's scope. The 3 recovery buckets (pv2-lic-bucket-*) are unrelated and unaffected -- already handled honestly by #1446.",
     "SCOPE: Overview + six pillar pages only. Change Control, SOPs & Runbooks, Risk Register, Microsoft Changes and Hold Windows are deliberately NOT built in this pass -- the existing implementations of the first four are MSP-operator-scoped (/api/msp/*, requireRole('MSPOperator') + resolveMspIdStrict) and reusing them from a customer page would leak cross-tenant data; they need new customer-scoped routes first.",
     "THE API TESTS ARE THE REAL CONTRACT ASSERTIONS. A1-A4 exercise GET /api/portal/assessment/war-room-pillars -- the exact endpoint and payload these pages render -- so they verify the data layer independently of whether the new UI has been deployed yet.",
     "HONEST-NULL CONTRACT: the payload's per-pillar `score` is deliberately nullable and carries an `evaluation` of scored | insufficient_data | not_evaluated (#517). The v2 pages render three different sentences for those and NEVER a red zero for a missing score. A4 asserts the field exists rather than asserting a number, because asserting a number would make this manifest fail on an honestly-unscored tenant, which is the correct product behaviour.",
@@ -70,6 +71,24 @@
       "path": "/api/portal/assessment/war-room-pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.licenseSkuLedger.checkKey", "value": "license:sku-utilization" }
+    },
+    {
+      "name": "A2c (Git #1474) -- confirm this testbed tenant's real ledger is genuinely fully assigned (0 unassigned seats), and extract the real totalPurchased/totalAssigned so L6/L7 below assert against the true API numbers rather than a guessed literal.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.licenseSkuLedger.totalUnassigned", "value": 0 },
+      "extract": { "as": "licTotalPurchased", "jsonPath": "$.licenseSkuLedger.totalPurchased" },
+      "sessionTag": "1474"
+    },
+    {
+      "name": "A2d (Git #1474) -- extract totalAssigned too, interpolated alongside licTotalPurchased.",
+      "method": "GET",
+      "path": "/api/portal/assessment/war-room-pillars",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.licenseSkuLedger.totalAssigned", "exists": true },
+      "extract": { "as": "licTotalAssigned", "jsonPath": "$.licenseSkuLedger.totalAssigned" },
+      "sessionTag": "1474"
     },
     {
       "name": "A3 -- pillars[0] is governance. The array is emitted in WAR_ROOM_PILLAR_KEYS order (governance, licensing, adoption, compliance, health, security, copilot), and journeyTokens' PILLAR_KEYS indexes straight into these cards by name, which is why the v2 pages reuse the pillar identity map unchanged.",
@@ -1230,7 +1249,7 @@
       "textContains": "{{licScore}}"
     },
     {
-      "name": "L2-src -- the hidden source indicator reads 'live', proving the real numeric score is on screen rather than the fixture fallback. The 3 recovery buckets, acknowledged spend, savings ledger and 'why the waste recurs' below now render an honest 'No live data available' state (Git #1446) -- no billing-term or usage-activity data exists to classify a seat as today/renewal/reassign, or to back any of those other sections (#1230, reconfirmed #1446). The per-SKU LEDGER is now wired to real data too (see L6b below) but only overlays once the tenant's real estate has genuine recoverable waste; this testbed tenant's one priced SKU is fully assigned, so the ledger below still renders the illustrative fixture -- an honest, documented threshold #1446 deliberately left unchanged, not a gap.",
+      "name": "L2-src -- the hidden source indicator reads 'live', proving the real numeric score is on screen rather than the fixture fallback. The 3 recovery buckets, acknowledged spend, savings ledger and 'why the waste recurs' below now render an honest 'No live data available' state (Git #1446) -- no billing-term or usage-activity data exists to classify a seat as today/renewal/reassign, or to back any of those other sections (#1230, reconfirmed #1446). The per-SKU LEDGER is now wired to real data too (see L6b below) and overlays whenever real ledger data exists AT ALL, regardless of whether it has recoverable waste (Git #1474 fixed a bug where a fully-assigned tenant's real, boring zero-waste ledger was silently swapped for the illustrative fixture instead of shown honestly -- fixture is never a substitute for a genuinely uninteresting real value).",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-source']",
       "state": "present",
@@ -1274,110 +1293,51 @@
       "textContains": "No live data available"
     },
     {
-      "name": "L6b -- the ledger's own hidden source marker reads 'fixture' for this tenant (Git #1230) -- the real per-SKU resolver ran (proven by the API test below) but this testbed tenant's one priced SKU (ENTERPRISEPACK) is fully assigned with nothing recoverable, so the page correctly kept the illustrative fixture rather than replacing it with a single Right-sized row.",
+      "name": "L6b (Git #1474) -- the ledger's own hidden source marker now reads 'live' for this tenant: ledgerIsLive is gated on Boolean(liveLedger) alone rather than totalUnassigned > 0, so a real, fully-assigned tenant (ENTERPRISEPACK, 0 unassigned) renders its own real zero-waste ledger instead of silently falling back to the illustrative fixture -- the exact bug #1474 fixed.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-ledger-source']",
       "state": "present",
-      "textContains": "fixture"
+      "textContains": "live",
+      "sessionTag": "1474"
     },
     {
-      "name": "L6 -- the licence ledger renders with its real SKU part numbers.",
+      "name": "L6 (Git #1474) -- the licence ledger renders with its real SKU part number and real counts, not the fixture's SPE_E5 row.",
       "action": "expect",
-      "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
+      "selector": "[data-testid='pv2-lic-sku-ENTERPRISEPACK']",
       "state": "visible",
-      "textContains": "38 unassigned seats on annual commitment"
+      "textContains": "{{licTotalPurchased}} bought · {{licTotalAssigned}} assigned",
+      "sessionTag": "1474"
     },
     {
-      "name": "L7 -- THE LEDGER TOTALS ARE SUMMED, NOT STATED, and now render in the ledger HEADER. Round Two consolidated the flat 7-column table and the separate recovery list into one card per SKU, so the old totals ROW is gone and the summed figures moved to the header: 430 bought, 323 in use, $3,699/mo wasted. A hardcoded total would drift from the cards below it, the worst failure on a money page.",
+      "name": "L7 (Git #1474) -- THE LEDGER TOTALS ARE SUMMED FROM THE REAL LEDGER, not the fixture: purchased/assigned counts match the real API totals (A2c/A2d), and waste is a real, honestly-computed $0/mo -- 0 unassigned seats means 0 waste by definition (monthlyWasteCents = unassigned * price) -- not the fixture's dramatic $3,699/mo.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-ledger-totals']",
       "state": "visible",
-      "textContains": "$3,699/mo"
+      "textContains": "{{licTotalPurchased}} seats bought · {{licTotalAssigned}} assigned · $0/mo wasted",
+      "sessionTag": "1474"
     },
     {
-      "name": "L7b -- the utilisation-bar legend names its three segments, which is what the segmented bar on every card is drawn in.",
+      "name": "L7b -- the utilisation-bar legend names its three segments, which is what the segmented bar on every card is drawn in. Static copy, unaffected by which ledger source is showing.",
       "action": "expect",
       "selector": "[data-testid='pv2-lic-ledger-legend']",
       "state": "visible",
       "textContains": "assigned but idle"
     },
     {
-      "name": "L8 -- a right-sized SKU shows an em dash rather than $0, so 'no waste' and 'zero dollars of waste' do not look like the same claim.",
+      "name": "L8 (Git #1474) -- the real, fully-assigned SKU shows 'Right-sized' rather than a fabricated waste figure -- the honest zero-waste rendering this fix was for.",
       "action": "expect",
-      "selector": "[data-testid='pv2-lic-sku-AAD_PREMIUM']",
+      "selector": "[data-testid='pv2-lic-sku-ENTERPRISEPACK']",
       "state": "visible",
-      "textContains": "Right-sized"
+      "textContains": "Right-sized",
+      "sessionTag": "1474"
     },
     {
-      "name": "L9 -- each SKU card carries the counts line the whole page turns on: what you bought, what is assigned, and what is actually using it. The two gaps in that line ARE the finding.",
+      "name": "L8b (Git #1474) -- and 'nothing to recover' rather than an annualised dollar figure, so a real, honest zero-waste ledger cannot be mistaken for a stale/loading fixture row.",
       "action": "expect",
-      "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
+      "selector": "[data-testid='pv2-lic-sku-ENTERPRISEPACK']",
       "state": "visible",
-      "textContains": "240 bought · 202 assigned · 183 actually using it"
-    },
-    {
-      "name": "L10 -- expand the E5 card, whose gap carries the largest recovery. Round Two moved the recovery ACTION inside the ledger card for the SKU it belongs to, so there is no separate recovery-items list any more.",
-      "action": "click",
-      "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
-      "critical": true
-    },
-    {
-      "name": "L11 -- the E5 gap splits into the two actions attached to it. The unassigned-seats action keeps the 12 held for hiring and recovers the other 26 -- the per-action figure, not the finding's gross.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-lic-sku-SPE_E5']",
-      "state": "visible",
-      "textContains": "the other 26 are recoverable"
-    },
-    {
-      "name": "L12 -- THE GATE FROM A RECOVERY ITEM. The wrench opens a real playbook, one of thirteen transcribed for this pillar.",
-      "action": "click",
-      "selector": "[data-testid='pv2-lic-fix-lic-e5-unassigned']",
-      "critical": true
-    },
-    {
-      "name": "L13 -- it resolved to the named playbook, not the generic fallback.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-panel']",
-      "state": "visible",
-      "textContains": "Lodge a renewal reduction for 26 unassigned E5 seats"
-    },
-    {
-      "name": "L14 -- take the manual route toward the CR gate.",
-      "action": "click",
-      "selector": "[data-testid='pv2-fix-route-manual']",
-      "critical": true
-    },
-    {
-      "name": "L15 -- arm the CR confirmation.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-confirm']",
-      "critical": true
-    },
-    {
-      "name": "L16 -- submit it.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-submit']",
-      "critical": true
-    },
-    {
-      "name": "L17 -- continue past the raised CR to the procedure.",
-      "action": "click",
-      "selector": "[data-testid='pv2-cr-continue']",
-      "critical": true
-    },
-    {
-      "name": "L18 -- THE WRAPPER STEP, AND IT IS NOT COMPLIANCE'S. Licensing's mapper prepends a commerce-versus-Graph note; Compliance's prepends a Purview sign-in. Both pillars wrap, the text differs, and sharing one wrapper would put the wrong sentence on eleven playbooks.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-manual']",
-      "state": "visible",
-      "textContains": "quantity and subscription changes are commerce actions"
-    },
-    {
-      "name": "L19 -- and its closer names the savings ledger, where Compliance's names the evidence pack.",
-      "action": "expect",
-      "selector": "[data-testid='pv2-fix-manual']",
-      "state": "visible",
-      "textContains": "added to the savings ledger with the date and who authorised it"
+      "textContains": "nothing to recover",
+      "sessionTag": "1474"
     },
     {
       "name": "reset -- reload before the right column.",
