@@ -26,6 +26,13 @@
                 <Button Content="git branch"  Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="git branch -a"/>
                 <Button Content="pnpm install" Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="pnpm install"/>
                 <Button Content="pnpm build"   Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="pnpm run build"/>
+                <!-- Sweeps every live agent worktree and merges + pushes any whose branch
+                     has commits main doesn't have yet onto origin/main; anything too risky
+                     to touch automatically (dirty tree, real merge conflict, detached HEAD)
+                     is reported as NEEDS AGENT instead of guessed at. See
+                     scripts/dev-server/fix-worktrees.mjs. Pastes like every other chip —
+                     doesn't run until Shane presses Enter. -->
+                <Button Content="fix worktrees" Style="{StaticResource ChipButton}" Click="Chip_Click" Tag="node scripts/dev-server/fix-worktrees.mjs"/>
             </WrapPanel>
         </Border>
 

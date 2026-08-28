@@ -494,6 +494,10 @@ namespace BuildConsole
             // issue." Resolves via LeftSidebar's already-fetched chat/epic
             // data (no separate fetch) and opens/focuses it exactly like
             // clicking the same chat in the Chats tree would.
+            // Git #1480 — header "paste a full prompt" button: same dialog + same
+            // queue/send handling as the chat-injected Edit Build button, just entered
+            // with an empty starting prompt instead of one seeded from a chat message.
+            BuildQueuePanel.NewBuildPasteRequested += async (s, e) => await OpenBuildPromptDialogAsync("", null);
             BuildQueuePanel.IssueChatRequested += (s, githubNumber) => OpenChatForIssue(githubNumber);
             BuildQueuePanel.QueueItemChatRequested += (s, item) => OpenChatForQueueItem(item);
             BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
@@ -5625,6 +5629,82 @@ namespace BuildConsole
         /// BT_QUEUE_BUILD calls the real queue API directly (the app already
         /// holds the same client BuildQueuePanel/LeftSidebar use).
         /// </summary>
+        /// <summary>
+        /// Git #1480 — opens EditBuildPromptDialog and processes its result (Send to
+        /// Builder / Add to Build Queue), identically whether the raw prompt came from
+        /// a chat-injected "Edit Build" click (<paramref name="rawText"/> seeded, a real
+        /// <paramref name="referencedNumber"/>) or the Build Queue header's paste-prompt
+        /// button (both empty — the dialog's own header-flag parser reads whatever gets
+        /// pasted into the prompt editor, honoring --model/--effort/--title/--buildSet/
+        /// --account/--blocked-by/--block-by/--notGit exactly the same either way).
+        /// Extracted verbatim from the former BT_EDIT_BUILD handler body.
+        /// </summary>
+        private async System.Threading.Tasks.Task OpenBuildPromptDialogAsync(string rawText, int? referencedNumber)
+        {
+            var dialog = new EditBuildPromptDialog(rawText, referencedNumber, _buildTrackerApi, LeftSidebar.CurrentBoardIssues);
+            dialog.Owner = this;
+            if (dialog.ShowDialog() != true) return;
+
+            if (dialog.ActionChosen == EditBuildAction.SendToBuilder)
+            {
+                var q = new List<string>();
+                void Add(string key, string? val) { if (!string.IsNullOrEmpty(val)) q.Add($"{key}={Uri.EscapeDataString(val)}"); }
+                Add("q", dialog.FinalPrompt);
+                Add("title", dialog.FinalTitle);
+                Add("model", dialog.FinalModel);
+                Add("effort", dialog.FinalEffort);
+                Add("cwd", dialog.FinalCwd);
+                Add("mode", dialog.FinalMode);
+                Add("buildSet", dialog.FinalBuildSet);
+                var uri = $"mybuilder://open?{string.Join("&", q)}";
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+            }
+            else if (dialog.ActionChosen == EditBuildAction.QueueBuild)
+            {
+                if (_queueDb == null)
+                {
+                    ToastEngine.Warning("Queue Build", "Not connected — no DATABASE_URL found (see Settings).");
+                    return;
+                }
+
+                // Local-id resolution: a --notGit build is handed the next unused
+                // letter id; --block-by letters resolve through the registry; a bare
+                // number with no --notGit is verified against real GitHub (detection).
+                var (dialogGithubNum, dialogBlockedByNums, editStop) =
+                    await ResolveLocalBuildIdentityAsync(
+                        dialog.FinalIsLocalBuild, dialog.FinalGithubNumber,
+                        dialog.FinalGitBlockers, dialog.FinalLocalBlockers);
+                if (editStop) return;
+
+                if (_updatePending)
+                {
+                    bool saved = PersistQueueRequestDuringPendingUpdate(
+                        dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
+                        dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli, account: dialog.FinalAccount);
+                    if (saved)
+                    {
+                        ToastEngine.Success("Queued after update", "Build request saved for after restart.");
+                        try { await BuildQueuePanel.RefreshAsync(); } catch { }
+                    }
+                    return;
+                }
+                try
+                {
+                    await _queueDb.QueueBuildAsync(
+                        dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
+                        dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli, account: dialog.FinalAccount);
+                    var editIdLabel = dialogGithubNum.HasValue ? BuildConsole.Services.LocalBuildId.FormatRef(dialogGithubNum.Value) : "";
+                    ToastEngine.Success("Build Queued",
+                        $"Queued '{dialog.FinalTitle ?? "Build"}'{(editIdLabel.Length > 0 ? $" as {editIdLabel}" : "")} successfully.");
+                    try { await BuildQueuePanel.RefreshAsync(); } catch { }
+                }
+                catch (Exception ex)
+                {
+                    ToastEngine.Error("Queue Build", $"Failed to queue build: {ex.Message}");
+                }
+            }
+        }
+
         private async void ChatWv_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
         {
             try
@@ -5660,69 +5740,7 @@ namespace BuildConsole
                 {
                     string rawText = Str("rawText") ?? "";
                     int? referencedNumber = Int("referencedNumber");
-                    var dialog = new EditBuildPromptDialog(rawText, referencedNumber, _buildTrackerApi, LeftSidebar.CurrentBoardIssues);
-                    dialog.Owner = this;
-                    if (dialog.ShowDialog() == true)
-                    {
-                        if (dialog.ActionChosen == EditBuildAction.SendToBuilder)
-                        {
-                            var q = new List<string>();
-                            void Add(string key, string? val) { if (!string.IsNullOrEmpty(val)) q.Add($"{key}={Uri.EscapeDataString(val)}"); }
-                            Add("q", dialog.FinalPrompt);
-                            Add("title", dialog.FinalTitle);
-                            Add("model", dialog.FinalModel);
-                            Add("effort", dialog.FinalEffort);
-                            Add("cwd", dialog.FinalCwd);
-                            Add("mode", dialog.FinalMode);
-                            Add("buildSet", dialog.FinalBuildSet);
-                            var uri = $"mybuilder://open?{string.Join("&", q)}";
-                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
-                        }
-                        else if (dialog.ActionChosen == EditBuildAction.QueueBuild)
-                        {
-                            if (_queueDb == null)
-                            {
-                                ToastEngine.Warning("Queue Build", "Not connected — no DATABASE_URL found (see Settings).");
-                                return;
-                            }
-
-                            // Local-id resolution: a --notGit build is handed the next unused
-                            // letter id; --block-by letters resolve through the registry; a bare
-                            // number with no --notGit is verified against real GitHub (detection).
-                            var (dialogGithubNum, dialogBlockedByNums, editStop) =
-                                await ResolveLocalBuildIdentityAsync(
-                                    dialog.FinalIsLocalBuild, dialog.FinalGithubNumber,
-                                    dialog.FinalGitBlockers, dialog.FinalLocalBlockers);
-                            if (editStop) return;
-
-                            if (_updatePending)
-                            {
-                                bool saved = PersistQueueRequestDuringPendingUpdate(
-                                    dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                    dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli, account: dialog.FinalAccount);
-                                if (saved)
-                                {
-                                    ToastEngine.Success("Queued after update", "Build request saved for after restart.");
-                                    try { await BuildQueuePanel.RefreshAsync(); } catch { }
-                                }
-                                return;
-                            }
-                            try
-                            {
-                                await _queueDb.QueueBuildAsync(
-                                    dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                                    dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli, account: dialog.FinalAccount);
-                                var editIdLabel = dialogGithubNum.HasValue ? BuildConsole.Services.LocalBuildId.FormatRef(dialogGithubNum.Value) : "";
-                                ToastEngine.Success("Build Queued",
-                                    $"Queued '{dialog.FinalTitle ?? "Build"}'{(editIdLabel.Length > 0 ? $" as {editIdLabel}" : "")} successfully.");
-                                try { await BuildQueuePanel.RefreshAsync(); } catch { }
-                            }
-                            catch (Exception ex)
-                            {
-                                ToastEngine.Error("Queue Build", $"Failed to queue build: {ex.Message}");
-                            }
-                        }
-                    }
+                    await OpenBuildPromptDialogAsync(rawText, referencedNumber);
                 }
                 else if (type == "BT_SEND_TO_BUILDER")
                 {

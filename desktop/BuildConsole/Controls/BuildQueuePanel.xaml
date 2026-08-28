@@ -66,6 +66,23 @@
                                    Foreground="{StaticResource Subtext1Brush}"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- Git #1480 — paste a full build prompt (headers + body) straight into
+                             the queue without going through a chat tab first. Opens the same
+                             EditBuildPromptDialog the chat-injected "Edit Build" button uses, so
+                             pasting a leading flag line (model / effort / title / buildSet / etc.)
+                             is honored identically. -->
+                        <Button x:Name="BtnNewBuildFromPaste"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Paste a full build prompt (with --flags) and add it to the queue"
+                                Padding="6,4"
+                                Margin="0,0,3,0"
+                                Click="BtnNewBuildFromPaste_Click">
+                            <TextBlock Text="&#xE710;"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="11"
+                                       Foreground="{StaticResource BlueBrush}"
+                                       VerticalAlignment="Center"/>
+                        </Button>
                         <!-- Global "Queue Paused / Running" toggle — separate from any
                              individual build's Stop. While paused, new queued items are NOT
                              picked up/started (already-running builds keep going); queuing
