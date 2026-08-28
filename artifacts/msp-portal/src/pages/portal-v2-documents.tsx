@@ -781,7 +781,10 @@ function DocumentRow({
 }) {
   const c = coverColour(d);
   const state = docStateFor(d);
-  const stale = d.fresh === "stale";
+  // The real per-tenant issue date (Git #1443) — was a fixed "Issued 3 Aug
+  // 2026"/"Signed 6 Aug 2026" fixture shown to every tenant; see
+  // `docLibraryModel.ts`'s header for why that was never a real fact.
+  const issuedLabel = view.tenant.scannedOn ? `Issued ${view.tenant.scannedOn}` : "Not yet assessed";
   // DOC-01..09 only — the nine real deliverables this library owns (Git #1238).
   // Matched by title against the same document set the Copilot Readiness
   // journey resolves, since `docLibraryData.ts`'s DOC-01..09 titles are
@@ -913,7 +916,7 @@ function DocumentRow({
           }}
           data-testid={`pv2-doc-open-${d.num}`}
         >
-          <Cover d={d} c={c} subtitle={d.issued ?? ""} titleColour="#f8fafc" />
+          <Cover d={d} c={c} subtitle={issuedLabel} titleColour="#f8fafc" />
           <div
             style={{
               flex: 1,
@@ -989,46 +992,9 @@ function DocumentRow({
               </div>
             </div>
 
-            {stale && (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 9,
-                  padding: "10px 13px",
-                  border: "1px solid rgba(251,191,36,.35)",
-                  borderRadius: 9,
-                  background: "rgba(251,191,36,.07)",
-                }}
-                data-testid={`pv2-doc-stale-${d.num}`}
-              >
-                <span
-                  style={{
-                    flex: "0 0 auto",
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    letterSpacing: ".13em",
-                    textTransform: "uppercase",
-                    color: "#fbbf24",
-                    paddingTop: 2,
-                  }}
-                >
-                  Out of date
-                </span>
-                <span
-                  style={{
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: "12px",
-                    color: "#fde68a",
-                    lineHeight: 1.55,
-                    textWrap: "pretty",
-                  }}
-                >
-                  {d.freshNote} — this issue no longer matches what the tenant looks like now.
-                </span>
-              </div>
-            )}
+            {/* No "out of date" band (Git #1443): there is no real per-document
+                staleness signal to report it from — see `docLibraryModel.ts`'s
+                header. */}
 
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <button
@@ -1040,9 +1006,9 @@ function DocumentRow({
                   gap: 7,
                   padding: "8px 14px",
                   borderRadius: 7,
-                  border: `1px solid ${stale ? "rgba(251,191,36,.5)" : "rgba(0,120,212,.5)"}`,
-                  background: stale ? "rgba(251,191,36,.14)" : "rgba(0,120,212,.16)",
-                  color: stale ? "#fde68a" : "#bfdbfe",
+                  border: "1px solid rgba(0,120,212,.5)",
+                  background: "rgba(0,120,212,.16)",
+                  color: "#bfdbfe",
                   fontSize: "11.5px",
                   fontWeight: 700,
                   cursor: "pointer",

@@ -73,22 +73,20 @@ describe("the OWNED_META positional zip", () => {
   // DOC_LIB and OWNED_META are two separate arrays joined by index. Nothing in
   // either one references the other, so a single inserted entry would silently
   // relabel all nine documents' pillar, type and audience.
-  it("puts the signed contract on DOC-09 and dates everything else 3 Aug", () => {
+  it("puts the signed contract on DOC-09", () => {
     assert.equal(byNum("DOC-09").type, "Contract");
-    assert.equal(byNum("DOC-09").fresh, "signed");
-    assert.equal(byNum("DOC-09").issued, "Signed 6 Aug 2026");
-    assert.equal(byNum("DOC-01").issued, "Issued 3 Aug 2026");
-    assert.equal(ALL_DOCS.filter((d) => d.owned && d.issued === "Signed 6 Aug 2026").length, 1);
   });
 
-  it("marks exactly DOC-01 and DOC-03 out of date", () => {
-    assert.deepEqual(
-      ALL_DOCS.filter((d) => d.fresh === "stale").map((d) => d.num),
-      ["DOC-01", "DOC-03"],
-    );
-    // A stale row's amber band prints freshNote, so it cannot be missing.
-    for (const d of ALL_DOCS.filter((x) => x.fresh === "stale")) {
-      assert.ok(d.freshNote, `${d.num} freshNote`);
+  // Git #1443: `fresh`/`freshNote`/`issued` are the prototype's Halden
+  // Materials fixture (a fixed "2 of 9 stale", a fixed "Issued 3 Aug 2026")
+  // and are no longer carried onto a real `DocRow` at all — see
+  // `docLibraryModel.ts`'s header. There is nothing left to pin here; the
+  // absence itself is the assertion.
+  it("carries no fixture freshness or issue-date fields onto a real row", () => {
+    for (const d of ALL_DOCS) {
+      assert.ok(!("fresh" in d), `${d.num} must not carry a fixture 'fresh'`);
+      assert.ok(!("freshNote" in d), `${d.num} must not carry a fixture 'freshNote'`);
+      assert.ok(!("issued" in d), `${d.num} must not carry a fixture 'issued'`);
     }
   });
 
@@ -193,10 +191,14 @@ describe("sorting", () => {
 });
 
 describe("the row's state column", () => {
-  it("reads Regenerate / Signed / Current for owned documents", () => {
-    assert.deepEqual(docStateFor(byNum("DOC-01")), { label: "Regenerate", tone: "#fbbf24" });
-    assert.deepEqual(docStateFor(byNum("DOC-09")), { label: "Signed", tone: "#94a3b8" });
-    assert.deepEqual(docStateFor(byNum("DOC-02")), { label: "Current", tone: "#4ade80" });
+  // Git #1443: every owned document renders live from the tenant's own
+  // current scan data at open time, so there is no real "stale"/"signed"
+  // state to report — "Current" is the honest answer for all nine, not a
+  // per-row fixture lookup. See `docLibraryModel.ts`'s header.
+  it("reads Current for every owned document", () => {
+    for (const d of ALL_DOCS) {
+      assert.deepEqual(docStateFor(d), { label: "Current", tone: "#4ade80" }, d.num);
+    }
   });
 });
 

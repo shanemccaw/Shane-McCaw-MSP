@@ -50,7 +50,6 @@ import { reportClientEvent } from "@/lib/report-client-event";
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
 import {
   CP_COPY,
-  CP_DELIVERABLES,
   CP_PILLAR_ADVICE,
   type CopilotPillarIcon,
 } from "@/components/portal-v2/copilotData";
@@ -67,6 +66,8 @@ import {
   type CopilotPillarRow,
 } from "@/components/portal-v2/copilotModel";
 import { useCopilotJourney } from "@/components/copilot-journey/useCopilotJourney";
+import { withLiveDocuments } from "@/components/copilot-journey/journeyModel";
+import { generationView } from "@/components/copilot-journey/revealMath";
 import type { PillarKey } from "@/components/copilot-journey/journeyTokens";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
@@ -305,6 +306,23 @@ export default function PortalV2CopilotPage() {
   const summary = gateSummary(view.tenant.name, score);
   const dataState = score !== null ? "live" : live.pillarsLoaded ? "unscored" : "loading";
 
+  /* ---------------------------------------------------------------- *
+   * "What the assessment produced" (Git #1443) — the tenant's REAL document
+   * set, not the five-item `CP_DELIVERABLES` fixture this used to render
+   * unconditionally as "Ready" under a fixed "Nine documents, all issued"
+   * claim. `withLiveDocuments(view.generation)` and `generationView()` are the
+   * exact same derivation `RevealFullPicture.tsx` (Scene 9) already renders
+   * from — one source for "what documents exist and how many are ready",
+   * never a second hardcoded list that can silently drift from it. Gated on
+   * `live.statusLoaded` for the same reason Scene 9 gates on its own
+   * `payloadState`: nothing here may assert a document count before the
+   * platform has had a chance to say what this tenant's set is.
+   * ---------------------------------------------------------------- */
+  const documentsLoaded = live.statusLoaded;
+  const generation = documentsLoaded ? withLiveDocuments(view.generation) : view.generation;
+  const gen = generationView(generation.ready, generation.total);
+  const documents = generation.documents;
+
   return (
     <PortalV2Shell eyebrow="Copilot readiness" title="Copilot readiness">
       <div style={{ minHeight: "100%", background: SIDEBAR_WASH }}>
@@ -513,28 +531,47 @@ export default function PortalV2CopilotPage() {
             >
               <div style={{ padding: "15px 18px 11px", display: "flex", flexDirection: "column", gap: 3, borderBottom: "1px solid rgba(30,41,59,.85)" }}>
                 <Eyebrow colour="#64748b">{CP_COPY.producedLabel}</Eyebrow>
-                <span style={{ fontSize: "11.5px", color: "#475569" }}>{CP_COPY.producedNote}</span>
+                <span style={{ fontSize: "11.5px", color: "#475569" }}>
+                  {!documentsLoaded
+                    ? "Loading your document set…"
+                    : gen.known
+                      ? gen.note
+                      : "Your document set has not been scoped for this tenant yet."}
+                </span>
               </div>
-              {CP_DELIVERABLES.map((d) => (
-                <Link
-                  key={d.num}
-                  href="/portal-v2/documents"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "11px 18px",
-                    borderTop: "1px solid rgba(30,41,59,.7)",
-                    background: "transparent",
-                    textDecoration: "none",
-                    minWidth: 0,
-                  }}
-                >
-                  <span style={{ fontSize: "9.5px", fontWeight: 700, color: "#475569", fontFamily: MONO, flex: "0 0 auto" }}>{d.num}</span>
-                  <span style={{ flex: 1, minWidth: 0, fontSize: "12px", fontWeight: 600, color: "#cbd5e1", lineHeight: 1.45, textWrap: "pretty" }}>{d.title}</span>
-                  <span style={{ fontSize: "9px", fontWeight: 700, letterSpacing: ".09em", textTransform: "uppercase", color: "#4ade80", flex: "0 0 auto" }}>{CP_COPY.ready}</span>
-                </Link>
-              ))}
+              {!documentsLoaded ? null : !gen.known ? null : (
+                documents.map((d) => (
+                  <Link
+                    key={d.docType}
+                    href="/portal-v2/documents"
+                    data-testid={`pv2-cp-produced-doc-${d.docType}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "11px 18px",
+                      borderTop: "1px solid rgba(30,41,59,.7)",
+                      background: "transparent",
+                      textDecoration: "none",
+                      minWidth: 0,
+                    }}
+                  >
+                    <span style={{ flex: 1, minWidth: 0, fontSize: "12px", fontWeight: 600, color: "#cbd5e1", lineHeight: 1.45, textWrap: "pretty" }}>{d.title}</span>
+                    <span
+                      style={{
+                        fontSize: "9px",
+                        fontWeight: 700,
+                        letterSpacing: ".09em",
+                        textTransform: "uppercase",
+                        color: d.status === "ready" ? "#4ade80" : "#64748b",
+                        flex: "0 0 auto",
+                      }}
+                    >
+                      {d.status === "ready" ? CP_COPY.ready : d.status}
+                    </span>
+                  </Link>
+                ))
+              )}
               <div style={{ padding: "12px 18px 15px" }}>
                 <Link
                   href="/portal-v2/documents"

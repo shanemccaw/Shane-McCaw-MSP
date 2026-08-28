@@ -3,6 +3,7 @@
   "baseUrl": "{{DEPLOY_URL}}",
   "lastVerifiedAgainstCommit": "03d1b2ca",
   "notes": [
+    "Git #1443: the 'What the assessment produced' card used to render CP_DELIVERABLES -- a hardcoded 5-item list under invented 'DOC-01'..'DOC-08' numbers -- next to a fixed 'Nine documents, all issued' note, even though the list only ever showed five. The card now renders the tenant's real document set off view.generation (withLiveDocuments/generationView, the same source RevealFullPicture/Scene 9 renders from), and the note is the real, computed generationView() note. CP19-CP21 assert the real set and the real note; the old fixture would fail both.",
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
     "UI ROUTE SHAPE: /portal/{slug}/portal-v2/copilot. App.tsx declares '/portal-v2/copilot' ABOVE the '/portal-v2/:pillar' insertion marker so the param route does not swallow it.",
     "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- the #1213 live-data rewrite asserts green only after the pushed commit is deployed. Against the OLD deployed build the fixture assertions (Halden Materials etc.) would still pass and the live ones (pv2-cp-source = 'live') would fail; that is the expected pre-deploy signal, not a regression.",
@@ -38,8 +39,11 @@
 
     { "name": "CP13 -- back to Copilot to check the lower bands.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/copilot" },
     { "name": "CP14 -- the live verdict headline still leads.", "action": "expect", "selector": "[data-testid='pv2-page-title']", "textContains": "turn Copilot on at", "critical": true },
-    { "name": "CP15 -- the document pack names DOC-01 and its title.", "action": "expect", "selector": "[data-testid='pv2-cp-produced']", "textContains": "Copilot Readiness, Safety & Enablement Report", "critical": true },
+    { "name": "CP15 -- the document pack names the lead report by its real title.", "action": "expect", "selector": "[data-testid='pv2-cp-produced']", "textContains": "Copilot Readiness, Safety & Enablement Report", "critical": true },
     { "name": "CP16 -- ...under its 'what the assessment produced' heading.", "action": "expect", "selector": "[data-testid='pv2-cp-produced']", "textContains": "What the assessment produced" },
+    { "name": "CP19 (Git #1443) -- the REAL nine-document set renders, not the old five-item CP_DELIVERABLES fixture: a report that fixture never listed (Adoption) is now present.", "action": "expect", "selector": "[data-testid='pv2-cp-produced']", "textContains": "Copilot Adoption & Workflow Readiness Report", "critical": true, "sessionTag": "1443" },
+    { "name": "CP20 (Git #1443) -- the SOW, document 9 of 9, is present too -- the old fixture stopped at 5 (DOC-01..04, DOC-08) and never listed it.", "action": "expect", "selector": "[data-testid='pv2-cp-produced']", "textContains": "Statement of Work", "sessionTag": "1443" },
+    { "name": "CP21 (Git #1443) -- no fixed 'Nine documents, all issued' claim -- the note is the real, computed generationView() note.", "action": "expect", "selector": "[data-testid='pv2-cp-produced']", "textContains": ["All 9 documents are open in your viewer", "Generation continues whether this page is open or not"], "sessionTag": "1443" },
     { "name": "CP17 -- the add-on card names White-Glove Copilot Adoption.", "action": "expect", "selector": "[data-testid='pv2-cp-addon']", "textContains": "White-Glove Copilot Adoption" },
     { "name": "CP18 -- the closing band offers the thirty minutes with the architect.", "action": "expect", "selector": "[data-testid='pv2-cp-discuss']", "textContains": "Discuss your results with Shane McCaw" }
   ]

@@ -4,6 +4,7 @@
   "lastVerifiedAgainstCommit": "PENDING-GIT-1346",
 
   "notes": [
+    "Git #1443 -- the amber 'out of date' band (DOC-01, DOC-03) and the Cover's 'Issued 3 Aug 2026'/'Signed 6 Aug 2026' subtitle were the prototype's fictional Halden Materials fixture (DOC_OWNED_META's fresh/freshNote, DOC_LIB's own issue date), shown identically to every real tenant regardless of their own scan. Every owned document renders live from the tenant's own current scan data at open time (Git #643) -- there is no stored generation timestamp for one to go stale against -- so docLibraryModel.ts no longer carries fresh/freshNote/issued onto a real DocRow at all; docStateFor() always reports the true state, 'Current'. The Cover's date now comes from view.tenant.scannedOn. DL8/DL8b assert this.",
     "Git #1346 -- hide, don't disclose. Shane: the ~24 documents beyond what a customer actually owns were shown with disclosure copy ('This library shows X of Y documents. The remainder cover workloads not in your tenant...') that read as a browsable catalogue rather than what it was -- the same 'hide, don't disclose' precedent as #1341's Directory Sync panel. This build filters `ALL_DOCS` in docLibraryModel.ts down to the owned nine, removes the Availability facet (In your library / Available to add) that existed only to distinguish owned from catalogue rows, and removes the cart / 'Add to your library' / price-block UI along with it, since none of it is reachable once there are no unowned rows to add. The footer's 'X of Y documents' sentence and the filter drawer's 'The rest are written the same way... and can be added at any time' sentence are both gone.",
     "Git #1238 (unchanged by #1346): DOC-01..09's expanded body content is the REAL live report body, ported from `DocumentBody.tsx`'s LIVE_BODY registry -- the same components `/copilot-readiness/documents` mounts, reused directly via `useCopilotJourney()` + `withLiveDocuments()` + `<DocumentBody>`, matched to each owned row by title.",
     "SCOPE: the Document Library page only. It is a FIXTURE page for its metadata (title/pillar/type/audience/offering) -- there is no /api/portal/documents endpoint yet, so there is deliberately no API assertion here beyond the login that every /portal-v2/* probe needs.",
@@ -99,10 +100,19 @@
       "textContains": "Copilot Readiness, Safety & Enablement Report"
     },
     {
-      "name": "DL8 -- the amber out-of-date band appears on DOC-01 and carries the composed staleNote (proto 11872: freshNote + ' — this issue no longer matches what the tenant looks like now.').",
+      "name": "DL8 (Git #1443) -- the amber out-of-date band is GONE, not merely hidden by state. It used to carry the fictional Halden Materials fixture's freshNote ('Telemetry moved since 3 Aug') for every real tenant regardless of what actually happened in their own scan; docLibraryModel.ts no longer carries fresh/freshNote onto a real row at all, so this testid never renders.",
       "action": "expect",
       "selector": "[data-testid='pv2-doc-stale-DOC-01']",
-      "textContains": "Telemetry moved since 3 Aug"
+      "state": "absent",
+      "critical": true,
+      "sessionTag": "1443"
+    },
+    {
+      "name": "DL8b (Git #1443) -- the row's Cover states the tenant's own real assessed date ('Issued <date>'), not the fixed fixture date 'Issued 3 Aug 2026' every tenant used to see.",
+      "action": "expect",
+      "selector": "[data-testid='pv2-doc-open-DOC-01']",
+      "textContains": "Issued ",
+      "sessionTag": "1443"
     },
     {
       "name": "DL9 -- the 'where this lives in the portal' block renders, which is what stops the document being a dead end.",

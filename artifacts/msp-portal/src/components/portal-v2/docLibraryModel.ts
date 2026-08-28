@@ -32,6 +32,23 @@
  * as a product today. `DOC_CATALOG` and `DOC_LIB_TOTAL` stay in
  * `docLibraryData.ts` as the design-forward fixture they always were; this
  * model just no longer merges them into what the customer sees.
+ *
+ * ── `fresh`/`freshNote`/`issued` are NOT carried through (Git #1443) ───────
+ * `DOC_OWNED_META`'s `fresh`/`freshNote` and `DOC_LIB`'s own issue date are
+ * the prototype's Halden Materials fixture — a fixed "2 of 9 documents are
+ * stale, telemetry moved since 3 Aug" and a fixed "Issued 3 Aug 2026" shown
+ * identically to every real tenant regardless of what actually happened in
+ * their own scan. Under the live-render architecture (`journeyModel.ts`'s
+ * `buildGeneration`/`withLiveDocuments`, Git #643) every owned document is
+ * rendered fresh from the tenant's own current scan data the moment it is
+ * opened — there is no stored generation timestamp for one to drift out of
+ * date against, so "stale" is not a real, computable state here, and the SOW
+ * is always presented as the live, interactive, pending-signature scope
+ * (`StatementOfWorkBody`'s `onSigned` fires ON signing; nothing on this
+ * client path reads an already-signed status), so "Signed 6 Aug 2026" was
+ * never a real fact either. `docStateFor` below always reports the true
+ * state — "Current" — instead; the real per-tenant issue date is rendered by
+ * the page itself from `view.tenant.scannedOn`, not from this fixture.
  */
 
 import {
@@ -54,9 +71,6 @@ export interface DocRow {
   audience: string;
   offering: string;
   owned: boolean;
-  fresh?: string;
-  freshNote?: string;
-  issued?: string;
   kicker?: string;
   headline?: string;
   standfirst?: string;
@@ -66,14 +80,19 @@ export interface DocRow {
 }
 
 /**
- * `ownedDocs` (11771-11776). OWNED_META is zipped onto DOC_LIB positionally,
- * and the issue date is a per-id special case: id 8 is the signed contract, so
- * it reads "Signed" rather than "Issued".
+ * `ownedDocs` (11771-11776). OWNED_META's `type`/`pillar`/`audience`/`offering`
+ * are zipped onto DOC_LIB positionally — real, tenant-invariant classification
+ * of what KIND of document each one is, the same sort of static advisory
+ * `copilotData.ts`'s `CP_PILLAR_ADVICE` carries. `fresh`/`freshNote` are NOT
+ * carried through (Git #1443) — see this file's header for why.
  */
 const OWNED: DocRow[] = DOC_LIB.map((d: DocLibEntry, i) => {
   const meta = DOC_OWNED_META[i] ?? DOC_OWNED_META[0];
   return {
-    ...meta,
+    type: meta.type,
+    pillar: meta.pillar,
+    audience: meta.audience,
+    offering: meta.offering,
     key: `own-${d.id}`,
     num: d.num,
     title: d.title,
@@ -84,7 +103,6 @@ const OWNED: DocRow[] = DOC_LIB.map((d: DocLibEntry, i) => {
     sections: d.sections,
     links: d.links,
     owned: true,
-    issued: d.id === 8 ? "Signed 6 Aug 2026" : "Issued 3 Aug 2026",
   };
 });
 
@@ -205,10 +223,16 @@ export const DOC_SORT_OPTIONS: readonly { key: DocSortKey; label: string }[] = [
   { key: "type", label: "Type" },
 ];
 
-/** The row's state column (11838-11840) — owned documents only, per #1346. */
-export function docStateFor(d: DocRow): { label: string; tone: string } {
-  if (d.fresh === "stale") return { label: "Regenerate", tone: "#fbbf24" };
-  if (d.fresh === "signed") return { label: "Signed", tone: "#94a3b8" };
+/**
+ * The row's state column (11838-11840) — owned documents only, per #1346.
+ *
+ * Always "Current" (Git #1443): every owned document renders live from the
+ * tenant's own current scan data the moment it is opened, so there is no real
+ * "this one has drifted out of date" state to report — see this file's header.
+ * `d` is still taken so a real per-document state can be threaded through here
+ * if one is ever wired, without changing every call site.
+ */
+export function docStateFor(_d: DocRow): { label: string; tone: string } {
   return { label: "Current", tone: "#4ade80" };
 }
 

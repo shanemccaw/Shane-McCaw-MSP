@@ -20,9 +20,19 @@
  *     claim about any one tenant. The two sentences that used to embed Halden's
  *     own numbers ("Four Global Admins…", "A third of your tenant…") are
  *     generalised so no fabricated figure survives.
- *   • the document pack titles (`CP_DELIVERABLES`) — the real deliverable names.
  *   • the fixed UI copy (`CP_COPY`) — eyebrows, labels, the add-on and the
  *     book-a-call band. None of it names a tenant or quotes a number.
+ *
+ * ── "What the assessment produced" is NOT static (Git #1443) ───────────────
+ * This module used to also carry `CP_DELIVERABLES` — five hardcoded document
+ * titles under invented "DOC-01".."DOC-08" numbers — and `CP_COPY.producedNote`
+ * asserted "Nine documents, all issued" beside a list of five. Both were fixture
+ * copy nobody reconciled against the real document set. `portal-v2-copilot.tsx`
+ * now reads the tenant's real document list straight off `view.generation`
+ * (`journeyModel.ts`'s `withLiveDocuments`/`generationView` — the same source
+ * `RevealFullPicture.tsx` renders Scene 9 from), so the count, the titles and the
+ * per-document ready state are the real, tenant-specific ones, never a literal
+ * here.
  *
  * ── The gate denominator is still the constant, not a literal ──────────────
  * The "of 82" denominator is `COPILOT_GATE_TARGET` from journeyTokens, read via
@@ -123,20 +133,6 @@ export const CP_PILLAR_ADVICE: readonly CopilotPillarAdvice[] = [
   },
 ];
 
-export interface CopilotDeliverable {
-  readonly num: string;
-  readonly title: string;
-}
-
-/** cpDeliverables — the assessment's document pack. Prototype 20625-20631. */
-export const CP_DELIVERABLES: readonly CopilotDeliverable[] = [
-  { num: "DOC-01", title: "Copilot Readiness, Safety & Enablement Report" },
-  { num: "DOC-02", title: "Microsoft 365 Security Posture & Blast Radius Report" },
-  { num: "DOC-03", title: "Microsoft 365 Governance Posture Report" },
-  { num: "DOC-04", title: "Microsoft 365 Compliance & Regulatory Alignment Report" },
-  { num: "DOC-08", title: "Full Remediation Guide — Copilot Gate Clearance Plan" },
-];
-
 /* ── Static copy — prototype 6100-6199. Verbatim, minus the fabricated
  *    heading/summary/assessed lines, which are now built from live data in
  *    `copilotModel.ts`. Copy is FINAL. ─────────────────────────────────────── */
@@ -156,7 +152,10 @@ export const CP_COPY = {
   addonAdd: "Add this to the plan",
   addonAsk: "Ask ShaneBot what it covers",
   producedLabel: "What the assessment produced",
-  producedNote: "Nine documents, all issued. Every number traces to the telemetry behind it.",
+  // No static note here (Git #1443): the real per-tenant count/readiness note
+  // comes from `generationView()` on the page — a real tenant's document set is
+  // "regularly not nine" (see `revealMath.ts`'s own comment on that), so a fixed
+  // "Nine documents, all issued" is exactly the fabricated claim this fixes.
   ready: "Ready",
   docPack: "Open the document pack",
   discussTitle: "Discuss your results with Shane McCaw",
