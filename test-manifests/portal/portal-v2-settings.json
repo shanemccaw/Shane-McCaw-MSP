@@ -93,6 +93,16 @@
     { "name": "SET43 -- ...and names the group it reads.", "action": "expect", "selector": "[data-testid='pv2-set-dept-operations']", "textContains": "SG-Operations-All" },
 
     { "name": "SET44 -- an unrecognised section segment falls back to the default rather than rendering nothing.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/not-a-section" },
-    { "name": "SET45 -- ...proved by Ownership routing being on screen again.", "action": "expect", "selector": "[data-testid='pv2-set-routing-notify']", "state": "visible" }
+    { "name": "SET45 -- ...proved by Ownership routing being on screen again.", "action": "expect", "selector": "[data-testid='pv2-set-routing-notify']", "state": "visible" },
+
+    { "name": "SET-NODATA-LOGIN (Git #1463) -- self-contained login so onlyTag=settings-nodata-1463 can run standalone without the untagged setup block above.", "sessionTag": "settings-nodata-1463", "action": "goto", "target": "/portal/login" },
+    { "name": "SET-NODATA-LOGIN2 -- wait for the login form (persisted-session note: this can legitimately fail if the runner's WebView2 already carries a session -- SET-NODATA-GOTO below still runs either way).", "sessionTag": "settings-nodata-1463", "action": "expect", "selector": "#email", "state": "visible" },
+    { "sessionTag": "settings-nodata-1463", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "settings-nodata-1463", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "settings-nodata-1463", "action": "click", "selector": "[data-testid='login-submit']" },
+    { "name": "SET-NODATA1 (Git #1463) -- Change control policy has no backend to persist it (NO-BACKEND-TO-WIRE, settingsData.ts), and now says so honestly rather than letting its toggles look saved.", "sessionTag": "settings-nodata-1463", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/change" },
+    { "name": "SET-NODATA2 -- the honest badge is on screen.", "sessionTag": "settings-nodata-1463", "action": "expect", "selector": "[data-testid='pv2-set-cc-nodata']", "textContains": "No live data available", "critical": true },
+    { "name": "SET-NODATA3 -- same for Departments (department-membership/map-by-group has no backend either).", "sessionTag": "settings-nodata-1463", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/settings/departments" },
+    { "name": "SET-NODATA4 -- the honest badge is on screen there too.", "sessionTag": "settings-nodata-1463", "action": "expect", "selector": "[data-testid='pv2-set-dept-nodata']", "textContains": "No live data available", "critical": true }
   ]
 }

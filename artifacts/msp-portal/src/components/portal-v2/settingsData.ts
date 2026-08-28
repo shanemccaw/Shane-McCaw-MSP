@@ -179,7 +179,14 @@ export interface DeptRow {
   group: string;
 }
 
-/** prototype 19943-19950. */
+/**
+ * prototype 19943-19950.
+ *
+ * NO-BACKEND-TO-WIRE: no portal-v2 endpoint reads department membership or
+ * "map by security group" state — these rows and DEPT_UNMAPPED below are
+ * fixture, and the "Set by group" drawer submit is a no-op stub with no
+ * write behind it.
+ */
 export const DEPT_ROWS: readonly DeptRow[] = [
   { name: "Engineering", src: "attribute", n: 214, group: "Not set" },
   { name: "Sales", src: "attribute", n: 186, group: "Not set" },
@@ -214,6 +221,14 @@ export interface CcPolicy {
 
 /**
  * prototype 7209-7210.
+ *
+ * NO-BACKEND-TO-WIRE: no settings endpoint exists to persist Change control
+ * policy — the master toggle, gates, signature rules, approvers, and
+ * notification rules below are all client-only React state (see
+ * portal-v2-settings.tsx's `useState(CC_POLICY_SEED)` /
+ * `useState(CC_NOTIF_SEED)`). Every toggle in this section visibly reacts to
+ * a click, but nothing here survives a page reload and nothing writes to any
+ * tenant. Flagged rather than silently left to look like it saves.
  *
  * The prototype's `approvers` object carries a third key, `standard: 'auto'` —
  * a STRING where the other two are arrays of person ids. Nothing reads it:

@@ -11,20 +11,22 @@
  * portal-billing.ts's endpoint set is real and rich, but most of this page's
  * surface can't honestly be pointed at it yet:
  *
- *  - The Monitoring-plan tier cards and their prices are still blocked on the
- *    #1128 Premier discrepancy (1980 vs 2350) — the catalog's real Foundation/
- *    Growth/Premier rows (services.slug `monitoring-{tier}-{size}`) carry NO
- *    flat price at all (price/price_cents both null; they're seat-metered via
- *    typeAttributes), so there is no live number to resolve it with, let alone
- *    wire the cards to. They stay on billingData.ts's fixture, unchanged.
- *  - The interval/tier-switch/add-on toggles are the design's own interactive
- *    hypothetical-repricing calculator (see portal-v2-billing.tsx's header
- *    comment) — "what would this cost if I picked X", not "what does this
- *    tenant pay today". There is also, today, no client_services row anywhere
- *    in recurring_monthly billing for any tenant to compute a real one from.
- *    Reusing GET /portal/billing/subscriptions here would either sit empty or
- *    require inventing a monitoring/retainer/add-on categorisation the schema
- *    doesn't carry — left alone rather than fabricated.
+ *  - NO-BACKEND-TO-WIRE: the Monitoring-plan tier cards and their prices are
+ *    still blocked on the #1128 Premier discrepancy (1980 vs 2350) — the
+ *    catalog's real Foundation/Growth/Premier rows (services.slug
+ *    `monitoring-{tier}-{size}`) carry NO flat price at all (price/price_cents
+ *    both null; they're seat-metered via typeAttributes), so there is no live
+ *    number to resolve it with, let alone wire the cards to. They stay on
+ *    billingData.ts's fixture, unchanged.
+ *  - NO-BACKEND-TO-WIRE: the interval/tier-switch/add-on toggles are the
+ *    design's own interactive hypothetical-repricing calculator (see
+ *    portal-v2-billing.tsx's header comment) — "what would this cost if I
+ *    picked X", not "what does this tenant pay today". There is also, today,
+ *    no client_services row anywhere in recurring_monthly billing for any
+ *    tenant to compute a real one from. Reusing GET /portal/billing/
+ *    subscriptions here would either sit empty or require inventing a
+ *    monitoring/retainer/add-on categorisation the schema doesn't carry —
+ *    left alone rather than fabricated.
  *
  * Receipts and the Stripe billing-portal link are different: `invoicesTable`
  * is the platform's one real billing-history ledger (real rows exist for real
@@ -47,8 +49,10 @@ const CUSTOMER_PORTAL_URL = "/api/portal/billing/customer-portal";
 export type BillingDataState = "loading" | "live" | "fixture";
 
 export interface BillingLiveState {
-  /** Real invoice rows, newest first. Empty until a live read resolves with
-   *  at least one row — the page falls back to BILL_RECEIPTS otherwise. */
+  /** Real invoice rows, newest first — genuinely empty for a tenant with no
+   *  billing history yet. The page falls back to BILL_RECEIPTS only when the
+   *  read itself never resolved (`dataState === "fixture"`), not merely
+   *  because it resolved empty. */
   readonly receipts: readonly BillingReceiptRow[];
   readonly dataState: BillingDataState;
   readonly loading: boolean;
@@ -145,7 +149,14 @@ export function useBillingLive(): BillingLiveState {
   );
 
   return useMemo<BillingLiveState>(() => {
-    const dataState: BillingDataState = rows && rows.length > 0 ? "live" : loading ? "loading" : "fixture";
+    // A real read that resolved to zero invoices is still "live" — that
+    // tenant genuinely has no billing history yet, which is a different fact
+    // from "the read never came back." Collapsing the two into one "fixture"
+    // state (Git #1463) meant a customer with zero real invoices was shown
+    // BILL_RECEIPTS's fake receipt rows as if they were their own, exactly
+    // the HARD RULE this strict pass exists to catch: `rows` is only ever
+    // null when the fetch itself failed or hasn't resolved.
+    const dataState: BillingDataState = loading ? "loading" : rows !== null ? "live" : "fixture";
     return { receipts: rows ?? [], dataState, loading, error, openStripePortal, openingPortal, downloadReceipt };
   }, [rows, loading, error, openStripePortal, openingPortal, downloadReceipt]);
 }

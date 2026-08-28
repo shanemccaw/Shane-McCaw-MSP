@@ -95,7 +95,20 @@ function isSectionKey(v: string | undefined): v is SetSectionKey {
 
 /* ── Shared bits of the section chrome — prototype 4364-4368 ─────────────── */
 
-function SectionHead({ title, blurb }: { title: string; blurb: string }) {
+function SectionHead({
+  title,
+  blurb,
+  noBackendTestId,
+}: {
+  title: string;
+  blurb: string;
+  /**
+   * Set on sections with a genuine backend gap (NO-BACKEND-TO-WIRE in
+   * settingsData.ts) — an honest, explicit note that this section's toggles
+   * don't persist, rather than letting them silently look saved.
+   */
+  noBackendTestId?: string;
+}) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
       <span style={{ fontSize: "15px", fontWeight: 800, color: "#f8fafc" }}>{title}</span>
@@ -110,6 +123,25 @@ function SectionHead({ title, blurb }: { title: string; blurb: string }) {
       >
         {blurb}
       </span>
+      {noBackendTestId && (
+        <span
+          data-testid={noBackendTestId}
+          style={{
+            alignSelf: "flex-start",
+            marginTop: 2,
+            padding: "2px 8px",
+            borderRadius: 5,
+            border: "1px solid rgba(194,166,61,.35)",
+            background: "rgba(194,166,61,.08)",
+            fontSize: "10px",
+            fontWeight: 700,
+            letterSpacing: ".04em",
+            color: "#c2a63d",
+          }}
+        >
+          No live data available — nothing you change here is saved yet
+        </span>
+      )}
     </div>
   );
 }
@@ -384,6 +416,7 @@ function ChangePolicySection({
       <SectionHead
         title="Change control policy"
         blurb="What must pass through a change request before it runs, how many signatures it needs, and who is allowed to give them. Switching change control off does not switch off the record — actions still land in the register, marked as run without approval."
+        noBackendTestId="pv2-set-cc-nodata"
       />
 
       {/* Master band — prototype 4416-4423. Its border and wash carry the state,
@@ -1047,6 +1080,7 @@ function DepartmentsSection() {
       <SectionHead
         title="Departments"
         blurb="Adoption, workload and licence figures are grouped by department. By default that comes from the Entra department attribute, which is only as reliable as whoever filled it in. Point a department at a security group and the numbers stop being indicative."
+        noBackendTestId="pv2-set-dept-nodata"
       />
       <div
         style={{
