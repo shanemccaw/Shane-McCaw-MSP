@@ -1017,6 +1017,15 @@ namespace BuildConsole
                     else
                         SetSlotState(slot, SlotState.Failed, item.ExitCode);
                     break;
+                case "verifying":
+                    // Git #1469 — the session genuinely exited (success) but its real
+                    // GitHub issue hasn't closed yet, so the queue row holds "verifying"
+                    // instead of "done". Reuses the same SlotState.Running + Verifying
+                    // pill built for #943's orphan-sweep ambiguity, with its own tooltip
+                    // so it isn't misread as that unrelated case.
+                    SetSlotState(slot, SlotState.Running, item.ExitCode, verifying: true,
+                        verifyingTooltip: "Session exited successfully — waiting for its GitHub issue to be closed before this is marked Done.");
+                    break;
                 case "running":
                 case "queued":
                 default:
@@ -1025,7 +1034,7 @@ namespace BuildConsole
             }
         }
 
-        private void SetSlotState(BuildWatchSlot slot, SlotState newState, int? exitCode, bool verifying = false)
+        private void SetSlotState(BuildWatchSlot slot, SlotState newState, int? exitCode, bool verifying = false, string? verifyingTooltip = null)
         {
             bool changed = slot.State != newState;
             slot.State = newState;
@@ -1054,7 +1063,7 @@ namespace BuildConsole
                     if (!slot.InteractiveBound)
                     {
                         ApplyPillTone(slot, "Running", verifying ? "VERIFYING…" : "RUNNING",
-                            verifying ? "Queue reported failed with the #943 orphan-sweep sentinel (exit -2) — holding as running until a real exit code lands." : null,
+                            verifying ? (verifyingTooltip ?? "Queue reported failed with the #943 orphan-sweep sentinel (exit -2) — holding as running until a real exit code lands.") : null,
                             pulsing: false);
                         if (changed) UpdateThinkingText(slot, verifying);
                     }
@@ -1755,6 +1764,24 @@ namespace BuildConsole
             try { open = await GitHubIssuesService.GetOpenIssueNumbersAsync(1000); }
             catch { return; }
             if (open.Count == 0) return; // treat empty as "call failed", not "all closed"
+
+            // Git #1469 — same on-demand recheck also promotes any Verifying queue
+            // row whose real issue closed to real Done, reusing the open-issue set
+            // just fetched above (no extra `gh` call).
+            if (_db != null)
+            {
+                try
+                {
+                    var promoted = await _db.PromoteVerifyingToDoneAsync(open);
+                    if (promoted.Count > 0)
+                        ActivityLog.Log("github", $"Build Watch recheck: {promoted.Count} Verifying item(s) promoted to Done — " +
+                            string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("github", $"Build Watch recheck couldn't promote Verifying→Done: {ex.Message}");
+                }
+            }
 
             bool freed = false;
             foreach (var slot in withIssues)

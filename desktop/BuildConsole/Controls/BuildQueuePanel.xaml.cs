@@ -920,7 +920,9 @@ namespace BuildConsole.Controls
             // Git #1418 — "held" (Sonnet+ Overflow) items stay visible under Active, per
             // Shane's own requirement: capped-off builds must stay "visible in the Build
             // Queue but not actively executing", not disappear into a filter nobody checks.
-            "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or AccountCapPolicy.HeldStatus or Services.SessionLimitAutoRestartService.LimitPausedStatus)).ToList(),
+            // Git #1469 — "verifying" (session done, real GitHub issue not yet closed)
+            // stays visible here too, not archived into Done — that's the whole point.
+            "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or AccountCapPolicy.HeldStatus or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
             "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             "Canceled" => items.Where(i => i.Status == "canceled" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
@@ -944,7 +946,7 @@ namespace BuildConsole.Controls
 
             string targetFilter = item.Status switch
             {
-                "queued" or "running" or AccountCapPolicy.HeldStatus or Services.SessionLimitAutoRestartService.LimitPausedStatus => "Active",
+                "queued" or "running" or AccountCapPolicy.HeldStatus or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus => "Active",
                 "done"                => "Done",
                 "canceled"            => "Canceled",
                 _                     => "All",
@@ -1586,6 +1588,20 @@ namespace BuildConsole.Controls
                 };
                 return dot;
             }
+            else if (node.Status == BuildQueuePostgresClient.VerifyingStatus)
+            {
+                var sapphire = (Brush)Application.Current.FindResource("SapphireBrush");
+                var dot = new Ellipse
+                {
+                    Width = QueueGraphDotRadius * 2,
+                    Height = QueueGraphDotRadius * 2,
+                    Fill = sapphire,
+                    Stroke = mantle,
+                    StrokeThickness = 1.5,
+                    ToolTip = $"🔎 Build {node.DisplayRef} (VERIFYING)\nSession done — waiting for its GitHub issue to close"
+                };
+                return dot;
+            }
             else if (node.Status == "done")
             {
                 var dot = new Ellipse
@@ -1798,17 +1814,19 @@ namespace BuildConsole.Controls
                 (item.Status == "running" ? Color.FromRgb(0x45, 0x5A, 0x82) :
                 (isPaused ? Color.FromRgb(0xFA, 0xB3, 0x87) :
                 (isBlocked ? Color.FromRgb(0x5A, 0x2A, 0x34) :
+                (item.Status == BuildQueuePostgresClient.VerifyingStatus ? Color.FromRgb(0x2A, 0x4A, 0x5A) :
                 (item.Status == "done" ? Color.FromRgb(0x2E, 0x52, 0x3E) :
                 (item.Status == "failed" ? Color.FromRgb(0x5A, 0x2A, 0x34) :
-                Color.FromRgb(0x31, 0x32, 0x44)))))));
+                Color.FromRgb(0x31, 0x32, 0x44))))))));
 
             Color cardBgColor = isSelected ? Color.FromRgb(0x1B, 0x22, 0x34) :
                 (isWaitingForInput ? Color.FromRgb(0x23, 0x1E, 0x18) :
                 (item.Status == "running" ? Color.FromRgb(0x15, 0x19, 0x26) :
                 (isPaused ? Color.FromRgb(0x2A, 0x20, 0x1A) :
                 (isBlocked ? Color.FromRgb(0x1E, 0x18, 0x22) :
+                (item.Status == BuildQueuePostgresClient.VerifyingStatus ? Color.FromRgb(0x14, 0x22, 0x28) :
                 (item.Status == "done" ? Color.FromRgb(0x14, 0x20, 0x1A) :
-                Color.FromRgb(0x18, 0x18, 0x25))))));
+                Color.FromRgb(0x18, 0x18, 0x25)))))));
 
             var card = new Border
             {
@@ -1889,6 +1907,29 @@ namespace BuildConsole.Controls
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
                     VerticalAlignment = VerticalAlignment.Center
+                };
+            }
+            else if (item.Status == BuildQueuePostgresClient.VerifyingStatus)
+            {
+                // Git #1469 — session genuinely finished, but its real GitHub issue
+                // hasn't closed yet; distinct from DONE so it's obvious this build
+                // isn't fully archived/confirmed.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x2E, 0x38)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x74, 0xC7, 0xEC)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "🔎 VERIFYING",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x74, 0xC7, 0xEC)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Session exited successfully — waiting for its real GitHub issue to be closed before this is marked Done."
                 };
             }
             else if (item.Status == "done")
@@ -3087,7 +3128,8 @@ namespace BuildConsole.Controls
             WaitingForInput,
             Blocked,
             Done,
-            Failed
+            Failed,
+            Verifying
         }
 
         private static SolidColorBrush HexBrush(string hex) =>
@@ -3340,6 +3382,7 @@ namespace BuildConsole.Controls
             CritterMood mood = isBlocked ? CritterMood.Blocked :
                 (interactiveState == InteractiveInputState.WaitingForInput) ? CritterMood.WaitingForInput :
                 (item.Status == "running") ? CritterMood.Running :
+                (item.Status == BuildQueuePostgresClient.VerifyingStatus) ? CritterMood.Verifying :
                 (item.Status == "done") ? CritterMood.Done :
                 (item.Status == "failed") ? CritterMood.Failed :
                 CritterMood.Normal;
@@ -3376,6 +3419,7 @@ namespace BuildConsole.Controls
                 CritterMood.Blocked => Color.FromRgb(0xF3, 0x8B, 0xA8),
                 CritterMood.WaitingForInput => Color.FromRgb(0xF9, 0xE2, 0xAF),
                 CritterMood.Running => Color.FromRgb(0x89, 0xB4, 0xFA),
+                CritterMood.Verifying => Color.FromRgb(0x74, 0xC7, 0xEC),
                 CritterMood.Done => Color.FromRgb(0xA6, 0xE3, 0xA1),
                 CritterMood.Failed => Color.FromRgb(0xEB, 0xA0, 0xAC),
                 _ => Color.FromRgb(0xCB, 0xA6, 0xF7)
@@ -3428,6 +3472,19 @@ namespace BuildConsole.Controls
                 Canvas.SetLeft(badge, 22);
                 Canvas.SetTop(badge, -3);
                 container.Children.Add(badge);
+            }
+            else if (item.Status == BuildQueuePostgresClient.VerifyingStatus)
+            {
+                var magnifier = new TextBlock
+                {
+                    Text = "🔎",
+                    FontSize = 10,
+                    Foreground = HexBrush("#74C7EC"),
+                    Effect = new DropShadowEffect { Color = Color.FromRgb(0x74, 0xC7, 0xEC), BlurRadius = 4, ShadowDepth = 0 }
+                };
+                Canvas.SetLeft(magnifier, 26);
+                Canvas.SetTop(magnifier, -2);
+                container.Children.Add(magnifier);
             }
             else if (item.Status == "done")
             {

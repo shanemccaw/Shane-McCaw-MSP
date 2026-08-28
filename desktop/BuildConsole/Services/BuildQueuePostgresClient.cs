@@ -54,6 +54,18 @@ namespace BuildConsole.Services
     /// </summary>
     public class BuildQueuePostgresClient
     {
+        /// <summary>
+        /// Git #1469 — a queue row's real terminal state after its session exits
+        /// successfully (exit 0) AND it has a real github_number: distinct from
+        /// "done", stays visible in the active Build Queue view (not archived) until
+        /// a manual GitHub refresh confirms the real issue actually closed. A
+        /// session's own claim of completion has repeatedly not been the final word —
+        /// this is what makes genuine verification (Shane closing the issue) the real
+        /// gate instead. Rows with no github_number skip this entirely and go
+        /// straight to "done" (nothing to poll).
+        /// </summary>
+        public const string VerifyingStatus = "verifying";
+
         private readonly string _connectionString;
 
         public BuildQueuePostgresClient(string connectionString)
@@ -436,27 +448,94 @@ namespace BuildConsole.Services
 
         // ── MarkCompleteAsync ─────────────────────────────────────────────────────
         /// <summary>
-        /// Marks a queue row done or failed and stores the session id so a Reply can
-        /// resume it. Replicates POST /extension/queue/:id/complete exactly.
+        /// Marks a queue row done/verifying/failed and stores the session id so a
+        /// Reply can resume it. Replicates POST /extension/queue/:id/complete, plus
+        /// Git #1469's real-Verifying gate: a genuinely successful exit (0) on a row
+        /// with a real github_number lands on <see cref="VerifyingStatus"/> instead
+        /// of "done" — computed in-SQL from the row's own github_number so every
+        /// caller (interactive stop, watcher reap, orphan retry, …) gets the same
+        /// rule without having to know/pass the issue number itself. A row with no
+        /// github_number has nothing to poll, so it falls straight through to "done"
+        /// exactly as before.
         /// </summary>
         public async Task MarkCompleteAsync(int id, int exitCode, string? sessionId = null)
         {
-            var status = exitCode == 0 ? "done" : "failed";
             await using var conn = await OpenAsync();
             await using var cmd = new NpgsqlCommand(@"
                 UPDATE bt_build_queue
-                   SET status        = @status,
+                   SET status        = CASE
+                                          WHEN @exitCode = 0 AND github_number IS NOT NULL THEN @verifyingStatus
+                                          WHEN @exitCode = 0 THEN 'done'
+                                          ELSE 'failed'
+                                        END,
                        exit_code     = @exitCode,
                        completed_at  = NOW(),
                        updated_at    = NOW()
                      , session_id    = COALESCE(@sessionId, session_id)
-                 WHERE id = @id", conn);
-            cmd.Parameters.AddWithValue("@status", status);
+                 WHERE id = @id
+                RETURNING status, github_number", conn);
+            cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
             cmd.Parameters.AddWithValue("@exitCode", exitCode);
             cmd.Parameters.AddWithValue("@sessionId",
                 sessionId != null ? (object)sessionId : DBNull.Value);
             cmd.Parameters.AddWithValue("@id", id);
-            await cmd.ExecuteNonQueryAsync();
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                var newStatus = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                if (newStatus == VerifyingStatus)
+                {
+                    var num = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
+                    ActivityLog.Log("watcher",
+                        $"Queue #{id} session exited successfully → Verifying (GH #{num}, exit {exitCode}) — held visible in the active queue until that issue actually closes.");
+                }
+            }
+        }
+
+        // ── PromoteVerifyingToDoneAsync ──────────────────────────────────────────
+        /// <summary>
+        /// Git #1469 — the other half of the Verifying gate: promotes every row
+        /// currently sitting in <see cref="VerifyingStatus"/> to real "done" once its
+        /// real GitHub issue has actually closed. Takes the caller's already-fetched
+        /// open-issue-number set (see <see cref="GitHubIssuesService.GetOpenIssueNumbersAsync"/>)
+        /// rather than making its own `gh` call, so this stays inside the existing
+        /// manual-refresh-only GitHub discipline (#29/#35/#37) — no new background
+        /// polling is introduced here. An empty/failed fetch is the caller's problem
+        /// to guard (same "empty = couldn't determine" convention used elsewhere);
+        /// this method trusts whatever set it's given.
+        /// </summary>
+        public async Task<List<(int Id, int GithubNumber)>> PromoteVerifyingToDoneAsync(IReadOnlySet<int> openIssueNumbers)
+        {
+            var promoted = new List<(int, int)>();
+            await using var conn = await OpenAsync();
+            await using var fetchCmd = new NpgsqlCommand(@"
+                SELECT id, github_number FROM bt_build_queue
+                WHERE status = @verifyingStatus AND github_number IS NOT NULL", conn);
+            fetchCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+            var candidates = new List<(int Id, int GithubNumber)>();
+            await using (var reader = await fetchCmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    candidates.Add((reader.GetInt32(0), reader.GetInt32(1)));
+            }
+
+            foreach (var (id, num) in candidates)
+            {
+                if (openIssueNumbers.Contains(num)) continue; // still open — stays Verifying
+
+                await using var updateCmd = new NpgsqlCommand(@"
+                    UPDATE bt_build_queue
+                       SET status = 'done', updated_at = NOW()
+                     WHERE id = @id AND status = @verifyingStatus", conn);
+                updateCmd.Parameters.AddWithValue("@id", id);
+                updateCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+                if (await updateCmd.ExecuteNonQueryAsync() > 0)
+                {
+                    promoted.Add((id, num));
+                    ActivityLog.Log("github", $"Queue #{id}: GH #{num} confirmed closed → Verifying promoted to Done.");
+                }
+            }
+            return promoted;
         }
 
         // ── Build Sets ────────────────────────────────────────────────────────────
@@ -804,7 +883,10 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// Returns true if every number in <paramref name="blockerNums"/> is cleared:
-        /// most-recent bt_build_queue row for that githubNumber has status='done'
+        /// most-recent bt_build_queue row for that githubNumber has status='done' OR
+        /// status='verifying' (Git #1469 — the session itself genuinely finished; a
+        /// dependent build shouldn't sit blocked just because Shane hasn't closed the
+        /// real GitHub issue yet, that's an unrelated, purely-cosmetic archival gate)
         /// AND exit_code=0.  No GitHub calls — matches the server's 2026-08-14 stance.
         /// </summary>
         private static async Task<bool> AreBlockersClearedAsync(NpgsqlConnection conn, List<int> blockerNums)
@@ -830,7 +912,7 @@ namespace BuildConsole.Services
             if (!await reader.ReadAsync()) return false; // no local row = keep waiting
             var status   = reader.IsDBNull(0) ? "" : reader.GetString(0);
             var exitCode = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
-            return status == "done" && exitCode == 0;
+            return (status == "done" || status == VerifyingStatus) && exitCode == 0;
         }
 
         /// <summary>

@@ -2891,6 +2891,21 @@ namespace BuildConsole
                         _homeOpenIssueNumbers = await BuildConsole.Services.GitHubIssuesService.GetOpenIssueNumbersAsync();
                         BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
                             $"Home 'Done, waiting for you' [Home-tab open/refresh]: {_homeOpenIssueNumbers.Count} open issue number(s) via gh CLI");
+
+                        // Git #1469 — same manual-refresh moment promotes every queue row
+                        // sitting in Verifying whose real GitHub issue has now closed to
+                        // real Done. Reuses the open-issue set just fetched above — no
+                        // extra `gh` call.
+                        if (_queueDb != null)
+                        {
+                            var promoted = await _queueDb.PromoteVerifyingToDoneAsync(_homeOpenIssueNumbers);
+                            if (promoted.Count > 0)
+                            {
+                                BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
+                                    $"Verifying → Done [Home-tab open/refresh]: {promoted.Count} queue item(s) — " +
+                                    string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
+                            }
+                        }
                     }
                     catch { /* keep the last-known open-issue set */ }
                 }
