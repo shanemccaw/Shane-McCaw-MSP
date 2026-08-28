@@ -70,6 +70,20 @@ export const HLT_HERO = {
   /** The fixture/unscored fallback only — see `hltAcceptedStripSuffix` for the live sentence. */
   acceptedStripSuffix: "accepted risk on record · AD FS retained",
   eyebrow: "Where the debt is",
+  // NO-BACKEND-TO-WIRE (#1473): "You cleared 57 objects across scans 1 to 8.
+  // The last two scans added 7 back." is a fabricated scan-to-scan delta.
+  // Rendering it required a real per-scan "objects cleared / objects added
+  // back" signal, and none exists anywhere in the platform to compute it
+  // from: `tenant_pillar_snapshots` (Git #1106) historizes the pillar's 0-100
+  // DISPLAY SCORE per scan, not object counts; there is no
+  // `engine_baseline_history` / `engine_score_daily_rollup` table in the
+  // schema at all; and a repo-wide search for any "objects cleared" /
+  // "objectsCleared" concept returns nothing. This is the exact same missing
+  // signal `HLT_DEBT_HISTORY` above was already tagged NO-BACKEND-TO-WIRE
+  // for (Git #1442) — the headline is prose built on that same non-existent
+  // series, just missed by that earlier pass (#1473). This field stays as
+  // design-reference copy only; `portal-v2-health.tsx` never renders it —
+  // see the honest no-live-data state at its former render site.
   headline: "You cleared 57 objects across scans 1 to 8. The last two scans added 7 back.",
   standfirst:
     "Nothing runs on a schedule, so the count rises between manual passes. The fix for that is the boring one: thresholds and cleanup rules, not another cleanup weekend.",

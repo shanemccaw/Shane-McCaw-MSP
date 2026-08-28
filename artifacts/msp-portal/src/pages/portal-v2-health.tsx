@@ -50,6 +50,16 @@
  * fixture source for a genuine backend gap (config drift, the debt trend
  * history, the directory-sync stat, the accepted-risk register, 2 of 9
  * stale-object rows). Nothing on this page silently falls back to fixture.
+ *
+ * ── #1473: the hero HEADLINE was the one leak that pass missed ──────────────
+ * `HLT_HERO.headline` ("You cleared 57 objects across scans 1 to 8. The last
+ * two scans added 7 back.") rendered unconditionally for every tenant — the
+ * one hero field #1442's pass didn't gate, because it read as page copy
+ * rather than a data slot. It is data: a fabricated scan-to-scan delta with
+ * no real signal behind it anywhere in the platform (same missing series
+ * `HLT_DEBT_HISTORY` above was already tagged for). It now renders the same
+ * honest no-live-data state the debt trend does — see the
+ * `NO-BACKEND-TO-WIRE:` tag above `HLT_HERO.headline` in hltDashboardData.ts.
  */
 
 import { useState } from "react";
@@ -582,19 +592,22 @@ export default function PortalV2HealthPage() {
               >
                 {HLT_HERO.eyebrow}
               </span>
-              {/* 17px here, not the 19px every other pillar's headline uses. */}
-              <span
-                style={{
-                  fontSize: "17px",
-                  fontWeight: 800,
-                  letterSpacing: "-.015em",
-                  color: "#f8fafc",
-                  lineHeight: 1.35,
-                }}
-                data-testid="pv2-hlt-headline"
-              >
-                {HLT_HERO.headline}
-              </span>
+              {/* NO-BACKEND-TO-WIRE (#1473): the fixture headline was a
+                  fabricated scan-to-scan delta ("You cleared 57 objects...")
+                  with no real per-scan "objects cleared / added back" signal
+                  anywhere in the platform to compute it from — see the tag
+                  above HLT_HERO.headline in hltDashboardData.ts. Renders the
+                  same honest no-live-data state the debt trend uses, rather
+                  than the invented narrative, for every tenant. */}
+              <div data-testid="pv2-hlt-headline">
+                <NoScanDataState
+                  testId="pv2-hlt-headline-empty"
+                  label="No live data available"
+                  detail="No historical record of objects cleared or re-added between scans exists yet."
+                  compact
+                  align="start"
+                />
+              </div>
               <span
                 style={{
                   fontSize: "12.5px",
