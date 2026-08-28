@@ -8,7 +8,9 @@
     "THE API TESTS ARE THE REAL CONTRACT. SETUP+A1-A5 exercise GET /api/portal/assessment/war-room-pillars and extract the live per-pillar scores/counts the pages render, so they verify the data layer independent of the UI. pillars[] order is WAR_ROOM_PILLAR_KEYS: governance(0), licensing(1), adoption(2), compliance(3), health(4), security(5), copilot(6).",
     "THE HONEST-GAP ASSERTIONS (G4/S6/S7/C4) prove the STEP-1 audit result renders on the page: a design hero tile with no real producer (Overdue Access Reviews, MFA-coverage %, Secure Score, Retention Coverage) shows 'Not measured yet', never a fabricated number.",
     "STEP 2 (risk heat-map likelihood axis) is intentionally NOT covered here: it stays fixture (no real probability estimate exists) and is flagged as backend-design work, not fabricated — same as portal-v2-pillars.json's own G2c/S11c risk-panel steps.",
-    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the Portal origin, e.g. http://localhost:5175 — its /api proxies to the api-server), TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG."
+    "ENV VARS required in BuildConsole -> Settings -> Test Environment Variables: DEPLOY_URL (the Portal origin, e.g. http://localhost:5175 — its /api proxies to the api-server), TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD, TEST_PORTAL_SLUG.",
+    "STRICT FAKE-DATA PASS (Git #1440): C10/C11 (sessionTag 1440-strict-pass) cover two leaks a live re-audit of the Compliance pillar page found beyond #1387/#1409's honest-null work. (1) The trend caption below the sparkline used to render `CMP_HERO.trendCaption` verbatim -- a fixed 'Eight points over ten scans...' sentence describing the DESIGN fixture's own 10-point history, which stayed on screen unchanged regardless of what the real trend actually showed. It now reads `cmpTrendCaption(live.history)`, deriving the real point count and net change from the SAME series the sparkline draws (pillarDashboardModel.ts, pinned by its own unit tests). (2) The scan strip's 'Scan N · X gaps closed since scan 1, none reopened ... next scan in Y' sentence was 100% fixture (CMP_HERO.scanNumber/gapsClosedSinceScan1/nextScan) with no backend producer anywhere -- msp_diagnostic_runs carries no per-tenant scan sequence number, and nothing tracks a finding's closed/reopened history across runs, and there is no scan-cadence/schedule model (scans are on-demand, not cadenced). Confirmed genuinely absent, not just unwired, so it now renders the honest 'No live data available' state with an in-code `NO-BACKEND-TO-WIRE:` tag, per pv2-cmp-scan-count-nodata below -- only 'Last scan {{...}}' (real, `useScanStatus`) remains.",
+    "EVERSCANNED GATE (Git #1440, NOT covered here): resolveCmpArea's never-scanned-vs-scanned-and-healthy distinction (an empty finding map used to resolve every backed area card 'live'/green with the fixture magnitude for a tenant that had never been scanned at all, plus the SAME leak let the cluster-area drill-down show a fully fabricated finding body underneath) is covered by cmpAreaWiring.test.ts's unit tests, not here -- this manifest's testbed tenant genuinely HAS completed a real scan (proven by C2 reading 'live'), so the never-scanned branch has no reachable fixture against this live deployed tenant to assert against, same reasoning as the honest-EMPTY score branch noted above."
   ],
 
   "apiTests": [
@@ -158,6 +160,21 @@
       "name": "C9 -- CONTRAST (Git #1338): 'Litigation Hold' IS backed (exchange:litigation-hold-coverage), so its source marker reads 'live', not 'nodata' -- proving the investigated split is real in the DOM.",
       "sessionTag": "1338-area-cards",
       "action": "expect", "selector": "[data-testid='pv2-cmp-area-source-compliance-litigation-hold']", "state": "visible", "textContains": "live"
+    },
+    {
+      "name": "C10 (Git #1440) -- REAL: the trend caption below the sparkline is derived from the real score series, not the fixture's fixed 'Eight points over ten scans' -- this tail sentence is stable regardless of the tenant's real point count/direction.",
+      "sessionTag": "1440-strict-pass",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-trend']", "state": "visible", "textContains": "scans. Compliance improves by closing gaps, not by repelling attacks."
+    },
+    {
+      "name": "C11 (Git #1440) -- HONEST GAP: the scan strip's scan-count/gaps-closed-since-scan-1 sentence has no backend producer anywhere (no scan-sequence counter, no closed/reopened tracking across runs), so it now states 'No live data available' rather than the fixture 'Scan 14 · 5 gaps closed ... none reopened'.",
+      "sessionTag": "1440-strict-pass",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-scan-count-nodata']", "state": "visible", "textContains": "No live data available"
+    },
+    {
+      "name": "C12 (Git #1440) -- the scan strip no longer states a fixture 'next scan in' ETA (no scan-cadence model exists) -- 'Last scan' is real and still renders alongside the honest C11 state.",
+      "sessionTag": "1440-strict-pass",
+      "action": "expect", "selector": "[data-testid='pv2-cmp-scan-bar']", "textContains": "Last scan"
     }
   ]
 }

@@ -110,36 +110,48 @@ describe("resolveCmpArea", () => {
   const empty = new Map<string, "critical" | "warning">();
 
   it("returns honest no-data (no value, a reason) for an unbacked card", () => {
-    const r = resolveCmpArea("compliance-preservation-lock", empty, true);
+    const r = resolveCmpArea("compliance-preservation-lock", empty, true, true);
     assert.equal(r.dataState, "nodata");
     assert.equal(r.showValue, false);
     assert.ok(r.reason && r.reason.length > 0);
     assert.equal(r.liveStatus, null);
   });
 
-  it("falls back to fixture (design status) before a scan has landed", () => {
-    const r = resolveCmpArea("compliance-autolabel", empty, false);
+  it("falls back to the honest empty state (never the design status) before the payload lands", () => {
+    const r = resolveCmpArea("compliance-autolabel", empty, false, false);
     assert.equal(r.dataState, "fixture");
     assert.equal(r.liveStatus, null);
-    assert.equal(r.showValue, true);
+    assert.equal(r.showValue, false);
+    assert.ok(r.reason && r.reason.length > 0);
   });
 
-  it("resolves a loaded backed card with no finding to green (documented and covered)", () => {
-    const r = resolveCmpArea("compliance-autolabel", empty, true);
+  it("Git #1440 — a never-scanned tenant is the SAME honest empty state, never the design status, even once the payload has loaded", () => {
+    // The bug this pins: an empty sevMap is ambiguous between "never scanned"
+    // and "scanned and genuinely healthy". Loaded-but-never-scanned must not
+    // resolve "live"/green with the fixture magnitude on screen.
+    const r = resolveCmpArea("compliance-autolabel", empty, true, false);
+    assert.equal(r.dataState, "fixture");
+    assert.equal(r.liveStatus, null);
+    assert.equal(r.showValue, false);
+  });
+
+  it("resolves a loaded, ACTUALLY scanned backed card with no finding to green (documented and covered)", () => {
+    const r = resolveCmpArea("compliance-autolabel", empty, true, true);
     assert.equal(r.dataState, "live");
     assert.equal(r.liveStatus, "green");
+    assert.equal(r.showValue, true);
   });
 
   it("resolves warning → yellow and critical → red from real findings", () => {
     const warn = new Map<string, "critical" | "warning">([
       ["governance:auto-labeling-coverage", "warning"],
     ]);
-    assert.equal(resolveCmpArea("compliance-autolabel", warn, true).liveStatus, "yellow");
+    assert.equal(resolveCmpArea("compliance-autolabel", warn, true, true).liveStatus, "yellow");
 
     const crit = new Map<string, "critical" | "warning">([
       ["governance:auto-labeling-coverage", "critical"],
     ]);
-    assert.equal(resolveCmpArea("compliance-autolabel", crit, true).liveStatus, "red");
+    assert.equal(resolveCmpArea("compliance-autolabel", crit, true, true).liveStatus, "red");
   });
 
   it("takes the worst severity across a card's multiple backing checks", () => {
@@ -148,6 +160,6 @@ describe("resolveCmpArea", () => {
       ["compliance:weak-dlp-policies", "warning"],
       ["compliance:zero-dlp-policies", "critical"],
     ]);
-    assert.equal(resolveCmpArea("compliance-dlp", map, true).liveStatus, "red");
+    assert.equal(resolveCmpArea("compliance-dlp", map, true, true).liveStatus, "red");
   });
 });

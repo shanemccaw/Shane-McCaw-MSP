@@ -60,7 +60,12 @@ import {
 import { useScanStatus } from "@/lib/scan-status-context";
 import { lastScanLabel } from "@/components/portal-v2/overviewModel";
 import { usePolicyDecisions } from "@/components/portal-v2/riskRegisterLive";
-import { pillarSeverity, resolveHeroTile, type HeroTileBinding } from "@/components/portal-v2/pillarDashboardModel";
+import {
+  cmpTrendCaption,
+  pillarSeverity,
+  resolveHeroTile,
+  type HeroTileBinding,
+} from "@/components/portal-v2/pillarDashboardModel";
 import {
   CMP_AREA_LINKS,
   CMP_CLUSTERS,
@@ -102,6 +107,8 @@ const CMP_TILE_BINDINGS: readonly HeroTileBinding[] = [
     realSub: "From your latest scan",
     source: {
       kind: "unmeasured",
+      // NO-BACKEND-TO-WIRE: no retention-coverage percentage check exists —
+      // compliance:retention-drift was retired to a not_collected sentinel (#1103).
       note: "No retention-coverage check exists yet — compliance:retention-drift was retired to a not_collected sentinel (#1103).",
     },
   },
@@ -110,6 +117,7 @@ const CMP_TILE_BINDINGS: readonly HeroTileBinding[] = [
     accent: PAPER,
     orbAlpha: "",
     realSub: "From your latest scan",
+    // NO-BACKEND-TO-WIRE: no check anywhere counts audit-retention-days for a tenant.
     source: { kind: "unmeasured", note: "No audit-retention-days check exists yet." },
   },
   {
@@ -149,10 +157,14 @@ export default function PortalV2CompliancePage() {
   // fixture and the six genuinely-unbacked cards resolve to an honest "—".
   const cmpFindingSeverity = buildCmpFindingSeverityMap(live.pillars);
 
-  // Real "last scan" value, same seam Overview uses (#1257) — the only one of
-  // the scan strip's four values with a real, wired source.
+  // Real "last scan" value, same seam Overview uses (#1257). `everScanned` is
+  // the real signal (#1440) that distinguishes "never scanned" from "scanned
+  // and genuinely healthy" for the area cards below — an empty finding map
+  // means something different in each case, and only this field tells them
+  // apart (see cmpAreaWiring.ts's resolveCmpArea).
   const scanStatus = useScanStatus();
   const lastScan = lastScanLabel(scanStatus.data?.lastScanAt ?? null, scanStatus.loaded);
+  const everScanned = scanStatus.data?.everScanned === true;
   const sev = pillarSeverity(live.score);
   const openGaps = live.findingCounts.critical + live.findingCounts.warning;
 
@@ -518,7 +530,11 @@ export default function PortalV2CompliancePage() {
                     color: "#64748b",
                   }}
                 >
-                  {trend ? CMP_HERO.trendCaption : NO_SCAN_DATA_LABEL}
+                  {/* Real caption derived from the SAME series the trend draws
+                      (#1440) — never the fixture's fixed "Eight points over
+                      ten scans", which stayed on screen regardless of what
+                      the real trend actually showed. */}
+                  {trend ? (cmpTrendCaption(live.history) ?? NO_SCAN_DATA_LABEL) : NO_SCAN_DATA_LABEL}
                 </span>
               </div>
             </div>
@@ -765,7 +781,11 @@ export default function PortalV2CompliancePage() {
         )}
 
         {/* ── Scan strip — proto 3965-3969. NOT PillarScanBar: no pulse, and
-            the sentence is "gaps closed … , none reopened". ─────────────── */}
+            the sentence WAS "gaps closed … , none reopened". "Last scan" is
+            the one real value here (`useScanStatus`, #1257); the scan-count
+            sentence and the "next scan in" ETA render an honest gap instead
+            of `CMP_HERO`'s fixture "Scan 14 · 5 gaps closed … , none
+            reopened … next scan in 22 hours" (#1440). ───────────────────── */}
         <div
           style={{
             position: "relative",
@@ -790,17 +810,21 @@ export default function PortalV2CompliancePage() {
               flex: "0 0 6px",
             }}
           />
-          <span style={{ fontSize: "12px", color: "#94a3b8" }}>
-            Scan <span style={{ color: "#e2e8f0", fontWeight: 700, fontFamily: MONO }}>{CMP_HERO.scanNumber}</span>{" "}
-            ·{" "}
-            <span style={{ color: "#34d399", fontWeight: 700, fontFamily: MONO }}>
-              {CMP_HERO.gapsClosedSinceScan1}
-            </span>{" "}
-            gaps closed in Compliance since scan 1, none reopened
+          {/* NO-BACKEND-TO-WIRE: no scan-sequence counter and no per-pillar
+              gaps-closed/reopened tracking exist anywhere server-side —
+              msp_diagnostic_runs carries no per-tenant scan sequence number,
+              and msp_diagnostic_findings carries no closed/reopened history
+              across runs to derive "N gaps closed since scan 1, none
+              reopened" from. */}
+          <span style={{ fontSize: "12px", color: NO_DATA_INK }} data-testid="pv2-cmp-scan-count-nodata">
+            No live data available
           </span>
           <span style={{ marginLeft: "auto", fontSize: "11.5px", color: "#475569" }}>
-            Last scan {lastScan} · next scan in {CMP_HERO.nextScan}
+            Last scan {lastScan}
           </span>
+          {/* NO-BACKEND-TO-WIRE: no scan-cadence/schedule model exists —
+              scans are triggered on demand (ScanTriggerButton), not on a
+              cadence, so there is no real "next scan in" ETA to state. */}
         </div>
 
         {/* ── Cluster area cards — proto 3971-4001 ───────────────────────── */}
@@ -857,7 +881,7 @@ export default function PortalV2CompliancePage() {
                     <AreaCard
                       key={a.key}
                       link={a}
-                      resolution={resolveCmpArea(a.key, cmpFindingSeverity, live.loaded)}
+                      resolution={resolveCmpArea(a.key, cmpFindingSeverity, live.loaded, everScanned)}
                     />
                   ))}
                 </div>
@@ -881,9 +905,13 @@ export default function PortalV2CompliancePage() {
  * built, exactly as the other two pillars' tiles already do.
  */
 function AreaCard({ link, resolution }: { link: CmpAreaLink; resolution: CmpAreaResolution }) {
-  const nodata = resolution.dataState === "nodata";
-  // A live card paints its REAL finding-derived status; a fixture card (pre-scan)
-  // or a no-data card keeps the design status for tier/grow layout stability.
+  // Honest for BOTH "nodata" (no producing check exists) and "fixture" (a real
+  // check exists but this tenant has no completed scan to state a status from,
+  // #1440) — neither has a real status/magnitude to show, so both paint the
+  // same muted no-value card rather than the design's fixture red/yellow/green.
+  const notLive = resolution.dataState !== "live";
+  // A live card paints its REAL finding-derived status; anything else keeps the
+  // design status only for tier/grow layout stability (sizing, never a value).
   const displayStatus =
     resolution.dataState === "live" && resolution.liveStatus ? resolution.liveStatus : link.status;
   const { meta, deltaText, deltaColor, sparkBars } = cmpAreaGeometry({ ...link, status: displayStatus });
@@ -891,16 +919,17 @@ function AreaCard({ link, resolution }: { link: CmpAreaLink; resolution: CmpArea
   const Glyph = AREA_ICON[link.icon as keyof typeof AREA_ICON];
 
   // The colour and status label actually painted: muted slate + "Not measured"
-  // for an honest no-data card, the real severity colour/label otherwise.
-  const c = nodata ? NODATA_COLOR : meta.c;
-  const statusLabel = nodata ? "Not measured" : meta.label;
+  // for an honest no-value card (no check, or no scan yet), the real severity
+  // colour/label otherwise.
+  const c = notLive ? NODATA_COLOR : meta.c;
+  const statusLabel = notLive ? "Not measured" : meta.label;
 
   return (
     <Link
       href={`/portal-v2/compliance/${link.key.replace(/^compliance-/, "")}`}
       data-testid={`pv2-cmp-area-${link.key}`}
       className="pv2-area-card"
-      title={nodata ? resolution.reason ?? undefined : undefined}
+      title={notLive ? resolution.reason ?? undefined : undefined}
       style={{
         ["--pv2-area-hover" as string]: `${c}66`,
         position: "relative",
@@ -920,7 +949,7 @@ function AreaCard({ link, resolution }: { link: CmpAreaLink; resolution: CmpArea
         minWidth: 112,
         boxShadow: CMP_INSET,
         textDecoration: "none",
-        opacity: nodata ? 0.72 : 1,
+        opacity: notLive ? 0.72 : 1,
       }}
     >
       {/* Hidden per-card data-source marker — a test reads el.innerText to prove
@@ -936,9 +965,9 @@ function AreaCard({ link, resolution }: { link: CmpAreaLink; resolution: CmpArea
           pointerEvents: "none",
         }}
       />
-      {/* Sparkbars, top-right — proto 3980-3984. A no-data card has no trend to
-          draw, so it shows none rather than a fabricated one. */}
-      {!nodata && (
+      {/* Sparkbars, top-right — proto 3980-3984. A no-value card has no real trend
+          to draw, so it shows none rather than a fabricated one. */}
+      {!notLive && (
         <div
           style={{
             position: "absolute",
@@ -971,15 +1000,16 @@ function AreaCard({ link, resolution }: { link: CmpAreaLink; resolution: CmpArea
             position: "relative",
             fontSize: t.score,
             fontWeight: 800,
-            color: nodata ? NODATA_COLOR : "#f8fafc",
+            color: notLive ? NODATA_COLOR : "#f8fafc",
             letterSpacing: "-.02em",
             fontFamily: MONO,
           }}
         >
-          {/* No producing check exists → honest em dash, never a fabricated number. */}
+          {/* No producing check, or no completed scan yet → honest em dash,
+              never a fabricated number. */}
           {resolution.showValue ? link.score : "—"}
         </span>
-        {!nodata && (
+        {!notLive && (
           <span
             style={{
               position: "relative",

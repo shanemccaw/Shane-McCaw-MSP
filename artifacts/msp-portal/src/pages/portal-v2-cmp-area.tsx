@@ -37,6 +37,22 @@
  * (non-finding) cards render. The other 3 finding-backed cards stay `live`
  * status + fixture body, the documented lower-priority case (matches
  * security/oauth in #1414).
+ *
+ * Git #1440 — that gate widened twice more, both real leaks a live re-audit
+ * found on this exact page:
+ *   • `resolveCmpArea` now also takes `everScanned` (real, `useScanStatus`).
+ *     An empty finding map is ambiguous between "never scanned" and "scanned
+ *     and genuinely healthy" — before this, a never-scanned tenant resolved
+ *     `live`/green for every backed area, and this page's `!nodata` gate let
+ *     the fixture finding body through underneath it: a fully fabricated,
+ *     specific, alarming finding ("12 mailboxes are not covered…") for a
+ *     tenant that had never been scanned at all.
+ *   • The gate is now `dataState === "live" && liveStatus !== "green"`, not
+ *     `!nodata`. A genuinely live, HEALTHY check (green, no open finding)
+ *     was still rendering the fixture finding body — a direct on-page
+ *     contradiction between an honest green "Documented and covered" pill
+ *     and a fabricated paragraph describing an active problem underneath it,
+ *     the same category of bug #1415 fixed for the nodata cards.
  */
 
 import { useEffect, useState } from "react";
@@ -49,6 +65,7 @@ import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
 import { useAcceptRisk } from "@/components/portal-v2/AcceptRiskPanel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+import { useScanStatus } from "@/lib/scan-status-context";
 import { useAuth } from "@/lib/auth-context";
 import { reportClientEvent } from "@/lib/report-client-event";
 import { cmpAreaFor } from "@/components/portal-v2/cmpAreaModel";
@@ -101,6 +118,11 @@ export default function PortalV2ComplianceAreaPage() {
   // itself classified `nodata` (Git #1433) — see `showFinding` below.
   const live = useLivePillarHero("compliance");
   const cmpFindingSeverity = buildCmpFindingSeverityMap(live.pillars);
+  // Real signal (#1440) distinguishing "never scanned" from "scanned and
+  // genuinely healthy" — an empty finding map means something different in
+  // each case, and only this field tells them apart (cmpAreaWiring.ts).
+  const scanStatus = useScanStatus();
+  const everScanned = scanStatus.data?.everScanned === true;
 
   const askShaneBot = (topic: string) =>
     openForm({
@@ -140,7 +162,10 @@ export default function PortalV2ComplianceAreaPage() {
   // so every hook below runs on every render, unknown-slug or not — the
   // `if (!resolved) return <NotFound />` below must stay AFTER every hook
   // call, never between them.
-  const areaRes = resolved ? resolveCmpArea(resolved.link.key, cmpFindingSeverity, live.loaded) : null;
+  const areaRes = resolved
+    ? resolveCmpArea(resolved.link.key, cmpFindingSeverity, live.loaded, everScanned)
+    : null;
+  const notLive = areaRes?.dataState !== "live";
   const nodata = areaRes?.dataState === "nodata";
   // Git #1433: a finding-backed card whose real check is classified `nodata`
   // must never render the fabricated finding body underneath its own honest
@@ -148,7 +173,23 @@ export default function PortalV2ComplianceAreaPage() {
   // Those 3 cards (compliance-disposition, compliance-preservation-lock,
   // compliance-holds) fall through to the same honest register-pointer block
   // the inert (no-finding) cards already render.
-  const showFinding = resolved?.finding != null && !nodata;
+  //
+  // Git #1440 — two further widenings of that same guard:
+  //   • `areaRes?.dataState === "live"` (not just "not nodata") gates it now:
+  //     a real check with NO completed scan for this tenant is exactly as
+  //     unable to state a real finding as a no-check card is — showing the
+  //     fixture finding body for a never-scanned tenant asserted a specific,
+  //     alarming, invented problem ("12 mailboxes are not covered…") that
+  //     nobody had actually measured.
+  //   • a genuinely live, HEALTHY check (`liveStatus === "green"`, no open
+  //     finding) must not render the fixture body either — that body
+  //     describes a specific active problem, directly contradicting an
+  //     honest green "Documented and covered" pill sitting right above it.
+  // The remaining finding-backed, live, NOT-green cards keep the fixture
+  // body, the documented lower-priority case (matches security/oauth in
+  // #1414): the STATUS is real, the finding narrative stays design copy.
+  const showFinding =
+    resolved?.finding != null && areaRes?.dataState === "live" && areaRes.liveStatus !== "green";
 
   const { accessToken } = useAuth();
   useEffect(() => {
@@ -181,8 +222,12 @@ export default function PortalV2ComplianceAreaPage() {
   const statusMeta = CMP_STATUS_META[
     areaRes.dataState === "live" && areaRes.liveStatus ? areaRes.liveStatus : link.status
   ];
-  const statusColor = nodata ? NODATA_COLOR : statusMeta.c;
-  const statusLabel = nodata ? "Not measured" : statusMeta.label;
+  // Honest for both "nodata" (no producing check) and "fixture" (a real check
+  // but no completed scan for this tenant, #1440) — neither has a real status
+  // to paint, so both get the muted "Not measured" pill rather than the
+  // design's fixture red/yellow/green colour.
+  const statusColor = notLive ? NODATA_COLOR : statusMeta.c;
+  const statusLabel = notLive ? "Not measured" : statusMeta.label;
 
   return (
     <PortalV2Shell eyebrow="Compliance" title={link.label}>
@@ -241,7 +286,7 @@ export default function PortalV2ComplianceAreaPage() {
             </span>
             <span
               data-testid="pv2-cmparea-status"
-              title={nodata ? areaRes.reason ?? undefined : undefined}
+              title={notLive ? areaRes.reason ?? undefined : undefined}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -304,9 +349,14 @@ export default function PortalV2ComplianceAreaPage() {
             <span style={{ fontSize: "13px", color: "#cbd5e1", lineHeight: 1.65, textWrap: "pretty", maxWidth: "80ch" }}>
               {nodata
                 ? "This area has no producing scan check yet, so there is no measured detail to drill into. It is tracked here so the register stays complete."
-                : "This area is tracked in your compliance register. The detail behind it lives with the open gaps, documented decisions and obligations below."}
+                : areaRes.dataState === "fixture"
+                  ? // A real check backs this area, but this tenant has not
+                    // completed a scan yet (#1440) — distinct from `nodata`:
+                    // there IS a producer, it just hasn't run for you yet.
+                    "This area has a real check behind it, but no completed scan has landed for your tenant yet, so there is no measured detail to drill into."
+                  : "This area is tracked in your compliance register. The detail behind it lives with the open gaps, documented decisions and obligations below."}
             </span>
-            {nodata && areaRes.reason && (
+            {notLive && areaRes.reason && (
               <span style={{ fontSize: "11.5px", color: "#64748b", lineHeight: 1.55, textWrap: "pretty", maxWidth: "80ch" }}>
                 {areaRes.reason}
               </span>

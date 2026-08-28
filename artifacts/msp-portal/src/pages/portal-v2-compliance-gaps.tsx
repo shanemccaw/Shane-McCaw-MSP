@@ -24,6 +24,11 @@
  * this pillar, the real findings render, including an honest empty state when
  * the tenant genuinely has none. No fixture Halden Materials copy is shown
  * once real data is available, matching the "no fabricated numbers" rule.
+ *
+ * Git #1440: the empty-state COPY is gated on `everScanned` (real,
+ * `useScanStatus`) too, not just on `liveRows.length === 0`. Zero real
+ * findings is honest either way, but the sentence itself said "from your
+ * last scan" — a specific, false claim for a tenant that has never had one.
  */
 
 import { useState } from "react";
@@ -37,6 +42,7 @@ import { CMP_FINDINGS, CMP_MONO, type CmpFinding } from "@/components/portal-v2/
 import { cmpFindingRowsFromLive, cmpSevMeta } from "@/components/portal-v2/cmpDrilldownModel";
 import { useLivePillarHero } from "@/components/portal-v2/useLivePillarHero";
 import { PillarLiveSource } from "@/components/portal-v2/PillarLiveSource";
+import { useScanStatus } from "@/lib/scan-status-context";
 
 function WrenchIcon({ color = "#60a5fa", size = 13 }: { color?: string; size?: number }) {
   return (
@@ -80,6 +86,12 @@ export default function PortalV2ComplianceGapsPage() {
     : null;
   const rows = liveRows ?? CMP_FINDINGS;
   const openCount = liveRows ? liveRows.length : CMP_FINDINGS.length;
+  // Real signal (#1440) an empty `liveRows` is otherwise missing: whether this
+  // tenant has EVER completed a scan. Zero real findings is honest either way,
+  // but the empty-state COPY below asserts "from your last scan" — false for a
+  // tenant that has never had one, so that specific claim is gated on this.
+  const scanStatus = useScanStatus();
+  const everScanned = scanStatus.data?.everScanned === true;
 
   const askShaneBot = (topic: string) =>
     openForm({
@@ -188,7 +200,9 @@ export default function PortalV2ComplianceGapsPage() {
                 color: "#94a3b8",
               }}
             >
-              No open compliance gaps from your last scan.
+              {everScanned
+                ? "No open compliance gaps from your last scan."
+                : "No scan data available — this tenant has not completed a scan yet."}
             </div>
           )}
 

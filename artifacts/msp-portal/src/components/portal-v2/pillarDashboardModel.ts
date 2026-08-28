@@ -70,6 +70,32 @@ export function pillarTrendVerdict(history: readonly number[] | null | undefined
 }
 
 /**
+ * Compliance's own trend caption — reads the SAME real replayed series
+ * `pillarTrendVerdict` reads, phrased for Compliance's "gaps closed" framing
+ * rather than Security's "exposures" framing. Replaces the fixture's
+ * fabricated "Eight points over ten scans. Compliance improves by closing
+ * gaps, not by repelling attacks." (Git #1440) — that sentence stated a
+ * specific point count and net change that were true of the design's own
+ * 10-point `CMP_HISTORY` fixture, not of any real tenant's actual history
+ * length or movement, so it kept asserting "eight points over ten scans" even
+ * once a real (shorter, or differently-moving) trend was on screen. Null when
+ * there is no real series to describe, same floor as `pillarTrendVerdict`.
+ */
+export function cmpTrendCaption(history: readonly number[] | null | undefined): string | null {
+  if (!Array.isArray(history) || history.length < 2) return null;
+  const change = Math.round(history[history.length - 1]! - history[0]!);
+  const points = history.length;
+  const scans = `${points} scan${points === 1 ? "" : "s"}`;
+  const movement =
+    change > 0
+      ? `Up ${change} points over ${scans}`
+      : change < 0
+        ? `Down ${Math.abs(change)} points over ${scans}`
+        : `Holding steady over ${scans}`;
+  return `${movement}. Compliance improves by closing gaps, not by repelling attacks.`;
+}
+
+/**
  * The real number of OPEN findings (critical + warning) for a pillar, read off
  * the same live payload the heroes trust — or null when the pillar is not live
  * (unscored / before a payload arrives), so a drill-down page falls back to its

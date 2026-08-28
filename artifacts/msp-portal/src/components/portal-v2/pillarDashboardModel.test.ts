@@ -16,6 +16,7 @@ import assert from "node:assert/strict";
 
 import type { PortalV2PillarView, PortalV2Stat } from "./portalV2Model";
 import {
+  cmpTrendCaption,
   livePillarOpenCount,
   pillarSeverity,
   pillarTrendVerdict,
@@ -92,6 +93,33 @@ describe("pillarTrendVerdict", () => {
   it("null below the floor (nothing real to describe)", () => {
     assert.equal(pillarTrendVerdict([56]), null);
     assert.equal(pillarTrendVerdict(null), null);
+  });
+});
+
+/* ── compliance trend caption ──────────────────────────────────────────────── */
+
+describe("cmpTrendCaption", () => {
+  it("states the real point count and net change, not the fixture's fixed 'Eight points over ten scans'", () => {
+    assert.equal(
+      cmpTrendCaption([70, 71, 71, 72, 74, 74, 75, 77, 78, 78]),
+      "Up 8 points over 10 scans. Compliance improves by closing gaps, not by repelling attacks.",
+    );
+    // A real tenant's shorter/differently-moving series must NOT be described
+    // by the fixture's "eight points over ten scans" — this is the leak #1440
+    // fixed: the caption used to stay fixed regardless of the real series.
+    assert.equal(
+      cmpTrendCaption([80, 75, 72]),
+      "Down 8 points over 3 scans. Compliance improves by closing gaps, not by repelling attacks.",
+    );
+    assert.equal(
+      cmpTrendCaption([50, 50]),
+      "Holding steady over 2 scans. Compliance improves by closing gaps, not by repelling attacks.",
+    );
+  });
+  it("null below the floor (nothing real to describe)", () => {
+    assert.equal(cmpTrendCaption([56]), null);
+    assert.equal(cmpTrendCaption(null), null);
+    assert.equal(cmpTrendCaption(undefined), null);
   });
 });
 

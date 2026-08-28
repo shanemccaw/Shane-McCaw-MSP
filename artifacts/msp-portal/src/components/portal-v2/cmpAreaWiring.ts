@@ -78,11 +78,15 @@ export const CMP_AREA_BACKING: Readonly<Record<string, CmpAreaBacking>> = {
   },
   "compliance-disposition": {
     kind: "nodata",
+    // NO-BACKEND-TO-WIRE: no disposition-review check exists — Purview Records
+    // Management disposition (items past their retention period) is not collected.
     reason:
       "No disposition-review check exists — Purview Records Management disposition (items past their retention period) is not collected by any monitor check.",
   },
   "compliance-preservation-lock": {
     kind: "nodata",
+    // NO-BACKEND-TO-WIRE: no check collects retention policy RestrictiveRetention
+    // / Preservation Lock state.
     reason:
       "No preservation-lock check exists — retention policy RestrictiveRetention / Preservation Lock state is not collected by any monitor check.",
   },
@@ -116,6 +120,9 @@ export const CMP_AREA_BACKING: Readonly<Record<string, CmpAreaBacking>> = {
   },
   "compliance-audit-coverage": {
     kind: "nodata",
+    // NO-BACKEND-TO-WIRE: no check counts workloads not ingesting into the
+    // unified audit log — the only audit check measures retention days, not
+    // per-workload ingestion.
     reason:
       "No audit-coverage check exists — 'workloads not ingesting into the unified audit log' is not collected by any monitor check (the only audit check, compliance:audit-log-retention, measures retention DAYS, not per-workload ingestion).",
   },
@@ -127,6 +134,9 @@ export const CMP_AREA_BACKING: Readonly<Record<string, CmpAreaBacking>> = {
   // ── Legal Hold & Records ──────────────────────────────────────────────────
   "compliance-holds": {
     kind: "nodata",
+    // NO-BACKEND-TO-WIRE: no check has Case-Hold-Policy / matter-status
+    // awareness, so "holds from closed matters" cannot be derived from
+    // exchange:litigation-hold-coverage (mailbox LitigationHoldEnabled only).
     reason:
       "No stale-legal-hold check exists — exchange:litigation-hold-coverage reads mailbox LitigationHoldEnabled only (no Case-Hold-Policy / matter-status awareness), so 'holds from closed matters' has no producing check.",
   },
@@ -136,11 +146,13 @@ export const CMP_AREA_BACKING: Readonly<Record<string, CmpAreaBacking>> = {
   },
   "compliance-records": {
     kind: "nodata",
+    // NO-BACKEND-TO-WIRE: no check counts labels marked as records.
     reason:
       "No records-declaration check exists — 'labels marked as records' is not collected by any monitor check.",
   },
   "compliance-dsr": {
     kind: "nodata",
+    // NO-BACKEND-TO-WIRE: no check collects open Purview data-subject requests.
     reason:
       "No subject-request (DSR) check exists — open Purview data-subject requests are not collected by any monitor check.",
   },
@@ -174,17 +186,20 @@ export function buildCmpFindingSeverityMap(
 export interface CmpAreaResolution {
   readonly key: string;
   /**
-   * "live"    — a real finding-derived status is on screen (a scan has landed);
-   * "fixture" — backed by a real check, but no completed scan yet, so the design
-   *             status/number is the honest fallback;
+   * "live"    — a real finding-derived status is on screen (this tenant has
+   *             completed at least one scan and the payload has landed);
+   * "fixture" — backed by a real check, but there is no honest basis to state
+   *             its status yet (payload not landed, or this tenant has never
+   *             completed a scan) — renders the same honest "—" a nodata card
+   *             does, never the design magnitude/status;
    * "nodata"  — no producing check exists at all; render "—", never a number.
    */
   readonly dataState: "live" | "fixture" | "nodata";
   /** The real status for a live card; null for fixture/nodata (caller keeps design status). */
   readonly liveStatus: CmpAreaStatus | null;
-  /** Honest reason a real value can't be shown — only set for nodata. */
+  /** Honest reason a real value can't be shown — set for both nodata and fixture. */
   readonly reason: string | null;
-  /** False for nodata (render "—"); true otherwise (render the design magnitude). */
+  /** False for nodata/fixture (render "—"); true only for a real live card. */
   readonly showValue: boolean;
 }
 
@@ -195,13 +210,22 @@ export interface CmpAreaResolution {
  *   • any backing check has a CRITICAL open finding → "red"  (Gap open)
  *   • else any has a WARNING open finding           → "yellow" (Partially covered)
  *   • else (no open finding for any backing check)  → "green" (Documented and covered)
- * ...but only once `loaded` is true; before the first completed scan there is no
- * honest basis to flip the design status, so it stays "fixture".
+ * ...but only once `loaded` is true AND `everScanned` is true. An empty
+ * `sevMap` is otherwise ambiguous — it means "this tenant genuinely passed
+ * every backing check" for a scanned tenant, but "this tenant has never been
+ * scanned at all" for one that hasn't, and those are NOT the same thing
+ * (Git #1440). Before this distinction, a never-scanned tenant's backed cards
+ * resolved "live"/green with the DESIGN's fixture magnitude on screen —
+ * "Documented and covered" plus an invented number nobody measured. Now the
+ * fixture branch below covers both "payload hasn't landed" and "landed, but
+ * this tenant has never completed a scan", and it is honest (`showValue:
+ * false`), not a fixture fallback.
  */
 export function resolveCmpArea(
   key: string,
   sevMap: ReadonlyMap<string, "critical" | "warning">,
   loaded: boolean,
+  everScanned: boolean,
 ): CmpAreaResolution {
   const backing = CMP_AREA_BACKING[key];
   if (!backing || backing.kind === "nodata") {
@@ -214,8 +238,14 @@ export function resolveCmpArea(
     };
   }
 
-  if (!loaded) {
-    return { key, dataState: "fixture", liveStatus: null, reason: null, showValue: true };
+  if (!loaded || !everScanned) {
+    return {
+      key,
+      dataState: "fixture",
+      liveStatus: null,
+      reason: "No scan data available yet for this check.",
+      showValue: false,
+    };
   }
 
   let worst: "critical" | "warning" | null = null;
