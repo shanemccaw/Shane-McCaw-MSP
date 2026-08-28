@@ -50,6 +50,7 @@ import {
   hasScanValue,
   NO_DATA_DASH,
   NO_DATA_INK,
+  NO_SCAN_DATA_LABEL,
 } from "@/components/portal-v2/NoScanDataState";
 import { useAdpWorkloadsLive } from "@/components/portal-v2/useAdpWorkloadsLive";
 import {
@@ -114,6 +115,15 @@ export default function PortalV2AdoptionPage() {
   // otherwise — never the design fixture.
   const score = live.score;
   const hasScore = hasScanValue(score);
+  // #1412 investigation — every ADP_HERO.* usage on this page, classified:
+  //   eyebrow, standfirst, trendLabel, parkedStripSuffix: legitimate static
+  //     labels (no tenant-specific numbers), unconditional is correct.
+  //   headline, trendCaption: DATA VALUES presented as real ("climbed 27
+  //     points in ten scans", "61 → 88 since scan 1") — now gated on
+  //     hasScore below. hasScore is the only live signal this page has
+  //     (useLivePillarHero doesn't expose the pillar's real history, so
+  //     the specific numbers in these sentences can't be live-wired the way
+  //     score/delta were — the honest-null gate is the available fix).
   const delta = live.delta?.text ?? NO_DATA_DASH;
   const deltaColor = live.delta?.color ?? NO_DATA_INK;
 
@@ -356,7 +366,13 @@ export default function PortalV2AdoptionPage() {
                 }}
                 data-testid="pv2-adp-headline"
               >
-                {ADP_HERO.headline}
+                {/* Git #1412: this sentence states a specific score-history
+                    claim ("climbed 27 points in ten scans") that has nothing
+                    to do with the real tenant's history once scored — the
+                    honest-null gate can only key off the one live signal
+                    this page actually has (hasScore), same as Compliance's
+                    `trend ? CMP_HERO.trendCaption : NO_SCAN_DATA_LABEL`. */}
+                {hasScore ? ADP_HERO.headline : NO_SCAN_DATA_LABEL}
               </span>
               <span
                 style={{
@@ -441,7 +457,13 @@ export default function PortalV2AdoptionPage() {
                 <span
                   style={{ display: "block", paddingTop: 5, fontSize: "10.5px", color: "#64748b" }}
                 >
-                  {ADP_HERO.trendCaption}
+                  {/* Git #1412: same honest-null gate as the headline above —
+                      "61 → 88 since scan 1" is a fixture history claim, not
+                      derived from live.score. The chart geometry itself stays
+                      fixture (#1409 confirmed Adoption has no live.history to
+                      plot at all, unlike Governance/Security/Compliance), so
+                      only the text claim is gated here. */}
+                  {hasScore ? ADP_HERO.trendCaption : NO_SCAN_DATA_LABEL}
                 </span>
               </div>
             </div>
