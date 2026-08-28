@@ -321,25 +321,13 @@ export const RT_PILLAR_ORDER: readonly RtPillarKey[] = [
   "health",
 ];
 
-/** prototype `rtPillarScores` (15971). Base score per pillar, at scan 1. */
-export const RT_PILLAR_BASE: Readonly<Record<RtPillarKey, number>> = {
-  governance: 34,
-  security: 38,
-  compliance: 29,
-  licensing: 57,
-  adoption: 46,
-  health: 44,
-};
-
-/** prototype `rtPillarTargets` (15972). The score a pillar hits when all of it is scored. */
-export const RT_PILLAR_TARGET: Readonly<Record<RtPillarKey, number>> = {
-  governance: 61,
-  security: 72,
-  compliance: 58,
-  licensing: 79,
-  adoption: 68,
-  health: 70,
-};
+// RT_PILLAR_BASE / RT_PILLAR_TARGET (prototype `rtPillarScores`/`rtPillarTargets`,
+// 15971-15972) were the fixture base/target constants the headline, pillar cells
+// and gate used to read. Git #1381 replaced them with the real per-pillar score
+// API (rolling before/now off `tenant_pillar_snapshots`); Git #1382 gated every
+// consumer behind that real data with an honest no-scan-data fallback, leaving
+// no code path that reads these fixture numbers any more. Removed rather than
+// left dead, per the standing no-fixture-fallback rule.
 
 export interface RtRescanOption {
   readonly k: string;
