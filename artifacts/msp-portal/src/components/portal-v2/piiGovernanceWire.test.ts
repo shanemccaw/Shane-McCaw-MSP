@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 
 import {
   toPiiGovernanceView,
+  piiExposedBadge,
   piiSignalStats,
   piiSignalHeadline,
   type WirePiiGovernance,
@@ -92,6 +93,21 @@ describe("piiSignalStats", () => {
   it("counts every non-ok coverage entry as unavailable", () => {
     const stats = piiSignalStats(toPiiGovernanceView(EMPTY_ERROR));
     assert.equal(Object.fromEntries(stats.map((s) => [s.key, s.value])).unavailable, "1");
+  });
+});
+
+describe("piiExposedBadge", () => {
+  it("labels the nav badge with the live High-severity finding count (Git #1438)", () => {
+    assert.deepEqual(piiExposedBadge(toPiiGovernanceView(LIVE)), { label: "1 exposed" });
+  });
+
+  it("omits the badge entirely — never '0 exposed' — when nothing has been collected yet", () => {
+    assert.deepEqual(piiExposedBadge(toPiiGovernanceView(EMPTY_ERROR)), { label: null });
+  });
+
+  it("omits the badge when findings exist but none are High severity", () => {
+    const mediumOnly = toPiiGovernanceView({ ...LIVE, findings: [LIVE.findings[1]] });
+    assert.deepEqual(piiExposedBadge(mediumOnly), { label: null });
   });
 });
 

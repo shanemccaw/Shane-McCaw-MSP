@@ -36,6 +36,7 @@ import { useAuth } from "@/lib/auth-context";
 import { ImpersonationBanner } from "@/components/ImpersonationBanner";
 import { TenantSwitcherFloaty } from "@/components/TenantSwitcherFloaty";
 import { useHoldBadge } from "@/components/portal-v2/holds/useHoldBadge";
+import { usePiiExposedBadge } from "@/components/portal-v2/usePiiExposedBadge";
 import { usePortalV2Pillars } from "@/components/portal-v2/usePortalV2Pillars";
 import { tenantHealthSummary, urgentToAlertItems } from "@/components/portal-v2/portalV2Model";
 import {
@@ -179,11 +180,13 @@ function PlainNavGroup({
   location,
   expanded,
   holdBadge,
+  piiExposedBadge,
 }: {
   group: NavGroup;
   location: string;
   expanded: boolean;
   holdBadge: ReturnType<typeof useHoldBadge>;
+  piiExposedBadge: ReturnType<typeof usePiiExposedBadge>;
 }) {
   return (
     <>
@@ -191,11 +194,17 @@ function PlainNavGroup({
       {group.items.map((item) => {
         const isActive = isNavItemActive(item, location);
         // Badges are rare on purpose — the README calls the nav badge "the
-        // single place in the nav that says a decision is waiting". Two shapes:
-        // "holds" is resolved LIVE from the hold-window hook; a static badge
-        // ({ label, urgent? }) carries text fixed in the design, e.g. PII
-        // Governance's "3 exposed". Both render through the one span below.
-        const badge = item.badge === "holds" ? holdBadge : (item.badge ?? null);
+        // single place in the nav that says a decision is waiting". Three
+        // shapes: "holds" and "pii-exposed" are resolved LIVE from their own
+        // hooks (hold-window count; PII Governance's real High-severity finding
+        // count, Git #1438); a static badge ({ label, urgent? }) carries text
+        // genuinely fixed in the design. All render through the one span below.
+        const badge =
+          item.badge === "holds"
+            ? holdBadge
+            : item.badge === "pii-exposed"
+              ? piiExposedBadge
+              : (item.badge ?? null);
         return (
           <Fragment key={item.href}>
             <Link
@@ -650,6 +659,7 @@ export function PortalV2Shell({
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [kb, setKb] = useState<{ open: boolean; articleId: string | null }>({ open: false, articleId: null });
   const holdBadge = useHoldBadge();
+  const piiExposedBadge = usePiiExposedBadge();
   // The tray's "Smart alerts" section — real findings, same `urgent` ranking
   // the Overview's Most Urgent list uses (see portalV2Model.ts). The shell
   // fetches its own copy so the tray is correct from whichever page it opens
@@ -910,6 +920,7 @@ export function PortalV2Shell({
                 location={location}
                 expanded={expanded}
                 holdBadge={holdBadge}
+                piiExposedBadge={piiExposedBadge}
               />
             );
           })}

@@ -122,11 +122,11 @@ export interface NavSubItem {
 }
 
 /**
- * A badge whose text is fixed in the design rather than fetched live — PII
- * Governance's "3 exposed" (prototype `piiNavBadge`, shell 8807/8835). The
- * `"holds"` token, by contrast, names a badge the shell resolves at runtime from
- * a hook. `urgent` omitted renders the quiet grey treatment the design uses for
- * this badge; set it true only for the blue "a decision is waiting" styling.
+ * A badge whose text is fixed in the design rather than fetched live. The
+ * `"holds"` / `"pii-exposed"` tokens, by contrast, name a badge the shell
+ * resolves at runtime from a hook. `urgent` omitted renders the quiet grey
+ * treatment the design uses for this badge; set it true only for the blue "a
+ * decision is waiting" styling.
  */
 export interface NavStaticBadge {
   readonly label: string;
@@ -141,15 +141,16 @@ export interface NavItem {
   testId: string;
   glyph: NavGlyph;
   /**
-   * The badge on this row, if any. Two shapes because the design genuinely has
-   * two: `"holds"` names a LIVE badge the shell resolves from a hook (Active
-   * Runbooks' hold count), while a `NavStaticBadge` carries text fixed in the
-   * design (PII Governance's "3 exposed"). Badges are RARE on purpose: the
-   * handoff README calls the nav badge "the single place in the nav that says
-   * a decision is waiting", so adding one is a design decision, not a detail.
+   * The badge on this row, if any. `"holds"` and `"pii-exposed"` each name a
+   * LIVE badge the shell resolves from a hook — Active Runbooks' hold count
+   * and PII Governance's real High-severity finding count (Git #1438;
+   * `usePiiExposedBadge`) respectively — while a `NavStaticBadge` carries text
+   * genuinely fixed in the design. Badges are RARE on purpose: the handoff
+   * README calls the nav badge "the single place in the nav that says a
+   * decision is waiting", so adding one is a design decision, not a detail.
    * Only `plain` groups render it.
    */
-  badge?: "holds" | NavStaticBadge;
+  badge?: "holds" | "pii-exposed" | NavStaticBadge;
   /**
    * Sub-rows, shown only while this row is active AND the sidebar is expanded.
    * Each is a real URL so the view is linkable.
@@ -343,7 +344,9 @@ const OPERATE_ITEMS: readonly NavItem[] = [
  *
  * The design's group is Ownership, Risk Register, Security Plan, PII
  * Governance — all four present. Security Plan and PII Governance arrived with
- * Part 7; PII carries the design's fixed "3 exposed" nav badge.
+ * Part 7; PII carries a live "N exposed" nav badge (Git #1438), sourced from
+ * the tenant's real High-severity PII findings rather than the design's fixed
+ * "3 exposed" — see `usePiiExposedBadge`.
  *
  * The Risk Register `title` is the prototype's verbatim and it UNDER-DESCRIBES
  * the page: it says "accepted risks", while the register carries all twelve
@@ -392,11 +395,14 @@ const GOVERNANCE_ITEMS: readonly NavItem[] = [
     title: "PII Governance — where personal data lives, who can reach it, and what moved",
     testId: "pv2-nav-pii",
     glyph: { kind: "lucide", icon: Scale },
-    // The design's `piiNavBadge` (shell 8807/8835) — a fixed "3 exposed", which
-    // equals the number of findings reachable from outside (asserted in
-    // piiModel.test.ts). `urgent` omitted → the quiet grey treatment the design
-    // draws it with, distinct from Active Runbooks' blue "decision waiting".
-    badge: { label: "3 exposed" },
+    // Git #1438: was the design's fixed "3 exposed" (`piiNavBadge`, shell
+    // 8807/8835) — a count of Public/External-reachable locations that has no
+    // real backing (`piiModel.ts`'s `piiExposedCount` reads only the design
+    // fixture, `piiData.ts`; the live page dropped that dimension entirely
+    // once wired to real data). Now resolved LIVE by `usePiiExposedBadge` from
+    // the tenant's real High-severity PII findings, and omitted entirely (not
+    // "0 exposed") when there are none or nothing has scanned yet.
+    badge: "pii-exposed",
   },
 ];
 

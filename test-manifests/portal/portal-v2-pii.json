@@ -128,6 +128,13 @@
       "action": "goto",
       "target": "/portal/shane-mccaw-consulting/portal-v2"
     },
+    {
+      "name": "UI13 -- Git #1438: the PII nav badge is now LIVE (usePiiExposedBadge), not the design's hardcoded fixed '3 exposed'. The testbed tenant has zero collected High-severity findings (every backing check reports status=error), so the badge must be ABSENT, not '0 exposed' -- proving it no longer always shows a fixed string regardless of real data (portalV2Nav.ts's 'badges are rare on purpose' convention).",
+      "action": "expect",
+      "selector": "[data-testid='pv2-nav-pii-badge']",
+      "state": "absent",
+      "sessionTag": "1438-badge"
+    },
     { "name": "UI11 -- click the PII Governance nav row.", "action": "click", "selector": "[data-testid='pv2-nav-pii']" },
     {
       "name": "UI12 -- it lands on the PII Governance page.",

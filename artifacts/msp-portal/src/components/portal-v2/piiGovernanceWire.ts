@@ -188,3 +188,36 @@ export function piiSignalStats(view: PiiGovernanceView): readonly PiiSignalStat[
     { key: "unavailable", label: "Checks unavailable", sub: "errored, licence-gapped or not collected", value: String(unavailable), color: "#94a3b8" },
   ];
 }
+
+/**
+ * The nav row's live badge — omitted, never `{ label: null }` rendered as
+ * text. `urgent` is never set: PII Governance keeps the quiet grey treatment
+ * the design used for its fixed badge, distinct from Active Runbooks' blue
+ * "decision waiting" styling. Present (rather than omitted) only so this
+ * shape is structurally compatible with the other live nav badges the shell
+ * resolves through the same union (see `useHoldBadge`'s `HoldBadge`).
+ */
+export interface PiiNavBadge {
+  readonly label: string | null;
+  readonly urgent?: boolean;
+}
+
+/**
+ * The PII Governance nav badge (Git #1438) — the count of currently-firing
+ * High severity findings, i.e. this stat card's own "personal-data exposure
+ * to act on" number (`piiSignalStats`'s `high`). This replaces the design
+ * fixture's fixed "3 exposed" (a count of Public/External-reachable
+ * locations, `piiModel.ts`'s `piiExposedCount`), which has no real backing —
+ * the live backend (`portal-pii-governance.ts`) scores four aggregate
+ * sensitivity-label/DLP signals and carries no exposure-reachability
+ * dimension at all. High severity is the live equivalent: it is the same
+ * "real exposure to act on" the page's own copy already uses that word for.
+ *
+ * Zero High findings, or nothing collected yet, omits the badge entirely
+ * (never "0 exposed") — matching `portalV2Nav.ts`'s "badges are rare on
+ * purpose" convention.
+ */
+export function piiExposedBadge(view: PiiGovernanceView): PiiNavBadge {
+  const high = view.findings.filter((f) => f.sev === "High").length;
+  return high > 0 ? { label: `${high} exposed` } : { label: null };
+}
