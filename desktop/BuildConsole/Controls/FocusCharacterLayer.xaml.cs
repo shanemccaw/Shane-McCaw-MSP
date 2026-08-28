@@ -25,6 +25,7 @@ namespace BuildConsole.Controls
         private readonly Random _rng = new();
         private DispatcherTimer? _ambient;
         private bool _running;
+        private CritterSpawner? _critterSpawner; // spawns the additive Copilot-designed vector critters
 
         // A small cast of friendly companions (original — not Clarity's actual assets).
         private static readonly string[] Companions = { "🦊", "🐢", "🦉", "🐿️", "🦫", "🐥", "🐸" };
@@ -48,6 +49,17 @@ namespace BuildConsole.Controls
             };
             _ambient.Tick += (_, _) => AmbientTick();
             _ambient.Start();
+
+            // Instantiate the Copilot critter spawner against the same Stage canvas used for the
+            // existing emoji companions — additive pool, same stage, same ambient/celebration triggers.
+            try
+            {
+                _critterSpawner = new CritterSpawner(Stage);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("focus-mode", $"couldn't create critter spawner: {ex.Message}");
+            }
         }
 
         /// <summary>Stop everything and clear the stage (called when the immersive view is hidden).</summary>
@@ -56,6 +68,7 @@ namespace BuildConsole.Controls
             _running = false;
             _ambient?.Stop();
             _ambient = null;
+            _critterSpawner = null;
             Stage.Children.Clear();
         }
 
@@ -71,6 +84,14 @@ namespace BuildConsole.Controls
 
             if (_rng.NextDouble() < 0.28) PeekFromEdge();
             else Stroll();
+
+            // Copilot critters stroll ambiently too, interleaved with (never in place of) the emoji
+            // companions above — same ambient trigger point, independent roll.
+            if (_rng.NextDouble() < 0.5)
+            {
+                try { _critterSpawner?.AmbientStroll(); }
+                catch (Exception ex) { ActivityLog.Log("focus-mode", $"critter ambient stroll failed: {ex.Message}"); }
+            }
         }
 
         private void Stroll()
@@ -149,6 +170,9 @@ namespace BuildConsole.Controls
                 Banner("🌧️", "Build ended — shake it off", Res("PeachBrush"));
                 HappyHop("🐢");
             }
+            // spawn Copilot critters alongside the emoji celebration — positive on success, cute-grumpy on failure
+            try { _critterSpawner?.SpawnForEvent(success); }
+            catch (Exception ex) { ActivityLog.Log("focus-mode", $"critter spawn failed: {ex.Message}"); }
             ActivityLog.Log("focus-mode", $"immersive celebration: build {(success ? "finished ✔" : "ended")} — '{Trunc(title)}'");
         }
 
@@ -161,6 +185,9 @@ namespace BuildConsole.Controls
                 FloatUp(i % 2 == 0 ? "✅" : "🏆", ActualWidth - 44 - _rng.Next(0, 60), i * 150);
             Banner("🏆", n == 1 ? "Issue closed!" : $"{n} issues closed!", Res("YellowBrush"));
             ConfettiBurst(8);
+            // spawn Copilot critters alongside the trophy/checkmark FloatUp() glyphs above
+            try { _critterSpawner?.CelebrateIssuesClosed(n); }
+            catch (Exception ex) { ActivityLog.Log("focus-mode", $"critter spawn failed: {ex.Message}"); }
             ActivityLog.Log("focus-mode", $"immersive celebration: {n} issue(s) closed under the focused epic");
         }
 
