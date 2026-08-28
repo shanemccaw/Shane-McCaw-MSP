@@ -1,12 +1,13 @@
 {
   "feature": "Customer Portal v2 Part 11 -- Governance 'generic area' drill-downs: the list shape (/portal-v2/governance/orphaned-teams and /team-owners, isGovListPage 5871-5900), the inventory shape (/governance/device-inventory and /device-lifecycle, isGovInventoryPage 5927-5958) and the drift shape (/governance/sharing-drift-legacy, isGovDriftPage 5902-5925). One page component (portal-v2-gov-area.tsx) reads its slug from the location and picks the shape via govAreaFor; the slug->shape resolution and row derivations are pinned by govAreaModel.test.ts. Design fixtures in govAreaData.ts. Reached from the Governance pillar tiles; declared ABOVE '/portal-v2/governance/:area' so the GOV_PAGES param route does not swallow them. This does NOT touch govPages.ts (Part 2's).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "0bb4a473",
+  "lastVerifiedAgainstCommit": "1b0d65157",
   "notes": [
-    "LIVE-DATA PASS (Git #1204): the generic governance area page now reads the SAME live war-room-pillars payload the Governance pillar page does, through the shared useLivePillarHero seam -- NO second data path. The clipped pv2-govarea-source marker reads 'live' when a real governance score is on the wire. What STAYS fixture, a documented backend gap: the per-sub-area object lists / drift events / stat tiles -- the payload scores the pillar as a whole, not each governance sub-area, so there is no per-sub-area producer. The A-GOV apiTest proves the real finding counts exist independent of whether the new marker has been deployed to the dev server yet.",
+    "HONEST NO-DATA PASS (Git #1427): #1413's audit found this page read its ENTIRE body -- including the title itself -- from govAreaData.ts's design fixture with ZERO dataState gating anywhere; confirmed no backend exists for any of it (no per-team, per-device, or drift-event producer anywhere in the platform). This is a FULL fixture-strip, not a partial live-wire: all three shapes now render the same static, count-free category title (govAreaTitleFor) plus an honest NoScanDataState block. The fabricated per-shape content (list rows, drift events, stat tiles, inventory rows) is gone from the page entirely -- GOV1/GOV4/GOV7 below now assert the honest static titles, GOV2/GOV3/GOV5/GOV6/GOV8 (which asserted specific fabricated numbers/rows) are replaced by GOV-EMPTY asserting the honest no-scan-data marker on all 3 shapes.",
+    "LIVE-DATA (Git #1204, unchanged): the generic governance area page still reads the SAME live war-room-pillars payload the Governance pillar page does, through the shared useLivePillarHero seam -- NO second data path. The clipped pv2-govarea-source marker reads 'live' when a real governance score is on the wire. The A-GOV apiTest proves the real finding counts exist independent of whether the new marker has been deployed to the dev server yet.",
     "THE LOGIN BLOCK IS NOT OPTIONAL -- see the shared portal manifest note. With only the two #email/#password input steps red on a persisted session and every page assertion green, that is a PASS.",
     "UI ROUTE SHAPE: real URL is /portal/shane-mccaw-consulting/portal-v2/governance/<slug>. These literal routes are declared ABOVE '/portal-v2/governance/:area' in App.tsx; wouter matches in source order, so the specific slug wins over the GOV_PAGES param route (which would render NotFound for these).",
-    "shaneapp://runTest hits the DEPLOYED build -- these routes are new in Part 11, so a run against a build predating the deploy fails at the first assertion (a not-deployed signal, not a page defect). Note '/governance/sharing-drift' (no -legacy) is Part 2's rich GOV_PAGES drill-down, a DIFFERENT page.",
+    "shaneapp://runTest hits the DEPLOYED build -- these routes are new in Part 11, so a run against a build predating the deploy fails at the first assertion (a not-deployed signal, not a page defect). Note '/governance/sharing-drift' (no -legacy) is Part 2's rich GOV_PAGES drill-down, a DIFFERENT page, handled separately under Git #1428.",
     "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
   ],
   "apiTests": [
@@ -28,25 +29,25 @@
     }
   ],
   "uiSteps": [
-    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login", "sessionTag": "setup" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible", "sessionTag": "setup" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "sessionTag": "setup" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "sessionTag": "setup" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true, "sessionTag": "setup" },
 
-    { "name": "goto the LIST-shape drill-down (Orphaned Teams).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/governance/orphaned-teams" },
-    { "name": "GOV1 -- the page resolved to the list shape, not NotFound (the ':area' route would 404 this).", "action": "expect", "selector": "[data-testid='pv2-govarea-page']", "state": "present", "critical": true },
-    { "name": "GOV2 -- the list heading and its rows render.", "action": "expect", "selector": "[data-testid='pv2-govarea-heading']", "textContains": "5 Teams have no active members" },
-    { "name": "GOV3 -- the five affected-object rows render.", "action": "expect", "selector": "[data-testid='pv2-govarea-rows']", "textContains": ["Retired Project Team 1", "0 active members · last activity 6+ months ago"] },
+    { "name": "goto the LIST-shape drill-down (Orphaned Teams).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/governance/orphaned-teams", "sessionTag": "gov-1427" },
+    { "name": "GOV1 -- the page resolved to the list shape, not NotFound (the ':area' route would 404 this).", "action": "expect", "selector": "[data-testid='pv2-govarea-page']", "state": "present", "critical": true, "sessionTag": "gov-1427" },
+    { "name": "GOV2 (Git #1427) -- honest static, count-free title -- NOT the old fabricated '5 Teams have no active members'.", "action": "expect", "selector": "[data-testid='pv2-govarea-heading']", "textContains": "Orphaned Teams", "sessionTag": "gov-1427" },
+    { "name": "GOV3 (Git #1427) -- no per-team rows exist to fabricate; the honest empty state renders instead.", "action": "expect", "selector": "[data-testid='pv2-govarea-empty']", "state": "present", "textContains": "No scan data available", "sessionTag": "gov-1427" },
 
-    { "name": "goto the INVENTORY-shape drill-down (Device Inventory).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/governance/device-inventory" },
-    { "name": "GOV4 -- the inventory heading renders.", "action": "expect", "selector": "[data-testid='pv2-govarea-heading']", "textContains": "Device Inventory Governance", "critical": true },
-    { "name": "GOV5 -- the three stat tiles render (Total tracked / Compliant / Flagged).", "action": "expect", "selector": "[data-testid='pv2-govarea-stats']", "textContains": ["Total tracked", "Compliant", "Flagged"] },
-    { "name": "GOV6 -- a flagged device row is labelled.", "action": "expect", "selector": "[data-testid='pv2-govarea-rows']", "textContains": ["DEVICE-1103", "Flagged"] },
+    { "name": "goto the INVENTORY-shape drill-down (Device Inventory).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/governance/device-inventory", "sessionTag": "gov-1427" },
+    { "name": "GOV4 (Git #1427) -- honest static title -- NOT the old fabricated '212 devices are enrolled and tracked' subtitle.", "action": "expect", "selector": "[data-testid='pv2-govarea-heading']", "textContains": "Device Inventory Governance", "critical": true, "sessionTag": "gov-1427" },
+    { "name": "GOV5 (Git #1427) -- no stat tiles / device rows exist to fabricate; the honest empty state renders instead.", "action": "expect", "selector": "[data-testid='pv2-govarea-empty']", "state": "present", "textContains": "No scan data available", "sessionTag": "gov-1427" },
+    { "name": "GOV6 (Git #1427) -- the empty state's honest detail line names the check with no fabricated count, distinct from the list-shape detail above.", "action": "expect", "selector": "[data-testid='pv2-govarea-empty']", "textContains": "No live device data available yet for this check.", "sessionTag": "gov-1427" },
 
-    { "name": "goto the DRIFT-shape drill-down (sharing-drift-legacy).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/governance/sharing-drift-legacy" },
-    { "name": "GOV7 -- the drift heading renders.", "action": "expect", "selector": "[data-testid='pv2-govarea-heading']", "textContains": "External Sharing Drift", "critical": true },
-    { "name": "GOV8 -- the drift timeline events render.", "action": "expect", "selector": "[data-testid='pv2-govarea-events']", "textContains": ["Client Deliverables (SharePoint)", "External link created", "detected scan 14"] },
-    { "name": "GOV-LIVE (#1204) -- REAL DATA: the governance area page reads the LIVE governance payload; its source marker reads 'live'. The per-sub-area rows/events/stats stay fixture (no per-sub-area producer on this payload) -- a documented backend gap.", "action": "expect", "selector": "[data-testid='pv2-govarea-source']", "state": "present", "textContains": "live" }
+    { "name": "goto the DRIFT-shape drill-down (sharing-drift-legacy).", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/governance/sharing-drift-legacy", "sessionTag": "gov-1427" },
+    { "name": "GOV7 -- the drift heading renders with its (already count-free) honest title.", "action": "expect", "selector": "[data-testid='pv2-govarea-heading']", "textContains": "External Sharing Drift", "critical": true, "sessionTag": "gov-1427" },
+    { "name": "GOV8 (Git #1427) -- no fabricated drift events exist to render; the honest empty state renders instead.", "action": "expect", "selector": "[data-testid='pv2-govarea-empty']", "state": "present", "textContains": "No scan data available", "sessionTag": "gov-1427" },
+    { "name": "GOV-LIVE (#1204, unchanged) -- REAL DATA: the governance area page reads the LIVE governance payload; its source marker reads 'live'. The per-sub-area content is no longer rendered at all (Git #1427), fixture or otherwise.", "action": "expect", "selector": "[data-testid='pv2-govarea-source']", "state": "present", "textContains": "live" }
   ]
 }

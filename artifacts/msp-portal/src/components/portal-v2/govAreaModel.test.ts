@@ -8,7 +8,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-import { govAreaFor, govInventoryRows, govListRows } from "./govAreaModel";
+import {
+  govAreaDetailFor,
+  govAreaFor,
+  govAreaTitleFor,
+  govInventoryRows,
+  govListRows,
+} from "./govAreaModel";
 import { GOV_INVENTORY_PAGES, GOV_LIST_PAGES } from "./govAreaData";
 
 describe("govAreaFor", () => {
@@ -54,5 +60,44 @@ describe("govInventoryRows", () => {
       rows.map((r) => r.flagLabel),
       ["", "Flagged", "Flagged"],
     );
+  });
+});
+
+// Git #1427 — the honest, count-free titles/details the page actually renders
+// now, in place of the fabricated `area.page.title`/`why` fields above.
+describe("govAreaTitleFor", () => {
+  it("resolves a static, count-free title for every one of the 5 area slugs", () => {
+    assert.equal(govAreaTitleFor("orphaned-teams"), "Orphaned Teams");
+    assert.equal(govAreaTitleFor("team-owners"), "Team Ownership Governance");
+    assert.equal(govAreaTitleFor("device-inventory"), "Device Inventory Governance");
+    assert.equal(govAreaTitleFor("device-lifecycle"), "Device Lifecycle Governance");
+    assert.equal(govAreaTitleFor("sharing-drift-legacy"), "External Sharing Drift");
+  });
+
+  it("returns null for an unknown or absent slug, same contract as govAreaFor", () => {
+    assert.equal(govAreaTitleFor("not-a-real-area"), null);
+    assert.equal(govAreaTitleFor(undefined), null);
+  });
+});
+
+describe("govAreaDetailFor", () => {
+  it("resolves an honest detail line with no fabricated count for every slug", () => {
+    for (const slug of [
+      "orphaned-teams",
+      "team-owners",
+      "device-inventory",
+      "device-lifecycle",
+      "sharing-drift-legacy",
+    ]) {
+      const detail = govAreaDetailFor(slug);
+      assert.ok(detail && detail.length > 0);
+      // No digit anywhere — the whole point is these lines state no tenant fact.
+      assert.equal(/\d/.test(detail as string), false);
+    }
+  });
+
+  it("returns null for an unknown or absent slug", () => {
+    assert.equal(govAreaDetailFor("not-a-real-area"), null);
+    assert.equal(govAreaDetailFor(undefined), null);
   });
 });

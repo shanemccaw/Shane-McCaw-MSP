@@ -17,6 +17,24 @@
  * tenant. The fixture lives here — one module — so the later wiring pass can swap
  * it for a real customer-scoped read.
  *
+ * ── Git #1427: the page no longer renders any of the above ──────────────────
+ * #1413's audit confirmed there is no backend for ANY of it — not even a partial
+ * one to gate on (unlike Adoption's score or Compliance's trend). Per Shane's
+ * direction this is a full fixture-strip, not a live-wire: `portal-v2-gov-area.tsx`
+ * stopped reading `GOV_LIST_PAGES` / `GOV_DRIFT_PAGES` / `GOV_INVENTORY_PAGES` for
+ * anything shown on screen — titles, stats, per-team/per-device rows, drift events
+ * are all replaced with an honest `NoScanDataState`. These three maps stay in this
+ * module, unused by the page, purely as the documented design reference for
+ * whenever a real per-sub-area backend exists to wire in their place — the same
+ * "fixture stays, rendering doesn't touch it" pattern other pillars used for their
+ * own documented backend gaps.
+ *
+ * The two maps below (`GOV_AREA_TITLES` / `GOV_AREA_DETAILS`) are what the page
+ * actually renders instead: plain, static, count-free category labels — not
+ * tenant data, no per-tenant fact or number, just naming which check a route
+ * covers (the same class of "static label, fine" the #1413 audit already carved
+ * out for Oversharing's heading/desc).
+ *
  * ── Which tile reaches which shape ───────────────────────────────────────────
  * In the prototype the governance area tiles route on their `active` key:
  * `governance-orphaned-teams` / `governance-team-owners` render the LIST shape,
@@ -143,4 +161,35 @@ export const GOV_INVENTORY_PAGES: Readonly<Record<string, GovInventoryPage>> = {
       { name: "DEVICE-1015", context: "Purchased Jan 2021 · 5.6 years old", flag: true },
     ],
   },
+};
+
+/**
+ * Git #1427 — the ONLY titles `portal-v2-gov-area.tsx` renders now. Plain,
+ * static, count-free category labels naming which check each route covers — not
+ * a tenant fact, not derived from a scan, so there is nothing here to be honest
+ * or dishonest ABOUT. Reuses the exact same `label` strings the Governance
+ * dashboard's own tile grid already ships for these checks
+ * (`govDashboardData.ts`'s `GOV_AREA_LINKS`, whose `score`/`prevScore`/`sub`
+ * fields are a separate, out-of-scope fabrication not touched by this issue), so
+ * the drill-down's heading matches the tile the customer clicked to get here.
+ */
+export const GOV_AREA_TITLES: Readonly<Record<string, string>> = {
+  "governance-orphaned-teams": "Orphaned Teams",
+  "governance-team-owners": "Team Ownership Governance",
+  "governance-device-inventory": "Device Inventory Governance",
+  "governance-device-lifecycle": "Device Lifecycle Governance",
+  "governance-sharing-drift-legacy": "External Sharing Drift",
+};
+
+/**
+ * Git #1427 — the honest `detail` line under each page's `NoScanDataState`.
+ * States plainly that this specific check has no live backend yet; states
+ * nothing about the tenant itself (no counts, no names, no dates).
+ */
+export const GOV_AREA_DETAILS: Readonly<Record<string, string>> = {
+  "governance-orphaned-teams": "No live team data available yet for this check.",
+  "governance-team-owners": "No live team data available yet for this check.",
+  "governance-device-inventory": "No live device data available yet for this check.",
+  "governance-device-lifecycle": "No live device data available yet for this check.",
+  "governance-sharing-drift-legacy": "No live sharing-drift data available yet for this check.",
 };
