@@ -22,22 +22,58 @@ namespace BuildConsole.Controls
     {
         private Services.BuildTrackerApiClient? _api;
         private Services.PausableTextBoxLog? _pausableLog;
-        private bool _busy;
+        private System.Diagnostics.Process? _shell;
 
         public TerminalView()
         {
             InitializeComponent();
-            OutputBox.Text = "BuildConsole Terminal — not connected yet.\r\n";
+            string repoRoot = Services.BuildTrackerConfig.FindRepoRoot() ?? @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
+            OutputBox.Text = $"BuildConsole Terminal — PowerShell in {repoRoot}\r\n";
             _pausableLog = new Services.PausableTextBoxLog(OutputBox);
+            StartShell(repoRoot);
+            Unloaded += (_, _) => { try { if (_shell != null && !_shell.HasExited) _shell.Kill(); } catch { } };
+        }
+
+        private void StartShell(string repoRoot)
+        {
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoLogo -NoProfile",
+                    WorkingDirectory = repoRoot,
+                    RedirectStandardInput = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                };
+                _shell = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
+                _shell.OutputDataReceived += (_, e) => AppendOutputAsync(e.Data);
+                _shell.ErrorDataReceived += (_, e) => AppendOutputAsync(e.Data);
+                _shell.Exited += (_, _) => AppendOutputAsync("[shell exited]");
+                _shell.Start();
+                _shell.BeginOutputReadLine();
+                _shell.BeginErrorReadLine();
+            }
+            catch (Exception ex)
+            {
+                AppendLine($"[couldn't start PowerShell: {ex.Message}]");
+            }
+        }
+
+        private void AppendOutputAsync(string? line)
+        {
+            if (line == null) return;
+            Dispatcher.Invoke(() => AppendLine(line));
         }
 
         /// <summary>Called once from MainWindow alongside every other panel's Initialize(_buildTrackerApi).</summary>
         public void Initialize(Services.BuildTrackerApiClient api)
         {
             _api = api;
-            AppendLine(api.IsConfigured
-                ? "Connected — commands run on the Replit dev server (POST /admin/simulator/deploy/console)."
-                : "Build Tracker API isn't configured — set apiBaseUrl/ingestToken in Settings before sending commands.");
+            AppendLine("Connected to local machine shell.");
         }
 
         private void AppendLine(string text)
@@ -100,38 +136,34 @@ namespace BuildConsole.Controls
             OutputBox.ScrollToEnd();
         }
 
-        private async void Send_Click(object sender, RoutedEventArgs e)
+        private void Send_Click(object sender, RoutedEventArgs e)
         {
             var cmd = InputBox.Text.Trim();
             if (string.IsNullOrEmpty(cmd)) return;
-            if (_busy) return;
 
             AppendLine($"> {cmd}");
-            InputBox.Clear();
-
-            if (_api == null || !_api.IsConfigured)
+            if (_shell == null || _shell.HasExited)
             {
-                AppendLine("[Build Tracker API isn't configured — set apiBaseUrl/ingestToken in Settings]");
-                return;
+                AppendLine("[shell not running — restarting shell]");
+                string repoRoot = Services.BuildTrackerConfig.FindRepoRoot() ?? @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
+                StartShell(repoRoot);
+                if (_shell == null || _shell.HasExited)
+                {
+                    AppendLine("[failed to restart shell]");
+                    InputBox.Clear();
+                    return;
+                }
             }
-
-            _busy = true;
-            SendButton.IsEnabled = false;
             try
             {
-                var result = await _api.RunDeployConsoleCommandAsync(cmd);
-                if (!string.IsNullOrEmpty(result.Output)) AppendLine(result.Output);
-                if (!result.Ok) AppendLine($"[exit non-zero]");
+                _shell.StandardInput.WriteLine(cmd);
+                _shell.StandardInput.Flush();
             }
             catch (Exception ex)
             {
-                AppendLine($"[failed to reach the Replit server: {ex.Message}]");
+                AppendLine($"[failed to send: {ex.Message}]");
             }
-            finally
-            {
-                _busy = false;
-                SendButton.IsEnabled = true;
-            }
+            InputBox.Clear();
         }
     }
 }
