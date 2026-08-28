@@ -34,11 +34,11 @@
     }
   ],
   "uiSteps": [
-    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login" },
-    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible" },
-    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
-    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
-    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+    { "name": "goto the real login URL (outer WouterRouter base = '/portal').", "action": "goto", "target": "/portal/login", "sessionTag": "setup" },
+    { "name": "WAIT for the login form to hydrate before typing.", "action": "expect", "selector": "#email", "state": "visible", "sessionTag": "setup" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}", "sessionTag": "setup" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}", "sessionTag": "setup" },
+    { "name": "Primary login -- every assertion below needs a real session.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true, "sessionTag": "setup" },
 
     { "name": "goto the MFA drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/mfa" },
     { "name": "MFA1 -- the page resolved (not NotFound, not the param pillar route).", "action": "expect", "selector": "[data-testid='pv2-mfa-page']", "state": "present", "critical": true },
@@ -81,8 +81,8 @@
     { "name": "EV9 -- the same template resolved to Legacy Authentication.", "action": "expect", "selector": "[data-testid='pv2-ev-heading']", "textContains": "Legacy Authentication" },
     { "name": "EV10 -- its protocol-state panel names IMAP4.", "action": "expect", "selector": "[data-testid='pv2-ev-secondary']", "textContains": ["Protocol state", "Authenticated SMTP"] },
 
-    { "name": "goto the Email Security evidence drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/email" },
-    { "name": "EV11 -- the same template resolved to Email Security.", "action": "expect", "selector": "[data-testid='pv2-ev-heading']", "textContains": "Email Security" },
+    { "name": "goto the Email Security evidence drill-down.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/security/email", "sessionTag": "1430-email-live" },
+    { "name": "EV11 -- the same template resolved to Email Security.", "action": "expect", "selector": "[data-testid='pv2-ev-heading']", "textContains": "Email Security", "critical": true, "sessionTag": "1430-email-live" },
     { "name": "EV12 -- its Defender controls panel renders.", "action": "expect", "selector": "[data-testid='pv2-ev-secondary']", "textContains": ["Defender for Office 365 controls", "Safe Links"] },
     { "name": "EV-EMAIL-STATS-LIVE (#1430) -- REAL DATA (or an honest fixture fallback): the Email Security page's stat cards now overlay the tenant's real security.emailAuthFindingCount (exchange:dkim-spf-dmarc-status) via useSecEvidenceEmailLive as a prepended 'Open findings' card; this fourth, page-specific source marker reads 'live' once that check has genuinely run for the tenant, or 'fixture' as an honest fallback otherwise -- asserted present only, not a fixed dataState, since either is legitimate depending on whether the testbed tenant has a collected check.", "action": "expect", "selector": "[data-testid='pv2-ev-email-stats-source']", "state": "present", "sessionTag": "1430-email-live" },
     { "name": "EV-EMAIL-ROWS-HONEST (#1430) -- the fabricated 'Domains' evidence-row list (fictional tenant.com + invented SPF/DKIM/DMARC records) has no per-domain producer, so it is unconditionally cleared -- this asserts the honest no-data message renders in its place instead of fabricated tenant detail.", "action": "expect", "selector": "[data-testid='pv2-ev-rows-empty']", "textContains": "No live scan data available yet", "sessionTag": "1430-email-live" }
