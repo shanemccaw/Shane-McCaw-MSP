@@ -420,7 +420,11 @@ export default function PortalV2AlertPreferencesPage() {
               <button
                 type="button"
                 onClick={save}
-                disabled={!dirty || saving || loading}
+                // error blocks Save too (#1465): on a failed GET, `prefs` is still the
+                // ALERT_PREFS_SEED fixture, not this tenant's real backend state — an
+                // edit made against that fixture must not be allowed to PUT and
+                // silently overwrite the real stored preferences the load never showed.
+                disabled={!dirty || saving || loading || !!error}
                 data-testid="pv2-alert-save"
                 style={{
                   padding: "9px 18px",
