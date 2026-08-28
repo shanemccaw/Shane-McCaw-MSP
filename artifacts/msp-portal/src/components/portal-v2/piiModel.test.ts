@@ -1,15 +1,24 @@
 /**
- * piiModel.test.ts — pins the PII Governance derivations to the prototype.
+ * piiModel.test.ts — pins the PII Governance DESIGN FIXTURE's derivations to
+ * the prototype.
+ *
+ * ── This fixture is no longer live ───────────────────────────────────────
+ * `piiModel.ts`/`piiData.ts` describe the prototype's fictional per-document
+ * discovery scan. The real PII Governance page (`portal-v2-pii.tsx`) stopped
+ * reading this fixture once it was wired to real data, and neither does the
+ * nav badge (Git #1438) — both now run on `piiGovernanceWire.ts`'s real
+ * findings, via `usePiiExposedBadge`/`piiExposedBadge`, which have their own
+ * tests in `piiGovernanceWire.test.ts`. Nothing in production code imports
+ * this module any more; it is kept only as a pin on the design fixture's own
+ * internal arithmetic, in case a future part still reads `piiData.ts` for
+ * something (today that's only `PII_OWNER`/`PII_LINKS`, unrelated to these
+ * derivations).
  *
  * The fixture is a faithful transcription, so these assertions aim at the
  * computed values a reader checks by eye: the headline totals, the four stat
- * counts, and the finding filter. Two invariants matter most —
- *
- *   • the headline's "N files" is the SUM of every finding's file count, so a
- *     stat card that disagreed with the list beneath it would refute the page;
- *   • the nav badge the design hardcodes as "3 exposed" must equal the number of
- *     findings reachable from outside — otherwise the badge lies. The count is
- *     asserted here so the literal in portalV2Nav.ts stays honest.
+ * counts, and the finding filter. One invariant matters most — the headline's
+ * "N files" is the SUM of every finding's file count, so a stat card that
+ * disagreed with the list beneath it would refute the page.
  */
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
@@ -71,9 +80,10 @@ describe("pii stat counts", () => {
     );
   });
 
-  it("keeps the hardcoded '3 exposed' nav badge honest", () => {
-    // portalV2Nav.ts carries the design's literal badge "3 exposed"; it must
-    // equal the number of findings reachable from outside.
+  it("fixture's own reachable-outside count stays 3 (fixture-internal pin only — see file header)", () => {
+    // No longer wired to the nav badge (Git #1438) or anything else in
+    // production code; this just pins the design fixture's own arithmetic so
+    // a future edit to piiData.ts's fixture findings is a deliberate change.
     assert.equal(piiExposedCount(PII), 3);
   });
 });

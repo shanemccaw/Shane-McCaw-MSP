@@ -272,6 +272,8 @@ stale-lock recovery.
 | `bootstrap-server.mjs` | Create/launch the dedicated dev-server checkout. |
 | `link-deps.mjs` | Junction `node_modules` + `lib/*/dist` into a worktree (Windows recipe). |
 | `selftest.mjs` | Cross-process verification of the whole mechanism. |
+| `verify-branch-merged.mjs` | **Git #1447 Part 1** — `git merge-base --is-ancestor` check a session runs before writing a DONE bookend, to confirm its own branch actually landed on main (not just that the local worktree looks clean). |
+| `check-stranded-branches.mjs` | **Git #1447 Part 2** — sweeps every `agent/*` branch against main and reports which have commits main doesn't have ("stranded"). Deliberately separate from the worktree-lifecycle orphan sweep above — different question, different terminology. |
 
 ## Config knobs (env)
 

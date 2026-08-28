@@ -51,9 +51,32 @@ namespace BuildConsole.Services
         public List<string> OrphanedPaths { get; set; } = new();
     }
 
+    /// <summary>
+    /// Git #1447 Part 2. Distinct from <see cref="WorktreeHealth"/> — that checks
+    /// local worktree checkout lifecycle only; this checks whether `agent/*` branch
+    /// commits have actually landed on main. Deliberately different terminology
+    /// ("stranded" vs "orphaned") to avoid the exact conflation that caused #1447.
+    /// </summary>
+    public class StrandedBranchHealth
+    {
+        public int InspectedCount { get; set; }
+        public int StrandedCount { get; set; }
+        public int CleanCount { get; set; }
+        public string Summary { get; set; } = "0 stranded branches";
+        public string Details { get; set; } = string.Empty;
+        public List<string> StrandedBranches { get; set; } = new();
+    }
+
     public class SystemHealthReport
     {
         public DateTime CheckedAt { get; set; } = DateTime.Now;
+        // Note: StrandedBranches is deliberately NOT part of AllHealthy. Up to ~8
+        // concurrent agent sessions can be legitimately mid-flight at once (per
+        // CLAUDE.md worktree-isolation section) — every one of them is, by
+        // definition, "ahead of main" until it lands. That's normal, not a fault.
+        // The row still surfaces the real count so a genuinely stale/stranded
+        // branch doesn't go unnoticed; it just doesn't flip the overall pill red
+        // for ordinary concurrent work in progress.
         public bool AllHealthy => DevServer.IsHealthy &&
                                   Database.IsHealthy &&
                                   !Mutex.IsSuspicious &&
@@ -64,6 +87,7 @@ namespace BuildConsole.Services
         public ComponentHealth Database { get; set; } = new() { Name = "Local Database Pipe" };
         public MutexHealth Mutex { get; set; } = new();
         public WorktreeHealth OrphanedWorktrees { get; set; } = new();
+        public StrandedBranchHealth StrandedBranches { get; set; } = new();
         public ComponentHealth SshStaging { get; set; } = new() { Name = "Staging SSH" };
     }
 
@@ -92,14 +116,16 @@ namespace BuildConsole.Services
             var dbTask = CheckDatabaseAsync(api);
             var mutexTask = Task.Run(CheckMutexHealth);
             var worktreeTask = CheckWorktreesAsync();
+            var strandedBranchTask = CheckStrandedBranchesAsync();
             var sshTask = CheckSshStagingAsync();
 
-            await Task.WhenAll(devServerTask, dbTask, mutexTask, worktreeTask, sshTask);
+            await Task.WhenAll(devServerTask, dbTask, mutexTask, worktreeTask, strandedBranchTask, sshTask);
 
             report.DevServer = await devServerTask;
             report.Database = await dbTask;
             report.Mutex = await mutexTask;
             report.OrphanedWorktrees = await worktreeTask;
+            report.StrandedBranches = await strandedBranchTask;
             report.SshStaging = await sshTask;
 
             // Wire logging
@@ -107,7 +133,8 @@ namespace BuildConsole.Services
             ActivityLog.Log(LogChannel,
                 $"{overallPill} — DevServer: {report.DevServer.Status} ({report.DevServer.LatencyMs}ms) | " +
                 $"DB: {report.Database.Status} | Mutex: {report.Mutex.Summary} | " +
-                $"Worktrees: {report.OrphanedWorktrees.Summary} | SSH: {report.SshStaging.Status}");
+                $"Worktrees: {report.OrphanedWorktrees.Summary} | StrandedBranches: {report.StrandedBranches.Summary} | " +
+                $"SSH: {report.SshStaging.Status}");
 
             return report;
         }
@@ -318,6 +345,58 @@ namespace BuildConsole.Services
             }
 
             return w;
+        }
+
+        /// <summary>
+        /// Git #1447 Part 2. Real branch-vs-main sweep, distinct from
+        /// <see cref="CheckWorktreesAsync"/>'s local-worktree-lifecycle check.
+        /// </summary>
+        public static async Task<StrandedBranchHealth> CheckStrandedBranchesAsync()
+        {
+            var s = new StrandedBranchHealth();
+            try
+            {
+                var sweepRes = await StrandedBranchService.SweepStrandedBranchesAsync();
+                if (sweepRes.Ok)
+                {
+                    s.InspectedCount = sweepRes.InspectedCount;
+                    s.StrandedCount = sweepRes.StrandedCount;
+                    s.CleanCount = sweepRes.CleanCount;
+                    s.StrandedBranches = sweepRes.Stranded.ConvertAll(b => b.Branch);
+
+                    if (s.StrandedCount > 0)
+                    {
+                        s.Summary = $"⚠️ {s.StrandedCount} branch(es) ahead of main, not merged";
+                        var lines = new List<string>();
+                        foreach (var b in sweepRes.Stranded)
+                        {
+                            lines.Add(b.Error != null
+                                ? $"{b.Branch} ({b.HeadSha[..Math.Min(8, b.HeadSha.Length)]}) — ERROR: {b.Error}"
+                                : $"{b.Branch} ({b.HeadSha[..Math.Min(8, b.HeadSha.Length)]}) — {b.AheadCount} commit(s) ahead, last commit {b.LastCommitDate}");
+                        }
+                        s.Details = $"Inspected {s.InspectedCount} agent/* branch(es).\n" +
+                                    $"Found {s.StrandedCount} branch(es) with commits main does not have — real unmerged work, not just a stale local checkout.\n" +
+                                    $"{s.CleanCount} branch(es) fully merged into main.\n\nStranded:\n" + string.Join("\n", lines);
+                    }
+                    else
+                    {
+                        s.Summary = $"🟢 0 stranded branches ({s.CleanCount} merged)";
+                        s.Details = $"Inspected {s.InspectedCount} agent/* branch(es). All are ancestors of main.";
+                    }
+                }
+                else
+                {
+                    s.Summary = $"Check error: {sweepRes.Error ?? "failed"}";
+                    s.Details = sweepRes.Error ?? "Unknown error running stranded-branch sweep";
+                }
+            }
+            catch (Exception ex)
+            {
+                s.Summary = $"Error: {ex.Message}";
+                s.Details = ex.ToString();
+            }
+
+            return s;
         }
 
         public static async Task<ComponentHealth> CheckSshStagingAsync()

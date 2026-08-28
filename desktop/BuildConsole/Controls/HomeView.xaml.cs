@@ -912,7 +912,18 @@ namespace BuildConsole.Controls
                 BtnCleanWorktrees.Visibility = Visibility.Collapsed;
             }
 
-            // 5. Staging SSH
+            // 5. Stranded Branches (Git #1447 — distinct from Worktrees above)
+            StrandedBranchesSummaryText.Text = report.StrandedBranches.Summary;
+            if (report.StrandedBranches.StrandedCount > 0)
+            {
+                SetStatusBadge(StrandedBranchesStatusBadge, StrandedBranchesBadgeText, HealthStatus.Degraded, $"{report.StrandedBranches.StrandedCount} STRANDED");
+            }
+            else
+            {
+                SetStatusBadge(StrandedBranchesStatusBadge, StrandedBranchesBadgeText, HealthStatus.Healthy, "CLEAN");
+            }
+
+            // 6. Staging SSH
             SshSummaryText.Text = report.SshStaging.Summary;
             SetStatusBadge(SshStatusBadge, SshBadgeText, report.SshStaging.Status,
                 report.SshStaging.Status == HealthStatus.Healthy ? $"{report.SshStaging.LatencyMs}ms" : "");
@@ -1021,6 +1032,13 @@ namespace BuildConsole.Controls
                               $"Active / Retained: {_lastHealthReport.OrphanedWorktrees.ActiveCount}\n" +
                               $"Orphaned: {_lastHealthReport.OrphanedWorktrees.OrphanedCount}\n" +
                               $"{_lastHealthReport.OrphanedWorktrees.Details}";
+                    break;
+                case "StrandedBranches":
+                    title = "STRANDED BRANCHES (VS MAIN) DIAGNOSTICS";
+                    details = $"Inspected: {_lastHealthReport.StrandedBranches.InspectedCount}\n" +
+                              $"Clean / Merged: {_lastHealthReport.StrandedBranches.CleanCount}\n" +
+                              $"Stranded: {_lastHealthReport.StrandedBranches.StrandedCount}\n" +
+                              $"{_lastHealthReport.StrandedBranches.Details}";
                     break;
                 case "Ssh":
                     title = "STAGING (REPLIT SSH) DIAGNOSTICS";

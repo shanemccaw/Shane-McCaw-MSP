@@ -3306,6 +3306,7 @@ namespace BuildConsole
             if (_usageMeter == null) return;
             BtnUsageRefresh.IsEnabled = false;
             BtnWeeklyUsageRefresh.IsEnabled = false;
+            BtnSecondaryWeeklyUsageRefresh.IsEnabled = false;
             try
             {
                 await _usageMeter.ManualRefreshAsync();
@@ -3314,14 +3315,19 @@ namespace BuildConsole
             {
                 BtnUsageRefresh.IsEnabled = true;
                 BtnWeeklyUsageRefresh.IsEnabled = true;
+                BtnSecondaryWeeklyUsageRefresh.IsEnabled = true;
             }
         }
 
+        /// <summary>Shared by both the Primary and Secondary weekly refresh icons — a single
+        /// ManualRefreshAsync polls both accounts in the same cycle (see PollSecondaryAsync inside
+        /// ClaudeUsageMeterService.TickAsync, Git #1437), so either button refreshes both meters.</summary>
         private async void BtnWeeklyUsageRefresh_Click(object sender, RoutedEventArgs e)
         {
             if (_usageMeter == null) return;
             BtnUsageRefresh.IsEnabled = false;
             BtnWeeklyUsageRefresh.IsEnabled = false;
+            BtnSecondaryWeeklyUsageRefresh.IsEnabled = false;
             try
             {
                 await _usageMeter.ManualRefreshAsync();
@@ -3330,6 +3336,7 @@ namespace BuildConsole
             {
                 BtnUsageRefresh.IsEnabled = true;
                 BtnWeeklyUsageRefresh.IsEnabled = true;
+                BtnSecondaryWeeklyUsageRefresh.IsEnabled = true;
             }
         }
 
@@ -3357,6 +3364,23 @@ namespace BuildConsole
             WeeklyUsageDot.Fill = dotBrush;
             WeeklyUsageStatusText.Text = status.WeeklyDisplayText;
             WeeklyUsageStatusText.ToolTip = status.WeeklyToolTip;
+
+            // Git #1437 — Secondary account's dot/text/tooltip are driven entirely by its own
+            // independent SecondaryState/SecondaryWeeklyDisplayText/SecondaryWeeklyToolTip, never
+            // by the Primary dotBrush/DisplayText above — the two meters must be able to disagree
+            // (e.g. Primary at 96% while Secondary still has headroom).
+            Brush secondaryDotBrush = !status.SecondaryConfigured
+                ? (Brush)FindResource("Surface2Brush")
+                : status.SecondaryState switch
+                {
+                    BuildConsole.Services.ClaudeUsageMeterState.Ok => DotReady,
+                    BuildConsole.Services.ClaudeUsageMeterState.Polling => DotLoading,
+                    BuildConsole.Services.ClaudeUsageMeterState.Error => DotError,
+                    _ => (Brush)FindResource("Surface2Brush"), // Unavailable / not configured — muted
+                };
+            SecondaryWeeklyUsageDot.Fill = secondaryDotBrush;
+            SecondaryWeeklyUsageStatusText.Text = status.SecondaryWeeklyDisplayText;
+            SecondaryWeeklyUsageStatusText.ToolTip = status.SecondaryWeeklyToolTip;
 
             // Feed the SAME real meter reading into the startup splash's "Claude usage"
             // row (no-op once that row has already settled — the meter keeps polling for
