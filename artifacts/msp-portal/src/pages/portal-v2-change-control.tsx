@@ -118,10 +118,15 @@ function StatsBand({ ctrl }: { ctrl: CcController }) {
   const wireStats = ctrl.wireStats();
   const waiting = all.filter((c) => /Awaiting|retro/.test(c.state)).length;
   const incomplete = all.filter((c) => (c.missing || []).length).length;
-  // The freeze calendar itself has no backing table (see useChangeControl.ts's
-  // header) so it always renders CC_FREEZE, but whether anything COLLIDES with
-  // it must come from the same live-aware set the register/briefing already
-  // use rather than a fixture code (`CR-0142`) that a live tenant will not have.
+  // NO-BACKEND-TO-WIRE: no freeze-window table exists (see useChangeControl.ts's
+  // header), so CC_FREEZE ("ERP go-live freeze", 24-28 Aug, Halden Materials) is
+  // always a fixture — never a live tenant's real declared freeze. Whether
+  // anything COLLIDES with it comes from the same live-aware set the
+  // register/briefing already use rather than a fixture code (`CR-0142`) that a
+  // live tenant will not have, so `freezeClash`/`freezeSet` are honest either
+  // way; only the label/value text below needed the same live/fixture split
+  // CalendarView, ReviewView and SettingsView already give this same gap
+  // (Git #1364) — added here to close that gap on the stat card itself.
   const freezeSet = sets.freeze || [];
   const freezeClash = freezeSet.length > 0 && !s.freezeException;
 
@@ -173,7 +178,15 @@ function StatsBand({ ctrl }: { ctrl: CcController }) {
       sub: isLive ? heldCount + " held · " + rolledBackCount + " rolled back" : "6 held · 1 rolled back",
       tone: "#34d399",
     },
-    { key: "freeze", label: "Change freeze", value: "24–28 Aug", sub: CC_FREEZE.label + (freezeClash ? " · " + freezeSet.length + (freezeSet.length === 1 ? " change collides" : " changes collide") : " · clear"), tone: "#f87171" },
+    {
+      key: "freeze",
+      label: "Change freeze",
+      value: isLive ? "None declared" : "24–28 Aug",
+      sub: isLive
+        ? "No freeze declared for your tenant."
+        : CC_FREEZE.label + (freezeClash ? " · " + freezeSet.length + (freezeSet.length === 1 ? " change collides" : " changes collide") : " · clear"),
+      tone: "#f87171",
+    },
   ];
   const SF = s.statFilter;
 
@@ -183,7 +196,7 @@ function StatsBand({ ctrl }: { ctrl: CcController }) {
     incomplete: "Required sections are empty, so these cannot be approved or given a window.",
     scheduled: "Windows already agreed. Anything that collides with the freeze is marked.",
     closed: "Deployed in the last 30 days, with what held and what did not.",
-    freeze: CC_FREEZE.label + ". Nothing may change inside it without a granted exception.",
+    freeze: isLive ? "No freeze declared for your tenant." : CC_FREEZE.label + ". Nothing may change inside it without a granted exception.",
   };
   const decByCode: Record<string, (typeof CC_DECISIONS)[number]> = {};
   CC_DECISIONS.forEach((d) => (decByCode[d.code] = d));
@@ -340,7 +353,11 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
   const sets = ctrl.statSets();
   const FZ = CC_FREEZE;
 
-  const isFz = (d: number) => d >= FZ.from && d <= FZ.to;
+  // isLive guard: FZ.from/FZ.to are the fixture freeze's fixed days (24-28,
+  // see the NO-BACKEND-TO-WIRE note on the banner below) — striping the
+  // timeline for those days on a live tenant would draw a freeze that was
+  // never declared, so the whole-day striping only fires in fixture mode.
+  const isFz = (d: number) => !isLive && d >= FZ.from && d <= FZ.to;
   const fzStripe =
     "repeating-linear-gradient(135deg,rgba(248,113,113,.20),rgba(248,113,113,.20) 5px,rgba(248,113,113,.06) 5px,rgba(248,113,113,.06) 10px)";
   const dayBg = (d: number) =>
@@ -492,6 +509,14 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
           };
     });
 
+  // NO-BACKEND-TO-WIRE: no live Microsoft Message Center feed is wired into
+  // Change Control (`useMessageCenter.ts` powers a different page's real MC
+  // feed; this module's CC_MSC is a standalone, hand-written fixture pair —
+  // "MC1049877"/"MC1051144" — tied to the fictional Halden Materials freeze).
+  // Rendering it as fact on a live tenant is the same class of leak Git #1364
+  // fixed elsewhere on this page, so these rows/cards/tray entries are
+  // filtered out entirely on a live tenant rather than shown as invented
+  // Microsoft changes; wiring the real feed in is separate future work.
   const msRows = CC_MSC.map((m) => {
     const g = CC_MSG[m.id];
     const dim = !!s.focusCode && s.focusCode !== m.id;
@@ -552,12 +577,18 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
       phaseLabelCss: "font-size:9.5px;font-weight:600;color:" + m.tone + ";overflow:hidden;text-overflow:ellipsis;white-space:nowrap",
       go: () => ctrl.patch({ focusCode: s.focusCode === m.id ? null : m.id }),
     };
-  }).filter((r) => matchSF(r.code, SF));
+  }).filter((r) => matchSF(r.code, SF) && !isLive);
 
-  const trayDefs = [
-    { code: "CR-0136", label: "Rolled back 6 August, 11 hours after deployment", tone: "#f87171", go: () => ctrl.patch({ focusCode: s.focusCode === "CR-0136" ? null : "CR-0136" }) },
-    { code: CC_MSC_TRAY.id, label: CC_MSC_TRAY.label, tone: CC_MSC_TRAY.tone, go: () => ctrl.t("MC1042318 lands 1 October. CR-0142 is how you get in front of it — that is why the CR exists.") },
-  ];
+  // Both tray entries are fixture-only too: CR-0136 is the design's own
+  // rolled-back worked example (a live tenant's real rolled-back CRs already
+  // surface through the register/stat cards) and CC_MSC_TRAY is the same
+  // unwired Microsoft Message Center fixture as msRows/msCards above.
+  const trayDefs = isLive
+    ? []
+    : [
+        { code: "CR-0136", label: "Rolled back 6 August, 11 hours after deployment", tone: "#f87171", go: () => ctrl.patch({ focusCode: s.focusCode === "CR-0136" ? null : "CR-0136" }) },
+        { code: CC_MSC_TRAY.id, label: CC_MSC_TRAY.label, tone: CC_MSC_TRAY.tone, go: () => ctrl.t("MC1042318 lands 1 October. CR-0142 is how you get in front of it — that is why the CR exists.") },
+      ];
   const tray = trayDefs.filter((tD) => matchSF(tD.code, SF));
 
   const fzClashes = order.filter((c) => stateInFreeze(c, s.movedOv) && !s.freezeException);
@@ -700,7 +731,7 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
     ].map((a) => ({ label: a.label, go: a.go, css: "padding:8px 13px;border-radius:7px;font-size:11.5px;font-weight:700;font-family:inherit;white-space:nowrap;cursor:pointer;border:1px solid " + a.border + ";background:" + a.bg + ";color:" + a.tone })),
   }));
 
-  const merged = briefCards.concat(msCards).sort((a, b) => CC_CARD_ORDER.indexOf(a.code) - CC_CARD_ORDER.indexOf(b.code));
+  const merged = briefCards.concat(isLive ? [] : msCards).sort((a, b) => CC_CARD_ORDER.indexOf(a.code) - CC_CARD_ORDER.indexOf(b.code));
   const briefGroups: { label: string; sub: string; cards: FocusCard[] }[] = [];
   merged
     .filter((c) => s.focusCode && c.code === s.focusCode)
@@ -730,7 +761,19 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
           </div>
         </div>
 
-        {/* Change freeze — collapsible */}
+        {/* Change freeze — collapsible.
+            NO-BACKEND-TO-WIRE: no freeze-window table exists, so FZ (CC_FREEZE)
+            is always the design's fixture ("ERP go-live freeze", Halden
+            Materials, MC1051144). On a live tenant this banner would otherwise
+            state a fictional freeze as fact, the same class of leak Git #1364
+            fixed for the calendar/review/notif views — so it collapses to a
+            single honest line instead. */}
+        {isLive ? (
+          <div style={css("display:flex;align-items:center;gap:10px;padding:9px 13px;border:1px solid rgba(30,41,59,.9);border-left:3px solid #475569;border-radius:10px;background:rgba(2,6,23,.45)")} data-testid="cc-freeze-toggle">
+            <span style={css("font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#64748b;white-space:nowrap")}>Change freeze</span>
+            <span style={css("font-size:11.5px;color:#94a3b8")}>No freeze declared for your tenant.</span>
+          </div>
+        ) : (
         <div style={css("display:flex;flex-direction:column;gap:0;border:1px solid rgba(30,41,59,.9);border-left:3px solid #f87171;border-radius:10px;background:rgba(2,6,23,.45);overflow:hidden")}>
           <button onClick={() => ctrl.patch({ freezeOpen: !s.freezeOpen })} style={css("display:flex;align-items:center;gap:10px;padding:9px 13px;border:none;background:transparent;cursor:pointer;font-family:inherit;text-align:left;width:100%;min-width:0")} data-testid="cc-freeze-toggle">
             <span style={css("flex:0 0 auto;display:flex;gap:2px")}>
@@ -769,6 +812,7 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
             </div>
           )}
         </div>
+        )}
 
         {/* The timeline */}
         <div style={css("display:flex;flex-direction:column;gap:0")}>
@@ -839,8 +883,15 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
           ))}
         </div>
 
-        {/* Microsoft rows */}
-        <div style={css("display:flex;flex-direction:column;gap:0")}>
+        {/* Microsoft rows.
+            NO-BACKEND-TO-WIRE: no live Message Center feed is wired here (see
+            the note on msRows above) — msRows is always [] when live, and the
+            section header itself ("Message Center items landing in this
+            window") claims real coverage, so the whole section is hidden on a
+            live tenant rather than shown empty with a misleading "no match"
+            line. */}
+        {!isLive && (
+        <div data-testid="cc-ms-section" style={css("display:flex;flex-direction:column;gap:0")}>
           <div style={css("display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;padding:12px 0 7px;border-top:1px solid rgba(30,41,59,.9)")}>
             <span style={css("font-size:9.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#f87171")}>Microsoft · not yours to approve</span>
             <span style={css("font-size:11px;color:#64748b")}>Message Center items landing in this window. Microsoft does not observe your freeze, your change policy or your blackout.</span>
@@ -872,9 +923,15 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
             </div>
           ))}
         </div>
+        )}
 
-        {/* Collisions */}
-        <div style={css("display:flex;flex-direction:column;gap:9px;padding-top:12px;border-top:1px solid rgba(30,41,59,.7)")}>
+        {/* Collisions.
+            NO-BACKEND-TO-WIRE: no collision-detection table/logic exists —
+            CC_CONFLICTS is two hand-written pairs of fixture CR/MC codes
+            ("CR-0136 retry" ⇄ "MC1049877", etc), always fictional. Hidden on a
+            live tenant rather than shown as fact. */}
+        {!isLive && (
+        <div data-testid="cc-collisions-section" style={css("display:flex;flex-direction:column;gap:9px;padding-top:12px;border-top:1px solid rgba(30,41,59,.7)")}>
           <div style={css("display:flex;align-items:baseline;gap:10px;flex-wrap:wrap")}>
             <span style={css("font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#fbbf24")}>Collisions detected</span>
             <span style={css("font-size:11px;color:#64748b")}>Two changes aimed at the same surface inside a fortnight. Order matters, and neither record knows about the other.</span>
@@ -892,9 +949,13 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
             ))}
           </div>
         </div>
+        )}
 
-        {/* Off the timeline */}
-        <div style={css("display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(30,41,59,.7)")}>
+        {/* Off the timeline — both entries are fixture-only (see trayDefs
+            above), so this whole strip only has anything to say in fixture
+            mode; tray is always [] on a live tenant. */}
+        {tray.length > 0 && (
+        <div data-testid="cc-off-timeline" style={css("display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:10px;border-top:1px solid rgba(30,41,59,.7)")}>
           <span style={css("font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#475569")}>Off the timeline</span>
           {tray.map((tD) => (
             <button key={tD.code} onClick={tD.go} style={css("display:flex;align-items:center;gap:9px;padding:7px 11px;border-radius:7px;border:1px solid " + tD.tone + "3d;background:" + tD.tone + "0f;cursor:pointer;font-family:inherit;text-align:left")}>
@@ -903,6 +964,7 @@ function BriefingView({ ctrl }: { ctrl: CcController }) {
             </button>
           ))}
         </div>
+        )}
       </div>
 
       {!s.focusCode && (
@@ -1177,6 +1239,28 @@ function openExportForm(ctrl: CcController) {
 
 function CatalogueView({ ctrl }: { ctrl: CcController }) {
   const { s } = ctrl;
+  // NO-BACKEND-TO-WIRE: no standard-change-catalogue table exists — a grep of
+  // lib/db/src/schema/msp.ts finds no catalogue table, so `CC_CATALOGUE` (24
+  // pre-approved standard changes, each with an invented "N raised in 30 days"
+  // run count) is always the design's fixture. Rendering that fabricated usage
+  // history on a real, scoped tenant is the same class of leak #1342 and
+  // Git #1364 already fixed for the freeze calendar and the change review — so
+  // on a LIVE tenant this view shows the honest no-data state instead, and the
+  // fixture worked example stays only in fixture/demo mode.
+  if (ctrl.dataState === "live") {
+    return (
+      <div style={css("display:flex;flex-direction:column;gap:14px")} data-testid="cc-view-catalogue">
+        <div style={css("display:flex;flex-direction:column;gap:5px;max-width:80ch")}>
+          <span style={css("font-size:15px;font-weight:800;color:#f8fafc;letter-spacing:-.01em")}>Standard changes</span>
+        </div>
+        <NoScanDataState
+          testId="cc-catalogue-no-data"
+          label="No standard-change catalogue available"
+          detail="Pre-approved standard changes aren't tracked for your tenant yet. No example catalogue is shown."
+        />
+      </div>
+    );
+  }
   const catQ = (s.catQ || "").trim().toLowerCase();
   const catCat = s.catCat || "All";
   const cats = ["All", ...CC_CATS].map((k) => {
@@ -1318,7 +1402,8 @@ function openPromoteForm(ctrl: CcController) {
 
 function CalendarView({ ctrl }: { ctrl: CcController }) {
   const { s } = ctrl;
-  // The freeze calendar has NO backing table — a grep of lib/db/src/schema/msp.ts
+  // NO-BACKEND-TO-WIRE: no freeze-window table exists. The freeze calendar has
+  // NO backing table — a grep of lib/db/src/schema/msp.ts
   // finds no freeze-window table, so `ctrl.freezes()` only ever returns the
   // design's fixture freezes ("ERP go-live freeze", owner "Priya Raman · Halden
   // Materials IT Director", etc). Rendering that fictional worked example on a
@@ -1523,7 +1608,8 @@ function openFreezeCancelForm(ctrl: CcController, fi: number) {
 /* ── Review: the change review (CAB) ───────────────────────────────────────── */
 
 function ReviewView({ ctrl }: { ctrl: CcController }) {
-  // The change review (CAB) has NO backing table — `CC_CAB` (next meeting,
+  // NO-BACKEND-TO-WIRE: no CAB/change-review-agenda table exists. The change
+  // review (CAB) has NO backing table — `CC_CAB` (next meeting,
   // attendees "Priya Raman · Dana Whitlock · Marcus Bell", last review decisions)
   // and `ctrl.agenda()` only ever return the design's fixtures. On a real, scoped
   // tenant that fictional agenda/roster is a leak, so we show the honest no-data
@@ -2306,7 +2392,8 @@ const NOTIF_GRID = "minmax(200px,1.6fr) minmax(130px,1fr) minmax(150px,1fr) minm
 function SettingsView({ ctrl }: { ctrl: CcController }) {
   const notif = ctrl.notif();
   const FZ = CC_FREEZE;
-  // The notification rules and the freeze itself have NO backing table — `notif`
+  // NO-BACKEND-TO-WIRE: no notification-rule table or freeze-window table
+  // exists. The notification rules and the freeze itself have NO backing table — `notif`
   // only ever returns the design's fixture rules (all to "Priya Raman"), and the
   // "Active freeze" field below is `CC_FREEZE` ("ERP go-live freeze"), fictional
   // to the Halden worked example. On a real, scoped tenant both are a leak, so on
