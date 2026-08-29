@@ -56,18 +56,24 @@ namespace BuildConsole
         /// clicking the body invokes it (on the UI thread) and dismisses the toast — used by the Test
         /// Runner's "run needs attention" toast to restore the window / open the review dialog.
         /// </summary>
-        public static void Show(string title, string message, ToastKind kind = ToastKind.Info, TimeSpan? duration = null, Action? onClick = null)
+        public static void Show(string title, string message, ToastKind kind = ToastKind.Info, TimeSpan? duration = null, Action? onClick = null, bool persistent = false)
         {
             var app = Application.Current;
             if (app?.Dispatcher == null) return; // no live WPF app (headless / teardown) — nothing to show
 
             if (app.Dispatcher.CheckAccess())
-                ShowCore(title, message, kind, duration, onClick);
+                ShowCore(title, message, kind, duration, onClick, persistent);
             else
-                app.Dispatcher.BeginInvoke(new Action(() => ShowCore(title, message, kind, duration, onClick)));
+                app.Dispatcher.BeginInvoke(new Action(() => ShowCore(title, message, kind, duration, onClick, persistent)));
         }
 
-        private static void ShowCore(string title, string message, ToastKind kind, TimeSpan? duration, Action? onClick)
+        /// <summary>Git #1636 — a genuinely persistent toast: no auto-dismiss timer runs at all, so
+        /// it stays on screen until Shane clicks its ✕. Used for the Priority Build Set completion
+        /// notification, which must not be missed the way a normal 5-9s toast could be.</summary>
+        public static void ShowPersistent(string title, string message, ToastKind kind = ToastKind.Success, Action? onClick = null)
+            => Show(title, message, kind, duration: null, onClick: onClick, persistent: true);
+
+        private static void ShowCore(string title, string message, ToastKind kind, TimeSpan? duration, Action? onClick, bool persistent = false)
         {
             try
             {
@@ -90,7 +96,7 @@ namespace BuildConsole
                     _host = host;
                 }
 
-                host.AddToast(title ?? "", message ?? "", kind, duration ?? DefaultDuration(kind), onClick);
+                host.AddToast(title ?? "", message ?? "", kind, duration ?? DefaultDuration(kind), onClick, persistent);
             }
             catch
             {

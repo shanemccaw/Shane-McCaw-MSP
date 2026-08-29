@@ -510,6 +510,7 @@ namespace BuildConsole
             BuildQueuePanel.NewBuildPasteRequested += async (s, e) => await OpenBuildPromptDialogAsync("", null);
             BuildQueuePanel.IssueChatRequested += (s, githubNumber) => OpenChatForIssue(githubNumber);
             BuildQueuePanel.QueueItemChatRequested += (s, item) => OpenChatForQueueItem(item);
+            BuildQueuePanel.BuildSetPriorityCompleted += (s, e) => OnBuildSetPriorityCompleted(e);
             BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
             BuildQueuePanel.FullGitRefreshRequested += (s, e) =>
             {
@@ -2494,7 +2495,11 @@ namespace BuildConsole
             return wv;
         }
 
-        public void OpenChatTab(BuildConsole.Services.BoardChat chat, int? githubNumber)
+        /// <param name="selectTab">Git #1636 — false opens/creates the tab as a background tab:
+        /// added to <see cref="EditorTabs"/>.Items but never assigned to SelectedItem, and an
+        /// already-open match is left focused wherever it currently is. Defaults true so every
+        /// pre-existing caller keeps today's always-select behavior unchanged.</param>
+        public void OpenChatTab(BuildConsole.Services.BoardChat chat, int? githubNumber, bool selectTab = true)
         {
             // Dedupe on the chat's own id, not the URL - a chat's ClaudeUrl
             // doesn't change, so this is equivalent, but keeps the intent clear.
@@ -2503,7 +2508,7 @@ namespace BuildConsole
                 if (kvp.Key.Tag is BuildConsole.Services.BoardChat existing &&
                     existing.ConversationId == chat.ConversationId)
                 {
-                    EditorTabs.SelectedItem = kvp.Key;
+                    if (selectTab) EditorTabs.SelectedItem = kvp.Key;
                     return;
                 }
             }
@@ -2618,7 +2623,7 @@ namespace BuildConsole
             AttachTabContextMenu(newTab, EditorTabs);
             AttachTabDragHandlers(newTab);
             EditorTabs.Items.Add(newTab);
-            EditorTabs.SelectedItem = newTab;
+            if (selectTab) EditorTabs.SelectedItem = newTab;
             PersistOpenChatTabs(); // Git #874 — remember this chat (BoardChat identity + pane) for next launch's Home roll-up
         }
 
@@ -2850,7 +2855,12 @@ namespace BuildConsole
             OpenChatTab(chat, githubNumber);
         }
 
-        private void OpenChatForQueueItem(BuildConsole.Services.QueueItem item)
+        /// <param name="selectTab">Git #1636 — when false, a newly-created tab is added to
+        /// <see cref="EditorTabs"/> but never focused, and an already-open tab is left exactly
+        /// where it is (not jumped to) — the "background tab, never navigating away" behavior the
+        /// Priority Build Set completion toast's chat link needs. Every existing caller omits this
+        /// and keeps the original always-select behavior.</param>
+        private void OpenChatForQueueItem(BuildConsole.Services.QueueItem item, bool selectTab = true)
         {
             // 0. Try resolving by OriginatingChatId
             if (!string.IsNullOrWhiteSpace(item.OriginatingChatId))
@@ -2859,7 +2869,7 @@ namespace BuildConsole
                     string.Equals(c.ConversationId, item.OriginatingChatId, StringComparison.OrdinalIgnoreCase));
                 if (matchByConv != null)
                 {
-                    OpenChatTab(matchByConv, item.GithubNumber ?? matchByConv.IssueGithubNumber);
+                    OpenChatTab(matchByConv, item.GithubNumber ?? matchByConv.IssueGithubNumber, selectTab);
                     return;
                 }
             }
@@ -2873,7 +2883,7 @@ namespace BuildConsole
 
             if (!string.IsNullOrWhiteSpace(url))
             {
-                OpenChatUrl(url, item.Title, item.GithubNumber);
+                OpenChatUrl(url, item.Title, item.GithubNumber, selectTab);
                 return;
             }
 
@@ -2883,7 +2893,7 @@ namespace BuildConsole
                 var chat = LeftSidebar.FindChatForIssue(item.GithubNumber.Value);
                 if (chat != null)
                 {
-                    OpenChatTab(chat, item.GithubNumber.Value);
+                    OpenChatTab(chat, item.GithubNumber.Value, selectTab);
                     return;
                 }
             }
@@ -2894,27 +2904,54 @@ namespace BuildConsole
                 (!string.IsNullOrEmpty(c.Title) && item.Title.Contains(c.Title, StringComparison.OrdinalIgnoreCase)));
             if (fallbackChat != null)
             {
-                OpenChatTab(fallbackChat, item.GithubNumber ?? fallbackChat.IssueGithubNumber);
+                OpenChatTab(fallbackChat, item.GithubNumber ?? fallbackChat.IssueGithubNumber, selectTab);
                 return;
             }
 
             ToastEngine.Warning("Open Chat", $"No Claude chat found for build '{item.Title}'.");
         }
 
-        public void OpenChatUrl(string url, string? title = null, int? githubNumber = null)
+        /// <summary>Git #1636 — resolves and opens the given build set's most-recently-active
+        /// chat's tab in the background (never selecting it / never navigating Shane away from
+        /// whatever he's currently looking at). "Most recently active" = the member with the
+        /// latest UpdatedAt, per the issue's stated assumption for sets spanning several chats.</summary>
+        public void OpenBuildSetChatInBackground(IReadOnlyList<BuildConsole.Services.QueueItem> members)
+        {
+            var candidate = members
+                .OrderByDescending(i => i.UpdatedAt ?? DateTimeOffset.MinValue)
+                .FirstOrDefault();
+            if (candidate == null) return;
+            OpenChatForQueueItem(candidate, selectTab: false);
+        }
+
+        private void OnBuildSetPriorityCompleted(BuildConsole.Controls.BuildSetPriorityCompletedEventArgs e)
+        {
+            ToastEngine.ShowPersistent(
+                "⭐ Priority build set finished",
+                $"“{e.BuildSetName}” — every build has reached a terminal state. Click to open its chat.",
+                ToastKind.Success,
+                onClick: () => OpenBuildSetChatInBackground(e.Items));
+        }
+
+        public void OpenChatUrl(string url, string? title = null, int? githubNumber = null, bool selectTab = true)
         {
             if (string.IsNullOrWhiteSpace(url)) return;
             url = url.Trim();
             string convId = ExtractConversationId(url);
 
-            // 1. If tab is already open in any pane, activate and focus it
+            // 1. If tab is already open in any pane, activate and focus it (unless selectTab is
+            // false — Git #1636's background-tab open must leave an already-open tab right where
+            // it is too, not just skip re-selecting a freshly-created one).
             foreach (var kvp in _chatTabs)
             {
                 if (kvp.Key.Tag is BuildConsole.Services.BoardChat existing &&
                     (existing.ConversationId == convId || (!string.IsNullOrEmpty(existing.ClaudeUrl) && existing.ClaudeUrl.TrimEnd('/') == url.TrimEnd('/'))))
                 {
-                    var parentTabControl = kvp.Key.Parent as TabControl ?? EditorTabs;
-                    parentTabControl.SelectedItem = kvp.Key;
+                    if (selectTab)
+                    {
+                        var parentTabControl = kvp.Key.Parent as TabControl ?? EditorTabs;
+                        parentTabControl.SelectedItem = kvp.Key;
+                    }
                     return;
                 }
             }
@@ -2923,7 +2960,7 @@ namespace BuildConsole
             var knownChat = LeftSidebar.CurrentBoardChats?.FirstOrDefault(c => c.ConversationId == convId || (!string.IsNullOrEmpty(c.ClaudeUrl) && c.ClaudeUrl.TrimEnd('/') == url.TrimEnd('/')));
             if (knownChat != null)
             {
-                OpenChatTab(knownChat, githubNumber ?? knownChat.IssueGithubNumber);
+                OpenChatTab(knownChat, githubNumber ?? knownChat.IssueGithubNumber, selectTab);
                 return;
             }
 
@@ -2935,7 +2972,7 @@ namespace BuildConsole
                 ClaudeUrl = url,
                 IssueGithubNumber = githubNumber
             };
-            OpenChatTab(newChat, githubNumber);
+            OpenChatTab(newChat, githubNumber, selectTab);
         }
 
         private static string ExtractConversationId(string url)

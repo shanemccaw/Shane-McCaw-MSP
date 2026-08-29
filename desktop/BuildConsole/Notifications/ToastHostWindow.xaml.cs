@@ -51,10 +51,12 @@ namespace BuildConsole
         }
 
         /// <summary>Adds a new toast to the bottom of the stack, showing the host if hidden.
-        /// <paramref name="onClick"/>, when supplied, makes the card body clickable (see <see cref="ToastCard"/>).</summary>
-        public void AddToast(string title, string message, ToastKind kind, TimeSpan duration, Action? onClick = null)
+        /// <paramref name="onClick"/>, when supplied, makes the card body clickable (see <see cref="ToastCard"/>).
+        /// <paramref name="persistent"/> (Git #1636) suppresses auto-dismiss entirely — only the
+        /// card's own ✕ button (or a self-dismissing <paramref name="onClick"/>) can close it.</summary>
+        public void AddToast(string title, string message, ToastKind kind, TimeSpan duration, Action? onClick = null, bool persistent = false)
         {
-            var card = new ToastCard(title, message, kind, duration, onClick);
+            var card = new ToastCard(title, message, kind, duration, onClick, persistent);
             card.Dismissed += (_, _) => RemoveCard(card);
             ToastStack.Children.Add(card);
 

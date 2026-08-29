@@ -26,6 +26,21 @@ namespace BuildConsole.Controls
         public int? ExitCode { get; set; }
     }
 
+    /// <summary>Git #1636 — every item of a Priority build set has just reached a terminal state
+    /// for the first time. Carries the build-set name and the full member list (so the subscriber
+    /// can resolve "that build set's chat" itself) for the completion toast.</summary>
+    public sealed class BuildSetPriorityCompletedEventArgs : EventArgs
+    {
+        public string BuildSetName { get; }
+        public IReadOnlyList<QueueItem> Items { get; }
+
+        public BuildSetPriorityCompletedEventArgs(string buildSetName, IReadOnlyList<QueueItem> items)
+        {
+            BuildSetName = buildSetName;
+            Items = items;
+        }
+    }
+
     /// <summary>
     /// Build Queue panel — visual DAG redesign (#860 reference):
     /// Reads live queue state (GET /extension/queue) and renders a real Canvas-based
@@ -46,6 +61,9 @@ namespace BuildConsole.Controls
         public event EventHandler<QueueItem>? QueueItemChatRequested;
         public event EventHandler<int>? EpicSubIssueClicked;
         public event EventHandler? FullGitRefreshRequested;
+        /// <summary>Git #1636 — fires exactly once, the moment every build in a Priority-marked
+        /// build set reaches a terminal state. See <see cref="CheckPriorityBuildSetCompletion"/>.</summary>
+        public event EventHandler<BuildSetPriorityCompletedEventArgs>? BuildSetPriorityCompleted;
         private bool _isPinned = true;
 
         private int _refreshGeneration;
@@ -665,6 +683,7 @@ namespace BuildConsole.Controls
                 }
                 if (myGeneration != _refreshGeneration) return;
                 BuildConsole.Services.NotGitNumberRegistry.SyncFromQueue(_lastItems);
+                CheckPriorityBuildSetCompletion(_lastItems);
 
                 string restartSignature;
                 try { restartSignature = System.Text.Json.JsonSerializer.Serialize(MainWindow.GetPersistedQueueDisplayItems()); }
@@ -691,6 +710,43 @@ namespace BuildConsole.Controls
                 QueueEmptyText.Text = $"Couldn't reach the API: {ex.Message}";
                 QueueEmptyText.Visibility = Visibility.Visible;
                 SyncError?.Invoke(this, $"Build Queue: {ex.Message}");
+            }
+        }
+
+        private static readonly HashSet<string> PriorityTerminalStatuses =
+            new(StringComparer.OrdinalIgnoreCase) { "done", "failed", "canceled" };
+
+        /// <summary>
+        /// Git #1636 — the moment every build currently belonging to a Priority-marked build set
+        /// has reached a terminal state (done/failed/canceled) for the first time, fires
+        /// <see cref="BuildSetPriorityCompleted"/> exactly once and auto-clears that set's
+        /// priority flag (a finished wait doesn't need to keep waiting — re-marking is required
+        /// for the next wave, per the issue's own stated assumption).
+        ///
+        /// Deliberately walks the FULL <paramref name="items"/> list from RefreshAsync — not the
+        /// filtered list RenderQueue's header loop groups into buildSetBuckets — because the
+        /// default "Active" filter drops "done" items entirely; grouping off the filtered view
+        /// would mean a finished priority set's bucket goes empty and this would never fire while
+        /// Shane is looking at the normal Active tab.
+        /// </summary>
+        private void CheckPriorityBuildSetCompletion(List<QueueItem> items)
+        {
+            var prioritySets = Services.BuildSetPriorityStore.AllPrioritySets;
+            if (prioritySets.Count == 0) return;
+
+            foreach (var setName in prioritySets)
+            {
+                var members = items.Where(i => string.Equals((i.BuildSet ?? "").Trim(), setName, StringComparison.OrdinalIgnoreCase)).ToList();
+                if (members.Count == 0) continue; // nothing currently known under this name — nothing to declare finished
+                if (!members.All(i => PriorityTerminalStatuses.Contains(i.Status))) continue;
+
+                // Clear BEFORE raising: AllPrioritySets is re-read on every RefreshAsync tick, so
+                // clearing first guarantees a concurrent/overlapping tick can't observe this set as
+                // still-priority and fire a second toast for the same completion.
+                Services.BuildSetPriorityStore.SetPriority(setName, false);
+                ActivityLog.Log("build-queue-panel.priority",
+                    $"Priority build set \"{setName}\" — all {members.Count} member(s) reached a terminal state ({string.Join(", ", members.Select(m => m.Status).Distinct())}). Firing completion notification and auto-clearing priority.");
+                BuildSetPriorityCompleted?.Invoke(this, new BuildSetPriorityCompletedEventArgs(setName, members));
             }
         }
 
@@ -1197,15 +1253,25 @@ namespace BuildConsole.Controls
                 {
                     if (node.BuildSet != null)
                     {
+                        // Git #1636 — Shane: "waiting on his priority build set... he wants a
+                        // critter + distinct border" so a set he's actually waiting on reads
+                        // differently at a glance from the rest while he tinkers elsewhere.
+                        bool isPriority = Services.BuildSetPriorityStore.IsPriority(node.BuildSet);
+
                         var setContainer = new Border
                         {
-                            BorderBrush = (Brush)Application.Current.FindResource("MauveBrush"),
-                            BorderThickness = new Thickness(1),
+                            BorderBrush = isPriority
+                                ? (Brush)Application.Current.FindResource("PeachBrush")
+                                : (Brush)Application.Current.FindResource("MauveBrush"),
+                            BorderThickness = new Thickness(isPriority ? 2.5 : 1),
                             CornerRadius = new CornerRadius(6),
-                            Background = new SolidColorBrush(Color.FromArgb(0x0A, 0xCB, 0xA6, 0xF7)),
+                            Background = isPriority
+                                ? new SolidColorBrush(Color.FromArgb(0x16, 0xFA, 0xB3, 0x87))
+                                : new SolidColorBrush(Color.FromArgb(0x0A, 0xCB, 0xA6, 0xF7)),
                             Margin = new Thickness(0, 8, 0, 8),
                             Padding = new Thickness(8, 6, 8, 6),
-                            HorizontalAlignment = HorizontalAlignment.Stretch
+                            HorizontalAlignment = HorizontalAlignment.Stretch,
+                            ContextMenu = BuildBuildSetHeaderContextMenu(node.BuildSet, isPriority)
                         };
                         var setPanel = new StackPanel { Orientation = Orientation.Vertical };
                         setContainer.Child = setPanel;
@@ -1228,6 +1294,20 @@ namespace BuildConsole.Controls
                             VerticalAlignment = VerticalAlignment.Center,
                             ToolTip = $"Build Set \"{node.BuildSet}\" — merges + restarts together as one wave"
                         });
+                        if (isPriority)
+                        {
+                            // Reuses the same "⭐" glyph IssueChompAnimation's milestone parade
+                            // already decorates a marching mascot with — not a new asset.
+                            headerLabel.Children.Add(new TextBlock
+                            {
+                                Text = " ⭐",
+                                FontSize = 12,
+                                FontWeight = FontWeights.Bold,
+                                Foreground = (Brush)Application.Current.FindResource("PeachBrush"),
+                                VerticalAlignment = VerticalAlignment.Center,
+                                ToolTip = $"Priority — a persistent notification fires the moment every build in \"{node.BuildSet}\" finishes."
+                            });
+                        }
                         setPanel.Children.Add(headerLabel);
 
                         QueueCardsHost.Children.Add(setContainer);
@@ -1589,6 +1669,24 @@ namespace BuildConsole.Controls
         /// Purely visual — carries no QueueGraphNode, so it plays no part in blocked-by
         /// connector math; RedrawQueueGraph positions connectors off the real cards only,
         /// via TranslatePoint, which naturally accounts for the extra height this adds.</summary>
+        /// <summary>Git #1636 — right-click menu on a build-set group header offering the single
+        /// "Mark as Priority" / "Unmark Priority" toggle. Re-renders the queue immediately on click
+        /// so the critter + border reflect the new state without waiting for the next poll tick.</summary>
+        private ContextMenu BuildBuildSetHeaderContextMenu(string buildSetName, bool isPriority)
+        {
+            var cm = new ContextMenu();
+            var mi = new MenuItem { Header = isPriority ? "☆ Unmark Priority" : "⭐ Mark as Priority" };
+            mi.Click += (_, _) =>
+            {
+                bool newState = !isPriority;
+                Services.BuildSetPriorityStore.SetPriority(buildSetName, newState);
+                ActivityLog.Log("build-queue-panel.priority", $"Build set \"{buildSetName}\" {(newState ? "marked" : "unmarked")} Priority.");
+                RenderQueue(ApplyFilter(_lastItems));
+            };
+            cm.Items.Add(mi);
+            return cm;
+        }
+
         public static Brush GetBuildSetBrush(string buildSetName)
         {
             if (string.IsNullOrWhiteSpace(buildSetName))

@@ -24,14 +24,21 @@ namespace BuildConsole
         private readonly DispatcherTimer _timer;
         private readonly TimeSpan _duration;
         private readonly Action? _onClick;
+        private readonly bool _persistent;
         private bool _closing;
 
-        public ToastCard(string title, string message, ToastKind kind, TimeSpan duration, Action? onClick = null)
+        /// <param name="persistent">Git #1636 — when true, this card never auto-dismisses: the
+        /// countdown timer is never started at all (not "started with a very long duration"), so
+        /// the only way it closes is the ✕ button (or an <paramref name="onClick"/> that dismisses
+        /// itself). Used by the Priority Build Set completion toast, which must stay on screen
+        /// until Shane actively closes it.</param>
+        public ToastCard(string title, string message, ToastKind kind, TimeSpan duration, Action? onClick = null, bool persistent = false)
         {
             InitializeComponent();
 
             _duration = duration;
             _onClick = onClick;
+            _persistent = persistent;
 
             // A card with a click action becomes a click target: hand cursor + a body-click handler
             // (the ✕ close button keeps its own handler; a click on it is excluded below).
@@ -87,20 +94,23 @@ namespace BuildConsole
             CardRoot.BeginAnimation(OpacityProperty,
                 new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)));
 
-            _timer.Start();
+            if (!_persistent) _timer.Start();
         }
 
         // Pause the auto-dismiss countdown while hovered; restart it (full duration) on leave.
+        // A persistent card's timer is never started in the first place (see OnLoaded), so these
+        // must no-op for it too — otherwise hovering then leaving would start a countdown that
+        // was never supposed to run at all.
         protected override void OnMouseEnter(MouseEventArgs e)
         {
             base.OnMouseEnter(e);
-            if (!_closing) _timer.Stop();
+            if (!_closing && !_persistent) _timer.Stop();
         }
 
         protected override void OnMouseLeave(MouseEventArgs e)
         {
             base.OnMouseLeave(e);
-            if (!_closing) { _timer.Interval = _duration; _timer.Start(); }
+            if (!_closing && !_persistent) { _timer.Interval = _duration; _timer.Start(); }
         }
 
         private void BtnClose_Click(object sender, RoutedEventArgs e) => BeginClose();
