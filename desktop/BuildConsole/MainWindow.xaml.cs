@@ -624,7 +624,16 @@ namespace BuildConsole
             // roll-up timer. RefreshHomeRollupAsync no-ops whenever the Home tab
             // isn't open, so there's no steady-state polling cost when it's closed.
             _chatTabsAtLaunch = BuildConsole.Services.BuildConsoleSettings.Load().OpenChatTabs ?? new();
-            try { OpenOrFocusReplitWorkspaceTabInternal(); } catch { }
+            // Git #1637 — this used to unconditionally pre-open a VISIBLE "Replit
+            // Workspace" tab on every launch (OpenOrFocusReplitWorkspaceTabInternal
+            // calls OpenWebTab, which creates a real tab and selects it), briefly
+            // flashing it before OpenHomeTab() below re-focused Home. The comment
+            // here used to claim this was just pre-warming Replit "in memory," but
+            // that's already handled invisibly by _replitWatcher's own hidden
+            // ReplitWatcherWebView (Git #902, initialized above ~444) through the
+            // same shared WebView2 environment — the visible tab was redundant.
+            // Replit now only opens a real tab on genuine user action (ActivityBar
+            // button, Home's Replit tile, etc.).
             OpenHomeTab();
             // "What's New" patch notes — compute the real commit titles since the last
             // launch off the UI thread, then render into the (already-open) Home tab and
