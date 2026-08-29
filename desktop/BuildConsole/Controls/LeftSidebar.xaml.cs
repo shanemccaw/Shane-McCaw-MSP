@@ -1823,17 +1823,15 @@ namespace BuildConsole.Controls
             BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(
                 issues, milestoneInfos,
                 trigger: forceFresh ? "manual Git refresh" : "board update");
-            RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+            await RenderIssuesTreeAsync(_currentFilter == "Done" ? "All" : _currentFilter);
             buildSw.Stop();
-            // Git #1635 — this is the OTHER real candidate this issue asked to measure:
-            // a full, un-virtualized, imperative TreeViewItem/ContextMenu rebuild of
-            // every milestone/epic/issue, synchronous on the UI thread (this call
-            // genuinely blocks input while it runs, unlike the async blocked-by sweep
-            // below). Logged so its real cost at whatever scale this repo has grown to
-            // is always on record, not just the scale it was measured at when this was
-            // written.
+            // Git #1635 measured this rebuild at ~1.5-2s of continuous UI-thread
+            // blocking; #1679 chunked it across dispatcher frames, so this wall
+            // time now includes yielded frames where input/animation ran — the
+            // per-burst blocking breakdown is in RenderIssuesTree's own
+            // "(chunked, #1679)" log line right above this one.
             ActivityLog.Log("git-board.data",
-                $"BuildBoardFromGitHub + first RenderIssuesTree took {buildSw.ElapsedMilliseconds}ms for {issues.Count} issue(s)");
+                $"BuildBoardFromGitHub + first RenderIssuesTree took {buildSw.ElapsedMilliseconds}ms wall (chunked) for {issues.Count} issue(s)");
 
             // Closed-epic filtering (RenderChatsTree signal B) reads this fresh
             // open-issue set, so re-render the already-populated Chats tree from
@@ -2057,11 +2055,11 @@ namespace BuildConsole.Controls
             if (blockedSetChanged)
             {
                 var renderSw = System.Diagnostics.Stopwatch.StartNew();
-                RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+                await RenderIssuesTreeAsync(_currentFilter == "Done" ? "All" : _currentFilter);
                 renderSw.Stop();
                 ActivityLog.Log("git-board.data",
                     $"blocked-by sweep ({openIssues.Count} issue(s), concurrency=6) took {sweepSw.ElapsedMilliseconds}ms, " +
-                    $"blocked state changed — second RenderIssuesTree took {renderSw.ElapsedMilliseconds}ms");
+                    $"blocked state changed — second RenderIssuesTree took {renderSw.ElapsedMilliseconds}ms wall (chunked, #1679)");
             }
             else
             {
@@ -4054,8 +4052,64 @@ namespace BuildConsole.Controls
             if (e.WidthChanged) ApplyIssueTitleMaxWidths();
         }
 
-        private void RenderIssuesTree(string filter)
+        // Git #1679 — chunked dispatcher-frame rendering. #1635 measured this
+        // method's imperative TreeViewItem/ContextMenu construction at ~1.5-2s
+        // per call at real repo scale (257 open issues / 49 epics / 10
+        // milestones), synchronous on the UI thread — every keystroke and
+        // critter animation frame stalled for that whole span on every refresh.
+        // The construction still happens on the UI thread (WPF requires it),
+        // but it now yields back to the dispatcher at DispatcherPriority.
+        // Background whenever a burst exceeds ~40ms, so pending input and
+        // Render-priority animation ticks interleave between bursts instead of
+        // queuing behind one continuous multi-second block. A monotonically
+        // increasing version stamp supersedes any in-progress chunked render
+        // the moment a newer one starts: the stale pass bails at its next
+        // yield point without touching the tree the newer pass is building.
+        private int _issuesTreeRenderVersion;
+        private const int IssuesTreeChunkBudgetMs = 40;
+
+        private sealed class IssuesTreeRenderPacing
         {
+            public int Version;
+            public readonly System.Diagnostics.Stopwatch Burst = System.Diagnostics.Stopwatch.StartNew();
+            public long MaxBurstMs;
+            public long BlockedMsTotal;
+            public int BurstCount = 1;
+        }
+
+        /// <summary>Yields to the dispatcher if the current construction burst has
+        /// exceeded its budget. Returns false when this render has been superseded
+        /// by a newer call — the caller must stop building immediately.</summary>
+        private async System.Threading.Tasks.Task<bool> YieldIssuesTreeChunkAsync(IssuesTreeRenderPacing pacing)
+        {
+            if (pacing.Burst.ElapsedMilliseconds < IssuesTreeChunkBudgetMs) return true;
+            pacing.MaxBurstMs = Math.Max(pacing.MaxBurstMs, pacing.Burst.ElapsedMilliseconds);
+            pacing.BlockedMsTotal += pacing.Burst.ElapsedMilliseconds;
+            pacing.BurstCount++;
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            pacing.Burst.Restart();
+            return pacing.Version == _issuesTreeRenderVersion;
+        }
+
+        /// <summary>Fire-and-forget wrapper for the many synchronous call sites
+        /// (filter chips, focus toggles, active-epic changes). The async body runs
+        /// synchronously up to its first yield, so the Clear + stat-tile update
+        /// still take effect before this returns — only the bulk TreeViewItem
+        /// construction is spread across later dispatcher frames.</summary>
+        private async void RenderIssuesTree(string filter)
+        {
+            try { await RenderIssuesTreeAsync(filter); }
+            catch (Exception ex)
+            {
+                try { ActivityLog.Log("git-board.error", $"RenderIssuesTree failed: {ex.Message}"); } catch { }
+            }
+        }
+
+        private async System.Threading.Tasks.Task RenderIssuesTreeAsync(string filter)
+        {
+            var pacing = new IssuesTreeRenderPacing { Version = ++_issuesTreeRenderVersion };
+            var wallSw = System.Diagnostics.Stopwatch.StartNew();
+
             IssuesTree.Items.Clear();
             _issueTitleBlocks.Clear();
 
@@ -4122,6 +4176,7 @@ namespace BuildConsole.Controls
 
             foreach (var m in shownMilestones)
             {
+                if (!await YieldIssuesTreeChunkAsync(pacing)) return;
                 if (filter == "Milestones" || filter == "All" || filter == "Priority")
                 {
                     string milestoneKey = $"m:{m.Title}";
@@ -4354,6 +4409,7 @@ namespace BuildConsole.Controls
 
                     foreach (var epicBucket in m.Epics)
                     {
+                        if (!await YieldIssuesTreeChunkAsync(pacing)) return;
                         string bucketKey = $"e:{m.Title}/{epicBucket.Title}";
                         bool bucketHasActiveEpic = _activeEpicGithubNumber.HasValue
                             && epicBucket.Issues.Any(ii => ii.IssueNumber == _activeEpicGithubNumber.Value);
@@ -4378,8 +4434,9 @@ namespace BuildConsole.Controls
                                 if (filter == "Done" && epicIssue.Status != "CLOSED") continue;
                                 if (filter == "Priority" && epicIssue.Priority != "HIGH") continue;
 
+                                if (!await YieldIssuesTreeChunkAsync(pacing)) return;
                                 var epicNode = CreateIssueHeader(epicIssue, depth: 2);
-                                PopulateIssueTreeHierarchy(epicNode.Items, allKnownIssues, epicIssue.IssueNumber, filter, depth: 3);
+                                if (!await PopulateIssueTreeHierarchyAsync(epicNode.Items, allKnownIssues, epicIssue.IssueNumber, filter, 3, pacing)) return;
                                 bucketItem.Items.Add(epicNode);
                             }
                         }
@@ -4396,8 +4453,9 @@ namespace BuildConsole.Controls
                                 if (filter == "Done" && issue.Status != "CLOSED") continue;
                                 if (filter == "Priority" && issue.Priority != "HIGH") continue;
 
+                                if (!await YieldIssuesTreeChunkAsync(pacing)) return;
                                 var issueNode = CreateIssueHeader(issue, depth: 2);
-                                PopulateIssueTreeHierarchy(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, depth: 3);
+                                if (!await PopulateIssueTreeHierarchyAsync(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, 3, pacing)) return;
                                 bucketItem.Items.Add(issueNode);
                             }
                         }
@@ -4410,8 +4468,9 @@ namespace BuildConsole.Controls
                                 if (filter == "Done" && issue.Status != "CLOSED") continue;
                                 if (filter == "Priority" && issue.Priority != "HIGH") continue;
 
+                                if (!await YieldIssuesTreeChunkAsync(pacing)) return;
                                 var issueNode = CreateIssueHeader(issue, depth: 2);
-                                PopulateIssueTreeHierarchy(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, depth: 3);
+                                if (!await PopulateIssueTreeHierarchyAsync(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, 3, pacing)) return;
                                 bucketItem.Items.Add(issueNode);
                             }
                         }
@@ -4428,8 +4487,9 @@ namespace BuildConsole.Controls
                                 if (filter == "Done" && issue.Status != "CLOSED") continue;
                                 if (filter == "Priority" && issue.Priority != "HIGH") continue;
 
+                                if (!await YieldIssuesTreeChunkAsync(pacing)) return;
                                 var issueNode = CreateIssueHeader(issue, depth: 2);
-                                PopulateIssueTreeHierarchy(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, depth: 3);
+                                if (!await PopulateIssueTreeHierarchyAsync(issueNode.Items, allKnownIssues, issue.IssueNumber, filter, 3, pacing)) return;
                                 bucketItem.Items.Add(issueNode);
                             }
                         }
@@ -4451,6 +4511,17 @@ namespace BuildConsole.Controls
             // the explicit MaxWidth against the tree's current width so the
             // CharacterEllipsis trimming actually engages.
             ApplyIssueTitleMaxWidths();
+
+            // Git #1679 — close out the final burst and log the real shape of this
+            // render: wall time vs. cumulative UI-thread-blocked time vs. the
+            // longest single continuous burst (the number that decides whether
+            // typing/animation can stall — pre-#1679 it equaled the whole wall time).
+            pacing.MaxBurstMs = Math.Max(pacing.MaxBurstMs, pacing.Burst.ElapsedMilliseconds);
+            pacing.BlockedMsTotal += pacing.Burst.ElapsedMilliseconds;
+            ActivityLog.Log("git-board.data",
+                $"RenderIssuesTree (chunked, #1679): {wallSw.ElapsedMilliseconds}ms wall, " +
+                $"{pacing.BlockedMsTotal}ms UI-thread construction across {pacing.BurstCount} burst(s), " +
+                $"longest single burst {pacing.MaxBurstMs}ms");
         }
 
         private static readonly Dictionary<string, SolidColorBrush> _fallbackBrushes = new()
@@ -4614,12 +4685,18 @@ namespace BuildConsole.Controls
             return p;
         }
 
-        private void PopulateIssueTreeHierarchy(
+        // Git #1679 — async so deep sub-issue chains (an epic with dozens of
+        // children builds its whole subtree in here, not in RenderIssuesTree's
+        // own loops) also honor the chunk budget instead of forming one long
+        // uninterruptible burst. Returns false when the render was superseded —
+        // the caller must stop building and return immediately.
+        private async System.Threading.Tasks.Task<bool> PopulateIssueTreeHierarchyAsync(
             ItemCollection targetItems,
             List<GitIssue> allMilestoneIssues,
             int parentNumber,
             string filter,
-            int depth)
+            int depth,
+            IssuesTreeRenderPacing pacing)
         {
             var children = allMilestoneIssues
                 .Where(i => i.ParentNumber == parentNumber)
@@ -4632,10 +4709,12 @@ namespace BuildConsole.Controls
                 if (filter == "Done" && issue.Status != "CLOSED") continue;
                 if (filter == "Priority" && issue.Priority != "HIGH") continue;
 
+                if (!await YieldIssuesTreeChunkAsync(pacing)) return false;
                 var tvi = CreateIssueHeader(issue, depth);
-                PopulateIssueTreeHierarchy(tvi.Items, allMilestoneIssues, issue.IssueNumber, filter, depth + 1);
+                if (!await PopulateIssueTreeHierarchyAsync(tvi.Items, allMilestoneIssues, issue.IssueNumber, filter, depth + 1, pacing)) return false;
                 targetItems.Add(tvi);
             }
+            return true;
         }
 
         private TreeViewItem CreateIssueHeader(GitIssue issue, int depth = 2)
