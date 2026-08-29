@@ -357,9 +357,14 @@
                                 </TextBlock>
                             </Grid>
 
-                            <!-- ── Visual Queue DAG with Canvas-based connector lines (#860) ── -->
+                            <!-- ── Visual Queue DAG with Canvas-based connector lines (#860) ──
+                                 Shane: "expand the height of the build queue" — raised from 400 now
+                                 that In-Flight/Sessions below are hidden and no longer competing for
+                                 vertical space; still capped (not removed) so a huge queue still
+                                 scrolls in its own area instead of pushing the outer panel's scroll
+                                 arbitrarily tall. -->
                             <ScrollViewer x:Name="QueueGraphScrollViewer"
-                                          MaxHeight="400"
+                                          MaxHeight="900"
                                           VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled"
                                           PreviewMouseWheel="QueueGraphScrollViewer_PreviewMouseWheel">
@@ -428,8 +433,12 @@
                          of the way until wanted.
                          Git #971 - Shane: "In-Flight and Sessions should not be a 2 column
                          layout, they should work the same as Completed & To-Do." Full-width
-                         single-column tile with accordion toggle. -->
-                    <StackPanel Margin="10,0,10,12">
+                         single-column tile with accordion toggle.
+                         2026-08-28 — Shane: "Hide In-Flight and Sessions... and expand the
+                         height of the build queue." Hidden outright (Visibility.Collapsed) so
+                         the panel gives that vertical space back to the queue graph above;
+                         wiring/code-behind left intact in case this comes back. -->
+                    <StackPanel Margin="10,0,10,12" Visibility="Collapsed">
                         <ToggleButton x:Name="TileInFlight" Style="{StaticResource QuietTile}" Click="TileInFlight_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⏳" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -458,7 +467,7 @@
                          process... it's not part of the Queue.. but I need a way to know
                          it's running. I think this is what Session is for?" Reads the real
                          claude CLI agent list directly (ClaudeAgentsService). -->
-                    <StackPanel Margin="10,0,10,12">
+                    <StackPanel Margin="10,0,10,12" Visibility="Collapsed">
                         <ToggleButton x:Name="TileSessions" Style="{StaticResource QuietTile}" Click="TileSessions_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="▶" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>

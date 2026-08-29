@@ -1240,14 +1240,28 @@ namespace BuildConsole.Controls
                     lastRenderedSet = node.BuildSet;
                 }
 
+                // Shane: "why are there like ghosts in the empty queue" — _currentGraphNodes
+                // (and its connector lines/dots, drawn later by RedrawQueueGraph) is fully built
+                // BEFORE this card-building loop runs. An uncaught exception from any one card
+                // used to abort this loop entirely, leaving every node after the failure with a
+                // real graph line/dot but no card next to it — exactly that "ghost" look. One
+                // bad card must never orphan the rest of the render.
                 Border? cardElement = null;
-                if (node.Status == "restart" && node.RestartItem != null)
+                try
                 {
-                    cardElement = BuildRestartCard(node.RestartItem);
+                    if (node.Status == "restart" && node.RestartItem != null)
+                    {
+                        cardElement = BuildRestartCard(node.RestartItem);
+                    }
+                    else if (node.Item != null)
+                    {
+                        cardElement = BuildQueueCard(node);
+                    }
                 }
-                else if (node.Item != null)
+                catch (Exception ex)
                 {
-                    cardElement = BuildQueueCard(node);
+                    ActivityLog.Log("git-board.critters", $"Card build failed for {node.DisplayRef} — skipping this card rather than orphaning the rest of the queue render: {ex.Message}");
+                    cardElement = null;
                 }
 
                 if (cardElement != null)
