@@ -2914,6 +2914,11 @@ export interface WfNode {
     | "m365_health_sample"
     // M365 Roadmap ingestion (#1530)
     | "m365_roadmap_sync"
+    // M365 Changes Routing (#1534) — was missing from this union even though
+    // the node type is real and seeded (workflow-executor.ts's executeNode
+    // switch, seed-system-workflows.ts, node-type-registry.ts); the case's own
+    // `node.type` comparison failed to typecheck against WfNode until this.
+    | "m365_route_changes"
     // Telemetry Retention
     | "platform_log_stream_prune"
     // Zoho Integration — queue drain (Foundation, #82)
