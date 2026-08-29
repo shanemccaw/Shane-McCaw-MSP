@@ -71,6 +71,20 @@ namespace BuildConsole.Services
         public string HtmlUrl { get; set; } = "";
     }
 
+    /// <summary>
+    /// Git #1709 — one real, open issue sitting in the project board's "Batter Up"
+    /// status (`Status` field `PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0`, option `Batter Up` =
+    /// `09b1927f` — same field CLAUDE.md's "AI Batter Up" routing writes to, different
+    /// option). Straight off <see cref="GitHubApiClient.GetBatterUpIssuesAsync"/>'s
+    /// GraphQL project-items read, never derived from a label.
+    /// </summary>
+    public class BatterUpBoardIssue
+    {
+        public int Number { get; set; }
+        public string Title { get; set; } = "";
+        public string HtmlUrl { get; set; } = "";
+    }
+
     /// <summary>Git #842 (Git Board Phase 4) — the fields of `POST /issues`'s response actually used: the new issue's number/url plus its numeric `id` for the `sub_issues` attach call.</summary>
     public class CreatedIssue
     {
@@ -280,17 +294,29 @@ namespace BuildConsole.Services
         /// blocker's number/title/state instead of just a bool, so the Git
         /// Board tree can show "Blocked by #N: Title" rather than a bare flag.
         /// </summary>
-        public async Task<GitHubIssueResult?> GetOpenBlockedByAsync(int number)
+        public async Task<GitHubIssueResult?> GetOpenBlockedByAsync(int number) =>
+            (await GetBlockedByAsync(number)).FirstOrDefault(b => !b.IsClosed);
+
+        /// <summary>
+        /// Git #1709 — the real, full `blocked_by` dependency list (open AND closed),
+        /// factored out of <see cref="GetOpenBlockedByAsync"/> (which still returns just
+        /// the first open one for the existing badge callers) so the Batter Up panel can
+        /// pass every declared blocker number into `--blocked-by`/`blocked_by_numbers`
+        /// and let the existing #1600 fail-closed watcher re-check each one live, exactly
+        /// like every other launch path already does — not just the one this snapshot
+        /// happened to see open first.
+        /// </summary>
+        public async Task<List<GitHubIssueResult>> GetBlockedByAsync(int number)
         {
             try
             {
                 var blockers = await GetConditionalAsync<List<GitHubIssueResult>>(
                     $"repos/{Owner}/{Repo}/issues/{number}/dependencies/blocked_by");
-                return blockers?.FirstOrDefault(b => !b.IsClosed);
+                return blockers ?? new List<GitHubIssueResult>();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
             {
-                return null;
+                return new List<GitHubIssueResult>();
             }
         }
 
@@ -706,6 +732,123 @@ namespace BuildConsole.Services
 
             return result;
         }
+
+        // ── Git #1709: real "Batter Up" project-board status via GraphQL ────────────
+        // Same project/field CLAUDE.md's "AI Batter Up" routing mutation already writes
+        // to — just read here instead of written, and a different option (plain "Batter
+        // Up", not the agent-filed-findings review queue "AI Batter Up").
+        // Field is looked up by name ("Status") in the query below rather than by its id
+        // (PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0, the same field CLAUDE.md's mutation writes to)
+        // since GraphQL's fieldValueByName takes a name, not an id.
+        private const string BatterUpProjectId = "PVT_kwHOEiBDdc4BeoiY";
+        private const string BatterUpOptionId = "09b1927f";
+
+        /// <summary>
+        /// Git #1709 — every real, OPEN issue currently sitting in the project board's
+        /// "Batter Up" status. Reads the project's items directly by node id (paginated,
+        /// same MaxPages runaway guard as <see cref="ListBoardIssuesInternalAsync"/>) and
+        /// filters to this repo + the Batter Up option locally, since GraphQL has no
+        /// server-side "where fieldValue = X" filter on project items.
+        /// </summary>
+        public async Task<List<BatterUpBoardIssue>> GetBatterUpIssuesAsync()
+        {
+            var result = new List<BatterUpBoardIssue>();
+            string? after = null;
+
+            for (int page = 0; page < MaxPages; page++)
+            {
+                string afterArg = after == null ? "null" : $"\"{after}\"";
+                string query = $@"query {{
+  node(id: ""{BatterUpProjectId}"") {{
+    ... on ProjectV2 {{
+      items(first: {PageSize}, after: {afterArg}) {{
+        pageInfo {{ hasNextPage endCursor }}
+        nodes {{
+          fieldValueByName(name: ""Status"") {{
+            ... on ProjectV2ItemFieldSingleSelectValue {{ optionId }}
+          }}
+          content {{
+            ... on Issue {{
+              number title state url
+              repository {{ nameWithOwner }}
+            }}
+          }}
+        }}
+      }}
+    }}
+  }}
+}}";
+
+                var conn = await PostProjectItemsQueryAsync(query);
+                if (conn?.Nodes != null)
+                {
+                    foreach (var n in conn.Nodes)
+                    {
+                        var issue = n.Content;
+                        if (issue == null) continue;
+                        if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!string.Equals(issue.State, "OPEN", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!string.Equals(n.FieldValueByName?.OptionId, BatterUpOptionId, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        result.Add(new BatterUpBoardIssue
+                        {
+                            Number = issue.Number,
+                            Title = issue.Title ?? "",
+                            HtmlUrl = issue.Url ?? "",
+                        });
+                    }
+                }
+
+                bool more = conn?.PageInfo?.HasNextPage == true && !string.IsNullOrEmpty(conn.PageInfo.EndCursor);
+                if (!more) break;
+                after = conn!.PageInfo!.EndCursor;
+            }
+
+            return result;
+        }
+
+        private async Task<ProjectItemConnection?> PostProjectItemsQueryAsync(string query)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+            {
+                Content = JsonContent.Create(new { query }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+
+            var body = await res.Content.ReadFromJsonAsync<GraphQLProjectResponse>(JsonOpts);
+            if (body?.Errors is { Count: > 0 } errs)
+                throw new Exception("GitHub GraphQL: " + string.Join("; ", errs.Select(e => e.Message)));
+            return body?.Data?.Node?.Items;
+        }
+
+        private class GraphQLProjectResponse
+        {
+            public ProjectQueryData? Data { get; set; }
+            public List<GraphQLError>? Errors { get; set; }
+        }
+        private class ProjectQueryData { public ProjectV2Data? Node { get; set; } }
+        private class ProjectV2Data { public ProjectItemConnection? Items { get; set; } }
+        private class ProjectItemConnection
+        {
+            public PageInfoData? PageInfo { get; set; }
+            public List<ProjectItemNodeData> Nodes { get; set; } = new();
+        }
+        private class ProjectItemNodeData
+        {
+            public FieldValueData? FieldValueByName { get; set; }
+            public ProjectItemIssueData? Content { get; set; }
+        }
+        private class FieldValueData { public string? OptionId { get; set; } }
+        private class ProjectItemIssueData
+        {
+            public int Number { get; set; }
+            public string? Title { get; set; }
+            public string? State { get; set; }
+            public string? Url { get; set; }
+            public ProjectItemRepoData? Repository { get; set; }
+        }
+        private class ProjectItemRepoData { public string? NameWithOwner { get; set; } }
 
         private async Task<IssueConnection?> PostGraphQLIssuesAsync(string query)
         {

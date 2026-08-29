@@ -417,6 +417,16 @@ namespace BuildConsole
                 BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
             }
 
+            // Git #1709 — additive Batter Up board read + auto-queue panel. Feeds the SAME
+            // _queueDb.QueueBuildAsync pipeline BuildQueuePanel/chat buttons already use;
+            // never touches BuildQueuePanel itself. Works with a null _queueDb too (shows
+            // the board read-only, same "Not connected" posture as everything else here).
+            BatterUpPanel.RowsAutoQueued += (_, _) =>
+            {
+                try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
+            };
+            BatterUpPanel.Initialize(_queueDb);
+
             // shaneapp://executeSql — the LOCAL protocol trigger (deliberately NOT
             // over HTTP like #898; SQL runs through this app's own direct local Postgres
             // connection, zero round-trip to the deployed api-server). Started

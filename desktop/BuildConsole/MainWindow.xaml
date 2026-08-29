@@ -976,8 +976,11 @@
                               VerticalAlignment="Stretch"
                               ShowsPreview="False"/>
 
-                <!-- ── Build Queue Panel ── -->
-                <ctrl:BuildQueuePanel x:Name="BuildQueuePanel" Grid.Column="5"/>
+                <!-- ── Build Queue column: Batter Up (Git #1709, additive) above the existing Build Queue Panel ── -->
+                <DockPanel Grid.Column="5" LastChildFill="True">
+                    <ctrl:BatterUpPanel x:Name="BatterUpPanel" DockPanel.Dock="Top"/>
+                    <ctrl:BuildQueuePanel x:Name="BuildQueuePanel"/>
+                </DockPanel>
 
             </Grid>
 
