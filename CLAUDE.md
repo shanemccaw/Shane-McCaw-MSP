@@ -166,7 +166,21 @@ Some finished work leaves something only Shane can do — run a manual SQL migra
 gh label create "Shane To-Do" --color b60205 --description "An action Shane needs to take himself (run SQL, restart server, etc) - Claude applies this when done"
 ```
 
-- **At the DONE bookend**, if the work leaves such an action: `gh issue edit <number> --add-label "Shane To-Do"`. Say plainly in the issue/PLATFORM_BUILD.md row what the action is (e.g. "Shane needs to run `lib/db/migrations/manual/....sql`").
+- **At the DONE bookend**, if the work leaves such an action: `gh issue edit <number> --add-label "Shane To-Do"`. Say plainly in the issue row what the action is.
+
+- **EXCEPTION — manual SQL migrations are NOT `Shane To-Do`.** You run additive migrations
+  against local PostgreSQL yourself, in-session (see the Database section). Local is therefore
+  already current; only Replit/staging is not, and that is a release-time action, not a blocker.
+  Do **not** label the issue `Shane To-Do` for a migration and do **not** mark it blocked. Instead
+  append one line to the standing checklist on **#1630** (under the v1.1 release gate #1281):
+
+  ```
+  gh issue comment 1630 --body "- \`lib/db/migrations/manual/<file>.sql\` — #<issue> — <what it changes>"
+  ```
+
+  Record the filename in your own bookend as well, then finish normally. `Shane To-Do` is
+  reserved for things only Shane can do that are genuinely not release-time — granting an Azure
+  role, rotating a cert, exporting a design, a product decision.
 - If the action is a manual SQL migration, reference the file's real repo-relative path in the issue body/comment somewhere — Shane's browser extension panel looks for a `lib/db/migrations/manual/*.sql` path in the issue body to offer a one-click "load into the floaty SQL Runner" action.
 - **Never remove this label yourself.** Shane clears it (and closes the issue) himself once he's actually done the action — same reasoning as `complete` never auto-closing an issue.
 
