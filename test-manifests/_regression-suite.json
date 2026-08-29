@@ -69,6 +69,7 @@
     "portal/runbooks-hold-windows.json",
     "portal/portal-v2-ownership.json",
     "portal/portal-v2-settings.json",
+    "portal/settings-change-control-departments-persistence.json",
     "portal/portal-v2-ms-changes.json",
     "portal/portal-v2-retainer.json",
     "portal/portal-v2-billing.json",
