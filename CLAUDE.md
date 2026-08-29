@@ -34,13 +34,24 @@ modules. The replacement effort is Epic #1485 (Portal New Design); read #1485 an
 module's own page epic before starting portal work. The one thing carried forward from
 portal-v2 is the API surface under `artifacts/api-server/`, which is real.
 
-Historic design source (reference only, not a build target): Design/design_handoff_customer_portal/
-- README.md is the spec. Read it before writing code.
+**Live design source for #1485: `Design/portal/`.** New Claude Design exports land there as
+`.dc.html`, one per page, alongside that module's contract pack markdown. A page has no design
+until its `.dc.html` exists in `Design/portal/` — if you are asked to wire a page and no export
+is there, say so and stop rather than wiring `portal-v2` by default. `portal-v2` is not a
+fallback target.
+
+Order of work under #1485 is fixed: **architect → build the endpoints → regenerate the contract
+pack from the real code → Design → wire.** Do not run the steps out of order. A contract pack
+written before the endpoints exist documents absence and is worthless; a design drawn against
+endpoints that do not exist yet is what caused five failed portal attempts.
+
+The conventions below apply to any `.dc.html` export, in `Design/portal/` or elsewhere:
+- The accompanying README.md, where one exists, is the spec. Read it before writing code.
 - The .dc.html files are design references, not code. Recreate them with this
   repo's existing React + Vite + Tailwind v4 + shadcn/ui (new-york) + lucide-react
   patterns. Ignore support.js entirely — do not port it.
-- The logic class at the bottom of Customer Portal Shell.dc.html holds the state
-  machine and data shapes. Read it; it is the specification.
+- The logic class at the bottom of a Shell export holds the state machine and data
+  shapes. Read it; it is the specification.
 - Copy is final. Do not rewrite, shorten or "improve" any user-facing string.
 - No emoji, ever. Icons come from lucide-react.
 - Every number on screen comes from the data layer, and the data layer is a real
