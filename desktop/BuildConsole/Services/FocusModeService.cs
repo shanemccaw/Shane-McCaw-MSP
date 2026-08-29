@@ -142,6 +142,16 @@ namespace BuildConsole.Services
                 .ToList();
         }
 
+        /// <summary>Git #1644 — account-aware version of <see cref="IsChatInProgress"/>, reusing
+        /// <see cref="InProgressChatsForAccount"/>'s exact cross-reference/fail-open logic rather
+        /// than duplicating it, so the Chats panel's badges/counts/highlights honor the
+        /// Primary/Secondary account toggle the same way Focus Mode's own strip already does.</summary>
+        public bool IsChatInProgressForAccount(string? conversationId, string account)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId)) return false;
+            return InProgressChatsForAccount(account).Any(c => string.Equals(c.ConversationId, conversationId, StringComparison.OrdinalIgnoreCase));
+        }
+
         /// <summary>Git #1480 — forces FocusModeBar to re-render its In Progress strip when the
         /// title-bar account toggle flips, even though the underlying marked-chat list itself
         /// hasn't changed (just which slice of it should now be visible).</summary>

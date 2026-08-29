@@ -2681,7 +2681,7 @@ namespace BuildConsole.Controls
             int otherAccountInProgress = _lastBoardChats
                 .Where(c => !c.Archived)
                 .Where(c => string.Equals(c.Account, otherAccount, StringComparison.OrdinalIgnoreCase))
-                .Count(c => BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(c.ConversationId));
+                .Count(c => BuildConsole.Services.FocusModeService.Instance.IsChatInProgressForAccount(c.ConversationId, otherAccount));
 
             // Focus Mode — hard-hide chats that don't belong to the active milestone
             // (resolved via the chat's issue / epic issue number). Off-focus = all chats.
@@ -2936,7 +2936,7 @@ namespace BuildConsole.Controls
         /// <summary>Linked-build + in-progress counts for a group of chats.</summary>
         private (int inProgress, int running, int waiting) GroupBuildStats(List<BoardChat> chats)
         {
-            int inProgress = chats.Count(c => BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(c.ConversationId));
+            int inProgress = chats.Count(c => BuildConsole.Services.FocusModeService.Instance.IsChatInProgressForAccount(c.ConversationId, BuildConsole.Services.BuildConsoleSettings.CurrentAccountLabel()));
             var builds = ChatLinkedBuilds(chats);
             int running = builds.Count(b => string.Equals(b.Status, "running", StringComparison.OrdinalIgnoreCase));
             int waiting = builds.Count(b => { var s = (b.Status ?? "").ToLowerInvariant(); return s == "failed" || s == "error" || s == "blocked"; });
@@ -3003,7 +3003,7 @@ namespace BuildConsole.Controls
         /// instead of the fetch's board.Epics (identical data, no second round-trip).</summary>
         private Border BuildChatCard(BoardChat chat, string brushKey, HashSet<int>? openGithubNumbers)
         {
-            bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(chat.ConversationId);
+            bool inProgress = BuildConsole.Services.FocusModeService.Instance.IsChatInProgressForAccount(chat.ConversationId, BuildConsole.Services.BuildConsoleSettings.CurrentAccountLabel());
             var accent = GetBrush(brushKey);
 
             // Card shell (a highlighted border when marked In Progress).
