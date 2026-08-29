@@ -352,6 +352,9 @@ export default defineConfig({
       // product gate, completed-account tenant resolution, idempotency guard),
       // run against the real local Postgres with the scan trigger injected.
       "src/lib/monitoring-onboarding-scan.test.ts",
+      // #1531 — the roadmap<->Message Center join on the roadmap feature ID
+      // Message Center posts carry in their own body.
+      "src/lib/m365-roadmap-mc-link.test.ts",
     ],
     coverage: {
       provider: "v8",
