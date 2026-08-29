@@ -56,6 +56,7 @@ import { logger } from "../lib/logger.ts";
 import { proposeInterpretation } from "../lib/m365-interpretation-proposer.ts";
 import { resolveInterpretationAcrossTenants } from "../lib/m365-change-resolver.ts";
 import { getCrossedOverFeatureIds, hasRoadmapFeatureIdsColumn, withCrossoverFlag } from "../lib/m365-roadmap-mc-link.ts";
+import { filterByCloudInstance, parseCloudInstanceFilterMode } from "../lib/m365-cloud-instance.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 
@@ -137,11 +138,19 @@ router.get("/admin/m365/interpretations", requireAdmin, async (_req: Request, re
 // ── GET /admin/m365/interpretations/candidates ──────────────────────────────
 // Roadmap items (and distinct Message Center posts) that do NOT yet have an
 // interpretation for this MSP — the sources Shane can pick to interpret next.
-router.get("/admin/m365/interpretations/candidates", requireAdmin, async (_req: Request, res: Response) => {
+//
+// Cloud instance (#1537): every roadmap candidate carries its real
+// `cloudInstances` tags on the wire, and `?cloud=worldwide|gov|all` selects
+// which of them are returned — `worldwide` (this platform's default) excludes
+// gov-only items (real gov/GCC scope enforcement, not an assumption); `gov` is
+// the mode the future NASA extraction needs (GCC High / DoD only); `all` is
+// the unfiltered set. See lib/m365-cloud-instance.ts for the classifier.
+router.get("/admin/m365/interpretations/candidates", requireAdmin, async (req: Request, res: Response) => {
   try {
+    const cloudMode = parseCloudInstanceFilterMode(req.query.cloud);
     const mspId = await resolveDefaultMspId();
     if (mspId === null) {
-      res.json({ roadmap: [], messageCenter: [], noMsp: true });
+      res.json({ roadmap: [], messageCenter: [], cloudMode, noMsp: true });
       return;
     }
 
@@ -159,6 +168,7 @@ router.get("/admin/m365/interpretations/candidates", requireAdmin, async (_req: 
         title: m365RoadmapItemsTable.title,
         status: m365RoadmapItemsTable.status,
         products: m365RoadmapItemsTable.products,
+        cloudInstances: m365RoadmapItemsTable.cloudInstances,
         msModified: m365RoadmapItemsTable.msModified,
       })
       .from(m365RoadmapItemsTable)
@@ -170,15 +180,21 @@ router.get("/admin/m365/interpretations/candidates", requireAdmin, async (_req: 
     // to interpret next, not just to the (separate, #1533/#1535) resolution
     // and timeline layers.
     const crossedOverFeatureIds = await getCrossedOverFeatureIds(mspId);
+    // #1537 — cloud instance filter applied before the 200 cap, so a
+    // gov-heavy page of results can't crowd out worldwide items the author
+    // actually needs to see (or vice versa in "gov" mode).
     const roadmap = withCrossoverFlag(
-      roadmapRows
-        .filter((r) => !usedFeatureIds.has(r.featureId))
+      filterByCloudInstance(
+        roadmapRows.filter((r) => !usedFeatureIds.has(r.featureId)),
+        cloudMode,
+      )
         .slice(0, 200)
         .map((r) => ({
           featureId: r.featureId,
           title: r.title,
           status: r.status,
           products: r.products,
+          cloudInstances: r.cloudInstances,
           msModified: r.msModified instanceof Date ? r.msModified.toISOString() : r.msModified,
         })),
       crossedOverFeatureIds,
@@ -239,7 +255,7 @@ router.get("/admin/m365/interpretations/candidates", requireAdmin, async (_req: 
       if (messageCenter.length >= 200) break;
     }
 
-    res.json({ roadmap, messageCenter });
+    res.json({ roadmap, messageCenter, cloudMode });
   } catch (err) {
     log.error({ err }, "GET /admin/m365/interpretations/candidates failed");
     res.status(500).json({ error: "Failed to load candidates" });

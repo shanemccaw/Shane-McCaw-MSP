@@ -355,6 +355,9 @@ export default defineConfig({
       // #1531 — the roadmap<->Message Center join on the roadmap feature ID
       // Message Center posts carry in their own body.
       "src/lib/m365-roadmap-mc-link.test.ts",
+      // #1537 — cloud instance as a first-class, filterable dimension on
+      // Microsoft Changes (worldwide/gov/all classification).
+      "src/lib/m365-cloud-instance.test.ts",
     ],
     coverage: {
       provider: "v8",
