@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 Part 12 -- Account settings: the five account-MENU pages, none of which existed. Account security (/portal-v2/account-security), Billing (/portal-v2/billing), Webhooks (/portal-v2/webhooks), Alert preferences (/portal-v2/alert-preferences) and Receipt (/portal-v2/receipt), recreated from the prototype's isAccountSecurity/isBilling/isWebhooks/isAlertPrefs/isReceipt blocks ('Customer Portal Shell.dc.html' 2199-2371 / 2371-2520 / 2520-2722 / 2722-2875 / 6013-6093) and their logic-class fixtures. UI-only: fixtures in <page>Data.ts, derivations in <page>Model.ts pinned by <page>Model.test.ts. Reached from the account menu (HeaderMenus.tsx), not the left nav. Third billing tier is Premier per #1128, never Command.",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "3921372cb",
+  "lastVerifiedAgainstCommit": "2702dd50f",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the pages. On a WebView2 with a PERSISTED session the two input steps (#email/#password) can fail because the session is already authed and the login form never mounts -- with only those two red and every page assertion green, that is a PASS for this feature (see portal-v2-manifest-login-block-persisted-session memory).",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/<page>. App.tsx declares each of these plain routes BEFORE '/portal-v2/:pillar' so the param route cannot swallow them. These pages are reached from the ACCOUNT MENU, not the left nav.",
@@ -13,7 +13,8 @@
     "ALERT PREFERENCES IS NOW LIVE (Git #1276) -- portal-v2-alert-preferences.tsx reads/writes GET+PUT /api/portal/alert-preferences (alertPrefsLive.ts), backed by new customer_alert_preferences/customer_alert_settings/customer_alert_recipients/customer_alert_digest_queue tables (lib/db/migrations/manual/2026-08-25-customer-alert-preferences-1276.sql), no longer local-only useState that reset on refresh. Absence of any saved row still degrades to the same Balanced-preset defaults the fixture always opened on (ALERT3 unchanged). ALERT7 asserts pv2-alert-source reads 'live'. The self-contained alert-prefs-1276 tag (ALERT-SAVE*) drives a real save round-trip against the shared testbed tenant and then resets it back to Balanced and saves again (ALERT-SAVE-CLEANUP*) so the run doesn't leave that tenant's real preferences on Custom for the next session. This is also the real persistence the #1278 customer-tenant alert engine's delivery seam (customer-alert-delivery.ts resolveCustomerAlertPreferences) now reads, and where daily/weekly digest batching + the quiet-hours hold live (customer-alert-digest.ts, drained on the same 5-min alert_evaluate_rules pass) -- neither has its own UI surface to assert here, only the preference persistence this page writes.",
     "LOADING-STATE FIXTURE FLASH FIX (Git #1365) -- Account security (posture/MFA/sessions), Webhooks (endpoint list) and Receipt (the whole receipt card) now render PortalV2LoadingState while their real fetch is in flight instead of the design fixture, matching the pattern #1343 established for Ownership/Change Control. Not asserted with a new uiStep here: the loading window is typically sub-200ms against the dev/test API, so gating a step on it would be a flaky race rather than reliable coverage. The settled fixture/live branch these pages render afterward is unchanged and stays covered by the steps above.",
     "BILLING RECEIPTS 'REAL-BUT-EMPTY' FIX (Git #1463) -- billingLive.ts's dataState previously read 'fixture' (and rendered BILL_RECEIPTS's fake rows) for a tenant whose real GET /api/portal/invoices call succeeded with zero rows, conflating 'the read never resolved' with 'this tenant genuinely has no invoices yet' -- exactly the HARD RULE this strict pass exists to catch. dataState now reads 'live' any time `rows` is a real (possibly empty) array, and only falls back to 'fixture' when the read itself failed or hasn't resolved. TEST_PORTAL_EMAIL's testbed tenant already has one real invoice, so BILL6/BILL-LIVE-STRIPE above are unaffected by this fix (both paths were already 'live' for a non-empty response) -- there is no zero-invoice testbed tenant available to add positive coverage of the empty-array branch here; verified by code reading + the unit-level dataState logic only.",
-    "ALERT PREFERENCES STRICT PASS (Git #1465) -- confirmed the #1276/#1278/#1279 backend genuinely reaches this page end to end (route mounted in routes/index.ts, real customer_alert_* tables, ALERT7's 'live' assertion was actually run post-deploy per this file's own eaa719355 pin, not just wired in code). Found and fixed one real gap along the way: on a failed GET, `prefs` stays at the ALERT_PREFS_SEED fixture while the page shows an honest error line (pv2-alert-error) -- but the Save button was still enabled the moment the user made any edit, so an edit against that unseen fixture state could PUT and silently overwrite the tenant's real stored preferences. `pv2-alert-save` is now also disabled whenever `error` is set. NOT ASSERTED WITH A NEW uiStep: the harness has no way to force GET /api/portal/alert-preferences to fail from a black-box UI run, so this is documented here per the manifest's own 'genuinely can't be asserted programmatically' allowance rather than faked with an unreachable step."
+    "ALERT PREFERENCES STRICT PASS (Git #1465) -- confirmed the #1276/#1278/#1279 backend genuinely reaches this page end to end (route mounted in routes/index.ts, real customer_alert_* tables, ALERT7's 'live' assertion was actually run post-deploy per this file's own eaa719355 pin, not just wired in code). Found and fixed one real gap along the way: on a failed GET, `prefs` stays at the ALERT_PREFS_SEED fixture while the page shows an honest error line (pv2-alert-error) -- but the Save button was still enabled the moment the user made any edit, so an edit against that unseen fixture state could PUT and silently overwrite the tenant's real stored preferences. `pv2-alert-save` is now also disabled whenever `error` is set. NOT ASSERTED WITH A NEW uiStep: the harness has no way to force GET /api/portal/alert-preferences to fail from a black-box UI run, so this is documented here per the manifest's own 'genuinely can't be asserted programmatically' allowance rather than faked with an unreachable step.",
+    "CHANGE PASSWORD IS NOW LIVE (Git #1601) -- the Password card's 'Change password' button opens a real inline form wired to POST /api/auth/change-password (useAccountSecurityLive.changePassword), no longer inert design copy. All four of the route's own error states (auth.ts:826/831/838/843) render its own literal error text via accountSecurityModel.ts's changePasswordErrorText -- never a paraphrase. CP-* apiTests (tag change-password-1601) drive missing-fields (400) and incorrect-password (401) directly and non-destructively, then exercise a real success round-trip (200, real revokedOtherSessions count) and immediately revert the testbed account's password back to TEST_PORTAL_PASSWORD in the same tagged block so the shared tenant's real credential is never left changed for the next run. The 'no password set for this account' (400, auth.ts:838) state is NOT covered by an apiTest or uiStep: it requires a real passwordless account (SSO-only, no passwordHash row) and no such testbed account exists in this DB today -- documented here per this manifest's own 'genuinely can't be asserted programmatically' allowance, verified by code reading only (see auth.ts:838's own guard). CP-UI-* uiSteps (tag change-password-1601-ui) drive the wrong-current-password error through the real DOM form without mutating any real state, since that call always fails before any write."
   ],
   "apiTests": [
     {
@@ -39,6 +40,73 @@
       "path": "/api/portal/alert-preferences",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.categories.findings.threshold", "exists": true }
+    },
+    {
+      "name": "CP-SETUP-LOGIN (Git #1601) -- self-contained login so onlyTag=change-password-1601 can run standalone.",
+      "sessionTag": "change-password-1601",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "cpAuthToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "CP1 (Git #1601) -- missing either field (auth.ts:826) -- 400 with the route's own literal message.",
+      "sessionTag": "change-password-1601",
+      "method": "POST",
+      "path": "/api/auth/change-password",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
+      "body": { "currentPassword": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 400, "json": { "error": "currentPassword and newPassword are required" } }
+    },
+    {
+      "name": "CP2 (Git #1601) -- new password under 8 characters (auth.ts:831) -- 400 with the route's own literal message.",
+      "sessionTag": "change-password-1601",
+      "method": "POST",
+      "path": "/api/auth/change-password",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
+      "body": { "currentPassword": "{{TEST_PORTAL_PASSWORD}}", "newPassword": "short1" },
+      "expect": { "status": 400, "json": { "error": "Password must be at least 8 characters" } }
+    },
+    {
+      "name": "CP3 (Git #1601) -- current password incorrect (auth.ts:843) -- 401 with the route's own literal message.",
+      "sessionTag": "change-password-1601",
+      "method": "POST",
+      "path": "/api/auth/change-password",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
+      "body": { "currentPassword": "definitely-not-the-real-password-{{TEST_RUN_ID}}", "newPassword": "TempPass{{TEST_RUN_ID}}9!" },
+      "expect": { "status": 401, "json": { "error": "Current password is incorrect" } }
+    },
+    {
+      "name": "CP4 (Git #1601) -- real success round-trip: correct current password + a valid new password -- 200, ok:true, and a real revokedOtherSessions count (auth.ts:855/862).",
+      "sessionTag": "change-password-1601",
+      "method": "POST",
+      "path": "/api/auth/change-password",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
+      "body": { "currentPassword": "{{TEST_PORTAL_PASSWORD}}", "newPassword": "TempPass{{TEST_RUN_ID}}9!" },
+      "expect": { "status": 200, "jsonPath": "$.revokedOtherSessions", "exists": true },
+      "extract": { "as": "cpRevokedCount", "jsonPath": "$.revokedOtherSessions" }
+    },
+    {
+      "name": "CP-CLEANUP (Git #1601) -- revert the testbed account's password back to TEST_PORTAL_PASSWORD so this run doesn't leave the shared tenant's real credential changed for the next session. Re-logs in with the temp password first since CP4 revoked this very session's own refresh token along with every other session.",
+      "sessionTag": "change-password-1601",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "TempPass{{TEST_RUN_ID}}9!" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "cpCleanupToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "CP-CLEANUP2 (Git #1601) -- change back to the original TEST_PORTAL_PASSWORD -- confirms the revert itself round-tripped for real.",
+      "sessionTag": "change-password-1601",
+      "method": "POST",
+      "path": "/api/auth/change-password",
+      "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpCleanupToken}}" },
+      "body": { "currentPassword": "TempPass{{TEST_RUN_ID}}9!", "newPassword": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "json": { "ok": true } },
+      "critical": true
     }
   ],
   "uiSteps": [
@@ -118,6 +186,19 @@
     { "sessionTag": "receipt-1242", "action": "click", "selector": "[data-testid='login-submit']" },
     { "name": "RC6-GOTO -- go straight to the default Receipt route.", "sessionTag": "receipt-1242", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/receipt" },
     { "name": "RC6 (Git #1242) -- useReceiptLive reads GET /api/portal/billing/stripe-receipts; the testbed account has no Stripe subscription so the default route id has no live match and cleanly falls back to the design fixture (dataState='fixture'), proving the fallback path works rather than erroring.", "sessionTag": "receipt-1242", "action": "expect", "selector": "[data-testid='pv2-receipt-source']", "textContains": "fixture", "critical": true },
+
+    { "name": "CP-UI-LOGIN (Git #1601) -- self-contained login so onlyTag=change-password-1601-ui can run standalone.", "sessionTag": "change-password-1601-ui", "action": "goto", "target": "/portal/login" },
+    { "name": "CP-UI-LOGIN2 -- wait for the login form (persisted-session note applies here too).", "sessionTag": "change-password-1601-ui", "action": "expect", "selector": "#email", "state": "visible" },
+    { "sessionTag": "change-password-1601-ui", "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "sessionTag": "change-password-1601-ui", "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "sessionTag": "change-password-1601-ui", "action": "click", "selector": "[data-testid='login-submit']" },
+    { "name": "CP-UI-GOTO -- go straight to Account security regardless of which login path above ran.", "sessionTag": "change-password-1601-ui", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/account-security" },
+    { "name": "CP-UI1 (Git #1601) -- open the change-password form (real toggle state, not a modal fixture).", "sessionTag": "change-password-1601-ui", "action": "click", "selector": "[data-testid='pv2-sec-password-change']" },
+    { "name": "CP-UI2 -- the form is present.", "sessionTag": "change-password-1601-ui", "action": "expect", "selector": "[data-testid='pv2-sec-password-form']", "state": "present", "critical": true },
+    { "sessionTag": "change-password-1601-ui", "action": "input", "selector": "[data-testid='pv2-sec-password-current']", "value": "definitely-not-the-real-password" },
+    { "sessionTag": "change-password-1601-ui", "action": "input", "selector": "[data-testid='pv2-sec-password-new']", "value": "SomeNewPass9!" },
+    { "name": "CP-UI3 -- submit with a wrong current password (never mutates real state -- the route rejects before any write).", "sessionTag": "change-password-1601-ui", "action": "click", "selector": "[data-testid='pv2-sec-password-submit']" },
+    { "name": "CP-UI4 (Git #1601) -- the form surfaces the route's own real 'Current password is incorrect' text (auth.ts:843), not a generic failure banner.", "sessionTag": "change-password-1601-ui", "action": "expect", "selector": "[data-testid='pv2-sec-password-error']", "textContains": "Current password is incorrect", "critical": true },
 
     { "name": "BILL-LIVE-LOGIN (Git #1237) -- self-contained login so onlyTag=bill-live-1237 can run standalone.", "sessionTag": "bill-live-1237", "action": "goto", "target": "/portal/login" },
     { "name": "BILL-LIVE-LOGIN2 -- wait for the login form (persisted-session note applies here too).", "sessionTag": "bill-live-1237", "action": "expect", "selector": "#email", "state": "visible" },
