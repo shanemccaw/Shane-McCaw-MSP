@@ -76,7 +76,7 @@
       "method": "POST",
       "path": "/api/auth/change-password",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
-      "body": { "currentPassword": "definitely-not-the-real-password-{{TEST_RUN_ID}}", "newPassword": "TempPass{{TEST_RUN_ID}}9!" },
+      "body": { "currentPassword": "definitely-not-the-real-password-1601", "newPassword": "TempPass9!" },
       "expect": { "status": 401, "json": { "error": "Current password is incorrect" } }
     },
     {
@@ -85,7 +85,7 @@
       "method": "POST",
       "path": "/api/auth/change-password",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpAuthToken}}" },
-      "body": { "currentPassword": "{{TEST_PORTAL_PASSWORD}}", "newPassword": "TempPass{{TEST_RUN_ID}}9!" },
+      "body": { "currentPassword": "{{TEST_PORTAL_PASSWORD}}", "newPassword": "TempPass9!" },
       "expect": { "status": 200, "jsonPath": "$.revokedOtherSessions", "exists": true },
       "extract": { "as": "cpRevokedCount", "jsonPath": "$.revokedOtherSessions" }
     },
@@ -95,7 +95,7 @@
       "method": "POST",
       "path": "/api/auth/login",
       "headers": { "Content-Type": "application/json" },
-      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "TempPass{{TEST_RUN_ID}}9!" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "TempPass9!" },
       "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
       "extract": { "as": "cpCleanupToken", "jsonPath": "$.accessToken" }
     },
@@ -105,7 +105,7 @@
       "method": "POST",
       "path": "/api/auth/change-password",
       "headers": { "Content-Type": "application/json", "Authorization": "Bearer {{cpCleanupToken}}" },
-      "body": { "currentPassword": "TempPass{{TEST_RUN_ID}}9!", "newPassword": "{{TEST_PORTAL_PASSWORD}}" },
+      "body": { "currentPassword": "TempPass9!", "newPassword": "{{TEST_PORTAL_PASSWORD}}" },
       "expect": { "status": 200, "json": { "ok": true } },
       "critical": true
     }
