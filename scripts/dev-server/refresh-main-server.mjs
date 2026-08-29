@@ -20,10 +20,14 @@
 //   * if the checkout can't fast-forward (local commits ahead, or a dirty file
 //     would be overwritten by the ff) it reports and SKIPS the pull -- it does
 //     not stash, reset --hard, or overwrite anyone's work;
-//   * only the built api-server is process-restarted (it's `node dist/index.mjs`,
-//     no watch mode -> must rebuild). The vite front-ends run `vite dev` and
-//     HMR-reload themselves once their source advances on disk, so they need no
-//     restart.
+//   * only the built api-server is process-*restarted* on every refresh (it's
+//     `node dist/index.mjs`, no watch mode -> must rebuild). The vite front-ends
+//     run `vite dev` and HMR-reload themselves once their source advances on
+//     disk *if they're already running* -- but Git #1205: one that's genuinely
+//     down (never started, or was stopped) has no process to HMR-reload, so it
+//     is explicitly started too (same `dev-all.mjs --start <service>` call
+//     DevServicesManager.StartServiceAsync uses), confirmed via a real port
+//     check rather than assumed.
 //
 // Invoked as the coordinator's restart action (see request-restart.mjs /
 // coordinator.mjs), so it fires exactly where the C:\dev-server restart used to --
@@ -42,8 +46,19 @@ import { pidAlive } from "./lock.mjs";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // The one built (non-watch) service: it must be rebuilt+restarted to reflect new
-// code. Everything else dev-all launches is `vite dev` (HMR) and self-reloads.
+// code. Everything else dev-all launches is `vite dev` (HMR) and self-reloads --
+// but ONLY if it's already running. Git #1205: a front-end selective targeting
+// says must be running (plan.neededRunning, passed in as `only`) that is
+// genuinely DOWN never gets an HMR reload (there's no process to reload), so it
+// has to be started explicitly, the same way DevServicesManager.StartServiceAsync
+// does for the WPF UI's manual Start buttons -- both call this same launcher.
 const BUILT_SERVICE = "api-server";
+const FRONTEND_SERVICES = [
+  { name: "shane-mccaw-consulting", port: 5173, title: "Marketing" },
+  { name: "admin-panel", port: 5174, title: "Admin" },
+  { name: "msp-portal", port: 5175, title: "Portal" },
+  { name: "msp-website", port: 5176, title: "Website" },
+];
 
 /**
  * Fast-forward the MAIN checkout to origin/main. Fetch is best-effort. Returns a
@@ -102,12 +117,14 @@ function readServiceMeta(config, name) {
   }
 }
 
-/** Best-effort readiness: can we open a TCP connection to the api port? */
-async function waitForApiReady(config) {
+/** Best-effort readiness: can we open a TCP connection to the given port?
+ * Mirrors DevServicesManager.IsPortOpenAsync -- same "is it actually listening"
+ * proof, generalized from just the api port so front-end starts can use it too. */
+async function waitForPortReady(config, port) {
   const deadline = Date.now() + config.readyTimeoutMs;
   while (Date.now() < deadline) {
     const ok = await new Promise((resolve) => {
-      const sock = net.connect(config.apiPort, "127.0.0.1");
+      const sock = net.connect(port, "127.0.0.1");
       const done = (v) => { sock.destroy(); resolve(v); };
       sock.once("connect", () => done(true));
       sock.once("error", () => done(false));
@@ -117,6 +134,74 @@ async function waitForApiReady(config) {
     await sleep(500);
   }
   return false;
+}
+
+/** Best-effort readiness: can we open a TCP connection to the api port? */
+async function waitForApiReady(config) {
+  return waitForPortReady(config, config.apiPort);
+}
+
+/** Is this service's tracked process genuinely alive right now? Mirrors
+ * server-process.mjs's readRunningServices: meta says "running" AND the
+ * recorded pid is actually alive, so a stale meta left behind by a crash
+ * doesn't masquerade as up. */
+function isServiceRunning(config, name) {
+  const meta = readServiceMeta(config, name);
+  return !!(meta?.status === "running" && meta.pid && pidAlive(meta.pid));
+}
+
+/**
+ * Start a front-end that's genuinely down -- the actual missing capability
+ * (Git #1205). Mirrors DevServicesManager.StartServiceAsync exactly: same
+ * `dev-all.mjs --start <service>` invocation, then confirms with a real port
+ * check (mirrors IsPortOpenAsync) rather than assuming it worked. A no-op,
+ * honestly reported, if the service is already running (nothing to start).
+ */
+async function startFrontendIfDown(config, svc) {
+  if (isServiceRunning(config, svc.name)) {
+    return { name: svc.name, started: false, alreadyRunning: true, ready: true };
+  }
+  const root = config.mainRepoRoot;
+  const devAll = path.join(root, "scripts", "dev-all.mjs");
+  if (!existsSync(devAll)) {
+    return { name: svc.name, started: false, alreadyRunning: false, ready: false, reason: `dev-all.mjs not found at ${devAll}` };
+  }
+  const child = spawn(process.execPath, [devAll, "--start", svc.name], {
+    cwd: root,
+    detached: true,
+    stdio: "ignore",
+    env: { ...process.env, DEV_ALL_LOG_DIR: config.devAllLogDir, APP_ENV: "dev", NODE_ENV: "development" },
+  });
+  child.unref();
+  const ready = await waitForPortReady(config, svc.port);
+  return { name: svc.name, started: true, alreadyRunning: false, newPid: child.pid, ready };
+}
+
+/**
+ * Ensure every front-end this restart needs running is actually running,
+ * starting whichever ones are genuinely down. `onlyList` is selective
+ * targeting's `plan.neededRunning` (front-ends the set's own code changed, or
+ * that were already running and still should be); `null` means the footprint
+ * couldn't be resolved and this is the documented safe-fallback FULL restart,
+ * so every configured front-end is checked/started (never silently
+ * under-restart). Front-ends outside `onlyList` are left alone entirely --
+ * this only starts what's needed, never tears anything down (that's toStop's
+ * job, handled by the caller when DEV_SET_STOP_UNNEEDED is on).
+ */
+async function ensureFrontendsRunning(config, onlyList, { dryRun = false } = {}) {
+  const targets = onlyList
+    ? FRONTEND_SERVICES.filter((s) => onlyList.includes(s.name))
+    : FRONTEND_SERVICES;
+  const results = [];
+  for (const svc of targets) {
+    if (dryRun) {
+      const alreadyRunning = isServiceRunning(config, svc.name);
+      results.push({ name: svc.name, dryRun: true, alreadyRunning, wouldStart: !alreadyRunning });
+    } else {
+      results.push(await startFrontendIfDown(config, svc));
+    }
+  }
+  return results;
 }
 
 /**
@@ -173,6 +258,13 @@ export async function refreshMainServer(config, { only, dryRun = false } = {}) {
     api = { restartedApi: false, dryRun: true, wouldRestartApi: true, oldPid: readServiceMeta(config, BUILT_SERVICE)?.pid || null };
   }
 
+  // Git #1205 -- start whichever needed front-ends are genuinely down. `only`
+  // (== plan.neededRunning when selective targeting resolved) already told us
+  // exactly which front-ends must be running; this was previously read only to
+  // decide the api-server question above and silently dropped for every other
+  // service, which is the real false limitation this fixes.
+  const frontends = await ensureFrontendsRunning(config, onlyList, { dryRun });
+
   // Return a shape compatible with the coordinator's restart record (oldPid/newPid/
   // ready) plus the extra main-checkout detail for observability.
   return {
@@ -185,6 +277,7 @@ export async function refreshMainServer(config, { only, dryRun = false } = {}) {
     only: onlyList && onlyList.length ? onlyList : null,
     restartedApi: !!api.restartedApi,
     apiReason: api.reason || null,
+    frontends,
   };
 }
 
@@ -219,9 +312,13 @@ if (isMain) {
       console.log(JSON.stringify(res, null, 2));
       const f = res.ff || {};
       const arrow = f.before && f.after ? `${shortSha(f.before)} -> ${shortSha(f.after)}` : "";
+      const fe = (res.frontends || [])
+        .map((f2) => `${f2.name}:${f2.started ? `started(ready=${f2.ready})` : f2.alreadyRunning ? "already-up" : f2.wouldStart ? "would-start" : f2.reason || "skipped"}`)
+        .join(", ");
       console.error(
         `[refresh-main] ${dryRun ? "DRY-RUN " : ""}main checkout ${config.mainRepoRoot}: ${f.reason || f.wouldPull ? "" : ""}${arrow ? " " + arrow : ""}` +
-          (res.restartedApi ? ` | api-server restarted (pid ${res.newPid}, ready=${res.ready})` : ` | api restart: ${res.apiReason || "skipped"}`)
+          (res.restartedApi ? ` | api-server restarted (pid ${res.newPid}, ready=${res.ready})` : ` | api restart: ${res.apiReason || "skipped"}`) +
+          (fe ? ` | frontends: ${fe}` : "")
       );
       process.exit(0);
     })
