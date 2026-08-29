@@ -114,9 +114,8 @@
  *
  * NOTE FOR ANYONE CHASING A COLOUR THAT DIDN'T MOVE: a token retheme only
  * repaints code that reads tokens. Literal hex in .tsx does not follow. There
- * are ~1163 hardcoded #0078D4 usages plus whole folders written against literal
- * hex (components/msp-portal/, msp-tenants/, assessment-test/,
- * m365-health/Header.tsx). Those need a per-file sweep and are tracked in the
+ * are hardcoded #0078D4 usages plus components written against literal hex.
+ * Those need a per-file sweep and are tracked in the
  * build plan, not fixed here. components/copilot-journey/ is exempt — it reads
  * journeyTokens directly and is already on this palette.
  *

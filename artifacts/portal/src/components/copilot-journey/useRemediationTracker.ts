@@ -60,7 +60,7 @@ const JOURNEY_CHANNEL = "engine.dashboard";
 
 /**
  * Mirrors `REMEDIATION_TRACKER_STEP_STATUS` in `lib/db/src/schema/msp.ts`.
- * Duplicated rather than imported because msp-portal carries no dependency on
+ * Duplicated rather than imported because the portal frontend carries no dependency on
  * `@workspace/db` (a frontend app, not a server) — the same reason
  * `portal-remediation-tracker.ts` keeps its own copy of the step id list
  * rather than importing the guide. `portal-remediation-tracker.test.ts` reads

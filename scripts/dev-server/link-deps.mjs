@@ -3,8 +3,8 @@
 // A worktree checks out SOURCE only -- no node_modules, no built lib/*/dist. To
 // actually build/run in a worktree without a full (slow, disk-heavy) `pnpm
 // install` per worktree, junction the real dependency dirs from the main repo
-// into the worktree. This is the recipe proven by earlier sessions (see memory
-// "isolated-msp-portal-build-needs-all-workspace-node-modules"):
+// into the worktree. This is the recipe proven by earlier sessions (the
+// "isolated worktree build needs all workspace node_modules" lesson):
 //
 //   * junction EVERY workspace-package node_modules (~18: root + all
 //     artifacts/* and lib/*), not just root + one app, or Rollup fails to
