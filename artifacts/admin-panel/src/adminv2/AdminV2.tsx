@@ -50,6 +50,7 @@ import "./screens/project-management";
 import "./screens/content-studio";
 import "./screens/retainer";
 import "./screens/risk-decisions";
+import "./screens/m365-changes";
 // The Git screen's floating console is meant to hover over whatever you are
 // doing, not just show while `/git` itself is the active screen — so it is
 // mounted here, unconditionally, rather than inside `GitConsoleBody`'s own
@@ -114,6 +115,9 @@ import { RetainerFetchBridge } from "./screens/retainer/RetainerFetchBridge";
 // group, its palette answers and its linked-check catalog — see
 // RiskDecisionsFetchBridge.tsx's doc comment (Git #1294).
 import { RiskDecisionsFetchBridge } from "./screens/risk-decisions/RiskDecisionsFetchBridge";
+// Warm-loads the Microsoft Changes interpretation library so the Watch tab's
+// "n proposed, awaiting you" count is live before /m365-changes is opened (#1532).
+import { M365ChangesFetchBridge } from "./screens/m365-changes/M365ChangesFetchBridge";
 // Same reasoning again, for the Home tab's "Open a prompt"/"Drafts pending"
 // galleries and the synchronous `prompt` peek resolver — see
 // AiPromptsFetchBridge.tsx's doc comment.
@@ -221,6 +225,7 @@ function AdminShell() {
       <ContentStudioFetchBridge />
       <RetainerFetchBridge />
       <RiskDecisionsFetchBridge />
+      <M365ChangesFetchBridge />
       <AiPromptsFetchBridge />
       <SharedLinksFetchBridge />
       <DocumentsFetchBridge />

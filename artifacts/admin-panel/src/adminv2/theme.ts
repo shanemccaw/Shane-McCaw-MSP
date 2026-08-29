@@ -203,6 +203,11 @@ export const KIND_BADGE: Record<string, readonly [string, string]> = {
   // retainer entry is billable consulting work delivered, i.e. money-in, not
   // a fault. Whether a customer is running low on hours is the Watch tab's job.
   retainer: ["#92d8ae", "HRS"],
+  // Microsoft-change interpretations (Git #1532). Amber, like `alert`/`delivery`:
+  // a `proposed` interpretation is exactly the "needs a person to look" state the
+  // Watch tab exists for — an AI reading that has not been confirmed and so cannot
+  // yet reach a tenant. Neutral would understate that a person is the gate.
+  interpretation: ["#f2ca63", "M365"],
 };
 
 export const KIND_BADGE_FALLBACK: readonly [string, string] = ["#8f8c88", "·"];

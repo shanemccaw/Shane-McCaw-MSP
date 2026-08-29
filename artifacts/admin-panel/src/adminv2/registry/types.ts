@@ -417,6 +417,13 @@ export const PEEK_KINDS = [
   // documented acceptance of a specific risk, with its own liability figure,
   // linked automated check, expiry and lifecycle status.
   "riskDecision",
+  // One Microsoft-change interpretation (Git #1532, part of #1494). The universal
+  // reading of a class of M365 change — change class, what it touches, who acts,
+  // controllability, and the probe — authored once per MSP and reused by every
+  // tenant's resolution layer. Not an "alert" (a tenant-specific finding) and not
+  // a "signal" (a rule that derives a tenant score) — it is the read of the
+  // announcement itself, with its own proposed/confirmed verification gate.
+  "interpretation",
 ] as const;
 export type PeekKind = (typeof PEEK_KINDS)[number];
 
@@ -599,7 +606,8 @@ export type CommandKind =
   | "trigger"
   | "issue"
   | "chatLink"
-  | "post";
+  | "post"
+  | "interpretation";
 
 export interface CommandItem {
   id: string;

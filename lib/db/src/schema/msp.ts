@@ -2440,6 +2440,122 @@ export const m365RoadmapSyncStateTable = pgTable("m365_roadmap_sync_state", {
 export type M365RoadmapSyncState = typeof m365RoadmapSyncStateTable.$inferSelect;
 export type InsertM365RoadmapSyncState = typeof m365RoadmapSyncStateTable.$inferInsert;
 
+// ── M365 Change Interpretations (#1532, part of #1494) ───────────────────────────
+// The INTERPRETATION layer of the Microsoft Changes module. #1494's split:
+// *interpretation is universal, resolution is per-tenant.* A Message Center post
+// or roadmap item is prose about a CLASS of change ("EWS retirement means apps and
+// mailboxes using EWS must migrate to Graph") — true for every tenant on earth, so
+// it is authored ONCE and every tenant's resolution layer reuses it. The per-tenant
+// "you have 412 mailboxes with EWS enabled" number is NOT here — that is the
+// separate resolution layer joined later on `featureId` / `probe`.
+//
+// Authoring model (#1532, resolved 2026-08-28): Shane authors, AI proposes. The AI
+// reads a roadmap item's description or a Message Center post's bodyContent and
+// PROPOSES the structured reading (status 'proposed'); Shane CONFIRMS it (status
+// 'confirmed') before it is ever applied to a tenant. No unverified interpretation
+// reaches a customer — the named risk being *an LLM confidently inventing an opt-out
+// procedure that does not exist.* `status` is the gate the resolution layer reads:
+// only a 'confirmed' row may drive a tenant-facing answer.
+//
+// Structurally PER-MSP even though there is one MSP today (#1532): the library is
+// scoped by `mspId` so a second MSP — or the NASA extraction — owns its own
+// interpretations rather than inheriting a shared global one. `feature_id` is the
+// cross-source join key (the roadmap feature ID that Message Center posts carry,
+// #1494); `graph_message_id` links the Message Center source when there is one.
+
+export const M365_CHANGE_CLASSES = [
+  "retirement",
+  "default_flip",
+  "new_feature",
+  "breaking_change",
+  "licensing",
+] as const;
+export type M365ChangeClass = (typeof M365_CHANGE_CLASSES)[number];
+
+export const M365_INTERPRETATION_STATUSES = ["proposed", "confirmed", "rejected"] as const;
+export type M365InterpretationStatus = (typeof M365_INTERPRETATION_STATUSES)[number];
+
+/** Who has to act for the change to take effect. */
+export const M365_ACTORS = ["microsoft", "admin"] as const;
+export type M365Actor = (typeof M365_ACTORS)[number];
+
+/** Whether the change can be turned off / opted out of. `unknown` is the honest default. */
+export const M365_CONTROLLABILITY = ["yes", "no", "unknown"] as const;
+export type M365Controllability = (typeof M365_CONTROLLABILITY)[number];
+
+/**
+ * What a change touches — kept as a structured object rather than free prose so the
+ * resolution layer can map it onto real estate. Each field is a plain list; any
+ * combination may be empty. `services` are M365 service names (Exchange, Purview…),
+ * `protocols` low-level protocols (EWS, Basic Auth…), `skus` license SKUs the change
+ * bears on (Project Online, E5…), `settings` tenant/admin settings the change flips.
+ */
+export interface M365Touches {
+  services: string[];
+  protocols: string[];
+  skus: string[];
+  settings: string[];
+}
+
+/**
+ * The probe — #1494's bridge to resolution: *what to count in a tenant to know
+ * whether this applies.* `description` is the plain-language count target; the
+ * optional structured hints let the resolution layer wire it to real probe
+ * infrastructure (`monitor_checks`, or the live PowerShell path for Exchange/Purview
+ * where Graph will not answer) without re-reading the prose. Nothing here computes a
+ * number — this only *states what to count*; the number is the resolution layer's job.
+ */
+export interface M365Probe {
+  description: string;
+  monitorCheckKey?: string | null;
+  powershell?: string | null;
+  graphEndpoint?: string | null;
+}
+
+export const m365ChangeInterpretationsTable = pgTable("m365_change_interpretations", {
+  id: serial("id").primaryKey(),
+  // Per-MSP scoping (#1532): the interpretation library belongs to one MSP, so a
+  // second MSP / the NASA extraction owns its own rather than a shared global one.
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // Cross-source join keys (#1494). featureId ties to m365_roadmap_items.feature_id;
+  // graphMessageId ties to msp_message_center_items.graph_message_id. Either, both,
+  // or neither (a hand-authored interpretation with no single source) may be set.
+  featureId: text("feature_id"),
+  graphMessageId: text("graph_message_id"),
+  sourceKind: text("source_kind").notNull().default("roadmap"), // "roadmap" | "message_center" | "manual"
+  title: text("title").notNull(),
+  summary: text("summary"), // plain-language "what is changing", the reframe of Microsoft's prose
+  changeClass: text("change_class").$type<M365ChangeClass>().notNull(),
+  touches: jsonb("touches").$type<M365Touches>().notNull().default({ services: [], protocols: [], skus: [], settings: [] }),
+  whoActs: text("who_acts").$type<M365Actor>().notNull().default("microsoft"),
+  controllable: text("controllable").$type<M365Controllability>().notNull().default("unknown"),
+  controlMethod: text("control_method"), // HOW to turn it off — only meaningful when controllable = 'yes'
+  probe: jsonb("probe").$type<M365Probe>().notNull().default({ description: "" }),
+  // The confirmation gate. 'proposed' = AI's unverified reading, never tenant-facing;
+  // 'confirmed' = Shane verified it and it may drive resolution; 'rejected' = read and
+  // discarded (kept so the same source is not re-proposed blindly).
+  status: text("status").$type<M365InterpretationStatus>().notNull().default("proposed"),
+  proposedBy: text("proposed_by").notNull().default("ai"), // "ai" | "human"
+  aiModel: text("ai_model"), // the model that produced a 'proposed' reading, for provenance
+  aiRationale: text("ai_rationale"), // why the AI read it this way — shown to Shane at confirm time
+  confirmedBy: text("confirmed_by"), // the admin identity that confirmed it
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("m365_change_interpretations_msp_id_idx").on(t.mspId),
+  index("m365_change_interpretations_feature_id_idx").on(t.featureId),
+  index("m365_change_interpretations_status_idx").on(t.status),
+  // One interpretation per roadmap feature per MSP (partial — hand-authored rows with
+  // no featureId are exempt). Declared in the manual migration, not here, because
+  // Drizzle cannot express a partial unique index in the table builder.
+]);
+
+export type M365ChangeInterpretation = typeof m365ChangeInterpretationsTable.$inferSelect;
+export type InsertM365ChangeInterpretation = typeof m365ChangeInterpretationsTable.$inferInsert;
+
 // ── Report Definitions ─────────────────────────────────────────────────────────
 // MSP-authored templates that describe what to generate, for whom, and how to
 // deliver it. One definition can be triggered many times (→ report_runs rows).
