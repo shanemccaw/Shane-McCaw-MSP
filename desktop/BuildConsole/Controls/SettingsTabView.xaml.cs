@@ -63,6 +63,8 @@ namespace BuildConsole.Controls
             UseSshForDeployCheck.IsChecked = savedSettings.UseSshForDeploy;
             UseSshForSqlCheck.IsChecked = savedSettings.UseSshForSql;
 
+            EncouragementCrittersEnabledCheck.IsChecked = savedSettings.EncouragementCrittersEnabled;
+
             RenderWebToolsSettingsList();
             RenderUserAccountsSettingsList();
 
@@ -77,6 +79,19 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.AutoRunTestsOnBuildComplete = AutoRunPostBuildTestsCheck.IsChecked == true;
             settings.AutoRunFullSuiteFallbackOnBuildComplete = AutoRunFullSuiteFallbackCheck.IsChecked == true;
+            settings.Save();
+        }
+
+        /// <summary>
+        /// Git #1639 — persists whether the automatic Encouragement critter timer
+        /// (<see cref="EncouragementService.Instance.Start"/>, gated at MainWindow launch)
+        /// is enabled. EncouragementService exposes no Stop(), so a change here takes
+        /// effect on next launch, same as the other launch-time toggles on this page.
+        /// </summary>
+        private void EncouragementCrittersEnabledCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            var settings = BuildConsoleSettings.Load();
+            settings.EncouragementCrittersEnabled = EncouragementCrittersEnabledCheck.IsChecked == true;
             settings.Save();
         }
 

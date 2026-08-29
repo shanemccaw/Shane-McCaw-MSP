@@ -509,6 +509,19 @@
                                         <TextBlock x:Name="SecondaryClaudeConfigDirSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
                                     </StackPanel>
                                 </Border>
+
+                                <!-- Git #1639 — automatic Encouragement critter, off by default -->
+                                <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Encouragement Critter" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
+                                        <CheckBox x:Name="EncouragementCrittersEnabledCheck" Content="🎯 Automatically cheer on milestone progress every 12-24 minutes (&quot;Way to go! Get some ice cream!&quot;)"
+                                                  FontSize="11.5" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" Margin="0,0,0,4"
+                                                  Checked="EncouragementCrittersEnabledCheck_Changed" Unchecked="EncouragementCrittersEnabledCheck_Changed"/>
+                                        <TextBlock Text="Off by default. The manual &quot;Cheer Me Up&quot; menu item always works regardless of this setting."
+                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </Border>
                     </StackPanel>

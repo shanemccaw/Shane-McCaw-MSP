@@ -167,6 +167,17 @@ namespace BuildConsole.Services
 
         public bool HasSshConfig => !string.IsNullOrWhiteSpace(SshKeyPath) && !string.IsNullOrWhiteSpace(SshHost);
 
+        /// <summary>
+        /// Git #1639 — the unsolicited "Way to go! 🎯 ... Get some ice cream! 🍦" Encouragement
+        /// critter (<see cref="EncouragementService"/>) fired unconditionally every random
+        /// 12-24 minutes with no way to turn it off. Default <c>false</c>: MainWindow only calls
+        /// <c>EncouragementService.Instance.Start()</c> when this is true, so a fresh/existing
+        /// settings.json (no "encouragementCrittersEnabled" key) opts OUT of the automatic timer
+        /// by default. Separate from the manual "Cheer Me Up" menu item (TriggerCheerNow), which
+        /// always works regardless of this setting.
+        /// </summary>
+        public bool EncouragementCrittersEnabled { get; set; } = false;
+
         // ── Git #1416 — multi-account routing for Claude Code (overflow to secondary) ──
         // Shane runs a primary Max 20x account and a secondary Pro account as SEQUENTIAL
         // overflow (never concurrent). A queue build carries an Account of "primary"

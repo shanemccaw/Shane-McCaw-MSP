@@ -485,7 +485,12 @@ namespace BuildConsole
             _ = _claudeOnlineService.CheckStatusAsync();
 
             // Random Encouragement Critter — strolls across the screen periodically to cheer Shane on with milestone progress!
-            BuildConsole.Services.EncouragementService.Instance.Start();
+            // Git #1639 — default OFF; gated behind Settings > General > "Encouragement Critter" checkbox.
+            // The manual "Cheer Me Up" menu item (TriggerCheerNow, below) is unaffected and always works.
+            if (BuildConsole.Services.BuildConsoleSettings.Load().EncouragementCrittersEnabled)
+            {
+                BuildConsole.Services.EncouragementService.Instance.Start();
+            }
 
             // Git #815 — surfaces a failed poll as a real, visible signal
             // (status-bar QueueDot/QueueStatusText, previously unused
