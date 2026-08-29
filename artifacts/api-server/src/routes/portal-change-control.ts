@@ -111,14 +111,27 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspChangeRequestsTable } from "@workspace/db";
-import { and, desc, eq } from "drizzle-orm";
+import { db, crApprovalsTable, mspChangeRequestsTable, usersTable, type CrApproval } from "@workspace/db";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
 import { declineRoutedChangeToRisk } from "../lib/m365-change-router";
+import { personIdForUser } from "../lib/portal-ownership";
+import {
+  requiredStages,
+  summarizeApprovals,
+  toWireApproval,
+  type ApprovalState,
+  type WireApprovalRecord,
+} from "../lib/portal-change-approvals";
+import {
+  materializeApprovalsForChange,
+  recordApproval,
+} from "../lib/portal-change-approvals-store";
+import { recordRejection } from "../lib/portal-change-rejection";
 import { logger } from "../lib/logger";
 import {
   CHANGE_CLASSES,
@@ -196,6 +209,22 @@ interface WireChangeRequest {
   readonly implementer: string | null;
   readonly sourceGraphMessageId: string | null;
   readonly createdAt: string;
+  /**
+   * #1496 — the real approval RECORD behind this change, one entry per approver
+   * decision, plus the folded state (how many stages it needs, how many have
+   * cleared, whether an SLA has breached, whether it is complete or terminally
+   * rejected). `approvals` above stays as the prototype's one-line display
+   * summary; these are the durable ledger the summary is derived from.
+   */
+  readonly approvalRecords: readonly WireApprovalRecord[];
+  readonly approvalState: ApprovalState;
+  /**
+   * Whether THIS caller may record an approval on this change right now — has the
+   * live `canApproveChanges` capability, is not the person who raised it
+   * (separation of duties), and a pending stage exists. The page shows the
+   * Approve/Reject affordance only when true.
+   */
+  readonly canApproveNow: boolean;
 }
 
 interface ChangeRequestRow {
@@ -223,9 +252,30 @@ interface ChangeRequestRow {
   createdAt: Date;
 }
 
-function toWire(row: ChangeRequestRow): WireChangeRequest {
+/** Per-request context for the caller-relative `canApproveNow` computation. */
+interface ApprovalViewerContext {
+  readonly now: Date;
+  readonly callerCanApprove: boolean;
+  readonly callerEmail: string;
+}
+
+function toWire(
+  row: ChangeRequestRow,
+  approvals: readonly CrApproval[],
+  ctx: ApprovalViewerContext,
+): WireChangeRequest {
   const changeClass = displayChangeClass(row.changeClass);
   const status = displayStatus(row.status, row.approvedBy);
+  const required = requiredStages(row.changeClass as never, row.riskLevel as never);
+  const approvalState = summarizeApprovals(approvals, required, ctx.now);
+  const approvalRecords = approvals.map((a) => toWireApproval(a, ctx.now));
+  // The caller may act only if they carry the capability, a stage is pending,
+  // and they are not the requester (separation of duties). The store re-checks
+  // all three server-side; this only decides whether to show the affordance.
+  const requesterEmail = (row.requestedBy ?? "").trim().toLowerCase();
+  const isRequester = requesterEmail.length > 0 && requesterEmail === ctx.callerEmail.trim().toLowerCase();
+  const canApproveNow =
+    ctx.callerCanApprove && approvalState.nextStage !== null && !approvalState.rejectedTerminal && !isRequester;
   return {
     code: formatChangeRequestCode(row.id),
     title: row.title,
@@ -251,6 +301,9 @@ function toWire(row: ChangeRequestRow): WireChangeRequest {
     implementer: displayImplementer(row.implementer),
     sourceGraphMessageId: row.sourceGraphMessageId,
     createdAt: row.createdAt.toISOString(),
+    approvalRecords,
+    approvalState,
+    canApproveNow,
   };
 }
 
@@ -321,6 +374,27 @@ function buildStats(wire: readonly WireChangeRequest[], now: Date) {
 /** The feature key this add-on's entitlement rows and services carry. */
 export const CHANGE_CONTROL_FEATURE_KEY = "change_control";
 
+/**
+ * The caller's LIVE `canApproveChanges` capability (#1496). Read fresh from the
+ * DB every call, never trusted from the JWT — same discipline as `canManageTeam`
+ * / `canApprovePurchases`, so a revoke takes effect immediately. MSP staff and
+ * PlatformAdmin approve by role and are not subject to the per-user flag.
+ */
+async function callerCanApproveChanges(req: Request): Promise<boolean> {
+  const user = req.user;
+  if (!user) return false;
+  const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+  if (effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator" || effectiveRole === "PlatformAdmin") {
+    return true;
+  }
+  const [row] = await db
+    .select({ canApproveChanges: usersTable.canApproveChanges })
+    .from(usersTable)
+    .where(eq(usersTable.id, user.id))
+    .limit(1);
+  return row?.canApproveChanges === true;
+}
+
 // ── Read ──────────────────────────────────────────────────────────────────────
 router.get(
   "/portal/change-control",
@@ -379,8 +453,33 @@ router.get(
         )
         .orderBy(desc(mspChangeRequestsTable.id));
 
-      const requests = rows.map(toWire);
-      res.json({ requests, stats: buildStats(requests, new Date()), scoped: true });
+      // #1496 — attach the approval ledger. One scoped read for every CR on the
+      // page, grouped by change; the (mspId, tenantId) predicate is the same
+      // cross-tenant guard the CR read uses.
+      const now = new Date();
+      const crIds = rows.map((r) => r.id);
+      const approvalRows =
+        crIds.length === 0
+          ? []
+          : await db
+              .select()
+              .from(crApprovalsTable)
+              .where(and(eq(crApprovalsTable.mspId, scope.mspId), eq(crApprovalsTable.tenantId, scope.tenantId)))
+              .orderBy(asc(crApprovalsTable.stage), asc(crApprovalsTable.id));
+      const approvalsByCr = new Map<number, CrApproval[]>();
+      for (const a of approvalRows) {
+        const list = approvalsByCr.get(a.changeRequestId) ?? [];
+        list.push(a);
+        approvalsByCr.set(a.changeRequestId, list);
+      }
+      const ctx: ApprovalViewerContext = {
+        now,
+        callerCanApprove: await callerCanApproveChanges(req),
+        callerEmail: req.user?.email ?? "",
+      };
+
+      const requests = rows.map((row) => toWire(row, approvalsByCr.get(row.id) ?? [], ctx));
+      res.json({ requests, stats: buildStats(requests, now), scoped: true });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/change-control failed");
       res.status(500).json({ error: "Failed to load change control register" });
@@ -494,7 +593,27 @@ router.post(
           proposedPayload: parseJsonField(body.post),
           rollbackScriptSnippet: "",
         })
-        .returning({ id: mspChangeRequestsTable.id });
+        .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
+
+      // #1496 — a real change produces a real approval record from the moment it
+      // is raised. A wizard CR is `normal`, unapproved, so this materialises the
+      // required pending stage(s) with their SLA. Non-fatal if it fails: the CR
+      // is already created and the register still renders.
+      try {
+        await materializeApprovalsForChange({
+          id: inserted.id,
+          mspId: scope.mspId,
+          tenantId: scope.tenantId,
+          changeClass: storedChangeClass(body.changeClass),
+          riskLevel: storedRiskLevel(risk),
+          status: "pending_approval",
+          approvedBy: null,
+          requestedBy,
+          createdAt: inserted.createdAt,
+        });
+      } catch (err) {
+        log.error({ err, crId: inserted.id }, "change request created but approval materialisation failed");
+      }
 
       const code = formatChangeRequestCode(inserted.id);
       log.info(
@@ -609,6 +728,187 @@ router.post(
     } catch (err) {
       log.error({ err, customerId, crId }, "POST /portal/change-control/:code/decline failed");
       res.status(500).json({ error: "Failed to decline the change" });
+    }
+  },
+);
+
+// ── Approve / reject a change (the #1496 approval model) ─────────────────────
+//
+// These are the customer-facing decision endpoints the approval model exists
+// for. Both floor at CustomerUser + the change_control entitlement (the approval
+// experience), and both ADDITIONALLY require the live `canApproveChanges`
+// capability — approving a configuration change to a live tenant is a distinct
+// authority (see this file's header and the flag's note in the users schema).
+// Separation of duties and stage ordering are enforced in the store, not here.
+
+/** The CR essentials both decision routes load, scoped to the caller's tenant. */
+async function loadScopedChange(
+  crId: number,
+  mspId: number,
+  tenantId: string,
+): Promise<{
+  id: number;
+  mspId: number;
+  tenantId: string;
+  changeClass: string;
+  riskLevel: string;
+  status: string;
+  approvedBy: string | null;
+  requestedBy: string;
+  createdAt: Date;
+  sourceKind: string | null;
+} | null> {
+  const [cr] = await db
+    .select({
+      id: mspChangeRequestsTable.id,
+      mspId: mspChangeRequestsTable.mspId,
+      tenantId: mspChangeRequestsTable.tenantId,
+      changeClass: mspChangeRequestsTable.changeClass,
+      riskLevel: mspChangeRequestsTable.riskLevel,
+      status: mspChangeRequestsTable.status,
+      approvedBy: mspChangeRequestsTable.approvedBy,
+      requestedBy: mspChangeRequestsTable.requestedBy,
+      createdAt: mspChangeRequestsTable.createdAt,
+      sourceKind: mspChangeRequestsTable.sourceKind,
+    })
+    .from(mspChangeRequestsTable)
+    .where(
+      and(
+        eq(mspChangeRequestsTable.id, crId),
+        eq(mspChangeRequestsTable.mspId, mspId),
+        eq(mspChangeRequestsTable.tenantId, tenantId),
+      ),
+    )
+    .limit(1);
+  return cr ?? null;
+}
+
+/** The acting approver's identity for the store. Role is customer unless MSP staff. */
+function approverIdentity(req: Request, customerId: number): {
+  personId: string;
+  name: string;
+  email: string;
+  customerId: number;
+  role: "customer" | "msp";
+} {
+  const user = req.user!;
+  const effectiveRole = user.role === "admin" ? "PlatformAdmin" : user.mspRole;
+  const isMsp = effectiveRole === "MSPAdmin" || effectiveRole === "MSPOperator" || effectiveRole === "PlatformAdmin";
+  return {
+    personId: personIdForUser(user.id),
+    name: (user.email ?? "").trim() || `User ${user.id}`,
+    email: user.email ?? "",
+    customerId,
+    role: isMsp ? "msp" : "customer",
+  };
+}
+
+const approveSchema = z.object({ note: z.string().trim().max(2_000).optional() });
+const rejectSchema = z.object({ reason: z.string().trim().min(1).max(2_000) });
+
+router.post(
+  "/portal/change-control/:code/approve",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    const crId = parseChangeRequestCode(String(req.params.code));
+    if (crId === null) {
+      res.status(400).json({ error: "Invalid change request code" });
+      return;
+    }
+    const parsed = approveSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+
+    try {
+      if (!(await callerCanApproveChanges(req))) {
+        res.status(403).json({ error: "You do not have permission to approve changes." });
+        return;
+      }
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.status(409).json({ error: "This account has no connected Microsoft 365 tenant" });
+        return;
+      }
+      const cr = await loadScopedChange(crId, scope.mspId, scope.tenantId);
+      if (!cr) {
+        res.status(404).json({ error: "Change request not found" });
+        return;
+      }
+
+      const result = await recordApproval(cr, approverIdentity(req, customerId), parsed.data.note ?? null);
+      if (!result.ok) {
+        res.status(result.code).json({ error: result.error });
+        return;
+      }
+      log.info({ customerId, mspId: scope.mspId, crId, stage: result.stage, complete: result.complete }, "change approved via approval model");
+      res.status(200).json({ code: formatChangeRequestCode(crId), approved: true, stage: result.stage, complete: result.complete });
+    } catch (err) {
+      log.error({ err, customerId, crId }, "POST /portal/change-control/:code/approve failed");
+      res.status(500).json({ error: "Failed to approve the change" });
+    }
+  },
+);
+
+router.post(
+  "/portal/change-control/:code/reject",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    const crId = parseChangeRequestCode(String(req.params.code));
+    if (crId === null) {
+      res.status(400).json({ error: "Invalid change request code" });
+      return;
+    }
+    const parsed = rejectSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+
+    try {
+      if (!(await callerCanApproveChanges(req))) {
+        res.status(403).json({ error: "You do not have permission to reject changes." });
+        return;
+      }
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.status(409).json({ error: "This account has no connected Microsoft 365 tenant" });
+        return;
+      }
+      const cr = await loadScopedChange(crId, scope.mspId, scope.tenantId);
+      if (!cr) {
+        res.status(404).json({ error: "Change request not found" });
+        return;
+      }
+
+      const result = await recordRejection(cr, approverIdentity(req, customerId), parsed.data.reason);
+      if (!result.ok) {
+        res.status(result.code).json({ error: result.error });
+        return;
+      }
+      log.info({ customerId, mspId: scope.mspId, crId, riskDecisionId: result.riskDecisionId }, "change rejected via approval model");
+      res.status(200).json({
+        code: formatChangeRequestCode(crId),
+        rejected: true,
+        // A customer rejection assigns a risk; an MSP one does not.
+        riskAssigned: result.riskDecisionId !== null,
+      });
+    } catch (err) {
+      log.error({ err, customerId, crId }, "POST /portal/change-control/:code/reject failed");
+      res.status(500).json({ error: "Failed to reject the change" });
     }
   },
 );

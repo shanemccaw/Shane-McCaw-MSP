@@ -3983,6 +3983,101 @@ export const insertMspChangeRequestSchema = createInsertSchema(mspChangeRequests
 export type MspChangeRequest = typeof mspChangeRequestsTable.$inferSelect;
 export type InsertMspChangeRequest = typeof mspChangeRequestsTable.$inferInsert;
 
+// ── Change Control approval ledger (#1496) ───────────────────────────────────
+//
+// `msp_change_requests.approvedBy` is a single free-text string: it can record
+// that ONE person (or "Microsoft") approved, and nothing else — no history, no
+// rejection reason, no second approver, no stage, no SLA, no delegated
+// authority. That is the whole gap #1496 exists to close.
+//
+// `cr_approvals` is the durable approval RECORD — one row per approver decision
+// against a change. Approval attaches to the CHANGE, not the change class: a
+// standard or auto-approved change still produces a real CR AND a real approval
+// row here (see the `approverRole` note below). `approvedBy` on the CR stays as
+// a denormalised display cache of the final decision so the existing
+// `displayStatus()` derivation keeps working; this table is the truth behind it.
+//
+// The (mspId, tenantId) pair is denormalised from the parent CR so this table
+// scopes with the exact same predicate pair every other customer-facing Change
+// Control read uses — see routes/portal-change-control.ts's header for why
+// neither half is sufficient alone.
+export const crApprovalsTable = pgTable("cr_approvals", {
+  id: serial("id").primaryKey(),
+  /** The change this decision is against. Real FK — an approval cannot outlive its CR. */
+  changeRequestId: integer("change_request_id")
+    .notNull()
+    .references(() => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  /** Denormalised from the parent CR so this table scopes on the same (mspId, tenantId) pair. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+  /**
+   * Which approval stage this row belongs to. A low-risk change needs one stage;
+   * a high/critical change needs the requirement's multiple stages, gated in
+   * order. Two rows sharing a stage express a QUORUM (both must approve to clear
+   * that stage) — the model supports it even where current policy asks for one.
+   */
+  stage: integer("stage").notNull().default(1),
+  /**
+   * The decision on this slot. `pending` is a required-but-undecided approval
+   * (this is what carries an SLA `dueAt`); `superseded` is a still-pending later
+   * stage that a rejection at an earlier stage made moot — a real terminal state,
+   * not a decision anyone made.
+   */
+  decision: text("decision", {
+    enum: ["pending", "approved", "rejected", "superseded"],
+  }).notNull().default("pending"),
+  /**
+   * WHO holds this approval authority — never "the system".
+   *   • `customer` — a CustomerUser carrying the live `canApproveChanges` flag,
+   *     approving a change to their own live tenant. The authority #1496 adds.
+   *   • `msp` — an MSP operator/admin approving on the delivery side.
+   *   • `catalog_inherited` — an auto-approved standard change inherits the
+   *     approval of the HUMAN who approved the catalog item it came from. The
+   *     approver is that person, recorded here, not "the system" — because that
+   *     is the one answer that does not survive an audit question. (Populated
+   *     once the change catalog carries an approver; the column exists now so the
+   *     model is complete.)
+   *   • `microsoft_forced` — a Microsoft change the tenant cannot refuse is
+   *     auto-approved from announcement (#1497/#1534). The approver named is
+   *     Microsoft (the forcing party), which is honest — again, not "the system".
+   */
+  approverRole: text("approver_role", {
+    enum: ["customer", "msp", "catalog_inherited", "microsoft_forced"],
+  }).notNull(),
+  /** The approver's wire person id ("u<userId>", see portal-ownership.personIdForUser). NULL on an unfilled pending slot. */
+  approverPersonId: text("approver_person_id"),
+  /** Display name of the approver (or "Microsoft (auto-approved …)"). NULL on an unfilled pending slot. */
+  approverName: text("approver_name"),
+  /**
+   * Set when the decision was made under a DELEGATION (reusing
+   * portal_ownership_delegations): `approverPersonId` is who actually clicked,
+   * `onBehalfOfPersonId` is the person whose authority they were covering. Both
+   * are recorded so the audit trail reads "B approved, acting for A".
+   */
+  onBehalfOfPersonId: text("on_behalf_of_person_id"),
+  /** Rejection reason, or an optional approval note. NULL when none given. */
+  reason: text("reason"),
+  /** When the decision was made. NULL while still pending. */
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  /** The approval SLA deadline for a pending slot — breach past this escalates. NULL when no SLA applies (auto-approved). */
+  dueAt: timestamp("due_at", { withTimezone: true }),
+  /** Stamped once by the breach sweep when a pending slot passes `dueAt`, so it escalates exactly once. */
+  escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cr_approvals_change_request_id_idx").on(t.changeRequestId),
+  index("cr_approvals_msp_tenant_idx").on(t.mspId, t.tenantId),
+  // The breach sweep scans pending, dated, not-yet-escalated slots.
+  index("cr_approvals_pending_due_idx").on(t.decision, t.dueAt),
+]);
+
+export const insertCrApprovalSchema = createInsertSchema(crApprovalsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type CrApproval = typeof crApprovalsTable.$inferSelect;
+export type InsertCrApproval = typeof crApprovalsTable.$inferInsert;
+export type CrApprovalDecision = CrApproval["decision"];
+export type CrApproverRole = CrApproval["approverRole"];
+
 // ── MSP SOPs (Standard Operating Procedures) ─────────────────────────────────
 //
 // ITIL v4 Incident Response and Drift Remediation templates representing standard

@@ -73,6 +73,7 @@ import {
   formatChangeRequestCode,
   type ChangeClass,
 } from "./portal-change-control";
+import { materializeApprovalsForChange } from "./portal-change-approvals-store";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "workflow.change-control" });
@@ -312,7 +313,28 @@ export async function createRoutedChangeRequest(input: {
         sourceInterpretationId: interpretation.id,
         sourceResolutionId: resolution.id,
       })
-      .returning({ id: mspChangeRequestsTable.id });
+      .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
+
+    // #1496 — a routed change produces its real approval record too. An
+    // `informed` (forced) change arrives auto-approved, so this records ONE
+    // `microsoft_forced` approved row; an approval/advisory routed change arrives
+    // unapproved, so it materialises the pending customer stage(s) with their SLA.
+    // Idempotent and non-fatal — the CR already exists if this throws.
+    try {
+      await materializeApprovalsForChange({
+        id: inserted.id,
+        mspId: resolution.mspId,
+        tenantId: tenant.tenantId,
+        changeClass: storedChangeClass,
+        riskLevel: storedRisk,
+        status: "pending_approval",
+        approvedBy,
+        requestedBy: "Microsoft 365 change routing",
+        createdAt: inserted.createdAt,
+      });
+    } catch (err) {
+      log.warn({ err, crId: inserted.id }, "createRoutedChangeRequest: approval materialisation failed (non-fatal)");
+    }
     return inserted.id;
   } catch (err) {
     // The partial unique index on (source_interpretation_id, tenant_id) fired —

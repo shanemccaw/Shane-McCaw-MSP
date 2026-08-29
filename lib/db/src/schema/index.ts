@@ -100,6 +100,17 @@ export const usersTable = pgTable("users", {
   // customer's team bypass this — they gate on role, not this flag. Checked
   // live in the route handler, NOT cached in the JWT (Git #1142).
   canManageTeam: boolean("can_manage_team").notNull().default(false),
+  // Grants a customer-tier team member (CustomerUser) permission to APPROVE or
+  // REJECT a Change Request against their own live tenant — the authority the
+  // Change Control approval model (Git #1496) is built on. Deliberately NOT
+  // canApprovePurchases (spend) or canManageTeam (roster): approving a
+  // configuration change to a live tenant is a distinct authority, and
+  // overloading either of those would grant it to people nobody granted it to
+  // (see routes/portal-change-control.ts's header). Same shape as the two flags
+  // above: per-user, customer-tier only, MSP staff/PlatformAdmin gate on role
+  // instead. Checked LIVE in the route handler, never cached in the JWT, so a
+  // revoke takes effect immediately.
+  canApproveChanges: boolean("can_approve_changes").notNull().default(false),
   // Requires an active MFA enrollment to log in. False by default so existing
   // users are never silently locked out; opted in explicitly via the
   // team-management toggle. Checked live at login, not cached in the JWT.
