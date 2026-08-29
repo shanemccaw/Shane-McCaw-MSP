@@ -137,6 +137,24 @@ export const SEC_PASSWORD_SUB =
 export const SEC_PASSWORD_CHANGE = "Change password";
 export const SEC_PASSWORD_HISTORY = "View sign-in history";
 
+/*
+ * ── Change-password form copy (Git #1601) ────────────────────────────────
+ * New surface — the design pack's own "not yet architected" list (out of
+ * scope: last-changed display) covers the read-side card above; this form
+ * itself has no prior design copy to preserve, so these strings are authored
+ * here, not extracted. The four error strings are NOT authored — they are
+ * the route's own literal `error` text (`auth.ts:826/831/838/843`), rendered
+ * verbatim so the UI never invents a status the server didn't send.
+ */
+export const SEC_PASSWORD_CURRENT_LABEL = "Current password";
+export const SEC_PASSWORD_NEW_LABEL = "New password";
+export const SEC_PASSWORD_SUBMIT = "Update password";
+export const SEC_PASSWORD_CANCEL = "Cancel";
+export const SEC_PASSWORD_SUCCESS = (revokedOtherSessions: number): string =>
+  revokedOtherSessions > 0
+    ? `Password updated. ${revokedOtherSessions} other session${revokedOtherSessions === 1 ? " was" : "s were"} signed out.`
+    : "Password updated. You had no other sessions to sign out.";
+
 /* ── Your data — shell 15832-15835 ─────────────────────────────────────────── */
 
 export interface SecDataRow {

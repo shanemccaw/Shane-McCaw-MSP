@@ -8,7 +8,7 @@
  */
 
 import { SEC_DELETE_PHRASE, type SecMfaMethod, type SecMfaTone, type SecTone } from "./accountSecurityData";
-import type { LiveMfaEnrollments } from "./useAccountSecurityLive";
+import type { ChangePasswordOutcome, LiveMfaEnrollments } from "./useAccountSecurityLive";
 
 /** Posture dot colour — prototype 15787. */
 export function secDotColor(tone: SecTone): string {
@@ -90,4 +90,28 @@ export function mfaPostureTone(live: LiveMfaEnrollments): SecTone {
 export function sessionsPostureSummary(count: number): string {
   if (count === 0) return "No active sessions";
   return `${count} active`;
+}
+
+/**
+ * The change-password form's error line for a failed `ChangePasswordOutcome`
+ * — the route's own literal `error` text (Git #1601, `auth.ts:826/831/838/843`),
+ * never a paraphrase, so the UI can't drift from what the server actually
+ * said. Returns `null` for the two outcomes ("success" is not an error, and
+ * "unknown" carries its own message on the outcome itself).
+ */
+export function changePasswordErrorText(outcome: ChangePasswordOutcome): string | null {
+  switch (outcome.kind) {
+    case "missing-fields":
+      return "currentPassword and newPassword are required";
+    case "too-short":
+      return "Password must be at least 8 characters";
+    case "no-password-set":
+      return "No password set for this account.";
+    case "incorrect-password":
+      return "Current password is incorrect";
+    case "unknown":
+      return outcome.message;
+    case "success":
+      return null;
+  }
 }
