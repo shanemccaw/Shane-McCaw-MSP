@@ -5601,12 +5601,38 @@ namespace BuildConsole
         /// <summary>
         /// Git #1705 — the chat context meter banners used to be a flat, fully-saturated fill in
         /// the tier's raw hue (bright enough it "physically hurts to look at"). This reproduces the
-        /// same low-opacity-wash-over-dark-base convention already used elsewhere in the app (e.g.
-        /// the score-dynamic shell): blend the tier's existing brush color into MantleBrush's own
-        /// RGB at <paramref name="amount"/> opacity, so the escalating tier signal survives while
-        /// the banner itself stays dark and panel-matching instead of bright.
+        /// score-dynamic shell recipe from docs/design-system.md §5 verbatim: a radial wash bleeding
+        /// from the bottom-left corner (120% 90% at 0% 100%) at low tier-hue opacity, falling back to
+        /// the dark MantleBrush base by ~62%. Alpha here is tuned higher than the doc's page-wide
+        /// 14-18% (as the doc itself invites — "tune it so text contrast holds") because this is a
+        /// compact banner strip that has to read as a distinct tier at a glance, not a full-screen
+        /// ambient wash.
         /// </summary>
-        private Brush BuildTierWashBrush(string tierBrushKey, double amount)
+        private Brush BuildTierWashBrush(string tierBrushKey, double alpha)
+        {
+            var tint = ((SolidColorBrush)FindResource(tierBrushKey)).Color;
+            var mantle = ((SolidColorBrush)FindResource("MantleBrush")).Color;
+            var wash = Color.FromArgb((byte)Math.Round(255 * alpha), tint.R, tint.G, tint.B);
+            var brush = new RadialGradientBrush
+            {
+                GradientOrigin = new Point(0, 1),
+                Center = new Point(0, 1),
+                RadiusX = 1.2,
+                RadiusY = 0.9
+            };
+            brush.GradientStops.Add(new GradientStop(wash, 0.0));
+            brush.GradientStops.Add(new GradientStop(mantle, 0.62));
+            brush.Freeze();
+            return brush;
+        }
+
+        /// <summary>
+        /// Git #1705 — the left accent-border stripe: a flat, higher-opacity blend of the tier hue
+        /// into MantleBrush's RGB, giving a second, sharper at-a-glance signal alongside the wash
+        /// above without the stripe itself reading as bright (it's 3px, blended into the dark base,
+        /// not the tier's raw saturated color).
+        /// </summary>
+        private Brush BuildTierAccentBrush(string tierBrushKey, double amount)
         {
             var baseColor = ((SolidColorBrush)FindResource("MantleBrush")).Color;
             var tint = ((SolidColorBrush)FindResource(tierBrushKey)).Color;
@@ -5707,7 +5733,7 @@ namespace BuildConsole
                 // untouched.
                 meterState.ProgressBar.Foreground = (Brush)FindResource("YellowBrush");
                 meterState.Banner.Background = BuildTierWashBrush("YellowBrush", 0.16);
-                meterState.Banner.BorderBrush = BuildTierWashBrush("YellowBrush", 0.55);
+                meterState.Banner.BorderBrush = BuildTierAccentBrush("YellowBrush", 0.55);
                 meterState.BannerText.Text = "Chat getting long, consider wrapping up soon.";
                 meterState.BannerText.Foreground = (Brush)FindResource("TextBrush");
                 meterState.BannerCloseBtn.Visibility = Visibility.Visible;
@@ -5722,7 +5748,7 @@ namespace BuildConsole
             {
                 meterState.ProgressBar.Foreground = (Brush)FindResource("PeachBrush");
                 meterState.Banner.Background = BuildTierWashBrush("PeachBrush", 0.22);
-                meterState.Banner.BorderBrush = BuildTierWashBrush("PeachBrush", 0.70);
+                meterState.Banner.BorderBrush = BuildTierAccentBrush("PeachBrush", 0.70);
                 double buffer = 100000.0 - estTokens;
                 meterState.BannerText.Text = $"Chat getting very long. Remaining token buffer to critical: {Math.Max(0, buffer):N0} tokens.";
                 meterState.BannerText.Foreground = (Brush)FindResource("TextBrush");
@@ -5739,7 +5765,7 @@ namespace BuildConsole
                 // staying well below the old flat RedBrush fill.
                 meterState.ProgressBar.Foreground = (Brush)FindResource("RedBrush");
                 meterState.Banner.Background = BuildTierWashBrush("RedBrush", 0.30);
-                meterState.Banner.BorderBrush = BuildTierWashBrush("RedBrush", 0.90);
+                meterState.Banner.BorderBrush = BuildTierAccentBrush("RedBrush", 0.90);
                 // Git #1470 — never auto-fires and never forces navigation. This is now purely a
                 // loud "please hand off soon" prompt; the button below is the only trigger.
                 meterState.BannerText.Text = "Critical context reached! Hand off to a new chat when you're ready.";
