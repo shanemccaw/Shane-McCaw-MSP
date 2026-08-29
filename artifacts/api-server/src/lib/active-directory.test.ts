@@ -226,6 +226,11 @@ const MSP_PROFILE: MspProfileRow = {
   isTestbed: false,
   writeBackEnabled: false,
   automatedCustomerEmailsEnabled: true,
+  primaryContactName: null,
+  primaryContactEmail: null,
+  primaryContactPhone: null,
+  address: null,
+  notes: null,
   createdAt: new Date("2026-01-01T00:00:00Z"),
 };
 

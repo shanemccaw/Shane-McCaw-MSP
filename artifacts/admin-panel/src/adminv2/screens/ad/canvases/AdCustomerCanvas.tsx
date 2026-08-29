@@ -18,14 +18,16 @@ import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
   createAdConsentInviteLink,
   fetchAdCustomer,
+  fetchAdCustomerWriteConsent,
   hardDeleteAdCustomer,
   revokeAdTenantConsent,
   runAdCustomerDiagnostics,
+  startAdCustomerWriteConsent,
   type ConsentKey,
 } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
-import type { AdConsentStatus, AdCustomerDetail } from "../adTypes";
+import type { AdConsentStatus, AdCustomerDetail, AdWriteConsentStatus } from "../adTypes";
 import {
   AdArmedButton,
   AdButton,
@@ -64,6 +66,12 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
   const [scanning, setScanning] = useState(false);
+
+  // Write-back consent (admin) — Git #1672, rehomed from the archived
+  // msp-portal customer-detail.tsx's WriteBackConsentCard.
+  const [writeConsentStatus, setWriteConsentStatus] = useState<AdWriteConsentStatus | null>(null);
+  const [writeConsentLoading, setWriteConsentLoading] = useState(true);
+  const [writeConsentGenerating, setWriteConsentGenerating] = useState(false);
 
   // ── Hard delete — self-contained state, same convention as the User
   // canvas's own delete flow: an explicit "arm" click is confirmation #1,
@@ -112,6 +120,36 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to start the scan." });
     } finally {
       setScanning(false);
+    }
+  }, [fetchWithAuth, customerId]);
+
+  const loadWriteConsent = useCallback(async () => {
+    setWriteConsentLoading(true);
+    try {
+      const data = await fetchAdCustomerWriteConsent(fetchWithAuth, customerId);
+      setWriteConsentStatus(data);
+    } catch {
+      setWriteConsentStatus(null);
+    } finally {
+      setWriteConsentLoading(false);
+    }
+  }, [fetchWithAuth, customerId]);
+
+  useEffect(() => {
+    void loadWriteConsent();
+  }, [loadWriteConsent]);
+
+  const startWriteConsent = useCallback(async () => {
+    setWriteConsentGenerating(true);
+    setOutcome(null);
+    try {
+      const { consentUrl } = await startAdCustomerWriteConsent(fetchWithAuth, customerId);
+      window.open(consentUrl, "_blank", "noopener,noreferrer");
+      setOutcome({ tone: "ok", message: "Write-back consent link opened in a new tab." });
+    } catch (err) {
+      setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to generate the write-consent link." });
+    } finally {
+      setWriteConsentGenerating(false);
     }
   }, [fetchWithAuth, customerId]);
 
@@ -257,6 +295,49 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
           </AdListRowGroup>
           <div style={{ display: "flex", gap: 8 }}>
             <AdButton label="Copy re-consent link" onClick={() => void copyReconsentLink()} />
+          </div>
+        </AdSection>
+
+        <AdSection
+          title="Write-back consent (admin)"
+          note="Admin consent for the dedicated write app — separate from the read-only tenant consent above."
+        >
+          <AdListRowGroup>
+            {writeConsentLoading ? (
+              <AdEmptyRow label="Loading…" />
+            ) : (
+              (() => {
+                const wcStatus = writeConsentStatus?.writeConsent?.consentStatus ?? null;
+                const granted = wcStatus === "granted";
+                return (
+                  <AdListRow
+                    label="Write app"
+                    detail={
+                      writeConsentStatus?.tenantId == null
+                        ? "No tenant linked"
+                        : wcStatus
+                          ? wcStatus
+                          : "never asked"
+                    }
+                    meta={writeConsentStatus?.writeConsent?.consentedAt ? fmtDate(writeConsentStatus.writeConsent.consentedAt) : undefined}
+                    dot={granted ? "#6ccb96" : wcStatus ? "#e9b949" : "#6d6b69"}
+                  />
+                );
+              })()
+            )}
+          </AdListRowGroup>
+          <div style={{ display: "flex", gap: 8 }}>
+            <AdButton
+              label={
+                writeConsentGenerating
+                  ? "Generating…"
+                  : writeConsentStatus?.writeConsent?.consentStatus === "granted"
+                    ? "Re-run write consent"
+                    : "Start write consent"
+              }
+              onClick={() => void startWriteConsent()}
+              disabled={writeConsentGenerating || writeConsentLoading || writeConsentStatus?.tenantId == null}
+            />
           </div>
         </AdSection>
 

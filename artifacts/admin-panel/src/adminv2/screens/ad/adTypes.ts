@@ -102,6 +102,11 @@ export interface AdMspProfile {
   isTestbed: boolean;
   writeBackEnabled: boolean;
   automatedCustomerEmailsEnabled: boolean;
+  primaryContactName: string | null;
+  primaryContactEmail: string | null;
+  primaryContactPhone: string | null;
+  address: string | null;
+  notes: string | null;
   createdAt: string;
 }
 
@@ -312,6 +317,15 @@ export interface AdEntitlementsView {
   inherited: AdMspEntitlements | null;
   overrides: AdEntitlementOverride[];
   effective: AdMspEntitlements | null;
+}
+
+// ── Write-back consent (GET /admin/customers/:id/write-consent[/start]) ──────
+// Git #1672 — rehomed from the archived msp-portal customer-detail.tsx's
+// WriteBackConsentCard, the one genuinely admin-scoped piece of that page.
+
+export interface AdWriteConsentStatus {
+  tenantId: string | null;
+  writeConsent: { consentStatus: string; consentedAt: string | null; revokedAt: string | null } | null;
 }
 
 // ── OU (POST/PATCH/DELETE /admin/active-directory/ou) ────────────────────────

@@ -1,19 +1,21 @@
 /**
  * MSP Object canvas — profile, subscription/plan + dunning state, derived
  * entitlements, linked customers, linked staff, and platform agreement
- * acceptance. Read-only detail (per docs/build-plans/active-directory.md
- * Phase 2 — no MSP-level edit actions in that phase), plus the two real
- * writes that exist elsewhere in the platform: suspend/reactivate
- * (msp-admin-settings.ts).
+ * acceptance. Phase 2 (docs/build-plans/active-directory.md) shipped this
+ * read-only plus suspend/reactivate; Git #1672 (rehoming the archived
+ * msp-portal msps.tsx / msp-detail.tsx admin pages before deletion) added
+ * profile edit, MSP-level impersonation, and the primary-contact/notes
+ * fields those pages edited — all against the same real msp-admin-settings.ts
+ * endpoints.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { Briefcase } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { ACCENT_TEXT } from "../../../theme";
+import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
-import { fetchAdMsp, reactivateAdMsp, suspendAdMsp } from "../adApi";
+import { fetchAdMsp, impersonateAdMsp, reactivateAdMsp, suspendAdMsp, updateAdMspProfile } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
 import { onAdRecordAction, requestAdTreeRefresh } from "../adEvents";
 import type { AdMspDetail } from "../adTypes";
@@ -45,6 +47,43 @@ function usd(cents: number | null): string {
   return (cents / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
 }
 
+const fieldStyle = {
+  padding: "6px 10px",
+  borderRadius: 6,
+  border: `1px solid ${LINE.control}`,
+  background: SURFACE.card,
+  color: TEXT.primary,
+  fontSize: 12.5,
+  fontFamily: "inherit",
+  width: "100%",
+  boxSizing: "border-box" as const,
+};
+
+function AdEditField({
+  label,
+  value,
+  onChange,
+  area,
+  type,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  area?: boolean;
+  type?: string;
+}) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11, color: TEXT.label }}>
+      {label}
+      {area ? (
+        <textarea rows={3} value={value} onChange={(e) => onChange(e.target.value)} style={{ ...fieldStyle, resize: "vertical" }} />
+      ) : (
+        <input type={type ?? "text"} value={value} onChange={(e) => onChange(e.target.value)} style={fieldStyle} />
+      )}
+    </label>
+  );
+}
+
 export function AdMspCanvas({ mspId }: { mspId: number }) {
   const { fetchWithAuth } = useAuth();
   const shell = useShell();
@@ -54,6 +93,23 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
   const [outcome, setOutcome] = useState<{ tone: "ok" | "error"; message: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
+
+  // Profile edit — Git #1672, rehomed from the archived msp-portal msps.tsx /
+  // msp-detail.tsx edit dialogs. `status` is intentionally not part of this
+  // form; Suspend/Reactivate above are the only sanctioned way to change it.
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    domain: "",
+    isTestbed: false,
+    primaryContactName: "",
+    primaryContactEmail: "",
+    primaryContactPhone: "",
+    address: "",
+    notes: "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,13 +165,67 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
     }
   }, [fetchWithAuth, mspId, load]);
 
+  const openEdit = useCallback(() => {
+    if (!detail) return;
+    const { msp } = detail;
+    setEditForm({
+      name: msp.name,
+      domain: msp.domain ?? "",
+      isTestbed: msp.isTestbed,
+      primaryContactName: msp.primaryContactName ?? "",
+      primaryContactEmail: msp.primaryContactEmail ?? "",
+      primaryContactPhone: msp.primaryContactPhone ?? "",
+      address: msp.address ?? "",
+      notes: msp.notes ?? "",
+    });
+    setSaveError(null);
+    setEditing(true);
+  }, [detail]);
+
+  const saveEdit = useCallback(async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await updateAdMspProfile(fetchWithAuth, mspId, {
+        name: editForm.name.trim(),
+        domain: editForm.domain.trim() || null,
+        isTestbed: editForm.isTestbed,
+        primaryContactName: editForm.primaryContactName.trim() || null,
+        primaryContactEmail: editForm.primaryContactEmail.trim() || null,
+        primaryContactPhone: editForm.primaryContactPhone.trim() || null,
+        address: editForm.address.trim() || null,
+        notes: editForm.notes.trim() || null,
+      });
+      requestAdTreeRefresh();
+      setEditing(false);
+      await load();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Failed to save these changes.");
+    } finally {
+      setSaving(false);
+    }
+  }, [fetchWithAuth, mspId, editForm, load]);
+
+  const runImpersonate = useCallback(async () => {
+    setOutcome(null);
+    try {
+      const res = await impersonateAdMsp(fetchWithAuth, mspId);
+      const params = new URLSearchParams({ impersonation_token: res.token, target_slug: res.targetSlug });
+      window.open(`${window.location.origin}/portal/?${params.toString()}`, "_blank", "noopener");
+      setOutcome({ tone: "ok", message: `Impersonation session opened in a new tab as ${res.msp.name}'s MSPAdmin (expires in 30 minutes).` });
+    } catch (err) {
+      setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to impersonate this MSP." });
+    }
+  }, [fetchWithAuth, mspId]);
+
   useEffect(
     () =>
       onAdRecordAction("msp", String(mspId), (action) => {
         if (action === "suspend-msp") void runSuspend();
         if (action === "reactivate-msp") void runReactivate();
+        if (action === "impersonate-msp") void runImpersonate();
       }),
-    [mspId, runSuspend, runReactivate],
+    [mspId, runSuspend, runReactivate, runImpersonate],
   );
 
   if (loading) return (
@@ -146,30 +256,88 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
           </>
         }
         actions={
-          msp.status === "active" ? (
-            <AdArmedButton
-              label="Suspend"
-              tone="danger"
-              onConfirm={() => void runSuspend()}
-              title="Every user under this MSP loses portal access immediately. Billing continues."
-            />
-          ) : msp.status === "suspended" ? (
-            <AdButton label="Reactivate" tone="primary" onClick={() => void runReactivate()} disabled={busy} />
-          ) : undefined
+          <>
+            <AdButton label="Edit profile" onClick={openEdit} disabled={editing} />
+            <AdButton label="Impersonate" onClick={() => void runImpersonate()} title="Opens a new tab signed in as this MSP's MSPAdmin (expires in 30 minutes)." />
+            {msp.status === "active" ? (
+              <AdArmedButton
+                label="Suspend"
+                tone="danger"
+                onConfirm={() => void runSuspend()}
+                title="Every user under this MSP loses portal access immediately. Billing continues."
+              />
+            ) : msp.status === "suspended" ? (
+              <AdButton label="Reactivate" tone="primary" onClick={() => void runReactivate()} disabled={busy} />
+            ) : undefined}
+          </>
         }
       />
 
       {outcome && <AdOutcome tone={outcome.tone} message={outcome.message} onDismiss={() => setOutcome(null)} />}
 
       <AdCanvasBody>
-        <AdSection title="Profile">
-          <AdTileGrid>
-            <AdTile label="Slug" value={msp.slug} />
-            <AdTile label="Domain" value={msp.domain ?? "none"} />
-            <AdTile label="Customer since" value={fmtDate(msp.createdAt)} />
-            <AdTile label="Testbed" value={msp.isTestbed ? "yes" : "no"} />
-          </AdTileGrid>
-        </AdSection>
+        {editing ? (
+          <AdSection title="Edit profile">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 }}>
+              <AdEditField label="Name" value={editForm.name} onChange={(v) => setEditForm((f) => ({ ...f, name: v }))} />
+              <AdEditField label="Domain" value={editForm.domain} onChange={(v) => setEditForm((f) => ({ ...f, domain: v }))} />
+              <AdEditField
+                label="Primary contact name"
+                value={editForm.primaryContactName}
+                onChange={(v) => setEditForm((f) => ({ ...f, primaryContactName: v }))}
+              />
+              <AdEditField
+                label="Primary contact email"
+                type="email"
+                value={editForm.primaryContactEmail}
+                onChange={(v) => setEditForm((f) => ({ ...f, primaryContactEmail: v }))}
+              />
+              <AdEditField
+                label="Primary contact phone"
+                value={editForm.primaryContactPhone}
+                onChange={(v) => setEditForm((f) => ({ ...f, primaryContactPhone: v }))}
+              />
+              <AdEditField label="Address" value={editForm.address} onChange={(v) => setEditForm((f) => ({ ...f, address: v }))} />
+            </div>
+            <AdEditField label="Internal notes" area value={editForm.notes} onChange={(v) => setEditForm((f) => ({ ...f, notes: v }))} />
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: TEXT.body }}>
+              <input
+                type="checkbox"
+                checked={editForm.isTestbed}
+                onChange={(e) => setEditForm((f) => ({ ...f, isTestbed: e.target.checked }))}
+              />
+              Testbed partner environment (is_testbed)
+            </label>
+            {saveError && <span style={{ fontSize: 11.5, color: ACCENT_TEXT.danger }}>{saveError}</span>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <AdButton label={saving ? "Saving…" : "Save changes"} tone="primary" onClick={() => void saveEdit()} disabled={saving} />
+              <AdButton label="Cancel" onClick={() => setEditing(false)} disabled={saving} />
+            </div>
+          </AdSection>
+        ) : (
+          <AdSection title="Profile">
+            <AdTileGrid>
+              <AdTile label="Slug" value={msp.slug} />
+              <AdTile label="Domain" value={msp.domain ?? "none"} />
+              <AdTile label="Customer since" value={fmtDate(msp.createdAt)} />
+              <AdTile label="Testbed" value={msp.isTestbed ? "yes" : "no"} />
+            </AdTileGrid>
+          </AdSection>
+        )}
+
+        {!editing && (msp.primaryContactName || msp.primaryContactEmail || msp.primaryContactPhone || msp.address || msp.notes) && (
+          <AdSection title="Contact">
+            <AdTileGrid>
+              <AdTile label="Contact name" value={msp.primaryContactName ?? "none"} />
+              <AdTile label="Contact email" value={msp.primaryContactEmail ?? "none"} />
+              <AdTile label="Contact phone" value={msp.primaryContactPhone ?? "none"} />
+              <AdTile label="Address" value={msp.address ?? "none"} />
+            </AdTileGrid>
+            {msp.notes && (
+              <div style={{ fontSize: 12, color: TEXT.body, whiteSpace: "pre-wrap" }}>{msp.notes}</div>
+            )}
+          </AdSection>
+        )}
 
         {subscription && (
           <AdSection title="Subscription" note={pastDue ? "Payment failed — access is unaffected until suspended." : undefined}>

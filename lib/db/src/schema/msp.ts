@@ -57,6 +57,14 @@ export const mspsTable = pgTable("msps", {
   // (no send occurs) unless the MSP also has an active mspMailboxConnectorsTable row.
   automatedCustomerEmailsEnabled: boolean("automated_customer_emails_enabled").notNull().default(true),
   writeBackEnabled: boolean("write_back_enabled").notNull().default(false),
+  // Partner relationship fields (Git #1672) — the designated primary contact
+  // at the MSP partner, an office address, and Shane's own internal notes on
+  // the account. Editable from the AdminV2 Active Directory MSP canvas.
+  primaryContactName: text("primary_contact_name"),
+  primaryContactEmail: text("primary_contact_email"),
+  primaryContactPhone: text("primary_contact_phone"),
+  address: text("address"),
+  notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -342,6 +342,11 @@ router.get("/admin/active-directory/msp/:id", requireAdmin, async (req: Request,
         isTestbed: mspsTable.isTestbed,
         writeBackEnabled: mspsTable.writeBackEnabled,
         automatedCustomerEmailsEnabled: mspsTable.automatedCustomerEmailsEnabled,
+        primaryContactName: mspsTable.primaryContactName,
+        primaryContactEmail: mspsTable.primaryContactEmail,
+        primaryContactPhone: mspsTable.primaryContactPhone,
+        address: mspsTable.address,
+        notes: mspsTable.notes,
         createdAt: mspsTable.createdAt,
       })
       .from(mspsTable)

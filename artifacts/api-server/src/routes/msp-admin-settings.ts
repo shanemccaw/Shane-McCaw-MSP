@@ -143,6 +143,11 @@ const createMspSchema = z.object({
   status: z.enum(["active", "trial"]).default("trial"),
   isDirectBusiness: z.boolean().default(false),
   isTestbed: z.boolean().optional().default(false),
+  primaryContactName: z.string().max(200).optional(),
+  primaryContactEmail: z.string().email().max(200).optional(),
+  primaryContactPhone: z.string().max(60).optional(),
+  address: z.string().max(500).optional(),
+  notes: z.string().max(4000).optional(),
 });
 
 router.post("/admin/msps", requireAdmin, async (req: Request, res: Response) => {
@@ -229,6 +234,11 @@ const updateMspSchema = z.object({
   logoUrl: z.string().url().nullable().optional(),
   primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
   isTestbed: z.boolean().optional(),
+  primaryContactName: z.string().max(200).nullable().optional(),
+  primaryContactEmail: z.string().email().max(200).nullable().optional(),
+  primaryContactPhone: z.string().max(60).nullable().optional(),
+  address: z.string().max(500).nullable().optional(),
+  notes: z.string().max(4000).nullable().optional(),
 });
 
 router.patch("/admin/msps/:mspId", requireAdmin, async (req: Request, res: Response) => {

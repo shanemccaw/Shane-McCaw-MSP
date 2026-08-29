@@ -234,6 +234,11 @@ export interface MspProfileRow {
   isTestbed: boolean;
   writeBackEnabled: boolean;
   automatedCustomerEmailsEnabled: boolean;
+  primaryContactName: string | null;
+  primaryContactEmail: string | null;
+  primaryContactPhone: string | null;
+  address: string | null;
+  notes: string | null;
   createdAt: Date;
 }
 

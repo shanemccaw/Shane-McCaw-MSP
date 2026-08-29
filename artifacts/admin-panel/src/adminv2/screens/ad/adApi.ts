@@ -22,6 +22,7 @@ import type {
   AdSearchResult,
   AdTree,
   AdUserDetail,
+  AdWriteConsentStatus,
   DirectoryGroupRole,
 } from "./adTypes";
 
@@ -193,6 +194,44 @@ export async function reactivateAdMsp(adminFetch: AdminFetch, mspId: number) {
   return json<{ ok: true; status: string }>(res);
 }
 
+/**
+ * Profile edit — rehomed from the archived msp-portal msps.tsx / msp-detail.tsx
+ * edit dialogs (Git #1672). Calls the same real `PATCH /admin/msps/:id`
+ * msp-admin-settings.ts already exposed; AD's own Phase 2 canvas had never
+ * called it (its doc comment: "no MSP-level edit actions in that phase").
+ * `status` is deliberately not editable here — suspend/reactivate above are
+ * the only sanctioned way to change it, so the state machine can't be
+ * bypassed through a generic PATCH.
+ */
+export async function updateAdMspProfile(
+  adminFetch: AdminFetch,
+  mspId: number,
+  input: {
+    name?: string;
+    domain?: string | null;
+    isTestbed?: boolean;
+    primaryContactName?: string | null;
+    primaryContactEmail?: string | null;
+    primaryContactPhone?: string | null;
+    address?: string | null;
+    notes?: string | null;
+  },
+): Promise<AdMspProfile> {
+  const res = await patchJson(adminFetch, `/api/admin/msps/${mspId}`, input);
+  return json<AdMspProfile>(res);
+}
+
+/**
+ * MSP-level impersonation — issues a single-use token for that MSP's own
+ * MSPAdmin user (admin-impersonation.ts), distinct from `impersonateAdUser`
+ * above which impersonates one specific account. Rehomed from the archived
+ * "Impersonate Partner" action on both msps.tsx and msp-detail.tsx.
+ */
+export async function impersonateAdMsp(adminFetch: AdminFetch, mspId: number) {
+  const res = await postJson(adminFetch, `/api/admin/msps/${mspId}/impersonate`);
+  return json<{ token: string; targetSlug: string; msp: { id: number; name: string; slug: string } }>(res);
+}
+
 // ── Tenant consent + scanning (consent.ts / msp-diagnostics.ts) ──────────────
 
 export type ConsentKey = "graph" | "writeBack" | "sharepoint";
@@ -242,4 +281,24 @@ export interface AdCustomerHardDeleteResult {
 export async function hardDeleteAdCustomer(adminFetch: AdminFetch, id: number): Promise<AdCustomerHardDeleteResult> {
   const res = await adminFetch(`/api/admin/active-directory/customer/${id}`, { method: "DELETE" });
   return json<AdCustomerHardDeleteResult>(res);
+}
+
+// ── Write-back consent (consent.ts) ───────────────────────────────────────────
+// Rehomed from the archived msp-portal customer-detail.tsx's WriteBackConsentCard
+// (Git #1672) — the one admin-scoped piece of that otherwise MSP-operator page.
+// Distinct from the read-only Graph/SharePoint consent above: this is the
+// dedicated write-app (MT_APP_WRITE_CLIENT_ID) admin-consent flow, not the
+// generic re-consent invite link.
+
+export async function fetchAdCustomerWriteConsent(adminFetch: AdminFetch, customerId: number): Promise<AdWriteConsentStatus> {
+  const res = await adminFetch(`/api/admin/customers/${customerId}/write-consent`);
+  return json<AdWriteConsentStatus>(res);
+}
+
+export async function startAdCustomerWriteConsent(
+  adminFetch: AdminFetch,
+  customerId: number,
+): Promise<{ consentUrl: string; expiresAt: string }> {
+  const res = await adminFetch(`/api/admin/customers/${customerId}/write-consent/start`);
+  return json<{ consentUrl: string; expiresAt: string }>(res);
 }

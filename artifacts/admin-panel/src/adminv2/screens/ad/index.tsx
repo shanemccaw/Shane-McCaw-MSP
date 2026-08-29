@@ -214,6 +214,14 @@ registerScreen({
                   requestAdRecordAction({ action: suspended ? "reactivate-msp" : "suspend-msp", kind: "msp", id }),
               },
             ],
+            small: [
+              {
+                label: "Impersonate",
+                icon: LogIn,
+                intent: "record",
+                onSelect: () => requestAdRecordAction({ action: "impersonate-msp", kind: "msp", id }),
+              },
+            ],
           },
         ],
       };
