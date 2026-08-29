@@ -31,7 +31,7 @@ import { existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { loadConfig, isWindows } from "./config.mjs";
 import { git, resolveCommit, shortSha, listWorktrees } from "./git.mjs";
-import { linkDeps } from "./link-deps.mjs";
+import { linkDeps, copyEnvFiles } from "./link-deps.mjs";
 import {
   registerWorktree,
   getWorktreeRecord,
@@ -95,6 +95,10 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
           creatorPid,
         });
       updateWorktreeRecord(config, wtPath, { creatorPid, status: "active" });
+      // Env files (#1633): unconditional, not gated behind --link, and idempotent --
+      // even a reused worktree may be missing one if it was provisioned before this fix.
+      const envResult = copyEnvFiles(repo, wtPath);
+      logEnvCopy(envResult);
       return {
         ok: true,
         name,
@@ -105,6 +109,7 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
         linked: false,
         reused: true,
         recordId: rec?.id || null,
+        envFiles: envResult,
       };
     }
     return {
@@ -140,6 +145,13 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
     }
   }
 
+  // --- Copy local env files (#1633): unconditional, NOT gated behind --link. A
+  //     worktree checks out tracked files only, and .env/.env.local/.env.*.local are
+  //     git-ignored, so without this step no worktree can ever reach the database.
+  //     Best-effort like linkDeps -- a missing source file is logged, not fatal. ---
+  const envResult = copyEnvFiles(repo, wtPath);
+  logEnvCopy(envResult);
+
   // --- Register in the lifecycle tracker (the fix for the swept-live-worktree bug). ---
   const rec = registerWorktree(config, {
     name,
@@ -160,7 +172,15 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
     linked,
     reused: false,
     recordId: rec?.id || null,
+    envFiles: envResult,
   };
+}
+
+/** Log (filenames only, never contents) which local env files were copied/skipped/missing. */
+function logEnvCopy({ copied, skipped, missing }) {
+  if (copied.length) console.log(`  env    : copied ${copied.join(", ")}`);
+  if (skipped.length) console.log(`  env    : already present, skipped ${skipped.join(", ")}`);
+  if (missing) console.warn(`  ! no .env/.env.local/.env.*.local found at main repo root -- worktree has no local secrets`);
 }
 
 function main() {

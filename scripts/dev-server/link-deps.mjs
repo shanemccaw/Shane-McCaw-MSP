@@ -17,7 +17,7 @@
 // the real store.
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, existsSync, statSync, mkdirSync } from "node:fs";
+import { readdirSync, existsSync, statSync, mkdirSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import { isWindows } from "./config.mjs";
 
@@ -97,6 +97,56 @@ export function unlinkDeps(links) {
       /* ignore */
     }
   }
+}
+
+/**
+ * Names of git-ignored local env files worth copying into a fresh worktree, expressed
+ * the same way .gitignore does (lines 72-74): `.env`, `.env.local`, `.env.*.local`. A
+ * worktree checks out tracked files only, so these never arrive on their own -- and
+ * without DATABASE_URL/local secrets a worktree can't reach the database at all (Git
+ * #1633). Copy, not junction: this is a single file, and copy avoids a worktree
+ * accidentally mutating the main checkout's real file if an agent ever edits its own.
+ */
+function envFileNames(repoRoot) {
+  const names = [];
+  for (const candidate of [".env", ".env.local"]) {
+    if (existsSync(path.join(repoRoot, candidate))) names.push(candidate);
+  }
+  for (const name of readdirSync(repoRoot)) {
+    if (/^\.env\..+\.local$/.test(name) && statSync(path.join(repoRoot, name)).isFile()) {
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+/**
+ * Copy every git-ignored local env file (`.env`, `.env.local`, `.env.*.local`) from
+ * repoRoot into worktreePath. Unconditional -- called regardless of --link, since a
+ * missing env file is a correctness problem (no DB access), not a build-speed one.
+ * Idempotent: skips a file already present in the worktree (an agent may have
+ * intentionally created its own). Never hard-fails provisioning and never logs file
+ * contents -- filenames only.
+ * Returns { copied: string[], skipped: string[], missing: boolean }.
+ */
+export function copyEnvFiles(repoRoot, worktreePath) {
+  const copied = [];
+  const skipped = [];
+  const names = envFileNames(repoRoot);
+  for (const name of names) {
+    const dest = path.join(worktreePath, name);
+    if (existsSync(dest)) {
+      skipped.push(name);
+      continue;
+    }
+    try {
+      copyFileSync(path.join(repoRoot, name), dest);
+      copied.push(name);
+    } catch (e) {
+      console.warn(`  ! could not copy ${name}: ${e.message}`);
+    }
+  }
+  return { copied, skipped, missing: names.length === 0 };
 }
 
 /** Finds and unlinks all node_modules and dist junctions inside a worktree path. */
