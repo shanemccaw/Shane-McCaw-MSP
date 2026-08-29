@@ -28,7 +28,13 @@ BuildConsole displays this in Build Watch per-slot with visual progress bars, pe
 
 ## Customer Portal build — design source
 
-Design source: Design/design_handoff_customer_portal/
+**portal-v2 and `Design/design_handoff_customer_portal/` are retired.** Do not build
+against them, do not treat their pages as a baseline, and do not copy their fixture
+modules. The replacement effort is Epic #1485 (Portal New Design); read #1485 and the
+module's own page epic before starting portal work. The one thing carried forward from
+portal-v2 is the API surface under `artifacts/api-server/`, which is real.
+
+Historic design source (reference only, not a build target): Design/design_handoff_customer_portal/
 - README.md is the spec. Read it before writing code.
 - The .dc.html files are design references, not code. Recreate them with this
   repo's existing React + Vite + Tailwind v4 + shadcn/ui (new-york) + lucide-react
@@ -37,8 +43,11 @@ Design source: Design/design_handoff_customer_portal/
   machine and data shapes. Read it; it is the specification.
 - Copy is final. Do not rewrite, shorten or "improve" any user-facing string.
 - No emoji, ever. Icons come from lucide-react.
-- Every number on screen comes from the data layer. Never hardcode a tenant number
-  in a component — put the fixture in one place so it can be swapped for real data.
+- Every number on screen comes from the data layer, and the data layer is a real
+  endpoint. **Do not create a `*Data.ts` fixture module "in one place so it can be
+  swapped later."** That instruction produced ~1,150 fake rows across 29 modules in
+  portal-v2 and cost months; the swap never happens. If the endpoint does not exist
+  yet, build it (see the HARD RULE below), then read from it.
 
 ## Mandatory session bookends
 
@@ -349,7 +358,7 @@ production-affecting changes, anything he'd reasonably want eyes-on first)
 - **Default for local day-to-day dev/testing: connect directly to the real local PostgreSQL 18 install, not `shaneapp://executeSql`.** The `DATABASE_URL` env var in `.env.local` is a genuine, directly-reachable local Postgres connection string: `postgresql://postgres:<password>@localhost:5432/shanemccawmsp` (host `localhost`, port `5432`, db `shanemccawmsp`; the real password is in `.env.local` itself, not repeated here) — the same database the local dev api-server itself reads/writes. While building, agents should use it directly (`psql "$DATABASE_URL"`, a one-off script, etc.) for reads to confirm state and for writes/`ALTER`/`UPDATE`/`INSERT` that are a normal, reversible part of the task — faster and with zero indirection through BuildConsole. Report the real result honestly, the same way test pass/fail is reported. Don't claim something is verified against live data unless it actually was queried.
 - **`shaneapp://executeSql` stays real and available, but is for Replit/Staging debugging, not local dev work.** It runs SQL through BuildConsole's own dev api-server over HTTP (`POST /api/simulator/sql/execute`, the same pipe as the manual SQL Runner — see `desktop/BuildConsole/Services/LocalSqlExecutor.cs`), not a direct local Postgres connection. That HTTP round-trip is exactly the right tool when direct connection isn't — e.g. investigating the Replit/Staging environment via SSH (see below) where BuildConsole's dev api-server is the reachable path. Don't remove or deprecate it; just don't default to it for local work where the direct `DATABASE_URL` connection is faster and available.
 - **Manual SQL for Shane's own SQL console stays as a real fallback, not the default** — reserved for anything genuinely too destructive or sensitive to self-execute (irreversible bulk deletes, production-affecting changes, anything Shane would reasonably want eyes-on before it runs). Judging what qualifies is Shane's call to make explicit when it matters; when in doubt on a risky write, say so and hand it to him rather than self-executing.
-- **Schema changes require manual SQL, not `drizzle-kit push`.** Do not run `drizzle-kit push` or `push --force` — interactive push surfaces large pre-existing schema drift unrelated to the change at hand. Instead: add the Drizzle TS schema definitions, then hand-write the equivalent `CREATE TABLE`/`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` SQL into a new file under `lib/db/migrations/manual/`, for Shane to review and run himself.
+- **Schema changes require manual SQL, not `drizzle-kit push`.** Do not run `drizzle-kit push` or `push --force` — interactive push surfaces large pre-existing schema drift unrelated to the change at hand. Instead: add the Drizzle TS schema definitions, then hand-write the equivalent `CREATE TABLE`/`ALTER TABLE ... ADD COLUMN IF NOT EXISTS` SQL into a new file under `lib/db/migrations/manual/`. **Additive DDL — new tables, new nullable columns, new enum values — the agent runs itself against the local `DATABASE_URL` in the same session, and reports what it ran.** Waiting on Shane to run an additive migration blocks the build for no benefit and is the reason features stalled at 'no backend exists.' Destructive or irreversible changes (dropping columns/tables, bulk rewrites, anything production-affecting) still go to Shane to run himself.
 - No literal prices, tier names, or seat counts hardcoded in `.tsx` files outside API response handling (no-hardcoding rule) — these should flow through the Products Catalog / API responses, not be baked into UI code. Verifiable by grep.
 - **Neon MCP server for schema/migration work is now stale.** The Neon MCP server (`https://mcp.neon.tech/mcp`) registered in `.mcp.json` was tied to the same now-abandoned hosted Neon project — with that project's compute suspended on quota exhaustion, its schema/migration tools (`complete_database_migration`, `compare_database_schema`, `create_branch`) have nothing live to operate against. Until/unless a new Neon project is provisioned for this purpose, do schema/migration work via the manual-SQL-file workflow above against the local PostgreSQL 18 install instead.
 
@@ -412,29 +421,63 @@ default limitation.
 
 ## Test Coverage — Standing Practice
 
-## HARD RULE — never fall back to fixture/demo content when real data doesn't exist
+## HARD RULE — never invent data, and never stop at a missing backend
 
-This is non-negotiable, applies to every agent, every session, no exceptions.
+Two things get confused. They are opposites. Both halves of this rule are mandatory.
 
-When real backend/database data does not exist for something — a missing
-check, an unbuilt endpoint, a genuinely-empty-vs-never-configured ambiguity,
-anything — the agent must NEVER silently fall back to hardcoded
-fixture/demo content to make a page "look done." This includes reusing an
-existing fixture constant as a fallback value, inventing a plausible-looking
-placeholder, or leaving an old fixture branch in place "for now."
+### 1. Never invent data to display
 
-Instead: render an honest, explicit "no backend exists for this yet" state
-and STOP there. Then flag the gap clearly in the bookend/completion comment
-on the real GitHub issue so a new issue can be filed for Shane to architect
-the real backend/fixture himself.
+No fabricated rows. No demo tenants or plausible-looking placeholder names. No
+hardcoded arrays of change requests, risks, findings, invoices, people or events
+in a `.tsx` or a `*Data.ts` module. No silent fallback to a fixture constant when
+a fetch returns empty, and no leaving an old fixture branch in place "for now."
 
-Why this is a hard rule, not a preference: silently choosing fixture-as-
-fallback has repeatedly cost Shane real time and real money re-verifying
-work that looked complete in a screenshot but wasn't wired to anything real
-underneath. A session that can't tell "genuinely empty" from "never
-configured" from "still loading" should build the real distinction (a real
-tri-state, not a boolean live/fixture flag) rather than papering over the
-ambiguity with fixture content.
+If a row reaches a customer's screen, it came out of the database.
+
+### 2. When the backend doesn't serve what the surface needs, BUILD IT
+
+Do **not** render an "honest, no backend exists" empty state and stop. That is not
+honesty, it is an unfinished task, and it is the single largest source of wasted
+work on this project. An agent that draws a grey box where a feature should be has
+failed the build.
+
+In the same session, in this order:
+
+1. Add the Drizzle TS schema definition for the column or table.
+2. Write the `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` / `CREATE TABLE` SQL into
+   `lib/db/migrations/manual/`, **and run it yourself** against the local
+   `DATABASE_URL` (see the Database section). Additive DDL is a normal, reversible
+   part of the task. Report what you ran.
+3. Extend the route and its wire interface to serve the field.
+4. Wire the UI to it.
+5. Record both the migration filename and the commit hash in the bookend.
+
+**Building is not faking.** A new column carrying real values is the product. A fake
+array pretending that column exists is the failure.
+
+Contracts: extract what already exists, and **author what is missing so that it then
+exists.** "Extracted, not authored" describes how you document current state; it is not
+a ban on extending the schema. Same for enums — "real vocabularies only" forbids
+inventing a display vocabulary that maps onto nothing. Adding a status value the
+product genuinely needs is ordinary work.
+
+### When to actually stop and ask
+
+Only for a real **product decision** that code cannot settle: two plausible models with
+different customer-visible consequences; anything touching money, entitlement or a
+promise made to a customer; or a direct conflict with a decision already recorded on an
+issue. Hand those to Shane with the options stated plainly.
+
+A missing column is not a product decision. Build it.
+
+### Definition of done for a portal page
+
+The page's `*Data.ts` fixture import is gone and every row on screen came from an
+endpoint. Grep-verifiable, and checked before writing `DONE`:
+
+```
+grep -rn 'portal-v2/[a-z]*Data"' artifacts/msp-portal/src/pages/
+```
 
 
 **Scope: applies only to changes inside artifacts/msp-portal/ and
