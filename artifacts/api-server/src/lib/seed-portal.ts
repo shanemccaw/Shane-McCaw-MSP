@@ -737,7 +737,7 @@ export async function seedPortalDemo(): Promise<void> {
       projectId: project.id,
       invoiceNumber: "INV-2026-001",
       description: "M365 Copilot Deployment — Milestone 1: Readiness & Setup",
-      amount: "4750.00",
+      amount: 475000, // integer cents (Git #1610) — was "4750.00"
       currency: "usd",
       status: "paid",
       dueDate: new Date("2026-05-15"),
@@ -748,7 +748,7 @@ export async function seedPortalDemo(): Promise<void> {
       projectId: project.id,
       invoiceNumber: "INV-2026-002",
       description: "M365 Copilot Deployment — Milestone 2: Pilot & Training",
-      amount: "4750.00",
+      amount: 475000, // integer cents (Git #1610) — was "4750.00"
       currency: "usd",
       status: "due",
       dueDate: new Date("2026-07-01"),
@@ -758,7 +758,7 @@ export async function seedPortalDemo(): Promise<void> {
       projectId: project.id,
       invoiceNumber: "INV-2026-003",
       description: "SharePoint Intranet Redesign — Milestone 1",
-      amount: "3600.00",
+      amount: 360000, // integer cents (Git #1610) — was "3600.00"
       currency: "usd",
       status: "overdue",
       dueDate: new Date("2026-06-01"),

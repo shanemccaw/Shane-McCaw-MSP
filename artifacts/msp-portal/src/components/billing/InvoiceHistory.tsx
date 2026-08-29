@@ -107,7 +107,7 @@ export function InvoiceHistory({
 
               <div className="flex items-center justify-between sm:justify-end gap-5 flex-shrink-0 mt-2 sm:mt-0 pl-14 sm:pl-0">
                 <p className="text-base font-extrabold text-slate-800 dark:text-slate-200">
-                  {formatCurrency(inv.amount, inv.currency)}
+                  {formatCurrency(inv.amount / 100, inv.currency)}
                 </p>
                 <div className="flex items-center gap-2">
                   {inv.pdfFilename && (

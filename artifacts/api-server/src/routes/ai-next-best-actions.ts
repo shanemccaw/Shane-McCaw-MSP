@@ -110,7 +110,7 @@ router.post("/ai/next-best-actions/generate", requireAdmin, async (_req: Request
       }
     }
 
-    const overdueInvoiceTotal = overdueInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+    const overdueInvoiceTotal = overdueInvoices.reduce((s, i) => s + i.amount / 100, 0); // cents (Git #1610)
     const overdueKanbanDue = overdueKanban.filter(t => t.dueDate && new Date(t.dueDate) < now);
 
     const forecastNarrative = latestForecast.length > 0

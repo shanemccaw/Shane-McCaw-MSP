@@ -2,7 +2,8 @@ export interface Invoice {
   id: number;
   invoiceNumber: string;
   description: string | null;
-  amount: string;
+  /** Integer cents (Git #1610). Convert to dollars at render: amount / 100. */
+  amount: number;
   currency: string;
   status: string;
   dueDate: string | null;

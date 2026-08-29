@@ -27,7 +27,9 @@ router.get("/admin/purchases", requireAdmin, async (_req: Request, res: Response
     .leftJoin(usersTable, eq(invoicesTable.clientUserId, usersTable.id))
     .where(sql`${invoicesTable.invoiceNumber} like 'ONB-%' OR ${invoicesTable.invoiceNumber} like 'SVC-%'`)
     .orderBy(desc(invoicesTable.createdAt));
-  res.json(purchases);
+  // amount is integer cents in the DB (Git #1610); admin-panel reads a dollar
+  // string (out of the sweep scope), so convert at this boundary.
+  res.json(purchases.map((p) => ({ ...p, amount: (p.amount / 100).toFixed(2) })));
 });
 
 // ─── ADMIN: Purchase detail ────────────────────────────────────────────────
@@ -112,7 +114,8 @@ router.get("/admin/purchases/:id", requireAdmin, async (req: Request, res: Respo
     id: inv.id,
     invoiceNumber: inv.invoiceNumber,
     description: inv.description,
-    amount: inv.amount,
+    // integer cents in the DB (Git #1610); admin-panel reads a dollar string.
+    amount: (inv.amount / 100).toFixed(2),
     currency: inv.currency,
     status: inv.status,
     paidAt: inv.paidAt,

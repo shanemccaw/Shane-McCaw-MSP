@@ -1238,7 +1238,7 @@ async function platformTotalRevenue(def: MetricDef, ctx: ResolveContext): Promis
 }
 
 async function platformOutstandingRevenue(def: MetricDef, ctx: ResolveContext): Promise<MetricResult> {
-  // invoices.amount is numeric DOLLARS (string at runtime); status due/overdue = outstanding.
+  // invoices.amount is integer CENTS (Git #1610); status due/overdue = outstanding.
   // invoices have no mspId — they are keyed by clientUserId. Without a customer→user bridge
   // an MSP-wide outstanding total is not reliably attributable. Flagged.
   return notAvailable(def, "schema_gap", "invoices are clientUserId-keyed with no mspId; MSP-scope outstanding total not attributable");

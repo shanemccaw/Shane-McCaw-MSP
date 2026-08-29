@@ -250,7 +250,7 @@ async function provisionFreeOnboarding(opts: {
         projectId: project.id,
         invoiceNumber: i === 0 ? freeInvoiceNumber : `FREE-ONB-${resolvedUserId}-${svc.id}-${Date.now()}`,
         description: `${svc.name} — complimentary engagement`,
-        amount: "0.00",
+        amount: 0, // integer cents (Git #1610) — complimentary, $0.00
         currency: "usd",
         status: "paid",
         paidAt: new Date(),

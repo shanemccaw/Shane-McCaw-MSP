@@ -733,7 +733,12 @@ export const invoicesTable = pgTable("invoices", {
   projectId: integer("project_id").references(() => projectsTable.id),
   invoiceNumber: text("invoice_number").notNull(),
   description: text("description"),
-  amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+  // Integer cents (Git #1610). Migrated from numeric(10,2) decimal dollars to
+  // uphold the platform rule that money is integer cents internally, always.
+  // The retired decimal column survives one release as `amount_old_numeric`
+  // (nullable) for verification/rollback and is dropped in a later migration.
+  // Convert to display dollars at render only (Math.round(amount) / 100).
+  amount: integer("amount").notNull(),
   currency: text("currency").notNull().default("usd"),
   status: text("status", { enum: ["draft", "due", "paid", "overdue"] }).notNull().default("due"),
   dueDate: timestamp("due_date"),

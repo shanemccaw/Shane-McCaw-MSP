@@ -179,7 +179,8 @@ export async function aggregateMspTelemetry(
   let projectRetailCents = 0;
   let projectWholesaleCents = 0;
   for (const inv of invoices) {
-    const amountCents = Math.round(Number(inv.amount) * 100);
+    // invoicesTable.amount is already integer cents (Git #1610) — no *100.
+    const amountCents = Number(inv.amount);
     const pricing = resolveCatalogPricing({
       priceCents: amountCents,
     });

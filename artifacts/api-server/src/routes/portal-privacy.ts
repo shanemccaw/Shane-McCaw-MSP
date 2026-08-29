@@ -77,13 +77,16 @@ router.get("/portal/data-export", requireAuth, async (req: Request, res: Respons
         }).from(documentsTable).where(inArray(documentsTable.projectId, projectIds)).orderBy(desc(documentsTable.createdAt))
       : [];
 
-    const invoices = await db.select({
+    const invoiceRows = await db.select({
       id: invoicesTable.id,
       amount: invoicesTable.amount,
       status: invoicesTable.status,
       description: invoicesTable.description,
       createdAt: invoicesTable.createdAt,
     }).from(invoicesTable).where(inArray(invoicesTable.clientUserId, siblingIds)).orderBy(desc(invoicesTable.createdAt));
+    // amount is integer cents in the DB (Git #1610); present the GDPR export as a
+    // human dollar string, matching the format this export carried before.
+    const invoices = invoiceRows.map((r) => ({ ...r, amount: (r.amount / 100).toFixed(2) }));
 
     const messages = await db.select({
       id: messagesTable.id,

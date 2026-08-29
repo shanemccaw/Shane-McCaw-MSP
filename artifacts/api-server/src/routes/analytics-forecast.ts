@@ -74,7 +74,7 @@ router.post("/analytics/revenue/forecast/generate", requireAdmin, async (_req: R
     for (const inv of paidInvoices) {
       if (!inv.paidAt) continue;
       const key = inv.paidAt.toISOString().slice(0, 7);
-      monthlyMap[key] = (monthlyMap[key] ?? 0) + parseFloat(inv.amount);
+      monthlyMap[key] = (monthlyMap[key] ?? 0) + inv.amount / 100; // cents (Git #1610)
     }
 
     // Fill last 12 months (some may be zero)

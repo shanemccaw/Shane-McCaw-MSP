@@ -82,7 +82,9 @@ router.get("/admin/invoices", requireAdmin, async (req: Request, res: Response) 
   .where(conditions.length === 0 ? undefined : conditions.length === 1 ? conditions[0] : and(...conditions))
   .orderBy(orderFn);
 
-  res.json(rows);
+  // amount is integer cents in the DB (Git #1610), but admin-panel (out of the
+  // sweep scope) still reads a dollar string — convert at this boundary.
+  res.json(rows.map((r) => ({ ...r, amount: (r.amount / 100).toFixed(2) })));
 });
 
 router.post("/admin/invoices", requireAdmin, uploadInvoice.single("pdf"), async (req: Request, res: Response) => {
@@ -91,12 +93,17 @@ router.post("/admin/invoices", requireAdmin, uploadInvoice.single("pdf"), async 
   };
   if (!clientUserId || !invoiceNumber || !amount) { res.status(400).json({ error: "clientUserId, invoiceNumber, and amount are required" }); return; }
 
+  // The admin form submits amount as a dollar string (step="0.01"); the column
+  // is integer cents now (Git #1610), so convert on write.
+  const amountCents = Math.round(parseFloat(amount) * 100);
+  if (!Number.isFinite(amountCents)) { res.status(400).json({ error: "amount must be a valid number" }); return; }
+
   const [invoice] = await db.insert(invoicesTable).values({
     clientUserId: parseInt(clientUserId, 10),
     projectId: projectId ? parseInt(projectId, 10) : null,
     invoiceNumber,
     description: description ?? null,
-    amount,
+    amount: amountCents,
     currency: currency ?? "usd",
     status: "due",
     dueDate: dueDate ? new Date(dueDate) : null,
@@ -121,10 +128,13 @@ router.post("/admin/invoices", requireAdmin, uploadInvoice.single("pdf"), async 
     entityId: invoice.id,
     entityLabel: invoice.invoiceNumber,
     clientId: invoice.clientUserId,
-    metadata: { amount: invoice.amount },
+    // Audit log renders this as a dollar string ($${meta.amount}); keep dollars.
+    metadata: { amount: (invoice.amount / 100).toFixed(2) },
   });
 
-  res.status(201).json(invoice);
+  // Preserve the dollar-string wire contract admin-panel consumes (out of the
+  // #1610 sweep scope) — the DB column is cents, the wire stays dollars.
+  res.status(201).json({ ...invoice, amount: (invoice.amount / 100).toFixed(2) });
 });
 
 router.patch("/admin/invoices/:id", requireAdmin, async (req: Request, res: Response) => {

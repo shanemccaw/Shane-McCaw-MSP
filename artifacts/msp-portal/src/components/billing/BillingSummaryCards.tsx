@@ -9,11 +9,12 @@ function formatCurrency(amount: string | number, currency: string): string {
 export function BillingSummaryCards({ invoices }: { invoices: Invoice[] }) {
   const invoicesArray = Array.isArray(invoices) ? invoices : [];
   
+  // amount is integer cents (Git #1610); divide to dollars for these totals.
   const totalDue = invoicesArray
     .filter((i) => i.status === "due" || i.status === "overdue")
-    .reduce((sum, i) => sum + parseFloat(i.amount), 0);
-  const totalPaid = invoicesArray.filter((i) => i.status === "paid").reduce((sum, i) => sum + parseFloat(i.amount), 0);
-  const totalInvoiced = invoicesArray.reduce((s, i) => s + parseFloat(i.amount), 0);
+    .reduce((sum, i) => sum + i.amount / 100, 0);
+  const totalPaid = invoicesArray.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.amount / 100, 0);
+  const totalInvoiced = invoicesArray.reduce((s, i) => s + i.amount / 100, 0);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

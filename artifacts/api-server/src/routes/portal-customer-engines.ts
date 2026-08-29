@@ -595,6 +595,9 @@ router.get(
         .where(and(inArray(clientServicesTable.clientUserId, customerUserIds), or(eq(clientServicesTable.status, "active"), eq(clientServicesTable.status, "paused"))))
         .orderBy(desc(clientServicesTable.purchasedAt)).limit(6);
 
+      // Full invoice rows — amount is integer cents (Git #1610). No msp-portal
+      // consumer renders this snapshot's invoice amounts as money, so they ride
+      // through as cents, consistent with the cents-internal wire.
       const invoices = await db.select().from(invoicesTable)
         .where(inArray(invoicesTable.clientUserId, customerUserIds))
         .orderBy(desc(invoicesTable.createdAt)).limit(5);

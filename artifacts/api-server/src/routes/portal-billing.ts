@@ -169,7 +169,10 @@ router.post("/portal/invoices/:id/pay", requireAuth, async (req: Request, res: R
     line_items: [{
       price_data: {
         currency: invoice.currency,
-        unit_amount: Math.round(parseFloat(String(invoice.amount)) * 100),
+        // invoicesTable.amount is already integer cents (Git #1610) — Stripe's
+        // unit_amount is also integer cents, so pass it straight through. No
+        // *100 conversion: doing it here would charge the customer 100x.
+        unit_amount: invoice.amount,
         product_data: { name: `Invoice ${invoice.invoiceNumber}`, description: invoice.description ?? undefined },
       },
       quantity: 1,

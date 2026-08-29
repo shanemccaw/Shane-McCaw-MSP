@@ -238,7 +238,8 @@ router.post("/admin/fulfillment-queue/sync", requireAdmin, async (req: Request, 
       const purchasedAt = inv.paidAt ? new Date(inv.paidAt) : null;
       const threshold = thresholds["offer"] ?? thresholds["default"] ?? 7;
       const slaDueAt = deriveSlaDate(purchasedAt, threshold);
-      const amountCents = inv.amount ? Math.round(parseFloat(String(inv.amount)) * 100) : null;
+      // invoicesTable.amount is already integer cents (Git #1610) — no *100.
+      const amountCents = inv.amount != null ? Number(inv.amount) : null;
       const pricing = resolveCatalogPricing({ priceCents: amountCents ?? 0 });
       const wholesaleChargedCents = amountCents !== null ? pricing.wholesaleCostCents : null;
       const customerQuoteCents = amountCents !== null ? pricing.retailPriceCents : null;

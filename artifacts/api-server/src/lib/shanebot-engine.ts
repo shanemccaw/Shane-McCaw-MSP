@@ -461,7 +461,7 @@ function formatEntitlements(rows: Array<{
 function formatInvoices(rows: Array<{
   invoiceNumber: string;
   description: string | null;
-  amount: string;
+  amount: number;
   currency: string;
   status: string;
   dueDate: Date | null;
@@ -469,7 +469,8 @@ function formatInvoices(rows: Array<{
 }>): string {
   if (rows.length === 0) return "No invoices on file.";
   return rows.map((r) => {
-    const amount = `$${Number(r.amount).toFixed(2)} ${r.currency.toUpperCase()}`;
+    // amount is integer cents (Git #1610) — divide to dollars for display.
+    const amount = `$${(Number(r.amount) / 100).toFixed(2)} ${r.currency.toUpperCase()}`;
     const dateLabel = r.paidAt
       ? `paid ${relativeDate(new Date(r.paidAt))}`
       : r.dueDate
@@ -678,7 +679,8 @@ async function buildCustomerContext(customerId: number, mspId: number | null, us
           invoices: invoiceRows.map((r) => ({
             invoiceNumber: r.invoiceNumber,
             description: r.description,
-            amount: `$${Number(r.amount).toFixed(2)}`,
+            // amount is integer cents (Git #1610) — divide to dollars for display.
+            amount: `$${(Number(r.amount) / 100).toFixed(2)}`,
             currency: r.currency,
             status: r.status,
             dueDate: r.dueDate ? r.dueDate.toISOString() : null,

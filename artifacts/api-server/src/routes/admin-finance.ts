@@ -84,7 +84,7 @@ router.post("/admin/invoices/:id/ai-summary", requireAdmin, async (req: Request,
 
   const totalPaid = clientInvoices
     .filter(i => i.status === "paid")
-    .reduce((s, i) => s + parseFloat(i.amount), 0);
+    .reduce((s, i) => s + i.amount / 100, 0);
   const overdueCount = clientInvoices.filter(i => i.status === "overdue").length;
   const aging = invoice.status === "overdue" ? agingBucket(invoice.dueDate) : null;
   const isRetainer = invoice.invoiceType === "retainer";
@@ -93,7 +93,7 @@ router.post("/admin/invoices/:id/ai-summary", requireAdmin, async (req: Request,
 
 Invoice: #${invoice.invoiceNumber}
 Type: ${invoice.invoiceType}
-Amount: $${invoice.amount} ${invoice.currency.toUpperCase()}
+Amount: $${(invoice.amount / 100).toFixed(2)} ${invoice.currency.toUpperCase()}
 Status: ${invoice.status}${aging ? ` (aging: ${aging})` : ""}
 Due: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString() : "N/A"}
 Coupon: ${invoice.couponCode ?? "none"}${invoice.discountAmount ? ` (discount: -$${invoice.discountAmount})` : ""}
@@ -142,15 +142,15 @@ router.get("/admin/finance/summary", requireAdmin, async (_req: Request, res: Re
   const retainerActive = allInvoices.filter(
     i => i.invoiceType === "retainer" && (i.status === "due" || i.status === "paid"),
   );
-  const mrr = retainerActive.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const mrr = retainerActive.reduce((s, i) => s + i.amount / 100, 0);
   const arr = mrr * 12;
 
   const paidInvoices = allInvoices.filter(i => i.status === "paid");
-  const totalRevenue = paidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const totalRevenue = paidInvoices.reduce((s, i) => s + i.amount / 100, 0);
 
   const overdueInvoices = allInvoices.filter(i => i.status === "overdue");
   const overdueCount = overdueInvoices.length;
-  const overdueAmount = overdueInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const overdueAmount = overdueInvoices.reduce((s, i) => s + i.amount / 100, 0);
 
   const recentPaid = paidInvoices.filter(
     i => new Date(i.paidAt ?? i.createdAt) >= twelveMonthsAgo,
@@ -159,7 +159,7 @@ router.get("/admin/finance/summary", requireAdmin, async (_req: Request, res: Re
   for (const inv of recentPaid) {
     const d = new Date(inv.paidAt ?? inv.createdAt);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    byMonth[key] = (byMonth[key] ?? 0) + parseFloat(inv.amount);
+    byMonth[key] = (byMonth[key] ?? 0) + inv.amount / 100;
   }
   const revenueByMonth = Object.entries(byMonth)
     .sort(([a], [b]) => a.localeCompare(b))

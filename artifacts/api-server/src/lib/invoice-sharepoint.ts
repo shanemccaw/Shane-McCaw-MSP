@@ -82,7 +82,9 @@ export async function uploadInvoiceToSharePoint(invoiceId: number): Promise<void
       paidAt: invoice.paidAt,
       status: invoice.status,
       description: invoice.description,
-      amount: invoice.amount,
+      // invoicesTable.amount is integer cents (Git #1610); the PDF generator
+      // formats a dollar string, so convert at this render boundary.
+      amount: (invoice.amount / 100).toFixed(2),
       currency: invoice.currency,
       clientName: client.name,
       clientEmail: client.email,

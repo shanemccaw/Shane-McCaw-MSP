@@ -42,11 +42,14 @@ function str(value: unknown): string {
 }
 
 /** '$' + thousands-grouped, two-decimal amount — matches billingModel's fmt$
- *  in spirit but keeps cents, since a real invoice amount is not always whole. */
+ *  in spirit but keeps cents, since a real invoice amount is not always whole.
+ *  `invoicesTable.amount` is integer cents on the wire (Git #1610), so convert
+ *  to display dollars here the same way receiptWire.ts does (Math.round / 100). */
 function fmtAmount(raw: unknown): string {
-  const n = typeof raw === "string" ? Number.parseFloat(raw) : typeof raw === "number" ? raw : NaN;
-  if (!Number.isFinite(n)) return "$0";
-  const hasCents = Math.round(n * 100) % 100 !== 0;
+  const cents = typeof raw === "number" ? raw : typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
+  if (!Number.isFinite(cents)) return "$0";
+  const n = Math.round(cents) / 100;
+  const hasCents = Math.round(cents) % 100 !== 0;
   return "$" + n.toLocaleString("en-US", { minimumFractionDigits: hasCents ? 2 : 0, maximumFractionDigits: 2 });
 }
 

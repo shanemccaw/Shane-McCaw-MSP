@@ -203,15 +203,15 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   const dueInvoices = allInvoices.filter(i => i.status === "due");
   const unpaidInvoices = allInvoices.filter(i => ["due", "overdue"].includes(i.status));
 
-  const invoicePaidRevenue = paidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const invoicePaidRevenue = paidInvoices.reduce((s, i) => s + i.amount / 100, 0); // cents (Git #1610)
   const purchaseRevenue = allClientServices.reduce((s, r) => {
     const price = parseFloat(r.service.basePrice ?? r.service.price ?? "0");
     return s + price;
   }, 0);
 
   const totalRevenuePaid = invoicePaidRevenue + purchaseRevenue;
-  const totalRevenueOutstanding = unpaidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
-  const overdueValue = overdueInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+  const totalRevenueOutstanding = unpaidInvoices.reduce((s, i) => s + i.amount / 100, 0); // cents (Git #1610)
+  const overdueValue = overdueInvoices.reduce((s, i) => s + i.amount / 100, 0); // cents (Git #1610)
 
   // Revenue by month (trailing 12)
   const months: Array<{ month: string; oneTime: number; recurring: number }> = [];
@@ -227,7 +227,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   for (const inv of paidInvoices) {
     const paidAt = inv.paidAt ? new Date(inv.paidAt) : new Date(inv.createdAt);
     const idx = getMonthIdx(paidAt, now);
-    if (idx >= 0 && idx <= 11) months[idx]!.oneTime += parseFloat(inv.amount);
+    if (idx >= 0 && idx <= 11) months[idx]!.oneTime += inv.amount / 100; // cents (Git #1610)
   }
 
   for (const row of allClientServices) {
@@ -249,7 +249,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
       const d = i.paidAt ? new Date(i.paidAt) : new Date(i.createdAt);
       return d >= yearStart;
     })
-    .reduce((s, i) => s + parseFloat(i.amount), 0)
+    .reduce((s, i) => s + i.amount / 100, 0) // cents (Git #1610)
     + allClientServices
     .filter(r => new Date(r.cs.purchasedAt) >= yearStart)
     .reduce((s, r) => s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0);
@@ -262,7 +262,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
   // Group the result by service name.
   const clientInvoiceRevenue: Record<number, number> = {};
   for (const inv of paidInvoices) {
-    clientInvoiceRevenue[inv.clientUserId] = (clientInvoiceRevenue[inv.clientUserId] ?? 0) + parseFloat(inv.amount);
+    clientInvoiceRevenue[inv.clientUserId] = (clientInvoiceRevenue[inv.clientUserId] ?? 0) + inv.amount / 100; // cents (Git #1610)
   }
   // For each client, find their services and distribute invoice revenue proportionally
   const clientServicesByClient: Record<number, Array<{ name: string; price: number }>> = {};
@@ -323,7 +323,7 @@ router.get("/admin/overview", requireAdmin, async (_req: Request, res: Response)
     i.paidAt && new Date(i.paidAt) >= prevQuarterStart && new Date(i.paidAt) < quarterStart
   );
   const avgDeal = (deals: typeof paidInvoices) =>
-    deals.length > 0 ? deals.reduce((s, i) => s + parseFloat(i.amount), 0) / deals.length : 0;
+    deals.length > 0 ? deals.reduce((s, i) => s + i.amount / 100, 0) / deals.length : 0;
 
   // Burndown: task completions per day (last 30 days)
   const burndownMap: Record<string, { completed: number; created: number }> = {};
@@ -588,18 +588,18 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
     const paidInvoices = allInvoices.filter(i => i.status === "paid");
     const overdueInvoices = allInvoices.filter(i => i.status === "overdue");
     const unpaidInvoices = allInvoices.filter(i => ["due", "overdue"].includes(i.status));
-    const invoicePaidRevenue = paidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+    const invoicePaidRevenue = paidInvoices.reduce((s, i) => s + i.amount / 100, 0);
     const purchaseRevenue = allClientServices.reduce((s, r) =>
       s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0);
     const totalRevenuePaid = invoicePaidRevenue + purchaseRevenue;
     const ytdRevenue = paidInvoices
       .filter(i => (i.paidAt ? new Date(i.paidAt) : new Date(i.createdAt)) >= yearStart)
-      .reduce((s, i) => s + parseFloat(i.amount), 0)
+      .reduce((s, i) => s + i.amount / 100, 0)
       + allClientServices
       .filter(r => new Date(r.cs.purchasedAt) >= yearStart)
       .reduce((s, r) => s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0);
-    const totalRevenueOutstanding = unpaidInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
-    const overdueValue = overdueInvoices.reduce((s, i) => s + parseFloat(i.amount), 0);
+    const totalRevenueOutstanding = unpaidInvoices.reduce((s, i) => s + i.amount / 100, 0);
+    const overdueValue = overdueInvoices.reduce((s, i) => s + i.amount / 100, 0);
     const mrr = allClientServices
       .filter(r => r.cs.status === "active" && r.service.billingType === "recurring_monthly")
       .reduce((s, r) => s + parseFloat(r.service.basePrice ?? r.service.price ?? "0"), 0);
@@ -609,7 +609,7 @@ router.post("/admin/insights", requireAdmin, async (req: Request, res: Response)
     );
     const currQuarterDeals = paidInvoices.filter(i => i.paidAt && new Date(i.paidAt) >= quarterStart);
     const avgDealSize = currQuarterDeals.length > 0
-      ? currQuarterDeals.reduce((s, i) => s + parseFloat(i.amount), 0) / currQuarterDeals.length : 0;
+      ? currQuarterDeals.reduce((s, i) => s + i.amount / 100, 0) / currQuarterDeals.length : 0;
     const fmtN = (n: number) => n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
 
     const totalShares = allShareEvents.length;
