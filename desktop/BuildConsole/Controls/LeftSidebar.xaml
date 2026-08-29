@@ -90,6 +90,10 @@
                     <Border DockPanel.Dock="Top" Padding="8,6">
                         <StackPanel>
                             <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
                                 <TextBox x:Name="ChatSearch"
                                          Height="26" Padding="6,4" FontSize="12"
                                          VerticalContentAlignment="Center"
@@ -111,6 +115,19 @@
                                         </Style>
                                     </TextBlock.Style>
                                 </TextBlock>
+                                <!-- Git #1629 — the Chats panel's own manual refresh. Always a real
+                                     fetch + guaranteed repaint (forceFresh bypasses the unchanged-
+                                     signature short-circuit); see BtnRefreshChats_Click. -->
+                                <Button x:Name="BtnRefreshChats"
+                                        Grid.Column="1"
+                                        Style="{StaticResource IconButton}"
+                                        ToolTip="Refresh Chats — always re-fetches and repaints"
+                                        Padding="4"
+                                        Margin="4,0,0,0"
+                                        VerticalAlignment="Center"
+                                        Click="BtnRefreshChats_Click">
+                                    <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="13" VerticalAlignment="Center"/>
+                                </Button>
                             </Grid>
                             <!-- Git: Chats panel Archive — reversible soft-hide. Off by default
                                  (archived chats stay out of the normal view); checking this shows

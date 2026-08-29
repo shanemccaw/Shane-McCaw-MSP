@@ -321,6 +321,22 @@ namespace BuildConsole.Controls
             PopulateGitTrackerBoard(forceFresh: true);
         }
 
+        /// <summary>
+        /// Git #1629 (root cause 4) — Shane: assigning a chat "doesn't reliably show
+        /// up in the Chats panel… no way to manually refresh the panel." The only
+        /// forced repaint paths were the 20s background poll or an assign/unassign
+        /// action, and even those could be silently short-circuited by an unchanged
+        /// board signature. This is the Chats panel's own manual refresh: always a
+        /// real fetch AND a guaranteed repaint (forceFresh bypasses the signature
+        /// check entirely), same pattern as BtnRefreshGitBoard_Click.
+        /// </summary>
+        private void BtnRefreshChats_Click(object sender, RoutedEventArgs e)
+        {
+            ActivityLog.Log("git-board.chats",
+                "Chats panel [manual Refresh click]: forcing a fresh board fetch + repaint, bypassing the unchanged-signature short-circuit (Git #1629)");
+            PopulateChatsTree(forceFresh: true);
+        }
+
         public void ExpandPanel()
         {
             _isPinned = true;
@@ -348,13 +364,21 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>Called once from MainWindow with the shared API client — auto-loads Git issues, Chats, and Manifests on startup so they are immediately available without requiring manual icon clicks.</summary>
-        public void Initialize(BuildTrackerApiClient api, BuildQueuePostgresClient? db = null)
+        public async void Initialize(BuildTrackerApiClient api, BuildQueuePostgresClient? db = null)
         {
             _api = api;
             _db = db;
 
-            // Auto-load Git Board issues & milestones on startup
-            PopulateGitTrackerBoard();
+            // Git #1629 (root cause 2) — the first Chats render used to race this
+            // (slow, live-GitHub) board fetch: both were fired concurrently, and
+            // PopulateChatsTree's #1362 synthetic-epic backfill only works once
+            // _lastBoardIssues is populated, so the launch render routinely won
+            // the race with an empty board and stranded chats linked to a
+            // not-yet-locally-synced epic under "Unlinked". Await the first board
+            // fetch's genuine completion (success OR failure — the method catches
+            // its own network errors and returns) before the first Chats render.
+            // No fixed delay involved; this is completion-triggered sequencing.
+            await PopulateGitTrackerBoardAsync();
 
             // Auto-load Chats tree & UI Automation manifests
             PopulateChatsTree();
@@ -1508,7 +1532,15 @@ namespace BuildConsole.Controls
         /// silently never repainted again, cache or no cache. Fixed by
         /// folding milestoneInfos into the same signature.
         /// </summary>
-        public async void PopulateGitTrackerBoard(bool forceFresh = false)
+        public async void PopulateGitTrackerBoard(bool forceFresh = false) =>
+            await PopulateGitTrackerBoardAsync(forceFresh);
+
+        /// <summary>Git #1629 (root cause 2) — the awaitable core of
+        /// <see cref="PopulateGitTrackerBoard"/>, so <see cref="Initialize"/> can
+        /// genuinely sequence the first Chats render after the first board fetch
+        /// completes instead of firing both concurrently. All network failures are
+        /// caught internally, so awaiting this always completes.</summary>
+        public async System.Threading.Tasks.Task PopulateGitTrackerBoardAsync(bool forceFresh = false)
         {
             // Git #839 — the 🟢 Done view is a manual CLOSED snapshot; let a
             // background poll leave it be rather than repaint OPEN over it.
@@ -1737,7 +1769,11 @@ namespace BuildConsole.Controls
             // its cache now that _lastBoardIssues has changed — a just-closed
             // epic drops out of Chats immediately instead of lingering until the
             // next Chats poll. Cache-only (no network); no-op before chats load.
-            if (_lastBoardChats.Count > 0) { try { RenderChatsTree(); } catch { } }
+            // Git #1629 — run the #1362 synthetic-epic backfill FIRST: it used to
+            // live only inside PopulateChatsTree, so this repaint rendered with the
+            // stale (un-backfilled) epic map and a chat linked to an epic this fetch
+            // just surfaced stayed stranded under Unlinked until the next Chats poll.
+            if (_lastBoardChats.Count > 0) { try { BackfillSyntheticEpicsFromBoard(); RenderChatsTree(); } catch { } }
 
             // Git #845 (Git Board Phase 7) — the board's own GraphQL fetch above
             // has no issue-dependency data, so blocked state is enriched in a
@@ -2239,7 +2275,12 @@ namespace BuildConsole.Controls
         // TextChanged) can re-render from the cached board (_lastBoardChats +
         // _chatEpicById) without re-hitting the dev server — same split #984
         // uses between PopulateManifestsList and RenderManifestTree.
-        public async void PopulateChatsTree()
+        /// <summary>Git #1629 (root cause 4) — <paramref name="forceFresh"/> skips the
+        /// unchanged-signature short-circuit entirely, guaranteeing a real repaint. Used by
+        /// the Chats panel's manual Refresh button and by actions (e.g. mark-in-progress)
+        /// whose visible effect isn't part of the raw board payload — same pattern
+        /// <see cref="PopulateGitTrackerBoard"/>'s own forceFresh already follows.</summary>
+        public async void PopulateChatsTree(bool forceFresh = false)
         {
             if (_api == null || !_api.IsConfigured)
             {
@@ -2322,28 +2363,10 @@ namespace BuildConsole.Controls
             // read for grouping/labelling/navigation — never fed back into a DB
             // epic-id write (every assign path links by github NUMBER, not this Id).
             // Fail-open: if the board hasn't loaded (_lastBoardIssues empty) this
-            // adds nothing and behaviour is exactly as before.
-            if (_lastBoardIssues.Count > 0)
-            {
-                var knownEpicGithubNumbers = new HashSet<int>(
-                    _chatEpicById.Values.Where(e => e.GithubNumber.HasValue).Select(e => e.GithubNumber!.Value));
-                int synthesizedEpics = 0;
-                foreach (var bi in _lastBoardIssues.Where(i => i.IsEpic && !i.IsClosed))
-                {
-                    if (!knownEpicGithubNumbers.Add(bi.Number)) continue; // already have this epic (real or synthesized)
-                    _chatEpicById[-bi.Number] = new BoardEpic
-                    {
-                        Id = -bi.Number,
-                        Title = bi.Title,
-                        Status = "open",
-                        GithubNumber = bi.Number,
-                    };
-                    synthesizedEpics++;
-                }
-                if (synthesizedEpics > 0)
-                    ActivityLog.Log("git-board.chats",
-                        $"backfilled {synthesizedEpics} live-board epic(s) missing from local bt_epics so their chats group correctly instead of stranding under Unlinked (Git #1362)");
-            }
+            // adds nothing and behaviour is exactly as before. (Extracted to
+            // BackfillSyntheticEpicsFromBoard for #1629, so the board-refresh path
+            // can re-run it the moment fresh GitHub data lands mid-session.)
+            BackfillSyntheticEpicsFromBoard();
 
             // Focus Mode needs chats + epic→issue-number to resolve a chat's milestone.
             BuildConsole.Services.FocusModeService.Instance.UpdateChatSnapshot(board.Chats, _chatEpicById);
@@ -2354,11 +2377,51 @@ namespace BuildConsole.Controls
             // "changed" for repaint purposes: going stale->live (or the
             // reverse) should always repaint even if the underlying board
             // data happens to be byte-identical to what's already shown.
-            var signature = isStale + "|" + System.Text.Json.JsonSerializer.Serialize(board);
-            if (signature == _lastBoardSignature) return;
+            // Git #1629 (root cause 3) — the resolvable-epic key set is folded in
+            // too: the raw DB payload is byte-identical between two polls every
+            // time Shane re-clicks "assign" on an already-linked chat (ON CONFLICT
+            // DO NOTHING changes nothing), yet the #1362 synthetic backfill above
+            // may have JUST resolved a previously-stranded chat — a change in
+            // resolvable epics must force a repaint even when the DB rows didn't move.
+            var epicKeySignature = string.Join(",", _chatEpicById.Keys.OrderBy(k => k));
+            var signature = isStale + "|" + epicKeySignature + "|" + System.Text.Json.JsonSerializer.Serialize(board);
+            if (!forceFresh && signature == _lastBoardSignature) return;
             _lastBoardSignature = signature;
 
             RenderChatsTree();
+        }
+
+        /// <summary>Git #1362 (extracted for #1629) — backfills <see cref="_chatEpicById"/>
+        /// from the live Git Board's own epics (<see cref="_lastBoardIssues"/>, OPEN-only per
+        /// #839) for any epic github_number the local bt_epics table doesn't carry, so chats
+        /// linked to a not-yet-synced epic group correctly instead of stranding under
+        /// "Unlinked". The synthetic Id is negative so it can never collide with a real
+        /// bt_epics sequence id, and it's only ever read for grouping/labelling/navigation —
+        /// never fed back into a DB epic-id write (every assign path links by github NUMBER).
+        /// Fail-open: with no live board data this adds nothing. Returns the count synthesized.</summary>
+        private int BackfillSyntheticEpicsFromBoard()
+        {
+            if (_lastBoardIssues.Count == 0) return 0;
+
+            var knownEpicGithubNumbers = new HashSet<int>(
+                _chatEpicById.Values.Where(e => e.GithubNumber.HasValue).Select(e => e.GithubNumber!.Value));
+            int synthesizedEpics = 0;
+            foreach (var bi in _lastBoardIssues.Where(i => i.IsEpic && !i.IsClosed))
+            {
+                if (!knownEpicGithubNumbers.Add(bi.Number)) continue; // already have this epic (real or synthesized)
+                _chatEpicById[-bi.Number] = new BoardEpic
+                {
+                    Id = -bi.Number,
+                    Title = bi.Title,
+                    Status = "open",
+                    GithubNumber = bi.Number,
+                };
+                synthesizedEpics++;
+            }
+            if (synthesizedEpics > 0)
+                ActivityLog.Log("git-board.chats",
+                    $"backfilled {synthesizedEpics} live-board epic(s) missing from local bt_epics so their chats group correctly instead of stranding under Unlinked (Git #1362)");
+            return synthesizedEpics;
         }
 
         /// <summary>Chats redesign — the connection/error placeholder path. Kept
@@ -3410,6 +3473,74 @@ namespace BuildConsole.Controls
         /// cached board (no re-fetch needed — same re-render-only pattern as the search box
         /// and the Show Archived toggle above).</summary>
         public void RefreshForAccountToggle() => RenderChatsTree();
+
+        /// <summary>
+        /// Git #1629 (root cause 4) — the tab-level "Assign to Issue..." entry point.
+        /// Same issue/milestone picker (AssignEpicDialog over the board's own cached
+        /// issues + milestones) and same link path (LinkChatToIssueAsync, which upserts
+        /// a missing bt_chats row and stamps the current account per #1480) as the chat
+        /// card's "Link to Issue/Milestone..." context-menu item — but the conversation
+        /// id comes pre-resolved from an editor tab, so Shane never has to find the
+        /// issue node on the Git Board or copy the chat URL by hand. The refresh at the
+        /// end is forceFresh: re-linking an already-linked chat changes no DB bytes
+        /// (ON CONFLICT DO NOTHING), and the whole point here is a guaranteed repaint.
+        /// </summary>
+        public async System.Threading.Tasks.Task AssignChatToIssueInteractiveAsync(string conversationId, string chatTitle)
+        {
+            var candidates = new List<LinkCandidate>();
+            foreach (var m in _lastMilestoneInfos)
+                candidates.Add(new LinkCandidate { Number = m.Number, Title = m.Title });
+            foreach (var issue in _lastBoardIssues)
+                candidates.Add(new LinkCandidate { Number = issue.Number, Title = issue.Title });
+            candidates.Sort((a, b) => b.Number.CompareTo(a.Number));
+
+            if (candidates.Count == 0)
+            {
+                ToastEngine.Warning("Assign to Issue",
+                    "No issues or milestones are loaded yet — open the Git Board (or click its Refresh) first, then try again.");
+                ActivityLog.Log("git-board.assign-chat",
+                    $"tab-level assign for chat {conversationId} aborted — board hasn't loaded, no candidates to pick from (Git #1629)");
+                return;
+            }
+
+            var dialog = new AssignEpicDialog(chatTitle, candidates, "issue/milestone");
+            if (dialog.ShowDialog() != true || dialog.SelectedEpicId == null) return;
+            int targetNumber = dialog.SelectedEpicId.Value;
+            try
+            {
+                if (_db != null)
+                {
+                    await _db.LinkChatToIssueAsync(conversationId, targetNumber, chatTitle);
+                }
+                else
+                {
+                    if (_api == null || !_api.IsConfigured)
+                    {
+                        ToastEngine.Error("Assign to Issue", "Build Tracker API not configured — see Settings.");
+                        return;
+                    }
+                    var res = await _api.LinkChatToIssueAsync(conversationId, targetNumber, chatTitle);
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        var body = await res.Content.ReadAsStringAsync();
+                        ActivityLog.Log("git-board.assign-chat",
+                            $"tab-level assign chat {conversationId} -> #{targetNumber} FAILED: HTTP {(int)res.StatusCode} {body}");
+                        ToastEngine.Error("Assign to Issue", $"Couldn't link chat: {body}");
+                        return;
+                    }
+                }
+                ActivityLog.Log("git-board.assign-chat",
+                    $"tab-level assign: chat {conversationId} -> #{targetNumber} (Git #1629)");
+                ToastEngine.Success("Assign to Issue", $"Chat linked to #{targetNumber}");
+                PopulateChatsTree(forceFresh: true);
+            }
+            catch (System.Exception ex)
+            {
+                ActivityLog.Log("git-board.assign-chat",
+                    $"tab-level assign chat {conversationId} -> #{targetNumber} FAILED: {ex.Message}");
+                ToastEngine.Error("Assign to Issue", $"Couldn't link chat: {ex.Message}");
+            }
+        }
 
         // Git #932 — the Chats tree's CharacterEllipsis trimming (from #885)
         // never engaged visually: a TreeViewItem with HorizontalContentAlignment

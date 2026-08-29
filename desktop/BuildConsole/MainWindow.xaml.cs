@@ -555,14 +555,28 @@ namespace BuildConsole
             LeftSidebar.EpicChatRequested += (s, e) =>
                 OpenWebTab(e.Url, e.Title, "", injectPrefillPoll: e.InjectPrefill, associateIssueNumber: e.IssueNumber, associateIssueType: e.IssueType, associateDefaultTitle: e.DefaultTitle);
 
-            // Backs "Assign Chat to Epic..."'s "Assign current chat" button --
-            // only a chat tab opened via OpenChatTab has its TabItem.Tag typed as
-            // BoardChat (plain web tabs use a bare string url), so this is how we
-            // tell "a real focused chat" apart from any other open tab kind.
+            // Backs "Assign Chat to Epic..."'s "Assign current chat" button.
+            // Git #1629 (root cause 1) — this used to resolve ONLY a tab whose Tag
+            // was typed BoardChat (i.e. opened through BuildConsole's own
+            // OpenChatTab flow), silently returning null for a chat Shane browsed
+            // to himself in a plain web tab — exactly the tabs most likely to need
+            // assigning, forcing manual URL copy-paste with its wrong/stale-paste
+            // failure mode. Now ANY pane's selected tab genuinely showing a
+            // claude.ai conversation resolves: live WebView2 source first,
+            // BoardChat.ClaudeUrl snapshot as fallback (see TryGetChatUrlForTab).
+            // The primary pane wins if several panes have chat tabs selected.
             LeftSidebar.GetActiveChatUrl = () =>
-                EditorTabs.SelectedItem is TabItem selected && selected.Tag is BuildConsole.Services.BoardChat chat
-                    ? chat.ClaudeUrl
-                    : null;
+            {
+                foreach (var pane in new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 })
+                {
+                    if (pane.SelectedItem is TabItem selected)
+                    {
+                        var url = TryGetChatUrlForTab(selected);
+                        if (url != null) return url;
+                    }
+                }
+                return null;
+            };
             LeftSidebar.GetQueueItems = () => BuildQueuePanel.CurrentQueueItems;
 
             // Git #840 — clicking an issue now opens (or focuses) the native
@@ -1871,9 +1885,13 @@ namespace BuildConsole
                 };
             }
 
+            // Git #1629 — this used an inline pattern missing the UUID's fourth
+            // hyphen group (8-4-4-12 instead of 8-4-4-4-12), so it NEVER matched a
+            // real conversation URL: initialConversationId stayed null and the
+            // watcher guard below couldn't tell the tab's pre-existing conversation
+            // from a genuinely new one. Now uses the one shared, correct pattern.
             string? initialConversationId = null;
-            var initConvMatch = System.Text.RegularExpressions.Regex.Match(
-                url, @"/chat/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+            var initConvMatch = ClaudeChatUrlRegex.Match(url);
             if (initConvMatch.Success) initialConversationId = initConvMatch.Groups[1].Value;
 
             bool navigated = false;
@@ -3646,6 +3664,76 @@ namespace BuildConsole
             catch { /* file locked mid-write by the watcher - just retry next tick */ }
         }
 
+        /// <summary>Git #1629 — the ONE shared claude.ai conversation-URL pattern (full
+        /// 8-4-4-4-12 UUID). The old inline copies had drifted: OpenWebTab's was missing
+        /// the fourth hyphen group and never matched a real conversation URL.</summary>
+        private static readonly System.Text.RegularExpressions.Regex ClaudeChatUrlRegex =
+            new(@"/chat/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})");
+
+        /// <summary>Git #1629 — walks a tab's constructed content (panels / decorators /
+        /// content controls, which exist whether or not WPF has realized the tab's visual
+        /// tree) to find its hosted WebView2, so a tab's REAL current URL can be read even
+        /// for tabs not opened through OpenChatTab and tabs that aren't currently selected.</summary>
+        private static Microsoft.Web.WebView2.Wpf.WebView2? FindWebViewIn(object? root)
+        {
+            switch (root)
+            {
+                case Microsoft.Web.WebView2.Wpf.WebView2 wv:
+                    return wv;
+                case Panel panel:
+                    foreach (var child in panel.Children)
+                    {
+                        var found = FindWebViewIn(child);
+                        if (found != null) return found;
+                    }
+                    return null;
+                case Decorator decorator:
+                    return FindWebViewIn(decorator.Child);
+                case ContentControl contentControl:
+                    return FindWebViewIn(contentControl.Content);
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// Git #1629 (root cause 1) — resolves the claude.ai conversation URL for ANY tab
+        /// genuinely showing a chat, not just tabs whose Tag is typed BoardChat. Order
+        /// matters: the live WebView2 source first (the truest current state — a plain web
+        /// tab has only a bare string Tag, and any tab can navigate between conversations
+        /// after opening), then the BoardChat.ClaudeUrl snapshot only when the tag is
+        /// present. Null when the tab genuinely shows no conversation (e.g. a brand-new
+        /// chat that hasn't sent its first message yet has no /chat/&lt;uuid&gt; URL).
+        /// </summary>
+        private string? TryGetChatUrlForTab(TabItem tab)
+        {
+            try
+            {
+                var wv = _chatTabs.TryGetValue(tab, out var state) ? state.WebView : FindWebViewIn(tab.Content);
+                var src = wv?.Source?.ToString();
+                if (!string.IsNullOrEmpty(src) && ClaudeChatUrlRegex.IsMatch(src)) return src;
+            }
+            catch { /* an uninitialized/disposed WebView2 just falls through to the Tag */ }
+
+            if (tab.Tag is BuildConsole.Services.BoardChat chat && !string.IsNullOrEmpty(chat.ClaudeUrl))
+                return chat.ClaudeUrl;
+            return null;
+        }
+
+        /// <summary>Git #1629 — a tab's visible title text (icon TextBlock is child 0 in
+        /// every header this app builds, so prefer the second), for chat rows created from
+        /// tabs that have no BoardChat snapshot to take a title from.</summary>
+        private static string TabTitleOf(TabItem tab)
+        {
+            if (tab.Header is Panel panel)
+            {
+                var tb = panel.Children.OfType<TextBlock>().Skip(1).FirstOrDefault()
+                         ?? panel.Children.OfType<TextBlock>().FirstOrDefault();
+                if (tb != null && !string.IsNullOrWhiteSpace(tb.Text)) return tb.Text;
+            }
+            return tab.Header?.ToString() ?? "Chat";
+        }
+
         private void AttachTabContextMenu(TabItem tabItem, TabControl ownerTabControl)
         {
             var cm = new ContextMenu();
@@ -3659,20 +3747,31 @@ namespace BuildConsole
             // set at all).
             TabControl CurrentOwner() => tabItem.Parent as TabControl ?? ownerTabControl;
 
-            // 0a. Mark as In Progress (for Chat Tabs)
-            if (tabItem.Tag is BuildConsole.Services.BoardChat chat || _chatTabs.ContainsKey(tabItem))
+            // 0a. Chat actions (Git #1629, root cause 4) — previously only a tab whose Tag
+            // was typed BoardChat got "Mark as In Progress" (and there was no tab-level
+            // assign at all), so a plain claude.ai tab Shane browsed to himself had
+            // neither. Both items are attached to EVERY tab and shown/hidden at menu-OPEN
+            // time instead, because a plain web tab can navigate to a chat long after this
+            // menu was attached — the decision must be made against the tab's current URL.
+            var miInProgress = new MenuItem { Header = "⚡ Mark as In Progress" };
+            miInProgress.Click += async (s, e) =>
+                await MarkChatTabInProgressAsync(tabItem, tabItem.Tag as BuildConsole.Services.BoardChat);
+            var miAssignIssue = new MenuItem { Header = "🔗 Assign to Issue..." };
+            miAssignIssue.Click += async (s, e) => await AssignChatTabToIssueAsync(tabItem);
+            var chatActionsSeparator = new Separator();
+            cm.Items.Add(miInProgress);
+            cm.Items.Add(miAssignIssue);
+            cm.Items.Add(chatActionsSeparator);
+            cm.Opened += (s, e) =>
             {
-                var targetChat = (tabItem.Tag as BuildConsole.Services.BoardChat)
-                                 ?? _chatTabs.Keys.FirstOrDefault(k => k == tabItem)?.Tag as BuildConsole.Services.BoardChat;
-
-                var miInProgress = new MenuItem { Header = "✈️ Mark as In Progress" };
-                miInProgress.Click += async (s, e) =>
-                {
-                    await MarkChatTabInProgressAsync(tabItem, targetChat);
-                };
-                cm.Items.Add(miInProgress);
-                cm.Items.Add(new Separator());
-            }
+                bool isChatTab = tabItem.Tag is BuildConsole.Services.BoardChat
+                                 || _chatTabs.ContainsKey(tabItem)
+                                 || TryGetChatUrlForTab(tabItem) != null;
+                var visibility = isChatTab ? Visibility.Visible : Visibility.Collapsed;
+                miInProgress.Visibility = visibility;
+                miAssignIssue.Visibility = visibility;
+                chatActionsSeparator.Visibility = visibility;
+            };
 
             // 0b. Rename Tab
             var miRename = new MenuItem { Header = "Rename Tab...", InputGestureText = "F2" };
@@ -3925,6 +4024,31 @@ namespace BuildConsole
         {
             try
             {
+                // Git #1629 (root cause 4) — a tab NOT opened through OpenChatTab (bare
+                // string Tag) used to fall into a null-chat branch that toasted "marked
+                // in-progress" while telling FocusModeService NOTHING. Resolve the real
+                // conversation id from the tab itself (live WebView2 source — the same
+                // logic backing GetActiveChatUrl, but for THIS tab, selected or not) so
+                // any genuine claude.ai tab actually gets marked — or say plainly why not.
+                string? conversationId = chat?.ConversationId;
+                string? chatUrl = chat?.ClaudeUrl;
+                string title = chat?.Title ?? TabTitleOf(tabItem);
+                if (string.IsNullOrEmpty(conversationId) || string.IsNullOrEmpty(chatUrl))
+                {
+                    chatUrl = TryGetChatUrlForTab(tabItem);
+                    if (chatUrl != null)
+                    {
+                        var convMatch = ClaudeChatUrlRegex.Match(chatUrl);
+                        if (convMatch.Success) conversationId = convMatch.Groups[1].Value;
+                    }
+                }
+                if (string.IsNullOrEmpty(conversationId) || string.IsNullOrEmpty(chatUrl))
+                {
+                    ToastEngine.Warning("In-Progress",
+                        "This tab isn't showing a claude.ai conversation yet — a brand-new chat has no conversation id until its first message is sent. Open the chat (or send its first message) and try again.");
+                    return;
+                }
+
                 int? githubNumber = chat?.IssueGithubNumber;
                 if (githubNumber.HasValue)
                 {
@@ -3940,7 +4064,7 @@ namespace BuildConsole
                 }
                 else
                 {
-                    ToastEngine.Success("In-Progress", $"Chat '{chat?.Title ?? "Session"}' marked in-progress");
+                    ToastEngine.Success("In-Progress", $"Chat '{title}' marked in-progress");
                 }
 
                 if (tabItem.Header is Panel panel)
@@ -3960,16 +4084,15 @@ namespace BuildConsole
                     }
                 }
 
-                if (chat != null)
+                if (chat != null && !chat.Title.StartsWith("✈"))
                 {
-                    if (!chat.Title.StartsWith("✈"))
-                    {
-                        chat.Title = "✈️ " + chat.Title;
-                    }
-                    if (!string.IsNullOrEmpty(chat.ConversationId) && !BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(chat.ConversationId))
-                    {
-                        BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(chat.ConversationId, chat.Title, chat.ClaudeUrl);
-                    }
+                    chat.Title = "✈️ " + chat.Title;
+                }
+                // Git #1629 — the actual FocusModeService mark now happens for EVERY
+                // resolvable chat tab, not only ones carrying a BoardChat snapshot.
+                if (!BuildConsole.Services.FocusModeService.Instance.IsChatInProgress(conversationId))
+                {
+                    BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(conversationId, chat?.Title ?? title, chatUrl);
                 }
                 if (_chatTabs.TryGetValue(tabItem, out var state))
                 {
@@ -3982,15 +4105,42 @@ namespace BuildConsole
                 PersistOpenChatTabs();
 
                 LeftSidebar.PopulateGitTrackerBoard();
-                LeftSidebar.PopulateChatsTree();
+                // Git #1629 — forceFresh: an in-progress mark changes nothing in the raw
+                // board payload, so a plain PopulateChatsTree() would be silently skipped
+                // by the unchanged-signature short-circuit and the tab wouldn't appear
+                // under "In Progress" until the next unrelated data change.
+                LeftSidebar.PopulateChatsTree(forceFresh: true);
                 _ = BuildQueuePanel.RefreshAsync();
 
-                BuildConsole.Services.ActivityLog.Log("chat.status", $"Marked chat '{chat?.Title ?? tabItem.Tag?.ToString()}' as in-progress (in-flight)");
+                BuildConsole.Services.ActivityLog.Log("git-board.chat", $"Marked chat '{chat?.Title ?? title}' ({conversationId}) as in-progress (in-flight)");
             }
             catch (Exception ex)
             {
                 ToastEngine.Error("In-Progress", $"Failed to mark in-progress: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Git #1629 (root cause 4) — tab-level "Assign to Issue...": resolves THIS tab's
+        /// real conversation id (same generalized logic as GetActiveChatUrl, so it works
+        /// for a plain browsed-to claude.ai tab, selected or not) and hands it to the
+        /// Chats panel's own issue/milestone picker + link path — Shane never has to find
+        /// the issue node on the Git Board or copy the chat URL by hand. A tab with no
+        /// resolvable conversation gets told plainly why, not silently ignored.
+        /// </summary>
+        private async System.Threading.Tasks.Task AssignChatTabToIssueAsync(TabItem tabItem)
+        {
+            var chatUrl = TryGetChatUrlForTab(tabItem);
+            var convMatch = chatUrl != null ? ClaudeChatUrlRegex.Match(chatUrl) : null;
+            if (convMatch is not { Success: true })
+            {
+                ToastEngine.Warning("Assign to Issue",
+                    "This tab isn't showing a claude.ai conversation yet — a brand-new chat has no conversation id until its first message is sent. Open the chat (or send its first message) and try again.");
+                return;
+            }
+            string conversationId = convMatch.Groups[1].Value;
+            string title = (tabItem.Tag as BuildConsole.Services.BoardChat)?.Title ?? TabTitleOf(tabItem);
+            await LeftSidebar.AssignChatToIssueInteractiveAsync(conversationId, title);
         }
 
         public void CloseTab(TabItem tabItem, TabControl? ownerTabControl = null)

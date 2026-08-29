@@ -34,7 +34,11 @@ namespace BuildConsole
             var url = _getActiveChatUrl?.Invoke();
             if (string.IsNullOrWhiteSpace(url))
             {
-                StatusText.Text = "No chat tab is currently focused.";
+                // Git #1629 (root cause 1) — the resolver now reads ANY selected tab's
+                // live WebView2 URL (not just BuildConsole-opened chat tabs), so a null
+                // here genuinely means "no conversation id exists to grab" — say why
+                // plainly instead of a bare "no chat tab" that reads as a bug.
+                StatusText.Text = "No selected tab is showing a claude.ai conversation — a brand-new chat has no conversation id until its first message is sent. Paste the chat URL instead.";
                 StatusText.Visibility = Visibility.Visible;
                 return;
             }
