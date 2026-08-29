@@ -284,6 +284,26 @@ app.listen(port, (err) => {
     logger.warn({ err }, "message-center-sync: failed to load sync module (non-fatal)");
   });
 
+  // ── M365 Changes: daily resolution sweep (#1533) ──────────────────────────
+  // Counts every confirmed interpretation against every tenant's estate from
+  // STORED probe data (tenant_monitor_profiles / license_assignment_snapshots)
+  // — never live probes; the admin's explicit "resolve now" is the live path.
+  // Runs after the message-center sync's slot so the day's posts land first.
+  import("./lib/m365-change-resolver").then(({ runM365ResolutionSweep }) => {
+    setTimeout(() => {
+      runM365ResolutionSweep().catch((err: unknown) => {
+        logger.warn({ err }, "m365-resolution-sweep: initial sweep failed (non-fatal)");
+      });
+    }, 35_000);
+    setInterval(() => {
+      runM365ResolutionSweep().catch((err: unknown) => {
+        logger.warn({ err }, "m365-resolution-sweep: scheduled sweep failed (non-fatal)");
+      });
+    }, 24 * 60 * 60 * 1000);
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "m365-resolution-sweep: failed to load sweep module (non-fatal)");
+  });
+
   // ── Session Tracking: daily login-history retention prune ─────────────────
   // Removes dead (revoked/expired) user_sessions rows older than 90 days.
   // Active sessions are never touched regardless of age. Same cadence as the

@@ -23,6 +23,11 @@
  *   POST   /api/admin/m365/interpretations/:id/reject  — read and discard → status 'rejected'
  *   DELETE /api/admin/m365/interpretations/:id        — remove one
  *
+ * Resolution layer (#1533 — interpretation names WHAT to count; resolution runs
+ * it against a real tenant and returns a NUMBER):
+ *   POST   /api/admin/m365/interpretations/:id/resolve     — run the count across the MSP's tenants (confirmed only)
+ *   GET    /api/admin/m365/interpretations/:id/resolutions — the stored per-tenant answers
+ *
  * Auth: `requireAdmin` — the platform-admin session the AdminV2 console carries.
  * Scoping is per-MSP: the library is resolved against the single direct-business
  * MSP (structurally per-MSP even though there is one MSP today, #1532), never taken
@@ -33,9 +38,11 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
   m365ChangeInterpretationsTable,
+  m365ChangeResolutionsTable,
   m365RoadmapItemsTable,
   mspMessageCenterItemsTable,
   mspsTable,
+  tenantsTable,
   M365_CHANGE_CLASSES,
   M365_INTERPRETATION_STATUSES,
   M365_ACTORS,
@@ -47,6 +54,7 @@ import { z } from "zod";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { proposeInterpretation } from "../lib/m365-interpretation-proposer.ts";
+import { resolveInterpretationAcrossTenants } from "../lib/m365-change-resolver.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 
@@ -512,6 +520,130 @@ router.delete("/admin/m365/interpretations/:id", requireAdmin, async (req: Reque
   } catch (err) {
     log.error({ err }, "DELETE /admin/m365/interpretations/:id failed");
     res.status(500).json({ error: "Failed to delete interpretation" });
+  }
+});
+
+// ── POST /admin/m365/interpretations/:id/resolve (#1533) ────────────────────
+// Run the interpretation's count against the MSP's real estate NOW. Confirmed
+// interpretations only — the #1532 gate. `live` (default true: this endpoint IS
+// the deliberate "go read the tenant" action) permits a live executeMonitorCheck
+// run when no fresh stored profile exists; the daily sweep never goes live.
+const resolveSchema = z.object({
+  customerId: z.number().int().positive().optional(),
+  live: z.boolean().default(true),
+});
+
+router.post("/admin/m365/interpretations/:id/resolve", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid interpretation id" });
+      return;
+    }
+    const parsed = resolveSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+    const mspId = await resolveDefaultMspId();
+    if (mspId === null) {
+      res.status(400).json({ error: "No MSP configured" });
+      return;
+    }
+    const [interpretation] = await db
+      .select()
+      .from(m365ChangeInterpretationsTable)
+      .where(and(eq(m365ChangeInterpretationsTable.id, id), eq(m365ChangeInterpretationsTable.mspId, mspId)))
+      .limit(1);
+    if (!interpretation) {
+      res.status(404).json({ error: "Interpretation not found" });
+      return;
+    }
+    if (interpretation.status !== "confirmed") {
+      res.status(409).json({ error: "Only a confirmed interpretation may be resolved against tenants" });
+      return;
+    }
+
+    const results = await resolveInterpretationAcrossTenants({
+      interpretation,
+      allowLive: parsed.data.live,
+      onlyCustomerId: parsed.data.customerId,
+    });
+    res.json({
+      interpretationId: id,
+      results: results.map((r) => ({
+        customerId: r.customerId,
+        tenantName: r.tenantName,
+        status: r.outcome.status,
+        affectedCount: r.outcome.affectedCount,
+        basis: r.outcome.basis,
+        basisDetail: r.outcome.basisDetail,
+        errorMessage: r.outcome.errorMessage,
+        measuredAt: r.outcome.measuredAt?.toISOString() ?? null,
+      })),
+    });
+  } catch (err) {
+    log.error({ err }, "POST /admin/m365/interpretations/:id/resolve failed");
+    res.status(500).json({ error: "Failed to resolve interpretation against tenants" });
+  }
+});
+
+// ── GET /admin/m365/interpretations/:id/resolutions (#1533) ─────────────────
+// The stored per-tenant answers for one interpretation — each tenant's CURRENT
+// number (or its honest not-measured reason), joined with the tenant's name.
+router.get("/admin/m365/interpretations/:id/resolutions", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid interpretation id" });
+      return;
+    }
+    const mspId = await resolveDefaultMspId();
+    if (mspId === null) {
+      res.status(400).json({ error: "No MSP configured" });
+      return;
+    }
+    const rows = await db
+      .select({
+        id: m365ChangeResolutionsTable.id,
+        customerId: m365ChangeResolutionsTable.customerId,
+        tenantName: tenantsTable.customerName,
+        status: m365ChangeResolutionsTable.status,
+        affectedCount: m365ChangeResolutionsTable.affectedCount,
+        basis: m365ChangeResolutionsTable.basis,
+        basisDetail: m365ChangeResolutionsTable.basisDetail,
+        errorMessage: m365ChangeResolutionsTable.errorMessage,
+        measuredAt: m365ChangeResolutionsTable.measuredAt,
+        updatedAt: m365ChangeResolutionsTable.updatedAt,
+      })
+      .from(m365ChangeResolutionsTable)
+      .leftJoin(tenantsTable, eq(tenantsTable.id, m365ChangeResolutionsTable.customerId))
+      .where(
+        and(
+          eq(m365ChangeResolutionsTable.interpretationId, id),
+          eq(m365ChangeResolutionsTable.mspId, mspId),
+        ),
+      )
+      .orderBy(desc(m365ChangeResolutionsTable.updatedAt));
+
+    res.json({
+      interpretationId: id,
+      resolutions: rows.map((r) => ({
+        id: r.id,
+        customerId: r.customerId,
+        tenantName: (r.tenantName ?? "").trim() || `Customer ${r.customerId}`,
+        status: r.status,
+        affectedCount: r.affectedCount,
+        basis: r.basis,
+        basisDetail: r.basisDetail,
+        errorMessage: r.errorMessage,
+        measuredAt: r.measuredAt instanceof Date ? r.measuredAt.toISOString() : r.measuredAt,
+        updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt,
+      })),
+    });
+  } catch (err) {
+    log.error({ err }, "GET /admin/m365/interpretations/:id/resolutions failed");
+    res.status(500).json({ error: "Failed to load resolutions" });
   }
 });
 

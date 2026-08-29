@@ -277,6 +277,75 @@ export async function resolveLicenseWasteCounts(
   return null;
 }
 
+// ── Subscribed-SKU catalog (#1533) ────────────────────────────────────────────
+//
+// The M365 Changes resolution layer needs the tenant's (skuId ↔ skuPartNumber)
+// mapping to turn an interpretation's `touches.skus` names into the SKU GUIDs
+// `license_assignment_snapshots` rows are keyed on. That mapping lives in the
+// same stored `/subscribedSkus` Graph page this module already sources seat
+// counts from, so it is exposed here rather than re-fetched anywhere else.
+
+export interface SubscribedSkuCatalogEntry {
+  /** Graph `skuId` — the GUID `license_assignment_snapshots.sku_id` carries. */
+  skuId: string;
+  skuPartNumber: string;
+  /** Graph `consumedUnits` — seats assigned to someone, per Microsoft's own count. */
+  consumedUnits: number | null;
+}
+
+/**
+ * The tenant's subscribed SKUs from the most recently collected complete
+ * `/subscribedSkus` page, or null when no such page is stored (same
+ * "nothing to source from" contract as `resolveLicenseWasteCounts`). A
+ * truncated page (nextLink present) is refused, not partially served.
+ */
+export async function resolveSubscribedSkuCatalog(
+  tenantId: string,
+): Promise<{ skus: SubscribedSkuCatalogEntry[]; checkKey: string; collectedAt: Date | null } | null> {
+  const candidates = await subscribedSkusCheckKeys().catch((err) => {
+    log.warn({ err, tenantId }, "license-waste-source: /subscribedSkus check discovery failed");
+    return [] as string[];
+  });
+  if (candidates.length === 0) return null;
+
+  const withCollectedAt: { checkKey: string; latest: Awaited<ReturnType<typeof latestRawResponseFor>> }[] = [];
+  for (const checkKey of candidates) {
+    withCollectedAt.push({ checkKey, latest: await latestRawResponseFor(tenantId, checkKey) });
+  }
+  withCollectedAt.sort((a, b) => {
+    const at = a.latest?.collectedAt?.getTime() ?? -Infinity;
+    const bt = b.latest?.collectedAt?.getTime() ?? -Infinity;
+    return bt - at;
+  });
+
+  for (const { checkKey, latest } of withCollectedAt) {
+    if (!latest || !latest.rawResponse || typeof latest.rawResponse !== "object") continue;
+    const page = latest.rawResponse as Record<string, unknown>;
+    const nextLink = page["@odata.nextLink"];
+    if (typeof nextLink === "string" && nextLink.length > 0) continue;
+    const items = Array.isArray(page.value)
+      ? page.value
+      : Array.isArray(latest.rawResponse)
+        ? (latest.rawResponse as unknown[])
+        : null;
+    if (!items) continue;
+
+    const skus: SubscribedSkuCatalogEntry[] = [];
+    for (const item of items) {
+      if (!item || typeof item !== "object") continue;
+      const sku = item as Record<string, unknown>;
+      const skuId = typeof sku.skuId === "string" ? sku.skuId : null;
+      const skuPartNumber = typeof sku.skuPartNumber === "string" ? sku.skuPartNumber : null;
+      if (!skuId || !skuPartNumber) continue;
+      skus.push({ skuId, skuPartNumber, consumedUnits: toNum(sku.consumedUnits) });
+    }
+    if (skus.length === 0) continue;
+    return { skus, checkKey, collectedAt: latest.collectedAt };
+  }
+
+  return null;
+}
+
 // ── Paid seats (#333) ─────────────────────────────────────────────────────────
 //
 // `totalEnabledSeats` and `lines[].unused` above count EVERY subscribed SKU,

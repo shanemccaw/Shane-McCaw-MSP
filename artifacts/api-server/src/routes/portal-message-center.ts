@@ -66,8 +66,13 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspMessageCenterItemsTable } from "@workspace/db";
-import { and, desc, eq } from "drizzle-orm";
+import {
+  db,
+  m365ChangeInterpretationsTable,
+  m365ChangeResolutionsTable,
+  mspMessageCenterItemsTable,
+} from "@workspace/db";
+import { and, desc, eq, isNotNull } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
@@ -148,6 +153,30 @@ interface WirePost {
   readonly publishedAt: string;
   readonly lastModifiedAt: string;
   readonly actionRequiredBy: string | null;
+}
+
+/**
+ * The tenant's own reading of one post — the #1532 interpretation (what the
+ * change IS, who acts, whether it can be turned off) plus, when the #1533
+ * resolution layer has actually counted this tenant's estate, the NUMBER.
+ *
+ * `measured: false` means the count half keeps the stated-absence copy below —
+ * the interpretation is still served because "do I have to act" and "can I turn
+ * it off" are real answers even before the estate is read. `affectedCount` is
+ * never 0 unless a probe genuinely measured 0, and a measured 0 sets `noise`:
+ * this post touches nothing in this customer's estate.
+ */
+interface WireAnalysis {
+  readonly summary: string | null;
+  readonly changeClass: string;
+  readonly whoActs: string;
+  readonly controllable: string;
+  readonly controlMethod: string | null;
+  readonly measured: boolean;
+  readonly affectedCount: number | null;
+  readonly measuredAt: string | null;
+  readonly basis: string | null;
+  readonly noise: boolean;
 }
 
 /**
@@ -272,7 +301,66 @@ router.get(
       // The budget is spent per WAVE, so no wave is starved by a busier one
       // earlier on the axis. See capPerWave's header for what went wrong with a
       // flat cap on the real tenant.
-      const posts = capPerWave(shaped, buckets, POSTS_PER_WAVE);
+      const capped = capPerWave(shaped, buckets, POSTS_PER_WAVE);
+
+      // ── The tenant's own reading (#1532/#1533) ──────────────────────────
+      // Confirmed interpretations for this MSP that are tied to a Message
+      // Center post, left-joined with THIS customer's stored resolution.
+      // Confirmed only — a proposed (unverified) reading never reaches a
+      // customer. The join is by graphMessageId; both predicates are resolved
+      // from the token-derived scope, never the request.
+      const analysisRows = await db
+        .select({
+          graphMessageId: m365ChangeInterpretationsTable.graphMessageId,
+          summary: m365ChangeInterpretationsTable.summary,
+          changeClass: m365ChangeInterpretationsTable.changeClass,
+          whoActs: m365ChangeInterpretationsTable.whoActs,
+          controllable: m365ChangeInterpretationsTable.controllable,
+          controlMethod: m365ChangeInterpretationsTable.controlMethod,
+          resolutionStatus: m365ChangeResolutionsTable.status,
+          affectedCount: m365ChangeResolutionsTable.affectedCount,
+          measuredAt: m365ChangeResolutionsTable.measuredAt,
+          basis: m365ChangeResolutionsTable.basis,
+        })
+        .from(m365ChangeInterpretationsTable)
+        .leftJoin(
+          m365ChangeResolutionsTable,
+          and(
+            eq(m365ChangeResolutionsTable.interpretationId, m365ChangeInterpretationsTable.id),
+            eq(m365ChangeResolutionsTable.customerId, scope.customerId),
+          ),
+        )
+        .where(
+          and(
+            eq(m365ChangeInterpretationsTable.mspId, scope.mspId),
+            eq(m365ChangeInterpretationsTable.status, "confirmed"),
+            isNotNull(m365ChangeInterpretationsTable.graphMessageId),
+          ),
+        );
+
+      const analysisByMessageId = new Map<string, WireAnalysis>();
+      for (const row of analysisRows) {
+        if (!row.graphMessageId) continue;
+        const measured = row.resolutionStatus === "measured" && row.affectedCount !== null;
+        analysisByMessageId.set(row.graphMessageId, {
+          summary: row.summary,
+          changeClass: row.changeClass,
+          whoActs: row.whoActs,
+          controllable: row.controllable,
+          controlMethod: row.controlMethod,
+          measured,
+          affectedCount: measured ? row.affectedCount : null,
+          measuredAt: measured && row.measuredAt ? row.measuredAt.toISOString() : null,
+          basis: measured ? row.basis : null,
+          noise: measured && row.affectedCount === 0,
+        });
+      }
+
+      const posts = capped.map((p) => ({
+        ...p,
+        /** Null when no confirmed interpretation exists for this post — the page keeps the stated-absence copy. */
+        analysis: analysisByMessageId.get(p.id) ?? null,
+      }));
 
       const lastSeen = corpus.reduce<Date | null>(
         (acc, r) => (acc === null || r.lastSeenAt > acc ? r.lastSeenAt : acc),
@@ -316,6 +404,14 @@ router.get(
           scoreBasis:
             "How prominently Microsoft flagged the post and how soon it lands. Not a per-tenant impact measurement.",
           notReadAgainstTenant: NOT_READ_AGAINST_TENANT,
+          /**
+           * #1533: the exception to the line above. A post whose `analysis` is
+           * measured DID have its count read from this tenant's own collected
+           * data (monitoring checks / licence assignment register) against a
+           * confirmed interpretation; every other post keeps the stated absence.
+           */
+          measuredCounts:
+            "Where a post carries a measured affected-object count, that number was counted from your tenant's own collected data against a reading confirmed by your MSP. A measured zero means this change touches nothing counted in your estate.",
         },
       });
     } catch (err) {

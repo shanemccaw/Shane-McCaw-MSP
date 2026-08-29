@@ -2556,6 +2556,106 @@ export const m365ChangeInterpretationsTable = pgTable("m365_change_interpretatio
 export type M365ChangeInterpretation = typeof m365ChangeInterpretationsTable.$inferSelect;
 export type InsertM365ChangeInterpretation = typeof m365ChangeInterpretationsTable.$inferInsert;
 
+// ── M365 Change Resolutions (#1533, part of #1494) ────────────────────────────
+// The RESOLUTION layer — the other half of #1494's split. An interpretation names
+// WHAT to count; a resolution row is that count actually run against ONE tenant's
+// real estate: "you have 412 mailboxes with EWS enabled". One row per
+// (interpretation × customer), overwritten on re-measure rather than appended —
+// this is the tenant's CURRENT answer, not a history.
+//
+// The number is the hinge (#1533): zero affected objects = the post is noise for
+// that customer; non-zero with a deadline = the routing trigger. So zero must only
+// ever be a MEASURED zero. Where no probe exists or the probe could not run,
+// `status` is 'not_measured' and `affected_count` is NULL — never 0 — and the
+// portal keeps its honest-empty wording ("your tenant has not been read against
+// this notice").
+//
+// No second probe mechanism: `basis` records which EXISTING infrastructure
+// produced the number — a `monitor_checks` run (via tenant_monitor_profiles or a
+// live executeMonitorCheck, which itself dispatches Graph / ca-ps-execution
+// PowerShell / sharepoint-admin / dns by the check's own executorType), or
+// `license_assignment_snapshots` for the SKU cases (Project Online retiring while
+// the tenant holds the licence).
+
+export const M365_RESOLUTION_STATUSES = ["measured", "not_measured", "error"] as const;
+export type M365ResolutionStatus = (typeof M365_RESOLUTION_STATUSES)[number];
+
+/** Which existing probe infrastructure produced a measured number. */
+export const M365_RESOLUTION_BASES = ["monitor_check", "license_snapshot"] as const;
+export type M365ResolutionBasis = (typeof M365_RESOLUTION_BASES)[number];
+
+/**
+ * Why a resolution is 'not_measured' — stored so the admin surface can say
+ * exactly what is missing instead of a vague "no data". `no_probe` is the honest
+ * "no probe exists for this interpretation" case #1533 names; the rest are a
+ * probe that exists but could not answer for THIS tenant.
+ */
+export const M365_NOT_MEASURED_REASONS = [
+  "no_probe",
+  "check_not_found",
+  "no_stored_profile",
+  "sku_not_mapped",
+  "no_sku_data",
+  "license_gap",
+  "consent_revoked",
+  "requires_script",
+] as const;
+export type M365NotMeasuredReason = (typeof M365_NOT_MEASURED_REASONS)[number];
+
+/** Provenance of one resolution — what was counted, from where, when. */
+export interface M365ResolutionBasisDetail {
+  /** monitor_check basis: the monitor_checks.key that was counted. */
+  checkKey?: string;
+  /** monitor_check basis: true = a live executeMonitorCheck run; false = the latest stored tenant_monitor_profiles row. */
+  live?: boolean;
+  /** monitor_check basis: the profile's own status ('ok' | 'partial') — partial means real but incomplete coverage. */
+  profileStatus?: string;
+  /** monitor_check basis (stored profile) / license_snapshot basis: when the underlying data was collected (ISO). */
+  collectedAt?: string;
+  /** license_snapshot basis: the touches.skus entries that matched subscribed SKUs, as (skuPartNumber → skuId). */
+  matchedSkus?: Record<string, string>;
+  /** license_snapshot basis: touches.skus entries that matched NOTHING subscribed (kept for the admin to fix the naming). */
+  unmatchedSkus?: string[];
+  /** license_snapshot basis: the license_assignment_snapshots run the users were counted in. */
+  snapshotRunId?: string;
+  /** license_snapshot basis without per-user snapshot rows: the count is the subscribed SKUs' own consumedUnits sum. */
+  source?: "assignment_snapshot" | "subscribed_skus_consumed";
+  /** not_measured: the structured reason (see M365_NOT_MEASURED_REASONS). */
+  reason?: M365NotMeasuredReason;
+}
+
+export const m365ChangeResolutionsTable = pgTable("m365_change_resolutions", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // tenants.id — the same id space the portal's JWT customerId claim carries.
+  // No FK by design, matching msp_message_center_items.customer_id (Phase 0
+  // successor id-space; see that column's comment).
+  customerId: integer("customer_id").notNull(),
+  /** The M365 tenant GUID the count was run against, for provenance. */
+  tenantId: text("tenant_id").notNull(),
+  interpretationId: integer("interpretation_id").notNull()
+    .references(() => m365ChangeInterpretationsTable.id, { onDelete: "cascade" }),
+  status: text("status").$type<M365ResolutionStatus>().notNull(),
+  /** The number. NULL unless status = 'measured' — a not-measured answer is never zero. */
+  affectedCount: integer("affected_count"),
+  basis: text("basis").$type<M365ResolutionBasis>(),
+  basisDetail: jsonb("basis_detail").$type<M365ResolutionBasisDetail>().notNull().default({}),
+  errorMessage: text("error_message"),
+  /** When the number was actually computed. NULL unless status = 'measured'. */
+  measuredAt: timestamp("measured_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // The upsert identity: one current answer per interpretation per customer.
+  unique("m365_change_resolutions_interp_customer_uidx").on(t.interpretationId, t.customerId),
+  index("m365_change_resolutions_msp_id_idx").on(t.mspId),
+  index("m365_change_resolutions_customer_id_idx").on(t.customerId),
+  index("m365_change_resolutions_interpretation_idx").on(t.interpretationId),
+]);
+
+export type M365ChangeResolution = typeof m365ChangeResolutionsTable.$inferSelect;
+export type InsertM365ChangeResolution = typeof m365ChangeResolutionsTable.$inferInsert;
+
 // ── Report Definitions ─────────────────────────────────────────────────────────
 // MSP-authored templates that describe what to generate, for whom, and how to
 // deliver it. One definition can be triggered many times (→ report_runs rows).
