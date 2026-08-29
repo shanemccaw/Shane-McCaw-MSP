@@ -4961,6 +4961,176 @@ export const portalOwnershipRowsTable = pgTable("portal_ownership_rows", {
 
 export type PortalOwnershipRow = typeof portalOwnershipRowsTable.$inferSelect;
 
+// ── Settings: Change control policy + Departments persistence (#1592) ────────
+//
+// `portal-v2-settings.tsx`'s Change control policy and Departments sections were
+// 100% client-only React state — every toggle, approver chip and notification
+// rule edit reacted on screen, nothing survived a reload, and no persistence
+// endpoint existed at all (honestly flagged by #1463's `pv2-set-cc-nodata` /
+// `pv2-set-dept-nodata` badges). These four tables are the backend this issue
+// builds. Scoped by `customerId` (`tenants.id`, straight off the JWT) with no FK,
+// matching `portal_ownership_*` above and for the same reason.
+//
+// ── This is a DIFFERENT object from #1496's approval model, on purpose ───────
+// #1496 ("Change Control: Approval model + `canApproveChanges` capability flag")
+// is still open and unbuilt: it is the per-CHANGE approval decision trail that
+// will attach to an individual `msp_change_requests` row — `cr_approvals` with
+// `stage`, `decision`, `reason`, `decidedAt`. `portalChangeControlPolicyTable`
+// below is the tenant-wide POLICY consulted when a change request is evaluated —
+// what gets gated, how many signatures are required, and who is eligible to sign
+// at all. It records no decision of its own. Since #1496 has not been built yet,
+// there is no existing approval-decision model to extend; this is a genuinely
+// different object (settled per #1592's own instruction to check before
+// building a second approver model), and `portalChangeControlApproversTable`'s
+// `personId` uses the SAME wire-person-id convention (`personIdForUser`,
+// "u{id}") that `portal_ownership_assignments.owner_person_id` already uses, so
+// the two models share one identity scheme rather than inventing a second.
+
+/** The design's fixed "what is gated" catalogue (CC_GATES) — a real, closed
+ *  vocabulary carried forward from the settings fixture, not invented here. */
+export const CC_GATE_KEYS = ["fix", "sop", "remediation", "copilot", "graph"] as const;
+export type CcGateKey = (typeof CC_GATE_KEYS)[number];
+
+export const portalChangeControlPolicyTable = pgTable("portal_change_control_policy", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  /** The master switch. Switching it off does not switch off the record — the
+   *  design's own words: actions still land in the register, marked as run
+   *  without approval. That marking is a write-path concern, not this table's. */
+  enabled: boolean("enabled").notNull().default(true),
+  /** Keyed by `CC_GATE_KEYS`. Anything true here cannot run until its change
+   *  request is approved. */
+  gated: jsonb("gated").notNull().default({}),
+  /** "Signatures required" — 1, 2 or 3 in the design; not constrained tighter
+   *  than a positive integer here since the design offered no reason it must
+   *  stop at 3. */
+  requiredSignatures: integer("required_signatures").notNull().default(1),
+  /** "The person who raises it cannot be the one who approves it." */
+  requireSeparateApprover: boolean("require_separate_approver").notNull().default(true),
+  /** "Nothing may be scheduled inside a freeze without a written exception." */
+  enforceFreezeCalendar: boolean("enforce_freeze_calendar").notNull().default(false),
+  /** "Run first, approve retrospectively within 24 hours." */
+  allowEmergencyPath: boolean("allow_emergency_path").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("portal_change_control_policy_customer_id_idx").on(t.customerId),
+]);
+
+export type PortalChangeControlPolicy = typeof portalChangeControlPolicyTable.$inferSelect;
+export type InsertPortalChangeControlPolicy = typeof portalChangeControlPolicyTable.$inferInsert;
+
+/** "Who may approve" bands — prototype's `ccApproverBands` iterates exactly
+ *  these two; `standard: 'auto'` (a string, not a person list) is dropped, same
+ *  as the design fixture drops it, because nothing reads it. */
+export const CC_APPROVER_BANDS = ["normal", "emergency"] as const;
+export type CcApproverBand = (typeof CC_APPROVER_BANDS)[number];
+
+export const portalChangeControlApproversTable = pgTable("portal_change_control_approvers", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  band: text("band", { enum: CC_APPROVER_BANDS }).notNull(),
+  /** A wire person id (`personIdForUser`, "u{id}") naming an active user of
+   *  this tenant — validated against `users` at write time, not by FK, matching
+   *  `portal_ownership_assignments.owner_person_id`'s convention. */
+  personId: text("person_id").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_change_control_approvers_customer_id_idx").on(t.customerId),
+  uniqueIndex("portal_change_control_approvers_customer_band_person_idx").on(
+    t.customerId,
+    t.band,
+    t.personId,
+  ),
+]);
+
+export type PortalChangeControlApprover = typeof portalChangeControlApproversTable.$inferSelect;
+export type InsertPortalChangeControlApprover = typeof portalChangeControlApproversTable.$inferInsert;
+
+/** The notification-rules event catalogue (CC_NOTIF_SEED's seven rows, keyed) —
+ *  a fixed, real vocabulary of what the platform can actually notify on. */
+export const CC_NOTIF_EVENT_KEYS = [
+  "ms_enforcement_approaching",
+  "message_center_impact",
+  "cr_raised",
+  "cr_awaiting_signature",
+  "cr_window_opening",
+  "cr_deployed_or_rolled_back",
+  "freeze_declared_or_lifted",
+] as const;
+export type CcNotifEventKey = (typeof CC_NOTIF_EVENT_KEYS)[number];
+
+export const portalChangeControlNotificationsTable = pgTable("portal_change_control_notifications", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  eventKey: text("event_key", { enum: CC_NOTIF_EVENT_KEYS }).notNull(),
+  /** Free text, e.g. "Email · Teams" — the design edits this as plain text, not
+   *  a fixed channel enum. */
+  channel: text("channel").notNull(),
+  /** Free text recipient description, e.g. "The named approver". Not a person
+   *  id: a notification rule names a role/audience, not a single approver. */
+  recipientText: text("recipient_text").notNull(),
+  /** Free text lead time, e.g. "30 days ahead, then 7, then 1". */
+  leadTime: text("lead_time").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_change_control_notifications_customer_id_idx").on(t.customerId),
+  uniqueIndex("portal_change_control_notifications_customer_event_idx").on(
+    t.customerId,
+    t.eventKey,
+  ),
+]);
+
+export type PortalChangeControlNotification = typeof portalChangeControlNotificationsTable.$inferSelect;
+export type InsertPortalChangeControlNotification = typeof portalChangeControlNotificationsTable.$inferInsert;
+
+// ── Departments ────────────────────────────────────────────────────────────
+//
+// The department LIST and its headcounts are not stored here — they are real,
+// computed live from `users.department` (already a column, `lib/db/schema/
+// index.ts:117`) for this tenant's active users. This table is only the
+// customer's MAPPING OVERLAY on top of that: whether a given department name
+// should read from the Entra attribute (the default) or from a named security
+// group, per the design's "Point a department at a security group and the
+// numbers stop being indicative."
+
+export const PORTAL_DEPARTMENT_SOURCES = ["attribute", "group"] as const;
+export type PortalDepartmentSource = (typeof PORTAL_DEPARTMENT_SOURCES)[number];
+
+/** What happens to people in neither the attribute nor the group, once a
+ *  department is mapped by group — the design's own two-option choice. */
+export const PORTAL_DEPARTMENT_UNMAPPED_FALLBACKS = ["unmapped", "attribute_fallback"] as const;
+export type PortalDepartmentUnmappedFallback = (typeof PORTAL_DEPARTMENT_UNMAPPED_FALLBACKS)[number];
+
+export const portalDepartmentMappingsTable = pgTable("portal_department_mappings", {
+  id: serial("id").primaryKey(),
+  customerId: integer("customer_id").notNull(),
+  /** The value exactly as it appears on `users.department` for this tenant. */
+  departmentName: text("department_name").notNull(),
+  source: text("source", { enum: PORTAL_DEPARTMENT_SOURCES }).notNull().default("attribute"),
+  /** Set only when source = "group". The Entra object id and display name of
+   *  the security group this department reads membership from. */
+  securityGroupId: text("security_group_id"),
+  securityGroupName: text("security_group_name"),
+  unmappedFallback: text("unmapped_fallback", { enum: PORTAL_DEPARTMENT_UNMAPPED_FALLBACKS })
+    .notNull()
+    .default("attribute_fallback"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_department_mappings_customer_id_idx").on(t.customerId),
+  uniqueIndex("portal_department_mappings_customer_department_idx").on(
+    t.customerId,
+    t.departmentName,
+  ),
+]);
+
+export type PortalDepartmentMapping = typeof portalDepartmentMappingsTable.$inferSelect;
+export type InsertPortalDepartmentMapping = typeof portalDepartmentMappingsTable.$inferInsert;
+
 // ── Configuration Drift engine (#1270) ─────────────────────────────────────────
 //
 // The itemized backing store for the platform's `drift.*` dashboard metrics

@@ -1,0 +1,157 @@
+{
+  "feature": "Settings: Change control policy + Departments persistence (Git #1592). Backend only -- no `Design/portal/` export exists yet for the Settings page (artifacts/portal has no page to wire), so this manifest is apiTests-only against artifacts/api-server/src/routes/portal-settings-change-control.ts and portal-settings-departments.ts. Both sections were 100% client-only React state before this (#1463's pv2-set-cc-nodata / pv2-set-dept-nodata badges) -- these tests prove the real endpoints persist per tenant.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "MUTATES THE SHARED TESTBED TENANT'S REAL SETTINGS. CC-CLEANUP-* and DEPT-CLEANUP-* at the end of this file revert the policy to disabled/empty-approvers and delete the synthetic department mapping this run creates, so no run leaves the shared tenant in a changed state for the next one.",
+    "APPROVERS ARE VALIDATED AGAINST REAL ACTIVE USERS OF THIS TENANT, NOT ARBITRARY STRINGS. CC-APPROVERS-SETUP extracts a real wire person id (portal-ownership.ts's own personIdForUser format, 'u{id}') from GET /api/portal/ownership so CC-APPROVERS-OK exercises the real fail-closed validation path rather than a fixture id that happens to look right.",
+    "DEPARTMENTS: THE TEST DEPARTMENT NAME IS SYNTHETIC ON PURPOSE. This DB's real testbed users currently carry no `department` attribute value (verified directly against local Postgres), so there is no real department name to map without inventing test data on top of a real user. Mapping a department NAME the tenant has never had a member in is itself a real, honest state the route supports (a customer can map a department by group before anyone is in it) -- DEPT-MAP-OK asserts exactly that (n: 0, src: 'group')."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the designated TESTBED account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "CC1 -- GET change-control serves a real payload shape even before this tenant has ever saved anything (honest defaults, not a 404).",
+      "method": "GET",
+      "path": "/api/portal/settings/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.policy.approvers", "exists": true }
+    },
+    {
+      "name": "CC2 -- the full notification-rule event catalogue is always present, defaulted or saved.",
+      "method": "GET",
+      "path": "/api/portal/settings/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.notifications[6].event", "equals": "freeze_declared_or_lifted" }
+    },
+    {
+      "name": "CC3 -- save the policy: turn it on, gate 'fix', require 2 signatures.",
+      "method": "PUT",
+      "path": "/api/portal/settings/change-control/policy",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "on": true, "gated": { "fix": true }, "approvals": 2, "separate": true, "freeze": false, "emergency": false },
+      "expect": { "status": 200, "jsonPath": "$.ok", "equals": true }
+    },
+    {
+      "name": "CC4 -- IT PERSISTED: a fresh GET reflects the saved policy, not the request that just ran.",
+      "method": "GET",
+      "path": "/api/portal/settings/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.policy.approvals", "equals": 2 }
+    },
+    {
+      "name": "CC5 -- ...and the gate is really keyed, not just accepted and dropped.",
+      "method": "GET",
+      "path": "/api/portal/settings/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.policy.gated.fix", "equals": true }
+    },
+    {
+      "name": "CC-APPROVERS-SETUP -- a real active person id off this tenant's own Ownership matrix, so the approvers write below exercises real fail-closed validation.",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.people[0].id", "exists": true },
+      "extract": { "as": "realPersonId", "jsonPath": "$.people[0].id" }
+    },
+    {
+      "name": "CC-APPROVERS-BAD -- a personId that names no active user of this tenant is REJECTED, not silently accepted (fail closed, matching the ownership overlay's own convention).",
+      "method": "PUT",
+      "path": "/api/portal/settings/change-control/approvers",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "band": "normal", "personIds": ["u999999"] },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "CC-APPROVERS-OK -- a real personId for this tenant is accepted.",
+      "method": "PUT",
+      "path": "/api/portal/settings/change-control/approvers",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "band": "normal", "personIds": ["{{realPersonId}}"] },
+      "expect": { "status": 200, "jsonPath": "$.ok", "equals": true }
+    },
+    {
+      "name": "CC-APPROVERS-PERSISTED -- the saved approver reads back from a fresh GET.",
+      "method": "GET",
+      "path": "/api/portal/settings/change-control",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.policy.approvers.normal[0]", "equals": "{{realPersonId}}" }
+    },
+    {
+      "name": "CC-NOTIF-OK -- one notification rule saved by its real event key.",
+      "method": "PUT",
+      "path": "/api/portal/settings/change-control/notifications/cr_raised",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "channel": "Teams", "to": "IT team", "lead": "Immediately", "on": true },
+      "expect": { "status": 200, "jsonPath": "$.channel", "equals": "Teams" }
+    },
+    {
+      "name": "CC-NOTIF-BADKEY -- an unknown event key is rejected rather than silently stored under a key nothing else reads.",
+      "method": "PUT",
+      "path": "/api/portal/settings/change-control/notifications/not_a_real_event",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "channel": "Email" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "CC-CLEANUP-POLICY -- revert the policy to disabled/default so this shared tenant is not left changed for the next run.",
+      "method": "PUT",
+      "path": "/api/portal/settings/change-control/policy",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "on": false, "gated": {}, "approvals": 1, "separate": true, "freeze": false, "emergency": false },
+      "expect": { "status": 200 }
+    },
+    {
+      "name": "CC-CLEANUP-APPROVERS -- clear the band back to empty.",
+      "method": "PUT",
+      "path": "/api/portal/settings/change-control/approvers",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "band": "normal", "personIds": [] },
+      "expect": { "status": 200 }
+    },
+    {
+      "name": "DEPT1 -- GET departments serves live headcounts + the mapping overlay in one payload.",
+      "method": "GET",
+      "path": "/api/portal/settings/departments",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.unmapped", "exists": true }
+    },
+    {
+      "name": "DEPT-MAP-BADREQUEST -- mapping by group with no securityGroupId is rejected rather than silently stored as a group mapping to nothing.",
+      "method": "PUT",
+      "path": "/api/portal/settings/departments/QA%20Automation%20Test%20Dept/mapping",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "source": "group" },
+      "expect": { "status": 400 }
+    },
+    {
+      "name": "DEPT-MAP-OK -- map a department to a security group.",
+      "method": "PUT",
+      "path": "/api/portal/settings/departments/QA%20Automation%20Test%20Dept/mapping",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "source": "group", "securityGroupId": "sg-test-000", "securityGroupName": "SG-QA-Automation" },
+      "expect": { "status": 200, "jsonPath": "$.group", "equals": "SG-QA-Automation" }
+    },
+    {
+      "name": "DEPT-MAP-PERSISTED -- the mapping reads back from a fresh GET, with its real (zero) live headcount alongside it.",
+      "method": "GET",
+      "path": "/api/portal/settings/departments",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.departments[?(@.name=='QA Automation Test Dept')].src", "equals": "group" }
+    },
+    {
+      "name": "DEPT-CLEANUP -- clear the synthetic mapping so this shared tenant is not left changed for the next run.",
+      "method": "DELETE",
+      "path": "/api/portal/settings/departments/QA%20Automation%20Test%20Dept/mapping",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.removed", "equals": true }
+    }
+  ]
+}
