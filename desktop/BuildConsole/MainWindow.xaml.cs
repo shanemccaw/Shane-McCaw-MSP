@@ -427,6 +427,12 @@ namespace BuildConsole
             };
             BatterUpPanel.Initialize(_queueDb);
 
+            // Git #1710 — additive "AI Batter Up" review panel: agent-filed findings
+            // awaiting Shane's Yes/No. Owns no queue/launch logic of its own — Yes only
+            // flips the board Status to real "Batter Up" (BatterUpPanel above picks it
+            // up on its own next poll), No demotes to "Backlog". Never touches _queueDb.
+            AiBatterUpPanel.Initialize();
+
             // shaneapp://executeSql — the LOCAL protocol trigger (deliberately NOT
             // over HTTP like #898; SQL runs through this app's own direct local Postgres
             // connection, zero round-trip to the deployed api-server). Started

@@ -85,6 +85,22 @@ namespace BuildConsole.Services
         public string HtmlUrl { get; set; } = "";
     }
 
+    /// <summary>
+    /// Git #1710 — one real, open issue sitting in the project board's "AI Batter Up"
+    /// status (same `Status` field `PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0`, option `a0296971`) —
+    /// the agent-filed-findings review queue CLAUDE.md's "Board status" section routes
+    /// new findings into, distinct from the plain "Batter Up" launch queue #1709 reads.
+    /// Carries the real ProjectV2Item node <see cref="ItemId"/> (not the issue's own id)
+    /// because that's what `updateProjectV2ItemFieldValue` needs to promote/demote it.
+    /// </summary>
+    public class AiBatterUpBoardIssue
+    {
+        public int Number { get; set; }
+        public string Title { get; set; } = "";
+        public string HtmlUrl { get; set; } = "";
+        public string ItemId { get; set; } = "";
+    }
+
     /// <summary>Git #842 (Git Board Phase 4) — the fields of `POST /issues`'s response actually used: the new issue's number/url plus its numeric `id` for the `sub_issues` attach call.</summary>
     public class CreatedIssue
     {
@@ -807,6 +823,117 @@ namespace BuildConsole.Services
             return result;
         }
 
+        // ── Git #1710: real "AI Batter Up" review-queue read + promote/demote mutation ──
+        // Same project + Status field as #1709's read above; a different option, and this
+        // side WRITES back via the real updateProjectV2ItemFieldValue mutation (Yes → Batter
+        // Up, No → Backlog) rather than only reading. Landing here triggers nothing by
+        // itself — Yes only flips the Status option; #1709's GetBatterUpIssuesAsync panel
+        // picks the promoted item up on its own next poll. One trigger mechanism, not two.
+        private const string StatusFieldId = "PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0";
+        private const string AiBatterUpOptionId = "a0296971";
+        public const string BatterUpPromoteOptionId = "09b1927f"; // plain "Batter Up" — same value as BatterUpOptionId above
+        public const string BacklogOptionId = "63cc47c8";
+
+        /// <summary>
+        /// Git #1710 — every real, OPEN issue currently sitting in the project board's
+        /// "AI Batter Up" status: agent-filed findings awaiting Shane's Yes/No. Same
+        /// paginated project-items GraphQL read as <see cref="GetBatterUpIssuesAsync"/>,
+        /// filtered to the review-queue option instead, and additionally carrying each
+        /// item's real ProjectV2Item node id so Yes/No can address it directly.
+        /// </summary>
+        public async Task<List<AiBatterUpBoardIssue>> GetAiBatterUpIssuesAsync()
+        {
+            var result = new List<AiBatterUpBoardIssue>();
+            string? after = null;
+
+            for (int page = 0; page < MaxPages; page++)
+            {
+                string afterArg = after == null ? "null" : $"\"{after}\"";
+                string query = $@"query {{
+  node(id: ""{BatterUpProjectId}"") {{
+    ... on ProjectV2 {{
+      items(first: {PageSize}, after: {afterArg}) {{
+        pageInfo {{ hasNextPage endCursor }}
+        nodes {{
+          id
+          fieldValueByName(name: ""Status"") {{
+            ... on ProjectV2ItemFieldSingleSelectValue {{ optionId }}
+          }}
+          content {{
+            ... on Issue {{
+              number title state url
+              repository {{ nameWithOwner }}
+            }}
+          }}
+        }}
+      }}
+    }}
+  }}
+}}";
+
+                var conn = await PostProjectItemsQueryAsync(query);
+                if (conn?.Nodes != null)
+                {
+                    foreach (var n in conn.Nodes)
+                    {
+                        var issue = n.Content;
+                        if (issue == null) continue;
+                        if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!string.Equals(issue.State, "OPEN", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!string.Equals(n.FieldValueByName?.OptionId, AiBatterUpOptionId, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        result.Add(new AiBatterUpBoardIssue
+                        {
+                            Number = issue.Number,
+                            Title = issue.Title ?? "",
+                            HtmlUrl = issue.Url ?? "",
+                            ItemId = n.Id ?? "",
+                        });
+                    }
+                }
+
+                bool more = conn?.PageInfo?.HasNextPage == true && !string.IsNullOrEmpty(conn.PageInfo.EndCursor);
+                if (!more) break;
+                after = conn!.PageInfo!.EndCursor;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Git #1710 — the real `updateProjectV2ItemFieldValue` mutation, moving a single
+        /// project item's Status field to <paramref name="optionId"/>. Used for both
+        /// directions: Yes → <see cref="BatterUpPromoteOptionId"/>, No → <see cref="BacklogOptionId"/>.
+        /// This is the SAME field CLAUDE.md's agent-filing routing mutation already writes to.
+        /// </summary>
+        public async Task SetProjectItemStatusAsync(string itemId, string optionId)
+        {
+            string mutation = $@"mutation {{
+  updateProjectV2ItemFieldValue(input: {{
+    projectId: ""{BatterUpProjectId}""
+    itemId: ""{itemId}""
+    fieldId: ""{StatusFieldId}""
+    value: {{ singleSelectOptionId: ""{optionId}"" }}
+  }}) {{ projectV2Item {{ id }} }}
+}}";
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+            {
+                Content = JsonContent.Create(new { query = mutation }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+
+            var body = await res.Content.ReadFromJsonAsync<GraphQLMutationResponse>(JsonOpts);
+            if (body?.Errors is { Count: > 0 } errs)
+                throw new Exception("GitHub GraphQL: " + string.Join("; ", errs.Select(e => e.Message)));
+        }
+
+        private class GraphQLMutationResponse
+        {
+            public List<GraphQLError>? Errors { get; set; }
+        }
+
         private async Task<ProjectItemConnection?> PostProjectItemsQueryAsync(string query)
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
@@ -836,6 +963,8 @@ namespace BuildConsole.Services
         }
         private class ProjectItemNodeData
         {
+            /// <summary>The real ProjectV2Item node id — only requested/populated by the Git #1710 AI Batter Up query; #1709's read doesn't ask for it and leaves this null.</summary>
+            public string? Id { get; set; }
             public FieldValueData? FieldValueByName { get; set; }
             public ProjectItemIssueData? Content { get; set; }
         }
