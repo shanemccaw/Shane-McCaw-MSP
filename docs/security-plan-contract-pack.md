@@ -396,8 +396,10 @@ Extracted 2026-08-29 against branch `agent/1495-q789`. Sources cited inline by f
 their own cited line numbers), the portal wire/model/live/page files under
 `artifacts/msp-portal/src/components/portal-v2/` and `artifacts/msp-portal/src/pages/`, and the
 sibling contract packs `docs/change-control-contract-pack.md`, `docs/risk-register-contract-pack.md`,
-`docs/microsoft-changes-contract-pack.md`, `docs/policy-decisions-contract-pack.md`, and
-`docs/sops-contract-pack.md` (the last two landed on `origin/main` while this pack was already
-in flight; §4.1 and §4.4 were updated against them before merge). Architecture deltas cited to
+`docs/microsoft-changes-contract-pack.md`, `docs/policy-decisions-contract-pack.md`,
+`docs/sops-contract-pack.md`, and `docs/runbooks-contract-pack.md` (the last three landed on
+`origin/main` while this pack was already in flight; §4.1 and §4.4 were updated against them
+before merge — `runbooks-contract-pack.md` restates the same #1557 finding `sops-contract-pack.md`
+already gave §4.4, so no further change was needed there). Architecture deltas cited to
 GitHub issues #1495, #1561–#1568, under epic #1485 and method issues #1577/#1578. Read-only
 pass: no product code, schema, or UI was changed.
