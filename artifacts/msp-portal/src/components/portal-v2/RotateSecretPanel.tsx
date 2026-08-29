@@ -204,6 +204,7 @@ export function RotateSecretPanel({
             </button>
             <button
               onClick={onClose}
+              data-testid="pv2-wh-rotate-close"
               style={{ padding: "9px 15px", borderRadius: 7, fontSize: "12.5px", fontWeight: 600, border: "1px solid rgba(148,163,184,.22)", background: "transparent", color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
             >
               Done
