@@ -34,13 +34,53 @@
 # for anyone reading raw container/process logs.
 $ErrorActionPreference = "Stop"
 $script:PsExecutionLogStream = "Error"
+
+# --- stdout contract hardening (#1482) --------------------------------------
+# This process's stdout is reserved for EXACTLY ONE line: the JSON result
+# envelope Send-ChildResult writes. The parent (entrypoint.ps1) reads all of
+# stdout and ConvertFrom-Json's it, so a single stray byte ahead of that line
+# turns a clean result into an opaque "malformed output" script_error.
+#
+# The ExchangeOnlineManagement module violates that contract: on a token-
+# acquisition failure its MSAL wrapper writes a multi-line
+# "Error Acquiring Token:\n<exception>" dump STRAIGHT to the process's Console
+# stdout (observed live, #1482) — not through a PowerShell stream, so
+# -ErrorAction, `*>`/redirection, and `| Out-Null` all miss it, and it lands
+# ahead of the result line. (MicrosoftTeams doesn't, which is why only the EXO
+# path corrupted.) Module import can emit to stdout the same way.
+#
+# Defend the contract structurally instead of chasing each emitter: keep a
+# private handle to the REAL stdout writer for the one result line, and divert
+# [Console]::Out to an in-memory buffer for the whole life of this process, so
+# any stray Console write is captured (and surfaced once as a log entry) rather
+# than corrupting stdout. Set up BEFORE dot-sourcing/import so import-time
+# writes are caught too.
+$script:ResultWriter = [Console]::Out
+$script:StrayStdout = New-Object System.IO.StringWriter
+[Console]::SetOut($script:StrayStdout)
+
 . (Join-Path $PSScriptRoot "common.ps1")
 . (Join-Path $PSScriptRoot "cmdlet-catalog.ps1")
 
 function Send-ChildResult {
     param([hashtable]$Payload)
+    # Surface anything a module wrote straight to stdout (captured by the
+    # [Console]::SetOut diversion above) as ONE structured log entry on stderr,
+    # then clear the buffer — it must never reach the real stdout the result
+    # line owns. Write-Log goes to stderr (PsExecutionLogStream = "Error"), so
+    # this note itself can't re-contaminate stdout.
+    if ($script:StrayStdout) {
+        $stray = $script:StrayStdout.ToString()
+        if ($stray.Trim()) {
+            $preview = $stray.Substring(0, [Math]::Min(2000, $stray.Length))
+            Write-Log -Level "warn" -Message "suppressed stray stdout write from a module/connect path (#1482 contract guard)" -Extra @{ strayByteLen = ([Text.Encoding]::UTF8.GetByteCount($stray)); strayPrefix = $preview }
+            [void]$script:StrayStdout.GetStringBuilder().Clear()
+        }
+    }
     $json = $Payload | ConvertTo-Json -Compress -Depth 10
-    [Console]::WriteLine($json)
+    # Write the one result line to the REAL stdout, bypassing the diversion.
+    $script:ResultWriter.WriteLine($json)
+    $script:ResultWriter.Flush()
 }
 
 try {
@@ -122,7 +162,13 @@ try {
         Connect-MicrosoftTeams -TenantId $organization -ApplicationId $mtAppClientId -Certificate $appOnlyCertificate -ErrorAction Stop | Out-Null
     }
     else {
-        Connect-IPPSSession -Organization $organization -AppId $mtAppClientId -Certificate $appOnlyCertificate -ErrorAction Stop | Out-Null
+        # -ShowBanner:$false matches the Connect-ExchangeOnline call above
+        # (#1482): EXO 3.x supports the switch on Connect-IPPSSession too, and
+        # its connect banner is one more thing that would otherwise print to the
+        # host. Not the root contamination (that's the MSAL token-failure dump
+        # the [Console]::SetOut diversion at the top now captures), but correct
+        # hygiene regardless.
+        Connect-IPPSSession -Organization $organization -AppId $mtAppClientId -Certificate $appOnlyCertificate -ShowBanner:$false -ErrorAction Stop | Out-Null
     }
 }
 catch {

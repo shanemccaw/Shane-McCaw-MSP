@@ -418,7 +418,28 @@ function Invoke-ChildRequest {
             stdoutRawPrefix = $stdout.Substring(0, $previewLen)
             stdoutHexPrefix = $hexPreview
         }
-        return @{ ok = $false; statusCode = 500; kind = "script_error"; message = "The request-handling child process produced malformed output." }
+
+        # Safety net (#1482), NOT the fix: the child-worker's own [Console]::SetOut
+        # diversion is what actually keeps stray module output off stdout at the
+        # source. This is a last-ditch recovery for anything that could still slip
+        # past it (e.g. a write straight to the OS stdout file descriptor, which an
+        # in-process SetOut can't intercept). The child's contract is that its
+        # result is ONE JSON object emitted last, so recover it by taking the LAST
+        # non-empty line that parses as JSON. If this ever fires, the stray bytes
+        # logged above show exactly what leaked so the source can be fixed too.
+        $recovered = $null
+        foreach ($line in ($stdout -split "`n")) {
+            $candidateText = $line.Trim()
+            if (-not $candidateText) { continue }
+            try { $recovered = $candidateText | ConvertFrom-Json -ErrorAction Stop } catch { }
+        }
+        if ($null -ne $recovered) {
+            Write-Log -Level "warn" -Message "recovered child result from the last JSON line after stdout contamination" -Extra @{ cmdletKey = $CmdletKey; ok = [bool]$recovered.ok }
+            $parsed = $recovered
+        }
+        else {
+            return @{ ok = $false; statusCode = 500; kind = "script_error"; message = "The request-handling child process produced malformed output." }
+        }
     }
 
     Write-Log -Level "info" -Message "child worker process completed" -Extra @{ cmdletKey = $CmdletKey; childElapsedMs = $childStopwatch.ElapsedMilliseconds; ok = [bool]$parsed.ok }
