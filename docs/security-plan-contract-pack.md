@@ -213,20 +213,31 @@ invented for this pack. Where the owning module has already shipped its own cont
 field names below are drawn from that pack directly (cited); where it has not, the field is named
 off the Drizzle schema directly, marked per that module's own build status.
 
-### 4.1 Policy Engine (#1490) — control declarations and their configuration
+### 4.1 Policy Decisions + Policy Engine (#1490) — control declarations and their configuration
 
-**Status: not yet started** (no build-journal entry, no dedicated `msp_policy_*` table). Per the
-Risk Register pack's own §6, "Policy Decisions shares this exact model, read from the control
-side" — i.e. Policy Decisions is not a separate schema, it reads `mspRiskDecisionsTable` filtered
-to rows with a non-empty `decision_state` (`portal-risk-register.ts:306-336`, extracted in
-`docs/risk-register-contract-pack.md` §1.3). Security Plan would borrow:
+**Status: contract pack shipped while this pack was in flight** (`docs/policy-decisions-contract-pack.md`,
+merged to `origin/main` at `d5e12127e`, landing after this pack's own investigation pass started —
+its bookend, `build-journal/1490.md`, was still `⏳ IN FLIGHT` at last check). That pack itself
+corrects #1490's own original issue body: the module is **two objects**, not one.
+
+1. **Policy Decisions** — reactive, obligation-bound, signed. **Real today.** Rides on the same
+   `mspRiskDecisionsTable` rows as Risk Register (#1487), filtered to non-empty `decision_state`
+   (`portal-risk-register.ts:306-336`) — not a separate schema.
+2. **Policy Engine** — proactive, declarative, no obligation, no signature (e.g. "mailbox size
+   150MB", "VIP → extra spam filtering"). **Fully unbuilt** — "no table, no route, no wire type,
+   zero references anywhere in `lib/db/src/schema/` or `artifacts/api-server/src`"
+   (policy-decisions-contract-pack.md §intro). Also corrects a table-name error in #1490's
+   original body: `policy_rules`/`policy_rule_*` are unrelated alert-engine tables (#1279), not
+   this module (policy-decisions-contract-pack.md §0).
+
+Security Plan would borrow:
 
 | Field it would need | Owning table.column | Status |
 |---|---|---|
-| Control identity / obligation cited | `obligation` (`msp.ts:4006`) | CURRENT on Risk Register's own table; **not consumed by Security Plan today** |
-| Declared configuration / documented deviation | `rationale` (`msp.ts:4004`), `compensating_controls` (`msp.ts:3955`) | CURRENT on Risk Register's own table; not consumed here |
-| Decision lifecycle state | `decision_state` (`msp.ts:4010`) | **DECIDED-wrong** per Risk Register pack §5 — carries `expired`, must not be reused verbatim (#1527) |
-| A first-class Policy Engine table distinct from the risk table | — | **OPEN GAP** — #1490 has no sub-issue list attached in this pack's sources beyond the epic comment; not yet architected into its own tables |
+| Control identity / obligation cited | `obligation` (`msp.ts:4006`, `WirePolicyDecision.obligation`) | CURRENT on Policy Decisions' own contract (policy-decisions-contract-pack.md §1.1); **not consumed by Security Plan today** |
+| Declared configuration / documented deviation | `rationale` (`msp.ts:4004`), `compensating` (`WirePolicyDecision.compensating`) | CURRENT there; not consumed here |
+| Decision lifecycle state | `decision_state` → `WirePolicyDecision.state` | **DECIDED-wrong** per Risk Register pack §5 / Policy Decisions pack — carries `expired`, must not be reused verbatim (#1527) |
+| Proactive declarative control configuration (mailbox size, VIP routing, etc.) | — | **OPEN GAP / fully unbuilt** — Policy Engine half has no table, route, or wire type at all (#1547–1553); nothing exists yet for Security Plan to borrow from this half |
 
 ### 4.2 Risk Register (#1487) — carried risks, acceptances, review state
 
@@ -378,6 +389,8 @@ Extracted 2026-08-29 against branch `agent/1495-q789`. Sources cited inline by f
 their own cited line numbers), the portal wire/model/live/page files under
 `artifacts/msp-portal/src/components/portal-v2/` and `artifacts/msp-portal/src/pages/`, and the
 sibling contract packs `docs/change-control-contract-pack.md`, `docs/risk-register-contract-pack.md`,
-`docs/microsoft-changes-contract-pack.md`. Architecture deltas cited to GitHub issues #1495,
-#1561–#1568, under epic #1485 and method issues #1577/#1578. Read-only pass: no product code,
-schema, or UI was changed.
+`docs/microsoft-changes-contract-pack.md`, and `docs/policy-decisions-contract-pack.md` (the last
+landed on `origin/main` at `d5e12127e` while this pack was already in flight; §4.1 was updated
+against it before merge). Architecture deltas cited to GitHub issues #1495, #1561–#1568, under
+epic #1485 and method issues #1577/#1578. Read-only pass: no product code, schema, or UI was
+changed.
