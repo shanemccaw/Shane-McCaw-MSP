@@ -494,6 +494,21 @@
                                 <Button Content="🟢 Done" Style="{StaticResource SecondaryButton}" Padding="8,2" Click="IssueFilter_Click" Tag="Done"/>
                             </StackPanel>
                         </ScrollViewer>
+
+                        <!-- Git #1635 — critter-crossing loading strip: shown for the real
+                             duration of a manual Git Board refresh (IssueChompAnimation.
+                             StartRefreshLoadingStrip / StopRefreshLoadingStrip in
+                             BtnRefreshGitBoard_Click), dismissed the moment it genuinely
+                             completes rather than on a fixed timer. Collapsed otherwise. -->
+                        <Border x:Name="GitRefreshLoadingStrip"
+                                Height="22"
+                                Background="{StaticResource Surface0Brush}"
+                                CornerRadius="4"
+                                ClipToBounds="True"
+                                Margin="0,0,0,8"
+                                Visibility="Collapsed">
+                            <Canvas x:Name="GitRefreshStripCanvas" ClipToBounds="True"/>
+                        </Border>
                     </StackPanel>
 
                     <!-- Milestones / Epics / Issues Tree -->

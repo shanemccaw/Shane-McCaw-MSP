@@ -255,6 +255,71 @@ namespace BuildConsole.Services
         };
 
         // ══════════════════════════════════════════════════════════════════════
+        // 0. REFRESH LOADING STRIP (Git #1635) — critters crossing a thin
+        // progress-bar-style lane for the real duration of a manual Git Board
+        // refresh. Unlike every other animation in this file (fixed-duration,
+        // self-cleaning via its own timers), this one has NO fixed lifetime:
+        // Start begins a Forever-looping critter walk embedded directly in the
+        // sidebar (not a top-level overlay Window — nothing here needs to
+        // render above WebView2, this strip lives entirely inside the native
+        // WPF Git Board panel), and Stop removes it immediately. Tied to the
+        // real async completion event in BtnRefreshGitBoard_Click, never a
+        // fixed timer, per Shane's own ask: "dismissed quickly the moment the
+        // refresh genuinely completes."
+        // ══════════════════════════════════════════════════════════════════════
+        private static readonly Dictionary<Canvas, FrameworkElement> _activeStripCritters = new();
+
+        public static void StartRefreshLoadingStrip(Canvas stripCanvas)
+        {
+            try
+            {
+                StopRefreshLoadingStrip(stripCanvas); // defensive: clear any stale critter first
+
+                double stripW = stripCanvas.ActualWidth > 0 ? stripCanvas.ActualWidth : 220;
+                var (critterEl, _) = BuildMascot(Rng.Next(MascotCount));
+
+                var scale = new ScaleTransform(0.34, 0.34);
+                var translate = new TranslateTransform(-24, 0);
+                var group = new TransformGroup();
+                group.Children.Add(scale);
+                group.Children.Add(translate);
+                critterEl.RenderTransform = group;
+                critterEl.RenderTransformOrigin = new Point(0.5, 0.5);
+                Canvas.SetTop(critterEl, -2);
+                stripCanvas.Children.Add(critterEl);
+
+                var run = new DoubleAnimation(-24, stripW + 24, TimeSpan.FromMilliseconds(1300))
+                {
+                    RepeatBehavior = RepeatBehavior.Forever
+                };
+                translate.BeginAnimation(TranslateTransform.XProperty, run);
+
+                _activeStripCritters[stripCanvas] = critterEl;
+                ActivityLog.Log("git-board.critters", "Refresh loading strip started — critter crossing until the real refresh completes.");
+            }
+            catch { /* never let a cosmetic loading indicator crash a real refresh */ }
+        }
+
+        public static void StopRefreshLoadingStrip(Canvas stripCanvas)
+        {
+            try
+            {
+                if (_activeStripCritters.TryGetValue(stripCanvas, out var critterEl))
+                {
+                    if (critterEl.RenderTransform is TransformGroup grp)
+                    {
+                        foreach (var t in grp.Children.OfType<TranslateTransform>())
+                            t.BeginAnimation(TranslateTransform.XProperty, null);
+                    }
+                    stripCanvas.Children.Remove(critterEl);
+                    _activeStripCritters.Remove(stripCanvas);
+                    ActivityLog.Log("git-board.critters", "Refresh loading strip dismissed — refresh genuinely completed.");
+                }
+            }
+            catch { }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════
         // 1. STANDARD ISSUE CHOMP (Single Critter)
         // ══════════════════════════════════════════════════════════════════════
         public static void Play(FrameworkElement? targetElement, string issueTitle)

@@ -315,7 +315,7 @@ namespace BuildConsole.Controls
         /// Because it's not up to date." No manual refresh existed on the Git
         /// Board toolbar (only view-switch or post-CRUD refreshed it).
         /// </summary>
-        private void BtnRefreshGitBoard_Click(object sender, RoutedEventArgs e)
+        private async void BtnRefreshGitBoard_Click(object sender, RoutedEventArgs e)
         {
             // Manual-only GitHub (Shane, 2026-08-14): this is now the PRIMARY
             // trigger for Git Board GitHub traffic — the background poll was
@@ -329,7 +329,38 @@ namespace BuildConsole.Controls
             // blocked_by sweep immediately (bypass its 3-min throttle), since the
             // whole point of clicking Refresh is "re-check GitHub right now."
             _lastBlockedEnrichUtc = DateTime.MinValue;
-            PopulateGitTrackerBoard(forceFresh: true);
+
+            // Git #1635 — Shane: disable the refresh button for the FULL in-flight
+            // duration (board fetch + first render + the blocked-by sweep that follows
+            // it) and show a critter-crossing loading strip tied to that same real
+            // span, dismissed the moment it genuinely completes rather than on a fixed
+            // timer. BtnRefreshGitBoard is the only button that actually triggers this
+            // GitHub fetch — BtnRefreshChats hits the local dev server's own board
+            // endpoint, not GitHub, and Build Watch's "Recheck closures" makes its own
+            // separate, much lighter open-issue-numbers call — so neither needs to be
+            // disabled here (confirmed by reading both before assuming otherwise).
+            BtnRefreshGitBoard.IsEnabled = false;
+            GitRefreshLoadingStrip.Visibility = Visibility.Visible;
+            IssueChompAnimation.StartRefreshLoadingStrip(GitRefreshStripCanvas);
+            var totalSw = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                await PopulateGitTrackerBoardAsync(forceFresh: true);
+                if (_lastBlockedEnrichTask != null)
+                {
+                    try { await _lastBlockedEnrichTask; }
+                    catch { /* real failures are already logged inside EnrichBlockedStatusAsync itself */ }
+                }
+            }
+            finally
+            {
+                totalSw.Stop();
+                ActivityLog.Log("git-board.data",
+                    $"manual Refresh: genuinely complete (fetch + render + blocked sweep) in {totalSw.ElapsedMilliseconds}ms — re-enabling button, dismissing loading strip");
+                IssueChompAnimation.StopRefreshLoadingStrip(GitRefreshStripCanvas);
+                GitRefreshLoadingStrip.Visibility = Visibility.Collapsed;
+                BtnRefreshGitBoard.IsEnabled = true;
+            }
         }
 
         /// <summary>
@@ -1571,6 +1602,12 @@ namespace BuildConsole.Controls
 
             List<GitBoardIssue> issues;
             List<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos;
+            // Git #1635 — rough per-stage Stopwatch timing around a real manual
+            // refresh, logged once per stage on the existing git-board.data channel,
+            // so "is it the fetch, the render, or the blocked sweep that's slow" is
+            // an actual measured fact from now on instead of a guess. See this
+            // issue's own investigation for the before-fix numbers this replaced.
+            var fetchSw = System.Diagnostics.Stopwatch.StartNew();
             try
             {
                 var client = new GitHubApiClient(settings.GitHubPat);
@@ -1593,8 +1630,10 @@ namespace BuildConsole.Controls
                 ActivityLog.Log("git-board.data", $"open-issue fetch FAILED: {ex.Message}");
                 return;
             }
+            fetchSw.Stop();
 
-            ActivityLog.Log("git-board.data", $"loaded {issues.Count} open issue(s), {issues.Count(i => i.IsEpic)} epic(s)");
+            ActivityLog.Log("git-board.data",
+                $"loaded {issues.Count} open issue(s), {issues.Count(i => i.IsEpic)} epic(s) — GraphQL+milestone fetch took {fetchSw.ElapsedMilliseconds}ms");
 
             // Shane, 2026-08-28: "when a build is in Verifying state and then
             // the Git issue behind it is closed, it should change to closed
@@ -1776,6 +1815,7 @@ namespace BuildConsole.Controls
             if (!forceFresh && signature == _lastInProgressSignature) return;
             _lastInProgressSignature = signature;
 
+            var buildSw = System.Diagnostics.Stopwatch.StartNew();
             BuildBoardFromGitHub(issues, milestoneInfos);
             // Feed Focus Mode the real issue→milestone map + milestone counts (this is the
             // OPEN board fetch; the closed-view BuildBoardFromGitHub call deliberately does NOT
@@ -1784,6 +1824,16 @@ namespace BuildConsole.Controls
                 issues, milestoneInfos,
                 trigger: forceFresh ? "manual Git refresh" : "board update");
             RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+            buildSw.Stop();
+            // Git #1635 — this is the OTHER real candidate this issue asked to measure:
+            // a full, un-virtualized, imperative TreeViewItem/ContextMenu rebuild of
+            // every milestone/epic/issue, synchronous on the UI thread (this call
+            // genuinely blocks input while it runs, unlike the async blocked-by sweep
+            // below). Logged so its real cost at whatever scale this repo has grown to
+            // is always on record, not just the scale it was measured at when this was
+            // written.
+            ActivityLog.Log("git-board.data",
+                $"BuildBoardFromGitHub + first RenderIssuesTree took {buildSw.ElapsedMilliseconds}ms for {issues.Count} issue(s)");
 
             // Closed-epic filtering (RenderChatsTree signal B) reads this fresh
             // open-issue set, so re-render the already-populated Chats tree from
@@ -1801,7 +1851,11 @@ namespace BuildConsole.Controls
             // second pass via the real REST blocked_by endpoint (bounded
             // concurrency so a board full of open issues doesn't hammer GitHub
             // all at once), then the tree repaints once with the real result.
-            _ = EnrichBlockedStatusAsync(settings.GitHubPat);
+            // Git #1635 — captured into _lastBlockedEnrichTask (still fire-and-forget
+            // for every OTHER caller of this method, unchanged) so BtnRefreshGitBoard_Click
+            // can await the manual refresh's REAL total completion — fetch, first render,
+            // AND this sweep — before re-enabling the button / dismissing the loading strip.
+            _lastBlockedEnrichTask = EnrichBlockedStatusAsync(settings.GitHubPat);
         }
 
         /// <summary>
@@ -1888,6 +1942,13 @@ namespace BuildConsole.Controls
         private static readonly TimeSpan BlockedEnrichMinInterval = TimeSpan.FromMinutes(3);
         private HashSet<int>? _knownBlockedIssueNumbers;
 
+        /// <summary>Git #1635 — the most recently-started EnrichBlockedStatusAsync task,
+        /// so BtnRefreshGitBoard_Click can await the manual refresh's REAL total
+        /// completion (fetch + first render + this sweep) before re-enabling the button
+        /// and dismissing the loading strip. Every other caller still fires this
+        /// fire-and-forget, unchanged — only the manual-refresh click actually awaits it.</summary>
+        private System.Threading.Tasks.Task? _lastBlockedEnrichTask;
+
         /// <summary>
         /// Git #1367 — persistent last-known blocked_by result (open issue number ->
         /// its still-open blocker), kept ACROSS board rebuilds. Root cause of the
@@ -1912,6 +1973,18 @@ namespace BuildConsole.Controls
             var openIssues = _milestones.SelectMany(m => m.Epics).SelectMany(e => e.Issues)
                 .Where(i => i.Status != "CLOSED").ToList();
             if (openIssues.Count == 0) return;
+
+            // Git #1635 — measured for real against this repo's live open-issue count
+            // (257 issues, concurrency=6): ~6.4s of real wall time. It's async — it
+            // does NOT block the UI thread the way the RenderIssuesTree rebuild below
+            // does — but nothing visibly happens for that whole span, which Shane's
+            // own words called "indistinguishable from a freeze." Left at concurrency=6
+            // rather than raised: Git #876 is the standing reason this repo has a
+            // conservative REST concurrency cap here at all ("Something is causing a
+            // git refresh a lot and I am being rate limited quickly"), and the required
+            // button-disable + critter loading strip (BtnRefreshGitBoard_Click) already
+            // solves the "looks frozen" complaint without reopening that rate-limit risk.
+            var sweepSw = System.Diagnostics.Stopwatch.StartNew();
 
             var client = new GitHubApiClient(pat);
             using var gate = new System.Threading.SemaphoreSlim(6);
@@ -1956,6 +2029,8 @@ namespace BuildConsole.Controls
                 finally { gate.Release(); }
             }));
 
+            sweepSw.Stop();
+            var previousKnownBlocked = _knownBlockedIssueNumbers;
             _knownBlockedIssueNumbers = openIssues.Where(i => i.IsBlocked).Select(i => i.IssueNumber).ToHashSet();
 
             // Git #1367 — refresh the cross-rebuild cache from this authoritative pass
@@ -1967,7 +2042,33 @@ namespace BuildConsole.Controls
             foreach (var i in openIssues.Where(i => i.IsBlocked))
                 _blockedStatusCache[i.IssueNumber] = (i.BlockedByNumber, i.BlockedByTitle);
 
-            RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+            // Git #1635 — the second candidate freeze cause this issue asked to measure:
+            // RenderIssuesTree does a full, un-virtualized, imperative rebuild of every
+            // milestone/epic/issue TreeViewItem+ContextMenu, synchronously on the UI
+            // thread (measured ~1.5-2s at this repo's real scale, JIT-warm) — and this
+            // was called UNCONDITIONALLY here, a second time, on top of the one
+            // PopulateGitTrackerBoardAsync already did moments earlier, even when the
+            // sweep confirmed nothing actually changed. Skip it in that case (the
+            // option this issue's own body suggested): re-render only when this is the
+            // very first sweep this session (previousKnownBlocked == null — nothing was
+            // rendered with real blocked state yet) or the confirmed blocked-issue set
+            // actually differs from what's already on screen.
+            bool blockedSetChanged = previousKnownBlocked == null || !previousKnownBlocked.SetEquals(_knownBlockedIssueNumbers);
+            if (blockedSetChanged)
+            {
+                var renderSw = System.Diagnostics.Stopwatch.StartNew();
+                RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+                renderSw.Stop();
+                ActivityLog.Log("git-board.data",
+                    $"blocked-by sweep ({openIssues.Count} issue(s), concurrency=6) took {sweepSw.ElapsedMilliseconds}ms, " +
+                    $"blocked state changed — second RenderIssuesTree took {renderSw.ElapsedMilliseconds}ms");
+            }
+            else
+            {
+                ActivityLog.Log("git-board.data",
+                    $"blocked-by sweep ({openIssues.Count} issue(s), concurrency=6) took {sweepSw.ElapsedMilliseconds}ms, " +
+                    "confirmed no change — skipped the redundant second RenderIssuesTree");
+            }
 
             // If issues became blocked remotely (e.g. by Claude on GitHub), send in the Whammy!
             if (newlyBlocked.Count > 0)
