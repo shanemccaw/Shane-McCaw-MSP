@@ -189,6 +189,7 @@ export default defineConfig({
       "src/lib/license-waste-paid-seats.test.ts",
       "src/lib/license-sku-ledger.test.ts",
       "src/lib/m365-change-resolver.test.ts",
+      "src/lib/m365-change-router.test.ts",
       "src/lib/sow-monitoring-addon.test.ts",
       "src/lib/sla-uptime.test.ts",
       "src/routes/public-status-daily-history.test.ts",
