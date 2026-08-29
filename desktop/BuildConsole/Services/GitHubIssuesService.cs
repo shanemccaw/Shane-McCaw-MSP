@@ -197,8 +197,30 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Git #1645 — defensive guard, independent of any single root cause. Every `gh`
+        /// call below passes the issue number as a POSITIONAL argument
+        /// (`gh issue view <num>` / `gh issue edit <num>`). When that number is non-positive
+        /// — e.g. the negative sentinel a --notGit local build stores as its github_number —
+        /// `gh`'s own flag parser reads the leading dash as a shorthand flag and fails hard
+        /// ("unknown shorthand flag: '2' in -26"), burning a real subprocess on a guaranteed
+        /// error. A real GitHub issue number is always ≥ 1, so anything ≤ 0 is never worth
+        /// handing to `gh`: skip it and log a clear warning instead. This protects against
+        /// whatever upstream lets a stray non-positive number through, now or in future.
+        /// </summary>
+        private static bool IsQueryableIssueNumber(int issueNumber, string operation)
+        {
+            if (issueNumber > 0) return true;
+            ActivityLog.Log("github",
+                $"Skipped `gh issue {operation}` for non-positive number {issueNumber} — not a real GitHub issue " +
+                "(likely a --notGit local build's negative sentinel). No gh call made.");
+            return false;
+        }
+
         public static async Task<bool> AddLabelAsync(int issueNumber, string label)
         {
+            if (!IsQueryableIssueNumber(issueNumber, "edit")) return false;
+
             var psi = new ProcessStartInfo
             {
                 FileName = "gh",
@@ -231,6 +253,8 @@ namespace BuildConsole.Services
 
         public static async Task<bool> RemoveLabelAsync(int issueNumber, string label)
         {
+            if (!IsQueryableIssueNumber(issueNumber, "edit")) return false;
+
             var psi = new ProcessStartInfo
             {
                 FileName = "gh",
@@ -263,6 +287,8 @@ namespace BuildConsole.Services
 
         public static async Task<string?> GetIssueTitleAsync(int issueNumber)
         {
+            if (!IsQueryableIssueNumber(issueNumber, "view")) return null;
+
             var psi = new ProcessStartInfo
             {
                 FileName = "gh",

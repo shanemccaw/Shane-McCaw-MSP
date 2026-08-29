@@ -1111,13 +1111,20 @@ namespace BuildConsole.Services
         {
             if (items == null || items.Count == 0) return;
 
-            // Pre-seed with item's own GithubNumber
+            // Pre-seed with item's own GithubNumber — but ONLY when it's a real (positive)
+            // GitHub issue number. Git #1645: a --notGit LOCAL build stores its letter-id
+            // ordinal as a NEGATIVE github_number (see MainWindow.LocalBuildId.cs — that
+            // negative is the intended storage sentinel, not corrupt data). That sentinel is
+            // never a real GitHub issue, so it must not leak into AssociatedIssueNumbers, which
+            // is downstream fed to `gh issue view <num>` — where a value like -26 makes gh's own
+            // CLI parser choke ("unknown shorthand flag: '2' in -26") instead of hitting a
+            // harmless 404. Filter it out at the source.
             foreach (var item in items)
             {
-                if (item.GithubNumber.HasValue)
+                if (item.GithubNumber is int gh && gh > 0)
                 {
-                    if (!item.AssociatedIssueNumbers.Contains(item.GithubNumber.Value))
-                        item.AssociatedIssueNumbers.Add(item.GithubNumber.Value);
+                    if (!item.AssociatedIssueNumbers.Contains(gh))
+                        item.AssociatedIssueNumbers.Add(gh);
                 }
             }
 

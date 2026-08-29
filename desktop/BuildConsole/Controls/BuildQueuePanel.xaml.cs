@@ -2960,6 +2960,7 @@ namespace BuildConsole.Controls
 
             var issueNumbers = _lastItems
                 .SelectMany(i => i.AssociatedIssueNumbers)
+                .Where(n => n > 0) // Git #1645 — never background-query a non-positive number (a --notGit local build's negative sentinel); it can only fail against `gh`.
                 .Distinct()
                 .ToList();
 
