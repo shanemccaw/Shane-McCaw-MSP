@@ -1878,7 +1878,7 @@ namespace BuildConsole
             headerPanel.Children.Add(closeBtn);
 
             // WebView2 content with dark default background
-            var wv = new Microsoft.Web.WebView2.Wpf.WebView2
+            var wv = new BuildConsole.Controls.ChatSafeWebView2
             {
                 DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37)
             };
@@ -2455,7 +2455,7 @@ namespace BuildConsole
         /// </summary>
         public Microsoft.Web.WebView2.Wpf.WebView2 BuildChatWebView(BuildConsole.Services.BoardChat chat)
         {
-            var wv = new Microsoft.Web.WebView2.Wpf.WebView2
+            var wv = new BuildConsole.Controls.ChatSafeWebView2
             {
                 DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37)
             };
@@ -4518,7 +4518,7 @@ namespace BuildConsole
                 }
 
                 string htmlContent = GenerateViewerHtml(filePath, fileText, ext);
-                var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+                var wv = new BuildConsole.Controls.ChatSafeWebView2();
                 // Git #852 — same fix as OpenWebTab/OpenChatTab: Loaded
                 // fires again on every tab reactivation, not just once.
                 bool navigated = false;
