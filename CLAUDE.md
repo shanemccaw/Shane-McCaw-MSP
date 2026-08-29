@@ -261,6 +261,30 @@ its owning process is alive. See `scripts/dev-server/README.md` for the full mec
 
 ## Build-prompt header convention (queued builds)
 
+### `--title` must be a LEAF issue, never an epic
+
+**A build targets one issue that a single commit can finish.** An epic is a container for
+scope — it has no bookend, no branch and no DONE, because no commit completes it. An epic
+closes when its children close.
+
+If work needs doing and only an epic exists for it, **file the leaf sub-issue first**, then
+dispatch against that number.
+
+**Why this is a hard rule (2026-08-29):** thirteen contract-pack builds were dispatched with
+`--title <module-epic>` — #1486, #1487, #1488, #1489, #1490, #1491, #1493, #1494, #1495,
+#1595, #1597, #1598, #1616. Each wrote `build-journal/<epic>.md` with `✅ DONE`. The result:
+
+1. Every module epic under #1485 read as complete while 87 of its 92 children were still open.
+2. Acting on that, twelve of them were closed in a single sweep, hiding all their children.
+3. A later re-dispatch against #1494 short-circuited — the agent pulled the epic, found its own
+   DONE bookend and the artifact already on `main`, and correctly concluded there was nothing
+   to do.
+
+One wrong `--title` produced a board that lied, a mass closure, and a build that refused to run.
+
+**If you are dispatched against an issue that has sub-issues, stop and say so** rather than
+writing a bookend against it.
+
 A queued build's prompt may start with a single leading line of `--flag value`
 options that BuildConsole (`EditBuildPromptDialog` → `bt_build_queue`) parses off
 the top before the real prompt body. The whole first line must be flags only, or
