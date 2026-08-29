@@ -5481,9 +5481,13 @@ namespace BuildConsole
             if (_contextMeters.TryGetValue(wv, out var existing)) return existing.ProgressBar.Parent as FrameworkElement ?? wv;
 
             // Create Banner
+            // Git #1705 — dark, panel-matching base (MantleBrush) with a low-opacity tier-hue
+            // wash + left accent stripe layered on top, never a flat bright fill. See
+            // BuildTierWashBrush/BuildTierAccentBrush below for the per-tier values.
             var banner = new Border
             {
-                Background = (Brush)FindResource("YellowBrush"),
+                Background = (Brush)FindResource("MantleBrush"),
+                BorderThickness = new Thickness(3, 0, 0, 0),
                 Padding = new Thickness(10, 6, 10, 6),
                 Visibility = Visibility.Collapsed
             };
@@ -5498,7 +5502,7 @@ namespace BuildConsole
                 Text = "",
                 FontSize = 12,
                 FontWeight = FontWeights.Bold,
-                Foreground = (Brush)FindResource("CrustBrush"),
+                Foreground = (Brush)FindResource("TextBrush"),
                 VerticalAlignment = VerticalAlignment.Center,
                 TextWrapping = TextWrapping.Wrap
             };
@@ -5514,9 +5518,9 @@ namespace BuildConsole
                 FontWeight = FontWeights.Bold,
                 Padding = new Thickness(8, 3, 8, 3),
                 Margin = new Thickness(8, 0, 8, 0),
-                Foreground = (Brush)FindResource("CrustBrush"),
+                Foreground = (Brush)FindResource("TextBrush"),
                 Background = Brushes.Transparent,
-                BorderBrush = (Brush)FindResource("CrustBrush"),
+                BorderBrush = (Brush)FindResource("TextBrush"),
                 VerticalAlignment = VerticalAlignment.Center,
                 Visibility = Visibility.Collapsed
             };
@@ -5529,7 +5533,7 @@ namespace BuildConsole
                 Style = (Style)FindResource("IconButton"),
                 FontSize = 10,
                 Padding = new Thickness(4, 2, 4, 2),
-                Foreground = (Brush)FindResource("CrustBrush"),
+                Foreground = (Brush)FindResource("TextBrush"),
                 VerticalAlignment = VerticalAlignment.Center
             };
             Grid.SetColumn(bannerCloseBtn, 2);
@@ -5592,6 +5596,23 @@ namespace BuildConsole
 
             _contextMeters[wv] = meterState;
             return chatContextGrid;
+        }
+
+        /// <summary>
+        /// Git #1705 — the chat context meter banners used to be a flat, fully-saturated fill in
+        /// the tier's raw hue (bright enough it "physically hurts to look at"). This reproduces the
+        /// same low-opacity-wash-over-dark-base convention already used elsewhere in the app (e.g.
+        /// the score-dynamic shell): blend the tier's existing brush color into MantleBrush's own
+        /// RGB at <paramref name="amount"/> opacity, so the escalating tier signal survives while
+        /// the banner itself stays dark and panel-matching instead of bright.
+        /// </summary>
+        private Brush BuildTierWashBrush(string tierBrushKey, double amount)
+        {
+            var baseColor = ((SolidColorBrush)FindResource("MantleBrush")).Color;
+            var tint = ((SolidColorBrush)FindResource(tierBrushKey)).Color;
+            byte Blend(byte b, byte t) => (byte)Math.Round(b * (1 - amount) + t * amount);
+            var blended = Color.FromArgb(baseColor.A, Blend(baseColor.R, tint.R), Blend(baseColor.G, tint.G), Blend(baseColor.B, tint.B));
+            return new SolidColorBrush(blended);
         }
 
         private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, bool selectorsLikelyStale = false, string? conversationId = null)
@@ -5681,12 +5702,16 @@ namespace BuildConsole
             }
             else if (estTokens >= 60000 && estTokens < 85000)
             {
+                // Git #1705 — ambient wash over a dark base (same convention as the score-dynamic
+                // shell elsewhere in the app), not a flat bright fill. Progress-bar fill color is
+                // untouched.
                 meterState.ProgressBar.Foreground = (Brush)FindResource("YellowBrush");
-                meterState.Banner.Background = (Brush)FindResource("YellowBrush");
+                meterState.Banner.Background = BuildTierWashBrush("YellowBrush", 0.16);
+                meterState.Banner.BorderBrush = BuildTierWashBrush("YellowBrush", 0.55);
                 meterState.BannerText.Text = "Chat getting long, consider wrapping up soon.";
-                meterState.BannerText.Foreground = (Brush)FindResource("CrustBrush");
+                meterState.BannerText.Foreground = (Brush)FindResource("TextBrush");
                 meterState.BannerCloseBtn.Visibility = Visibility.Visible;
-                meterState.BannerCloseBtn.Foreground = (Brush)FindResource("CrustBrush");
+                meterState.BannerCloseBtn.Foreground = (Brush)FindResource("TextBrush");
 
                 if (!meterState.BannerDismissed)
                 {
@@ -5696,24 +5721,29 @@ namespace BuildConsole
             else if (estTokens >= 85000 && estTokens < 100000)
             {
                 meterState.ProgressBar.Foreground = (Brush)FindResource("PeachBrush");
-                meterState.Banner.Background = (Brush)FindResource("PeachBrush");
+                meterState.Banner.Background = BuildTierWashBrush("PeachBrush", 0.22);
+                meterState.Banner.BorderBrush = BuildTierWashBrush("PeachBrush", 0.70);
                 double buffer = 100000.0 - estTokens;
                 meterState.BannerText.Text = $"Chat getting very long. Remaining token buffer to critical: {Math.Max(0, buffer):N0} tokens.";
-                meterState.BannerText.Foreground = (Brush)FindResource("CrustBrush");
+                meterState.BannerText.Foreground = (Brush)FindResource("TextBrush");
                 meterState.BannerCloseBtn.Visibility = Visibility.Visible;
-                meterState.BannerCloseBtn.Foreground = (Brush)FindResource("CrustBrush");
+                meterState.BannerCloseBtn.Foreground = (Brush)FindResource("TextBrush");
 
                 // Re-surface banner even if user previously dismissed it in lower zone
                 meterState.Banner.Visibility = Visibility.Visible;
             }
             else if (estTokens >= 100000)
             {
+                // Non-dismissible/critical tier — runs a touch more saturated than the other two
+                // so the "this one's actually urgent" signal survives the de-brightening, while
+                // staying well below the old flat RedBrush fill.
                 meterState.ProgressBar.Foreground = (Brush)FindResource("RedBrush");
-                meterState.Banner.Background = (Brush)FindResource("RedBrush");
+                meterState.Banner.Background = BuildTierWashBrush("RedBrush", 0.30);
+                meterState.Banner.BorderBrush = BuildTierWashBrush("RedBrush", 0.90);
                 // Git #1470 — never auto-fires and never forces navigation. This is now purely a
                 // loud "please hand off soon" prompt; the button below is the only trigger.
                 meterState.BannerText.Text = "Critical context reached! Hand off to a new chat when you're ready.";
-                meterState.BannerText.Foreground = (Brush)FindResource("CrustBrush");
+                meterState.BannerText.Foreground = (Brush)FindResource("MauveBrush");
                 meterState.BannerCloseBtn.Visibility = Visibility.Collapsed; // Non-dismissible — stays visible until Shane hands off.
                 meterState.HandoffBtn.Visibility = Visibility.Visible;
                 meterState.Banner.Visibility = Visibility.Visible;
