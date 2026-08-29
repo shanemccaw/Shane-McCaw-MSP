@@ -2,7 +2,21 @@
   "permissions": {
     "allow": [
       "Bash(awk 'NR>=1240 { printf \"%d\\\\t%d\\\\t%s\\\\n\", NR, length\\($0\\), substr\\($0,1,200\\) }' DocumentViewer.new.html)",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(psql:*)",
+      "Bash(pg_dump:*)",
+      "Bash(pnpm --filter @workspace/api-server exec tsx:*)",
+      "Bash(npx tsx:*)",
+      "Bash(grep:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(wc:*)",
+      "Bash(cat:*)",
+      "Bash(git:*)",
+      "Bash(pnpm:*)",
+      "Bash(node:*)"
     ]
   },
   "hooks": {
@@ -11,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Before making any code changes this session, use the TodoWrite tool to create a task list breaking down the planned work into concrete steps. This is a standing requirement for every session in this repository (see CLAUDE.md), including BuildConsole-launched build sessions. Create it before your first Read, Edit, Write, or Bash call, then keep it updated as you progress.\"}}'",
+            "command": "echo '{\\\"hookSpecificOutput\\\": {\\\"hookEventName\\\": \\\"SessionStart\\\", \\\"additionalContext\\\": \\\"Before making any code changes this session, use the TodoWrite tool to create a task list breaking down the planned work into concrete steps. This is a standing requirement for every session in this repository (see CLAUDE.md), including BuildConsole-launched build sessions. Create it before your first Read, Edit, Write, or Bash call, then keep it updated as you progress. You have DIRECT local PostgreSQL access via DATABASE_URL in .env.local (postgresql://postgres:<pw>@localhost:5432/shanemccawmsp) and psql is pre-approved. Query it to confirm real state instead of guessing from file exports. If a surface needs a column, table or enum value that does not exist, ADD IT: Drizzle schema + a migration file in lib/db/migrations/manual/ that you RUN YOURSELF, then extend the route and wire interface, then wire the UI. Do NOT render an 'honest no backend exists' empty state and stop - that is a failed build, not honesty. Never invent fake DATA to display and never create a *Data.ts fixture module. Building forward is not faking. Stop only for a real product decision (money, entitlement, a customer-facing promise, or a conflict with a decision recorded on an issue).\\\"}}'",
             "timeout": 5
           }
         ]
