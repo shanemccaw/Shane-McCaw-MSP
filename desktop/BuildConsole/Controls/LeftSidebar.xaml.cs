@@ -247,6 +247,17 @@ namespace BuildConsole.Controls
         /// releases right when Shane refreshes the board, instead of waiting up to 10s for
         /// the watcher's own next timer tick.</summary>
         public event EventHandler? BoardRefreshCompleted;
+        /// <summary>
+        /// Git #1632 — fired at the end of every successful PopulateGitTrackerBoard
+        /// fetch with the real open-issue-number set it just fetched (same shape
+        /// CheckIssueClosuresAsync/ComputeOpenGithubNumbersOrNull already use).
+        /// MainWindow forwards this into an open BuildWatchWindow (if one exists) so
+        /// it can evict closed-issue slots and promote Verifying→Done off data that
+        /// was already fetched for another reason — zero incremental `gh` calls, no
+        /// new polling. This is the "free" half of #1632's two triggers; the other
+        /// half is BuildWatchWindow's own manual "Recheck closures" title-bar icon.
+        /// </summary>
+        public event EventHandler<HashSet<int>>? GitBoardOpenIssuesRefreshed;
         public event EventHandler<bool>? PinToggled;
         /// <summary>Git #954 (Epic #803) — raised when the user clicks a category in the sidebar's Settings nav list; MainWindow opens (or focuses) the native Settings tab scrolled to that section. The string is the category key (General / Credentials / TestEnvironment / ChatIntegration / WebTools / ReplitWatcher).</summary>
         public event EventHandler<string>? SettingsCategoryRequested;
@@ -1596,11 +1607,14 @@ namespace BuildConsole.Controls
             // == OPEN) for free, so reuse it here too. VerifyingIssuesPromoted
             // lets MainWindow tell the Build Queue panel to redraw immediately
             // instead of waiting for its own next poll.
+            // Git #1632 — hoisted out of the `_db != null` block below so it's also
+            // available for GitBoardOpenIssuesRefreshed further down, which fires
+            // regardless of whether _db is configured.
+            var openNumbersForPromotion = issues.Where(i => i.State == "OPEN").Select(i => i.Number).ToHashSet();
             if (_db != null)
             {
                 try
                 {
-                    var openNumbersForPromotion = issues.Where(i => i.State == "OPEN").Select(i => i.Number).ToHashSet();
                     var promoted = await _db.PromoteVerifyingToDoneAsync(openNumbersForPromotion);
                     if (promoted.Count > 0)
                     {
@@ -1623,6 +1637,13 @@ namespace BuildConsole.Controls
             // own poll interval. Fired on every successful fetch, not just when a
             // Verifying item got promoted above.
             BoardRefreshCompleted?.Invoke(this, EventArgs.Empty);
+
+            // Git #1632 — hand the same fresh open-issue set to any open Build Watch
+            // window (via MainWindow) so it can evict closed-issue slots and promote
+            // Verifying→Done for free, off this fetch. Reuses openNumbersForPromotion
+            // computed just above for the same purpose — no second computation, no
+            // extra `gh` call.
+            GitBoardOpenIssuesRefreshed?.Invoke(this, openNumbersForPromotion);
 
             _boardShowsClosed = false;
 

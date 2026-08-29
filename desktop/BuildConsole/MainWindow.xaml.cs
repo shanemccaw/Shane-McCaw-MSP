@@ -536,6 +536,17 @@ namespace BuildConsole
             // re-check right now.
             LeftSidebar.BoardRefreshCompleted += (s, e) => _queueWatcher?.RequestImmediateReevaluation();
 
+            // Git #1632 — the eviction/promotion logic in BuildWatchWindow.
+            // CheckIssueClosuresAsync (Git #980) already existed and already worked
+            // but had zero callers since the 2026-08-14 automatic-poll removal. This
+            // is trigger 1 of 2: LeftSidebar's board refresh (Git Board's own manual
+            // Refresh button, or app startup) just fetched a real open-issue set for
+            // free — forward it into an open Build Watch window (if one exists) so
+            // its slots evict/promote off that same fetch, zero incremental `gh`
+            // calls. Trigger 2 is BuildWatchWindow's own manual "Recheck closures"
+            // title-bar icon, which calls CheckIssueClosuresAsync() directly.
+            LeftSidebar.GitBoardOpenIssuesRefreshed += (s, openNumbers) => _buildWatch?.ApplyOpenIssueSet(openNumbers);
+
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
             // build happening right there in that chats tab." Each chat gets
