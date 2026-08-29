@@ -49,6 +49,8 @@ export interface MessageCenterRow {
   readonly actionRequiredByDateTime: Date | null;
   readonly lastModifiedDateTime: Date;
   readonly lastSeenAt: Date;
+  /** #1536 — the prose rollout-schedule phrase, or null. Advisory only; see `DATE_UNCLEAR`'s header. */
+  readonly advisoryDateText: string | null;
 }
 
 /* ── The workload axis ─────────────────────────────────────────────────────
@@ -350,6 +352,53 @@ export function bucketForDate(d: Date, buckets: readonly Bucket[]): number {
   return -1;
 }
 
+/**
+ * #1536 — the "date unclear" first-class bucket.
+ *
+ * `effectiveDate()` always resolves to SOME date because `lastModifiedDateTime`
+ * is never null, but a post whose only dates are "when Microsoft published
+ * this" and "when Microsoft last edited it" has no actual signal about WHEN
+ * THE CHANGE HAPPENS — publish/edit timestamps are administrative, not a
+ * rollout window. Placing such a post on the grid via that fallback would be
+ * exactly the failure #1536 was filed against: a bucket the reader reads as
+ * "this is roughly when it lands" that is really just "this is when Microsoft
+ * touched the ticket."
+ *
+ * `hasStructuralDate` is true once EITHER a real target date exists —
+ * `actionRequiredByDateTime` (the deadline) or `endDateTime` (rollout
+ * complete-by). `startDateTime` deliberately does NOT count on its own: it is
+ * always "when this was announced," never "when it happens."
+ */
+export function hasStructuralDate(row: Pick<MessageCenterRow, "actionRequiredByDateTime" | "endDateTime">): boolean {
+  return row.actionRequiredByDateTime !== null || row.endDateTime !== null;
+}
+
+/**
+ * Sentinel returned by `placementForPost` for a post with no structural date
+ * at all. Distinct from `bucketForDate`'s `-1` ("a real date exists, but it's
+ * behind the axis") — the two are different honest states and must not be
+ * conflated: one is "already happened", the other is "we don't know when."
+ * Both are `< 0` so existing `bi < 0` skip-checks (density, on-axis filters)
+ * correctly exclude both from the dated grid without change.
+ */
+export const DATE_UNCLEAR = -2;
+
+/**
+ * Where a post belongs: a real bucket index, `-1` (a real date, behind the
+ * axis), or `DATE_UNCLEAR` (no structural date to place it by at all). This is
+ * the ONLY function that should decide bucket placement for a post — callers
+ * must not fall back to `bucketForDate(effectiveDate(row), buckets)` directly,
+ * or a date-unclear post silently reappears on the grid via the
+ * `lastModifiedDateTime` fallback.
+ */
+export function placementForPost(
+  row: Pick<MessageCenterRow, "actionRequiredByDateTime" | "endDateTime" | "startDateTime" | "lastModifiedDateTime">,
+  buckets: readonly Bucket[],
+): number {
+  if (!hasStructuralDate(row)) return DATE_UNCLEAR;
+  return bucketForDate(effectiveDate(row), buckets);
+}
+
 /* ── Density ───────────────────────────────────────────────────────────────*/
 
 export interface DensityRow {
@@ -370,7 +419,10 @@ export function buildDensity(
   const kindIndex: Readonly<Record<ChangeKind, 0 | 1 | 2 | 3>> = { b: 0, d: 1, v: 2, s: 3 };
 
   for (const row of rows) {
-    const bi = bucketForDate(effectiveDate(row), buckets);
+    // Both -1 (behind the axis) and DATE_UNCLEAR (no structural date at all)
+    // are < 0 and correctly excluded here — the grid only ever shows a dated,
+    // on-axis post. See placementForPost's own header.
+    const bi = placementForPost(row, buckets);
     if (bi < 0) continue;
     const cells = byWl.get(workloadForPost(row.services));
     if (!cells) continue;
@@ -509,7 +561,7 @@ export interface StatDef {
  * says what its number IS instead, which is a different sentence but a true one.
  */
 export function buildStats(rows: readonly MessageCenterRow[], buckets: readonly Bucket[], now: Date): readonly StatDef[] {
-  const onAxis = rows.filter((r) => bucketForDate(effectiveDate(r), buckets) >= 0);
+  const onAxis = rows.filter((r) => placementForPost(r, buckets) >= 0);
   const kinds = onAxis.map((r) => kindForPost(r));
 
   const decisions = kinds.filter((k) => k === "d").length;
@@ -558,7 +610,7 @@ export function formatScanAt(d: Date): string {
  * and the wording says so rather than implying a configuration read.
  */
 export function workloadFound(rows: readonly MessageCenterRow[], wl: string, buckets: readonly Bucket[]): string {
-  const mine = rows.filter((r) => workloadForPost(r.services) === wl && bucketForDate(effectiveDate(r), buckets) >= 0);
+  const mine = rows.filter((r) => workloadForPost(r.services) === wl && placementForPost(r, buckets) >= 0);
   if (mine.length === 0) return "No posts on the next twelve months";
   const breaks = mine.filter((r) => kindForPost(r) === "b").length;
   const decide = mine.filter((r) => kindForPost(r) === "d").length;
@@ -596,4 +648,21 @@ export function capPerWave<T extends { bucket: number }>(
     taken.set(wave, n + 1);
     return true;
   });
+}
+
+/**
+ * The posts `placementForPost` could not place anywhere on the dated axis —
+ * #1536's "date unclear" first-class bucket. Sorted most-recently-modified
+ * first, since there is no real target date to sort by. In the live corpus
+ * this is empty (every real post carries at least an `endDateTime`), but the
+ * shape exists so a post genuinely missing both `actionRequiredByDateTime`
+ * and `endDateTime` — a malformed sync, a hand-authored interpretation with
+ * no linked post, or any future gap in what Microsoft sends — surfaces
+ * honestly instead of silently landing on a bucket via `lastModifiedDateTime`.
+ */
+export function dateUnclearRows(rows: readonly MessageCenterRow[]): readonly MessageCenterRow[] {
+  return rows
+    .filter((r) => !hasStructuralDate(r))
+    .slice()
+    .sort((a, b) => b.lastModifiedDateTime.getTime() - a.lastModifiedDateTime.getTime());
 }

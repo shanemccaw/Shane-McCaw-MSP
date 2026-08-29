@@ -26,6 +26,7 @@ import { graphFetchPaginated } from "./monitor-executor";
 import { ConsentRevokedError, markTenantConsentRevoked } from "./graph";
 import { createNotification } from "./notification-center";
 import { extractRoadmapFeatureIds, hasRoadmapFeatureIdsColumn } from "./m365-roadmap-mc-link";
+import { extractAdvisoryDateText, hasAdvisoryDateTextColumn } from "./m365-message-center-date-quality";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "integration.azure" });
@@ -99,6 +100,8 @@ export async function syncMessageCenterForTenant(tenantId: string): Promise<Mess
     // step, never self-applied here) that this ALREADY-LIVE daily sync must
     // keep working through. Checked once per tenant sync, not per message.
     const roadmapColumnReady = await hasRoadmapFeatureIdsColumn();
+    // #1536 — same pattern, for the advisory-date-text column.
+    const advisoryDateColumnReady = await hasAdvisoryDateTextColumn();
 
     let newCount = 0;
     const newMessages: GraphServiceUpdateMessage[] = [];
@@ -135,6 +138,11 @@ export async function syncMessageCenterForTenant(tenantId: string): Promise<Mess
         // the field has a schema default, so leaving it out is a no-op insert
         // and a no-op update, not a wipe of anything already backfilled.
         ...(roadmapColumnReady ? { roadmapFeatureIds: extractRoadmapFeatureIds(msg.body?.content) } : {}),
+        // #1536 — the prose rollout-schedule phrase, parsed ONCE here rather
+        // than re-parsed on every read. Advisory only — see
+        // m365-message-center-date-quality.ts's own header for the hard
+        // constraint this never crosses (never a real Date, never bucket-driving).
+        ...(advisoryDateColumnReady ? { advisoryDateText: extractAdvisoryDateText(msg.body?.content) } : {}),
         startDateTime: toDate(msg.startDateTime),
         endDateTime: toDate(msg.endDateTime),
         actionRequiredByDateTime: toDate(msg.actionRequiredByDateTime),

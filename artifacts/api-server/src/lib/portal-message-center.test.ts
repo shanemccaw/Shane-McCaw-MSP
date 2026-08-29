@@ -16,14 +16,18 @@ import {
   buildStats,
   bucketForDate,
   capPerWave,
+  DATE_UNCLEAR,
+  dateUnclearRows,
   effectiveDate,
   formatCountdown,
   formatScanAt,
   formatWhen,
+  hasStructuralDate,
   htmlToText,
   impactForPost,
   kindForPost,
   kindLabel,
+  placementForPost,
   scoreForPost,
   waveShort,
   workloadForPost,
@@ -50,6 +54,7 @@ function row(over: Partial<MessageCenterRow> = {}): MessageCenterRow {
     actionRequiredByDateTime: null,
     lastModifiedDateTime: new Date("2026-08-10T00:00:00.000Z"),
     lastSeenAt: new Date("2026-08-21T00:45:00.000Z"),
+    advisoryDateText: null,
     ...over,
   };
 }
@@ -211,6 +216,67 @@ describe("effective date", () => {
     const lm = new Date("2026-08-10T00:00:00.000Z");
     const r = row({ actionRequiredByDateTime: null, endDateTime: null, startDateTime: null, lastModifiedDateTime: lm });
     expect(effectiveDate(r)).toBe(lm);
+  });
+});
+
+describe("#1536 — date confidence and the date-unclear bucket", () => {
+  const buckets = buildBuckets(NOW);
+
+  it("has a structural date once either actionRequiredByDateTime or endDateTime is set", () => {
+    expect(hasStructuralDate(row({ actionRequiredByDateTime: new Date("2026-10-01T00:00:00.000Z"), endDateTime: null }))).toBe(true);
+    expect(hasStructuralDate(row({ actionRequiredByDateTime: null, endDateTime: new Date("2026-10-01T00:00:00.000Z") }))).toBe(true);
+  });
+
+  it("does NOT count startDateTime alone as a structural date — publish date is not a landing date", () => {
+    const r = row({ actionRequiredByDateTime: null, endDateTime: null, startDateTime: new Date("2026-08-01T00:00:00.000Z") });
+    expect(hasStructuralDate(r)).toBe(false);
+  });
+
+  it("placementForPost returns DATE_UNCLEAR for a post with no structural date, never a fallback bucket", () => {
+    const r = row({ actionRequiredByDateTime: null, endDateTime: null, startDateTime: new Date("2026-08-01T00:00:00.000Z") });
+    expect(placementForPost(r, buckets)).toBe(DATE_UNCLEAR);
+  });
+
+  it("placementForPost matches bucketForDate(effectiveDate()) once a structural date exists", () => {
+    const r = row({ endDateTime: new Date("2026-08-25T00:00:00.000Z") });
+    expect(placementForPost(r, buckets)).toBe(bucketForDate(effectiveDate(r), buckets));
+  });
+
+  it("DATE_UNCLEAR and the behind-the-axis -1 are both < 0 but are distinct values", () => {
+    expect(DATE_UNCLEAR).toBeLessThan(0);
+    expect(DATE_UNCLEAR).not.toBe(-1);
+  });
+
+  it("dateUnclearRows collects only posts with no structural date, most-recently-modified first", () => {
+    const clear = row({ graphMessageId: "CLEAR", endDateTime: new Date("2026-08-25T00:00:00.000Z") });
+    const unclearOld = row({
+      graphMessageId: "UNCLEAR-OLD",
+      actionRequiredByDateTime: null,
+      endDateTime: null,
+      lastModifiedDateTime: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    const unclearNew = row({
+      graphMessageId: "UNCLEAR-NEW",
+      actionRequiredByDateTime: null,
+      endDateTime: null,
+      lastModifiedDateTime: new Date("2026-08-15T00:00:00.000Z"),
+    });
+    const result = dateUnclearRows([clear, unclearOld, unclearNew]);
+    expect(result.map((r) => r.graphMessageId)).toEqual(["UNCLEAR-NEW", "UNCLEAR-OLD"]);
+  });
+
+  it("buildDensity and buildStats exclude date-unclear posts from the dated grid, not just before-axis ones", () => {
+    const unclear = row({
+      graphMessageId: "UNCLEAR",
+      actionRequiredByDateTime: null,
+      endDateTime: null,
+      startDateTime: new Date("2026-08-01T00:00:00.000Z"),
+    });
+    const density = buildDensity([unclear], buckets);
+    expect(density).toEqual([]);
+    const stats = buildStats([unclear], buckets, NOW);
+    const byKey = Object.fromEntries(stats.map((s) => [s.key, Number(s.value)]));
+    expect(byKey.decisions + byKey.hits + byKey.seen + byKey.none).toBe(0);
   });
 });
 

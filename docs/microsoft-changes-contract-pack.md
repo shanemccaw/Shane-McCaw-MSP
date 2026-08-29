@@ -199,7 +199,8 @@ exist and what they write, not because they carry a wire contract of their own.
 
 | Surface / field | Status | Issue | Notes |
 |---|---|---|---|
-| `GET /portal/message-center` — Microsoft-sourced fields (`title`, `wl`, `kind`, `hard`, `when`, `countdown`, `score`, `impact`, `bucket`, `ms`, `msSays`, `services`, `tags`, `publishedAt`, `lastModifiedAt`, `actionRequiredBy`) | **CURRENT** | shipped pre-#1494 (base route) | Real, served today, from `msp_message_center_items` |
+| `GET /portal/message-center` — Microsoft-sourced fields (`title`, `wl`, `kind`, `hard`, `when`, `countdown`, `score`, `impact`, `bucket`, `ms`, `msSays`, `services`, `tags`, `publishedAt`, `lastModifiedAt`, `actionRequiredBy`, `advisoryDateText`, `dateConfidence`) | **CURRENT** | shipped pre-#1494 (base route); `advisoryDateText`/`dateConfidence` added by #1536 | Real, served today, from `msp_message_center_items` |
+| `dateUnclearCount` / `dateUnclearPosts[]` (posts with no structural date at all) | **CURRENT** | #1536 | Empty in the live corpus today — every real post carries at least `endDateTime` — but wired and honest, not a placeholder |
 | `posts[].analysis` (interpretation + measured count) | **CURRENT** | #1532, #1533 | Shipped, live, but see "unconsumed" note below |
 | Roadmap ingestion (`m365_roadmap_items`, `m365_roadmap_sync_state`) | **CURRENT** | #1530 | Migration run by Shane; sync workflow live |
 | Roadmap ↔ Message Center join (`roadmap_feature_ids`, crossover) | **CURRENT** | #1531 | Migration run; join live in candidates + `analysisByMessageId` is separate — see §4 |
@@ -209,7 +210,7 @@ exist and what they write, not because they carry a wire contract of their own.
 | Automatic routing to Change Control / Risk on a resolved, non-zero, dated change | **DECIDED** (shape) | #1534 | Auto-creates a CR; **intake shape** (informed / approval / advisory) determined by `whoActs`+`controllable`. **Not built** — no code implements this routing yet |
 | A fourth `StoredChangeClass` value for "informed" CRs, or reuse `standard` with Microsoft as implementer | **OPEN**, not decided | #1534 | Explicitly unresolved in #1534's own comment |
 | Timeline UI shape (primary visual variable: affected-count vs action-required vs time-to-deadline) | **OPEN**, not decided | #1535 | Explicit open question for Design — do not invent an answer |
-| Date-quality handling for null `actionRequiredByDateTime` | **OPEN**, constraint only | #1536 | "Do not synthesise a date" is the one settled rule; no bucket/UI treatment decided |
+| Date-quality handling for null `actionRequiredByDateTime` | **CURRENT** | #1536 | Built: `advisory_date_text` (prose, never a Date, never bucket-driving) + `DATE_UNCLEAR` first-class bucket for a post with neither `actionRequiredByDateTime` nor `endDateTime`. See §7 |
 | Cloud-instance / GCC filtering as a first-class dimension | **OPEN** (data exists, filter UI/behaviour undecided) | #1537 | `cloudInstances` is CURRENT on `m365_roadmap_items`; the *use* of it as an exclusion/extraction dimension is not built |
 | `plain` (human write-up in "Shane's words") | **Forbidden for now** (stated absence) | none filed | See §5 |
 | `youSay`, `evidence`, `seats`(real), `crCode`, `crState`, `phases`, `roadmapId`, `toldYou`, `history`, `decisions`, `thread` on `MsPost` | **Forbidden** — no backend | none filed (design fixture only) | See §5 |
@@ -432,16 +433,27 @@ ground, not a re-skin of something already wired.
 - **#1535 — timeline UI's primary visual variable.** Explicitly undecided between affected-object
   count, action-required, and time-to-deadline; "only one can be primary" per the issue's own
   closing line. Design owns this decision; this pack does not pre-empt it.
-- **#1536 — `actionRequiredByDateTime` is often null.** Confirmed at the wire level: `WirePost.actionRequiredBy`
-  is `string | null` (`portal-message-center.ts:155`, sourced from `row.actionRequiredByDateTime?.toISOString() ?? null`
-  at `:223`). **The one settled constraint: do not synthesise a date to fill a bucket** — a
-  manufactured deadline is the same failure class as fixture data. No "date unclear" bucket or
-  UI treatment exists yet; Design must build one rather than assume every post lands cleanly on
-  the buckets in §1a. Note the buckets themselves are keyed off `effectiveDate()`
-  (`portal-message-center.ts` lib file `:169-171`: `actionRequiredByDateTime ?? endDateTime ?? startDateTime ?? lastModifiedDateTime`),
-  so a post with no `actionRequiredByDateTime` still lands somewhere on the axis today — it just
-  isn't guaranteed to be where a deadline-driven reading would expect it, since it falls back to
-  a rollout or publish date instead.
+- **#1536 — `actionRequiredByDateTime` is often null. Built.** Two independent pieces, per the
+  issue's own decision (an honest `date unclear` bucket is first-class; prose dates are extracted
+  into a separate advisory field, never the deadline field, never bucket-driving):
+  - **Advisory prose date** — `advisory_date_text` on `msp_message_center_items`, parsed ONCE at
+    sync time by `m365-message-center-date-quality.ts`'s `extractAdvisoryDateText()` from the
+    post's own `[Rollout Schedule]` section (validated against all 567 real posts carrying that
+    section in the local corpus; 549 produced a genuine date-bearing phrase). Served on the wire
+    as `WirePost.advisoryDateText` — rendered as the prose it came from, never parsed into a
+    `Date`, never substituted into `actionRequiredBy`, and never read by bucket placement.
+  - **`DATE_UNCLEAR` first-class bucket** — `placementForPost()` (`portal-message-center.ts` lib)
+    is now the ONLY function that decides bucket placement; it returns the `DATE_UNCLEAR`
+    sentinel for a post with neither `actionRequiredByDateTime` nor `endDateTime` set, rather
+    than falling back to `startDateTime`/`lastModifiedDateTime` (publish/edit timestamps, not a
+    landing date). `effectiveDate()`'s fallback chain is unchanged and still used for display
+    once a structural date exists. Surfaced on the wire as `dateUnclearCount` /
+    `dateUnclearPosts[]` (a distinct, smaller shape than `WirePost` — no `bucket`/`when`/
+    `countdown`, since computing those would mean the same fallback this bucket exists to avoid;
+    `lastUpdated` is offered instead, honestly labelled). Empty in the live corpus today — every
+    real post carries at least `endDateTime` — so this is defensive-but-real architecture, not
+    presently load-bearing; the timeline UI (#1535) still owns how (or whether) either surface is
+    drawn.
 - **#1537 — GCC exclusion and the NASA extraction.** The data exists and is CURRENT:
   `m365_roadmap_items.cloud_instances` (`lib/db/src/schema/msp.ts:2403`, GIN-indexable for
   containment queries). **Not built:** any actual filter/exclusion behavior using it — this

@@ -358,6 +358,9 @@ export default defineConfig({
       // #1537 — cloud instance as a first-class, filterable dimension on
       // Microsoft Changes (worldwide/gov/all classification).
       "src/lib/m365-cloud-instance.test.ts",
+      // #1536 — the prose rollout-schedule advisory date extracted from a
+      // Message Center post's own bodyContent.
+      "src/lib/m365-message-center-date-quality.test.ts",
     ],
     coverage: {
       provider: "v8",

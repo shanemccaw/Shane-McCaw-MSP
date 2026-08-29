@@ -2328,6 +2328,16 @@ export const mspMessageCenterItemsTable = pgTable("msp_message_center_items", {
   // (roadmap_feature_ids @> '["124981"]') is added in the manual migration, not
   // here, mirroring m365_roadmap_items.cloud_instances' own convention.
   roadmapFeatureIds: jsonb("roadmap_feature_ids").$type<string[]>().notNull().default([]),
+  // #1536 — the prose date phrase Microsoft's own "[Rollout Schedule]" section
+  // carries (e.g. "Rollout begins in mid-October 2026 and is expected to
+  // complete by late November 2026"), parsed ONCE from bodyContent at sync
+  // time by m365-message-center-date-quality.ts's extractAdvisoryDateText().
+  // This is ADVISORY ONLY: it is rendered verbatim beside the structural dates
+  // below, never parsed into a real Date, never used to place a post in a
+  // bucket, and never substituted into actionRequiredByDateTime. Nullable —
+  // most posts have no such section, and that is a real, honest null, not a
+  // sync failure.
+  advisoryDateText: text("advisory_date_text"),
   startDateTime: timestamp("start_date_time", { withTimezone: true }),
   endDateTime: timestamp("end_date_time", { withTimezone: true }),
   actionRequiredByDateTime: timestamp("action_required_by_date_time", { withTimezone: true }),

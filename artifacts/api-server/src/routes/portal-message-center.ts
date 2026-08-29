@@ -83,6 +83,7 @@ import {
   buildStats,
   bucketForDate,
   capPerWave,
+  dateUnclearRows,
   effectiveDate,
   formatCountdown,
   formatScanAt,
@@ -91,6 +92,7 @@ import {
   impactForPost,
   kindForPost,
   kindLabel,
+  placementForPost,
   scoreForPost,
   waveShort,
   workloadFound,
@@ -153,6 +155,58 @@ interface WirePost {
   readonly publishedAt: string;
   readonly lastModifiedAt: string;
   readonly actionRequiredBy: string | null;
+  /**
+   * #1536 — the prose rollout-schedule phrase Microsoft's own post carries, or
+   * null when none was found. Advisory only: rendered as the prose it came
+   * from, never used to compute `bucket`/`when`/`countdown` above. Every post
+   * reaching this shape already has `dateConfidence: "dated"` (it landed on
+   * the axis via `placementForPost`), so this is a supplementary, more
+   * readable date alongside the structural one, not a replacement for it.
+   */
+  readonly advisoryDateText: string | null;
+  /** Always "dated" here — a post only reaches `posts[]` once it has a real structural date. See `dateUnclearPosts`. */
+  readonly dateConfidence: "dated";
+}
+
+/**
+ * One post with NO structural date at all (`hasStructuralDate` false) — #1536's
+ * "date unclear" first-class bucket. Deliberately a SMALLER, distinct shape
+ * from `WirePost`: it has no `bucket`/`when`/`countdown`/`score`/`impact`,
+ * because computing any of those would mean falling back to
+ * `lastModifiedDateTime` and presenting an edit timestamp as a landing date —
+ * exactly the failure this bucket exists to avoid. `lastUpdated` is offered
+ * instead, honestly labelled as what it is.
+ */
+interface WireDateUnclearPost {
+  readonly id: string;
+  readonly title: string;
+  readonly wl: string;
+  readonly workload: string;
+  readonly kind: string;
+  readonly ms: string;
+  readonly services: readonly string[];
+  readonly tags: readonly string[];
+  readonly lastUpdated: string;
+  readonly advisoryDateText: string | null;
+  readonly dateConfidence: "unclear";
+}
+
+function toWireDateUnclearPost(row: MessageCenterRow): WireDateUnclearPost {
+  const wl = workloadForPost(row.services);
+  const body = row.bodyContent ? htmlToText(row.bodyContent) : "";
+  return {
+    id: row.graphMessageId,
+    title: row.title,
+    wl,
+    workload: row.services[0] ?? WORKLOAD_NAMES[wl],
+    kind: kindLabel(row),
+    ms: body,
+    services: row.services,
+    tags: row.tags,
+    lastUpdated: formatWhen(row.lastModifiedDateTime),
+    advisoryDateText: row.advisoryDateText,
+    dateConfidence: "unclear",
+  };
 }
 
 /**
@@ -221,6 +275,8 @@ function toWirePost(row: MessageCenterRow, buckets: readonly Bucket[], now: Date
     publishedAt: (row.startDateTime ?? row.lastModifiedDateTime).toISOString(),
     lastModifiedAt: row.lastModifiedDateTime.toISOString(),
     actionRequiredBy: row.actionRequiredByDateTime?.toISOString() ?? null,
+    advisoryDateText: row.advisoryDateText,
+    dateConfidence: "dated",
   };
 }
 
@@ -244,7 +300,7 @@ router.get(
         // Message Center to read. `scoped:false` lets the page say so instead of
         // rendering an empty grid that looks like a clear month.
         log.info({ customerId }, "portal-message-center: no resolvable tenant scope");
-        res.json({ scoped: false, itemCount: 0, posts: [], density: [], buckets, stats: [], workloads: [] });
+        res.json({ scoped: false, itemCount: 0, posts: [], density: [], buckets, stats: [], workloads: [], dateUnclearCount: 0, dateUnclearPosts: [] });
         return;
       }
 
@@ -262,6 +318,7 @@ router.get(
           actionRequiredByDateTime: mspMessageCenterItemsTable.actionRequiredByDateTime,
           lastModifiedDateTime: mspMessageCenterItemsTable.lastModifiedDateTime,
           lastSeenAt: mspMessageCenterItemsTable.lastSeenAt,
+          advisoryDateText: mspMessageCenterItemsTable.advisoryDateText,
         })
         .from(mspMessageCenterItemsTable)
         // Both predicates resolved from the token, never from the request.
@@ -286,6 +343,7 @@ router.get(
         actionRequiredByDateTime: r.actionRequiredByDateTime,
         lastModifiedDateTime: r.lastModifiedDateTime,
         lastSeenAt: r.lastSeenAt,
+        advisoryDateText: r.advisoryDateText,
       }));
 
       // Everything below is computed over the WHOLE corpus. Only the post list
@@ -293,10 +351,17 @@ router.get(
       const density = buildDensity(corpus, buckets);
       const stats = buildStats(corpus, buckets, now);
 
-      const onAxis = corpus.filter((r) => bucketForDate(effectiveDate(r), buckets) >= 0);
+      const onAxis = corpus.filter((r) => placementForPost(r, buckets) >= 0);
       const shaped = onAxis
         .map((r) => toWirePost(r, buckets, now))
         .sort((a, b) => (a.bucket === b.bucket ? b.score - a.score : a.bucket - b.bucket));
+
+      // #1536 — the posts placementForPost could not place anywhere on the
+      // dated axis at all. Capped at the same per-wave budget for consistency,
+      // though in practice this list is short: every post on the real testbed
+      // tenant carries at least an endDateTime.
+      const allDateUnclear = dateUnclearRows(corpus);
+      const dateUnclear = allDateUnclear.slice(0, POSTS_PER_WAVE);
 
       // The budget is spent per WAVE, so no wave is starved by a busier one
       // earlier on the axis. See capPerWave's header for what went wrong with a
@@ -373,8 +438,17 @@ router.get(
         found: workloadFound(corpus, d.wl, buckets),
       }));
 
+      const dateUnclearPosts = dateUnclear.map(toWireDateUnclearPost);
+
       log.info(
-        { customerId, mspId: scope.mspId, itemCount: corpus.length, onAxis: onAxis.length, posts: posts.length },
+        {
+          customerId,
+          mspId: scope.mspId,
+          itemCount: corpus.length,
+          onAxis: onAxis.length,
+          posts: posts.length,
+          dateUnclear: dateUnclearPosts.length,
+        },
         "portal-message-center: served customer Message Center",
       );
 
@@ -394,6 +468,14 @@ router.get(
         stats,
         workloads,
         /**
+         * #1536 — the first-class "date unclear" bucket: posts with no
+         * structural date to place on the grid at all (`actionRequiredByDateTime`
+         * and `endDateTime` both null). Counted over the WHOLE corpus, same as
+         * `stats`/`density`; `dateUnclearPosts` is capped the same way `posts` is.
+         */
+        dateUnclearCount: allDateUnclear.length,
+        dateUnclearPosts,
+        /**
          * What the numbers above are, and are not. The page shows this rather
          * than letting a reader assume their tenant was scanned.
          */
@@ -412,6 +494,13 @@ router.get(
            */
           measuredCounts:
             "Where a post carries a measured affected-object count, that number was counted from your tenant's own collected data against a reading confirmed by your MSP. A measured zero means this change touches nothing counted in your estate.",
+          /**
+           * #1536 — what advisoryDateText is and is not: Microsoft's own prose,
+           * never a computed or synthesised date, and never what placed a post
+           * on the grid above.
+           */
+          advisoryDates:
+            "Where a post carries an advisory date, that text is Microsoft's own published rollout-schedule wording, shown for readability alongside the structural date. It is never used to decide which bucket a post lands in.",
         },
       });
     } catch (err) {
