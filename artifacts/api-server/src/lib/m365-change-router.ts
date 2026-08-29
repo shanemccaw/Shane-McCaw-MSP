@@ -509,12 +509,24 @@ export interface RoutingSweepResult {
  * The sweep: every confirmed interpretation × its resolutions, routed. Wired as
  * the m365_route_changes workflow node, seeded on a daily schedule AFTER the
  * resolution sweep so the day's counts land first.
+ *
+ * `interpretationId` (#1701) scopes the sweep to a single interpretation — the
+ * on-demand operator trigger (`POST .../interpretations/:id/route`) fires this
+ * same node through the Workflow Engine with that id in the run's trigger
+ * payload, so "route now" is the identical code path as the nightly sweep,
+ * just narrowed to the interpretation the operator is looking at rather than
+ * scheduler bypass. Omitted (the nightly cron's case), it routes every
+ * confirmed interpretation exactly as before.
  */
-export async function runM365ChangeRoutingSweep(): Promise<RoutingSweepResult> {
+export async function runM365ChangeRoutingSweep(opts: { interpretationId?: number } = {}): Promise<RoutingSweepResult> {
+  const filters = [eq(m365ChangeInterpretationsTable.status, "confirmed")];
+  if (opts.interpretationId !== undefined) {
+    filters.push(eq(m365ChangeInterpretationsTable.id, opts.interpretationId));
+  }
   const confirmed = await db
     .select()
     .from(m365ChangeInterpretationsTable)
-    .where(eq(m365ChangeInterpretationsTable.status, "confirmed"));
+    .where(and(...filters));
 
   const result: RoutingSweepResult = { interpretations: confirmed.length, resolutions: 0, autoCreated: 0, proposed: 0, none: 0 };
 
@@ -543,10 +555,14 @@ export async function runM365ChangeRoutingSweep(): Promise<RoutingSweepResult> {
 
 /**
  * Workflow node handler for the `m365_route_changes` node type
- * (workflow-executor.ts's executeNode switch).
+ * (workflow-executor.ts's executeNode switch). `payload.interpretationId`
+ * (#1701) is how the on-demand operator trigger narrows this same node's run
+ * to one interpretation — the nightly schedule trigger never sets it, so its
+ * runs are unaffected.
  */
-export async function handleM365RouteChanges(_payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const r = await runM365ChangeRoutingSweep();
+export async function handleM365RouteChanges(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const interpretationId = typeof payload.interpretationId === "number" ? payload.interpretationId : undefined;
+  const r = await runM365ChangeRoutingSweep({ interpretationId });
   return {
     interpretations: r.interpretations,
     resolutions: r.resolutions,

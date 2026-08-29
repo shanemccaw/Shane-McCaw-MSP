@@ -125,6 +125,37 @@ export interface ProposalResult {
   proposal: Proposal;
 }
 
+// ── Routing (#1701 — mirrors routes/admin-m365-interpretations.ts's
+// /route + /routings, the on-demand trigger for the same m365_route_changes
+// workflow node the nightly sweep runs) ──────────────────────────────────────
+
+export type M365RoutingDecision = "auto_created" | "proposed" | "declined_risk" | "none";
+export type M365RoutingReason = "auto_created" | "undated" | "zero_affected" | "not_measured" | "no_announcement";
+
+export interface RoutingOutcome {
+  id: number;
+  customerId: number;
+  tenantName: string;
+  decision: M365RoutingDecision;
+  reason: M365RoutingReason;
+  intake: string | null;
+  affectedCount: number | null;
+  hasStructuralDate: boolean;
+  changeRequestId: number | null;
+  /** e.g. "CR-2026-142" — the real code every other change-control console shows for this CR. */
+  changeRequestCode: string | null;
+  riskDecisionId: number | null;
+  routedAt: string | null;
+  updatedAt: string;
+}
+
+/** One interpretation's on-demand routing run — surfaced next to the peek's Route action. */
+export interface RoutingRunState {
+  status: "running" | "completed" | "failed";
+  runId: number | null;
+  error: string | null;
+}
+
 // ── Store shape ─────────────────────────────────────────────────────────────
 
 interface M365ChangesState {
@@ -145,6 +176,10 @@ interface M365ChangesState {
   proposing: boolean;
   proposalError: string | null;
   proposal: ProposalResult | null;
+
+  /** Per-interpretation on-demand routing run state, and the routing ledger it produces. */
+  routingRuns: Record<number, RoutingRunState>;
+  routingsByInterpretation: Record<number, RoutingOutcome[]>;
 }
 
 const EMPTY_COUNTS: InterpretationCounts = { proposed: 0, confirmed: 0, rejected: 0, total: 0 };
@@ -169,6 +204,8 @@ let state: M365ChangesState = {
   proposing: false,
   proposalError: null,
   proposal: null,
+  routingRuns: {},
+  routingsByInterpretation: {},
 };
 
 function setState(patch: Partial<M365ChangesState>): void {
@@ -420,6 +457,98 @@ export async function deleteInterpretation(id: number): Promise<void> {
   }
 }
 
+// ── Routing (#1701) ──────────────────────────────────────────────────────────
+
+function setRoutingRun(id: number, run: RoutingRunState): void {
+  setState({ routingRuns: { ...state.routingRuns, [id]: run } });
+}
+
+// Not part of published state — a plain in-flight guard so re-opening the same
+// peek repeatedly (the peek resolver re-runs on every store notification)
+// never fires a duplicate GET while the first is still in flight.
+const routingsLoadInFlight = new Set<number>();
+
+export async function loadRoutings(id: number, force = false): Promise<void> {
+  if (!adminFetchRef) return;
+  if (!force && state.routingsByInterpretation[id]) return;
+  if (routingsLoadInFlight.has(id)) return;
+  routingsLoadInFlight.add(id);
+  try {
+    const res = await adminFetchRef(`/api/admin/m365/interpretations/${id}/routings`);
+    if (!res.ok) return;
+    const body = (await res.json()) as { routings: RoutingOutcome[] };
+    setState({ routingsByInterpretation: { ...state.routingsByInterpretation, [id]: body.routings ?? [] } });
+  } catch (err) {
+    log.warn({ err, id }, "m365 routings failed to load");
+  } finally {
+    routingsLoadInFlight.delete(id);
+  }
+}
+
+const ROUTING_POLL_INTERVAL_MS = 1200;
+// ~36s ceiling. Routing is DB-only work (no external Graph calls) so a real run
+// finishes in well under a second; this bound only guards against a genuinely
+// stuck run, at which point the operator is pointed at Workflow Engine run
+// history rather than left staring at a spinner forever.
+const ROUTING_POLL_MAX_ATTEMPTS = 30;
+
+/**
+ * Fires the on-demand routing trigger for one confirmed interpretation
+ * (`POST .../route`) and polls the fired workflow run
+ * (`GET /admin/workflows/runs/:runId`) until it reaches a terminal state, then
+ * reloads the routing ledger so the peek shows the real per-tenant outcome —
+ * the "resolve now → route now" affordance #1701 was filed for. The run itself
+ * goes through the real Workflow Engine (same m365_route_changes node the
+ * nightly sweep runs); this function only fires it and watches it finish.
+ */
+export async function routeInterpretation(id: number): Promise<void> {
+  if (!adminFetchRef) return;
+  setRoutingRun(id, { status: "running", runId: null, error: null });
+  try {
+    const res = await adminFetchRef(`/api/admin/m365/interpretations/${id}/route`, { method: "POST" });
+    if (!res.ok) {
+      setRoutingRun(id, { status: "failed", runId: null, error: await failureOf(res) });
+      return;
+    }
+    const body = (await res.json()) as { runId: number };
+    setRoutingRun(id, { status: "running", runId: body.runId, error: null });
+    await pollRoutingRun(id, body.runId, 0);
+  } catch (err) {
+    log.warn({ err, id }, "m365 route interpretation failed");
+    setRoutingRun(id, { status: "failed", runId: null, error: errorText(err) });
+  }
+}
+
+async function pollRoutingRun(id: number, runId: number, attempt: number): Promise<void> {
+  if (!adminFetchRef) return;
+  if (attempt >= ROUTING_POLL_MAX_ATTEMPTS) {
+    setRoutingRun(id, { status: "failed", runId, error: "Routing run is taking longer than expected — check Workflow Engine run history." });
+    return;
+  }
+  try {
+    const res = await adminFetchRef(`/api/admin/workflows/runs/${runId}`);
+    if (!res.ok) {
+      setRoutingRun(id, { status: "failed", runId, error: await failureOf(res) });
+      return;
+    }
+    const run = (await res.json()) as { status: string };
+    if (run.status === "pending" || run.status === "running") {
+      await new Promise((resolve) => setTimeout(resolve, ROUTING_POLL_INTERVAL_MS));
+      await pollRoutingRun(id, runId, attempt + 1);
+      return;
+    }
+    if (run.status === "completed") {
+      setRoutingRun(id, { status: "completed", runId, error: null });
+      await loadRoutings(id, true);
+      return;
+    }
+    setRoutingRun(id, { status: "failed", runId, error: `Routing run ${run.status}` });
+  } catch (err) {
+    log.warn({ err, id, runId }, "m365 routing run poll failed");
+    setRoutingRun(id, { status: "failed", runId, error: errorText(err) });
+  }
+}
+
 // ── Selectors ─────────────────────────────────────────────────────────────────
 
 export function interpretationById(id: number): Interpretation | undefined {
@@ -445,5 +574,7 @@ export function resetM365ChangesStore(): void {
     proposing: false,
     proposalError: null,
     proposal: null,
+    routingRuns: {},
+    routingsByInterpretation: {},
   };
 }

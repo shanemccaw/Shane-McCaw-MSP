@@ -6408,7 +6408,12 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // measured/dated/non-zero, else propose) — the third stage after
         // interpretation (#1532) and resolution (#1533). Declined→risk is a
         // separate, event-driven transition, not part of this sweep.
-        output = await handleM365RouteChanges(node.data as Record<string, unknown>);
+        // payload merged after node.data (#1701): the nightly schedule trigger
+        // carries no payload, so node.data alone drives it as before; the
+        // on-demand operator trigger fires this same node with
+        // { interpretationId } in the run's trigger payload, which the handler
+        // reads to scope the sweep to one interpretation instead of all of them.
+        output = await handleM365RouteChanges({ ...(node.data as Record<string, unknown>), ...payload });
         break;
       }
 

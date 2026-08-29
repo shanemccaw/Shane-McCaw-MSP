@@ -17,7 +17,7 @@
 import { CalendarClock, Sparkles, Plus } from "lucide-react";
 import { registerScreen } from "../../registry/registry";
 import { getShellApi } from "../../shell/ShellContext";
-import { ACCENT } from "../../theme";
+import { ACCENT, ACCENT_TEXT } from "../../theme";
 import type { CommandItem, PeekModel } from "../../registry/types";
 import { M365ChangesBody } from "./M365ChangesBody";
 import { CHANGE_CLASS_LABEL, STATUS_LABEL, statusTone } from "./M365ChangesBody";
@@ -28,11 +28,14 @@ import {
   confirmInterpretation,
   rejectInterpretation,
   deleteInterpretation,
+  routeInterpretation,
+  loadRoutings,
   proposedCount,
   WATCH_PROPOSED_KEY,
   type M365ChangeClass,
   type M365Actor,
   type M365Controllability,
+  type M365RoutingDecision,
 } from "./m365ChangesStore";
 
 export const ROUTE = "/m365-changes";
@@ -45,6 +48,20 @@ const CONTROLLABILITY: M365Controllability[] = ["yes", "no", "unknown"];
 
 const WHO_LABEL: Record<M365Actor, string> = { microsoft: "Microsoft", admin: "Admin" };
 const CONTROL_LABEL: Record<M365Controllability, string> = { yes: "Yes", no: "No", unknown: "Unknown" };
+
+// ── Routing (#1701) ──────────────────────────────────────────────────────────
+const ROUTING_DECISION_LABEL: Record<M365RoutingDecision, string> = {
+  auto_created: "AUTO-CREATED",
+  proposed: "PROPOSED",
+  declined_risk: "DECLINED → RISK",
+  none: "NOT ROUTED",
+};
+const ROUTING_DECISION_TONE: Record<M365RoutingDecision, string> = {
+  auto_created: ACCENT.green,
+  proposed: ACCENT.amber,
+  declined_risk: ACCENT.danger,
+  none: ACCENT_TEXT.neutral,
+};
 
 function openLibrary(): void {
   getShellApi()?.navigate(ROUTE);
@@ -134,12 +151,25 @@ registerScreen({
         t.settings.length ? `Settings: ${t.settings.join(", ")}` : "",
       ].filter(Boolean).join(" · ") || "Nothing recorded";
       const isProposed = it.status === "proposed";
+      const isConfirmed = it.status === "confirmed";
 
       const bodyParts: string[] = [];
       if (it.summary) bodyParts.push(it.summary);
       if (it.probe.description) bodyParts.push(`Probe — count in a tenant: ${it.probe.description}`);
       if (it.probe.graphEndpoint) bodyParts.push(`Graph: ${it.probe.graphEndpoint}`);
       if (it.aiRationale) bodyParts.push(`AI rationale (${it.aiModel ?? "model"}): ${it.aiRationale}`);
+
+      // Routing (#1701) — a confirmed interpretation's real per-tenant routing
+      // ledger, lazily loaded on first open of this peek (loadRoutings no-ops
+      // once loaded/in-flight, so re-opening the same peek is cheap).
+      const snap = getSnapshot();
+      if (isConfirmed) void loadRoutings(it.id);
+      const routingRun = snap.routingRuns[it.id];
+      const routings = snap.routingsByInterpretation[it.id] ?? [];
+      const routeLabel =
+        routingRun?.status === "running" ? "Routing…" :
+        routingRun?.status === "failed" ? "Route now (retry)" :
+        "Route now";
 
       return {
         kind: "interpretation",
@@ -150,7 +180,11 @@ registerScreen({
         tone: statusTone(it.status),
         tag: STATUS_LABEL[it.status] ?? it.status,
         tagTone: statusTone(it.status),
-        note: isProposed ? "Unverified — confirm before this reaches any tenant" : undefined,
+        note:
+          isProposed ? "Unverified — confirm before this reaches any tenant" :
+          routingRun?.status === "failed" ? `Routing run failed: ${routingRun.error ?? "unknown error"}` :
+          routingRun?.status === "completed" ? "Routing run complete — see Routing below" :
+          undefined,
         facts: [
           { label: "Change class", value: CHANGE_CLASS_LABEL[it.changeClass], prose: true },
           { label: "Who acts", value: WHO_LABEL[it.whoActs], prose: true },
@@ -176,9 +210,27 @@ registerScreen({
             onChange: (v) => void updateInterpretation(it.id, { probe: { ...it.probe, description: v.trim() } }) },
         ],
         body: bodyParts.length ? { title: "Reading", content: bodyParts.join("\n\n") } : undefined,
+        // Routing (#1701) — the real per-tenant outcome of the on-demand /route
+        // trigger (and of the nightly sweep, which writes the same ledger).
+        list: routings.length
+          ? {
+              title: "Routing",
+              rows: routings.map((r) => ({
+                id: String(r.id),
+                mark: ROUTING_DECISION_LABEL[r.decision],
+                tone: ROUTING_DECISION_TONE[r.decision],
+                name: r.tenantName,
+                sub: r.reason.replace(/_/g, " "),
+                right: r.changeRequestCode ?? (r.affectedCount !== null ? `${r.affectedCount} affected` : undefined),
+              })),
+            }
+          : undefined,
         actions: [
           ...(isProposed
             ? [{ label: "Confirm", tone: "primary" as const, onSelect: () => void confirmInterpretation(it.id) }]
+            : []),
+          ...(isConfirmed
+            ? [{ label: routeLabel, tone: "primary" as const, onSelect: () => { if (routingRun?.status !== "running") void routeInterpretation(it.id); } }]
             : []),
           ...(it.status !== "rejected"
             ? [{ label: "Reject", onSelect: () => void rejectInterpretation(it.id) }]

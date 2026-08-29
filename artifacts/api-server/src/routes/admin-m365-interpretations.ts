@@ -28,6 +28,17 @@
  *   POST   /api/admin/m365/interpretations/:id/resolve     — run the count across the MSP's tenants (confirmed only)
  *   GET    /api/admin/m365/interpretations/:id/resolutions — the stored per-tenant answers
  *
+ * Routing layer (#1534 — decides what a resolved change BECOMES; #1701 adds the
+ * on-demand operator trigger, which had no HTTP surface at all before this and
+ * only ran on the nightly `m365_route_changes` workflow node's schedule):
+ *   POST   /api/admin/m365/interpretations/:id/route    — fire the SAME workflow
+ *          node the nightly sweep runs, scoped to this interpretation (confirmed
+ *          only) — via the real Workflow Engine (fireWorkflowForDefinition), not
+ *          a parallel code path or a bare scheduler bypass. Returns a runId; the
+ *          run finishes in the background like every other manually-fired workflow.
+ *   GET    /api/admin/m365/interpretations/:id/routings — the stored per-tenant
+ *          routing decisions (auto_created / proposed / none / declined_risk).
+ *
  * Auth: `requireAdmin` — the platform-admin session the AdminV2 console carries.
  * Scoping is per-MSP: the library is resolved against the single direct-business
  * MSP (structurally per-MSP even though there is one MSP today, #1532), never taken
@@ -39,10 +50,12 @@ import {
   db,
   m365ChangeInterpretationsTable,
   m365ChangeResolutionsTable,
+  m365ChangeRoutingsTable,
   m365RoadmapItemsTable,
   mspMessageCenterItemsTable,
   mspsTable,
   tenantsTable,
+  wfDefinitionsTable,
   M365_CHANGE_CLASSES,
   M365_INTERPRETATION_STATUSES,
   M365_ACTORS,
@@ -57,6 +70,13 @@ import { proposeInterpretation } from "../lib/m365-interpretation-proposer.ts";
 import { resolveInterpretationAcrossTenants } from "../lib/m365-change-resolver.ts";
 import { getCrossedOverFeatureIds, hasRoadmapFeatureIdsColumn, withCrossoverFlag } from "../lib/m365-roadmap-mc-link.ts";
 import { filterByCloudInstance, parseCloudInstanceFilterMode } from "../lib/m365-cloud-instance.ts";
+import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
+import { routedChangeRequestCode } from "../lib/m365-change-router.ts";
+
+/** The seeded system workflow whose single node (m365_route_changes) the nightly
+ * sweep and this file's on-demand /route endpoint both fire — see
+ * seed-system-workflows.ts's "M365 Changes Routing" definition (#1534). */
+const ROUTING_WORKFLOW_NAME = "__system__: M365 Changes Routing";
 
 const log = logger.child({ channel: "integration.azure" });
 
@@ -688,6 +708,147 @@ router.get("/admin/m365/interpretations/:id/resolutions", requireAdmin, async (r
   } catch (err) {
     log.error({ err }, "GET /admin/m365/interpretations/:id/resolutions failed");
     res.status(500).json({ error: "Failed to load resolutions" });
+  }
+});
+
+// ── POST /admin/m365/interpretations/:id/route (#1701) ──────────────────────
+// The on-demand operator trigger completing the interpret → resolve → route
+// pipeline. Before this, `runM365ChangeRoutingSweep` had no HTTP surface at all
+// — it only ran via the seeded `m365_route_changes` workflow node on its daily
+// 04:00 UTC schedule (seed-system-workflows.ts), so an operator who had just
+// confirmed + resolved an interpretation had no way to see it become a Change
+// Request without waiting for the nightly node.
+//
+// This fires the SAME node through the real Workflow Engine
+// (fireWorkflowForDefinition → wf_runs → executeWorkflowRun), never a parallel
+// code path and never a bare scheduler bypass — it is the identical
+// m365_route_changes handler the nightly sweep calls, just narrowed to this one
+// interpretation via `interpretationId` in the run's trigger payload (see
+// handleM365RouteChanges in m365-change-router.ts). Confirmed only — the same
+// gate /resolve enforces, since routing an unconfirmed reading makes no sense.
+router.post("/admin/m365/interpretations/:id/route", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid interpretation id" });
+      return;
+    }
+    const mspId = await resolveDefaultMspId();
+    if (mspId === null) {
+      res.status(400).json({ error: "No MSP configured" });
+      return;
+    }
+    const [interpretation] = await db
+      .select({ id: m365ChangeInterpretationsTable.id, status: m365ChangeInterpretationsTable.status })
+      .from(m365ChangeInterpretationsTable)
+      .where(and(eq(m365ChangeInterpretationsTable.id, id), eq(m365ChangeInterpretationsTable.mspId, mspId)))
+      .limit(1);
+    if (!interpretation) {
+      res.status(404).json({ error: "Interpretation not found" });
+      return;
+    }
+    if (interpretation.status !== "confirmed") {
+      res.status(409).json({ error: "Only a confirmed interpretation may be routed" });
+      return;
+    }
+
+    const [wfDef] = await db
+      .select({ id: wfDefinitionsTable.id })
+      .from(wfDefinitionsTable)
+      .where(eq(wfDefinitionsTable.name, ROUTING_WORKFLOW_NAME))
+      .limit(1);
+    if (!wfDef) {
+      log.error({ id }, "POST /admin/m365/interpretations/:id/route: routing workflow not seeded");
+      res.status(503).json({ error: "M365 Changes Routing workflow is not seeded — please restart the server and retry." });
+      return;
+    }
+
+    const who = req.user?.name || req.user?.email || "Platform Admin";
+    const runId = await fireWorkflowForDefinition(
+      wfDef.id,
+      "manual",
+      `admin:route:interpretation:${id}`,
+      { interpretationId: id },
+    );
+    if (runId == null) {
+      res.status(503).json({ error: "Routing run could not be started (concurrency limit or missing published version). Please retry." });
+      return;
+    }
+
+    log.info({ id, runId, by: who }, "m365 interpretation routing run fired on-demand");
+    res.status(202).json({ interpretationId: id, runId, status: "queued" });
+  } catch (err) {
+    log.error({ err }, "POST /admin/m365/interpretations/:id/route failed");
+    res.status(500).json({ error: "Failed to start routing run" });
+  }
+});
+
+// ── GET /admin/m365/interpretations/:id/routings (#1701) ────────────────────
+// The stored per-tenant routing decisions for one interpretation — what each
+// resolved tenant count BECAME (auto_created / proposed / none / declined_risk),
+// same read shape as /resolutions. Populated by both the nightly sweep and the
+// on-demand /route trigger above, since both write through routeResolution().
+router.get("/admin/m365/interpretations/:id/routings", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.status(400).json({ error: "Invalid interpretation id" });
+      return;
+    }
+    const mspId = await resolveDefaultMspId();
+    if (mspId === null) {
+      res.status(400).json({ error: "No MSP configured" });
+      return;
+    }
+    const rows = await db
+      .select({
+        id: m365ChangeRoutingsTable.id,
+        customerId: m365ChangeRoutingsTable.customerId,
+        tenantName: tenantsTable.customerName,
+        decision: m365ChangeRoutingsTable.decision,
+        reason: m365ChangeRoutingsTable.reason,
+        intake: m365ChangeRoutingsTable.intake,
+        affectedCount: m365ChangeRoutingsTable.affectedCount,
+        hasStructuralDate: m365ChangeRoutingsTable.hasStructuralDate,
+        changeRequestId: m365ChangeRoutingsTable.changeRequestId,
+        riskDecisionId: m365ChangeRoutingsTable.riskDecisionId,
+        routedAt: m365ChangeRoutingsTable.routedAt,
+        updatedAt: m365ChangeRoutingsTable.updatedAt,
+      })
+      .from(m365ChangeRoutingsTable)
+      .leftJoin(tenantsTable, eq(tenantsTable.id, m365ChangeRoutingsTable.customerId))
+      .where(
+        and(
+          eq(m365ChangeRoutingsTable.interpretationId, id),
+          eq(m365ChangeRoutingsTable.mspId, mspId),
+        ),
+      )
+      .orderBy(desc(m365ChangeRoutingsTable.updatedAt));
+
+    res.json({
+      interpretationId: id,
+      routings: rows.map((r) => ({
+        id: r.id,
+        customerId: r.customerId,
+        tenantName: (r.tenantName ?? "").trim() || `Customer ${r.customerId}`,
+        decision: r.decision,
+        reason: r.reason,
+        intake: r.intake,
+        affectedCount: r.affectedCount,
+        hasStructuralDate: r.hasStructuralDate,
+        changeRequestId: r.changeRequestId,
+        // The real code every other change-control console shows for this CR
+        // (portal-change-control.ts's formatChangeRequestCode) — never re-derived
+        // client-side.
+        changeRequestCode: r.changeRequestId !== null ? routedChangeRequestCode(r.changeRequestId) : null,
+        riskDecisionId: r.riskDecisionId,
+        routedAt: r.routedAt instanceof Date ? r.routedAt.toISOString() : r.routedAt,
+        updatedAt: r.updatedAt instanceof Date ? r.updatedAt.toISOString() : r.updatedAt,
+      })),
+    });
+  } catch (err) {
+    log.error({ err }, "GET /admin/m365/interpretations/:id/routings failed");
+    res.status(500).json({ error: "Failed to load routings" });
   }
 });
 
