@@ -98,6 +98,11 @@ branch is genuinely merged — safe to write DONE. Exit code 1 means it is not: 
 honest `MERGE-BLOCKED` / still-`⏳ IN FLIGHT` bookend state instead, and say so
 explicitly in the completion comment — never silently claim DONE while orphaned.
 
+**Also before writing DONE: `git status --porcelain` must be clean** of anything you touched
+(see "Leave the working tree clean" under Git conventions). Uncommitted modified files are as
+disqualifying as an unmerged branch — both leave Shane to discover the mess. If files you did not
+touch were already dirty when you arrived, name them in the completion comment and leave them.
+
 Once verified, flip that file's status to:
 
 ```
@@ -318,6 +323,42 @@ targeting”) for the full mechanism.
 - **Commit directly to `main`. Do not create a new branch**, unless explicitly told otherwise for a specific task. Branches in this project have repeatedly ended up orphaned/unpushed/unmerged, causing real work to be lost. `main` is the default target.
 - **Commit only your own changes, on your own commit.** Never let your work get swept into or bundled with an unrelated concurrent commit, and never sweep unrelated uncommitted changes you find in the working tree into your own commit — if you find unrelated dirty files that aren't yours, leave them alone and report them rather than committing them.
 - Commit message first line should be a plain descriptive name of the work (e.g. `Dashboard Metric Resolvers`, `resolveMspIdOrZero fix`) — no `IN FLIGHT`/`DONE` status prefixes in git history; those are for the session-naming convention used in chat, not commit messages.
+
+### Leave the working tree clean — HARD RULE
+
+**A session must not end with any tracked file it modified left uncommitted.** No exceptions,
+including sessions that stop early, fail, get blocked, or are cancelled.
+
+Every stray modified file becomes a merge conflict on Shane's next `git pull`, and with several
+agents pushing to `main` he pulls constantly. This has cost a large share of his week, repeatedly.
+A one-line config edit left dirty is not a small thing here.
+
+Before the session ends — including on the failure path — run:
+
+```
+git status --porcelain
+```
+
+Then for every line it prints:
+
+- **You changed it and it's part of your work** → commit and push it. If the work is incomplete,
+  commit it anyway with an honest message saying so; an incomplete commit is recoverable, a dirty
+  tree is not.
+- **You changed it and it was a mistake or a scratch edit** → `git checkout -- <file>` to revert
+  it. Do not leave it for someone else to discover.
+- **You created it and it isn't part of the deliverable** (scratch scripts, dumps, logs, `.bak`
+  files, ad-hoc query output) → delete it, or add it to `.gitignore` if that class of file will
+  recur. Untracked scratch files count.
+- **It was already dirty when you arrived and isn't yours** → leave it alone, and say so
+  explicitly in your bookend comment naming the file. Do not commit it, do not revert it, do not
+  stash it.
+
+`git status --porcelain` returning empty (apart from pre-existing files you named in the bookend)
+is a required condition for writing `DONE`, exactly like the ancestor check. A session that
+verified its merge but left three modified files behind has not finished.
+
+Never `git stash` as a way of ending a session. A stash is invisible to everyone else and to the
+next session in that worktree; it hides the problem rather than closing it.
 
 ## Remote server access (SSH) — real, working, current
 
