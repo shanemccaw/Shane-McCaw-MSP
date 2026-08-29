@@ -13,6 +13,7 @@
  *   DELETE /api/auth/sessions/:id       — revoke one session
  *   POST /api/auth/sessions/revoke-others — sign out every other session
  *   GET  /api/auth/login-history        — most-recent-first login rows
+ *   POST /api/auth/change-password      — change this user's own password (Git #1601)
  *
  * Identity (email, role) needs no fetch at all — it's already on the decoded
  * JWT via `useAuth().user`.
@@ -33,6 +34,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "@/lib/auth-context";
+import { reportClientEvent } from "@/lib/report-client-event";
 import { timeAgo } from "./overviewModel";
 import type { SecSession } from "./accountSecurityData";
 
@@ -40,6 +42,35 @@ const MFA_ENROLLMENTS_URL = "/api/auth/mfa/enrollments";
 const SESSIONS_URL = "/api/auth/sessions";
 const SESSIONS_REVOKE_OTHERS_URL = "/api/auth/sessions/revoke-others";
 const LOGIN_HISTORY_URL = "/api/auth/login-history";
+const CHANGE_PASSWORD_URL = "/api/auth/change-password";
+
+/**
+ * `auth` is the locked logging channel this same route already binds
+ * server-side (`auth.ts:30`, `logger.child({ channel: "auth" })`); there is
+ * no client-side `logger.child` in this app (see `securityPlanLive.ts`'s own
+ * note), so an unexpected outcome is beaconed to `/api/client-events` and the
+ * server attaches the channel from there.
+ */
+const CHANGE_PASSWORD_CHANNEL = "auth";
+
+/**
+ * The four distinct error states `POST /api/auth/change-password` returns,
+ * extracted from the route itself (Git #1601) — no invented status set:
+ *   - `missing-fields`      — 400, `auth.ts:826` (either field absent)
+ *   - `too-short`           — 400, `auth.ts:831` (new password under 8 chars)
+ *   - `no-password-set`     — 400, `auth.ts:838` (account has no password hash at all)
+ *   - `incorrect-password`  — 401, `auth.ts:843` (current password didn't match)
+ *   - `unknown`             — anything else (network failure, unexpected status/body)
+ * Distinguished by status + the route's own literal message text, since the
+ * route has no machine-readable error code field.
+ */
+export type ChangePasswordOutcome =
+  | { readonly kind: "success"; readonly revokedOtherSessions: number }
+  | { readonly kind: "missing-fields" }
+  | { readonly kind: "too-short" }
+  | { readonly kind: "no-password-set" }
+  | { readonly kind: "incorrect-password" }
+  | { readonly kind: "unknown"; readonly message: string };
 
 export interface LiveMfaEnrollments {
   readonly totp: boolean;
@@ -95,6 +126,7 @@ export interface AccountSecurityLiveState {
   readonly loading: boolean;
   readonly revokeSession: (id: number) => Promise<boolean>;
   readonly signOutOthers: () => Promise<number>;
+  readonly changePassword: (currentPassword: string, newPassword: string) => Promise<ChangePasswordOutcome>;
 }
 
 const MSP_ROLE_LABELS: Record<string, string> = {
@@ -108,7 +140,7 @@ const MSP_ROLE_LABELS: Record<string, string> = {
 };
 
 export function useAccountSecurityLive(): AccountSecurityLiveState {
-  const { user, fetchWithAuth } = useAuth();
+  const { user, fetchWithAuth, accessToken } = useAuth();
   const [mfa, setMfa] = useState<LiveMfaEnrollments | null>(null);
   const [sessions, setSessions] = useState<readonly LiveSecSession[] | null>(null);
   const [lastSignInAt, setLastSignInAt] = useState<string | null>(null);
@@ -200,6 +232,53 @@ export function useAccountSecurityLive(): AccountSecurityLiveState {
     [fetchWithAuth, loadSessions],
   );
 
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string): Promise<ChangePasswordOutcome> => {
+      try {
+        const res = await fetchWithAuth(
+          CHANGE_PASSWORD_URL,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ currentPassword, newPassword }),
+          },
+          { silent: true },
+        );
+        const body = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; revokedOtherSessions?: number };
+
+        if (res.ok && body.ok) {
+          return { kind: "success", revokedOtherSessions: body.revokedOtherSessions ?? 0 };
+        }
+
+        if (res.status === 400 && body.error === "currentPassword and newPassword are required") {
+          return { kind: "missing-fields" };
+        }
+        if (res.status === 400 && body.error === "Password must be at least 8 characters") {
+          return { kind: "too-short" };
+        }
+        if (res.status === 400 && body.error === "No password set for this account.") {
+          return { kind: "no-password-set" };
+        }
+        if (res.status === 401 && body.error === "Current password is incorrect") {
+          return { kind: "incorrect-password" };
+        }
+
+        // A real response, but not one of the four documented shapes — a
+        // route contract drift, not a user-facing validation case.
+        reportClientEvent(
+          accessToken,
+          "ChangePasswordUnexpectedResponse",
+          `POST /api/auth/change-password returned ${res.status}: ${body.error ?? "(no error field)"}`,
+          CHANGE_PASSWORD_CHANNEL,
+        );
+        return { kind: "unknown", message: body.error ?? `Request failed (${res.status})` };
+      } catch (err: unknown) {
+        return { kind: "unknown", message: err instanceof Error ? err.message : String(err) };
+      }
+    },
+    [fetchWithAuth, accessToken],
+  );
+
   const signOutOthers = useCallback(async (): Promise<number> => {
     try {
       const res = await fetchWithAuth(SESSIONS_REVOKE_OTHERS_URL, { method: "POST" }, { silent: true });
@@ -222,5 +301,6 @@ export function useAccountSecurityLive(): AccountSecurityLiveState {
     loading,
     revokeSession,
     signOutOthers,
+    changePassword,
   };
 }
