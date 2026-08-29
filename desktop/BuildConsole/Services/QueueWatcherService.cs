@@ -246,6 +246,32 @@ namespace BuildConsole.Services
         public int RunningCount => _running.Count;
 
         /// <summary>
+        /// Git #1600 — the real, current reason each held-on-a-blocker queue item is
+        /// being held, as of the most recent live GitHub check (see
+        /// BuildQueuePostgresClient.GetNextAsync's Step 2). Empty/stale under the
+        /// HTTP-fallback path (no <see cref="_db"/>) — that path holds via its own
+        /// server-side re-check (see admin-build-tracker.ts's /queue/next) but doesn't
+        /// surface a reason back to this client. BuildQueuePanel reads this to render
+        /// a real "waiting on #NNNN (open)" instead of guessing from stale columns.
+        /// </summary>
+        public IReadOnlyDictionary<int, string> HeldBlockerReasons => _db?.LastHeldReasons ?? _emptyHeldReasons;
+        private static readonly Dictionary<int, string> _emptyHeldReasons = new();
+
+        /// <summary>
+        /// Git #1600 — "Re-evaluate on the existing Git Board refresh so a build
+        /// releases automatically once its blocker actually closes." Wired by
+        /// MainWindow to LeftSidebar.BoardRefreshCompleted (fired after
+        /// PopulateGitTrackerBoard's own fresh GitHub fetch — the Build Queue panel's
+        /// own refresh button, or the Git Board's own Refresh, both land here). Kicks
+        /// an immediate tick instead of making Shane wait up to 10s for the next timer
+        /// — TickAsync's own live blocker re-check (not this board fetch's issue list,
+        /// which can be scoped/filtered differently — see GetNextAsync) does the real
+        /// work. A no-op if a tick is already in flight (TickAsync's own _ticking
+        /// guard).
+        /// </summary>
+        public void RequestImmediateReevaluation() => _ = TickAsync();
+
+        /// <summary>
         /// Global "Queue Paused / Running" toggle — a per-instance, in-memory
         /// switch, separate from any individual build's own Stop. While paused,
         /// TickAsync still REAPS builds that finish (so completions/slot-frees

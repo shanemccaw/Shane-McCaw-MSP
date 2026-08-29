@@ -1665,54 +1665,63 @@ async function effectiveBlockedByNumbers(
 }
 
 /**
- * Git #800/#824 — Shane: "when a build is done, and its blocking something
- * else, the build under it should just go... I will clean Git after."
- * Closing the real GitHub issue is a manual step he's slow to get to, and
- * requiring it would stall the whole queue behind his own cleanup backlog.
- * The queue's own confirmed completion (a `done` row for that same
- * githubNumber, real exit code 0) is a genuine, automatic, no-manual-step
- * signal that the work actually happened — checked FIRST, before ever
- * asking GitHub. GitHub's real closed/complete state still clears it too,
- * for a blocker that was never run through this queue at all.
+ * Git #1600 — REMOVED here: isBlockerCleared/areBlockersCleared used to decide a
+ * blocker was "cleared" from the local queue's own confirmed completion (a `done`
+ * row for that githubNumber, real exit code 0) — checked FIRST, before ever asking
+ * GitHub, on the theory that a session exiting 0 was itself good enough and Shane's
+ * own issue-closing was "an unrelated, purely-cosmetic archival gate."
  *
- * Git #824 fix — Shane: "this time it looks like its running them out of
- * order" (#805/#806/#807/#808/#809 all showing running simultaneously).
- * This used to check whether ANY row for blockerNum had EVER succeeded,
- * so an old historical success permanently satisfied the check even while
- * a brand-new retry of that same issue (#823's upsert model — one row per
- * issue, reused across retries) was still in progress, letting dependents
- * jump the queue. Now checks the MOST RECENT row for that number only —
- * "is the blocker's current attempt done", not "did it ever succeed."
+ * That is precisely how #1483 started while its real blocker #1482 was still open,
+ * unverified, and mid-deploy to the same container app: #1482's session had exited
+ * 0 (a local "done"/"verifying" row) but its real GitHub issue was still open. A
+ * session exiting is not the work being verified. A commit landing on main is not
+ * the issue closing. Only a closed GitHub issue releases a dependent — no exception
+ * for a local "done" row, no exception for "verifying", no exception for a cleanly
+ * exited session. The live replacement (isIssueOpenLive, used inline below) queries
+ * GitHub directly for each blocker's real current state and fails closed (holds)
+ * if GitHub can't be reached — see its own doc comment.
  */
-async function isBlockerCleared(blockerNum: number): Promise<boolean> {
-  const [latestRow] = await db
-    .select({ status: btBuildQueueTable.status, exitCode: btBuildQueueTable.exitCode })
-    .from(btBuildQueueTable)
-    .where(eq(btBuildQueueTable.githubNumber, blockerNum))
-    .orderBy(desc(btBuildQueueTable.createdAt))
-    .limit(1);
-  if (latestRow) return latestRow.status === "done" && latestRow.exitCode === 0;
-  // 2026-08-14 (Shane: "Something still made 139 calls in 13 minutes") — this
-  // was the bigger of two automatic GitHub leaks found in this file (the
-  // other was effectiveBlockedByNumbers, see its own comment). This function
-  // is called by GET /extension/queue/next, which QueueWatcherService's
-  // background watcher polls every 10s continuously (not gated to any window
-  // being open) — a blocker with no matching local queue row fell through to
-  // a live `ghFetchIssue` call, every 10s, for as long as it stayed
-  // unresolved. Now: no local row = "not yet determined, keep waiting"
-  // instead of asking GitHub live. A blocker closed OUTSIDE the queue system
-  // (e.g. closed directly on GitHub, never run through here) no longer
-  // auto-clears its dependents — use the queue's own manual force-claim
-  // (POST .../queue/:id/force-claim) for that case instead, which is a real
-  // user click, not a poll.
-  return false;
+
+/**
+ * Git #1600 — the real, current state of one issue on GitHub, queried live at
+ * dispatch time. Returns `true` (open), `false` (closed), or `null` when GitHub
+ * couldn't be reached — a caller MUST treat `null` as "hold, don't release" (fail
+ * closed), never as either open or closed. Same 5s AbortController timeout as
+ * fetchRealBlockedByNumbers, same reasoning: this only ever runs for the (typically
+ * few) blocker numbers actually declared by currently-queued items, not a poll over
+ * every row, so it doesn't reopen the #899/2026-08-14 continuous-GitHub-traffic leak
+ * that gated the rest of this file's live fetches behind allowLiveFetch.
+ */
+async function isIssueOpenLive(issueNumber: number): Promise<boolean | null> {
+  if (!process.env.GITHUB_TOKEN) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    try {
+      const res = await ghFetch(
+        `/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/issues/${issueNumber}`,
+        { signal: controller.signal },
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as { state?: string };
+      return data.state !== "closed";
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return null;
+  }
 }
 
-/** Git #813 — every blocker in the list must clear, not just one. */
-async function areBlockersCleared(blockerNums: number[]): Promise<boolean> {
+/**
+ * Git #1600 — every blocker in the list must be confirmed CLOSED, live, right now.
+ * Returns `false` (hold) the moment any blocker comes back open OR unreachable —
+ * fail closed, no partial credit.
+ */
+async function areBlockersClearedLive(blockerNums: number[]): Promise<boolean> {
   if (blockerNums.length === 0) return true;
-  const results = await Promise.all(blockerNums.map(isBlockerCleared));
-  return results.every(Boolean);
+  const states = await Promise.all(blockerNums.map(isIssueOpenLive));
+  return states.every((open) => open === false);
 }
 
 /**
@@ -1761,14 +1770,14 @@ router.get("/admin/build-tracker/extension/queue", ingestAuth, async (req: Reque
 /**
  * GET /admin/build-tracker/extension/queue/next?limit=N
  *
- * The watcher's own poll — claims up to `limit` ready rows (status=queued,
- * and either no blocker or a blocker that's actually closed/complete on
- * GitHub for real, not just locally assumed) and marks them `running`
- * atomically (the UPDATE's own `WHERE status = 'queued'` guards against a
- * double-claim if this ever polls faster than a previous claim lands).
- * `limit` is the watcher's own free-slot count (its configured max
- * concurrent minus however many it's already running) — this route has no
- * concurrency opinion of its own, the watcher owns that entirely.
+ * The watcher's own poll — claims up to `limit` ready rows (status=queued, and
+ * either no blocker or every blocker confirmed CLOSED on GitHub live, right now —
+ * Git #1600, see areBlockersClearedLive) and marks them `running` atomically (the
+ * UPDATE's own `WHERE status = 'queued'` guards against a double-claim if this
+ * ever polls faster than a previous claim lands). `limit` is the watcher's own
+ * free-slot count (its configured max concurrent minus however many it's already
+ * running) — this route has no concurrency opinion of its own, the watcher owns
+ * that entirely.
  */
 router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: Request, res: Response) => {
   const limit = Math.max(0, Math.min(20, parseInt(String(req.query.limit ?? "1"), 10) || 0));
@@ -1807,7 +1816,15 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
       }
       const blockerNums = await effectiveBlockedByNumbers(item, false);
       if (blockerNums.length === 0) { ready.push(item); continue; }
-      if (await areBlockersCleared(blockerNums)) ready.push(item);
+      // Git #1600 — live GitHub re-check, no exceptions. A local "done"/"verifying"
+      // row, a cleanly-exited session, or commits already on main are never enough;
+      // only a blocker GitHub itself reports closed releases this item. Unreachable
+      // GitHub holds too (fail closed) — never falls through to "ready" on a null.
+      if (await areBlockersClearedLive(blockerNums)) {
+        ready.push(item);
+      } else {
+        log.info({ itemId: item.id, githubNumber: item.githubNumber, blockerNums }, "queue/next: held — blocker(s) still open or GitHub unreachable (Git #1600, fail closed)");
+      }
     }
     if (ready.length === 0) { res.json({ items: [] }); return; }
 

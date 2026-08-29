@@ -2058,7 +2058,7 @@ namespace BuildConsole.Controls
             {
                 mainStack.Children.Add(new TextBlock
                 {
-                    Text = $"waiting on {string.Join(", ", node.BlockedBy.Select(FormatIssueRef))}",
+                    Text = BuildWaitingOnText(node, item),
                     FontSize = 10,
                     FontStyle = FontStyles.Italic,
                     Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
@@ -2127,10 +2127,31 @@ namespace BuildConsole.Controls
                 Task = node.Item.Title,
                 Status = node.Item.Status,
                 StatusDetails = node.BlockedBy.Count > 0
-                    ? $"Waiting on {string.Join(", ", node.BlockedBy.Select(FormatIssueRef))}"
+                    ? CapitalizeFirst(BuildWaitingOnText(node, node.Item))
                     : "",
             });
         }
+
+        /// <summary>
+        /// Git #1600 — "Surface the hold reason in the queue UI: 'waiting on #NNNN
+        /// (open)'. A held build must not look Ready or sit silently." Prefers the
+        /// watcher's own real, current live-GitHub reason (set by
+        /// BuildQueuePostgresClient.GetNextAsync's Step 2 every tick) so the badge
+        /// reflects what the dispatch gate actually just decided, not a guess. Falls
+        /// back to the plain declared-blocker list (no "(open)"/reachability detail)
+        /// when the watcher hasn't evaluated this item yet this pass (e.g. no free
+        /// slot that tick) or is running the HTTP-fallback path, which doesn't surface
+        /// a reason back to this client.
+        /// </summary>
+        private string BuildWaitingOnText(QueueGraphNode node, QueueItem? item)
+        {
+            if (item != null && (_watcher?.HeldBlockerReasons.TryGetValue(item.Id, out var reason) ?? false))
+                return reason;
+            return $"waiting on {string.Join(", ", node.BlockedBy.Select(FormatIssueRef))}";
+        }
+
+        private static string CapitalizeFirst(string s) =>
+            string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
 
         private ContextMenu BuildCardContextMenu(QueueItem item)
         {

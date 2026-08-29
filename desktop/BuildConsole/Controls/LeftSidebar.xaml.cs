@@ -241,6 +241,12 @@ namespace BuildConsole.Controls
         public event EventHandler<(string ConversationId, int EpicId)>? ChatEpicAssigned;
         /// <summary>Shane, 2026-08-28: "when a build is in Verifying state and then the Git issue behind it is closed, it should change to closed and hide." Fired after PopulateGitTrackerBoard's fresh open-issue fetch promotes one or more Verifying queue rows to Done (their real GitHub issue closed) — MainWindow re-fetches the Build Queue panel so the promoted item disappears from the Active view immediately instead of waiting for its own next poll.</summary>
         public event EventHandler? VerifyingIssuesPromoted;
+        /// <summary>Git #1600 — fired at the end of every successful PopulateGitTrackerBoard
+        /// fetch (not just when something got promoted). MainWindow uses this to kick an
+        /// immediate QueueWatcherService re-check so a queue item HELD on a GitHub blocker
+        /// releases right when Shane refreshes the board, instead of waiting up to 10s for
+        /// the watcher's own next timer tick.</summary>
+        public event EventHandler? BoardRefreshCompleted;
         public event EventHandler<bool>? PinToggled;
         /// <summary>Git #954 (Epic #803) — raised when the user clicks a category in the sidebar's Settings nav list; MainWindow opens (or focuses) the native Settings tab scrolled to that section. The string is the category key (General / Credentials / TestEnvironment / ChatIntegration / WebTools / ReplitWatcher).</summary>
         public event EventHandler<string>? SettingsCategoryRequested;
@@ -1577,6 +1583,14 @@ namespace BuildConsole.Controls
                     ActivityLog.Log("git-board.data", $"Verifying→Done promotion FAILED (will retry next refresh): {ex.Message}");
                 }
             }
+
+            // Git #1600 — this fetch just proved GitHub is reachable and got a fresh
+            // look at it; that's exactly the moment to kick an immediate re-check of
+            // any queue item currently HELD on a blocker, so a build releases right
+            // away once its real blocker closes instead of waiting out the watcher's
+            // own poll interval. Fired on every successful fetch, not just when a
+            // Verifying item got promoted above.
+            BoardRefreshCompleted?.Invoke(this, EventArgs.Empty);
 
             _boardShowsClosed = false;
 

@@ -43,14 +43,18 @@ namespace BuildConsole.Services
     ///     server resolves; the direct Postgres reads here only support the watcher's
     ///     claim loop and completion reporting.
     ///
-    /// ── Blocker check ────────────────────────────────────────────────────────────
-    /// The claim logic (GetNextAsync) replicates the server's own isBlockerCleared /
-    /// areBlockersCleared logic entirely in-DB:
-    ///   "A blocker is cleared if the most recent bt_build_queue row for that
-    ///    githubNumber has status='done' AND exit_code=0."
-    /// No GitHub API calls are made from here (matching the server's own 2026-08-14
-    /// stance: "no local row = keep waiting"; a closed-on-GitHub-but-never-queued
-    /// blocker still requires a manual force-claim to bypass).
+    /// ── Blocker check (Git #1600) ────────────────────────────────────────────────
+    /// #1483 started while its real GitHub blocker (#1482) was still open — the local
+    /// queue-row state (a "done"/"verifying" row, itself set by nothing more than the
+    /// session exiting 0) had been trusted as if it meant the same thing as the real
+    /// GitHub issue closing. It never does: a session exiting is not the work being
+    /// verified, and a commit landing on main is not the issue closing. The claim
+    /// logic (GetNextAsync) now re-queries GitHub LIVE for every blocker number any
+    /// queued candidate declares, right before claiming — no exceptions for a "done"
+    /// local row, a "verifying" row, a cleanly-exited session, or commits already on
+    /// main. Only a blocker issue GitHub itself reports closed releases a dependent.
+    /// If GitHub can't be reached, every blocked candidate is held (fail closed) —
+    /// see GetNextAsync's Step 2.
     /// </summary>
     public class BuildQueuePostgresClient
     {
@@ -215,19 +219,32 @@ namespace BuildConsole.Services
             return items;
         }
 
+        /// <summary>
+        /// Git #1600 — the reason a currently-queued item is being held, keyed by its
+        /// queue row id. Recomputed on every <see cref="GetNextAsync"/> call (i.e. every
+        /// watcher tick that has a free slot) so BuildQueuePanel can show a real,
+        /// current "waiting on #NNNN (open)" instead of guessing from stale local
+        /// columns. An id with no entry here either has no blocker or was never
+        /// evaluated this pass (e.g. no free slot that tick — see TickAsync).
+        /// </summary>
+        public IReadOnlyDictionary<int, string> LastHeldReasons { get; private set; } = new Dictionary<int, string>();
+
         // ── GetNextAsync ──────────────────────────────────────────────────────────
         /// <summary>
         /// Atomically claims up to <paramref name="limit"/> ready rows:
         ///   • status = 'queued'
-        ///   • all blockers are cleared (most-recent bt_build_queue row for each
-        ///     blocked_by number has status='done' AND exit_code=0)
+        ///   • every declared blocker is confirmed CLOSED on GitHub right now (Git
+        ///     #1600 — a live re-query, not the local queue row's own status/exit_code;
+        ///     see the class doc comment and Step 2 below)
         /// Marks claimed rows status='running', claimed_at=NOW(), updated_at=NOW()
         /// in the same transaction so a double-poll can never double-claim.
-        ///
-        /// Replicates the server's GET /extension/queue/next logic verbatim,
-        /// minus the GitHub API fallback (see class doc comment).
         /// </summary>
-        public async Task<List<QueueItem>> GetNextAsync(int limit)
+        /// <param name="liveOpenIssuesFetcher">Test seam — defaults to a real
+        /// `gh issue list --state open` call (GitHubIssuesService). Overridden by
+        /// tests to simulate GitHub open/closed/unreachable without a real network
+        /// call or a real queued build actually launching.</param>
+        public async Task<List<QueueItem>> GetNextAsync(
+            int limit, Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null)
         {
             if (limit <= 0) return new List<QueueItem>();
             limit = Math.Min(limit, 20); // same cap as the server
@@ -256,15 +273,44 @@ namespace BuildConsole.Services
                 }
             }
 
-            // Step 2 — filter to items whose blockers are all cleared.
+            // Step 2 — filter to items whose blockers are all confirmed closed on
+            // GitHub, live, right now (Git #1600 — no exceptions for local queue-row
+            // state). One live query covers every candidate this pass: gather the
+            // full set of distinct blocker numbers across ALL candidates first, fetch
+            // GitHub's real open-issue set ONCE, then decide each candidate from that
+            // single snapshot — a blocked queue of N items costs one `gh` call per
+            // tick, not N.
+            var heldReasons = new Dictionary<int, string>();
             var ready = new List<int>(); // ids to claim
+            var distinctBlockerNums = candidates.SelectMany(EffectiveBlockers).Distinct().ToList();
+            LiveOpenIssuesResult? live = null;
+            if (distinctBlockerNums.Count > 0)
+            {
+                live = await (liveOpenIssuesFetcher != null ? liveOpenIssuesFetcher() : GitHubIssuesService.TryGetOpenIssueNumbersAsync());
+                if (!live.Success)
+                {
+                    ActivityLog.Log("watcher", $"Git #1600: couldn't reach GitHub to re-check blocker(s) ({live.Error}) — holding every blocked candidate this tick (fail closed).");
+                }
+            }
             foreach (var item in candidates)
             {
                 if (ready.Count >= limit) break;
                 var blockers = EffectiveBlockers(item);
-                if (blockers.Count == 0 || await AreBlockersClearedAsync(conn, blockers))
-                    ready.Add(item.Id);
+                if (blockers.Count == 0) { ready.Add(item.Id); continue; }
+
+                if (live == null || !live.Success)
+                {
+                    heldReasons[item.Id] = live == null
+                        ? "internal error — blockers not evaluated"
+                        : $"GitHub unreachable ({live.Error}) — holding until it can be re-checked";
+                    continue;
+                }
+
+                var stillOpen = blockers.Where(b => live.OpenNumbers.Contains(b)).ToList();
+                if (stillOpen.Count == 0) { ready.Add(item.Id); continue; }
+                heldReasons[item.Id] = $"waiting on {string.Join(", ", stillOpen.Select(b => $"#{b}"))} (open)";
             }
+            LastHeldReasons = heldReasons;
 
             if (ready.Count == 0) return new List<QueueItem>();
 
@@ -832,39 +878,15 @@ namespace BuildConsole.Services
             return conn;
         }
 
-        /// <summary>
-        /// Returns true if every number in <paramref name="blockerNums"/> is cleared:
-        /// most-recent bt_build_queue row for that githubNumber has status='done' OR
-        /// status='verifying' (Git #1469 — the session itself genuinely finished; a
-        /// dependent build shouldn't sit blocked just because Shane hasn't closed the
-        /// real GitHub issue yet, that's an unrelated, purely-cosmetic archival gate)
-        /// AND exit_code=0.  No GitHub calls — matches the server's 2026-08-14 stance.
-        /// </summary>
-        private static async Task<bool> AreBlockersClearedAsync(NpgsqlConnection conn, List<int> blockerNums)
-        {
-            foreach (var num in blockerNums)
-            {
-                if (!await IsBlockerClearedAsync(conn, num)) return false;
-            }
-            return true;
-        }
-
-        private static async Task<bool> IsBlockerClearedAsync(NpgsqlConnection conn, int blockerNum)
-        {
-            // Most-recent row for this githubNumber — "is its current attempt done?"
-            await using var cmd = new NpgsqlCommand(@"
-                SELECT status, exit_code
-                FROM bt_build_queue
-                WHERE github_number = @num
-                ORDER BY created_at DESC
-                LIMIT 1", conn);
-            cmd.Parameters.AddWithValue("@num", blockerNum);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync()) return false; // no local row = keep waiting
-            var status   = reader.IsDBNull(0) ? "" : reader.GetString(0);
-            var exitCode = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
-            return (status == "done" || status == VerifyingStatus) && exitCode == 0;
-        }
+        // Git #1600 — REMOVED here: AreBlockersClearedAsync/IsBlockerClearedAsync used
+        // to decide a blocker was "cleared" from the most-recent local bt_build_queue
+        // row's own status/exit_code (status='done' or 'verifying' AND exit_code=0),
+        // with no GitHub call at all. That is precisely how #1483 started while #1482
+        // was still open — a session exiting 0 is not the same as its real GitHub
+        // issue closing, and local queue state is not authoritative. The live
+        // replacement lives inline in GetNextAsync's Step 2 (one
+        // `gh issue list --state open` snapshot per tick, fail-closed on an
+        // unreachable GitHub) — see the class doc comment.
 
         /// <summary>
         /// Replicates the server's effectiveBlockedByNumbers: prefers blockedByNumbers

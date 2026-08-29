@@ -523,6 +523,14 @@ namespace BuildConsole
             // away instead of waiting for the panel's own next poll.
             LeftSidebar.VerifyingIssuesPromoted += async (s, e) => await BuildQueuePanel.RefreshAsync();
 
+            // Git #1600 — a build must not start while its GitHub blocker is still
+            // open, checked live at dispatch time (see BuildQueuePostgresClient.
+            // GetNextAsync). This is the other half: once a blocker DOES close, don't
+            // make a held build wait out the watcher's own 10s poll — the Git Board
+            // refresh above just proved GitHub is reachable, so kick an immediate
+            // re-check right now.
+            LeftSidebar.BoardRefreshCompleted += (s, e) => _queueWatcher?.RequestImmediateReevaluation();
+
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
             // build happening right there in that chats tab." Each chat gets

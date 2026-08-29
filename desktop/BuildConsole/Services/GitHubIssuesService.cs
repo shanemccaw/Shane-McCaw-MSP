@@ -26,6 +26,23 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
+    /// Git #1600 — result of a live "which issues are currently open" query, with an
+    /// explicit Success flag so a dispatch gate can fail closed on an unreachable
+    /// GitHub instead of silently treating "couldn't check" the same as "nothing is
+    /// open" (see TryGetOpenIssueNumbersAsync's own doc comment for why that
+    /// distinction is load-bearing here).
+    /// </summary>
+    public class LiveOpenIssuesResult
+    {
+        public bool Success { get; init; }
+        public HashSet<int> OpenNumbers { get; init; } = new();
+        public string? Error { get; init; }
+
+        public static LiveOpenIssuesResult Ok(HashSet<int> openNumbers) => new() { Success = true, OpenNumbers = openNumbers };
+        public static LiveOpenIssuesResult Failure(string error) => new() { Success = false, Error = error };
+    }
+
+    /// <summary>
     /// Git #848 — Shane: "why can't the WPF just connect directly to Git to
     /// get this stuff... no real reason for it to go through my server
     /// anymore... 834 is already making a live Git connection for the Git
@@ -106,8 +123,28 @@ namespace BuildConsole.Services
         /// BuildQueuePanel Completed tile cross-references this against
         /// done queue rows to know which finished builds still have their
         /// real GitHub issue open, i.e. still need Shane's review/close.
+        ///
+        /// Kept as a thin wrapper over <see cref="TryGetOpenIssueNumbersAsync"/> for
+        /// existing callers that only ever wanted a set (and already treated a
+        /// failure the same as "no open issues") — a real caller that needs to
+        /// tell failure apart from a genuinely-empty result (Git #1600's dispatch
+        /// gate) uses TryGetOpenIssueNumbersAsync directly instead.
         /// </summary>
         public static async Task<HashSet<int>> GetOpenIssueNumbersAsync(int limit = 500)
+        {
+            var result = await TryGetOpenIssueNumbersAsync(limit);
+            return result.OpenNumbers;
+        }
+
+        /// <summary>
+        /// Git #1600 — the dispatch-time blocker gate needs to tell "GitHub says
+        /// nothing is open" apart from "couldn't reach GitHub at all", because the
+        /// two demand opposite decisions (release vs. fail-closed hold). The older
+        /// <see cref="GetOpenIssueNumbersAsync"/> collapsed both cases to an empty
+        /// set, which is exactly wrong for a build-dispatch gate — an unreachable
+        /// `gh` CLI must never look identical to "every issue is closed, go ahead."
+        /// </summary>
+        public static async Task<LiveOpenIssuesResult> TryGetOpenIssueNumbersAsync(int limit = 500)
         {
             var psi = new ProcessStartInfo
             {
@@ -136,7 +173,7 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log("github", $"Couldn't start gh CLI (is it installed/on PATH?): {ex.Message}");
-                return new HashSet<int>();
+                return LiveOpenIssuesResult.Failure($"couldn't start gh CLI: {ex.Message}");
             }
             string stdout = await proc.StandardOutput.ReadToEndAsync();
             string stderr = await proc.StandardError.ReadToEndAsync();
@@ -144,19 +181,19 @@ namespace BuildConsole.Services
             if (proc.ExitCode != 0)
             {
                 ActivityLog.Log("github", $"gh issue list (open numbers) failed (exit {proc.ExitCode}): {stderr.Trim()}");
-                return new HashSet<int>();
+                return LiveOpenIssuesResult.Failure($"gh issue list exited {proc.ExitCode}: {stderr.Trim()}");
             }
 
             try
             {
                 var rows = System.Text.Json.JsonSerializer.Deserialize<List<OpenIssueNumberRow>>(
                     stdout, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-                return rows == null ? new HashSet<int>() : new HashSet<int>(rows.Select(r => r.Number));
+                return LiveOpenIssuesResult.Ok(rows == null ? new HashSet<int>() : new HashSet<int>(rows.Select(r => r.Number)));
             }
             catch (Exception ex)
             {
                 ActivityLog.Log("github", $"Couldn't parse gh issue list (open numbers) output: {ex.Message}");
-                return new HashSet<int>();
+                return LiveOpenIssuesResult.Failure($"couldn't parse gh output: {ex.Message}");
             }
         }
 
