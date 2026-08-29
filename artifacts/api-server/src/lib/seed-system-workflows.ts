@@ -2429,6 +2429,44 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── M365 Roadmap Sync (#1530, part of #1494) ────────────────────────────────
+  {
+    name: "__system__: M365 Roadmap Sync",
+    description:
+      "Runs nightly (02:00 UTC). Fetches the PUBLIC, unauthenticated Microsoft 365 Roadmap v1 feed " +
+      "(https://www.microsoft.com/releasecommunications/api/v1/m365) — 1,000+ items in a single request — " +
+      "and upserts each roadmap feature into m365_roadmap_items keyed by the Microsoft feature ID (the " +
+      "cross-source join key Message Center posts carry). Persists each item's cloud instances (Worldwide / " +
+      "GCC / GCC High / DoD) so the standing gov/GCC exclusion (#1537) is enforced from real data. Degrades " +
+      "honestly: Microsoft relocated this endpoint once already (15 Mar 2025), so on a failed/relocated/" +
+      "shape-changed fetch the sync records the failure in m365_roadmap_sync_state without wiping items or " +
+      "advancing last_success_at — stale roadmap data is never presented as current, and fixture content is " +
+      "never substituted. A single request per night (deliberately low-frequency against an unauthenticated " +
+      "public endpoint); v2 OData targeted queries are a separate, bounded path on the same node (mode:'v2').",
+    triggerType: "schedule",
+    cron: "0 2 * * *",
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Nightly 02:00 UTC" } },
+        {
+          id: "sync",
+          type: "m365_roadmap_sync",
+          position: { x: 100, y: 200 },
+          data: {
+            nodeType: "m365_roadmap_sync",
+            label: "Sync M365 Roadmap (v1 full snapshot)",
+            mode: "v1",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 300 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "sync" },
+        { id: "e2", source: "sync", target: "end" },
+      ],
+    },
+  },
   // ── Zoho Queue Drain (Zoho Integration Foundation, #82) ─────────────────────
   {
     name: "Zoho Queue Drain",

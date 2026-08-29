@@ -2364,6 +2364,82 @@ export const m365ServiceHealthSamplesTable = pgTable("m365_service_health_sample
 export type M365ServiceHealthSample = typeof m365ServiceHealthSamplesTable.$inferSelect;
 export type InsertM365ServiceHealthSample = typeof m365ServiceHealthSamplesTable.$inferInsert;
 
+// ── M365 Roadmap items (#1530, part of #1494) ────────────────────────────────────
+// One row per Microsoft 365 Roadmap feature, populated from the PUBLIC,
+// unauthenticated release-communications API — not Graph, no consent, no tenant
+// scoping. The roadmap is a GLOBAL feed (what Microsoft *intends*, published
+// months ahead), so this table is deliberately not tenant/msp-scoped the way
+// msp_message_center_items is. The bridge to a specific tenant's estate (the
+// per-tenant "how many objects does this touch" resolution layer) is a separate
+// concern joined later on featureId — the roadmap feature ID that Message Center
+// posts routinely carry (#1494's stated join key).
+//
+// cloudInstances is the source of truth for the standing gov/GCC exclusion
+// (#1537): every roadmap item carries its cloud instances (e.g. "Worldwide
+// (Standard Multi-Tenant)", "GCC", "GCC High", "DoD"). In v1 this arrives as
+// tagsContainer.cloudInstances[].tagName; the equivalent v2 OData shape is the
+// `availabilities` complex type. Stored as a jsonb string[] (a GIN index for
+// containment filtering is added in the manual migration, not here) so exclusion
+// is enforced from real data rather than an assumption.
+
+export const m365RoadmapItemsTable = pgTable("m365_roadmap_items", {
+  id: serial("id").primaryKey(),
+  featureId: text("feature_id").notNull(), // Microsoft roadmap feature ID — the cross-source join key to Message Center posts
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status"), // "In development" | "Rolling out" | "Launched" (Microsoft's publicRoadmapStatus text)
+  moreInfoLink: text("more_info_link"),
+  products: jsonb("products").$type<string[]>().notNull().default([]),
+  releasePhases: jsonb("release_phases").$type<string[]>().notNull().default([]),
+  platforms: jsonb("platforms").$type<string[]>().notNull().default([]),
+  cloudInstances: jsonb("cloud_instances").$type<string[]>().notNull().default([]), // #1537 gov/GCC exclusion source of truth
+  tags: jsonb("tags").$type<string[]>().notNull().default([]),
+  publicDisclosureAvailabilityDate: text("public_disclosure_availability_date"), // often a coarse string ("September CY2024"), not a parseable date — kept verbatim
+  msCreated: timestamp("ms_created", { withTimezone: true }), // Microsoft's own created timestamp
+  msModified: timestamp("ms_modified", { withTimezone: true }), // Microsoft's own modified timestamp — diffs genuinely-changed items
+  source: text("source").notNull(), // "v1" | "v2" — which feed last wrote this row
+  raw: jsonb("raw"), // full raw item, retained for the later re-interpretation/resolution layer (#1494)
+  firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("m365_roadmap_items_feature_id_idx").on(t.featureId),
+  index("m365_roadmap_items_status_idx").on(t.status),
+  index("m365_roadmap_items_ms_modified_idx").on(t.msModified),
+]);
+
+export type M365RoadmapItem = typeof m365RoadmapItemsTable.$inferSelect;
+export type InsertM365RoadmapItem = typeof m365RoadmapItemsTable.$inferInsert;
+
+// ── M365 Roadmap sync state (#1530) ──────────────────────────────────────────────
+// One row per source feed ("v1"/"v2"), recording the last attempt/success of the
+// roadmap sync. This is the schema backing for the HONEST-DEGRADE requirement:
+// Microsoft has already relocated this endpoint once (15 Mar 2025), so the sync
+// must never present stale roadmap data as current. On a failed/relocated fetch
+// the sync updates lastAttemptAt + lastStatus='error' + lastError but LEAVES the
+// items untouched and does NOT advance lastSuccessAt — a reader compares
+// lastSuccessAt against now to decide whether to serve the data as fresh, surface
+// a staleness banner, or fall back to an honest "roadmap not collected" state
+// (never fixture content).
+
+export const m365RoadmapSyncStateTable = pgTable("m365_roadmap_sync_state", {
+  id: serial("id").primaryKey(),
+  source: text("source").notNull(), // "v1" | "v2"
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
+  lastStatus: text("last_status").notNull().default("never"), // "never" | "ok" | "error"
+  lastError: text("last_error"),
+  lastItemCount: integer("last_item_count").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("m365_roadmap_sync_state_source_idx").on(t.source),
+]);
+
+export type M365RoadmapSyncState = typeof m365RoadmapSyncStateTable.$inferSelect;
+export type InsertM365RoadmapSyncState = typeof m365RoadmapSyncStateTable.$inferInsert;
+
 // ── Report Definitions ─────────────────────────────────────────────────────────
 // MSP-authored templates that describe what to generate, for whom, and how to
 // deliver it. One definition can be triggered many times (→ report_runs rows).

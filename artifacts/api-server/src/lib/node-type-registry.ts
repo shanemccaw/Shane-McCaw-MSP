@@ -762,6 +762,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Hourly M365 service health sample for SLA uptime tracking — no AI",
   },
   {
+    nodeType: "m365_roadmap_sync",
+    isAIDependent: false,
+    description: "Ingests the public M365 Roadmap (v1 nightly snapshot / v2 targeted) into m365_roadmap_items — no AI",
+  },
+  {
     nodeType: "platform_log_stream_prune",
     isAIDependent: false,
     description: "Deletes platform_log_stream rows older than the retention window — no AI",

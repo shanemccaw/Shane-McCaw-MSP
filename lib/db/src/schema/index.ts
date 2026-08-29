@@ -2907,6 +2907,8 @@ export interface WfNode {
     | "msp_score_snapshot"
     // M365 Third-Party SLA Tracking
     | "m365_health_sample"
+    // M365 Roadmap ingestion (#1530)
+    | "m365_roadmap_sync"
     // Telemetry Retention
     | "platform_log_stream_prune"
     // Zoho Integration — queue drain (Foundation, #82)

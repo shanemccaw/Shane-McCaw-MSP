@@ -96,6 +96,7 @@ import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
 import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
 import { handleMspScoreSnapshot } from "./msp-engine.js";
 import { handleM365HealthSample } from "./m365-health-sample.js";
+import { handleM365RoadmapSync } from "./m365-roadmap-sync.js";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
 import { handleZohoBatchDrain } from "./zoho-batch-drain.js";
 import { executeZohoCrmNode } from "./zoho-crm.js";
@@ -6389,6 +6390,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // Promoted node type: hourly M365 Third-Party SLA sampling — persists
         // per-service health-overview rows so sla-uptime.ts has real history.
         output = await handleM365HealthSample(node.data as Record<string, unknown>);
+        break;
+      }
+
+      case "m365_roadmap_sync": {
+        // Promoted node type: ingests the public, unauthenticated M365 Roadmap
+        // (#1530) into m365_roadmap_items. Defaults to the v1 nightly full
+        // snapshot; degrades honestly (never serves stale data as current).
+        output = await handleM365RoadmapSync(node.data as Record<string, unknown>);
         break;
       }
 
