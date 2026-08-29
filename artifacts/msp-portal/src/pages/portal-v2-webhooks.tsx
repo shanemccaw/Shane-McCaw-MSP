@@ -11,15 +11,33 @@
  *
  * ── UI-only, expand/collapse is real ────────────────────────────────────────
  * Row expansion, the docs disclosure and the per-endpoint "test event sent"
- * confirmation are the design's own local state and are wired. The mutating
- * buttons (rotate secret, edit, delete, replay) render verbatim but are inert;
- * wiring delivery is a later pass.
+ * confirmation are the design's own local state and are wired.
+ *
+ * ── Rotate / Edit / Delete are wired (Git #1605) ────────────────────────────
+ * Rotate secret, Edit endpoint, Edit subscription and Delete now call their
+ * real, already-live backend routes (`webhooks.ts` — rotate-secret, PATCH,
+ * DELETE; see `docs/webhooks-contract-pack.md` §2), each behind a real
+ * confirmation naming the actual consequence (no grace period on rotate; the
+ * delivery-history cascade on delete) and surfacing that route's own error
+ * shape on failure — see `RotateSecretPanel.tsx` / `DeleteWebhookPanel.tsx` /
+ * `webhooksMutations.ts`. They're disabled whenever the page is showing the
+ * design fixture (`dataState !== "live"`) rather than a real fetched row, so a
+ * click can never target a fixture id that doesn't exist server-side.
+ * Reveal and Replay remain inert — both are real, documented backend gaps
+ * (no reveal-after-creation endpoint; no replay endpoint at all), not a
+ * wiring gap in this page. Pause/Resume is also left inert: it is the same
+ * PATCH `isActive` this pass already wires for Edit endpoint, but toggling it
+ * from its own dedicated button was not in #1605's scope.
  */
 
 import { useState } from "react";
 import { Link } from "wouter";
 
 import { PortalV2Shell, SIDEBAR_WASH } from "@/components/portal-v2/PortalV2Shell";
+import { useFormDrawer } from "@/components/portal-v2/FormDrawer";
+import { RotateSecretPanel, type RotateSecretSpec } from "@/components/portal-v2/RotateSecretPanel";
+import { DeleteWebhookPanel, type DeleteWebhookSpec } from "@/components/portal-v2/DeleteWebhookPanel";
+import { useWebhookMutations } from "@/components/portal-v2/webhooksMutations";
 import {
   WH_CATALOGUE_HEADERS,
   WH_CATALOGUE_KICKER,
@@ -72,6 +90,7 @@ import {
   liveEventCatalogue,
   liveHasFailing,
   liveReplayLabel,
+  type LiveEndpoint,
 } from "@/components/portal-v2/webhooksWire";
 
 const MONO = "'SF Mono',Menlo,Consolas,monospace";
@@ -94,7 +113,19 @@ function Chevron({ deg, size = 13 }: { deg: number; size?: number }) {
   );
 }
 
-function InlineBtn({ children, tone = "muted" }: { children: React.ReactNode; tone?: "muted" | "gold" | "blue" | "red" }) {
+function InlineBtn({
+  children,
+  tone = "muted",
+  onClick,
+  disabled,
+  testId,
+}: {
+  children: React.ReactNode;
+  tone?: "muted" | "gold" | "blue" | "red";
+  onClick?: () => void;
+  disabled?: boolean;
+  testId?: string;
+}) {
   const map = {
     muted: { border: "rgba(148,163,184,.22)", bg: "transparent", color: "#94a3b8" },
     gold: { border: "rgba(194,166,61,.35)", bg: "rgba(194,166,61,.08)", color: "#c2a63d" },
@@ -102,7 +133,24 @@ function InlineBtn({ children, tone = "muted" }: { children: React.ReactNode; to
     red: { border: "rgba(248,113,113,.35)", bg: "transparent", color: "#f87171" },
   }[tone];
   return (
-    <button type="button" style={{ padding: "4px 10px", borderRadius: 5, border: `1px solid ${map.border}`, background: map.bg, fontSize: "10.5px", fontWeight: 600, color: map.color, cursor: "pointer", fontFamily: "inherit" }}>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      data-testid={testId}
+      style={{
+        padding: "4px 10px",
+        borderRadius: 5,
+        border: `1px solid ${map.border}`,
+        background: map.bg,
+        fontSize: "10.5px",
+        fontWeight: 600,
+        color: map.color,
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        fontFamily: "inherit",
+      }}
+    >
       {children}
     </button>
   );
@@ -119,6 +167,11 @@ function EndpointRow({
   onToggle,
   testShown,
   onTest,
+  isLive,
+  onRotate,
+  onEditEndpoint,
+  onEditSubscription,
+  onDelete,
 }: {
   w: Webhook;
   chips: readonly string[];
@@ -128,6 +181,12 @@ function EndpointRow({
   onToggle: () => void;
   testShown: boolean;
   onTest: () => void;
+  /** Mutations only target a real, live-fetched webhookId — never a fixture row. */
+  isLive: boolean;
+  onRotate: () => void;
+  onEditEndpoint: () => void;
+  onEditSubscription: () => void;
+  onDelete: () => void;
 }) {
   const meta = whStateMeta(w);
   const failing = w.state === "failing";
@@ -207,7 +266,13 @@ function EndpointRow({
                 ))}
               </div>
               <span style={{ alignSelf: "flex-start" }}>
-                <InlineBtn>{WH_EDIT_SUBSCRIPTION}</InlineBtn>
+                <InlineBtn
+                  onClick={onEditSubscription}
+                  disabled={!isLive}
+                  testId={`pv2-wh-edit-subscription-${w.id}`}
+                >
+                  {WH_EDIT_SUBSCRIPTION}
+                </InlineBtn>
               </span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
@@ -216,7 +281,9 @@ function EndpointRow({
               <span style={{ fontSize: "10.5px", color: "#64748b" }}>{w.rotated}</span>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 <InlineBtn>{WH_REVEAL}</InlineBtn>
-                <InlineBtn tone="gold">{WH_ROTATE}</InlineBtn>
+                <InlineBtn tone="gold" onClick={onRotate} disabled={!isLive} testId={`pv2-wh-rotate-${w.id}`}>
+                  {WH_ROTATE}
+                </InlineBtn>
               </div>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }}>
@@ -258,8 +325,24 @@ function EndpointRow({
               {WH_SEND_TEST}
             </button>
             <button type="button" style={{ marginTop: 10, padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(148,163,184,.22)", background: "transparent", fontSize: "11.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}>{whPauseLabel(w)}</button>
-            <button type="button" style={{ marginTop: 10, padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(148,163,184,.22)", background: "transparent", fontSize: "11.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}>{WH_EDIT_ENDPOINT}</button>
-            <button type="button" style={{ marginTop: 10, padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(248,113,113,.35)", background: "transparent", fontSize: "11.5px", fontWeight: 600, color: "#f87171", cursor: "pointer", fontFamily: "inherit" }}>{WH_DELETE}</button>
+            <button
+              type="button"
+              onClick={onEditEndpoint}
+              disabled={!isLive}
+              data-testid={`pv2-wh-edit-endpoint-${w.id}`}
+              style={{ marginTop: 10, padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(148,163,184,.22)", background: "transparent", fontSize: "11.5px", fontWeight: 600, color: "#94a3b8", cursor: isLive ? "pointer" : "not-allowed", opacity: isLive ? 1 : 0.5, fontFamily: "inherit" }}
+            >
+              {WH_EDIT_ENDPOINT}
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={!isLive}
+              data-testid={`pv2-wh-delete-${w.id}`}
+              style={{ marginTop: 10, padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(248,113,113,.35)", background: "transparent", fontSize: "11.5px", fontWeight: 600, color: "#f87171", cursor: isLive ? "pointer" : "not-allowed", opacity: isLive ? 1 : 0.5, fontFamily: "inherit" }}
+            >
+              {WH_DELETE}
+            </button>
           </div>
 
           {testShown && (
@@ -282,8 +365,94 @@ export default function PortalV2WebhooksPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [testFor, setTestFor] = useState<string | null>(null);
   const [docsOpen, setDocsOpen] = useState(false);
-  const { endpoints, dataState, loading } = useWebhooksLive();
+  const { endpoints, dataState, loading, refresh } = useWebhooksLive();
   const isLive = dataState === "live";
+
+  const { updateWebhook, deleteWebhook, rotateSecret } = useWebhookMutations();
+  const { openForm, formElement } = useFormDrawer();
+  const [rotateSpec, setRotateSpec] = useState<RotateSecretSpec | null>(null);
+  const [deleteSpec, setDeleteSpec] = useState<DeleteWebhookSpec | null>(null);
+  // Edit (both "Edit endpoint" and "Edit subscription") goes through
+  // FormDrawer's fire-and-flip-to-done pattern (same as every other form in
+  // the portal, see FormDrawer.tsx) — the write happens in the background and
+  // only a real failure surfaces here, echoing portal-v2-risk-register.tsx's
+  // `acceptError` banner for the same reason: FormDrawer's own "done" view is
+  // decided before the response comes back, so it can't show a real failure.
+  const [editError, setEditError] = useState<string | null>(null);
+
+  function openEditEndpoint(ep: LiveEndpoint) {
+    const isActive = ep.webhook.state !== "paused";
+    openForm({
+      kicker: "Edit endpoint",
+      title: `Edit ${ep.webhook.name}`,
+      intro: "Update the label, target URL, or pause deliveries to this endpoint.",
+      submitLabel: "Save changes",
+      fields: [
+        { id: "label", label: "Label", value: ep.webhook.name, hint: "Shown only inside this portal." },
+        { id: "url", label: "Endpoint URL", value: ep.webhook.url, wide: true, hint: "Must start with http:// or https://." },
+        {
+          id: "isActive",
+          label: "Delivery status",
+          kind: "select",
+          value: isActive ? "active" : "paused",
+          options: [
+            { value: "active", label: "Active — deliveries enabled" },
+            { value: "paused", label: "Paused — deliveries stopped" },
+          ],
+        },
+      ],
+      doneNote: "Saving now. If the change doesn't take, an error banner appears at the top of the page.",
+      onSubmit: (values) => {
+        void updateWebhook(ep.webhook.id, {
+          label: (values.label ?? "").trim(),
+          url: (values.url ?? "").trim(),
+          isActive: values.isActive === "active",
+        }).then((result) => {
+          if (result.ok) {
+            setEditError(null);
+            refresh();
+          } else {
+            setEditError(result.error);
+          }
+        });
+      },
+    });
+  }
+
+  function openEditSubscription(ep: LiveEndpoint) {
+    openForm({
+      kicker: "Edit subscription",
+      title: `Subscribed events — ${ep.webhook.name}`,
+      intro:
+        'The exact wire strings sent in each delivery payload\'s "type" field, comma- or line-separated. Not checked against a fixed catalogue — any non-empty string is accepted.',
+      submitLabel: "Save subscription",
+      fields: [
+        {
+          id: "eventTypes",
+          label: "Subscribed event types",
+          kind: "textarea",
+          value: ep.chips.join(", "),
+          wide: true,
+          hint: 'Leave blank to subscribe to nothing — this field has no "all events" value.',
+        },
+      ],
+      doneNote: "Saving now. If the change doesn't take, an error banner appears at the top of the page.",
+      onSubmit: (values) => {
+        const eventTypes = (values.eventTypes ?? "")
+          .split(/[,\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+        void updateWebhook(ep.webhook.id, { eventTypes }).then((result) => {
+          if (result.ok) {
+            setEditError(null);
+            refresh();
+          } else {
+            setEditError(result.error);
+          }
+        });
+      },
+    });
+  }
 
   const catalogue = isLive ? liveEventCatalogue(endpoints) : whEventCatalogue();
   const hasFailing = isLive ? liveHasFailing(endpoints) : whHasFailing();
@@ -331,6 +500,27 @@ export default function PortalV2WebhooksPage() {
             </div>
           </div>
 
+          {/* Edit-failure banner — real error surfaced from PATCH, Git #1605 */}
+          {editError && (
+            <div
+              data-testid="pv2-wh-edit-error"
+              style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "12px 14px", border: "1px solid rgba(248,113,113,.4)", borderLeft: "3px solid #f87171", borderRadius: 10, background: "rgba(248,113,113,.08)" }}
+            >
+              <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#fca5a5" }}>Could not save changes</span>
+                <span style={{ fontSize: "11.5px", color: "#e2e8f0", lineHeight: 1.5 }}>{editError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditError(null)}
+                aria-label="Dismiss"
+                style={{ flex: "0 0 auto", background: "none", border: "none", padding: 2, cursor: "pointer", color: "#94a3b8", fontSize: "13px", fontFamily: "inherit" }}
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           {/* Failing banner — proto 2537-2548 */}
           {hasFailing && (
             <div style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 16px", border: "1px solid rgba(248,113,113,.45)", borderLeft: "3px solid #f87171", borderRadius: 11, background: "rgba(248,113,113,.08)" }}>
@@ -357,17 +547,24 @@ export default function PortalV2WebhooksPage() {
                     <PortalV2LoadingState rows={3} label="Loading your webhook endpoints…" testId="pv2-wh-loading" />
                   </div>
                 ) : (
-                  endpoints.map(({ webhook: w, chips, eventCountLabel }, i) => (
+                  endpoints.map((ep, i) => (
                     <EndpointRow
-                      key={w.id}
-                      w={w}
-                      chips={chips}
-                      eventCountLabel={eventCountLabel}
+                      key={ep.webhook.id}
+                      w={ep.webhook}
+                      chips={ep.chips}
+                      eventCountLabel={ep.eventCountLabel}
                       index={i}
                       expanded={expanded === i}
                       onToggle={() => setExpanded((e) => (e === i ? null : i))}
-                      testShown={testFor === w.id}
-                      onTest={() => setTestFor(w.id)}
+                      testShown={testFor === ep.webhook.id}
+                      onTest={() => setTestFor(ep.webhook.id)}
+                      isLive={isLive}
+                      onRotate={() => setRotateSpec({ webhookId: ep.webhook.id, webhookName: ep.webhook.name })}
+                      onEditEndpoint={() => openEditEndpoint(ep)}
+                      onEditSubscription={() => openEditSubscription(ep)}
+                      onDelete={() =>
+                        setDeleteSpec({ webhookId: ep.webhook.id, webhookName: ep.webhook.name, volumeLabel: ep.webhook.volume })
+                      }
                     />
                   ))
                 )}
@@ -450,6 +647,29 @@ export default function PortalV2WebhooksPage() {
           </div>
         </div>
       </div>
+
+      {formElement}
+
+      {rotateSpec && (
+        <RotateSecretPanel
+          spec={rotateSpec}
+          onClose={() => setRotateSpec(null)}
+          onConfirm={async (id) => {
+            const result = await rotateSecret(id);
+            if (result.ok) refresh();
+            return result;
+          }}
+        />
+      )}
+
+      {deleteSpec && (
+        <DeleteWebhookPanel
+          spec={deleteSpec}
+          onClose={() => setDeleteSpec(null)}
+          onConfirm={(id) => deleteWebhook(id)}
+          onDeleted={refresh}
+        />
+      )}
     </PortalV2Shell>
   );
 }
