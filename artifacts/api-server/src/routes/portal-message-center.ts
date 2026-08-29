@@ -363,17 +363,18 @@ router.get(
       const allDateUnclear = dateUnclearRows(corpus);
       const dateUnclear = allDateUnclear.slice(0, POSTS_PER_WAVE);
 
-      // The budget is spent per WAVE, so no wave is starved by a busier one
-      // earlier on the axis. See capPerWave's header for what went wrong with a
-      // flat cap on the real tenant.
-      const capped = capPerWave(shaped, buckets, POSTS_PER_WAVE);
-
       // ── The tenant's own reading (#1532/#1533) ──────────────────────────
       // Confirmed interpretations for this MSP that are tied to a Message
       // Center post, left-joined with THIS customer's stored resolution.
       // Confirmed only — a proposed (unverified) reading never reaches a
       // customer. The join is by graphMessageId; both predicates are resolved
       // from the token-derived scope, never the request.
+      //
+      // Computed BEFORE capPerWave (#1699) — the cap needs to know which posts
+      // carry analysis so it can guarantee them a slot; discovering analysis
+      // only after capping is exactly how MC1287370, the one post with a
+      // confirmed, measured interpretation, was evicted purely on Microsoft's
+      // own score.
       const analysisRows = await db
         .select({
           graphMessageId: m365ChangeInterpretationsTable.graphMessageId,
@@ -420,6 +421,13 @@ router.get(
           noise: measured && row.affectedCount === 0,
         });
       }
+
+      // The budget is spent per WAVE, so no wave is starved by a busier one
+      // earlier on the axis. See capPerWave's header for what went wrong with a
+      // flat cap on the real tenant. A post carrying a confirmed interpretation
+      // is pinned ahead of the cap (#1699): analysis is a stronger claim on a
+      // slot than Microsoft's own score, which has no idea we've read the post.
+      const capped = capPerWave(shaped, buckets, POSTS_PER_WAVE, (p) => analysisByMessageId.has(p.id));
 
       const posts = capped.map((p) => ({
         ...p,

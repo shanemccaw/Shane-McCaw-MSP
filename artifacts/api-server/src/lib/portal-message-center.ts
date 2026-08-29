@@ -633,21 +633,64 @@ export function workloadFound(rows: readonly MessageCenterRow[], wl: string, buc
  * descending within a bucket — so taking the first `perWave` of each wave group
  * keeps that wave's highest-scoring, earliest posts. Anything whose bucket is
  * off the axis is dropped, since it belongs to no wave.
+ *
+ * ── `isPinned` — #1699 ─────────────────────────────────────────────────────
+ * Microsoft's own `score` has no opinion about whether we've analysed a post:
+ * it ranks prominence and how-soon-it-lands, nothing else. On the real testbed
+ * tenant that let the cap evict MC1287370 — the one post carrying a confirmed,
+ * measured interpretation and a routed CR — because 60 other posts in its wave
+ * scored higher on a signal that has nothing to do with analysis.
+ *
+ * A pinned item (an analysed post, per the caller's predicate) is always
+ * kept. It is not a tiebreaker within the existing budget — it displaces the
+ * lowest-scoring un-pinned post that would otherwise have filled that wave's
+ * last slot, so the wave's total size is unchanged when there is room for it:
+ * the un-pinned budget for a wave becomes `perWave - pinnedCount`, spent
+ * exactly as before (the first that-many non-pinned items in the incoming
+ * order). Only when a wave's pinned posts alone outnumber `perWave` does the
+ * wave legitimately grow past budget — analysis is a stronger claim on a slot
+ * than the transfer budget itself, and that case is rare by construction (an
+ * analysed post is one a human chose to read against the tenant). Output
+ * preserves the original relative order.
  */
 export function capPerWave<T extends { bucket: number }>(
   items: readonly T[],
   buckets: readonly Bucket[],
   perWave: number,
+  isPinned?: (item: T) => boolean,
 ): readonly T[] {
-  const taken = new Map<string, number>();
-  return items.filter((it) => {
+  const pinned = isPinned ?? (() => false);
+
+  // Partition into per-wave groups first so a wave's pinned count can be
+  // known before deciding how much of the un-pinned budget remains.
+  const byWave = new Map<string, T[]>();
+  for (const it of items) {
     const wave = buckets[it.bucket]?.wave;
-    if (wave === undefined) return false;
-    const n = taken.get(wave) ?? 0;
-    if (n >= perWave) return false;
-    taken.set(wave, n + 1);
-    return true;
-  });
+    if (wave === undefined) continue;
+    const group = byWave.get(wave);
+    if (group) group.push(it);
+    else byWave.set(wave, [it]);
+  }
+
+  const kept = new Set<T>();
+  for (const group of byWave.values()) {
+    let unpinnedBudget = perWave;
+    for (const it of group) if (pinned(it)) unpinnedBudget -= 1;
+    unpinnedBudget = Math.max(0, unpinnedBudget);
+
+    let unpinnedTaken = 0;
+    for (const it of group) {
+      if (pinned(it)) {
+        kept.add(it);
+        continue;
+      }
+      if (unpinnedTaken >= unpinnedBudget) continue;
+      unpinnedTaken += 1;
+      kept.add(it);
+    }
+  }
+
+  return items.filter((it) => kept.has(it));
 }
 
 /**

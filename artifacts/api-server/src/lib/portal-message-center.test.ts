@@ -490,4 +490,53 @@ describe("the post budget is spent per wave, not as one global cap", () => {
     const capped = capPerWave(off, buckets, 60);
     expect(capped.map((p) => p.id)).toEqual(["ok"]);
   });
+
+  describe("#1699 — a pinned (analysis-bearing) post is never evicted by the cap", () => {
+    it("keeps a pinned post ranked below the wave's lowest surviving score, evicting an un-pinned one to make room", () => {
+      // 60 higher-ranked posts already fill bucket 0's wave to budget, then one
+      // more that is pinned. Un-pinned, it would rank 61st and be dropped
+      // outright — exactly how MC1287370 was evicted before analysis was known.
+      const wave0 = spread(60).filter((p) => p.bucket === 0);
+      const items = [...wave0, { bucket: 0, id: "analysed" }];
+      const capped = capPerWave(items, buckets, 60, (p) => p.id === "analysed");
+      expect(capped.map((p) => p.id)).toContain("analysed");
+      // The wave budget itself does not grow — the pin displaces the single
+      // lowest-scoring un-pinned post that would otherwise have made the cut.
+      expect(capped.length).toBe(60);
+      expect(capped.map((p) => p.id)).not.toContain("b0-59");
+    });
+
+    it("guarantees every pinned post a slot even when pinned posts alone outnumber the wave's budget", () => {
+      // Three analysed posts against a budget of two: analysis is a stronger
+      // claim on a slot than the budget itself, so the wave legitimately grows.
+      const items = [{ bucket: 0, id: "p1" }, { bucket: 0, id: "p2" }, { bucket: 0, id: "p3" }];
+      const capped = capPerWave(items, buckets, 2, () => true);
+      expect(capped.map((p) => p.id)).toEqual(["p1", "p2", "p3"]);
+    });
+
+    it("reproduces the real regression: an analysed post ranked outside its wave's top 60 still reaches the wire", () => {
+      // MC1287370 shape: on the real testbed it scored below 60 higher-ranked
+      // posts in its wave and was evicted before analysis was even known.
+      const wave0 = spread(60).filter((p) => p.bucket === 0);
+      const items = [...wave0, { bucket: 0, id: "MC1287370" }];
+      const analysisByMessageId = new Map([["MC1287370", {}]]);
+      const capped = capPerWave(items, buckets, 60, (p) => analysisByMessageId.has(p.id));
+      expect(capped.some((p) => p.id === "MC1287370")).toBe(true);
+    });
+
+    it("preserves the original relative order of both pinned and un-pinned posts", () => {
+      const items = [
+        { bucket: 0, id: "a" },
+        { bucket: 0, id: "pinned" },
+        { bucket: 0, id: "b" },
+      ];
+      const capped = capPerWave(items, buckets, 3, (p) => p.id === "pinned");
+      expect(capped.map((p) => p.id)).toEqual(["a", "pinned", "b"]);
+    });
+
+    it("behaves exactly as before when nothing is pinned", () => {
+      const items = spread(40);
+      expect(capPerWave(items, buckets, 60, () => false)).toEqual(capPerWave(items, buckets, 60));
+    });
+  });
 });
