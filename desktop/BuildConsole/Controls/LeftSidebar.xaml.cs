@@ -238,7 +238,9 @@ namespace BuildConsole.Controls
         /// board fetch. MainWindow updates the matching open tab's Tag and, if
         /// it's the active tab, re-feeds BuildQueuePanel immediately.
         /// </summary>
+#pragma warning disable CS0067 // never raised yet — tracked as Git #1706
         public event EventHandler<(string ConversationId, int EpicId)>? ChatEpicAssigned;
+#pragma warning restore CS0067
         /// <summary>Shane, 2026-08-28: "when a build is in Verifying state and then the Git issue behind it is closed, it should change to closed and hide." Fired after PopulateGitTrackerBoard's fresh open-issue fetch promotes one or more Verifying queue rows to Done (their real GitHub issue closed) — MainWindow re-fetches the Build Queue panel so the promoted item disappears from the Active view immediately instead of waiting for its own next poll.</summary>
         public event EventHandler? VerifyingIssuesPromoted;
         /// <summary>Git #1600 — fired at the end of every successful PopulateGitTrackerBoard
@@ -512,8 +514,10 @@ namespace BuildConsole.Controls
             }
         }
 
+#pragma warning disable CS0067 // never raised yet — tracked as Git #1706
         public event EventHandler<string>? StartRecordingRequested;
         public event EventHandler? StopRecordingRequested;
+#pragma warning restore CS0067
 
         /// <summary>Git #963/Epic #803 — carries the currently-loaded manifest and target environment so MainWindow can run
         /// it through the same real <c>RunManifestAsync</c> pipeline every other trigger uses. Defaults to Dev.</summary>
@@ -1551,9 +1555,10 @@ namespace BuildConsole.Controls
             // (otherwise GitHub can 304 us with a stale milestone-count body and the
             // manual Refresh silently returns the old open/closed counts — the exact
             // "progress bar stuck at 20/35" bug this closes; see GetConditionalAsync).
-            _cachedMilestoneInfos = await client.GetMilestonesAsync(bypassCache: forceFresh);
+            var fetched = await client.GetMilestonesAsync(bypassCache: forceFresh);
+            _cachedMilestoneInfos = fetched;
             _lastMilestonesFetchUtc = DateTime.UtcNow;
-            return _cachedMilestoneInfos;
+            return fetched;
         }
 
         /// <summary>
@@ -1810,18 +1815,18 @@ namespace BuildConsole.Controls
             var signature = System.Text.Json.JsonSerializer.Serialize(new
             {
                 Issues = issues.Select(i => new { i.Number, i.Title, i.State, i.SubIssueCount, i.MilestoneTitle, i.ParentNumber, i.ParentMilestoneNumber }),
-                Milestones = milestoneInfos.Select(m => new { m.Number, m.Title, m.OpenIssues, m.ClosedIssues }),
+                Milestones = milestoneInfos!.Select(m => new { m.Number, m.Title, m.OpenIssues, m.ClosedIssues }),
             });
             if (!forceFresh && signature == _lastInProgressSignature) return;
             _lastInProgressSignature = signature;
 
             var buildSw = System.Diagnostics.Stopwatch.StartNew();
-            BuildBoardFromGitHub(issues, milestoneInfos);
+            BuildBoardFromGitHub(issues, milestoneInfos!);
             // Feed Focus Mode the real issue→milestone map + milestone counts (this is the
             // OPEN board fetch; the closed-view BuildBoardFromGitHub call deliberately does NOT
             // feed, so the filter map isn't overwritten with closed-only issues).
             BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(
-                issues, milestoneInfos,
+                issues, milestoneInfos!,
                 trigger: forceFresh ? "manual Git refresh" : "board update");
             await RenderIssuesTreeAsync(_currentFilter == "Done" ? "All" : _currentFilter);
             buildSw.Stop();
@@ -2752,9 +2757,9 @@ namespace BuildConsole.Controls
                     hiddenClosedChats += chatsInGroup.Count;
                     continue;
                 }
-                var epicFound = epicById.TryGetValue(grp.Key, out var epic);
-                var title = epicFound ? epic.Title : $"Epic #{grp.Key}";
-                groups.Add((title, epicFound ? epic.GithubNumber : null, chatsInGroup));
+                epicById.TryGetValue(grp.Key, out var epic);
+                var title = epic != null ? epic.Title : $"Epic #{grp.Key}";
+                groups.Add((title, epic?.GithubNumber, chatsInGroup));
             }
             if (hiddenClosedEpics > 0)
                 ActivityLog.Log("git-board.chats",
@@ -3141,7 +3146,7 @@ namespace BuildConsole.Controls
             var queueItems = GetQueueItems?.Invoke() ?? Array.Empty<QueueItem>();
             var chatBuilds = queueItems
                 .Where(item => (item.OriginatingChatId != null && string.Equals(item.OriginatingChatId, chat.ConversationId, StringComparison.OrdinalIgnoreCase))
-                            || (item.GithubNumber.HasValue && chat.AssociatedIssueNumbers.Contains(item.GithubNumber.Value)))
+                            || (item.GithubNumber.HasValue && (chat.AssociatedIssueNumbers?.Contains(item.GithubNumber.Value) ?? false)))
                 // Git #1450: a build badge drops out once its own linked GitHub issue is
                 // CONFIRMED closed on the real board — same fail-open signal as the
                 // chat/epic-level filters (never hides on missing/stale board data).
@@ -3293,6 +3298,7 @@ namespace BuildConsole.Controls
                             return;
                         }
                     }
+                    chat.AssociatedIssueNumbers ??= new List<int>();
                     if (!chat.AssociatedIssueNumbers.Contains(targetNumber))
                         chat.AssociatedIssueNumbers.Add(targetNumber);
                     _lastBoardSignature = null;

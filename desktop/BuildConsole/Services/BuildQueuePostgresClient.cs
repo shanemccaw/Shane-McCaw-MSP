@@ -570,10 +570,10 @@ namespace BuildConsole.Services
                 });
             }
 
-            if (row != null)
-            {
-                await PopulateAssociatedIssueNumbersAsync(new List<QueueItem> { row }, conn);
-            }
+            if (row == null)
+                throw new InvalidOperationException("QueueBuildAsync: INSERT ... RETURNING produced no row.");
+
+            await PopulateAssociatedIssueNumbersAsync(new List<QueueItem> { row }, conn);
 
             return row;
         }

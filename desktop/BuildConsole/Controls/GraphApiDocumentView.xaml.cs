@@ -41,7 +41,7 @@ namespace BuildConsole.Controls
             VariablesItemsControl.ItemsSource = _variablesList;
         }
 
-        public void Initialize(BuildTrackerApiClient api)
+        public void Initialize(BuildTrackerApiClient? api)
         {
             _api = api;
             _ = LoadTenantsAsync();

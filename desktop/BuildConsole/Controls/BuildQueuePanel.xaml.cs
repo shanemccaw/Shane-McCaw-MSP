@@ -2999,7 +2999,7 @@ namespace BuildConsole.Controls
                     {
                         _issueTitleCache[issueNumber] = title;
                     }
-                    Dispatcher.BeginInvoke(new Action(() =>
+                    _ = Dispatcher.BeginInvoke(new Action(() =>
                     {
                         UpdateTooltipForIssue(issueNumber);
                     }));

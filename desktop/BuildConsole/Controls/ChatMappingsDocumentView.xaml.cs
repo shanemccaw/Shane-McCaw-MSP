@@ -37,7 +37,7 @@ namespace BuildConsole.Controls
             MappingsGrid.ItemsSource = _filteredChats;
         }
 
-        public void Initialize(BuildTrackerApiClient api)
+        public void Initialize(BuildTrackerApiClient? api)
         {
             _api = api;
             _ = LoadDataAsync();

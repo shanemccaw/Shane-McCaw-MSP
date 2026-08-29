@@ -61,7 +61,9 @@ namespace BuildConsole
             public Border HostBorder = null!;          // parked in PinnedHostCanvas; top bar + ContentSlot
             public TextBlock TitleText = null!;        // the expanded top-bar title
             public Button StripButton = null!;         // the always-visible strip item (null when the entry is fronted only by a header chip)
+#pragma warning disable CS0649 // never assigned yet — tracked as Git #1707
             public Button? ChipButton;                 // the EDITOR PANES header-bar chip fronting this entry (Git #972 revised), if any
+#pragma warning restore CS0649
             public bool Expanded;
         }
 

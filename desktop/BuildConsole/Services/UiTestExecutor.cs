@@ -993,6 +993,12 @@ namespace BuildConsole.Services
 
             try
             {
+                if (_webView.CoreWebView2 == null)
+                {
+                    Detach();
+                    ActivityLog.Log(Channel, $"NavigateAsync({url}): CoreWebView2 not initialized");
+                    return false;
+                }
                 ActivityLog.Log(Channel, $"NavigateAsync: calling CoreWebView2.Navigate({url})");
                 _webView.CoreWebView2.Navigate(url);
             }

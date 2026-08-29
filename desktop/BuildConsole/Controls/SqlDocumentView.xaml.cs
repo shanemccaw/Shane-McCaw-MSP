@@ -93,7 +93,7 @@ namespace BuildConsole.Controls
             }
         }
 
-        public void Initialize(BuildTrackerApiClient api)
+        public void Initialize(BuildTrackerApiClient? api)
         {
             _api = api;
         }

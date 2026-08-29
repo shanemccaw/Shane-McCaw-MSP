@@ -326,8 +326,8 @@ namespace BuildConsole.Controls
                 _sideColumn.Children.Add(itemsContainer);
                 
                 string currentFilter = "Open";
-                Action renderSubs = null;
-                renderSubs = () => 
+                Action renderSubs = null!; // self-referencing lambda: assigned immediately below, before first invocation
+                renderSubs = () =>
                 {
                     itemsContainer.Children.Clear();
                     filterPanel.Children.Clear();
@@ -395,7 +395,7 @@ namespace BuildConsole.Controls
         }
 
         // ── Issue tab ──────────────────────────────────────────────────────
-        public async void LoadIssue(GitIssue issue, int? linkedEpicNumber, string? linkedEpicTitle)
+        public void LoadIssue(GitIssue issue, int? linkedEpicNumber, string? linkedEpicTitle)
         {
             // Resolve parent epic if not passed in
             if (!linkedEpicNumber.HasValue && Application.Current.MainWindow is MainWindow mwForEpic)
@@ -550,7 +550,7 @@ namespace BuildConsole.Controls
                     if (associatedBuild != null)
                     {
                         string? sid = associatedBuild.SessionId;
-                        if (Application.Current.MainWindow is MainWindow mw && mw.QueueWatcher is QueueWatcherService w)
+                        if (Application.Current?.MainWindow is MainWindow mw && mw.QueueWatcher is QueueWatcherService w)
                         {
                             sid = sid ?? w.GetSessionId(associatedBuild.Id);
                         }
@@ -2128,7 +2128,7 @@ namespace BuildConsole.Controls
             if (_buildPaneItemId == 0) return;
             if (Application.Current.MainWindow is MainWindow mw && mw.QueueWatcher is QueueWatcherService w)
             {
-                w.RequestStopAsync(_buildPaneItemId);
+                _ = w.RequestStopAsync(_buildPaneItemId);
             }
         }
 
