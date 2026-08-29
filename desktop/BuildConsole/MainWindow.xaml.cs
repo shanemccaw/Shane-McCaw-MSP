@@ -428,7 +428,7 @@ namespace BuildConsole
             BuildLogView.Initialize(_buildTrackerApi);
             TerminalView.Initialize(_buildTrackerApi);
             MarketingLogView.Initialize("shane-mccaw-consulting", "Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐");
-            PortalLogView.Initialize("msp-portal", "Portal", 5175, "artifacts/msp-portal", "💼");
+            PortalLogView.Initialize("portal", "Portal", 5175, "artifacts/portal", "💼");
             AdminLogView.Initialize("admin-panel", "Admin", 5174, "artifacts/admin-panel", "⚙️");
             ApiServerLogView.Initialize("api-server", "API Server", 8080, "artifacts/api-server", "🖥️");
 
@@ -4894,14 +4894,14 @@ namespace BuildConsole
         private async void MenuStartPortal_Click(object sender, RoutedEventArgs e)
         {
             SetBottomPanel(true, tabIndex: 3); // Portal tab
-            await DevServicesManager.StartServiceAsync("msp-portal");
+            await DevServicesManager.StartServiceAsync("portal");
             await RefreshTopServicesStatusAsync();
             await PortalLogView.UpdateStatusAsync();
         }
 
         private async void MenuStopPortal_Click(object sender, RoutedEventArgs e)
         {
-            await DevServicesManager.StopServiceAsync("msp-portal");
+            await DevServicesManager.StopServiceAsync("portal");
             await RefreshTopServicesStatusAsync();
             await PortalLogView.UpdateStatusAsync();
         }

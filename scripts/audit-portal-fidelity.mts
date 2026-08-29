@@ -13,7 +13,7 @@
  * ── How it measures ────────────────────────────────────────────────────────
  * Copy in this handoff is FINAL and must not be rewritten, which makes a design
  * string a reliable probe: if a section's text appears nowhere in
- * artifacts/msp-portal/src, that section is not built. For each page section it
+ * artifacts/portal/src, that section is not built. For each page section it
  * extracts the visible text nodes and checks each against the whole tree.
  *
  * ── How to read it — the percentage is a FLOOR, not a score ────────────────
@@ -37,7 +37,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const DESIGN = "Design/design_handoff_customer_portal";
-const SRC = "artifacts/msp-portal/src";
+const SRC = "artifacts/portal/src";
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {

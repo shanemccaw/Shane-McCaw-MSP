@@ -116,7 +116,7 @@ const services = [
   { name: "api-server", pkg: "@workspace/api-server", port: 8080, title: "API Server" },
   { name: "shane-mccaw-consulting", pkg: "@workspace/shane-mccaw-consulting", port: 5173, title: "Marketing" },
   { name: "admin-panel", pkg: "@workspace/admin-panel", port: 5174, title: "Admin" },
-  { name: "msp-portal", pkg: "@workspace/msp-portal", port: 5175, title: "Portal" },
+  { name: "portal", pkg: "@workspace/portal", port: 5175, title: "Portal" },
   { name: "msp-website", pkg: "@workspace/msp-website", port: 5176, title: "Website" },
 ];
 

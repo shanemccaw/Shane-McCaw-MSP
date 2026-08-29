@@ -31,7 +31,7 @@ namespace BuildConsole.Services
         // is a compile error rather than a silent miss.
         public const string Marketing = "shane-mccaw-consulting";
         public const string Admin = "admin-panel";
-        public const string Portal = "msp-portal";
+        public const string Portal = "portal";
         public const string Website = "msp-website";
 
         /// <summary>The service the run navigates to when no route in the manifest is clearly owned by a

@@ -56,7 +56,7 @@ const BUILT_SERVICE = "api-server";
 const FRONTEND_SERVICES = [
   { name: "shane-mccaw-consulting", port: 5173, title: "Marketing" },
   { name: "admin-panel", port: 5174, title: "Admin" },
-  { name: "msp-portal", port: 5175, title: "Portal" },
+  { name: "portal", port: 5175, title: "Portal" },
   { name: "msp-website", port: 5176, title: "Website" },
 ];
 

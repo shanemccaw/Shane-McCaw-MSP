@@ -29,7 +29,7 @@ const SERVICE_NAMES = [
   "api-server",
   "shane-mccaw-consulting",
   "admin-panel",
-  "msp-portal",
+  "portal",
   "msp-website",
 ];
 

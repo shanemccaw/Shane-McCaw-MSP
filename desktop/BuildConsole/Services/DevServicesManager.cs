@@ -33,7 +33,7 @@ namespace BuildConsole.Services
         public static readonly Dictionary<string, (string Title, int Port, string RelPath, string Icon)> KnownServices = new()
         {
             ["shane-mccaw-consulting"] = ("Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐"),
-            ["msp-portal"] = ("Portal", 5175, "artifacts/msp-portal", "💼"),
+            ["portal"] = ("Portal", 5175, "artifacts/portal", "💼"),
             ["admin-panel"] = ("Admin", 5174, "artifacts/admin-panel", "⚙️"),
             ["api-server"] = ("API Server", 8080, "artifacts/api-server", "🖥️"),
             ["msp-website"] = ("Website", 5176, "artifacts/msp-website", "📄")

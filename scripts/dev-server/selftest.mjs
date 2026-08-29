@@ -459,9 +459,9 @@ async function main() {
     // Portal-only change, nothing running yet: rebuild Portal, START the always-on
     // API, do NOT spin up untouched idle front-ends.
     {
-      const { plan } = planFor(["artifacts/msp-portal/src/App.tsx"]);
-      check("portal-only: rebuild == [msp-portal]", () =>
-        assert.deepStrictEqual(plan.toRebuild, ["msp-portal"]));
+      const { plan } = planFor(["artifacts/portal/src/App.tsx"]);
+      check("portal-only: rebuild == [portal]", () =>
+        assert.deepStrictEqual(plan.toRebuild, ["portal"]));
       check("portal-only: always-on API is started (not rebuilt)", () =>
         assert.ok(plan.toStart.includes("api-server") && !plan.toRebuild.includes("api-server")));
       check("portal-only: untouched idle front-ends are NOT started", () =>
@@ -475,7 +475,7 @@ async function main() {
     // Portal change while API is already up: API is KEPT (never rebuilt for a
     // front-end-only change), Portal rebuilt.
     {
-      const { plan } = planFor(["artifacts/msp-portal/src/x.ts"], ["api-server"]);
+      const { plan } = planFor(["artifacts/portal/src/x.ts"], ["api-server"]);
       const api = plan.actions.find((a) => a.service === "api-server");
       check("running API is kept, never rebuilt for a front-end-only change", () =>
         assert.ok(api.action === "keep" && plan.neededRunning.includes("api-server")));
@@ -483,7 +483,7 @@ async function main() {
 
     // Running-but-unrelated front-end is left alone by default (never yanked).
     {
-      const { plan } = planFor(["artifacts/msp-portal/src/x.ts"], ["api-server", "shane-mccaw-consulting"]);
+      const { plan } = planFor(["artifacts/portal/src/x.ts"], ["api-server", "shane-mccaw-consulting"]);
       const mkt = plan.actions.find((a) => a.service === "shane-mccaw-consulting");
       check("unrelated running front-end kept by default (not stopped)", () =>
         assert.ok(mkt.action === "keep" && !plan.toStop.includes("shane-mccaw-consulting")));

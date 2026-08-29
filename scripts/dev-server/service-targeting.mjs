@@ -38,7 +38,7 @@ export const SERVICES = [
   { name: "api-server", title: "API Server", artifact: "artifacts/api-server/", alwaysOn: true },
   { name: "shane-mccaw-consulting", title: "Marketing", artifact: "artifacts/shane-mccaw-consulting/", alwaysOn: false },
   { name: "admin-panel", title: "Admin", artifact: "artifacts/admin-panel/", alwaysOn: false },
-  { name: "msp-portal", title: "Portal", artifact: "artifacts/msp-portal/", alwaysOn: false },
+  { name: "portal", title: "Portal", artifact: "artifacts/portal/", alwaysOn: false },
   { name: "msp-website", title: "Website", artifact: "artifacts/msp-website/", alwaysOn: false },
 ];
 

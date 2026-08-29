@@ -187,7 +187,7 @@ classifies those paths into services:
 | `artifacts/api-server/` | **API Server** (always-on) |
 | `artifacts/shane-mccaw-consulting/` | **Marketing** |
 | `artifacts/admin-panel/` | **Admin** |
-| `artifacts/msp-portal/` | **Portal** |
+| `artifacts/portal/` | **Portal** |
 | `artifacts/msp-website/` | **Website** |
 | `lib/`, `packages/`, root build config (`package.json`, `pnpm-*`, `tsconfig*`) | **shared → ALL services** |
 | `test-manifests/`, `docs/`, `scripts/`, `.github/`, … | **none** (no rebuild) |
