@@ -2467,6 +2467,45 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── M365 Changes Routing (#1534, part of #1494) ─────────────────────────────
+  {
+    name: "__system__: M365 Changes Routing",
+    description:
+      "Runs daily (04:00 UTC), after the M365 resolution sweep so the day's per-tenant counts land first. " +
+      "The third stage of the M365 Changes pipeline after interpretation (#1532) and resolution (#1533): for " +
+      "every confirmed interpretation × tenant that has a resolution, it decides what the resolved change " +
+      "BECOMES. Shane's settled rule (#1534): a measured, non-zero, structurally-dated change AUTO-CREATES a " +
+      "Change Request in msp_change_requests with Microsoft as the implementer (per #1497 every change gets a " +
+      "CR, including auto-approved ones — a Microsoft change the tenant cannot refuse is a CR from the moment " +
+      "it is announced); an undated (incl. #1536's 'date unclear') or zero-affected change PROPOSES a CR only " +
+      "(recorded in m365_change_routings, never created); a not-measured resolution routes nothing. Idempotent: " +
+      "one routing decision per (interpretation × customer), and a CR is created exactly once (ledger + a " +
+      "partial unique index both guard it). The declined→accepted-risk path (#1514) is a separate, " +
+      "customer-driven transition, not part of this sweep. A pure Workflow Engine definition — no bare " +
+      "scheduler — that touches no billing/monitoring config.",
+    triggerType: "schedule",
+    cron: "0 4 * * *",
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Daily 04:00 UTC" } },
+        {
+          id: "route",
+          type: "m365_route_changes",
+          position: { x: 100, y: 200 },
+          data: {
+            nodeType: "m365_route_changes",
+            label: "Route Resolved Microsoft Changes",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 300 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "route" },
+        { id: "e2", source: "route", target: "end" },
+      ],
+    },
+  },
   // ── Zoho Queue Drain (Zoho Integration Foundation, #82) ─────────────────────
   {
     name: "Zoho Queue Drain",

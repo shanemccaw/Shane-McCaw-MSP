@@ -767,6 +767,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Ingests the public M365 Roadmap (v1 nightly snapshot / v2 targeted) into m365_roadmap_items — no AI",
   },
   {
+    nodeType: "m365_route_changes",
+    isAIDependent: false,
+    description: "Routes resolved Microsoft changes into Change Control (auto-create/propose a CR, Microsoft implementer) — no AI",
+  },
+  {
     nodeType: "platform_log_stream_prune",
     isAIDependent: false,
     description: "Deletes platform_log_stream rows older than the retention window — no AI",

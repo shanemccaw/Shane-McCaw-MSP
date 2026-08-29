@@ -97,6 +97,7 @@ import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-no
 import { handleMspScoreSnapshot } from "./msp-engine.js";
 import { handleM365HealthSample } from "./m365-health-sample.js";
 import { handleM365RoadmapSync } from "./m365-roadmap-sync.js";
+import { handleM365RouteChanges } from "./m365-change-router.js";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
 import { handleZohoBatchDrain } from "./zoho-batch-drain.js";
 import { executeZohoCrmNode } from "./zoho-crm.js";
@@ -6398,6 +6399,16 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // (#1530) into m365_roadmap_items. Defaults to the v1 nightly full
         // snapshot; degrades honestly (never serves stale data as current).
         output = await handleM365RoadmapSync(node.data as Record<string, unknown>);
+        break;
+      }
+
+      case "m365_route_changes": {
+        // Promoted node type (#1534): routes resolved Microsoft changes into
+        // Change Control (auto-create a CR with Microsoft as implementer when
+        // measured/dated/non-zero, else propose) — the third stage after
+        // interpretation (#1532) and resolution (#1533). Declined→risk is a
+        // separate, event-driven transition, not part of this sweep.
+        output = await handleM365RouteChanges(node.data as Record<string, unknown>);
         break;
       }
 

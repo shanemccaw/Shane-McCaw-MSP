@@ -118,6 +118,7 @@ import { z } from "zod";
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { requireAddOnEntitlement } from "../lib/portal-addon-entitlements";
+import { declineRoutedChangeToRisk } from "../lib/m365-change-router";
 import { logger } from "../lib/logger";
 import {
   CHANGE_CLASSES,
@@ -130,6 +131,8 @@ import {
   computeRiskLevel,
   deriveWorkload,
   displayChangeClass,
+  displayImplementer,
+  displayIntake,
   displayRiskLevel,
   displayStatus,
   formatChangeRequestCode,
@@ -182,6 +185,16 @@ interface WireChangeRequest {
    * it; hold-window decisions now populate it with the window they came from.
    */
   readonly linkedFinding: string | null;
+  /**
+   * #1534 — set only on an automatically-routed Microsoft change. `intake` is the
+   * "do I have to act" axis (Informed / Approval / Advisory); `implementer` names
+   * who executes it ("Microsoft" for a forced change the tenant cannot refuse).
+   * `sourceGraphMessageId` links the CR back to the Message Center announcement
+   * it was routed from. All null on a wizard- or drift-raised CR.
+   */
+  readonly intake: string | null;
+  readonly implementer: string | null;
+  readonly sourceGraphMessageId: string | null;
   readonly createdAt: string;
 }
 
@@ -204,6 +217,9 @@ interface ChangeRequestRow {
   executedAt: string | null;
   approvedBy: string | null;
   linkedFinding: string | null;
+  intake: string | null;
+  implementer: string | null;
+  sourceGraphMessageId: string | null;
   createdAt: Date;
 }
 
@@ -231,6 +247,9 @@ function toWire(row: ChangeRequestRow): WireChangeRequest {
     executedAt: row.executedAt,
     backupVerified: row.backupVerified,
     linkedFinding: row.linkedFinding,
+    intake: displayIntake(row.intake),
+    implementer: displayImplementer(row.implementer),
+    sourceGraphMessageId: row.sourceGraphMessageId,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -345,6 +364,9 @@ router.get(
           executedAt: mspChangeRequestsTable.executedAt,
           approvedBy: mspChangeRequestsTable.approvedBy,
           linkedFinding: mspChangeRequestsTable.linkedFinding,
+          intake: mspChangeRequestsTable.intake,
+          implementer: mspChangeRequestsTable.implementer,
+          sourceGraphMessageId: mspChangeRequestsTable.sourceGraphMessageId,
           createdAt: mspChangeRequestsTable.createdAt,
         })
         .from(mspChangeRequestsTable)
@@ -484,6 +506,109 @@ router.post(
     } catch (err) {
       log.error({ err, customerId }, "POST /portal/change-control failed");
       res.status(500).json({ error: "Failed to raise the change request" });
+    }
+  },
+);
+
+// ── Decline a routed Microsoft change → accepted risk (#1534 / #1514) ───────────
+//
+// A customer declining an auto-routed Microsoft change is declining a
+// remediation, and the residual risk becomes theirs — the rejection IS the risk
+// acceptance (#1514). This drives the routed CR to its terminal `rejected` state
+// and creates the accepted-risk record, linked back to the CR that spawned it.
+//
+// Scoped exactly like every read here: the CR must belong to the caller's own
+// resolved (mspId, tenantId), and only a routed Microsoft change (source_kind =
+// 'microsoft_change') may be declined through this path — a wizard-raised CR has
+// no risk-acceptance semantics and is out of scope. Gated on the same
+// CustomerUser + change_control entitlement as the register read: declining is
+// part of the approval experience.
+const declineSchema = z.object({
+  fullName: z.string().trim().min(1).max(200),
+  statement: z.string().trim().min(1).max(2_000),
+});
+
+/** `CR-2026-101` → the numeric msp_change_requests.id, or null. Inverse of formatChangeRequestCode. */
+function parseChangeRequestCode(code: string): number | null {
+  const m = code.match(/^CR-2026-(\d+)$/);
+  if (!m) return null;
+  const id = Number(m[1]) - 100;
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+router.post(
+  "/portal/change-control/:code/decline",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const crId = parseChangeRequestCode(String(req.params.code));
+    if (crId === null) {
+      res.status(400).json({ error: "Invalid change request code" });
+      return;
+    }
+
+    const parsed = declineSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+
+    try {
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.status(409).json({ error: "This account has no connected Microsoft 365 tenant" });
+        return;
+      }
+
+      // Confirm the CR belongs to this tenant AND is a routed Microsoft change
+      // before anything is written — the scope pair is the cross-tenant guard.
+      const [cr] = await db
+        .select({ id: mspChangeRequestsTable.id, sourceKind: mspChangeRequestsTable.sourceKind, status: mspChangeRequestsTable.status })
+        .from(mspChangeRequestsTable)
+        .where(
+          and(
+            eq(mspChangeRequestsTable.id, crId),
+            eq(mspChangeRequestsTable.mspId, scope.mspId),
+            eq(mspChangeRequestsTable.tenantId, scope.tenantId),
+          ),
+        )
+        .limit(1);
+      if (!cr) {
+        res.status(404).json({ error: "Change request not found" });
+        return;
+      }
+      if (cr.sourceKind !== "microsoft_change") {
+        res.status(409).json({ error: "Only an automatically-routed Microsoft change can be declined here" });
+        return;
+      }
+
+      const result = await declineRoutedChangeToRisk({
+        changeRequestId: crId,
+        mspId: scope.mspId,
+        declinedBy: "customer",
+        approverName: parsed.data.fullName,
+        approverEmail: req.user?.email ?? "",
+        statement: parsed.data.statement,
+      });
+
+      log.info(
+        { customerId, mspId: scope.mspId, crId, riskDecisionId: result.riskDecisionId, alreadyRejected: result.alreadyRejected },
+        "routed Microsoft change declined by customer → accepted risk",
+      );
+      res.status(result.alreadyRejected ? 200 : 201).json({
+        code: formatChangeRequestCode(crId),
+        declined: true,
+        riskAccepted: result.riskDecisionId !== null,
+      });
+    } catch (err) {
+      log.error({ err, customerId, crId }, "POST /portal/change-control/:code/decline failed");
+      res.status(500).json({ error: "Failed to decline the change" });
     }
   },
 );

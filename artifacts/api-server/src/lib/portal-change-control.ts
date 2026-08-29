@@ -199,6 +199,51 @@ export function storedChangeClass(changeClass: ChangeClass): StoredChangeClass {
 }
 
 /**
+ * The intake axis (#1534) — how an automatically-routed Microsoft change enters
+ * the register, i.e. what the customer can actually do about it. Stored lowercase
+ * on `msp_change_requests.intake`; NULL for every wizard-/drift-raised CR (which
+ * has no Microsoft intake), so this maps null → null and the page shows no chip.
+ */
+export const CHANGE_INTAKE_LABELS = {
+  informed: "Informed",
+  approval: "Approval",
+  advisory: "Advisory",
+} as const;
+export type ChangeIntakeDisplay = (typeof CHANGE_INTAKE_LABELS)[keyof typeof CHANGE_INTAKE_LABELS];
+
+export function displayIntake(intake: string | null | undefined): ChangeIntakeDisplay | null {
+  switch (intake) {
+    case "informed":
+      return "Informed";
+    case "approval":
+      return "Approval";
+    case "advisory":
+      return "Advisory";
+    default:
+      return null;
+  }
+}
+
+/**
+ * Who implements a change. For an auto-routed Microsoft change this is
+ * "Microsoft" — the headline of #1534: the tenant cannot refuse it, so Microsoft,
+ * not the MSP, is the implementer. NULL (the pre-routing default) reads as the
+ * ordinary internal case and shows no chip rather than asserting "MSP".
+ */
+export function displayImplementer(implementer: string | null | undefined): string | null {
+  switch (implementer) {
+    case "microsoft":
+      return "Microsoft";
+    case "customer":
+      return "Your team";
+    case "msp":
+      return "Managed service provider";
+    default:
+      return null;
+  }
+}
+
+/**
  * The prototype's risk levels are Low / Medium / High (proto 15079). The stored
  * column also permits `critical`, which the prototype has no colour for — its
  * `ccRiskMeta[c.risk] || '#94a3b8'` lookup falls through to slate. `Critical`
