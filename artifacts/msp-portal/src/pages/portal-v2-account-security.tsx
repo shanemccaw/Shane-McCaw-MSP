@@ -19,13 +19,21 @@
  * "Failed attempts" is a real DB column not yet exposed by any endpoint;
  * device compliance is Entra/Intune data out of this page's own scope).
  *
+ * ── Change password (Git #1601) ─────────────────────────────────────────────
+ * "Change password" opens a real inline form wired to
+ * `POST /api/auth/change-password` (`useAccountSecurityLive.changePassword`).
+ * All four of the route's own error states render distinctly — its own
+ * literal message text, never invented copy (`accountSecurityModel.ts`'s
+ * `changePasswordErrorText`) — and a successful change surfaces the real
+ * `revokedOtherSessions` count the route returns, since every other session
+ * is genuinely killed as a side effect of this action.
+ *
  * ── UI-only ─────────────────────────────────────────────────────────────────
  * The delete-account section IS interactive — expand/collapse and the
- * type-to-confirm gate are the design's own state — but change password, set
- * up passkey, and submit deletion remain inert design copy/CTAs; wiring those
- * to `POST /api/auth/change-password`, MFA enrollment, and
- * `POST /api/portal/deletion-request` (all of which already exist) is a later
- * pass, same as the "Your data" export/delete cards.
+ * type-to-confirm gate are the design's own state. Set-up-passkey and submit
+ * deletion remain inert design copy/CTAs; wiring those to MFA enrollment and
+ * `POST /api/portal/deletion-request` (both of which already exist) is a
+ * later pass, same as the "Your data" export/delete cards.
  */
 
 import { useState } from "react";
@@ -51,10 +59,15 @@ import {
   SEC_MFA_KICKER,
   SEC_MFA_SUB,
   SEC_PASSWORD_BODY,
+  SEC_PASSWORD_CANCEL,
   SEC_PASSWORD_CHANGE,
+  SEC_PASSWORD_CURRENT_LABEL,
   SEC_PASSWORD_HISTORY,
   SEC_PASSWORD_KICKER,
+  SEC_PASSWORD_NEW_LABEL,
   SEC_PASSWORD_SUB,
+  SEC_PASSWORD_SUBMIT,
+  SEC_PASSWORD_SUCCESS,
   SEC_POSTURE,
   SEC_POSTURE_KICKER,
   SEC_POSTURE_NOTE,
@@ -67,6 +80,7 @@ import {
   SEC_TITLE,
 } from "@/components/portal-v2/accountSecurityData";
 import {
+  changePasswordErrorText,
   mfaAccent,
   mfaIsActive,
   mfaMethodWithLive,
@@ -199,7 +213,40 @@ export default function PortalV2AccountSecurityPage() {
   const [deleteText, setDeleteText] = useState("");
   const ready = secDeleteReady(deleteText);
 
+  const [passwordFormOpen, setPasswordFormOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+
   const live = useAccountSecurityLive();
+
+  const closePasswordForm = () => {
+    setPasswordFormOpen(false);
+    setCurrentPassword("");
+    setNewPassword("");
+    setPasswordError(null);
+    setPasswordSuccess(null);
+  };
+
+  const submitPasswordChange = async () => {
+    setPasswordSubmitting(true);
+    setPasswordError(null);
+    setPasswordSuccess(null);
+    try {
+      const outcome = await live.changePassword(currentPassword, newPassword);
+      if (outcome.kind === "success") {
+        setPasswordSuccess(SEC_PASSWORD_SUCCESS(outcome.revokedOtherSessions));
+        setCurrentPassword("");
+        setNewPassword("");
+      } else {
+        setPasswordError(changePasswordErrorText(outcome));
+      }
+    } finally {
+      setPasswordSubmitting(false);
+    }
+  };
 
   const identityEmail = live.identityEmail ?? SEC_IDENTITY_EMAIL;
   const identityRole = live.identityRole ?? SEC_IDENTITY_ROLE;
@@ -427,20 +474,99 @@ export default function PortalV2AccountSecurityPage() {
               <div style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 9 }}>
                 <span style={{ fontSize: "12px", color: "#e2e8f0", lineHeight: 1.55 }}>{SEC_PASSWORD_BODY}</span>
                 <span style={{ fontSize: "11px", color: "#94a3b8", lineHeight: 1.55 }}>{SEC_PASSWORD_SUB}</span>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 2 }}>
-                  <button
-                    type="button"
-                    style={{ padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(0,120,212,.45)", background: "rgba(0,120,212,.12)", fontSize: "11.5px", fontWeight: 700, color: "#60a5fa", cursor: "pointer", fontFamily: "inherit" }}
+                {!passwordFormOpen && (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 2 }}>
+                    <button
+                      type="button"
+                      data-testid="pv2-sec-password-change"
+                      onClick={() => setPasswordFormOpen(true)}
+                      style={{ padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(0,120,212,.45)", background: "rgba(0,120,212,.12)", fontSize: "11.5px", fontWeight: 700, color: "#60a5fa", cursor: "pointer", fontFamily: "inherit" }}
+                    >
+                      {SEC_PASSWORD_CHANGE}
+                    </button>
+                    <button
+                      type="button"
+                      style={{ padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(148,163,184,.24)", background: "transparent", fontSize: "11.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
+                    >
+                      {SEC_PASSWORD_HISTORY}
+                    </button>
+                  </div>
+                )}
+                {passwordFormOpen && (
+                  <form
+                    data-testid="pv2-sec-password-form"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      void submitPasswordChange();
+                    }}
+                    style={{ display: "flex", flexDirection: "column", gap: 9, paddingTop: 4 }}
                   >
-                    {SEC_PASSWORD_CHANGE}
-                  </button>
-                  <button
-                    type="button"
-                    style={{ padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(148,163,184,.24)", background: "transparent", fontSize: "11.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
-                  >
-                    {SEC_PASSWORD_HISTORY}
-                  </button>
-                </div>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#64748b" }}>
+                        {SEC_PASSWORD_CURRENT_LABEL}
+                      </span>
+                      <input
+                        type="password"
+                        autoComplete="current-password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        data-testid="pv2-sec-password-current"
+                        style={{ padding: "8px 11px", borderRadius: 7, border: "1px solid rgba(30,41,59,.9)", background: "#0b1a2e", color: "#e2e8f0", fontSize: "12px", fontFamily: "inherit" }}
+                      />
+                    </label>
+                    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ fontSize: "9.5px", fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "#64748b" }}>
+                        {SEC_PASSWORD_NEW_LABEL}
+                      </span>
+                      <input
+                        type="password"
+                        autoComplete="new-password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        data-testid="pv2-sec-password-new"
+                        style={{ padding: "8px 11px", borderRadius: 7, border: "1px solid rgba(30,41,59,.9)", background: "#0b1a2e", color: "#e2e8f0", fontSize: "12px", fontFamily: "inherit" }}
+                      />
+                    </label>
+                    {passwordError && (
+                      <span data-testid="pv2-sec-password-error" style={{ fontSize: "11px", color: "#f87171", lineHeight: 1.5 }}>
+                        {passwordError}
+                      </span>
+                    )}
+                    {passwordSuccess && (
+                      <span data-testid="pv2-sec-password-success" style={{ fontSize: "11px", color: "#34d399", lineHeight: 1.5 }}>
+                        {passwordSuccess}
+                      </span>
+                    )}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingTop: 2 }}>
+                      <button
+                        type="submit"
+                        disabled={passwordSubmitting || !currentPassword || !newPassword}
+                        data-testid="pv2-sec-password-submit"
+                        style={{
+                          padding: "7px 13px",
+                          borderRadius: 7,
+                          border: "1px solid rgba(0,120,212,.45)",
+                          background: "rgba(0,120,212,.12)",
+                          fontSize: "11.5px",
+                          fontWeight: 700,
+                          color: passwordSubmitting || !currentPassword || !newPassword ? "#475569" : "#60a5fa",
+                          cursor: passwordSubmitting || !currentPassword || !newPassword ? "default" : "pointer",
+                          fontFamily: "inherit",
+                        }}
+                      >
+                        {SEC_PASSWORD_SUBMIT}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="pv2-sec-password-cancel"
+                        onClick={closePasswordForm}
+                        style={{ padding: "7px 13px", borderRadius: 7, border: "1px solid rgba(148,163,184,.24)", background: "transparent", fontSize: "11.5px", fontWeight: 600, color: "#94a3b8", cursor: "pointer", fontFamily: "inherit" }}
+                      >
+                        {SEC_PASSWORD_CANCEL}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
           </div>
