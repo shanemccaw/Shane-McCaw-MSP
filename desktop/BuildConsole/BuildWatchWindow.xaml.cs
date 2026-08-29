@@ -980,16 +980,19 @@ namespace BuildConsole
                 // 2) Admit newly-running builds into free / oldest-completed slots.
                 AdmitNewRunning(queue);
 
-                // 3) Manual-only GitHub (Shane, 2026-08-14): the ≈30s automatic
+                // 3) Manual-only GitHub (Shane, 2026-08-14): the old ≈30s automatic
                 // `gh` issue-closure check (CheckIssueClosuresAsync — one gh CLI
                 // spawn against GitHub's shared 5,000/hr limit, every 10th 3s
-                // tick, the whole time this window was open) is DISABLED. Shane:
-                // "this app is killing my git connections... turn git into a
-                // manual refresh." A slot whose GitHub issue is closed is no
-                // longer auto-removed here — dismiss it with the slot's own
-                // manual close (unchanged), which costs zero GitHub traffic. The
-                // rest of this tick (queue reconcile / admit) is local dev-server
-                // data, not GitHub, and keeps its 3s cadence.
+                // tick, the whole time this window was open) stays DISABLED here —
+                // this tick never calls it. Shane: "this app is killing my git
+                // connections... turn git into a manual refresh." Git #1632 wired
+                // it up via two explicit, non-timer triggers instead: LeftSidebar's
+                // own board-refresh event (ApplyOpenIssueSet, piggybacking on data
+                // already fetched for another reason) and the title-bar "Recheck
+                // closures" icon (a genuine one-click `gh` call). Neither runs on
+                // this tick's schedule. The rest of this tick (queue reconcile /
+                // admit) is local dev-server data, not GitHub, and keeps its 3s
+                // cadence.
 
                 UpdateWaitingBanner();
                 UpdateSubtitle();
@@ -1753,47 +1756,78 @@ namespace BuildConsole
         /// determine" and skipped — otherwise a transient gh hiccup would nuke
         /// every slot. Only a non-empty (successful) result drives removals.
         ///
-        /// Manual-only GitHub (Shane, 2026-08-14): NO LONGER CALLED AUTOMATICALLY.
-        /// Its ≈30s `gh` poll was real, continuous GitHub traffic on the shared
-        /// 5,000/hr limit ("this app is killing my git connections"), so the tick
-        /// that invoked it (see PollAsync) was removed. Retained intact so a future
-        /// explicit "re-check closures" action can call it on demand; until then a
-        /// closed issue's slot is simply dismissed with the slot's own manual close.
+        /// Manual-only GitHub (Shane, 2026-08-14): NOT CALLED ON A TIMER. Its old
+        /// ≈30s `gh` poll was real, continuous GitHub traffic on the shared 5,000/hr
+        /// limit ("this app is killing my git connections"), so the tick that
+        /// invoked it (see PollAsync) was removed and this sat with zero callers.
+        ///
+        /// Git #1632 — wired up via the "future explicit re-check closures action"
+        /// this doc used to promise: this method is now called ONLY by the
+        /// title-bar "Recheck closures" icon (BtnRecheckClosures_Click), a genuine
+        /// one-click `gh` call, same convention as Git Board's own manual Refresh.
+        /// The other, free half of #1632 is <see cref="ApplyOpenIssueSet"/>, fed by
+        /// LeftSidebar's own board fetch with no `gh` call of its own — both funnel
+        /// into the shared <see cref="EvictClosedAndPromoteVerifyingAsync"/>.
         /// </summary>
         private async Task CheckIssueClosuresAsync()
         {
-            var withIssues = _slots.Where(s => s.Occupied && s.GithubNumber.HasValue).ToList();
-            if (withIssues.Count == 0) return;
+            if (!_slots.Any(s => s.Occupied && s.GithubNumber.HasValue)) return;
 
             HashSet<int> open;
             try { open = await GitHubIssuesService.GetOpenIssueNumbersAsync(1000); }
             catch { return; }
             if (open.Count == 0) return; // treat empty as "call failed", not "all closed"
 
-            // Git #1469 — same on-demand recheck also promotes any Verifying queue
-            // row whose real issue closed to real Done, reusing the open-issue set
-            // just fetched above (no extra `gh` call).
+            await EvictClosedAndPromoteVerifyingAsync(open, source: "manual recheck");
+        }
+
+        /// <summary>
+        /// Git #1632 — trigger 1 of 2 (see this class doc + the event doc on
+        /// LeftSidebar.GitBoardOpenIssuesRefreshed). Called by MainWindow whenever
+        /// LeftSidebar's PopulateGitTrackerBoard completes a fetch (Git Board's own
+        /// manual Refresh button, or app startup) — the real open-issue set was
+        /// already fetched for that other purpose, so this costs zero incremental
+        /// `gh` traffic. Same eviction/promotion behavior as the manual "Recheck
+        /// closures" title-bar icon (<see cref="CheckIssueClosuresAsync"/>), just fed
+        /// data instead of fetching its own.
+        /// </summary>
+        public async void ApplyOpenIssueSet(HashSet<int> open)
+        {
+            if (open == null || open.Count == 0) return; // same "empty = couldn't determine" guard
+            await EvictClosedAndPromoteVerifyingAsync(open, source: "Git Board refresh");
+        }
+
+        /// <summary>
+        /// Git #980 (eviction) / #1469 (promotion), unified under #1632 so both
+        /// triggers share one implementation. Clears any occupied slot whose
+        /// GithubNumber isn't in <paramref name="open"/>, and promotes any Verifying
+        /// queue row whose real issue closed to Done — using the given open-issue set
+        /// rather than fetching one itself.
+        /// </summary>
+        private async Task EvictClosedAndPromoteVerifyingAsync(HashSet<int> open, string source)
+        {
             if (_db != null)
             {
                 try
                 {
                     var promoted = await _db.PromoteVerifyingToDoneAsync(open);
                     if (promoted.Count > 0)
-                        ActivityLog.Log("github", $"Build Watch recheck: {promoted.Count} Verifying item(s) promoted to Done — " +
+                        ActivityLog.Log("github", $"Build Watch ({source}): {promoted.Count} Verifying item(s) promoted to Done — " +
                             string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
                 }
                 catch (Exception ex)
                 {
-                    ActivityLog.Log("github", $"Build Watch recheck couldn't promote Verifying→Done: {ex.Message}");
+                    ActivityLog.Log("github", $"Build Watch ({source}) couldn't promote Verifying→Done: {ex.Message}");
                 }
             }
 
+            var withIssues = _slots.Where(s => s.Occupied && s.GithubNumber.HasValue).ToList();
             bool freed = false;
             foreach (var slot in withIssues)
             {
                 if (!open.Contains(slot.GithubNumber!.Value))
                 {
-                    ClearSlot(slot, $"issue-closed-removal (GH #{slot.GithubNumber} closed)");
+                    ClearSlot(slot, $"issue-closed-removal (GH #{slot.GithubNumber} closed, {source})");
                     freed = true;
                 }
             }
@@ -1856,6 +1890,17 @@ namespace BuildConsole
         {
             base.OnSourceInitialized(e);
             WindowChromeHelper.Setup(this);
+        }
+
+        /// <summary>
+        /// Git #1632 — trigger 2 of 2: a genuine, explicit one-click `gh` call, for
+        /// when Shane is watching builds without having touched Git Board recently.
+        /// Same cost/convention as Git Board's own manual Refresh button.
+        /// </summary>
+        private async void BtnRecheckClosures_Click(object sender, RoutedEventArgs e)
+        {
+            ActivityLog.Log("github", "Build Watch: manual 'Recheck closures' clicked");
+            await CheckIssueClosuresAsync();
         }
 
         private void BtnMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;

@@ -47,6 +47,12 @@
                            VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
                            Foreground="{StaticResource Subtext1Brush}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <!-- Git #1632 — manual "Recheck closures" trigger: a genuine one-click
+                         `gh` call (same convention as Git Board's own manual Refresh), NOT a
+                         timer. Calls CheckIssueClosuresAsync() directly. -->
+                    <Button x:Name="BtnRecheckClosures" Style="{StaticResource CaptionButton}" ToolTip="Recheck GitHub issue closures" Click="BtnRecheckClosures_Click">
+                        <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
                         <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
                     </Button>
