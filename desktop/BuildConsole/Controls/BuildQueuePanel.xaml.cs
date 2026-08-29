@@ -359,6 +359,13 @@ namespace BuildConsole.Controls
         }
 
         // ── Epic Issues Section ──────────────────────────────────────────────
+        // Shane, 2026-08-28: "I need the Issues in Epic panel to hide... don't
+        // delete it, I might want it back later." Flip this back to true to
+        // restore it — the section, its filter chips, and its list are all
+        // still here, just forced Collapsed below regardless of the normal
+        // active-epic logic.
+        private const bool ShowChatEpicIssuesSection = false;
+
         private int? _activeChatEpicId;
         private int? _activeChatEpicGithubNumber;
         private string? _activeChatEpicTitle;
@@ -372,7 +379,7 @@ namespace BuildConsole.Controls
             _activeChatEpicGithubNumber = epicGithubNumber;
             _activeChatEpicTitle = epicTitle;
 
-            if (epicId == null)
+            if (!ShowChatEpicIssuesSection || epicId == null)
             {
                 ChatEpicIssuesSection.Visibility = Visibility.Collapsed;
                 return;

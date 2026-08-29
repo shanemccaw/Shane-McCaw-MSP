@@ -47,6 +47,8 @@ namespace BuildConsole.Controls
         public int ProgressPercent => TotalCount == 0 ? 0 : (CompletedCount * 100 / TotalCount);
         public string ProgressStr => $"{ProgressPercent}% ({CompletedCount}/{TotalCount})";
         public List<GitEpic> Epics { get; set; } = new();
+        /// <summary>Shane, 2026-08-28: "If a parent has children in flight or working, there should be an indicator all the way down the chain." True when any issue nested anywhere under this milestone is in-flight, so a collapsed milestone still tells you something's moving underneath it. Computed fresh in RenderIssuesTree from the live per-issue flags.</summary>
+        public bool HasInFlightDescendant { get; set; }
     }
 
     public class GitEpic
@@ -54,6 +56,8 @@ namespace BuildConsole.Controls
         public string Title { get; set; } = string.Empty;
         public string ColorHex { get; set; } = "#CBA6F7";
         public List<GitIssue> Issues { get; set; } = new();
+        /// <summary>Shane, 2026-08-28 — same "indicator all the way down the chain" as <see cref="GitMilestone.HasInFlightDescendant"/>, scoped to this bucket (e.g. the "⚡ Epics" bucket) instead of the whole milestone.</summary>
+        public bool HasInFlightDescendant { get; set; }
     }
 
     public class GitIssue
@@ -79,6 +83,8 @@ namespace BuildConsole.Controls
         public string? BlockedByTitle { get; set; }
         /// <summary>Git #1368 — real "in-flight" label straight off the board's own GraphQL labels fetch (see <see cref="GitBoardIssue.HasInFlightLabel"/>), no separate REST call needed unlike <see cref="IsBlocked"/>.</summary>
         public bool IsInFlight { get; set; }
+        /// <summary>Shane, 2026-08-28: "If a parent has children in flight or working, there should be an indicator all the way down the chain... I have to expand everything to try and find it." True when this issue is NOT itself in-flight but has some descendant (sub-issue, sub-sub-issue, etc., however deep) that is — so every ancestor on the path down to the real in-flight item shows something without expanding the tree. Computed fresh in RenderIssuesTree from the live IsInFlight flags via the same ParentNumber chain PopulateIssueTreeHierarchy nests on.</summary>
+        public bool HasInFlightDescendant { get; set; }
         public bool HasParentEpic { get; set; }
         public int? ParentNumber { get; set; }
         public int SubIssueCount { get; set; }
@@ -3722,6 +3728,7 @@ namespace BuildConsole.Controls
         private const double IssueNumberBadgeWidth = 48;   // "#NNN" bordered pill + its 6px right margin
         private const double IssueBlockedBadgeWidth = 78;  // "🔴 Blocked" bordered pill + its 6px right margin
         private const double IssueInFlightBadgeWidth = 88; // "🟠 In Flight" bordered pill + its 6px right margin
+        private const double IssueInFlightDescendantBadgeWidth = 88; // "🟠 In Flight ↓" bordered pill + its 6px right margin
 
         private readonly List<(TextBlock block, double reserve)> _issueTitleBlocks = new();
 
@@ -3770,6 +3777,37 @@ namespace BuildConsole.Controls
             IssueStatClosed.Text = $"{closedIssues} Done";
 
             var allKnownIssues = shownMilestones.SelectMany(sm => sm.Epics.SelectMany(e => e.Issues)).ToList();
+
+            // Shane, 2026-08-28: "If a parent has children in flight or working
+            // there should be an indicator all the way down the chain... I have
+            // to expand everything to try and find it." Walk each issue's real
+            // ParentNumber chain (the same chain PopulateIssueTreeHierarchy nests
+            // the tree on) and mark every ancestor whose sub-tree contains a
+            // live in-flight issue, however deep — so a collapsed epic/milestone
+            // still tells you something's moving underneath without opening it.
+            var issuesByParent = allKnownIssues.Where(i => i.ParentNumber.HasValue).ToLookup(i => i.ParentNumber!.Value);
+            bool HasInFlightBelow(GitIssue node, HashSet<int> seen)
+            {
+                if (!seen.Add(node.IssueNumber)) return false; // cycle guard
+                foreach (var child in issuesByParent[node.IssueNumber])
+                {
+                    if (child.Status != "CLOSED" && child.IsInFlight) return true;
+                    if (HasInFlightBelow(child, seen)) return true;
+                }
+                return false;
+            }
+            foreach (var issue in allKnownIssues)
+            {
+                issue.HasInFlightDescendant = HasInFlightBelow(issue, new HashSet<int>());
+            }
+            foreach (var m in shownMilestones)
+            {
+                foreach (var bucket in m.Epics)
+                {
+                    bucket.HasInFlightDescendant = bucket.Issues.Any(ii => ii.Status != "CLOSED" && (ii.IsInFlight || ii.HasInFlightDescendant));
+                }
+                m.HasInFlightDescendant = m.Epics.Any(ebkt => ebkt.HasInFlightDescendant);
+            }
 
             if (_activeEpicGithubNumber.HasValue)
             {
@@ -4175,6 +4213,24 @@ namespace BuildConsole.Controls
                 p.Children.Add(workingBadge);
             }
 
+            // Shane, 2026-08-28 — "an indicator all the way down the chain" so a
+            // collapsed milestone still shows something's in flight beneath it
+            // without expanding. Same amber as the issue row's own "In Flight"
+            // badge, distinguished by the down-arrow glyph/wording + tooltip.
+            if (m.HasInFlightDescendant)
+            {
+                var belowBadge = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1, 6, 1),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    ToolTip = "Something inside this milestone is in flight right now"
+                };
+                belowBadge.Child = new TextBlock { Text = "🟠 In Flight ↓", FontSize = 9.5, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+                p.Children.Add(belowBadge);
+            }
+
             // Git #875 — only a real GitHub milestone has a real completed/
             // total to show; the synthetic "No Milestone" bucket doesn't, so
             // it gets no badge at all rather than a fabricated "0%".
@@ -4203,7 +4259,8 @@ namespace BuildConsole.Controls
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * 1 + IssueTreeChrome + MilestoneEmojiWidth
                 + (m.HasRealCounts ? MilestoneBadgeWidth : 0)
-                + (containsActiveEpic ? 90 : 0)));
+                + (containsActiveEpic ? 90 : 0)
+                + (m.HasInFlightDescendant ? 90 : 0)));
             return p;
         }
 
@@ -4232,11 +4289,28 @@ namespace BuildConsole.Controls
                 p.Children.Add(workingBadge);
             }
 
+            // Shane, 2026-08-28 — same collapsed "something's in flight below"
+            // indicator as CreateMilestoneHeader, scoped to this bucket.
+            if (e.HasInFlightDescendant)
+            {
+                var belowBadge = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    ToolTip = "Something inside this section is in flight right now"
+                };
+                belowBadge.Child = new TextBlock { Text = "🟠 In Flight ↓", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+                p.Children.Add(belowBadge);
+            }
+
             // Git #938 — epic rows sit at depth 1 (nested under a milestone): two
             // expander columns of indentation + the " (N)" issue-count suffix.
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * 2 + IssueTreeChrome + EpicCountWidth
-                + (containsActiveEpic ? 70 : 0)));
+                + (containsActiveEpic ? 70 : 0)
+                + (e.HasInFlightDescendant ? 78 : 0)));
             return p;
         }
 
@@ -4349,6 +4423,27 @@ namespace BuildConsole.Controls
                 p.Children.Add(inFlightBadge);
             }
 
+            // Shane, 2026-08-28: "If a parent has children in flight or working
+            // there should be an indicator all the way down the chain... I have
+            // to expand everything to try and find it." This issue isn't itself
+            // in flight, but a sub-issue somewhere beneath it (however deep) is —
+            // same amber as the badge above, distinguished by the down-arrow so
+            // the two are never confused for "this exact issue is in flight".
+            bool showsInFlightDescendant = issue.Status != "CLOSED" && !issue.IsInFlight && issue.HasInFlightDescendant;
+            if (showsInFlightDescendant)
+            {
+                var belowBadge = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(4, 1, 4, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    ToolTip = "A sub-issue further down the chain is in flight right now"
+                };
+                belowBadge.Child = new TextBlock { Text = "🟠 In Flight ↓", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
+                p.Children.Add(belowBadge);
+            }
+
             // Git #845 (Git Board Phase 7) — real still-OPEN blocked_by
             // dependency (EnrichBlockedStatusAsync), same red "Blocked" badge
             // styling as the search view's CreateSearchIssueHeader (#F38BA8).
@@ -4373,7 +4468,8 @@ namespace BuildConsole.Controls
             bool showsInFlight = issue.Status != "CLOSED" && issue.IsInFlight;
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * (depth + 1) + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
-                + (showsBlocked ? IssueBlockedBadgeWidth : 0) + (showsInFlight ? IssueInFlightBadgeWidth : 0) + (showsNoParent ? IssueBlockedBadgeWidth : 0)));
+                + (showsBlocked ? IssueBlockedBadgeWidth : 0) + (showsInFlight ? IssueInFlightBadgeWidth : 0) + (showsNoParent ? IssueBlockedBadgeWidth : 0)
+                + (showsInFlightDescendant ? IssueInFlightDescendantBadgeWidth : 0)));
 
             // Left accent bar + subtle background tint so the active epic
             // reads ahead of every sibling epic even before you read its
