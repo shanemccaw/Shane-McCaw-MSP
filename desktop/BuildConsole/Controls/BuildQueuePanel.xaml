@@ -358,27 +358,23 @@
                             </Grid>
 
                             <!-- ── Visual Queue DAG with Canvas-based connector lines (#860) ──
-                                 Shane: "expand the height of the build queue" — raised from 400 now
-                                 that In-Flight/Sessions below are hidden and no longer competing for
-                                 vertical space; still capped (not removed) so a huge queue still
-                                 scrolls in its own area instead of pushing the outer panel's scroll
-                                 arbitrarily tall. -->
-                            <ScrollViewer x:Name="QueueGraphScrollViewer"
-                                          MaxHeight="900"
-                                          VerticalScrollBarVisibility="Auto"
-                                          HorizontalScrollBarVisibility="Disabled"
-                                          PreviewMouseWheel="QueueGraphScrollViewer_PreviewMouseWheel">
-                                <Grid x:Name="QueueGraphContainer" Margin="0,2,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition x:Name="GraphColumn" Width="Auto"/>
-                                        <ColumnDefinition Width="*"/>
-                                    </Grid.ColumnDefinitions>
-                                    <!-- Canvas for DAG lane connectors, Bézier curves, and status node dots -->
-                                    <Canvas x:Name="QueueGraphCanvas" Grid.Column="0" ClipToBounds="False" HorizontalAlignment="Left"/>
-                                    <!-- Stack of build cards (one per node), aligned with GraphCanvas -->
-                                    <StackPanel x:Name="QueueCardsHost" Grid.Column="1" SizeChanged="QueueCardsHost_SizeChanged"/>
-                                </Grid>
-                            </ScrollViewer>
+                                 Git #1634 — Shane: exactly one scrollbar for the whole panel, not
+                                 one here plus the outer one (~line 155). This card list used to
+                                 sit in its own capped ScrollViewer (MaxHeight="900") so a huge
+                                 queue scrolled independently; Shane is explicitly reversing that
+                                 now — no independent scroll region here, the list just grows to
+                                 its natural height and the outer ScrollViewer is the only surface
+                                 that scrolls. -->
+                            <Grid x:Name="QueueGraphContainer" Margin="0,2,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition x:Name="GraphColumn" Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <!-- Canvas for DAG lane connectors, Bézier curves, and status node dots -->
+                                <Canvas x:Name="QueueGraphCanvas" Grid.Column="0" ClipToBounds="False" HorizontalAlignment="Left"/>
+                                <!-- Stack of build cards (one per node), aligned with GraphCanvas -->
+                                <StackPanel x:Name="QueueCardsHost" Grid.Column="1" SizeChanged="QueueCardsHost_SizeChanged"/>
+                            </Grid>
                             <TextBlock x:Name="QueueEmptyText"
                                        Text="Not connected — see Settings"
                                        FontSize="11"

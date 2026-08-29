@@ -1289,27 +1289,6 @@ namespace BuildConsole.Controls
             RedrawQueueGraph();
         }
 
-        private void QueueGraphScrollViewer_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-        {
-            if (sender is ScrollViewer scrollViewer)
-            {
-                bool isAtBottom = scrollViewer.VerticalOffset >= scrollViewer.ScrollableHeight;
-                bool isAtTop = scrollViewer.VerticalOffset <= 0;
-
-                if ((e.Delta < 0 && isAtBottom) || (e.Delta > 0 && isAtTop))
-                {
-                    e.Handled = true;
-                    var eventArg = new MouseWheelEventArgs(e.MouseDevice, e.Timestamp, e.Delta)
-                    {
-                        RoutedEvent = UIElement.MouseWheelEvent,
-                        Source = scrollViewer
-                    };
-                    var parent = scrollViewer.Parent as UIElement;
-                    parent?.RaiseEvent(eventArg);
-                }
-            }
-        }
-
         private void RedrawQueueGraph()
         {
             if (QueueGraphCanvas == null || _currentGraphNodes.Count == 0)
