@@ -97,8 +97,17 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
       updateWorktreeRecord(config, wtPath, { creatorPid, status: "active" });
       // Env files (#1633): unconditional, not gated behind --link, and idempotent --
       // even a reused worktree may be missing one if it was provisioned before this fix.
+      // Git #1646 — do NOT call logEnvCopy() here: this function is also invoked with
+      // --json by BuildConsole (WorktreeProvisionService), which requires stdout to be
+      // NOTHING but the final JSON.stringify(res) line. logEnvCopy() unconditionally
+      // wrote a plain-text "env : copied/skipped ..." line to stdout BEFORE that JSON,
+      // which made JsonDocument.Parse(stdout.Trim()) throw on every single provision
+      // call (reproduced live) — the C# catch-block then reports Ok=true with an empty
+      // Path and no Error, which QueueWatcherService.LaunchItem misread as a launch
+      // failure with a blank reason ("Worktree provisioning FAILED ... : ."), so every
+      // queued build failed before claude.exe was ever started. envFiles is returned on
+      // the result instead; only main()'s human-readable (non --json) path prints it.
       const envResult = copyEnvFiles(repo, wtPath);
-      logEnvCopy(envResult);
       return {
         ok: true,
         name,
@@ -149,8 +158,9 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
   //     worktree checks out tracked files only, and .env/.env.local/.env.*.local are
   //     git-ignored, so without this step no worktree can ever reach the database.
   //     Best-effort like linkDeps -- a missing source file is logged, not fatal. ---
+  // Git #1646 — see the matching comment on the reused-worktree branch above: no
+  // console output here, envFiles rides on the returned result instead.
   const envResult = copyEnvFiles(repo, wtPath);
-  logEnvCopy(envResult);
 
   // --- Register in the lifecycle tracker (the fix for the swept-live-worktree bug). ---
   const rec = registerWorktree(config, {
@@ -210,6 +220,10 @@ function main() {
     console.error(`! ${res.error}`);
     process.exit(1);
   }
+
+  // Git #1646 — moved out of provisionWorktree() itself (see comments there); only
+  // the human-readable path prints this, so --json output stays pure JSON.
+  if (res.envFiles) logEnvCopy(res.envFiles);
 
   console.log(res.reused ? `Reused existing worktree` : `Created worktree`);
   console.log(`  path   : ${res.path}`);
