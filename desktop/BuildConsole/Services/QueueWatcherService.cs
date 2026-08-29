@@ -205,8 +205,42 @@ namespace BuildConsole.Services
             _maxConcurrent = maxConcurrent;
             _repoRoot = repoRoot ?? AppDomain.CurrentDomain.BaseDirectory;
             _claudeExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
-            _geminiExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "gemini.exe");
+            _geminiExe = ResolveGeminiExe();
             _paused = BuildConsoleSettings.Load().QueuePaused;
+        }
+
+        /// <summary>
+        /// Git #1403 — Shane: "--cli gemini flag ignored, builds still spawn claude.exe."
+        /// The real, confirmed cause of one half of that bug: this used to hardcode
+        /// `~\.local\bin\gemini.exe`, mirroring exactly where Claude Code's own native
+        /// installer places claude.exe. But `npm install -g @google/gemini-cli` — the
+        /// real, documented way Gemini CLI installs on Windows — never produces a
+        /// `.exe` there at all; it drops `gemini`/`gemini.cmd`/`gemini.ps1` shims under
+        /// npm's own global bin dir (`%APPDATA%\npm` by default), confirmed live on
+        /// this machine via `where gemini`. So `File.Exists(_geminiExe)` was FALSE for
+        /// every real gemini-cli install, and LaunchItem's own not-found guard (a few
+        /// lines below) refused to launch at all — a build that failed outright, not
+        /// one that silently ran claude (that half of the symptom came from the
+        /// separate cli-dropped-on-retry bug fixed alongside this one). Confirmed live
+        /// that `Process.Start` with `UseShellExecute = false` CAN launch a `.cmd`
+        /// shim directly (.NET's Process class falls back to a `cmd.exe /c` wrapper on
+        /// ERROR_BAD_EXE_FORMAT), so no extra shell-wrapping is needed here — just the
+        /// real path. Checked in priority order; whichever exists first wins:
+        ///   1. `%APPDATA%\npm\gemini.cmd` — real, documented `npm install -g` layout.
+        ///   2. `~\.local\bin\gemini.exe` — kept as a fallback for a future native/pkg
+        ///      binary distribution that mirrors Claude Code's own installer layout.
+        /// Neither existing leaves this at the legacy path (option 2) so the existing
+        /// "not found" ActivityLog message still names a real, sensible location.
+        /// </summary>
+        private static string ResolveGeminiExe()
+        {
+            string npmGlobalCmd = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm", "gemini.cmd");
+            if (File.Exists(npmGlobalCmd)) return npmGlobalCmd;
+
+            string legacyExe = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "gemini.exe");
+            return legacyExe;
         }
 
         public int RunningCount => _running.Count;
