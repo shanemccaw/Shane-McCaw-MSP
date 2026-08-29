@@ -514,6 +514,15 @@ namespace BuildConsole
                 RefreshOpenGitDetailTabs();
             };
 
+            // Shane, 2026-08-28: "when a build is in Verifying state and then
+            // the Git issue behind it is closed, it should change to closed
+            // and hide." LeftSidebar's board refresh (triggered by the above
+            // FullGitRefreshRequested, or the Git Board's own refresh button)
+            // just promoted one or more Verifying rows to Done — redraw the
+            // Build Queue panel now so it drops out of the Active view right
+            // away instead of waiting for the panel's own next poll.
+            LeftSidebar.VerifyingIssuesPromoted += async (s, e) => await BuildQueuePanel.RefreshAsync();
+
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
             // build happening right there in that chats tab." Each chat gets

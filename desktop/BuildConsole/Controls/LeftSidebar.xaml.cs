@@ -239,6 +239,8 @@ namespace BuildConsole.Controls
         /// it's the active tab, re-feeds BuildQueuePanel immediately.
         /// </summary>
         public event EventHandler<(string ConversationId, int EpicId)>? ChatEpicAssigned;
+        /// <summary>Shane, 2026-08-28: "when a build is in Verifying state and then the Git issue behind it is closed, it should change to closed and hide." Fired after PopulateGitTrackerBoard's fresh open-issue fetch promotes one or more Verifying queue rows to Done (their real GitHub issue closed) — MainWindow re-fetches the Build Queue panel so the promoted item disappears from the Active view immediately instead of waiting for its own next poll.</summary>
+        public event EventHandler? VerifyingIssuesPromoted;
         public event EventHandler<bool>? PinToggled;
         /// <summary>Git #954 (Epic #803) — raised when the user clicks a category in the sidebar's Settings nav list; MainWindow opens (or focuses) the native Settings tab scrolled to that section. The string is the category key (General / Credentials / TestEnvironment / ChatIntegration / WebTools / ReplitWatcher).</summary>
         public event EventHandler<string>? SettingsCategoryRequested;
@@ -1544,6 +1546,37 @@ namespace BuildConsole.Controls
             }
 
             ActivityLog.Log("git-board.data", $"loaded {issues.Count} open issue(s), {issues.Count(i => i.IsEpic)} epic(s)");
+
+            // Shane, 2026-08-28: "when a build is in Verifying state and then
+            // the Git issue behind it is closed, it should change to closed
+            // [done] and hide." #1469 already built the promotion rule
+            // (PromoteVerifyingToDoneAsync) but only wired it into the Home
+            // tab's manual refresh — a Git Board refresh triggered from the
+            // Build Queue panel's own refresh button never ran it, so a
+            // Verifying item sat there until Home was opened. This board
+            // fetch already has a fresh real open-issue set (`issues`, State
+            // == OPEN) for free, so reuse it here too. VerifyingIssuesPromoted
+            // lets MainWindow tell the Build Queue panel to redraw immediately
+            // instead of waiting for its own next poll.
+            if (_db != null)
+            {
+                try
+                {
+                    var openNumbersForPromotion = issues.Where(i => i.State == "OPEN").Select(i => i.Number).ToHashSet();
+                    var promoted = await _db.PromoteVerifyingToDoneAsync(openNumbersForPromotion);
+                    if (promoted.Count > 0)
+                    {
+                        ActivityLog.Log("git-board.data",
+                            $"Verifying → Done (issue closed): {promoted.Count} queue item(s) — " +
+                            string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
+                        VerifyingIssuesPromoted?.Invoke(this, EventArgs.Empty);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("git-board.data", $"Verifying→Done promotion FAILED (will retry next refresh): {ex.Message}");
+                }
+            }
 
             _boardShowsClosed = false;
 
