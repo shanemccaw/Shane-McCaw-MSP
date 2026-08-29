@@ -1,41 +1,66 @@
 using System.Collections.Generic;
+using System.Windows.Controls;
+using BuildConsole.Services;
 
 namespace BuildConsole.Controls
 {
-    // A registry of critters (id, display name, category, weight, scale, and factory).
-    // Each entry's Factory returns a Canvas containing vector elements that visually represent the critter.
+    // Shane, 2026-08-28: "Yesterday I had Copilot add Critters... they don't work well, I
+    // don't see them much and the ones I do see are not cute... add 20 new critters — 10
+    // good critters that are cute and happy, they close bugs and kill builds, 10 mean
+    // critters like my Whammy critter who creates blockers, or ogres who make more work."
+    //
+    // Replaces the old CritterFactory.cs blob set entirely (that file is gone) — this
+    // registry now reuses the SAME hand-built mascots the rest of the app already shows:
+    // the 10 new Build Queue card critters (BuildQueuePanel.CreateCuteXVector, the panel's
+    // own "which face shows on a queue card" pool) for Positive, and the 10 new mean
+    // mascots (IssueChompAnimation.MeanCritterPool, the same ones PlayBlocked/PlayNewWork
+    // charge in for a blocked issue or a new-work grump) for Negative. One art set, reused
+    // everywhere critters show up, instead of a second lower-quality set living only here.
     public static class CritterRegistry
     {
-        public static List<CritterInfo> All { get; } = new List<CritterInfo>
-        {
-            // Negative (cute grumpy) critters
-            new() { Id = "grumpkin", Name = "Grumpkin", Category = CritterCategory.Negative, SpawnWeight = 1.6, Scale = 1.0, Factory = () => CritterFactory.CreateGrumpkin() },
-            new() { Id = "poutlet", Name = "Poutlet", Category = CritterCategory.Negative, SpawnWeight = 1.8, Scale = 0.9, Factory = () => CritterFactory.CreatePoutlet() },
-            new() { Id = "snarlbug", Name = "Snarlbug", Category = CritterCategory.Negative, SpawnWeight = 1.6, Scale = 0.95, Factory = () => CritterFactory.CreateSnarlbug() },
-            new() { Id = "mossmam", Name = "Mossmam", Category = CritterCategory.Negative, SpawnWeight = 1.2, Scale = 1.15, Factory = () => CritterFactory.CreateMossmam() },
-            new() { Id = "glumfish", Name = "Glumfish", Category = CritterCategory.Negative, SpawnWeight = 2.0, Scale = 0.9, Factory = () => CritterFactory.CreateGlumfish() },
+        public static List<CritterInfo> All { get; } = BuildAll();
 
-            // Positive (cute/celebratory) critters — a larger set
-            new() { Id = "blueberry", Name = "Blueberry", Category = CritterCategory.Positive, SpawnWeight = 3.0, Scale = 1.0, Factory = () => CritterFactory.CreateBlueberry() },
-            new() { Id = "moonmouse", Name = "Moonmouse", Category = CritterCategory.Positive, SpawnWeight = 2.6, Scale = 0.95, Factory = () => CritterFactory.CreateMoonmouse() },
-            new() { Id = "starlet", Name = "Starlet", Category = CritterCategory.Positive, SpawnWeight = 2.4, Scale = 0.95, Factory = () => CritterFactory.CreateStarlet() },
-            new() { Id = "daisy", Name = "Daisy Bloom", Category = CritterCategory.Positive, SpawnWeight = 2.2, Scale = 1.0, Factory = () => CritterFactory.CreateDaisy() },
-            new() { Id = "whirlpix", Name = "Whirlpix", Category = CritterCategory.Positive, SpawnWeight = 2.1, Scale = 1.05, Factory = () => CritterFactory.CreateWhirlpix() },
-            new() { Id = "aurora", Name = "Aurora Unicorn", Category = CritterCategory.Positive, SpawnWeight = 1.7, Scale = 1.15, Factory = () => CritterFactory.CreateAurora() },
-            new() { Id = "puffinette", Name = "Puffinette", Category = CritterCategory.Positive, SpawnWeight = 2.8, Scale = 0.95, Factory = () => CritterFactory.CreatePuffinette() },
-            new() { Id = "sproutbunny", Name = "Sprout Bunny", Category = CritterCategory.Positive, SpawnWeight = 3.0, Scale = 0.95, Factory = () => CritterFactory.CreateSproutBunny() },
-            new() { Id = "buzzybee", Name = "Buzzy Bee", Category = CritterCategory.Positive, SpawnWeight = 3.4, Scale = 0.8, Factory = () => CritterFactory.CreateBuzzyBee() },
-            new() { Id = "glimmerfox", Name = "Glimmer Fox", Category = CritterCategory.Positive, SpawnWeight = 2.1, Scale = 1.0, Factory = () => CritterFactory.CreateGlimmerFox() },
-            new() { Id = "pompom", Name = "Pom-Pom Mouse", Category = CritterCategory.Positive, SpawnWeight = 2.2, Scale = 0.9, Factory = () => CritterFactory.CreatePomPom() },
-            new() { Id = "nibbles", Name = "Nibble Squirrel", Category = CritterCategory.Positive, SpawnWeight = 2.5, Scale = 0.95, Factory = () => CritterFactory.CreateNibbles() },
-            new() { Id = "dragonet", Name = "Tumble Dragonet", Category = CritterCategory.Positive, SpawnWeight = 1.9, Scale = 1.05, Factory = () => CritterFactory.CreateDragonet() },
-            new() { Id = "nimbus", Name = "Nimbus Cloudling", Category = CritterCategory.Positive, SpawnWeight = 2.3, Scale = 1.1, Factory = () => CritterFactory.CreateNimbus() },
-            new() { Id = "sparkle", Name = "Sparkle Narwhal", Category = CritterCategory.Positive, SpawnWeight = 1.6, Scale = 1.0, Factory = () => CritterFactory.CreateSparkle() },
-            new() { Id = "peony", Name = "Peony Penguin", Category = CritterCategory.Positive, SpawnWeight = 2.0, Scale = 1.0, Factory = () => CritterFactory.CreatePeony() },
-            new() { Id = "chirp", Name = "Chirp Chick", Category = CritterCategory.Positive, SpawnWeight = 3.4, Scale = 0.85, Factory = () => CritterFactory.CreateChirp() },
-            new() { Id = "marigold", Name = "Marigold Fairy", Category = CritterCategory.Positive, SpawnWeight = 1.7, Scale = 0.95, Factory = () => CritterFactory.CreateMarigold() },
-            new() { Id = "comet", Name = "Comet Otter", Category = CritterCategory.Positive, SpawnWeight = 1.9, Scale = 1.05, Factory = () => CritterFactory.CreateComet() },
-            new() { Id = "sunny", Name = "Sunny Snail", Category = CritterCategory.Positive, SpawnWeight = 2.4, Scale = 0.9, Factory = () => CritterFactory.CreateSunny() }
-        };
+        private static List<CritterInfo> BuildAll()
+        {
+            var list = new List<CritterInfo>();
+
+            // Negative — the 10 new mean mascots (Stitch/Taz-flavored chaos, ogre-ish
+            // troublemakers). Each mascot's native canvas is 74x64 with a swung prop
+            // riding off the right edge; Scale trims it down to read at ambient-companion
+            // size alongside the Positive pool below.
+            foreach (var mean in IssueChompAnimation.MeanCritterPool)
+            {
+                list.Add(new CritterInfo
+                {
+                    Id = mean.Id,
+                    Name = mean.Name,
+                    Category = CritterCategory.Negative,
+                    SpawnWeight = 1.6,
+                    Scale = 0.65,
+                    Factory = () => (Canvas)mean.Build().element
+                });
+            }
+
+            // Positive — the 10 new Build Queue card critters (cute species distinct from
+            // the panel's original 5: panda/otter/hedgehog/owl/seal/raccoon/hamster/frog/
+            // koala/chick), rendered in their default happy expression for the ambient
+            // Focus Mode stroll/celebration and the bug-eating chomp rotation
+            // (IssueChompAnimation's CopilotMascotPool reads this Positive list).
+            void AddPositive(string id, string name, System.Func<Canvas> factory, double weight)
+                => list.Add(new CritterInfo { Id = id, Name = name, Category = CritterCategory.Positive, SpawnWeight = weight, Scale = 1.4, Factory = factory });
+
+            AddPositive("panda", "Panda", () => BuildQueuePanel.CreateCutePandaVector(BuildQueuePanel.CritterMood.Normal), 2.6);
+            AddPositive("otter", "Otter", () => BuildQueuePanel.CreateCuteOtterVector(BuildQueuePanel.CritterMood.Normal), 2.4);
+            AddPositive("hedgehog", "Hedgehog", () => BuildQueuePanel.CreateCuteHedgehogVector(BuildQueuePanel.CritterMood.Normal), 2.2);
+            AddPositive("owl", "Owl", () => BuildQueuePanel.CreateCuteOwlVector(BuildQueuePanel.CritterMood.Normal), 2.1);
+            AddPositive("seal", "Seal", () => BuildQueuePanel.CreateCuteSealVector(BuildQueuePanel.CritterMood.Normal), 2.3);
+            AddPositive("raccoon", "Raccoon", () => BuildQueuePanel.CreateCuteRaccoonVector(BuildQueuePanel.CritterMood.Normal), 2.0);
+            AddPositive("hamster", "Hamster", () => BuildQueuePanel.CreateCuteHamsterVector(BuildQueuePanel.CritterMood.Normal), 2.8);
+            AddPositive("frog", "Frog", () => BuildQueuePanel.CreateCuteFrogVector(BuildQueuePanel.CritterMood.Normal), 2.0);
+            AddPositive("koala", "Koala", () => BuildQueuePanel.CreateCuteKoalaVector(BuildQueuePanel.CritterMood.Normal), 2.2);
+            AddPositive("chick", "Chick", () => BuildQueuePanel.CreateCuteChickVector(BuildQueuePanel.CritterMood.Normal), 3.0);
+
+            return list;
+        }
     }
 }

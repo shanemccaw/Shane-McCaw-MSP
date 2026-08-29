@@ -1648,7 +1648,7 @@ namespace BuildConsole.Controls
 
                         if (currentDelay == 0)
                         {
-                            IssueChompAnimation.PlayMoWork(null, issueLabel);
+                            IssueChompAnimation.PlayNewWork(null, issueLabel);
                         }
                         else
                         {
@@ -1656,7 +1656,7 @@ namespace BuildConsole.Controls
                             timer.Tick += (_, _) =>
                             {
                                 timer.Stop();
-                                IssueChompAnimation.PlayMoWork(null, issueLabel);
+                                IssueChompAnimation.PlayNewWork(null, issueLabel);
                             };
                             timer.Start();
                         }
@@ -1910,7 +1910,7 @@ namespace BuildConsole.Controls
                     string label = $"#{bIssue.IssueNumber} {bIssue.RawTitle}";
                     if (curDelay == 0)
                     {
-                        IssueChompAnimation.PlayWhammy(tvi, label, blockerNum);
+                        IssueChompAnimation.PlayBlocked(tvi, label, blockerNum);
                     }
                     else
                     {
@@ -1918,7 +1918,7 @@ namespace BuildConsole.Controls
                         wTimer.Tick += (_, _) =>
                         {
                             wTimer.Stop();
-                            IssueChompAnimation.PlayWhammy(tvi, label, blockerNum);
+                            IssueChompAnimation.PlayBlocked(tvi, label, blockerNum);
                         };
                         wTimer.Start();
                     }
@@ -4697,8 +4697,8 @@ namespace BuildConsole.Controls
                     await client.SetBlockedByAsync(issue.IssueNumber, blocker.Number);
                     ActivityLog.Log("git-board.set-blocked-by", $"#{issue.IssueNumber} set blocked by #{blocker.Number}");
 
-                    // Whammy Blocked Animation!
-                    IssueChompAnimation.PlayWhammy(tvi, $"#{issue.IssueNumber} {issue.RawTitle}", blocker.Number);
+                    // Blocked mascot animation — Whammy or one of the 10 mean critters.
+                    IssueChompAnimation.PlayBlocked(tvi, $"#{issue.IssueNumber} {issue.RawTitle}", blocker.Number);
                 }
                 catch (Exception ex)
                 {

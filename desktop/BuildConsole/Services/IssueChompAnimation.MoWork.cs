@@ -35,7 +35,12 @@ namespace BuildConsole.Services
             "MO' WORK!", "UGH... MORE?", "*sigh* AGAIN?", "WORK NEVER ENDS...", "WHY MEEE?", "NOT ANOTHER ONE...", "MORE WORK. GREAT."
         };
 
-        public static void PlayMoWork(FrameworkElement? targetElement, string issueTitle)
+        // Shane, 2026-08-28: "10 mean critters... ogres who make more work." mascotBuilder
+        // lets IssueChompAnimation.MeanCritters.cs's PlayNewWork() drop any of its
+        // "makes more work"-flavored mascots through this EXACT same shuffle-in/groan/
+        // trudge-off choreography — defaults to the classic Ogre so every existing
+        // caller (LeftSidebar's own PlayMoWork calls) is untouched.
+        public static void PlayMoWork(FrameworkElement? targetElement, string issueTitle, Func<FrameworkElement>? mascotBuilder = null)
         {
             if (Application.Current?.MainWindow is not Window mainWin) return;
 
@@ -77,8 +82,8 @@ namespace BuildConsole.Services
                     cardScale.BeginAnimation(ScaleTransform.ScaleXProperty, cardPop);
                     cardScale.BeginAnimation(ScaleTransform.ScaleYProperty, cardPop);
 
-                    // Grumpy mascot
-                    var grump = BuildGrumpMascot();
+                    // Grumpy mascot — or whichever mean mascot PlayNewWork() picked.
+                    var grump = (mascotBuilder ?? BuildGrumpMascot)();
                     double grumpScale = 1.5;
                     var charTransform = new TransformGroup();
                     var charTranslate = new TranslateTransform();

@@ -797,16 +797,16 @@ namespace BuildConsole.Controls
             mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             mainGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-            // 1. Whammy Block Critter Mascot on the left
+            // 1. Blocked Critter Mascot on the left — Whammy or one of the 10 mean critters
             try
             {
-                var whammyCritter = IssueChompAnimation.BuildWhammyElement(scale: 0.95);
-                whammyCritter.Margin = new Thickness(0, 0, 14, 0);
-                whammyCritter.VerticalAlignment = VerticalAlignment.Center;
-                whammyCritter.ToolTip = "Whammy: BLOCKED!";
-                whammyCritter.Cursor = Cursors.Hand;
-                Grid.SetColumn(whammyCritter, 0);
-                mainGrid.Children.Add(whammyCritter);
+                var blockedCritter = IssueChompAnimation.BuildRandomBlockedElement(scale: 0.95);
+                blockedCritter.Margin = new Thickness(0, 0, 14, 0);
+                blockedCritter.VerticalAlignment = VerticalAlignment.Center;
+                blockedCritter.ToolTip = "BLOCKED!";
+                blockedCritter.Cursor = Cursors.Hand;
+                Grid.SetColumn(blockedCritter, 0);
+                mainGrid.Children.Add(blockedCritter);
             }
             catch { }
 

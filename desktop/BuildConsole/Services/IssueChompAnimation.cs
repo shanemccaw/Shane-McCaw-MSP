@@ -124,36 +124,36 @@ namespace BuildConsole.Services
         }
         private static readonly Random Rng = new();
 
-        // Copilot-designed critters (#1435, Controls/CritterFactory.cs + CritterRegistry.cs) added into the
-        // BuildMascot() rotation (Git #1452) — additive alongside the 5 original hand-built mascots below.
-        // Only the Positive-category critters are eligible here: this rotation is for the celebratory
-        // build-done/issue-closed chomp, not the grumpy "new issue created" critters used elsewhere
-        // (see LeftSidebar.xaml.cs's separate "git-board.critters" grump spawn).
-        private static readonly List<CritterInfo> CopilotMascotPool =
-            CritterRegistry.All.Where(c => c.Category == CritterCategory.Positive).ToList();
+        // Shane, 2026-08-28: the 10 new hand-built "good" critters (Controls/BuildQueuePanel's
+        // CreateCuteXVector pool, registered as Positive in CritterRegistry.cs) added into the
+        // BuildMascot() rotation (Git #1452's slot, now pointing at the replacement mascots) —
+        // additive alongside the 5 original hand-built mascots below. Only the Positive-category
+        // critters are eligible here: this rotation is for the celebratory build-done/issue-closed
+        // chomp, not the "new issue created"/blocked critters used elsewhere (see PlayNewWork/
+        // PlayBlocked in IssueChompAnimation.MeanCritters.cs).
+        // Lazily computed (not an eager field initializer) — CritterRegistry.BuildAll() reads
+        // IssueChompAnimation.MeanCritterPool (declared in IssueChompAnimation.MeanCritters.cs),
+        // which is still uninitialized while THIS type's own static cctor is mid-run. Evaluating
+        // eagerly here was a circular-static-init bug: MeanCritterPool would still be null when
+        // CritterRegistry.All ran, throwing a NullReferenceException that surfaced as "The type
+        // initializer for 'IssueChompAnimation' threw an exception." Deferring to first real use
+        // means both types have already finished loading by the time this runs.
+        private static List<CritterInfo>? _copilotMascotPool;
+        private static List<CritterInfo> CopilotMascotPool =>
+            _copilotMascotPool ??= CritterRegistry.All.Where(c => c.Category == CritterCategory.Positive).ToList();
 
         private static readonly Dictionary<string, string> CopilotMascotSounds = new()
         {
-            ["blueberry"] = "SPLAT!",
-            ["moonmouse"] = "SQUEAK!",
-            ["starlet"] = "TWINKLE!",
-            ["daisy"] = "SNIP!",
-            ["whirlpix"] = "WHIRL!",
-            ["aurora"] = "SPARKLE!",
-            ["puffinette"] = "FLUFF!",
-            ["sproutbunny"] = "MUNCH!",
-            ["buzzybee"] = "BUZZ!",
-            ["glimmerfox"] = "SWIPE!",
-            ["pompom"] = "POOF!",
-            ["nibbles"] = "NIBBLE!",
-            ["dragonet"] = "ROAR!",
-            ["nimbus"] = "ZAP!",
-            ["sparkle"] = "SHIMMER!",
-            ["peony"] = "POP!",
-            ["chirp"] = "TWEET!",
-            ["marigold"] = "FLUTTER!",
-            ["comet"] = "ZOOM!",
-            ["sunny"] = "SLURP!"
+            ["panda"] = "MUNCH!",
+            ["otter"] = "SPLASH!",
+            ["hedgehog"] = "POKE!",
+            ["owl"] = "SWOOP!",
+            ["seal"] = "BONK!",
+            ["raccoon"] = "SNATCH!",
+            ["hamster"] = "STUFF!",
+            ["frog"] = "RIBBIT!",
+            ["koala"] = "SNUGGLE!",
+            ["chick"] = "PECK!"
         };
 
         // Total mascot rotation size — the 5 original hand-built mascots plus every eligible Copilot critter.
@@ -696,7 +696,13 @@ namespace BuildConsole.Services
         // ══════════════════════════════════════════════════════════════════════
         // 4. WHAMMY SLAM (Blocked Issue Animation)
         // ══════════════════════════════════════════════════════════════════════
-        public static void PlayWhammy(FrameworkElement? targetElement, string issueTitle, int? blockerNumber = null)
+        // Shane, 2026-08-28: "10 mean critters like my Whammy critter who creates
+        // blockers." mascotBuilder lets IssueChompAnimation.MeanCritters.cs's
+        // PlayBlocked() drop any of its 10 new mean mascots through this EXACT
+        // same charge-in/windup/slam/spark choreography — defaults to the
+        // classic Whammy so every existing caller is untouched.
+        public static void PlayWhammy(FrameworkElement? targetElement, string issueTitle, int? blockerNumber = null,
+            Func<(FrameworkElement element, RotateTransform propTransform)>? mascotBuilder = null)
         {
             if (Application.Current?.MainWindow is not Window mainWin) return;
 
@@ -763,8 +769,9 @@ namespace BuildConsole.Services
                     Canvas.SetTop(issueCard, targetPos.Y - 20);
                     canvas.Children.Add(issueCard);
 
-                    // Whammy Mascot with articulated sledgehammer
-                    var (whammy, malletTransform) = BuildWhammyMascot();
+                    // Whammy Mascot with articulated sledgehammer — or whichever mean
+                    // mascot PlayBlocked() picked, same (element, swung-prop) contract.
+                    var (whammy, malletTransform) = (mascotBuilder ?? BuildWhammyMascot)();
 
                     whammy.Effect = new DropShadowEffect
                     {
