@@ -387,7 +387,8 @@ function Invoke-ChildRequest {
         foreach ($line in ($stderrTask.Result -split "`n")) { if ($line.Trim()) { [Console]::WriteLine($line.Trim()) } }
     }
 
-    $stdout = if ($stdoutTask.IsCompletedSuccessfully) { $stdoutTask.Result.Trim() } else { "" }
+    $stdoutRaw = if ($stdoutTask.IsCompletedSuccessfully) { $stdoutTask.Result } else { "" }
+    $stdout = $stdoutRaw.Trim()
     if (-not $stdout) {
         Write-Log -Level "error" -Message "child worker process produced no output" -Extra @{ cmdletKey = $CmdletKey; exitCode = $proc.ExitCode }
         return @{ ok = $false; statusCode = 500; kind = "script_error"; message = "The request-handling child process produced no output (exit code $($proc.ExitCode))." }
@@ -397,7 +398,26 @@ function Invoke-ChildRequest {
         $parsed = $stdout | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
-        Write-Log -Level "error" -Message "child worker process produced unparseable output" -Extra @{ cmdletKey = $CmdletKey; error = $_.Exception.Message }
+        # #1482 diagnostic: the child wrote SOMETHING to stdout but it did not
+        # parse as JSON — stdout contamination. entrypoint.ps1 historically
+        # logged only the parse exception, never the bytes it failed on, which
+        # is why this stayed opaque. Capture the real contaminating output here
+        # (raw, truncated to a sane cap) plus its byte length, a hex preview of
+        # the leading bytes (to expose a BOM / control chars an eyeball would
+        # miss), and the child exit code — observed, never inferred.
+        $rawBytes = [Text.Encoding]::UTF8.GetBytes($stdoutRaw)
+        $previewLen = [Math]::Min(2000, $stdout.Length)
+        $hexCount = [Math]::Min(64, $rawBytes.Length)
+        $hexPreview = ($rawBytes[0..([Math]::Max(0, $hexCount - 1))] | ForEach-Object { $_.ToString("x2") }) -join " "
+        Write-Log -Level "error" -Message "child worker process produced unparseable output" -Extra @{
+            cmdletKey       = $CmdletKey
+            error           = $_.Exception.Message
+            exitCode        = $proc.ExitCode
+            stdoutByteLen   = $rawBytes.Length
+            stdoutCharLen   = $stdout.Length
+            stdoutRawPrefix = $stdout.Substring(0, $previewLen)
+            stdoutHexPrefix = $hexPreview
+        }
         return @{ ok = $false; statusCode = 500; kind = "script_error"; message = "The request-handling child process produced malformed output." }
     }
 
