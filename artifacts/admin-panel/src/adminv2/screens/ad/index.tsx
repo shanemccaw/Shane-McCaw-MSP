@@ -219,7 +219,7 @@ registerScreen({
                 label: "Impersonate",
                 icon: LogIn,
                 intent: "record",
-                onSelect: () => requestAdRecordAction({ action: "impersonate-msp", kind: "msp", id }),
+                onSelect: () => requestAdRecordAction({ action: "impersonate", kind: "msp", id }),
               },
             ],
           },

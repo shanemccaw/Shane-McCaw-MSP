@@ -223,7 +223,7 @@ export function AdMspCanvas({ mspId }: { mspId: number }) {
       onAdRecordAction("msp", String(mspId), (action) => {
         if (action === "suspend-msp") void runSuspend();
         if (action === "reactivate-msp") void runReactivate();
-        if (action === "impersonate-msp") void runImpersonate();
+        if (action === "impersonate") void runImpersonate();
       }),
     [mspId, runSuspend, runReactivate, runImpersonate],
   );
