@@ -2674,6 +2674,80 @@ export const m365ChangeResolutionsTable = pgTable("m365_change_resolutions", {
 export type M365ChangeResolution = typeof m365ChangeResolutionsTable.$inferSelect;
 export type InsertM365ChangeResolution = typeof m365ChangeResolutionsTable.$inferInsert;
 
+// ── M365 Change Routings (#1534, part of #1494) ────────────────────────────────
+// The ROUTING layer — the third stage after interpretation (#1532, WHAT it is)
+// and resolution (#1533, HOW MANY objects it touches here). Routing decides what
+// a resolved change BECOMES, and records that decision as a durable ledger so the
+// nightly sweep is idempotent and so a "proposed" outcome — which by design does
+// NOT create a Change Request — still has somewhere real to live.
+//
+// One row per (interpretation × customer), upserted on re-run, mirroring the
+// resolution table's own identity. Shane's settled rule (#1534, 2026-08-28):
+//   • measured, affected_count > 0, AND a real structural date on the tenant's
+//     Message Center post  → decision 'auto_created': a CR is created with
+//     Microsoft as implementer, and change_request_id points at it.
+//   • undated (incl. #1536's "date unclear") OR zero affected objects
+//     → decision 'proposed': NO CR is created; this row is the proposal.
+//   • a routed CR later declined by the customer → decision 'declined_risk',
+//     risk_decision_id points at the accepted-risk record (#1514).
+//   • nothing to route yet (not measured / no announcement) → decision 'none'.
+// The gate above is the ONLY noise control — there is deliberately no second
+// suppression mechanism.
+
+export const M365_ROUTING_DECISIONS = ["auto_created", "proposed", "declined_risk", "none"] as const;
+export type M365RoutingDecision = (typeof M365_ROUTING_DECISIONS)[number];
+
+/** Why a resolved change was proposed or skipped rather than auto-created — stated, not guessed. */
+export const M365_ROUTING_REASONS = [
+  "auto_created",
+  "undated",
+  "zero_affected",
+  "not_measured",
+  "no_announcement",
+] as const;
+export type M365RoutingReason = (typeof M365_ROUTING_REASONS)[number];
+
+export const m365ChangeRoutingsTable = pgTable("m365_change_routings", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  // tenants.id — same id space the portal JWT customerId claim carries, matching
+  // m365_change_resolutions.customer_id. No FK by design (Phase 0 successor id-space).
+  customerId: integer("customer_id").notNull(),
+  /** The M365 tenant GUID routed against, for provenance. */
+  tenantId: text("tenant_id").notNull(),
+  interpretationId: integer("interpretation_id").notNull()
+    .references(() => m365ChangeInterpretationsTable.id, { onDelete: "cascade" }),
+  /** The resolution (the count) that this routing decision was taken against. NULL when decision = 'none'. */
+  resolutionId: integer("resolution_id"),
+  /** The tenant's Message Center announcement this change routed from, when one exists. */
+  graphMessageId: text("graph_message_id"),
+  decision: text("decision").$type<M365RoutingDecision>().notNull(),
+  reason: text("reason").$type<M365RoutingReason>().notNull(),
+  /** The intake axis computed for this change (#1534). NULL when nothing was routed. */
+  intake: text("intake").$type<ChangeRequestIntake>(),
+  /** The affected-object count at routing time — a snapshot, for the proposal surface. NULL when not measured. */
+  affectedCount: integer("affected_count"),
+  /** Whether the announcement carried a real structural date at routing time. */
+  hasStructuralDate: boolean("has_structural_date").notNull().default(false),
+  /** Set when decision = 'auto_created': the msp_change_requests row created. */
+  changeRequestId: integer("change_request_id"),
+  /** Set when decision = 'declined_risk': the msp_risk_decisions row the rejection became. */
+  riskDecisionId: integer("risk_decision_id"),
+  routedAt: timestamp("routed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  // The upsert identity: one current routing decision per interpretation per customer.
+  unique("m365_change_routings_interp_customer_uidx").on(t.interpretationId, t.customerId),
+  index("m365_change_routings_msp_id_idx").on(t.mspId),
+  index("m365_change_routings_customer_id_idx").on(t.customerId),
+  index("m365_change_routings_decision_idx").on(t.decision),
+  index("m365_change_routings_change_request_idx").on(t.changeRequestId),
+]);
+
+export type M365ChangeRouting = typeof m365ChangeRoutingsTable.$inferSelect;
+export type InsertM365ChangeRouting = typeof m365ChangeRoutingsTable.$inferInsert;
+
 // ── Report Definitions ─────────────────────────────────────────────────────────
 // MSP-authored templates that describe what to generate, for whom, and how to
 // deliver it. One definition can be triggered many times (→ report_runs rows).
@@ -3774,6 +3848,38 @@ export type InsertMspPartnerQbr = typeof mspPartnerQbrsTable.$inferInsert;
 // ITIL v4 Change Enablement record representing a scheduled, pending, or applied
 // configuration change for an end-customer tenant.
 
+/**
+ * The INTAKE axis (#1534, part of #1494) — how a change enters the register, i.e.
+ * what the customer can actually do about it. Distinct from `change_class`
+ * (standard/normal/emergency, the ITIL ceremony) and from `risk_level`. Shane's
+ * settled model (#1534, 2026-08-28): a Microsoft change routed automatically into
+ * Change Control carries one of these three, derived from the interpretation's
+ * `who_acts` / `controllable` fields (#1532):
+ *   • informed  — Microsoft acts, no opt-out. Acknowledgement only; nothing to approve.
+ *   • approval  — a control exists; a real decision, both ways (turn on / leave on).
+ *   • advisory  — requires work (e.g. Project Online decommission); plan and execute.
+ * NULL is the common, honest case: a wizard- or drift-raised CR has no Microsoft
+ * intake axis, and the register reads null as "not a routed change".
+ */
+export const CHANGE_REQUEST_INTAKES = ["informed", "approval", "advisory"] as const;
+export type ChangeRequestIntake = (typeof CHANGE_REQUEST_INTAKES)[number];
+
+/**
+ * WHO executes the change. For an automatically-routed Microsoft change this
+ * records that Microsoft — not the MSP — is the implementer (the headline of
+ * #1534: "a Microsoft change the tenant cannot refuse is a CR from the moment it
+ * is announced, with Microsoft as the implementer"). `customer` covers the
+ * advisory case where the tenant's own admin must do the migration work. NULL /
+ * absent means the ordinary internal case — the MSP implements it — which is
+ * every CR that predates routing, so nothing is back-filled.
+ */
+export const CHANGE_REQUEST_IMPLEMENTERS = ["microsoft", "customer", "msp"] as const;
+export type ChangeRequestImplementer = (typeof CHANGE_REQUEST_IMPLEMENTERS)[number];
+
+/** What spawned an auto-routed CR. Only `microsoft_change` is written today; NULL = raised directly. */
+export const CHANGE_REQUEST_SOURCE_KINDS = ["microsoft_change"] as const;
+export type ChangeRequestSourceKind = (typeof CHANGE_REQUEST_SOURCE_KINDS)[number];
+
 export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
@@ -3831,11 +3937,38 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
    * wizard raises exactly those.
    */
   linkedFinding: text("linked_finding"),
+
+  // ── Automatic routing of Microsoft changes (#1534, part of #1494) ──────────
+  //
+  // A resolved Microsoft change (a confirmed interpretation whose per-tenant
+  // count is > 0 and which carries a real structural date) is routed into this
+  // register AUTOMATICALLY, with Microsoft as the implementer. These four columns
+  // are what routing needs and the table did not previously carry: the intake
+  // axis, who implements it, and the link back to the announcement it came from.
+  //
+  // ALL NULLABLE ON PURPOSE. Every CR that predates routing — every wizard- or
+  // drift-raised one — leaves them null, and null reads as "raised directly, MSP
+  // implements". Nothing is back-filled. See m365-change-router.ts for the writer.
+  intake: text("intake", { enum: ["informed", "approval", "advisory"] }),
+  implementer: text("implementer", { enum: ["microsoft", "customer", "msp"] }),
+  sourceKind: text("source_kind", { enum: ["microsoft_change"] }),
+  /** The Message Center announcement (graph_message_id) this CR was routed from — the tenant-facing notice. */
+  sourceGraphMessageId: text("source_graph_message_id"),
+  /** The m365_change_interpretations row that authored the reading behind this CR. */
+  sourceInterpretationId: integer("source_interpretation_id"),
+  /** The m365_change_resolutions row (the count) that tripped the routing trigger. */
+  sourceResolutionId: integer("source_resolution_id"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_change_requests_msp_id_idx").on(t.mspId),
   index("msp_change_requests_tenant_id_idx").on(t.tenantId),
+  // One auto-routed CR per (interpretation × tenant): the routing sweep's
+  // idempotency guard so a nightly re-run never creates a second CR for the
+  // same Microsoft change on the same tenant. Partial — only routed rows carry
+  // these — and declared in the manual migration (Drizzle cannot express the
+  // WHERE clause here).
 ]);
 
 export const insertMspChangeRequestSchema = createInsertSchema(mspChangeRequestsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -4039,6 +4172,20 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   /** The exact confirmation sentence the customer ticked, snapshotted at accept
    * time — so a later reword of the copy cannot rewrite what they agreed to. */
   acceptedStatement: text("accepted_statement"),
+
+  // ── Change-Control ⟷ Risk pointers (#1514, part of #1487) ──────────────────
+  //
+  // The rejection-to-risk path: when a CUSTOMER rejects a Change Request they are
+  // declining a remediation, and the risk becomes theirs — the rejection IS the
+  // acceptance (#1514). This records the two ends of that relationship as real,
+  // native pointers rather than parsed free text:
+  //   • spawnedByChangeRequestId — the CR whose rejection created this risk.
+  //   • dischargedByChangeRequestId — the fresh CR that later SUPERSEDES it. The
+  //     rejected CR is immutable and never resurrected; the risk persists until a
+  //     new CR discharges it (#1514's lifecycle). NULL while the risk stands.
+  // Both NULL for every risk decision authored by msp-rbd.ts's own path.
+  spawnedByChangeRequestId: integer("spawned_by_change_request_id"),
+  dischargedByChangeRequestId: integer("discharged_by_change_request_id"),
 
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
