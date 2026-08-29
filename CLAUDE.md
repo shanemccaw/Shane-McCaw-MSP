@@ -191,6 +191,27 @@ your DONE bookend**, so the trail from build to finding is readable without a se
 
 **You never close an issue** — not your own, not one you filed. Closing is Shane's call.
 
+### Board status — "AI Batter Up," not Backlog (Git #1708)
+
+Every new issue you file under this section gets its project board status set to **"AI Batter
+Up"** (option id `a0296971` on the Status field `PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0`), not left at the
+project's default. This is a genuinely different board status from "Batter Up" — landing here
+triggers nothing; it is a review queue, not a launch queue. Shane reviews it and clicks Yes
+(promotes to real "Batter Up," picked up on the next queue refresh) or No (demotes to "Backlog").
+Never set "Batter Up" directly on a finding you filed yourself — only Shane's own Yes does that.
+
+```
+gh api graphql -f query='
+  mutation {
+    updateProjectV2ItemFieldValue(input: {
+      projectId: "PVT_kwHOEiBDdc4BeoiY"
+      itemId: "<the new issue''s project item id>"
+      fieldId: "PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0"
+      value: { singleSelectOptionId: "a0296971" }
+    }) { projectV2Item { id } }
+  }'
+```
+
 ## Mandatory: comment on the GitHub issue before finishing
 
 Every session that works a real Git issue MUST post a comment on that issue before ending, no matter the outcome. This is not optional and is separate from the PLATFORM_BUILD.md bookend (which tracks build history) — the issue comment is what the next session or Shane will actually read.
