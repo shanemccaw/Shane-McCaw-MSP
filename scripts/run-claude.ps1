@@ -60,12 +60,21 @@ if (-not $queryString) {
 }
 $params = [System.Web.HttpUtility]::ParseQueryString($queryString)
 
-$prompt = $params["q"]
-$title  = $params["title"]
-$model  = $params["model"]
-$effort = $params["effort"]
-$cwd    = $params["cwd"]
-$mode   = $params["mode"]
+$prompt  = $params["q"]
+$title   = $params["title"]
+$model   = $params["model"]
+$effort  = $params["effort"]
+$cwd     = $params["cwd"]
+$mode    = $params["mode"]
+# Git #1638 — the real bt_build_queue row id BuildConsole inserted (status 'external')
+# before launching this, passed through so this run's real stdout/stderr can be
+# captured under that id's own log file, and its real exit code written back to that
+# exact row when it finishes. Absent entirely for any OLDER/manual mybuilder:// launch
+# not opened through BuildConsole's tracked path — everything below is a no-op then,
+# so this stays fully backward compatible with an untracked launch.
+$queueIdRaw = $params["queueId"]
+$queueId = $null
+if ($queueIdRaw -and ($queueIdRaw -match '^\d+$')) { $queueId = [int]$queueIdRaw }
 
 if (-not $prompt) {
   Write-Error "No prompt (q=) found in URI: $Uri"
@@ -147,4 +156,64 @@ $escapedArgString = ($claudeArgs | ForEach-Object { ConvertTo-Win32EscapedArgume
 # Set-Location above - confirmed correct either way on Shane's PS 5.1
 # (tested directly), but explicit beats implicit for something this easy to
 # get wrong on a different machine/PowerShell version.
-Start-Process -FilePath $claudeExe -ArgumentList $escapedArgString -WorkingDirectory $effectiveCwd -NoNewWindow -Wait
+if ($queueId) {
+  # Git #1638 — a BuildConsole-tracked launch (a real bt_build_queue row, status
+  # 'external', already inserted before this script ran): redirect stdout/stderr into
+  # the exact same %TEMP%\bt-build-queue-logs\queue-{id}.log convention
+  # BuildLogPaths.cs/build-queue-watcher.ps1 already use, so the app can tail this run
+  # the same way it tails a normal queued build. This replaces the visible-console
+  # output an untracked launch (no queueId) still gets below - the real content lands
+  # in the log file instead, per the locked decision on issue #1638.
+  $buildLogDir = Join-Path $env:TEMP "bt-build-queue-logs"
+  if (-not (Test-Path $buildLogDir)) { New-Item -ItemType Directory -Path $buildLogDir | Out-Null }
+  $logPath = Join-Path $buildLogDir "queue-$queueId.log"
+  $errPath = "$logPath.err"
+  # Truncate any stale log from a previous item that reused this id (ids aren't
+  # reused in practice, but cheap insurance - mirrors build-queue-watcher.ps1).
+  Set-Content -Path $logPath -Value "" -NoNewline
+
+  $proc = Start-Process -FilePath $claudeExe -ArgumentList $escapedArgString -WorkingDirectory $effectiveCwd `
+    -NoNewWindow -PassThru -Wait -RedirectStandardOutput $logPath -RedirectStandardError $errPath
+  $exitCode = $proc.ExitCode
+
+  # Fold stderr into the same log the app tails (build-queue-watcher.ps1's own
+  # convention), so a failure's error text shows up in one place, not a second file
+  # no one's looking at.
+  if ((Test-Path $errPath) -and (Get-Item $errPath).Length -gt 0) {
+    Add-Content -Path $logPath -Value "`n--- stderr ---`n"
+    Add-Content -Path $logPath -Value (Get-Content $errPath -Raw)
+  }
+  if (Test-Path $errPath) { Remove-Item $errPath -Force -ErrorAction SilentlyContinue }
+
+  # Git #1638 — write the real completion back directly via psql: this script runs
+  # standalone outside the C# app, so it can't call
+  # BuildQueuePostgresClient.MarkCompleteAsync itself - same "connect directly, report
+  # the real result" manual-SQL convention the rest of this repo uses for local
+  # Postgres (see CLAUDE.md's Database section). Best-effort/non-fatal: a missing
+  # psql.exe or DATABASE_URL leaves the row visibly stuck showing "external" (findable
+  # via the Build Queue panel's External filter) rather than failing this launch.
+  try {
+    $databaseUrl = $null
+    $envLocalPath = Join-Path $repoRoot ".env.local"
+    if (Test-Path $envLocalPath) {
+      foreach ($line in Get-Content $envLocalPath) {
+        $t = $line.Trim()
+        if ($t.StartsWith('#') -or -not $t.StartsWith('DATABASE_URL=')) { continue }
+        $databaseUrl = $t.Substring('DATABASE_URL='.Length).Trim().Trim('"').Trim("'")
+        break
+      }
+    }
+    $psqlCmd = Get-Command psql -ErrorAction SilentlyContinue
+    if ($databaseUrl -and $psqlCmd) {
+      $newStatus = if ($exitCode -eq 0) { 'done' } else { 'failed' }
+      $sql = "UPDATE bt_build_queue SET status = '$newStatus', exit_code = $exitCode, completed_at = NOW(), updated_at = NOW() WHERE id = $queueId;"
+      & $psqlCmd.Source $databaseUrl -v "ON_ERROR_STOP=1" -q -c $sql | Out-Null
+    } else {
+      Write-Warning "Couldn't write queue #$queueId completion back - psql.exe or DATABASE_URL not found. Row will stay showing 'external'."
+    }
+  } catch {
+    Write-Warning "Couldn't write queue #$queueId completion back: $_"
+  }
+} else {
+  Start-Process -FilePath $claudeExe -ArgumentList $escapedArgString -WorkingDirectory $effectiveCwd -NoNewWindow -Wait
+}

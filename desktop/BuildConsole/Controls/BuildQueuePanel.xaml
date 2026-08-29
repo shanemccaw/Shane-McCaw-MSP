@@ -317,6 +317,14 @@
                                       SelectedIndex="0"
                                       SelectionChanged="QueueFilterCombo_SelectionChanged">
                                 <ComboBoxItem Content="Queued &amp; Running" Tag="Active"/>
+                                <!-- Git #1638 — the Park staging area: never shown under
+                                     "Queued &amp; Running" (that's the whole point of a
+                                     staging spot the watcher can't pick up), only here. -->
+                                <ComboBoxItem Content="Parked"               Tag="Parked"/>
+                                <!-- Git #1638 — "Send to Builder" launches tracked purely
+                                     for dedup/visibility/log-capture; never claimable by the
+                                     watcher, never in the 8-slot Build Watch grid. -->
+                                <ComboBoxItem Content="External"             Tag="External"/>
                                 <ComboBoxItem Content="Done"                 Tag="Done"/>
                                 <ComboBoxItem Content="Canceled"             Tag="Canceled"/>
                                 <ComboBoxItem Content="Tests"                Tag="Tests"/>

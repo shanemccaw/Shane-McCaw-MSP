@@ -3277,6 +3277,10 @@ namespace BuildConsole
                         case "done":     label = "Done";           mode = "done";     terminal = true;  break;
                         case "failed":
                         case "canceled": label = "Failed: Retry";  mode = "failed";   terminal = true;  break;
+                        // Git #1638 — a parked row is staged, not running; keep tracking it
+                        // (terminal=false) so the label updates the moment it's un-parked, but
+                        // don't show the "In Progress..." label the default case below would.
+                        case "parked":   label = "📥 Parked";      mode = "parked";   terminal = false; break;
                         case "queued":
                         case "running":
                         default:         label = "In Progress..."; mode = "progress"; terminal = false; break;
@@ -5875,6 +5879,56 @@ namespace BuildConsole
         /// --account/--blocked-by/--block-by/--notGit exactly the same either way).
         /// Extracted verbatim from the former BT_EDIT_BUILD handler body.
         /// </summary>
+        /// <summary>
+        /// Git #1638 — locked decision on the "should Send to Builder be tracked?" open
+        /// question: YES, but purely for dedup/visibility/log-capture, never pulled into
+        /// the normal queue/watcher/slot pipeline. Behaviorally identical launch (external
+        /// mybuilder:// Process.Start, outside the 8-slot cap, hands-off --permission-mode
+        /// auto) — the only addition is inserting a real bt_build_queue row with status
+        /// 'external' first (via QueueExternalAsync, a plain insert never claimed by
+        /// BuildQueuePostgresClient.GetNextAsync's WHERE status = 'queued' or by
+        /// BuildWatchWindow.AdmitNewRunning's WHERE status == "running") and passing its
+        /// id through as queueId= so scripts/run-claude.ps1 can redirect this launch's real
+        /// stdout/stderr into that same id's BuildLogPaths.ForQueueItem log file and write
+        /// the real exit code back when it finishes. Never blocks the launch — a missing
+        /// DATABASE_URL means no tracking row, not a refused launch, exactly like every
+        /// other "not connected" fallback in this file.
+        /// </summary>
+        private async System.Threading.Tasks.Task LaunchSendToBuilderAsync(
+            string? prompt, string? title, string? model, string? effort, string? cwd, string? mode, string? buildSet, string? chatUrl)
+        {
+            int? queueId = null;
+            if (_queueDb != null && !string.IsNullOrWhiteSpace(prompt))
+            {
+                try
+                {
+                    var row = await _queueDb.QueueExternalAsync(title ?? "Untitled", prompt, model, effort, cwd, chatUrl);
+                    queueId = row.Id;
+                    BuildConsole.Services.ActivityLog.Log("build-queue-panel.external",
+                        $"Send to Builder: tracked queue #{queueId} ({title ?? "Untitled"}) as external — outside the 8-slot cap, not watcher-claimable.");
+                    try { await BuildQueuePanel.RefreshAsync(); } catch { /* best-effort visual refresh */ }
+                }
+                catch (Exception ex)
+                {
+                    BuildConsole.Services.ActivityLog.Log("build-queue-panel.external",
+                        $"Send to Builder: couldn't insert tracking row for \"{title}\" — launching untracked. {ex.Message}");
+                }
+            }
+
+            var q = new List<string>();
+            void Add(string key, string? val) { if (!string.IsNullOrEmpty(val)) q.Add($"{key}={Uri.EscapeDataString(val)}"); }
+            Add("q", prompt);
+            Add("title", title);
+            Add("model", model);
+            Add("effort", effort);
+            Add("cwd", cwd);
+            Add("mode", mode);
+            Add("buildSet", buildSet);
+            if (queueId.HasValue) Add("queueId", queueId.Value.ToString());
+            var uri = $"mybuilder://open?{string.Join("&", q)}";
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+        }
+
         private async System.Threading.Tasks.Task OpenBuildPromptDialogAsync(string rawText, int? referencedNumber)
         {
             var dialog = new EditBuildPromptDialog(rawText, referencedNumber, _buildTrackerApi, LeftSidebar.CurrentBoardIssues);
@@ -5883,17 +5937,9 @@ namespace BuildConsole
 
             if (dialog.ActionChosen == EditBuildAction.SendToBuilder)
             {
-                var q = new List<string>();
-                void Add(string key, string? val) { if (!string.IsNullOrEmpty(val)) q.Add($"{key}={Uri.EscapeDataString(val)}"); }
-                Add("q", dialog.FinalPrompt);
-                Add("title", dialog.FinalTitle);
-                Add("model", dialog.FinalModel);
-                Add("effort", dialog.FinalEffort);
-                Add("cwd", dialog.FinalCwd);
-                Add("mode", dialog.FinalMode);
-                Add("buildSet", dialog.FinalBuildSet);
-                var uri = $"mybuilder://open?{string.Join("&", q)}";
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+                await LaunchSendToBuilderAsync(
+                    dialog.FinalPrompt, dialog.FinalTitle, dialog.FinalModel, dialog.FinalEffort,
+                    dialog.FinalCwd, dialog.FinalMode, dialog.FinalBuildSet, chatUrl: null);
             }
             else if (dialog.ActionChosen == EditBuildAction.QueueBuild)
             {
@@ -5981,16 +6027,9 @@ namespace BuildConsole
                 }
                 else if (type == "BT_SEND_TO_BUILDER")
                 {
-                    var q = new List<string>();
-                    void Add(string key, string? val) { if (!string.IsNullOrEmpty(val)) q.Add($"{key}={Uri.EscapeDataString(val)}"); }
-                    Add("q", Str("prompt"));
-                    Add("title", Str("title"));
-                    Add("model", Str("model"));
-                    Add("effort", Str("effort"));
-                    Add("cwd", Str("cwd"));
-                    Add("mode", Str("mode"));
-                    var uri = $"mybuilder://open?{string.Join("&", q)}";
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+                    await LaunchSendToBuilderAsync(
+                        Str("prompt"), Str("title"), Str("model"), Str("effort"),
+                        Str("cwd"), Str("mode"), buildSet: null, chatUrl: Str("chatUrl"));
                 }
                 else if (type == "BT_QUEUE_BUILD")
                 {
@@ -6001,6 +6040,12 @@ namespace BuildConsole
                     string? chatUrl = Str("chatUrl");
                     int? githubNum = Int("githubNumber");
                     string? buildSet = Str("buildSet");
+                    // Git #1638 — the injected Park button reuses this same handler with an
+                    // added `park: true` flag rather than a whole second message type (chosen
+                    // over a separate BT_PARK_BUILD because every other field — resolving the
+                    // local-build id, blockers, account, dedup — is identical either way).
+                    bool park = Bool("park");
+                    string promptText = Str("prompt") ?? "";
                     // Git #1419 — a chat-button build carries no `--account` flag of its own; fall
                     // back to the title-bar toggle's current global default instead of always primary.
                     string? accountFlag = Str("account") ?? ResolveDefaultAccountFlag();
@@ -6107,37 +6152,106 @@ namespace BuildConsole
                         return;
                     }
 
+                    // Git #1638 — generalized, VISIBLE dedup check shared by Queue and Park,
+                    // run right before either would insert a new row. An active match (still
+                    // queued/parked/running/verifying/limit-paused/external) is surfaced on
+                    // the button instead of silently duplicated; a terminal match (done/
+                    // failed/canceled) gets an explicit "run it again?" confirm instead of
+                    // the old silent reset.
+                    int? reuseRowId = null;
+                    var dedupMatch = await _queueDb.FindDedupCandidateAsync(githubNum, promptText);
+                    if (dedupMatch != null)
+                    {
+                        if (BuildConsole.Services.BuildQueuePostgresClient.IsActiveStatus(dedupMatch.Status))
+                        {
+                            string dupLabel = dedupMatch.Status switch
+                            {
+                                "parked" => "📥 Already Parked",
+                                "running" => "▶ Already Running",
+                                "external" => "🚀 Already Sent",
+                                BuildConsole.Services.SessionLimitAutoRestartService.LimitPausedStatus => "⏸ Already Paused",
+                                _ when dedupMatch.Status == BuildConsole.Services.BuildQueuePostgresClient.VerifyingStatus => "🔎 Already Verifying",
+                                _ => "📋 Already Queued",
+                            };
+                            BuildConsole.Services.ActivityLog.Log("build-queue-panel.dedup",
+                                $"{(park ? "Park" : "Queue")} click for \"{Str("title")}\" matched existing active queue #{dedupMatch.Id} ({dedupMatch.Status}) — surfaced instead of duplicating.");
+                            if (correlation != null)
+                                await RunScriptInAllChatWebViewsAsync($"window.__btAlreadyExists && window.__btAlreadyExists({JsLiteral(correlation)}, {dedupMatch.Id}, {JsLiteral(dupLabel)});");
+                            return;
+                        }
+                        if (BuildConsole.Services.BuildQueuePostgresClient.IsTerminalStatus(dedupMatch.Status))
+                        {
+                            string statusWord = dedupMatch.Status switch { "done" => "Done", "failed" => "Failed", _ => "Canceled" };
+                            string agoText = "earlier";
+                            if (dedupMatch.UpdatedAt.HasValue)
+                            {
+                                var elapsed = DateTimeOffset.UtcNow - dedupMatch.UpdatedAt.Value;
+                                agoText = elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m ago" : $"{Math.Max(1, (int)elapsed.TotalMinutes)}m ago";
+                            }
+                            var confirmResult = System.Windows.MessageBox.Show(this,
+                                $"“{dedupMatch.Title}” already ran — {statusWord} {agoText}. Run it again?",
+                                park ? "Already Ran — Park Again?" : "Already Ran — Run Again?",
+                                MessageBoxButton.YesNo, MessageBoxImage.Question);
+                            if (confirmResult != MessageBoxResult.Yes)
+                            {
+                                BuildConsole.Services.ActivityLog.Log("build-queue-panel.dedup",
+                                    $"{(park ? "Park" : "Queue")} click for \"{Str("title")}\" declined re-run of terminal queue #{dedupMatch.Id} ({dedupMatch.Status}).");
+                                if (correlation != null)
+                                    await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
+                                return;
+                            }
+                            reuseRowId = dedupMatch.Id;
+                            BuildConsole.Services.ActivityLog.Log("build-queue-panel.dedup",
+                                $"Re-{(park ? "parking" : "queuing")} terminal queue #{dedupMatch.Id} ({dedupMatch.Status}) via explicit confirm.");
+                        }
+                    }
+
                     BuildConsole.Services.QueueItem queued;
                     try
                     {
                         queued = await _queueDb.QueueBuildAsync(
-                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: accountFlag);
+                            Str("title") ?? "Untitled", promptText, Str("model"), Str("effort"), Str("cwd"), githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: accountFlag, park: park, reuseRowId: reuseRowId);
                     }
                     catch (Exception ex)
                     {
-                        ToastEngine.Error("Queue Build", $"Couldn't queue build: {ex.Message}");
+                        ToastEngine.Error(park ? "Park Build" : "Queue Build", $"Couldn't {(park ? "park" : "queue")} build: {ex.Message}");
                         if (correlation != null)
                             await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
                         return;
                     }
 
                     {
-                        // Git #942 — tag the exact button with the real queue id and
-                        // start tracking so the existing chat-tab queue poll
+                        // Git #942 (queue) / #1638 (park) — tag the exact button with the real
+                        // queue id and start tracking so the existing chat-tab queue poll
                         // (PollChatTabBuildStateAsync) pushes live status onto it.
                         int qid = queued.Id;
                         string title = Str("title") ?? "Untitled";
-                        _chatButtonStatus[qid] = "In Progress...";
+                        string initialLabel = park ? "📥 Parked" : "In Progress...";
+                        _chatButtonStatus[qid] = initialLabel;
                         BuildConsole.Services.ActivityLog.Log("chat-button.status",
-                            $"queue #{qid} ({title}): queued -> In Progress... (now tracking)");
+                            $"queue #{qid} ({title}): {(park ? "queued -> Parked" : "queued -> In Progress...")} (now tracking)");
+                        BuildConsole.Services.ActivityLog.Log("build-queue",
+                            park ? $"Parked queue item #{qid} ({title})." : $"Queued build item #{qid} ({title}).");
                         if (!string.IsNullOrWhiteSpace(chatUrl))
                         {
                             BuildConsole.Services.ChatUrlStore.SetChatUrl(qid, githubNum, chatUrl);
                         }
                         if (correlation != null)
-                            await RunScriptInAllChatWebViewsAsync($"window.__btTagQueued && window.__btTagQueued({JsLiteral(correlation)}, {qid});");
+                        {
+                            string tagFn = park ? "__btTagParked" : "__btTagQueued";
+                            await RunScriptInAllChatWebViewsAsync($"window.{tagFn} && window.{tagFn}({JsLiteral(correlation)}, {qid});");
+                        }
                         await BuildQueuePanel.RefreshAsync();
                     }
+                }
+                else if (type == "BT_REVEAL_QUEUE_ITEM")
+                {
+                    // Git #1638 — the dedup check found an existing item and the injected
+                    // button was tagged clickable-but-not-duplicating; this jumps the Build
+                    // Queue panel to it instead of creating a second row.
+                    int? revealId = Int("queueId");
+                    if (revealId.HasValue)
+                        BuildQueuePanel.RevealQueueItem(revealId.Value);
                 }
                 else if (type == "BT_LOAD_SQL")
                 {

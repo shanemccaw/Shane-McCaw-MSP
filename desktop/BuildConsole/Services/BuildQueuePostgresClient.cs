@@ -346,6 +346,76 @@ namespace BuildConsole.Services
         }
 
         // ── QueueBuildAsync ───────────────────────────────────────────────────────
+        /// <summary>Git #1638 — active states: still eligible to run (or run again automatically), so a
+        /// duplicate Queue/Park click on top of one of these must never insert a second row — it should
+        /// surface the existing item instead. Includes "external" (Send to Builder rows, Git #1638): not
+        /// claimable by the watcher, but a second click while one is still running outside the cap is the
+        /// same kind of accidental duplicate the rest of this bucket exists to catch.</summary>
+        public static bool IsActiveStatus(string? status) => status is "queued" or "parked" or "running"
+            or VerifyingStatus or Services.SessionLimitAutoRestartService.LimitPausedStatus or "external";
+
+        /// <summary>Git #1638 — terminal states: the row already ran to a real conclusion. A duplicate
+        /// Queue/Park click matching one of these must NOT silently reset it back to queued/parked (that
+        /// would erase the fact it already ran) — the caller shows an explicit "run it again?" confirm and
+        /// only then re-queues via <paramref name="reuseRowId"/> on <see cref="QueueBuildAsync"/>.</summary>
+        public static bool IsTerminalStatus(string? status) => status is "done" or "failed" or "canceled";
+
+        /// <summary>
+        /// Git #1638 — the generalized dedup lookup shared by Queue and Park (before either inserts a new
+        /// row, the caller checks this first). GitHub-linked builds (githubNumber != null) match the most
+        /// recent row for that issue number, regardless of its current status — this is a superset of the
+        /// old "status &lt;&gt; running" lookup QueueBuildAsync's own upsert still uses internally, because a
+        /// duplicate click must also be able to say "Already Running", not just silently reuse it. Local
+        /// (--notGit) builds have no github_number to key off, so they match on an exact, whitespace-
+        /// normalized comparison of the prompt text — bounded to rows created in the last 24 hours (an
+        /// arbitrary but explicit window: a local prompt typed once six months ago re-appearing verbatim is
+        /// far more likely coincidence than Shane re-sending it, and an unbounded scan only grows costlier
+        /// over the life of the queue). Returns null when nothing matches.
+        /// </summary>
+        public async Task<QueueItem?> FindDedupCandidateAsync(int? githubNumber, string prompt)
+        {
+            await using var conn = await OpenAsync();
+            QueueItem? row = null;
+
+            if (githubNumber.HasValue)
+            {
+                await using var cmd = new NpgsqlCommand(@"
+                    SELECT id, title, prompt, model, effort, cwd,
+                           github_number, blocked_by_number, blocked_by_numbers,
+                           status, exit_code, session_id, resume_session_id,
+                           originating_chat_id, chat_url, updated_at, build_set, cli, account
+                    FROM bt_build_queue
+                    WHERE github_number = @num
+                    ORDER BY created_at DESC
+                    LIMIT 1", conn);
+                cmd.Parameters.AddWithValue("@num", githubNumber.Value);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync()) row = MapRow(reader);
+            }
+            else
+            {
+                await using var cmd = new NpgsqlCommand(@"
+                    SELECT id, title, prompt, model, effort, cwd,
+                           github_number, blocked_by_number, blocked_by_numbers,
+                           status, exit_code, session_id, resume_session_id,
+                           originating_chat_id, chat_url, updated_at, build_set, cli, account
+                    FROM bt_build_queue
+                    WHERE github_number IS NULL
+                      AND created_at > @since
+                      AND btrim(regexp_replace(prompt, '\s+', ' ', 'g')) = btrim(regexp_replace(@prompt, '\s+', ' ', 'g'))
+                    ORDER BY created_at DESC
+                    LIMIT 1", conn);
+                cmd.Parameters.AddWithValue("@since", DateTime.UtcNow.AddHours(-24));
+                cmd.Parameters.AddWithValue("@prompt", prompt ?? "");
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync()) row = MapRow(reader);
+            }
+
+            if (row != null)
+                await PopulateAssociatedIssueNumbersAsync(new List<QueueItem> { row }, conn);
+            return row;
+        }
+
         /// <summary>
         /// Adds (or, for an issue-linked build, re-queues) a build. Replicates
         /// POST /admin/build-tracker/extension/queue's DB logic verbatim, including
@@ -356,13 +426,23 @@ namespace BuildConsole.Services
         /// in-flight/complete label sync — via the local `gh` CLI
         /// (<see cref="GitHubIssuesService"/>) instead of a server-side GITHUB_TOKEN
         /// call, since this bypasses the server entirely.
+        ///
+        /// Git #1638 — <paramref name="park"/> writes the row's final status as
+        /// "parked" instead of "queued" (a staging spot the watcher's claim query,
+        /// WHERE status = 'queued', never picks up — see BuildQueuePostgresClient's
+        /// class doc). <paramref name="reuseRowId"/> lets a caller that already ran
+        /// FindDedupCandidateAsync and got an explicit "run it again?" confirmation
+        /// reuse that exact terminal row instead of inserting a fresh one — it takes
+        /// priority over the githubNumber-based lookup below (which stays unchanged
+        /// for every other caller that doesn't pass it).
         /// </summary>
         public async Task<QueueItem> QueueBuildAsync(
             string title, string prompt, string? model, string? effort, string? cwd,
             int? githubNumber, List<int>? blockedByNumbers, string? resumeSessionId = null,
             string? chatUrl = null, string? originatingChatId = null, string? buildSet = null, string? cli = null,
-            string? account = null)
+            string? account = null, bool park = false, int? reuseRowId = null)
         {
+            var finalStatus = park ? "parked" : "queued";
             var titleTrimmed = title.Trim();
             var modelTrimmed = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
             var effortTrimmed = string.IsNullOrWhiteSpace(effort) ? null : effort.Trim();
@@ -383,54 +463,57 @@ namespace BuildConsole.Services
             await using var conn = await OpenAsync();
 
             QueueItem? row = null;
-            if (githubNumber.HasValue)
+            // Git #1638 — an explicit caller-confirmed reuse (a terminal-state dedup match the
+            // user said "run it again" to) always wins over the githubNumber lookup below, and
+            // applies whether or not this build has a github number (a local/--notGit rerun has
+            // no github_number to key a lookup off at all).
+            int? existingId = reuseRowId;
+            if (!existingId.HasValue && githubNumber.HasValue)
             {
-                int? existingId = null;
-                await using (var findCmd = new NpgsqlCommand(@"
+                await using var findCmd = new NpgsqlCommand(@"
                     SELECT id FROM bt_build_queue
                      WHERE github_number = @num
                        AND status <> 'running'
                      ORDER BY created_at DESC
-                     LIMIT 1", conn))
-                {
-                    findCmd.Parameters.AddWithValue("@num", githubNumber.Value);
-                    var found = await findCmd.ExecuteScalarAsync();
-                    if (found != null && found != DBNull.Value) existingId = (int)found;
-                }
+                     LIMIT 1", conn);
+                findCmd.Parameters.AddWithValue("@num", githubNumber.Value);
+                var found = await findCmd.ExecuteScalarAsync();
+                if (found != null && found != DBNull.Value) existingId = (int)found;
+            }
 
-                if (existingId.HasValue)
-                {
-                    await using var updateCmd = new NpgsqlCommand(@"
-                        UPDATE bt_build_queue
-                           SET title = @title, prompt = @prompt, model = @model, effort = @effort, cwd = @cwd,
-                               build_set = @buildSet, cli = @cli, account = @account,
-                               blocked_by_number = @blockedByNumber, blocked_by_numbers = @blockedByNumbers,
-                               resume_session_id = @resumeSessionId, originating_chat_id = @originatingChatId,
-                               chat_url = @chatUrl, status = 'queued', claimed_at = NULL, completed_at = NULL,
-                               exit_code = NULL, updated_at = NOW()
-                          WHERE id = @id
-                        RETURNING id, title, prompt, model, effort, cwd,
-                                  github_number, blocked_by_number, blocked_by_numbers,
-                                  status, exit_code, session_id, resume_session_id,
-                                  originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
-                    updateCmd.Parameters.AddWithValue("@title", titleTrimmed);
-                    updateCmd.Parameters.AddWithValue("@prompt", prompt);
-                    updateCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@effort", (object?)effortTrimmed ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@buildSet", (object?)buildSetTrimmed ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@account", (object?)accountTrimmed ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
-                    updateCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
-                    { Value = (object?)blockerArray ?? DBNull.Value });
-                    updateCmd.Parameters.AddWithValue("@resumeSessionId", (object?)resumeSessionId ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@originatingChatId", (object?)originatingChatIdTrimmed ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
-                    updateCmd.Parameters.AddWithValue("@id", existingId.Value);
-                    await using var reader = await updateCmd.ExecuteReaderAsync();
-                    if (await reader.ReadAsync()) row = MapRow(reader);
-                }
+            if (existingId.HasValue)
+            {
+                await using var updateCmd = new NpgsqlCommand(@"
+                    UPDATE bt_build_queue
+                       SET title = @title, prompt = @prompt, model = @model, effort = @effort, cwd = @cwd,
+                           build_set = @buildSet, cli = @cli, account = @account,
+                           blocked_by_number = @blockedByNumber, blocked_by_numbers = @blockedByNumbers,
+                           resume_session_id = @resumeSessionId, originating_chat_id = @originatingChatId,
+                           chat_url = @chatUrl, status = @status, claimed_at = NULL, completed_at = NULL,
+                           exit_code = NULL, updated_at = NOW()
+                      WHERE id = @id
+                    RETURNING id, title, prompt, model, effort, cwd,
+                              github_number, blocked_by_number, blocked_by_numbers,
+                              status, exit_code, session_id, resume_session_id,
+                              originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+                updateCmd.Parameters.AddWithValue("@title", titleTrimmed);
+                updateCmd.Parameters.AddWithValue("@prompt", prompt);
+                updateCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@effort", (object?)effortTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@buildSet", (object?)buildSetTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@account", (object?)accountTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@blockedByNumber", (object?)firstBlocker ?? DBNull.Value);
+                updateCmd.Parameters.Add(new NpgsqlParameter("@blockedByNumbers", NpgsqlDbType.Array | NpgsqlDbType.Integer)
+                { Value = (object?)blockerArray ?? DBNull.Value });
+                updateCmd.Parameters.AddWithValue("@resumeSessionId", (object?)resumeSessionId ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@originatingChatId", (object?)originatingChatIdTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
+                updateCmd.Parameters.AddWithValue("@status", finalStatus);
+                updateCmd.Parameters.AddWithValue("@id", existingId.Value);
+                await using var reader = await updateCmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync()) row = MapRow(reader);
             }
 
             if (row == null)
@@ -439,11 +522,11 @@ namespace BuildConsole.Services
                     INSERT INTO bt_build_queue
                         (title, prompt, model, effort, cwd, github_number,
                          blocked_by_number, blocked_by_numbers, resume_session_id,
-                         originating_chat_id, chat_url, build_set, cli, account)
+                         originating_chat_id, chat_url, build_set, cli, account, status)
                     VALUES
                         (@title, @prompt, @model, @effort, @cwd, @githubNumber,
                          @blockedByNumber, @blockedByNumbers, @resumeSessionId,
-                         @originatingChatId, @chatUrl, @buildSet, @cli, @account)
+                         @originatingChatId, @chatUrl, @buildSet, @cli, @account, @status)
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
@@ -463,14 +546,17 @@ namespace BuildConsole.Services
                 insertCmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@cli", (object?)cliTrimmed ?? DBNull.Value);
                 insertCmd.Parameters.AddWithValue("@account", (object?)accountTrimmed ?? DBNull.Value);
+                insertCmd.Parameters.AddWithValue("@status", finalStatus);
                 await using var reader = await insertCmd.ExecuteReaderAsync();
                 await reader.ReadAsync();
                 row = MapRow(reader);
             }
 
             // Fire-and-forget, non-fatal — mirrors the server's own "queue action must
-            // never be delayed or failed by a label sync" stance.
-            if (githubNumber.HasValue)
+            // never be delayed or failed by a label sync" stance. Git #1638 — skipped for a
+            // Park: a parked item isn't being worked yet, so it shouldn't flip the issue to
+            // "in-flight" until it's actually un-parked into the real queue.
+            if (githubNumber.HasValue && !park)
             {
                 var num = githubNumber.Value;
                 _ = Task.Run(async () =>
@@ -704,10 +790,96 @@ namespace BuildConsole.Services
                    SET status     = 'canceled',
                        updated_at = NOW()
                  WHERE id     = @id
-                   AND status IN ('queued', 'limit-paused')", conn);
+                   AND status IN ('queued', 'limit-paused', 'parked')", conn);
             cmd.Parameters.AddWithValue("@id", id);
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
             return rowsAffected > 0;
+        }
+
+        // ── UnparkAsync (Git #1638) ───────────────────────────────────────────────
+        /// <summary>
+        /// Flips ONE parked row back to 'queued', making it immediately eligible for
+        /// the normal auto-run pipeline (GetNextAsync's claim query). Mirrors
+        /// RequeueLimitPausedAsync's per-item "resume now" shape. Returns true only
+        /// when the row was actually parked (a stale double-click on an already
+        /// un-parked/canceled item is a safe no-op, not a silent success).
+        /// </summary>
+        public async Task<bool> UnparkAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            int? num = null;
+            await using (var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'queued',
+                       updated_at = NOW()
+                 WHERE id     = @id
+                   AND status = 'parked'
+                RETURNING github_number", conn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (!await reader.ReadAsync()) return false;
+                if (!reader.IsDBNull(0)) num = reader.GetInt32(0);
+            }
+
+            // Same fire-and-forget label sync QueueBuildAsync does on a real queue —
+            // un-parking is the moment this issue actually becomes in-flight work.
+            if (num.HasValue)
+            {
+                var n = num.Value;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await GitHubIssuesService.AddLabelAsync(n, "in-flight");
+                        await GitHubIssuesService.RemoveLabelAsync(n, "complete");
+                    }
+                    catch { /* non-fatal, matches QueueBuildAsync's own stance */ }
+                });
+            }
+            return true;
+        }
+
+        // ── QueueExternalAsync (Git #1638) ────────────────────────────────────────
+        /// <summary>
+        /// "Send to Builder" tracking row — per #1638's locked decision, this is a
+        /// plain insert-only record (never an upsert/reuse; every Send to Builder
+        /// click is its own independent external launch), written with status
+        /// 'external'. Confirmed invisible to both BuildQueuePostgresClient.GetNextAsync's
+        /// claim query (WHERE status = 'queued') and BuildWatchWindow.AdmitNewRunning
+        /// (only ever pulls status == "running") — so it can never be claimed for
+        /// auto-run and never competes for one of the 8 Build Watch slots, structurally
+        /// rather than by a special-case guard. The returned row's id is passed back
+        /// through the mybuilder:// URI as queueId= so scripts/run-claude.ps1 can
+        /// redirect its real stdout/stderr to this same id's BuildLogPaths.ForQueueItem
+        /// log file and write the real exit code back to this exact row when it exits.
+        /// </summary>
+        public async Task<QueueItem> QueueExternalAsync(
+            string title, string prompt, string? model, string? effort, string? cwd, string? chatUrl = null)
+        {
+            var titleTrimmed = title.Trim();
+            var modelTrimmed = string.IsNullOrWhiteSpace(model) ? null : model.Trim();
+            var effortTrimmed = string.IsNullOrWhiteSpace(effort) ? null : effort.Trim();
+            var cwdTrimmed = string.IsNullOrWhiteSpace(cwd) ? null : cwd.Trim();
+            var chatUrlTrimmed = string.IsNullOrWhiteSpace(chatUrl) ? null : chatUrl.Trim();
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                INSERT INTO bt_build_queue (title, prompt, model, effort, cwd, chat_url, status)
+                VALUES (@title, @prompt, @model, @effort, @cwd, @chatUrl, 'external')
+                RETURNING id, title, prompt, model, effort, cwd,
+                          github_number, blocked_by_number, blocked_by_numbers,
+                          status, exit_code, session_id, resume_session_id,
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+            cmd.Parameters.AddWithValue("@title", titleTrimmed);
+            cmd.Parameters.AddWithValue("@prompt", prompt);
+            cmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@effort", (object?)effortTrimmed ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@cwd", (object?)cwdTrimmed ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@chatUrl", (object?)chatUrlTrimmed ?? DBNull.Value);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            await reader.ReadAsync();
+            return MapRow(reader);
         }
 
         // ── MarkOrphanedFailedAsync ───────────────────────────────────────────────

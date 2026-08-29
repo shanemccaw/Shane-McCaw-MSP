@@ -70,6 +70,55 @@ namespace BuildConsole.Services
     }
   };
 
+  // Git #1638 — tags the exact button (+ its bar-mates, same as __btTagQueued) with the
+  // real queue id of a PARKED row, and gives it its own neutral "staged, not running yet"
+  // look distinct from __btApplyStatus's "progress" blue — parked isn't in progress.
+  window.__btTagParked = function (correlation, queueId) {
+    var clicked = document.querySelector('[data-bt-correlation="' + correlation + '"]');
+    if (!clicked) return;
+    var block = clicked.dataset.btBlock;
+    var els = block
+      ? document.querySelectorAll('[data-bt-block="' + block + '"]')
+      : [clicked];
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      el.dataset.btQueueId = String(queueId);
+      delete el.dataset.btCorrelation;
+      delete el.dataset.btFailed;
+      el.disabled = true;
+      el.textContent = "📥 Parked";
+      el.style.borderColor = "#6C7086";
+      el.style.backgroundColor = "#21222E";
+      el.style.color = "#BAB4CD";
+    }
+  };
+
+  // Git #1638 — the generalized dedup check found an existing row (active or a confirmed
+  // terminal re-run) instead of inserting a new one. Leaves the button ENABLED (unlike
+  // __btTagQueued/__btTagParked) and tags it data-bt-duplicate-id so its own click handler
+  // (see queueBuild/park button wiring below) posts BT_REVEAL_QUEUE_ITEM instead of queuing
+  // again — "jump to the existing item" instead of a silent second row.
+  window.__btAlreadyExists = function (correlation, queueId, label) {
+    var clicked = document.querySelector('[data-bt-correlation="' + correlation + '"]');
+    if (!clicked) return;
+    var block = clicked.dataset.btBlock;
+    var els = block
+      ? document.querySelectorAll('[data-bt-block="' + block + '"]')
+      : [clicked];
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      delete el.dataset.btCorrelation;
+      delete el.dataset.btFailed;
+      el.dataset.btDuplicateId = String(queueId);
+      el.disabled = false;
+      el.textContent = label;
+      el.title = "Already exists in the Build Queue — click to jump to it.";
+      el.style.borderColor = "#89B4FA";
+      el.style.backgroundColor = "#1E2030";
+      el.style.color = "#89B4FA";
+    }
+  };
+
   window.__btApplyStatus = function (queueId, label, mode) {
     var els = document.querySelectorAll('[data-bt-queue-id="' + queueId + '"]');
     for (var i = 0; i < els.length; i++) {
@@ -79,7 +128,16 @@ namespace BuildConsole.Services
       if (!bar) continue;
       var sendSib = bar.querySelector(".bt-btn-send");
       var editSib = bar.querySelector(".bt-btn-edit");
-      if (mode === "waiting") {
+      if (mode === "parked") {
+        el.dataset.btWaiting = "0";
+        delete el.dataset.btFailed;
+        el.disabled = true;
+        el.style.borderColor = "#6C7086";
+        el.style.backgroundColor = "#21222E";
+        el.style.color = "#BAB4CD";
+        if (sendSib) sendSib.style.display = "none";
+        if (editSib) editSib.style.display = "none";
+      } else if (mode === "waiting") {
         el.dataset.btWaiting = "1";
         delete el.dataset.btFailed;
         el.disabled = false;
@@ -146,7 +204,12 @@ namespace BuildConsole.Services
     });
   }
 
-  function queueBuild(prompt, referencedNumber, btn) {
+  // Git #1638 — jumps to an existing queue item instead of re-queuing/re-parking it.
+  function revealQueueItem(queueId) {
+    post("BT_REVEAL_QUEUE_ITEM", { queueId: queueId });
+  }
+
+  function queueBuild(prompt, referencedNumber, btn, park) {
     const { flags, rest } = extractLeadingFlags(prompt);
 
     // GitHub blockers (--blocked-by): plain issue numbers.
@@ -187,7 +250,7 @@ namespace BuildConsole.Services
     btn.dataset.btCorrelation = correlation;
     delete btn.dataset.btFailed;
     btn.disabled = true;
-    btn.textContent = "In Progress...";
+    btn.textContent = park ? "Parking..." : "In Progress...";
     post("BT_QUEUE_BUILD", {
       title: title,
       prompt: rest,
@@ -203,6 +266,7 @@ namespace BuildConsole.Services
       localBlockers: localBlockers,
       correlation: correlation,
       chatUrl: window.location.href,
+      park: !!park,
     });
   }
 
@@ -271,10 +335,40 @@ namespace BuildConsole.Services
       queueBtn.addEventListener("mouseenter", function () { queueBtn.style.background = "#2e2e2e"; });
       queueBtn.addEventListener("mouseleave", function () { queueBtn.style.background = "#242424"; });
       queueBtn.addEventListener("click", function () {
+        // Git #1638 — a previous click on this exact block already surfaced an
+        // existing duplicate; clicking again jumps to it instead of re-checking.
+        if (queueBtn.dataset.btDuplicateId) {
+          revealQueueItem(parseInt(queueBtn.dataset.btDuplicateId, 10));
+          return;
+        }
         const text = currentBlockText(pre);
-        queueBuild(text, extractReferencedIssueNumber(text), queueBtn);
+        queueBuild(text, extractReferencedIssueNumber(text), queueBtn, false);
       });
       bar.appendChild(queueBtn);
+
+      // Git #1638 — Park: stages the same payload as Queue, but lands in the
+      // 'parked' status instead of 'queued', which the watcher's claim query
+      // (WHERE status = 'queued') never picks up. A staging spot Shane can send
+      // into the real queue later via the Build Queue panel's Un-park action.
+      const parkBtn = document.createElement("button");
+      parkBtn.type = "button";
+      parkBtn.className = "bt-btn-park";
+      parkBtn.textContent = "🅿️ Park";
+      parkBtn.dataset.btOrigLabel = "🅿️ Park";
+      parkBtn.dataset.btBlock = blockId;
+      parkBtn.title = "Stage this build without queuing it to run yet";
+      parkBtn.style.cssText = btn.style.cssText;
+      parkBtn.addEventListener("mouseenter", function () { if (!parkBtn.disabled) parkBtn.style.background = "#2e2e2e"; });
+      parkBtn.addEventListener("mouseleave", function () { if (!parkBtn.disabled) parkBtn.style.background = "#242424"; });
+      parkBtn.addEventListener("click", function () {
+        if (parkBtn.dataset.btDuplicateId) {
+          revealQueueItem(parseInt(parkBtn.dataset.btDuplicateId, 10));
+          return;
+        }
+        const text = currentBlockText(pre);
+        queueBuild(text, extractReferencedIssueNumber(text), parkBtn, true);
+      });
+      bar.appendChild(parkBtn);
     }
     return bar;
   }

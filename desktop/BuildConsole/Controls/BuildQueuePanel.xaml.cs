@@ -915,6 +915,13 @@ namespace BuildConsole.Controls
             // Git #1469 — "verifying" (session done, real GitHub issue not yet closed)
             // stays visible here too, not archived into Done — that's the whole point.
             "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
+            // Git #1638 — the Park staging area: a "parked" row is deliberately excluded from
+            // "Active" above (the watcher's claim query never picks it up either — that's the
+            // whole point of a staging spot), so it needs its own filter to be findable at all.
+            "Parked"   => items.Where(i => i.Status == "parked" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+            // Git #1638 — "Send to Builder" tracking rows: never claimable, never in the 8-slot
+            // grid, but still real rows that should be findable rather than lost.
+            "External" => items.Where(i => i.Status == "external" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             "Canceled" => items.Where(i => i.Status == "canceled" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
@@ -939,6 +946,8 @@ namespace BuildConsole.Controls
             string targetFilter = item.Status switch
             {
                 "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus => "Active",
+                "parked"              => "Parked",
+                "external"            => "External",
                 "done"                => "Done",
                 "canceled"            => "Canceled",
                 _                     => "All",
@@ -1844,7 +1853,11 @@ namespace BuildConsole.Controls
                 (item.Status == BuildQueuePostgresClient.VerifyingStatus ? Color.FromRgb(0x2A, 0x4A, 0x5A) :
                 (item.Status == "done" ? Color.FromRgb(0x2E, 0x52, 0x3E) :
                 (item.Status == "failed" ? Color.FromRgb(0x5A, 0x2A, 0x34) :
-                Color.FromRgb(0x31, 0x32, 0x44))))))));
+                // Git #1638 — "parked" and "external" get their own neutral/informational
+                // border so they read as distinct from the plain "up next" default below.
+                (item.Status == "parked" ? Color.FromRgb(0x6C, 0x70, 0x86) :
+                (item.Status == "external" ? Color.FromRgb(0x89, 0xB4, 0xFA) :
+                Color.FromRgb(0x31, 0x32, 0x44))))))))));
 
             Color cardBgColor = isSelected ? Color.FromRgb(0x1B, 0x22, 0x34) :
                 (isWaitingForInput ? Color.FromRgb(0x23, 0x1E, 0x18) :
@@ -1853,7 +1866,9 @@ namespace BuildConsole.Controls
                 (isBlocked ? Color.FromRgb(0x1E, 0x18, 0x22) :
                 (item.Status == BuildQueuePostgresClient.VerifyingStatus ? Color.FromRgb(0x14, 0x22, 0x28) :
                 (item.Status == "done" ? Color.FromRgb(0x14, 0x20, 0x1A) :
-                Color.FromRgb(0x18, 0x18, 0x25)))))));
+                (item.Status == "parked" ? Color.FromRgb(0x1E, 0x1F, 0x2A) :
+                (item.Status == "external" ? Color.FromRgb(0x15, 0x19, 0x26) :
+                Color.FromRgb(0x18, 0x18, 0x25)))))))));
 
             var card = new Border
             {
@@ -2016,6 +2031,54 @@ namespace BuildConsole.Controls
                     FontWeight = FontWeights.Bold,
                     Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
                     VerticalAlignment = VerticalAlignment.Center
+                };
+            }
+            else if (item.Status == "parked")
+            {
+                // Git #1638 — the Park staging area: deliberately never picked up by
+                // GetNextAsync's WHERE status = 'queued' claim query. Neutral gray, not
+                // any of the "in the pipeline" colors above, so it reads as staged rather
+                // than waiting its turn.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x21, 0x22, 0x2E)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x6C, 0x70, 0x86)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "📥 PARKED",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xB4, 0xCD)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Staged, not queued — use Un-park to send it into the real build queue."
+                };
+            }
+            else if (item.Status == "external")
+            {
+                // Git #1638 — a "Send to Builder" launch: outside the 8-slot cap, never
+                // claimed by the watcher. Its real status column (done/failed once
+                // scripts/run-claude.ps1 writes the exit code back) still drives the
+                // pills above, so this only fires while it's genuinely still running.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x1E, 0x20, 0x30)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "🚀 EXTERNAL",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x89, 0xB4, 0xFA)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Launched via Send to Builder — outside the 8-slot cap, not watcher-claimable."
                 };
             }
             else
@@ -2506,6 +2569,74 @@ namespace BuildConsole.Controls
                     await RefreshAsync();
                 };
                 cm.Items.Add(miCancelLp);
+            }
+            else if (item.Status == "parked")
+            {
+                // Git #1638 — the required un-park action: flips this ONE row from
+                // 'parked' back to 'queued', making it immediately eligible for the
+                // normal auto-run pipeline (GetNextAsync's claim query).
+                var miUnpark = new MenuItem { Header = "▶ Un-park (send to queue)" };
+                miUnpark.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Un-park", "No direct DB connection — can't un-park.");
+                        return;
+                    }
+                    try
+                    {
+                        if (await _db.UnparkAsync(item.Id))
+                        {
+                            ToastEngine.Success("Un-parked", $"Back in the queue: {item.Title}");
+                            ActivityLog.Log("build-queue", $"Un-parked queue item #{item.Id} ({item.Title}) — now queued.");
+                        }
+                        else
+                            ToastEngine.Warning("Un-park", $"No longer parked: {item.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Un-park Failed", $"Couldn't un-park: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miUnpark);
+
+                var miCancelParked = new MenuItem { Header = "✕ Cancel" };
+                miCancelParked.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Cancel", "No direct DB connection — can't cancel.");
+                        return;
+                    }
+                    try
+                    {
+                        if (await _db.CancelAsync(item.Id))
+                        {
+                            ToastEngine.Success("Canceled", $"Canceled: {item.Title}");
+                            ActivityLog.Log("build-queue", $"Canceled parked queue item #{item.Id} ({item.Title}) without ever queuing it.");
+                        }
+                        else
+                            ToastEngine.Warning("Cancel", $"Couldn't cancel: {item.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Cancel Failed", $"Couldn't cancel: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miCancelParked);
+            }
+            else if (item.Status == "external")
+            {
+                // Git #1638 — the log-tail viewer promised by the locked "Send to
+                // Builder" decision: reuses the same BuildLogPaths.ForQueueItem
+                // convention scripts/run-claude.ps1 now redirects real stdout/stderr
+                // into, as an ad-hoc standalone viewer (not admitted into the 8-slot
+                // Build Watch grid — this build was never a candidate for a slot).
+                var miTailLog = new MenuItem { Header = "📜 Tail Log" };
+                miTailLog.Click += (_, _) => ExternalLogWindow.ShowFor(item.Id, item.Title);
+                cm.Items.Add(miTailLog);
             }
             else
             {
