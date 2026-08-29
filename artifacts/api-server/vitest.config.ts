@@ -362,6 +362,11 @@ export default defineConfig({
       // #1536 — the prose rollout-schedule advisory date extracted from a
       // Message Center post's own bodyContent.
       "src/lib/m365-message-center-date-quality.test.ts",
+      // #1593 — Account Security's password age / failed sign-ins / device
+      // compliance signals: real-tenant-shaped honest available/unavailable
+      // branches (Entra Premium gap, no-active-Intune gap, consent revoked).
+      "src/lib/account-security-graph.test.ts",
+      "src/routes/portal-account-security-graph.test.ts",
     ],
     coverage: {
       provider: "v8",

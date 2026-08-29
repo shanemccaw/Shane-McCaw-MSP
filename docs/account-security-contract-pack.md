@@ -117,9 +117,9 @@ to the raw role string for anything unmapped.
 | Session revoke (single + "sign out everywhere else") | **CURRENT** | #1235 — see §6 |
 | Last sign-in timestamp | **CURRENT** (derived from login-history row 0) | #1235 |
 | Login history: `loginMethod`, `browser`, `os`, `revoked` | **CURRENT on the route, not drawn by this page** | — |
-| Session `compliant` (device compliance) | **DECIDED — forbidden, not buildable from a portal login** | #1593 |
-| Password age / last-changed | **DECIDED — no backing column** (`usersTable` has no `passwordChangedAt`) | #1593 |
-| Failed login attempts | **DECIDED — column exists, no endpoint exposes it to the owning user** (`users.failedLoginAttempts`) | #1593 |
+| Session `compliant` (device compliance) | **BUILT (tenant-wide) — genuinely unavailable for the testbed tenant** (no active Intune entitlement); real data for a tenant that has one | #1593 — `GET /api/portal/account-security/graph-signals` |
+| Password age / last-changed | **BUILT (tenant-wide)** — real data via Graph `lastPasswordChangeDateTime`, not a per-portal-user reading (see §8) | #1593 — `GET /api/portal/account-security/graph-signals` |
+| Failed login attempts | **BUILT, both halves** — portal's own `users.failedLoginAttempts`/`lastFailedLoginAt`/`lockedUntil` (real, per-user, always answerable) AND the M365-tenant-wide Entra sign-in log reading (genuinely unavailable for the testbed tenant — no Entra ID Premium) | #1593 — `GET /api/portal/account-security/graph-signals` |
 | Change password action (`POST /api/auth/change-password`, `auth.ts:822`) | **Endpoint CURRENT; button is inert design copy on this page** (`portal-v2-account-security.tsx:431-436`) | not yet assigned — flagged, no wiring issue found |
 | Passkey / authenticator "Set up" / "Manage" CTAs | **Inert design copy** — no MFA-enrollment write call wired from this page | not yet assigned — flagged |
 | Delete-account submit (`POST /api/portal/deletion-request`, `portal-privacy.ts:272-274`) | **Endpoint CURRENT; button on this page is inert** — only the expand/collapse and type-to-confirm gate are real interactive state (`secDeleteReady`, `accountSecurityModel.ts:47-49`) | not yet assigned — flagged |
@@ -194,31 +194,111 @@ distinction — do not collapse loading, empty, and fixture into a single visual
 
 ---
 
-## 5. The forbidden list (tied to #1593)
+## 5. The forbidden list (tied to #1593) — SUPERSEDED, see §8
 
-Per the hook's own header comment (`useAccountSecurityLive.ts:20-32`) and confirmed
-against the actual code, three fields have **no backend today** and must not be drawn
-by Design as if they were live:
+This section is preserved as the historical record of the gap as filed. As of
+2026-08-29, #1593 built real backend for all three items (see §8) — this list should
+be read as "what was true when #1593 was filed," not current state.
+
+Per the (now-retired) hook's own header comment (`useAccountSecurityLive.ts:20-32`)
+and confirmed against the actual code at the time, three fields had **no backend**:
 
 - **Password age / "last changed"** — `usersTable` has no `passwordChangedAt` column.
-  A real prerequisite gap (the column doesn't exist), not a wiring gap.
+  A real prerequisite gap (the column doesn't exist), not a wiring gap. **Resolved
+  differently than a column would have:** §8 built this as a real Graph
+  (`lastPasswordChangeDateTime`) reading instead — tenant-wide, not per-portal-user
+  (no identity link exists to key a personal reading off).
 - **Failed login attempts** — `users.failedLoginAttempts` is a real column, but no
-  endpoint exposes it to the owning user yet.
+  endpoint exposed it to the owning user. **Resolved as filed:** §8's
+  `getLocalFailedLoginSignal()` now exposes exactly this column (plus
+  `lastFailedLoginAt`/`lockedUntil`) to the owning user, no schema change needed.
 - **Device compliance** ("hybrid joined" / "Intune enrolled" / "unmanaged", as seen in
   the fixture's `SEC_SESSIONS[].compliant` strings, `accountSecurityData.ts:125-127`)
-  — Entra/Intune device state, out of scope for a portal-login page by the page's own
-  framing. Live session rows carry `compliant: ""` unconditionally
-  (`useAccountSecurityLive.ts:83`) rather than a fabricated "Compliant"/"Unmanaged"
-  label — the page's own model layer (`sessionIsUnmanaged`,
-  `accountSecurityModel.ts:29-31`) only ever fires against the empty string, so it is
-  inert on live data, not silently wrong.
+  — Entra/Intune device state. **Resolved as a tenant-wide Graph reading** (§8); the
+  testbed tenant itself has no active Intune entitlement, so it reads `available:
+  false` there, but the code path is real for a tenant that does.
 
-This was previously documented **only in the hook's own code comment** — #1593 was
-filed to stop that fact from staying comment-only. This pack is that fact's second,
-durable home. **Design must not draw password age, failed-attempt counts, or device
-compliance badges as if a live value exists** — render them, if at all, as an explicit
-"not available" state, or omit them, pending #1593's own decision on whether any of
-these three is buildable in v1.1 via Graph.
+**Design must still not draw any of these as if a value exists without checking
+`available`** — each is a real discriminated union (`{ available: true, ... } |
+{ available: false, reason, detail }`), and the testbed tenant itself currently reads
+`available: false` for two of the four (`failedSignIns`, `deviceCompliance`). "Render
+an honest unavailable state when `available` is false" is still the rule; it is just no
+longer "nothing exists to call."
+
+---
+
+## 8. #1593's own resolution — real backend built for two of the four, real evidence for the other two (2026-08-29)
+
+**Superseding context: `artifacts/msp-portal` no longer exists.** Hours after #1593 was
+filed, `f40438cdc` retired `artifacts/msp-portal` wholesale (preserved at tag
+`portal-archive-2026-08-29`) for a fresh `artifacts/portal` scaffold under #1485. The
+Account Security page and `useAccountSecurityLive.ts` this whole pack describes are
+gone from the codebase, and no `Design/portal/` export exists yet for a replacement.
+Per #1485's own fixed order (architect -> build the endpoints -> regenerate contract
+pack -> Design -> wire), #1593 was resolved as a backend-only build: a real endpoint
+now exists (`GET /api/portal/account-security/graph-signals`,
+`routes/portal-account-security-graph.ts` + `lib/account-security-graph.ts`), with no
+frontend to wire it into yet. Everything below was verified with real Graph calls
+against the testbed tenant (mccawsoft2.onmicrosoft.com,
+`c4c814d4-3afe-441e-9145-62461d0a4fd3`), not against documentation.
+
+**A structural constraint applies to the two Microsoft-365-sourced items (password age,
+failed sign-ins) and to device compliance:** portal users have no verified identity
+link to an M365 user object. A direct query of the testbed tenant's `users` rows
+(`tenant_id` = this tenant) shows portal accounts are personal outlook.com/gmail.com
+addresses, not `@mccawsoft2.onmicrosoft.com` UPNs. So none of these three can be "this
+specific portal user's own" fact the way MFA/sessions are — they are necessarily
+**tenant-wide** Microsoft 365 facts. A future Design pass should treat that as a real,
+different framing question from the rest of this page (see §7's already-flagged
+MFA-scope overlap) — this pack states the fact, it does not resolve the framing.
+
+**"Failed attempts" turned out to be two separate, real facts, not one — both now
+built.** §5 below cited `users.failedLoginAttempts` as a real local column with no
+endpoint exposing it. That is answered without any Graph call at all:
+`getLocalFailedLoginSignal()` (`lib/account-security-graph.ts`) reads
+`failed_login_attempts` / `last_failed_login_at` / `locked_until` — real columns
+`routes/auth.ts` already writes on every login attempt — for the calling user's own
+row, and IS a genuine "this specific portal user's own" fact (no identity-link problem;
+it's the user's own row, not an M365 lookup). The route returns it as
+`localFailedLogins`, separate from `failedSignIns` (the M365-tenant-wide Entra sign-in
+log reading below), because they answer different questions: one is "did someone fail
+to log into the portal as you," the other is "did someone fail to sign into your
+Microsoft 365 tenant."
+
+- **Password age — BUILDABLE, and built.** `GET /users?$select=lastPasswordChangeDateTime`
+  returned 200 with real data for all 24 users in the testbed tenant (18 stale past 90
+  days, oldest since 2014). `getPasswordAgeSignal()` (`lib/account-security-graph.ts`)
+  paginates the full user list and returns `{ available: true, staleThresholdDays,
+  totalUsers, staleCount, oldestChangeAt }`. Requires only `Directory.Read.All`,
+  already in `REQUIRED_MT_SCOPES` (`graph.ts`) and already granted for this tenant.
+
+- **Failed sign-in attempts — genuinely unavailable for THIS tenant, code path is real.**
+  `GET /auditLogs/signIns?$filter=status/errorCode ne 0` 403'd with the documented
+  `Authentication_RequestFromNonPremiumTenantOrB2CTenant` code — confirmed via
+  `subscribedSkus` that this tenant carries only ENTERPRISEPACK / FLOW_FREE /
+  POWER_BI_STANDARD / Power_Pages_vTrial, no Entra ID Premium P1/P2.
+  `graphFetchForTenant` (`graph.ts`) already classifies this as `LicenseGapError`;
+  `getFailedSignInsSignal()` reports it as `{ available: false, reason:
+  "entra_premium_required", detail }`. A tenant that DOES carry Entra Premium gets
+  real `{ available: true, failedCount, mostRecentFailureAt }` data from the same
+  function — this is a real per-tenant limit, not a limit of the check itself.
+
+- **Device compliance — genuinely unavailable for THIS tenant, code path is real.**
+  The testbed tenant's only device-management service plan is `INTUNE_O365` (the
+  limited Office-apps-only MDM bundled in E3), and Graph reports it
+  `PendingActivation`, not `Success` — no full Intune (`INTUNE_A`) is present.
+  `getDeviceComplianceSignal()` checks `subscribedSkus` for an active `INTUNE_A` plan
+  BEFORE calling `/deviceManagement/managedDevices` (that endpoint's own error shape
+  for a never-enrolled tenant is an undocumented 401/503 with no stable error code —
+  not a signature safe to hard-code into the shared `classifyGraphError`). Reports
+  `{ available: false, reason: "no_intune_license", detail }` for this tenant; a
+  tenant with an active Intune entitlement gets real
+  `{ available: true, totalDevices, compliantCount, noncompliantCount }` data.
+
+**What this pack does not do:** it does not draw a page. No `.dc.html` exists for
+Account Security's replacement, and wiring a UI to this endpoint is Design's + a
+future wiring session's job once that export lands — not this session's, per #1485's
+own "portal-v2 is not a fallback target" rule.
 
 ---
 
