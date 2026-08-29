@@ -34,9 +34,12 @@ namespace BuildConsole.Services
         {
             public Window OverlayWindow { get; set; } = null!;
             public Canvas Canvas { get; set; } = null!;
+            private int _closed;
 
             public void Close()
             {
+                if (System.Threading.Interlocked.Exchange(ref _closed, 1) != 0) return; // only decrement once
+                System.Threading.Interlocked.Decrement(ref _activeOverlaySessions);
                 try
                 {
                     OverlayWindow.Close();
@@ -44,6 +47,18 @@ namespace BuildConsole.Services
                 catch { }
             }
         }
+
+        // Shane, 2026-08-28: "maybe too many critters?" — a burst of closed/created/blocked issues
+        // (e.g. a big Git Board refresh) used to spawn one Topmost, AllowsTransparency overlay Window
+        // PER issue, staggered only 400-700ms apart. Each carries its own DropShadowEffect-heavy
+        // critter + a 20-50 particle confetti/spark burst; with several alive at once (each a
+        // SEPARATE top-level HWND, not just an element in one window) that repeatedly overwhelmed the
+        // WPF composition/render thread hard enough to black-screen and hard-crash the whole process
+        // with nothing caught or logged. Capping how many overlay sessions can be alive at once —
+        // silently skipping the celebration for anything past the cap rather than piling on — is a
+        // direct, cheap fix for that regardless of the exact render-thread failure mode.
+        private static int _activeOverlaySessions;
+        private const int MaxConcurrentOverlaySessions = 4;
 
         /// <summary>
         /// Creates a borderless, transparent, topmost overlay Window sized and positioned precisely
@@ -53,6 +68,12 @@ namespace BuildConsole.Services
         private static OverlaySession? CreateOverlay(Window mainWin, bool clipToBounds = false)
         {
             if (!mainWin.IsLoaded || mainWin.ActualWidth <= 0 || mainWin.ActualHeight <= 0) return null;
+
+            if (_activeOverlaySessions >= MaxConcurrentOverlaySessions)
+            {
+                ActivityLog.Log("git-board.critters", $"Skipped a critter animation — {_activeOverlaySessions} already on screen (cap {MaxConcurrentOverlaySessions}), avoiding a render-thread pile-up.");
+                return null;
+            }
 
             Point screenTopLeft;
             try
@@ -115,6 +136,7 @@ namespace BuildConsole.Services
             try
             {
                 overlayWin.Show();
+                System.Threading.Interlocked.Increment(ref _activeOverlaySessions);
                 return new OverlaySession { OverlayWindow = overlayWin, Canvas = canvas };
             }
             catch
