@@ -115,6 +115,11 @@ namespace BuildConsole
             /// i.e. its selectors likely no longer match claude.ai's current DOM. Latches true so the
             /// warning stays visible even if a later poll happens to find something transiently.</summary>
             public bool SelectorsLikelyStale;
+            /// <summary>Git #1628 — the claude.ai conversation id (/chat/&lt;uuid&gt;) this meter is
+            /// currently tracking, as reported on the BT_CHAT_STATS payload. Used to clamp/persist the
+            /// per-conversation monotonic high-water via <see cref="Services.ChatContextMeterStore"/> so
+            /// DOM churn can't drag the bar down and reopening a chat restores its level.</summary>
+            public string? ConversationId;
         }
 
         private readonly Dictionary<Microsoft.Web.WebView2.Wpf.WebView2, ChatContextMeterState> _contextMeters = new();
@@ -4049,11 +4054,17 @@ namespace BuildConsole
         /// a split Grid with an optional inline SQL runner for chat tabs, etc.), so a single-level
         /// `Content is WebView2` check never matches — this is what actually frees the native HWND and
         /// CoreWebView2 process when a tab closes, instead of leaving it running unreferenced.</summary>
-        private static void DisposeWebView2Descendants(DependencyObject? root)
+        private void DisposeWebView2Descendants(DependencyObject? root)
         {
             if (root == null) return;
             if (root is Microsoft.Web.WebView2.Wpf.WebView2 wv)
             {
+                // Git #1628 — the context-meter entry is keyed on the WebView2 instance and was
+                // never removed when a tab closed, leaking one entry per closed chat. Drop it here,
+                // the single point every closing chat WebView flows through. The persisted
+                // per-conversation high-water (ChatContextMeterStore) is unaffected — reopening the
+                // same chat restores its level from disk.
+                _contextMeters.Remove(wv);
                 try { wv.Dispose(); } catch { }
                 return;
             }
@@ -5367,9 +5378,31 @@ namespace BuildConsole
             return chatContextGrid;
         }
 
-        private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, double cost, double remainingBuffer, bool selectorsLikelyStale = false)
+        private void UpdateContextMeter(Microsoft.Web.WebView2.Wpf.WebView2 wv, double estTokens, int turnCount, int heavyTurnCount, bool selectorsLikelyStale = false, string? conversationId = null)
         {
             if (!_contextMeters.TryGetValue(wv, out var meterState)) return;
+
+            // Git #1628 — clamp the incoming reading to the persisted per-conversation high-water
+            // (and write back when a new maximum arrives) BEFORE it touches the bar. A transcript
+            // only ever grows, so a lower reading is always a measurement artifact — a heavy turn
+            // scrolling out of the virtualization window, a mid-render/streaming poll — never real.
+            // This is also what restores a reopened chat: the first post-load poll reads ~0 out of
+            // the not-yet-observed DOM, and the clamp pulls it straight back up to the stored level
+            // instead of flashing green at zero. A brand-new chat has no conversation id yet (URL is
+            // still /new until the first message), so it correctly starts at zero — nothing to clamp to.
+            if (!string.IsNullOrEmpty(conversationId))
+            {
+                meterState.ConversationId = conversationId;
+                var hw = BuildConsole.Services.ChatContextMeterStore.Merge(conversationId, estTokens, turnCount, heavyTurnCount);
+                estTokens = hw.EstTokens;
+                turnCount = hw.TurnCount;
+                heavyTurnCount = hw.HeavyTurnCount;
+            }
+
+            // Cost/buffer derive from the (clamped) token total, so recompute them here rather than
+            // trusting values computed from the raw pre-clamp reading.
+            double cost = estTokens * (3.00 / 1000000.0);
+            double remainingBuffer = 100000.0 - estTokens;
 
             // Update state fields
             meterState.EstimatedTokens = estTokens;
@@ -5719,12 +5752,13 @@ namespace BuildConsole
                         int charCount = Int("charCount") ?? 0;
                         int heavyTurnCount = Int("heavyTurnCount") ?? 0;
                         bool selectorsLikelyStale = Bool("selectorsLikelyStale");
+                        // Git #1628 — the conversation the accumulator is keyed to; drives the
+                        // per-conversation high-water clamp/persist inside UpdateContextMeter.
+                        string? conversationId = Str("conversationId");
 
                         double estTokens = charCount / 4.0;
-                        double cost = estTokens * (3.00 / 1000000.0);
-                        double remainingBuffer = 100000.0 - estTokens;
 
-                        UpdateContextMeter(activeWv, estTokens, turnCount, heavyTurnCount, cost, remainingBuffer, selectorsLikelyStale);
+                        UpdateContextMeter(activeWv, estTokens, turnCount, heavyTurnCount, selectorsLikelyStale, conversationId);
                     }
                 }
                 else if (type == "BT_EDIT_BUILD")

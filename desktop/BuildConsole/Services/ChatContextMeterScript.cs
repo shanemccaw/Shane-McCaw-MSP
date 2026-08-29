@@ -11,13 +11,53 @@ namespace BuildConsole.Services
   if (window.__bcChatContextMeterInjected) return;
   window.__bcChatContextMeterInjected = true;
 
+  // Git #1628 — the meter used to recompute its whole total from whatever was
+  // MOUNTED on each 2s poll, so any DOM churn (a heavy turn scrolling out of the
+  // virtualization window, a mid-render/streaming poll, a re-render dropping the
+  // aria-setsize signal to 0) moved the bar in either direction, including DOWN,
+  // even though a real transcript only ever grows. The fix is a persistent in-page
+  // ACCUMULATOR keyed by stable per-message identity and by conversation id: a row's
+  // observed length is recorded once and NEVER deleted when that row unmounts, and
+  // the meter reports the sum of the accumulator, not the sum of what happens to be
+  // mounted right now. A genuinely different conversation id resets it; a re-render
+  // of the same id never does.
+  function conversationId() {
+    // Same /chat/<uuid> shape used host-side at MainWindow.xaml.cs:1871.
+    const m = /\/chat\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/.exec(location.pathname);
+    return m ? m[1] : null;
+  }
+
+  function store() {
+    const convId = conversationId();
+    let s = window.__bcCtxStore;
+    if (!s || s.convId !== convId) {
+      // New (or first) conversation — start clean. This is the ONLY thing that
+      // resets accumulated state; a re-render of the same id reuses the store.
+      s = window.__bcCtxStore = {
+        convId: convId,
+        observedChars: Object.create(null), // stable-identity key -> max observed char length
+        observedHeavy: Object.create(null), // stable-identity key -> true once ever heavy
+        trueTotal: 0,                        // high-water aria-setsize (conversation's real turn total)
+        hwChar: 0,                           // per-conversation monotonic high-water char total
+        hwTurn: 0,                           // per-conversation monotonic high-water turn count
+        hwHeavy: 0                           // per-conversation monotonic high-water heavy-turn count
+      };
+    }
+    return s;
+  }
+
+  function isHeavy(el, txtLen) {
+    return txtLen > 4000 || el.querySelector('pre') !== null || el.querySelector('code') !== null;
+  }
+
   function countStats() {
-    // Claude conversation message selectors (covers different markup versions).
-    // Git #1436 — claude.ai's markup drifts under Shane; this list is layered
-    // (specific class/testid hooks first, structural fallbacks after) so a
-    // single renamed class doesn't zero out the whole meter. Fallbacks are
-    // additive only — they widen the match set, never narrow it.
-    const selectors = [
+    const s = store();
+
+    // Git #1436 — content selectors (specific class/testid hooks first, structural
+    // fallbacks after). Kept for the stale-selector self-diagnostic below, which is
+    // deliberately keyed off the MOUNTED content-selector count so a genuine markup
+    // rename still surfaces honestly, independent of the aria-setsize signal.
+    const contentSelectors = [
       '.font-user-message',
       '.font-claude-message',
       '[data-testid="user-message"]',
@@ -25,76 +65,87 @@ namespace BuildConsole.Services
       '[data-testid^="conversation-turn"]',
       '[data-test-render-count]'
     ].join(', ');
-    const msgEls = Array.from(document.querySelectorAll(selectors));
+    const mountedTurnCount = document.querySelectorAll(contentSelectors).length;
 
-    const mountedTurnCount = msgEls.length;
-    let mountedCharCount = 0;
-    let heavyTurnCount = 0;
-
-    msgEls.forEach(el => {
+    // Primary identity carriers: message articles carry a real aria-posinset (the
+    // turn's stable 1-based position) AND aria-setsize (the conversation's true
+    // total), regardless of what's virtualized away (Git #1468). Accumulate each
+    // mounted article's observed length under its posinset key; never delete a key
+    // when the row unmounts.
+    const articles = Array.from(document.querySelectorAll('[role="article"][aria-posinset]'));
+    articles.forEach(el => {
+      const pos = parseInt(el.getAttribute('aria-posinset'), 10);
+      if (isNaN(pos)) return;
+      const key = 'p' + pos;
       const txt = (el.innerText || el.textContent || "").trim();
-      mountedCharCount += txt.length;
+      const len = txt.length;
+      // Monotonic per key: a streaming turn only grows, and a transiently-empty
+      // mid-render read must never shrink an already-observed length.
+      if (len > (s.observedChars[key] || 0)) s.observedChars[key] = len;
+      if (isHeavy(el, len)) s.observedHeavy[key] = true;
 
-      // Heavy turn heuristic: contains preformatted blocks/code OR is > 4000 characters
-      const isHeavy = txt.length > 4000 || el.querySelector('pre') !== null || el.querySelector('code') !== null;
-      if (isHeavy) {
-        heavyTurnCount++;
-      }
+      const setsize = parseInt(el.getAttribute('aria-setsize'), 10);
+      if (!isNaN(setsize) && setsize > s.trueTotal) s.trueTotal = setsize;
     });
 
-    // Git #1468 — claude.ai virtualizes the transcript: only a tail window of
-    // rows stays mounted in the DOM (data-testid="transcript-row", flanked by a
-    // "transcript-spacer" placeholder for the un-mounted rest, plus a "Load
-    // earlier messages" button — confirmed against a real long conversation's
-    // page source). Counting querySelectorAll results alone plateaus at the
-    // window size the moment a conversation outgrows it — that's exactly why
-    // the meter "starts working correctly, then stops updating" partway
-    // through a long session, rather than ever reading zero. Every mounted
-    // message article carries a real aria-setsize/aria-posinset (e.g.
-    // aria-setsize="1238" on a conversation with 1238 real turns and only 11
-    // mounted) reflecting the conversation's TRUE total regardless of what's
-    // mounted — read that instead of trusting the DOM node count.
-    let trueTotalTurns = 0;
-    document.querySelectorAll('[role="article"][aria-setsize]').forEach(el => {
-      const n = parseInt(el.getAttribute('aria-setsize'), 10);
-      if (!isNaN(n) && n > trueTotalTurns) trueTotalTurns = n;
-    });
-    if (trueTotalTurns === 0) {
-      // Fallback for markup that only carries the count in an aria-label's
-      // text ("Message 1228 of 1238") rather than a dedicated attribute.
-      const labelled = document.querySelector('[aria-label*=" of "]');
-      if (labelled) {
-        const lm = /of\s+(\d+)/.exec(labelled.getAttribute('aria-label') || '');
-        if (lm) trueTotalTurns = parseInt(lm[1], 10) || 0;
+    // Fallback ONLY when the aria markup is entirely absent (no article carries
+    // aria-posinset at all): key by the mounted transcript-row's index. This is the
+    // best available identity when the primary signal is gone; it is intentionally
+    // narrow so it can't double-count against the posinset keys above.
+    if (articles.length === 0) {
+      const rows = Array.from(document.querySelectorAll('[data-testid="transcript-row"]'));
+      rows.forEach((row, i) => {
+        const txt = (row.innerText || row.textContent || "").trim();
+        const len = txt.length;
+        if (len === 0) return;
+        const key = 'r' + i;
+        if (len > (s.observedChars[key] || 0)) s.observedChars[key] = len;
+        if (isHeavy(row, len)) s.observedHeavy[key] = true;
+      });
+      // aria-setsize text fallback ("Message 1228 of 1238") when no attribute carries it.
+      if (s.trueTotal === 0) {
+        const labelled = document.querySelector('[aria-label*=" of "]');
+        if (labelled) {
+          const lm = /of\s+(\d+)/.exec(labelled.getAttribute('aria-label') || '');
+          if (lm) { const n = parseInt(lm[1], 10) || 0; if (n > s.trueTotal) s.trueTotal = n; }
+        }
       }
     }
-    const turnCount = Math.max(trueTotalTurns, mountedTurnCount);
 
-    // Text is only ever readable for currently-mounted turns — claude.ai
-    // doesn't mount the rest until "Load earlier messages" is clicked, so
-    // virtualized-away turns' text genuinely isn't in the DOM to sum. When the
-    // true total exceeds what's mounted, extrapolate from the mounted turns'
-    // average length instead of silently under-counting the rest of the chat
-    // (which is what produced the frozen meter this issue reports).
-    const avgCharsPerTurn = mountedTurnCount > 0 ? mountedCharCount / mountedTurnCount : 0;
-    const charCount = turnCount > mountedTurnCount && avgCharsPerTurn > 0
-      ? Math.round(avgCharsPerTurn * turnCount)
-      : mountedCharCount;
-    const heavyTurnEstimate = turnCount > mountedTurnCount && mountedTurnCount > 0
-      ? Math.round(heavyTurnCount * (turnCount / mountedTurnCount))
-      : heavyTurnCount;
+    // Sum the ACCUMULATOR (everything ever observed for this conversation), not the
+    // mounted tail.
+    const keys = Object.keys(s.observedChars);
+    const observedCount = keys.length;
+    let observedSum = 0;
+    for (const k of keys) observedSum += s.observedChars[k];
+    let observedHeavy = 0;
+    for (const k of Object.keys(s.observedHeavy)) if (s.observedHeavy[k]) observedHeavy++;
 
-    // Git #1436 — self-diagnostic: if this looks like a real, populated chat
-    // page (URL is a /chat/<id> conversation with real body text) but every
-    // content selector above found zero MOUNTED turns for a sustained run,
-    // the scraper is silently broken (renamed class/testid) rather than
-    // genuinely looking at an empty chat. Deliberately keyed off
-    // mountedTurnCount, not the aria-setsize-derived turnCount above — those
-    // are two independent signals, and a markup rename that breaks the
-    // content selectors shouldn't be masked just because the unrelated
-    // aria-setsize attribute still resolves. Surface that as an explicit flag
-    // instead of just letting the progress bar sit at 0 with no indication
-    // anything is wrong.
+    // Extrapolate ONLY for turns evicted before the meter ever observed them (opening
+    // an existing long chat partway, so its earliest turns were never mounted while we
+    // watched). observedSum + avgObserved × (trueTotal − observedCount) — NOT
+    // avgObserved × trueTotal, which would re-estimate turns we already measured exactly.
+    const avgObserved = observedCount > 0 ? observedSum / observedCount : 0;
+    const unobserved = Math.max(0, s.trueTotal - observedCount);
+    const estCharCount = observedSum + avgObserved * unobserved;
+    const turnCount = Math.max(s.trueTotal, observedCount);
+    const heavyEstimate = observedHeavy + (observedCount > 0
+      ? Math.round((observedHeavy / observedCount) * unobserved)
+      : 0);
+
+    // Per-conversation monotonic high-water clamp: a transcript only grows, so a lower
+    // reading is always a measurement artifact, never real. The accumulator already
+    // never shrinks per key, but the extrapolation term can wobble as the average
+    // shifts — the high-water is the belt-and-suspenders floor. The host clamps too.
+    if (estCharCount > s.hwChar) s.hwChar = estCharCount;
+    if (turnCount > s.hwTurn) s.hwTurn = turnCount;
+    if (heavyEstimate > s.hwHeavy) s.hwHeavy = heavyEstimate;
+
+    // Git #1436 — self-diagnostic: if this looks like a real, populated chat page but
+    // every MOUNTED content selector found zero turns for a sustained run, the scraper
+    // is silently broken (renamed class/testid) rather than genuinely looking at an
+    // empty chat. Keyed off mountedTurnCount (content selectors), independent of the
+    // aria-setsize/accumulator signal, so a real markup rename still surfaces.
     const bodyLen = (document.body && (document.body.innerText || document.body.textContent) || "").length;
     const looksLikeRealChat = /\/chat\//.test(location.pathname) && bodyLen > 500;
     if (mountedTurnCount === 0 && looksLikeRealChat) {
@@ -102,16 +153,15 @@ namespace BuildConsole.Services
     } else {
       window.__bcZeroTurnTicks = 0;
     }
-    // 5 consecutive 2s polls (~10s) of "looks like a chat, found nothing" —
-    // long enough to rule out a mid-navigation blip, short enough to surface fast.
     const selectorsLikelyStale = window.__bcZeroTurnTicks >= 5;
 
     try {
       window.chrome.webview.postMessage(JSON.stringify({
         type: 'BT_CHAT_STATS',
-        turnCount: turnCount,
-        charCount: charCount,
-        heavyTurnCount: heavyTurnEstimate,
+        conversationId: s.convId,
+        turnCount: s.hwTurn,
+        charCount: Math.round(s.hwChar),
+        heavyTurnCount: s.hwHeavy,
         selectorsLikelyStale: selectorsLikelyStale
       }));
     } catch(e) {}
