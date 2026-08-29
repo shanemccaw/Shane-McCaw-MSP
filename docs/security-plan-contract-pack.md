@@ -266,13 +266,20 @@ to cite:
 
 ### 4.4 SOPs / Runbooks (#1493 / #1488) — procedures that maintain each control
 
-**Status: not yet started** (no build-journal entry). Named off the Drizzle schema:
+**Status: contract pack shipped while this pack was in flight** (`docs/sops-contract-pack.md`,
+landed on `origin/main` alongside this pack's own merge). That pack's own §0 finding matters
+directly to Security Plan: `msp_sops`/`msp_sop_runs` (definition + execution, correct shape) and
+`portal_runbooks`/`portal_runbook_steps` (actually a **recurring review cycle**, not a procedure)
+are being **unified** into one procedure-definition + one run-record model (#1556), with
+recurrence becoming a schedule property rather than a row that gets wiped on cycle reset (fixing
+#1557). Security Plan would borrow:
 
 | Field it would need | Owning table.column | Status |
 |---|---|---|
-| Active runbook against a control area | `portalRunbooksTable.runbookKey`, `.pillar`, `.status` (`msp.ts:4362-4387`, enum `PORTAL_RUNBOOK_STATUS`) | CURRENT (schema exists); not consumed here |
-| Step completion / cycle progress | `portalRunbookStepsTable.checked`, `.checkedAt` (`msp.ts:4392-4416`) | CURRENT, but **DECIDED-wrong** per #1577's own defect table — "no run history; cycle reset wipes last cycle's completion" (#1557) |
-| SOP catalogue entry (distinct from a runbook instance) | `mspSopsTable` (`msp.ts:3840`), `mspSopRunsTable` (`msp.ts:3873`) | CURRENT tables exist MSP-side; whether/how a customer-portal SOP surface reads them is **OPEN GAP** — no #1493 sub-issue in this pack's sources names the read path |
+| Active runbook/procedure against a control area | `portalRunbooksTable.runbookKey`, `.pillar`, `.status` (`msp.ts:4362-4387`, enum `PORTAL_RUNBOOK_STATUS`) | CURRENT (schema, route both exist); not consumed here |
+| Step completion / cycle progress | `portalRunbookStepsTable.checked`, `.checkedAt` (`msp.ts:4392-4416`) | CURRENT, but **DECIDED-wrong** — no run history; cycle reset wipes last cycle's completion (#1557), resolved by the unification (#1556) |
+| SOP catalogue entry (definition, versioned) | `mspSopsTable` (`msp.ts:3840`) | CURRENT, MSP-scoped and versioned; sops-contract-pack.md §0 |
+| A run record against a definition, with origin (`policy \| lifecycle \| remediation \| manual`) | `mspSopRunsTable` (`msp.ts:3873`) | **DECIDED, not built** — "no route writes `msp_sop_runs`" today (#1559); the unified run model is #1556 |
 
 ### 4.5 Remediation Tracking (#1489) — outstanding findings, verification state
 
@@ -389,8 +396,8 @@ Extracted 2026-08-29 against branch `agent/1495-q789`. Sources cited inline by f
 their own cited line numbers), the portal wire/model/live/page files under
 `artifacts/msp-portal/src/components/portal-v2/` and `artifacts/msp-portal/src/pages/`, and the
 sibling contract packs `docs/change-control-contract-pack.md`, `docs/risk-register-contract-pack.md`,
-`docs/microsoft-changes-contract-pack.md`, and `docs/policy-decisions-contract-pack.md` (the last
-landed on `origin/main` at `d5e12127e` while this pack was already in flight; §4.1 was updated
-against it before merge). Architecture deltas cited to GitHub issues #1495, #1561–#1568, under
-epic #1485 and method issues #1577/#1578. Read-only pass: no product code, schema, or UI was
-changed.
+`docs/microsoft-changes-contract-pack.md`, `docs/policy-decisions-contract-pack.md`, and
+`docs/sops-contract-pack.md` (the last two landed on `origin/main` while this pack was already
+in flight; §4.1 and §4.4 were updated against them before merge). Architecture deltas cited to
+GitHub issues #1495, #1561–#1568, under epic #1485 and method issues #1577/#1578. Read-only
+pass: no product code, schema, or UI was changed.
