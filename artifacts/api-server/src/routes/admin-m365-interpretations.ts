@@ -55,6 +55,7 @@ import { requireAdmin } from "../middlewares/requireAuth.ts";
 import { logger } from "../lib/logger.ts";
 import { proposeInterpretation } from "../lib/m365-interpretation-proposer.ts";
 import { resolveInterpretationAcrossTenants } from "../lib/m365-change-resolver.ts";
+import { getCrossedOverFeatureIds, hasRoadmapFeatureIdsColumn, withCrossoverFlag } from "../lib/m365-roadmap-mc-link.ts";
 
 const log = logger.child({ channel: "integration.azure" });
 
@@ -163,31 +164,56 @@ router.get("/admin/m365/interpretations/candidates", requireAdmin, async (_req: 
       .from(m365RoadmapItemsTable)
       .orderBy(desc(m365RoadmapItemsTable.msModified))
       .limit(400);
-    const roadmap = roadmapRows
-      .filter((r) => !usedFeatureIds.has(r.featureId))
-      .slice(0, 200)
-      .map((r) => ({
-        featureId: r.featureId,
-        title: r.title,
-        status: r.status,
-        products: r.products,
-        msModified: r.msModified instanceof Date ? r.msModified.toISOString() : r.msModified,
-      }));
+    // #1531 — has this roadmap item actually landed in a tenant's Message
+    // Center feed yet? That crossing is when the affected-object count stops
+    // being hypothetical, so it is worth surfacing to the author picking what
+    // to interpret next, not just to the (separate, #1533/#1535) resolution
+    // and timeline layers.
+    const crossedOverFeatureIds = await getCrossedOverFeatureIds(mspId);
+    const roadmap = withCrossoverFlag(
+      roadmapRows
+        .filter((r) => !usedFeatureIds.has(r.featureId))
+        .slice(0, 200)
+        .map((r) => ({
+          featureId: r.featureId,
+          title: r.title,
+          status: r.status,
+          products: r.products,
+          msModified: r.msModified instanceof Date ? r.msModified.toISOString() : r.msModified,
+        })),
+      crossedOverFeatureIds,
+    );
 
     // Message Center candidates — distinct by graphMessageId within this MSP.
-    const mcRows = await db
-      .select({
-        graphMessageId: mspMessageCenterItemsTable.graphMessageId,
-        title: mspMessageCenterItemsTable.title,
-        category: mspMessageCenterItemsTable.category,
-        isMajorChange: mspMessageCenterItemsTable.isMajorChange,
-        services: mspMessageCenterItemsTable.services,
-        lastModifiedDateTime: mspMessageCenterItemsTable.lastModifiedDateTime,
-      })
-      .from(mspMessageCenterItemsTable)
-      .where(eq(mspMessageCenterItemsTable.mspId, mspId))
-      .orderBy(desc(mspMessageCenterItemsTable.lastModifiedDateTime))
-      .limit(400);
+    // #1531 — roadmap_feature_ids (the roadmap ID(s) this post's own body
+    // named) ships in a manual migration Shane runs himself; this ALREADY-LIVE
+    // route must keep working before that lands, so the column is only ever
+    // selected once hasRoadmapFeatureIdsColumn() confirms it exists — every
+    // row honestly reports [] rather than the whole route throwing.
+    const roadmapColumnReady = await hasRoadmapFeatureIdsColumn();
+    const mcRowsBase = {
+      graphMessageId: mspMessageCenterItemsTable.graphMessageId,
+      title: mspMessageCenterItemsTable.title,
+      category: mspMessageCenterItemsTable.category,
+      isMajorChange: mspMessageCenterItemsTable.isMajorChange,
+      services: mspMessageCenterItemsTable.services,
+      lastModifiedDateTime: mspMessageCenterItemsTable.lastModifiedDateTime,
+    };
+    const mcRows = roadmapColumnReady
+      ? await db
+          .select({ ...mcRowsBase, roadmapFeatureIds: mspMessageCenterItemsTable.roadmapFeatureIds })
+          .from(mspMessageCenterItemsTable)
+          .where(eq(mspMessageCenterItemsTable.mspId, mspId))
+          .orderBy(desc(mspMessageCenterItemsTable.lastModifiedDateTime))
+          .limit(400)
+      : (
+          await db
+            .select(mcRowsBase)
+            .from(mspMessageCenterItemsTable)
+            .where(eq(mspMessageCenterItemsTable.mspId, mspId))
+            .orderBy(desc(mspMessageCenterItemsTable.lastModifiedDateTime))
+            .limit(400)
+        ).map((r) => ({ ...r, roadmapFeatureIds: [] as string[] }));
     const seenMc = new Set<string>();
     const messageCenter: Array<{
       graphMessageId: string;
@@ -195,6 +221,7 @@ router.get("/admin/m365/interpretations/candidates", requireAdmin, async (_req: 
       category: string | null;
       isMajorChange: boolean;
       services: string[];
+      roadmapFeatureIds: string[];
       lastModifiedDateTime: string | null;
     }> = [];
     for (const r of mcRows) {
@@ -206,6 +233,7 @@ router.get("/admin/m365/interpretations/candidates", requireAdmin, async (_req: 
         category: r.category,
         isMajorChange: r.isMajorChange,
         services: r.services,
+        roadmapFeatureIds: r.roadmapFeatureIds,
         lastModifiedDateTime: r.lastModifiedDateTime instanceof Date ? r.lastModifiedDateTime.toISOString() : r.lastModifiedDateTime,
       });
       if (messageCenter.length >= 200) break;

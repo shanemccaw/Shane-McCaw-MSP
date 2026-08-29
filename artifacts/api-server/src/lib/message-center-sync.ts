@@ -25,6 +25,7 @@ import { eq, and, or } from "drizzle-orm";
 import { graphFetchPaginated } from "./monitor-executor";
 import { ConsentRevokedError, markTenantConsentRevoked } from "./graph";
 import { createNotification } from "./notification-center";
+import { extractRoadmapFeatureIds, hasRoadmapFeatureIdsColumn } from "./m365-roadmap-mc-link";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "integration.azure" });
@@ -94,6 +95,11 @@ export async function syncMessageCenterForTenant(tenantId: string): Promise<Mess
     const { items } = await graphFetchPaginated(tenantId, check.endpoint, check.method ?? "GET", check.requestBody as unknown);
     const messages = items as GraphServiceUpdateMessage[];
 
+    // #1531 — roadmap_feature_ids ships in a manual migration (Shane's own
+    // step, never self-applied here) that this ALREADY-LIVE daily sync must
+    // keep working through. Checked once per tenant sync, not per message.
+    const roadmapColumnReady = await hasRoadmapFeatureIdsColumn();
+
     let newCount = 0;
     const newMessages: GraphServiceUpdateMessage[] = [];
 
@@ -122,6 +128,13 @@ export async function syncMessageCenterForTenant(tenantId: string): Promise<Mess
         tags: msg.tags ?? [],
         bodyContentType: msg.body?.contentType ?? null,
         bodyContent: msg.body?.content ?? null,
+        // #1531 — the roadmap feature ID(s) this post's own body names, parsed
+        // ONCE here rather than re-parsed on every read (see
+        // m365-roadmap-mc-link.ts's own header for the join this backs).
+        // Omitted entirely (not even an empty array) until the column exists —
+        // the field has a schema default, so leaving it out is a no-op insert
+        // and a no-op update, not a wipe of anything already backfilled.
+        ...(roadmapColumnReady ? { roadmapFeatureIds: extractRoadmapFeatureIds(msg.body?.content) } : {}),
         startDateTime: toDate(msg.startDateTime),
         endDateTime: toDate(msg.endDateTime),
         actionRequiredByDateTime: toDate(msg.actionRequiredByDateTime),

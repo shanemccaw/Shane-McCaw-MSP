@@ -2320,6 +2320,14 @@ export const mspMessageCenterItemsTable = pgTable("msp_message_center_items", {
   tags: jsonb("tags").$type<string[]>().notNull().default([]),
   bodyContentType: text("body_content_type"),
   bodyContent: text("body_content"),
+  // #1531 — the roadmap feature ID(s) this post's own body.content references
+  // (e.g. "Roadmap ID 124981", or a microsoft.com/roadmap link carrying the ID),
+  // parsed ONCE at sync time by m365-roadmap-mc-link.ts's extractRoadmapFeatureIds
+  // rather than re-parsed on every read. This is the cross-source join key back to
+  // m365_roadmap_items.feature_id (#1530) — a GIN index for containment queries
+  // (roadmap_feature_ids @> '["124981"]') is added in the manual migration, not
+  // here, mirroring m365_roadmap_items.cloud_instances' own convention.
+  roadmapFeatureIds: jsonb("roadmap_feature_ids").$type<string[]>().notNull().default([]),
   startDateTime: timestamp("start_date_time", { withTimezone: true }),
   endDateTime: timestamp("end_date_time", { withTimezone: true }),
   actionRequiredByDateTime: timestamp("action_required_by_date_time", { withTimezone: true }),

@@ -84,6 +84,13 @@ export interface RoadmapCandidate {
   status: string | null;
   products: string[];
   msModified: string | null;
+  /**
+   * #1531 — whether this roadmap item has actually landed in at least one
+   * tenant's Message Center feed yet (a real post's own body named this
+   * featureId). That crossing is when the affected-object count stops being
+   * hypothetical — worth showing the author picking what to interpret next.
+   */
+  crossedOver: boolean;
 }
 
 export interface MessageCenterCandidate {
@@ -92,6 +99,8 @@ export interface MessageCenterCandidate {
   category: string | null;
   isMajorChange: boolean;
   services: string[];
+  /** #1531 — the roadmap feature ID(s) this post's own body named, if any. */
+  roadmapFeatureIds: string[];
   lastModifiedDateTime: string | null;
 }
 
