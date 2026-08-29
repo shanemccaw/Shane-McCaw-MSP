@@ -739,7 +739,7 @@ namespace BuildConsole.Controls
                     {
                         var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
                         string? resumeSessionId = string.IsNullOrEmpty(item.SessionId) ? null : item.SessionId;
-                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, resumeSessionId, item.ChatUrl, buildSet: item.BuildSet, account: item.Account);
+                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, resumeSessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                         if (resumeSessionId != null) resumed++; else retried++;
                     }
                     catch (Exception ex)
@@ -2193,7 +2193,7 @@ namespace BuildConsole.Controls
                         await _db.QueueBuildAsync(
                             $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
                             githubNumber: null, blockedByNumbers: null,
-                            resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, account: item.Account);
+                            resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                         ActivityLog.Log("interactive-build",
                             $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message.");
                         ToastEngine.Success("Reply queued", $"Resuming the session for “{item.Title}” with your message.");
@@ -2413,7 +2413,7 @@ namespace BuildConsole.Controls
                         try
                         {
                             var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                            await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, item.SessionId, item.ChatUrl, buildSet: item.BuildSet, account: item.Account);
+                            await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, item.SessionId, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                             ToastEngine.Success("Resuming", $"Resuming from where it left off: {item.Title}");
                             await RefreshAsync();
                         }
@@ -2432,7 +2432,7 @@ namespace BuildConsole.Controls
                     try
                     {
                         var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
-                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl, buildSet: item.BuildSet, account: item.Account);
+                        await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
                         ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
                         await RefreshAsync();
                     }

@@ -131,6 +131,8 @@ namespace BuildConsole
             public string? BuildSet;
             /// <summary>Git #1416 — which Claude account this build ran against ("secondary" = overflow Pro), so a Build Watch "Continue" resume re-queues against the same account.</summary>
             public string? Account;
+            /// <summary>Git #1403 — which CLI engine this build ran against ("gemini", or null/"claude" for the default), so a Build Watch "Continue" resume re-queues against the SAME engine instead of silently reverting to claude.exe (the upsert-by-githubNumber row would otherwise have its cli column overwritten back to NULL by this very re-queue).</summary>
+            public string? Cli;
             public SlotState State = SlotState.Empty;
             /// <summary>True while a Running slot is actually the #943 "VERIFYING…" hold (queue said failed with the -2 sentinel).</summary>
             public bool Verifying;
@@ -929,6 +931,7 @@ namespace BuildConsole
                         if (slot.Title != SafeTitle(item)) slot.Title = SafeTitle(item);
                         if (slot.Model != item.Model) slot.Model = item.Model;
                         if (slot.Effort != item.Effort) slot.Effort = item.Effort;
+                        if (slot.Cli != item.Cli) slot.Cli = item.Cli;
                         if (string.IsNullOrWhiteSpace(slot.SessionId) && !string.IsNullOrWhiteSpace(item.SessionId))
                         {
                             slot.SessionId = item.SessionId;
@@ -1198,6 +1201,7 @@ namespace BuildConsole
             slot.BlockedByNumbers = item.BlockedByNumbers;
             slot.BuildSet = item.BuildSet;
             slot.Account = item.Account;
+            slot.Cli = item.Cli;
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
             slot.Verifying = false;
@@ -1296,6 +1300,7 @@ namespace BuildConsole
             slot.Title = "";
             slot.BuildSet = null;
             slot.Account = null;
+            slot.Cli = null;
             slot.State = SlotState.Empty;
             slot.CompletedAtUtc = null;
             slot.TailedLength = 0;
@@ -1684,7 +1689,7 @@ namespace BuildConsole
                         slot.GithubNumber,
                         slot.BlockedByNumbers,
                         resumeSessionId: sessionId,
-                        buildSet: slot.BuildSet, account: slot.Account);
+                        buildSet: slot.BuildSet, cli: slot.Cli, account: slot.Account);
 
                     int newQueueId = queued.Id;
                     slot.QueueItemId = newQueueId;
