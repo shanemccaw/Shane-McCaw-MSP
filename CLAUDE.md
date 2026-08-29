@@ -128,6 +128,69 @@ If the work is abandoned, fails, or the session ends before this step, the file 
 left at `⏳ IN FLIGHT` — that is the record. Do not go back and clean up or delete
 other sessions' stale IN FLIGHT files.
 
+## Mandatory: file every finding as its own GitHub issue
+
+**A build that discovers a real problem and does not file it has lost the finding.** Mentioning
+it in prose in the completion comment is not filing it. The open-issue count is how project size
+is measured — a build that finds five real problems must be distinguishable from one that finds
+none.
+
+### Why you cannot file it under your own issue
+
+When your build is verified, **your issue is closed** — that is how BuildConsole moves the card
+from Verifying to Done. Anything recorded only on your issue disappears from the working set at
+that moment. File findings as NEW issues, parented to the correct area epic.
+
+### What counts as a finding
+
+- A live endpoint the surface does not call
+- A field, column or enum value the product plainly needs and does not have
+- A bug you hit and worked around rather than fixed
+- A test that was already failing before you arrived
+- A stale comment, doc or issue body that contradicts the code
+- Anything explicitly out of scope for your issue that you nonetheless proved is broken
+
+Not a finding: a preference, a refactor you would have liked, or a gap you fixed in this build.
+
+### Where it goes — area epic routing
+
+Parent every new issue to the right area epic. Milestone 5 (v1.1). Pick by what the work touches,
+not by which file you happened to be in:
+
+| The work is... | Parent |
+|---|---|
+| Engines, workflow engine, PowerShell, Microsoft Graph, scanning, schema, auth, api-server internals | **#1096** EPIC: Application Core |
+| AdminV2 / `artifacts/admin-panel` — platform admin, `/api/admin/*` | **#1095** EPIC: Admin Panel |
+| BuildConsole, the WPF app, build queue, dev-server scripts | **#1202** Epic: Build Console |
+| Customer portal — `/api/portal/*`, `/api/public/*`, `artifacts/portal` | **#1485** EPIC: Portal |
+| MSP operator surface — `/api/msp/*`, per-customer delivery work | **#1571** EPIC: Portal Admin |
+| Marketing site, `artifacts/msp-website`, `artifacts/shane-mccaw-consulting` | **#1093** EPIC: Marketing Website |
+| Done in code, but needs Shane to verify or run something at release | **#1281** GATE: v1.1 release |
+
+If a finding sits under a specific page or module epic (e.g. a Microsoft Changes gap belongs
+under #1494, not directly under #1485), parent it there instead — the area epic is the fallback,
+not the default.
+
+**Manual SQL migrations are the exception** — they append a line to #1630, not a new issue. See
+the `Shane To-Do` section.
+
+### How
+
+```
+# create, with milestone 5 (v1.1)
+gh issue create --title "<what is actually wrong>" --milestone 5 --body "<evidence, file:line>"
+
+# parent it — integer id, NOT node_id
+gh api repos/shanemccaw/Shane-McCaw-MSP/issues/<new> --jq .id
+gh api -X POST repos/shanemccaw/Shane-McCaw-MSP/issues/<parent>/sub_issues -f sub_issue_id=<that id>
+```
+
+Write real evidence in the body — file:line, the query you ran, the actual output. A finding
+filed as "this looks wrong" is not actionable later. Then **list every issue number you filed in
+your DONE bookend**, so the trail from build to finding is readable without a search.
+
+**You never close an issue** — not your own, not one you filed. Closing is Shane's call.
+
 ## Mandatory: comment on the GitHub issue before finishing
 
 Every session that works a real Git issue MUST post a comment on that issue before ending, no matter the outcome. This is not optional and is separate from the PLATFORM_BUILD.md bookend (which tracks build history) — the issue comment is what the next session or Shane will actually read.
