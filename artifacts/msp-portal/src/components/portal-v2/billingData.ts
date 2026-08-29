@@ -45,6 +45,18 @@ export const BILL_MANAGE_STRIPE = "Manage payment in Stripe";
 export const BILL_PAUSE = "Pause everything";
 export const BILL_CARD_LINE = "Card ending 4242 · held by Stripe, not by us";
 
+/* ── Plan state — GET /api/portal/billing/subscriptions (Git #1611) ───────── */
+
+export const BILL_PLAN_KICKER = "Your plan";
+export const BILL_PLAN_NOTE = "Live from Stripe — status, renewal and seats as billed today.";
+export const BILL_PLAN_EMPTY = "No active recurring subscriptions on this account yet.";
+export const BILL_PLAN_ERROR = "Couldn't load your plan just now. Try again shortly.";
+export const BILL_PLAN_SEATS_SUFFIX = " seats";
+export const BILL_PLAN_RENEWS_PREFIX = "Renews";
+export const BILL_PLAN_ENDS_PREFIX = "Access ends";
+export const BILL_PLAN_CANCELLING_NOTE = "Cancels at the end of the current period";
+export const BILL_PLAN_NO_STRIPE_LINK = "No linked Stripe subscription";
+
 /** The retainer line's monthly price — shell `billRetainerPrice` (15573). */
 export const BILL_RETAINER_PRICE = 2400;
 

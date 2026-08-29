@@ -294,6 +294,7 @@ router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, re
       currentPeriodEnd: number | null;
       amount: number | null;
       currency: string | null;
+      quantity: number | null;
     } | null = null;
 
     if (cs.stripeSubscriptionId && stripeKey) {
@@ -310,9 +311,13 @@ router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, re
           currentPeriodEnd: item?.current_period_end ?? null,
           amount: item?.price?.unit_amount ?? null,
           currency: item?.price?.currency ?? null,
+          // Seat count on the subscription's own line item — the real "seat
+          // state" for a quantity-metered price (portal-v2's plan-state card,
+          // Git #1611). null for a flat, non-seat-metered price.
+          quantity: item?.quantity ?? null,
         };
-      } catch {
-        // Stripe unreachable — return record without live data
+      } catch (err) {
+        log.warn({ err, clientServiceId: cs.id }, "subscriptions: Stripe read failed, returning record without live data");
       }
     }
 
@@ -325,6 +330,10 @@ router.get("/portal/billing/subscriptions", requireAuth, async (req: Request, re
       startDate: cs.startDate,
       purchasedAt: cs.purchasedAt,
       stripeSubscriptionId: cs.stripeSubscriptionId,
+      // clientServicesTable.billingInterval / pendingBillingInterval — real
+      // platform columns (schema/index.ts:635, :641), not derived from Stripe.
+      billingInterval: cs.billingInterval,
+      pendingBillingInterval: cs.pendingBillingInterval,
       stripe: stripeData,
     };
   }));

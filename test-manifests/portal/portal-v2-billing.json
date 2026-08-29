@@ -1,0 +1,29 @@
+{
+  "feature": "Customer Portal v2 -- Billing (/portal-v2/billing). Covers the real plan-state section wired in Git #1611: GET /api/portal/billing/subscriptions drives 'Your plan' -- current recurring subscriptions, live Stripe status, renewal/period date and seat count. Receipts + 'Manage payment in Stripe' (Git #1237) predate this pass and are not re-asserted here. Monitoring-plan tier cards / add-on toggles stay fixture (DECIDED not-yet-wireable, #1594/#1128) and are out of scope.",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute.",
+    "UI ROUTE SHAPE: /portal/{slug}/portal-v2/billing.",
+    "shaneapp://runTest hits the DEPLOYED build, not the local worktree -- this manifest asserts green only after the pushed commit is deployed.",
+    "NO FIXTURE FALLBACK FOR PLAN STATE (Git #1611). Unlike Receipts, the plan-state section has no design fixture to fall back to -- per the platform's hard rule, subscriptionsLive.ts's dataState is a strict three-state loading/live/error with NO fixture branch. A tenant with zero recurring client_services rows is dataState:'live' with an honest empty message (BILL_PLAN_EMPTY), not borrowed content.",
+    "THE HARNESS TEST_PORTAL_EMAIL ACCOUNT HAS NO RECURRING SUBSCRIPTION. BS1/BS2 below assert the honest live-but-empty state that account actually sees -- this is NOT a failed-read case, it is dataState:'live' with plans:[]. A future manifest pass against an account with a real client_services row (billingType=recurring_monthly) should assert the populated plan row (service name, Stripe status text, seats, renewal date) instead.",
+    "STRIPE'S RAW STATUS VOCABULARY IS RENDERED HONESTLY, NOT NARROWED (portal-billing.ts:303, subscriptionsWire.ts). No coverage here for a populated row's exact status string since the harness account has none -- see the note above.",
+    "THERE IS NO NEGATIVE TEXT ASSERTION IN THIS HARNESS, and an array in `textContains` is ANY-of, not all-of. Every all-of assertion here is its own step.",
+    "NO `select` STEPS. UiTestExecutor.cs cannot drive a native <select>; this page has none in the asserted flow.",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto Billing.", "action": "goto", "target": "/portal/shane-mccaw-consulting/portal-v2/billing", "critical": true },
+    { "name": "the page resolved.", "action": "expect", "selector": "[data-testid='pv2-billing']", "state": "visible", "critical": true },
+
+    { "name": "BS1 (#1611) -- the plan-state source marker states the real dataState: 'live', not 'error' -- the unenrolled harness account's empty subscriptions list is a successful read, not a failed one.", "action": "expect", "selector": "[data-testid='pv2-bill-plan-source']", "textContains": "live", "critical": true, "sessionTag": "1611-plan-state" },
+    { "name": "BS2 (#1611) -- ...and the honest empty-plan message renders, never fixture plan/tier content standing in for real data.", "action": "expect", "selector": "[data-testid='pv2-bill-plan-empty']", "textContains": "No active recurring subscriptions", "critical": true, "sessionTag": "1611-plan-state" }
+  ]
+}

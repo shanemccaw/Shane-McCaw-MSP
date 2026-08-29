@@ -34,6 +34,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 
 import { useBillingLive } from "@/components/portal-v2/billingLive";
+import { useSubscriptionsLive } from "@/components/portal-v2/subscriptionsLive";
 import { PV2_SOURCE_CLIP } from "@/components/portal-v2/useLivePillarHero";
 
 import { PortalV2LoadingState } from "@/components/portal-v2/PortalV2LoadingState";
@@ -54,6 +55,15 @@ import {
   BILL_ONEOFF_KICKER,
   BILL_ONEOFF_NOTE,
   BILL_PAUSE,
+  BILL_PLAN_CANCELLING_NOTE,
+  BILL_PLAN_EMPTY,
+  BILL_PLAN_ENDS_PREFIX,
+  BILL_PLAN_ERROR,
+  BILL_PLAN_KICKER,
+  BILL_PLAN_NOTE,
+  BILL_PLAN_NO_STRIPE_LINK,
+  BILL_PLAN_RENEWS_PREFIX,
+  BILL_PLAN_SEATS_SUFFIX,
   BILL_RECEIPTS_KICKER,
   BILL_RECEIPTS_NOTE,
   BILL_RECEIPT_BTN,
@@ -102,6 +112,7 @@ export default function PortalV2BillingPage() {
   const addons = billAddonCards(state);
 
   const live = useBillingLive();
+  const plan = useSubscriptionsLive();
   const [portalError, setPortalError] = useState<string | null>(null);
   const [downloadingRef, setDownloadingRef] = useState<string | null>(null);
 
@@ -190,6 +201,65 @@ export default function PortalV2BillingPage() {
                 <span style={{ fontSize: "10.5px", color: "#64748b", lineHeight: 1.4 }}>{st.sub}</span>
               </div>
             ))}
+          </div>
+
+          {/* Plan state — GET /api/portal/billing/subscriptions (Git #1611).
+              Real recurring client_services rows and their live Stripe status,
+              renewal/period dates and seat count. Distinct from the Monitoring
+              tier cards below, which stay fixture (blocked #1128/#1594) — this
+              section is "what does the tenant actually have today", not the
+              hypothetical repricing calculator. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <SectionHead kicker={BILL_PLAN_KICKER} note={BILL_PLAN_NOTE} />
+            <span data-testid="pv2-bill-plan-source" style={PV2_SOURCE_CLIP}>
+              {plan.dataState}
+            </span>
+            {plan.dataState === "loading" ? (
+              <div style={{ border: "1px solid rgba(30,41,59,.9)", borderRadius: 12, background: "rgba(15,23,42,.4)" }}>
+                <PortalV2LoadingState rows={2} showLabel={false} testId="pv2-bill-plan-loading" />
+              </div>
+            ) : plan.dataState === "error" ? (
+              <div data-testid="pv2-bill-plan-error" style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid rgba(248,113,113,.25)", background: "rgba(127,29,29,.12)", fontSize: "11.5px", color: "#f87171" }}>
+                {BILL_PLAN_ERROR}
+              </div>
+            ) : plan.plans.length === 0 ? (
+              <div data-testid="pv2-bill-plan-empty" style={{ padding: "14px 16px", borderRadius: 12, border: "1px solid rgba(148,163,184,.16)", background: "rgba(15,23,42,.35)", fontSize: "11.5px", color: "#94a3b8" }}>
+                {BILL_PLAN_EMPTY}
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {plan.plans.map((p) => (
+                  <div
+                    key={p.id}
+                    data-testid={`pv2-bill-plan-row-${p.id}`}
+                    style={{ display: "flex", alignItems: "center", gap: 14, padding: "13px 16px", borderRadius: 12, border: "1px solid rgba(148,163,184,.16)", background: "rgba(15,23,42,.4)", flexWrap: "wrap" }}
+                  >
+                    <div style={{ flex: "1 1 180px", minWidth: 160, display: "flex", flexDirection: "column", gap: 3 }}>
+                      <span style={{ fontSize: "13px", fontWeight: 700, color: "#f1f5f9" }}>{p.serviceName}</span>
+                      <span style={{ fontSize: "10.5px", color: "#64748b", fontFamily: MONO }}>
+                        {p.stripeStatus ?? p.platformStatus ?? BILL_PLAN_NO_STRIPE_LINK}
+                      </span>
+                    </div>
+                    {p.amountLabel && (
+                      <span style={{ flex: "0 0 auto", fontSize: "13px", fontWeight: 800, color: "#f8fafc", fontFamily: MONO }}>{p.amountLabel}</span>
+                    )}
+                    {p.seats !== null && (
+                      <span style={{ flex: "0 0 auto", fontSize: "11px", color: "#94a3b8" }}>{p.seats}{BILL_PLAN_SEATS_SUFFIX}</span>
+                    )}
+                    <span style={{ flex: "0 0 auto", fontSize: "11px", color: p.cancelling ? "#fbbf24" : "#94a3b8" }}>
+                      {p.renewsOn
+                        ? `${p.cancelling ? BILL_PLAN_ENDS_PREFIX : BILL_PLAN_RENEWS_PREFIX} ${p.renewsOn}`
+                        : BILL_PLAN_NO_STRIPE_LINK}
+                    </span>
+                    {p.cancelling && (
+                      <span data-testid={`pv2-bill-plan-cancelling-${p.id}`} style={{ flex: "0 0 auto", fontSize: "10px", fontWeight: 700, color: "#fbbf24", textTransform: "uppercase", letterSpacing: ".05em" }}>
+                        {BILL_PLAN_CANCELLING_NOTE}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Monitoring plan — proto 2405-2448 */}
