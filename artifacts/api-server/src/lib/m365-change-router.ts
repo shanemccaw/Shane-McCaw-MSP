@@ -68,7 +68,7 @@ import { createHash } from "node:crypto";
 import {
   categoryForWorkload,
   computeRiskLevel,
-  deriveWorkload,
+  deriveWorkloadFromTouches,
   displayChangeClass,
   formatChangeRequestCode,
   type ChangeClass,
@@ -235,7 +235,12 @@ export async function createRoutedChangeRequest(input: {
   const displayCc: ChangeClass = displayChangeClass(storedChangeClass);
   const risk = computeRiskLevel({ changeClass: displayCc, targetResource: target, impactedUsersCount: affected });
   const storedRisk = risk === "High" ? "high" : risk === "Medium" ? "medium" : "low";
-  const category = categoryForWorkload(deriveWorkload(target));
+  // #1700: workload/category is read off the interpretation's own structured
+  // `touches` (its real service/workload signal), never off `target` — that
+  // string is a comma-joined display string built for humans, not the
+  // technical cmdlet/endpoint pattern `deriveWorkload` expects, and matching
+  // it against those patterns silently fell through to Identity.
+  const category = categoryForWorkload(deriveWorkloadFromTouches(interpretation.touches));
 
   const dueDate = announcement ? structuralDate(announcement) : null;
   const scheduledFor = dueDate

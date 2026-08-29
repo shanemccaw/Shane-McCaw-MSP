@@ -44,6 +44,8 @@
  * with no DDL. See `lib/db/src/schema/msp.ts`.
  */
 
+import type { M365Touches } from "@workspace/db";
+
 /** The stored `msp_change_requests.status` values, in the schema's own order. */
 export const CHANGE_REQUEST_STORED_STATUSES = [
   "pending_approval",
@@ -315,6 +317,41 @@ export function deriveWorkload(targetResource: string): ChangeRequestWorkload {
   if (/deviceManagement|Intune/i.test(targetResource)) return "Intune";
   if (/Retention|Compliance/i.test(targetResource)) return "Purview";
   if (/SPO|SharePoint/i.test(targetResource)) return "SharePoint";
+  return "Identity";
+}
+
+/**
+ * Workload derivation for a Microsoft-change-routed CR (#1534/#1700) — a SEPARATE
+ * function from `deriveWorkload` above, on purpose. `deriveWorkload` is
+ * `submitCc`'s prototype-ported matcher over a TECHNICAL resource string (a
+ * cmdlet or a Graph endpoint, e.g. `Set-TransportConfig`, `/deviceManagement/…`).
+ * A routed CR's `targetResource` is not that — it is a comma-joined, human-
+ * readable string built by `targetResourceForInterpretation` out of the
+ * interpretation's own `touches` (service names like "Exchange Online",
+ * "Outlook", plus protocols/skus/settings). Running `deriveWorkload`'s
+ * cmdlet/endpoint patterns over that string (Git #1700) matches nothing for an
+ * ordinary Exchange/Outlook change and silently falls through to Identity —
+ * CR-2026-183 (shared calendars MAPI → REST, `touches.services: ["Exchange
+ * Online", "Outlook"]`) shipped mis-categorised because of exactly this.
+ *
+ * This reads the interpretation's own structured `touches.services` — the
+ * AI's/analyst's actual workload signal — instead of re-parsing the flattened
+ * display string. ORDER IS LOAD-BEARING, same reasoning as `deriveWorkload`:
+ * Conditional Access and Purview are tested before the broader Identity/
+ * SharePoint fallbacks so a Purview retention policy on a SharePoint site
+ * still classifies as Purview, not SharePoint.
+ */
+export function deriveWorkloadFromTouches(
+  touches: Pick<M365Touches, "services" | "settings">,
+): ChangeRequestWorkload {
+  const signal = [...(touches.services ?? []), ...(touches.settings ?? [])].join(" | ");
+  if (/conditional ?access/i.test(signal)) return "Conditional Access";
+  if (/purview|retention|compliance|dlp|ediscovery/i.test(signal)) return "Purview";
+  if (/intune|device management/i.test(signal)) return "Intune";
+  if (/defender/i.test(signal)) return "Defender";
+  if (/exchange|outlook|mailbox|calendar/i.test(signal)) return "Exchange / mail";
+  if (/teams/i.test(signal)) return "Teams";
+  if (/sharepoint|onedrive/i.test(signal)) return "SharePoint";
   return "Identity";
 }
 

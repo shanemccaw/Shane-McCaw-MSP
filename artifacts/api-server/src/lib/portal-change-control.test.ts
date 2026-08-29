@@ -20,6 +20,7 @@ import {
   categoryForWorkload,
   computeRiskLevel,
   deriveWorkload,
+  deriveWorkloadFromTouches,
   displayChangeClass,
   displayRiskLevel,
   displayStatus,
@@ -158,6 +159,43 @@ describe("deriveWorkload", () => {
 
   it("falls back to Identity for a target it cannot classify", () => {
     expect(deriveWorkload("something entirely unrecognised")).toBe("Identity");
+  });
+});
+
+describe("deriveWorkloadFromTouches — Git #1700", () => {
+  it("classifies CR-2026-183's real touches as Exchange, not Identity", () => {
+    // interpretation id 4 / MC1287370 — "Auto upgrade of shared calendars from
+    // legacy MAPI model to modern REST model". deriveWorkload(targetResource)
+    // fell through to Identity because the flattened display string
+    // ("Exchange Online, Outlook, MAPI, REST, Shared calendars") matches none
+    // of its cmdlet/endpoint patterns. Reading touches.services directly fixes it.
+    expect(
+      deriveWorkloadFromTouches({ services: ["Exchange Online", "Outlook"], settings: ["Shared calendars"] }),
+    ).toBe("Exchange / mail");
+  });
+
+  it("classifies Conditional Access, Purview, Intune, Defender, Teams and SharePoint from services", () => {
+    expect(deriveWorkloadFromTouches({ services: ["Azure AD Conditional Access"], settings: [] })).toBe(
+      "Conditional Access",
+    );
+    expect(deriveWorkloadFromTouches({ services: ["Microsoft Purview"], settings: [] })).toBe("Purview");
+    expect(deriveWorkloadFromTouches({ services: ["Microsoft Intune"], settings: [] })).toBe("Intune");
+    expect(deriveWorkloadFromTouches({ services: ["Microsoft Defender for Office 365"], settings: [] })).toBe(
+      "Defender",
+    );
+    expect(deriveWorkloadFromTouches({ services: ["Microsoft Teams"], settings: [] })).toBe("Teams");
+    expect(deriveWorkloadFromTouches({ services: ["SharePoint Online"], settings: [] })).toBe("SharePoint");
+  });
+
+  it("keeps clause ORDER — Purview wins over SharePoint, same reasoning as deriveWorkload", () => {
+    expect(
+      deriveWorkloadFromTouches({ services: ["SharePoint Online"], settings: ["Retention policy"] }),
+    ).toBe("Purview");
+  });
+
+  it("falls back to Identity when touches carry no recognisable workload signal", () => {
+    expect(deriveWorkloadFromTouches({ services: [], settings: [] })).toBe("Identity");
+    expect(deriveWorkloadFromTouches({ services: ["Azure AD"], settings: [] })).toBe("Identity");
   });
 });
 
