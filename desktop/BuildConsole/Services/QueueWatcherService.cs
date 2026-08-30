@@ -293,7 +293,9 @@ namespace BuildConsole.Services
         /// Shane resumes. Queuing new items is unaffected: this only gates the
         /// automatic pickup loop, not the queue itself. Builds already running
         /// when Pause is pressed keep running to completion. Defaults to running
-        /// (false); it's in-memory only, so a restart always comes up running.
+        /// (false), but persists across restarts via BuildConsoleSettings.QueuePaused
+        /// (loaded in the constructor, saved on every SetPaused call) — a restart
+        /// comes up in whatever pause state it was last left in, not always running.
         /// "Run Now" (ForceLaunch) is a deliberate manual per-item override and
         /// intentionally still works while paused.
         /// </summary>
