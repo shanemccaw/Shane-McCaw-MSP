@@ -15,7 +15,15 @@
                     <TextBlock Text="💬 Chat Database Mappings" FontSize="14" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
                     <Button x:Name="BtnReload" Content="↻ Refresh" Style="{StaticResource IconButton}" Padding="8,4" Margin="0,0,12,0" Click="BtnReload_Click"/>
                     <TextBlock Text="Filter:" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBox x:Name="TxtFilter" Width="200" Padding="6,4" TextChanged="TxtFilter_TextChanged"/>
+                    <TextBox x:Name="TxtFilter" Width="200" Padding="6,4" TextChanged="TxtFilter_TextChanged" Margin="0,0,12,0"/>
+                    <!-- Shane, 2026-08-30 — "I change the Linked Issue number, and they do not
+                         save state when I leave the box... Just give me a button I can click
+                         save next to the filter." A per-cell LostFocus save can miss (a DataGrid
+                         row losing keyboard focus while switching tabs/panes doesn't always fire
+                         it reliably) — this is the explicit, unconditional backstop: force-saves
+                         every field (title/category/epic/issues) on every row whose in-memory
+                         value differs from what was last actually written. See BtnSaveAll_Click. -->
+                    <Button x:Name="BtnSaveAll" Content="💾 Save Changes" Style="{StaticResource IconButton}" Padding="8,4" Foreground="{StaticResource GreenBrush}" Click="BtnSaveAll_Click"/>
                 </StackPanel>
                 <TextBlock x:Name="TxtStatus" Text="Loading chats..." Foreground="{StaticResource Subtext1Brush}" VerticalAlignment="Center" HorizontalAlignment="Right"/>
             </DockPanel>
@@ -63,13 +71,16 @@
                 </Style>
             </DataGrid.Resources>
             <DataGrid.Columns>
-                <!-- Chat Title -->
-                <DataGridTemplateColumn Header="Chat Title" Width="2*" IsReadOnly="True">
+                <!-- Chat Title — Shane: "I need a way to change the name of the chat title." -->
+                <DataGridTemplateColumn Header="Chat Title" Width="2*">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                 <TextBlock Text="💬" Margin="0,0,6,0" VerticalAlignment="Center" Foreground="{StaticResource BlueBrush}"/>
-                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <TextBox Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
+                                         LostFocus="TitleTextBox_LostFocus"
+                                         VerticalAlignment="Center"
+                                         TextWrapping="Wrap"/>
                             </StackPanel>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
@@ -110,6 +121,22 @@
                             <TextBox Text="{Binding AssociatedIssuesString, Mode=TwoWay, UpdateSourceTrigger=LostFocus}"
                                      LostFocus="IssuesTextBox_LostFocus"
                                      VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <!-- Account — Shane: "select which account the link belongs too... Primary
+                     or Secondary." Real bt_chats.account column (Git #1480). -->
+                <DataGridTemplateColumn Header="Account" Width="0.8*">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ComboBox SelectedValue="{Binding Account, Mode=TwoWay}"
+                                      SelectedValuePath="Tag"
+                                      SelectionChanged="AccountComboBox_SelectionChanged"
+                                      VerticalAlignment="Center">
+                                <ComboBoxItem Content="Primary" Tag="primary"/>
+                                <ComboBoxItem Content="Secondary" Tag="secondary"/>
+                            </ComboBox>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>

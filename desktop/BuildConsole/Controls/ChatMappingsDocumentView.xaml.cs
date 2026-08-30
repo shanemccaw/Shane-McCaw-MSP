@@ -77,7 +77,7 @@ namespace BuildConsole.Controls
 
                 // 2. Fetch chats
                 var chatsRes = await LocalSqlExecutor.ExecuteAsync(_api, @"
-                    SELECT c.id, c.conversation_id, c.title, c.epic_id, c.category,
+                    SELECT c.id, c.conversation_id, c.title, c.epic_id, c.category, c.account,
                            (SELECT string_agg(cast(issue_number as text), ', ') FROM bt_chat_issues ci WHERE ci.chat_id = c.id) as associated_issues
                     FROM bt_chats c
                     ORDER BY c.updated_at DESC;");
@@ -94,9 +94,16 @@ namespace BuildConsole.Controls
                             Title = GetStr(row, "title"),
                             EpicId = GetNullableInt(row, "epic_id"),
                             Category = GetNullableStr(row, "category"),
-                            AssociatedIssuesString = GetNullableStr(row, "associated_issues") ?? ""
+                            AssociatedIssuesString = GetNullableStr(row, "associated_issues") ?? "",
+                            // Git #1480 — a row from before the migration has no account column;
+                            // defaults "primary" the same way BoardChat.Account already does.
+                            Account = GetNullableStr(row, "account") ?? "primary"
                         };
                         item.LastSavedEpicId = item.EpicId;
+                        item.LastSavedTitle = item.Title;
+                        item.LastSavedCategory = item.Category;
+                        item.LastSavedAssociatedIssuesString = item.AssociatedIssuesString;
+                        item.LastSavedAccount = item.Account;
                         // Link the EpicComboItem reference so the editable ComboBox shows the correct display name
                         item.LinkedEpic = _epicsList.FirstOrDefault(ep => ep.Id == item.EpicId);
                         _allChats.Add(item);
@@ -209,6 +216,158 @@ namespace BuildConsole.Controls
             }
         }
 
+        private async void TitleTextBox_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_api == null) return;
+            if (sender is TextBox tb && tb.DataContext is ChatMappingItem item)
+            {
+                string text = (tb.Text ?? "").Trim();
+                if (item.LastSavedTitle == text) return;
+                if (string.IsNullOrEmpty(text)) return; // never save a blanked-out title
+
+                item.Title = text;
+                TxtStatus.Text = "Saving title...";
+
+                try
+                {
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET title = '{text.Replace("'", "''")}', updated_at = now() WHERE id = {item.Id}");
+                    item.LastSavedTitle = text;
+                    TxtStatus.Text = "Title saved.";
+                    if (Application.Current.MainWindow is MainWindow mw)
+                    {
+                        mw.LeftSidebar.PopulateChatsTree();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TxtStatus.Text = $"Save failed: {ex.Message}";
+                    ToastEngine.Error("Save Title", $"Failed to update: {ex.Message}");
+                }
+            }
+        }
+
+        private async void AccountComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_api == null) return;
+            if (sender is ComboBox cb && cb.DataContext is ChatMappingItem item)
+            {
+                string account = (cb.SelectedValue as string) ?? "primary";
+                item.Account = account;
+                if (item.LastSavedAccount == account) return;
+
+                TxtStatus.Text = "Saving account...";
+                try
+                {
+                    await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET account = '{account}', updated_at = now() WHERE id = {item.Id}");
+                    item.LastSavedAccount = account;
+                    TxtStatus.Text = "Account saved.";
+                    if (Application.Current.MainWindow is MainWindow mw)
+                    {
+                        mw.LeftSidebar.PopulateChatsTree();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    TxtStatus.Text = $"Save failed: {ex.Message}";
+                    ToastEngine.Error("Save Account", $"Failed to update: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Shane: "Just give me a button I can click save next to the filter." Explicit,
+        /// unconditional backstop for every field this view lets Shane edit — per-cell
+        /// LostFocus saves are the normal path, but a DataGrid row losing keyboard focus
+        /// while switching tabs/panes doesn't always fire it reliably. Walks every loaded
+        /// chat, compares each editable field to what was last actually written
+        /// (LastSaved*), and batches ONE combined SQL statement covering every genuinely
+        /// changed field on every row — not just the row currently selected/focused.
+        /// </summary>
+        private async void BtnSaveAll_Click(object sender, RoutedEventArgs e)
+        {
+            if (_api == null) return;
+
+            var sql = new StringBuilder();
+            var touched = new List<ChatMappingItem>();
+
+            foreach (var item in _allChats)
+            {
+                bool changed = false;
+
+                if (item.Title != item.LastSavedTitle && !string.IsNullOrWhiteSpace(item.Title))
+                {
+                    sql.Append($"UPDATE bt_chats SET title = '{item.Title.Trim().Replace("'", "''")}', updated_at = now() WHERE id = {item.Id};");
+                    changed = true;
+                }
+                if (item.Category != item.LastSavedCategory)
+                {
+                    string val = string.IsNullOrWhiteSpace(item.Category) ? "NULL" : $"'{item.Category!.Trim().Replace("'", "''")}'";
+                    sql.Append($"UPDATE bt_chats SET category = {val}, updated_at = now() WHERE id = {item.Id};");
+                    changed = true;
+                }
+                if (item.EpicId != item.LastSavedEpicId)
+                {
+                    string val = item.EpicId.HasValue ? item.EpicId.Value.ToString() : "NULL";
+                    sql.Append($"UPDATE bt_chats SET epic_id = {val}, updated_at = now() WHERE id = {item.Id};");
+                    changed = true;
+                }
+                if (item.Account != item.LastSavedAccount)
+                {
+                    sql.Append($"UPDATE bt_chats SET account = '{item.Account}', updated_at = now() WHERE id = {item.Id};");
+                    changed = true;
+                }
+                if (item.AssociatedIssuesString != item.LastSavedAssociatedIssuesString)
+                {
+                    sql.Append($"DELETE FROM bt_chat_issues WHERE chat_id = {item.Id};");
+                    var numbers = (item.AssociatedIssuesString ?? "").Split(new[] { ',', ';', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var numStr in numbers)
+                    {
+                        if (int.TryParse(numStr, out var num))
+                            sql.Append($"INSERT INTO bt_chat_issues (chat_id, issue_number, associated_at) VALUES ({item.Id}, {num}, now()) ON CONFLICT DO NOTHING;");
+                    }
+                    changed = true;
+                }
+
+                if (changed) touched.Add(item);
+            }
+
+            if (touched.Count == 0)
+            {
+                TxtStatus.Text = "Nothing to save — no changes since last save.";
+                return;
+            }
+
+            BtnSaveAll.IsEnabled = false;
+            TxtStatus.Text = $"Saving {touched.Count} changed row(s)...";
+            try
+            {
+                await LocalSqlExecutor.ExecuteAsync(_api, sql.ToString());
+                foreach (var item in touched)
+                {
+                    item.LastSavedTitle = item.Title;
+                    item.LastSavedCategory = item.Category;
+                    item.LastSavedEpicId = item.EpicId;
+                    item.LastSavedAccount = item.Account;
+                    item.LastSavedAssociatedIssuesString = item.AssociatedIssuesString;
+                }
+                TxtStatus.Text = $"Saved {touched.Count} changed row(s).";
+                ToastEngine.Success("Chat Mappings", $"Saved {touched.Count} changed row(s).");
+                if (Application.Current.MainWindow is MainWindow mw)
+                {
+                    mw.LeftSidebar.PopulateChatsTree();
+                }
+            }
+            catch (Exception ex)
+            {
+                TxtStatus.Text = $"Save failed: {ex.Message}";
+                ToastEngine.Error("Save Changes", $"Failed to save: {ex.Message}");
+            }
+            finally
+            {
+                BtnSaveAll.IsEnabled = true;
+            }
+        }
+
         private async void IssuesTextBox_LostFocus(object sender, RoutedEventArgs e)
         {
             if (_api == null) return;
@@ -235,6 +394,7 @@ namespace BuildConsole.Controls
                     }
 
                     await LocalSqlExecutor.ExecuteAsync(_api, sqlBatch.ToString());
+                    item.LastSavedAssociatedIssuesString = text;
                     TxtStatus.Text = "Issues saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
                     {
@@ -265,6 +425,7 @@ namespace BuildConsole.Controls
                 {
                     string sqlVal = text == null ? "NULL" : $"'{text.Replace("'", "''")}'";
                     await LocalSqlExecutor.ExecuteAsync(_api, $"UPDATE bt_chats SET category = {sqlVal}, updated_at = now() WHERE id = {item.Id}");
+                    item.LastSavedCategory = text;
                     TxtStatus.Text = "Category saved.";
                     if (Application.Current.MainWindow is MainWindow mw)
                     {
@@ -341,7 +502,18 @@ namespace BuildConsole.Controls
     {
         public int Id { get; set; }
         public string ConversationId { get; set; } = string.Empty;
-        public string Title { get; set; } = string.Empty;
+
+        private string _title = string.Empty;
+        public string Title
+        {
+            get => _title;
+            set { _title = value; OnPropertyChanged(nameof(Title)); }
+        }
+        /// <summary>What's actually in the DB right now — set on load and after every
+        /// successful save (individual LostFocus or the bulk Save Changes button), so
+        /// each save path can tell a genuinely-changed field from an untouched one.</summary>
+        public string LastSavedTitle { get; set; } = string.Empty;
+
         public int? LastSavedEpicId { get; set; }
 
         private int? _epicId;
@@ -365,6 +537,7 @@ namespace BuildConsole.Controls
             get => _associatedIssuesString;
             set { _associatedIssuesString = value; OnPropertyChanged(nameof(AssociatedIssuesString)); }
         }
+        public string LastSavedAssociatedIssuesString { get; set; } = string.Empty;
 
         private string? _category;
         public string? Category
@@ -372,6 +545,18 @@ namespace BuildConsole.Controls
             get => _category;
             set { _category = value; OnPropertyChanged(nameof(Category)); }
         }
+        public string? LastSavedCategory { get; set; }
+
+        /// <summary>Shane, 2026-08-30 — "select which account the link belongs to... Primary
+        /// or Secondary." Real bt_chats.account column (Git #1480); defaults "primary" the
+        /// same way BoardChat.Account already does for a pre-#1480 row.</summary>
+        private string _account = "primary";
+        public string Account
+        {
+            get => _account;
+            set { _account = value; OnPropertyChanged(nameof(Account)); }
+        }
+        public string LastSavedAccount { get; set; } = "primary";
 
         public string ClaudeUrl => $"https://claude.ai/chat/{ConversationId}";
         public string DisplayUrl => $"claude.ai/chat/{(ConversationId.Length >= 8 ? ConversationId.Substring(0, 8) : ConversationId)}...";
