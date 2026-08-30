@@ -4981,6 +4981,44 @@ export interface ClientApprover {
   signatureHash: string | null;
 }
 
+/**
+ * The ACCEPTANCE's own lifecycle — where the liability transfer has got to.
+ *
+ * `expired` was removed here on #1507. An acceptance is a signed fact and does
+ * NOT expire: legally the customer accepted the risk regardless of any date, and
+ * a thing that happened does not stop having happened. What lapses is the
+ * *review* (a separate operational clock, `reviewState` / `reviewDueAt` below),
+ * never the acceptance. A past-due review surfaces as an operational flag on an
+ * acceptance that remains `active`; it must not flip the acceptance to a lapsed
+ * state. See #1507 (and #1527 for the identical fix on `decisionState`).
+ *
+ * Enforced at the write path (`msp-rbd.ts`) and by convention, not by a DB CHECK.
+ */
+export const RISK_ACCEPTANCE_STATUSES = ["pending_signature", "active", "revoked"] as const;
+export type RiskAcceptanceStatus = (typeof RISK_ACCEPTANCE_STATUSES)[number];
+
+/**
+ * The REVIEW's own state — the second clock #1507 split out of `status`. A missed
+ * review invalidates nothing; it means nobody has looked in longer than they said
+ * they would. Derived from `reviewDueAt` vs now at review time and set by the
+ * MSP's operational acts (mark a review done, or note why it is overdue) — NOT by
+ * anyone re-signing on the customer's behalf, which #1507 forbids. NULL when no
+ * review has been scheduled yet (served as null, never defaulted).
+ */
+export const RISK_REVIEW_STATES = ["on_track", "due", "overdue"] as const;
+export type RiskReviewState = (typeof RISK_REVIEW_STATES)[number];
+
+/**
+ * Policy Decisions' own lane vocabulary. `expired` was removed on #1527 for the
+ * same reason as the acceptance `status`: a documented policy decision that has
+ * passed its review date is still LIVE, with an overdue *review* flag — it did not
+ * lapse. The sound lanes are proposed (awaiting sign-off) / live / due-for-review.
+ * Enforced by convention (the portal normaliser maps anything unknown to
+ * `proposed`); this table's column is plain text.
+ */
+export const POLICY_DECISION_STATES = ["proposed", "live", "due"] as const;
+export type PolicyDecisionState = (typeof POLICY_DECISION_STATES)[number];
+
 export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
@@ -5030,18 +5068,35 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   // null as "not recorded" and says so on screen rather than inventing a value.
   //
   // `riskStatus` vs `status`: two different lifecycles that must never collapse.
-  // `status` is the ACCEPTANCE's state (pending_signature / active / expired /
-  // revoked) — where the liability transfer has got to. `riskStatus` is the
-  // RISK's own state (Open / Mitigating / Accepted / Closed / Expired) — what is
-  // happening about it. A risk can be Mitigating with no acceptance at all, and
-  // an acceptance can be revoked while the risk stays Open.
+  // `status` is the ACCEPTANCE's state (RISK_ACCEPTANCE_STATUSES:
+  // pending_signature / active / revoked) — where the liability transfer has got
+  // to. `riskStatus` is the RISK's own state (Open / Mitigating / Accepted /
+  // Closed / Expired) — what is happening about it. A risk can be Mitigating with
+  // no acceptance at all, and an acceptance can be revoked while the risk stays
+  // Open. A THIRD clock — the REVIEW (`reviewState` / `reviewDueAt`) — was split
+  // out of `status` on #1507 and lives just below `reviewDate`; do not fold it
+  // back in. `status` no longer carries `expired` (see RISK_ACCEPTANCE_STATUSES).
   pillar: text("pillar"),
   owner: text("owner"),
   /** RACI person key behind `owner`, for the ownership matrix's chips. */
   ownerId: text("owner_id"),
   riskStatus: text("risk_status"),
-  /** Next review date as displayed copy, e.g. "27 Aug 2026". */
+  /** Next review date as displayed copy, e.g. "27 Aug 2026". Human-facing string
+   * kept for display; the machine date the review clock actually compares against
+   * is `reviewDueAt` below (#1507). */
   reviewDate: text("review_date"),
+  // ── The review clock (#1507) ───────────────────────────────────────────────
+  // Split out of the acceptance `status`. The acceptance is permanent and does
+  // not expire; the REVIEW is the operational "when must someone look again"
+  // clock, and a past-due review is a flag on a still-`active` acceptance, never
+  // a lapsed acceptance. `reviewDueAt` is the machine date (so overdue is
+  // computable, not parsed from the `reviewDate` display copy); `reviewState`
+  // (RISK_REVIEW_STATES: on_track / due / overdue) is its operational state. Both
+  // NULL until a review is scheduled — served as null, never defaulted. The MSP
+  // advances these by marking a review done or noting it overdue; nobody
+  // re-signs, so there is no renewal path here (#1507).
+  reviewDueAt: timestamp("review_due_at", { withTimezone: true }),
+  reviewState: text("review_state"),
   /** Scoring weight the register's stat cards sum over. */
   weight: integer("weight"),
   /** 1-5. With `impact`, the coordinates of this risk on the 5x5 heat map. */
@@ -5062,7 +5117,9 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   obligation: text("obligation"),
   /** The last verification line, e.g. "Compensating control verified on the last scan." */
   verificationNote: text("verification_note"),
-  /** Policy Decisions' own four-state lane: proposed / live / due / expired. */
+  /** Policy Decisions' own lane (POLICY_DECISION_STATES: proposed / live / due).
+   * `expired` was removed on #1527 — a decision past its review date is still
+   * `live` with an overdue `reviewState`, it did not lapse. */
   decisionState: text("decision_state"),
 
   // ── The acceptance itself ──────────────────────────────────────────────────

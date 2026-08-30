@@ -216,6 +216,45 @@ describe("GET /portal/risk-register", () => {
     expect(res.body.risks[0].accepted).toBeUndefined();
   });
 
+  it("carries the review clock (#1507) — reviewState + machine reviewDueAt — split out of the acceptance status", async () => {
+    // The review is a separate clock from the acceptance. A row can be a
+    // still-active acceptance while its review is overdue.
+    mockSelectResultsQueue = [[bareRow({
+      status: "active",
+      reviewState: "overdue",
+      reviewDueAt: new Date("2026-05-09T00:00:00Z"),
+      reviewDate: "9 May 2026",
+    })]];
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/risk-register");
+    expect(res.status).toBe(200);
+    const risk = res.body.risks[0];
+    expect(risk.reviewState).toBe("overdue");
+    expect(risk.reviewDueAt).toBe("2026-05-09T00:00:00.000Z");
+    // The display copy is preserved alongside the machine date.
+    expect(risk.review).toBe("9 May 2026");
+  });
+
+  it("serves the review clock as null (never defaulted) when no review is scheduled", async () => {
+    mockSelectResultsQueue = [[bareRow()]];
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/risk-register");
+    const risk = res.body.risks[0];
+    expect(risk.reviewState).toBeNull();
+    expect(risk.reviewDueAt).toBeNull();
+  });
+
+  it("emits an acceptance block with NO `until` — an acceptance does not expire (#1507)", async () => {
+    // clientApprover.name is set in bareRow, so an acceptedAt makes this a real
+    // acceptance. The acceptance carries the signer/date/statement, never a
+    // lifetime — the 'look again' date belongs to the review clock instead.
+    mockSelectResultsQueue = [[bareRow({ acceptedAt: new Date("2026-08-20T10:00:00Z") })]];
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/risk-register");
+    const risk = res.body.risks[0];
+    expect(risk.isAccepted).toBe(true);
+    expect(risk.accepted).toBeDefined();
+    expect(risk.accepted.by).toBe("Client Risk Officer");
+    expect("until" in risk.accepted).toBe(false);
+  });
+
   it("serves an empty register rather than 403 when the tenant scope will not resolve", async () => {
     mockScope = null;
     const res = await request(makeApp(CUSTOMER)).get("/api/portal/risk-register");
@@ -231,6 +270,19 @@ describe("GET /portal/policy-decisions", () => {
     expect(res.status).toBe(200);
     expect(res.body.decisions).toHaveLength(1);
     expect(res.body.decisions[0].id).toBe("RBD-2026-576");
+  });
+
+  it("carries the review clock on a policy decision, with `expired` no longer a state (#1527)", async () => {
+    mockSelectResultsQueue = [[bareRow({
+      decisionState: "live",
+      reviewState: "overdue",
+      reviewDueAt: new Date("2026-05-09T00:00:00Z"),
+    })]];
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/policy-decisions");
+    const decision = res.body.decisions[0];
+    expect(decision.state).toBe("live");
+    expect(decision.reviewState).toBe("overdue");
+    expect(decision.reviewDueAt).toBe("2026-05-09T00:00:00.000Z");
   });
 });
 
@@ -272,6 +324,11 @@ describe("POST /portal/risk-register/:rbdId/accept", () => {
     // not a new contact record.
     expect(set.clientApprover.title).toBe("CIO");
     expect(set.clientApprover.email).toBe("exec@clientdomain.com");
+
+    // The 201 acceptance record carries no `until` — the acceptance does not
+    // expire (#1507); any 'look again' date lives on the review clock.
+    expect("until" in res.body.accepted).toBe(false);
+    expect(res.body.accepted.by).toBe("Jordan Diaz");
   });
 
   it("REFUSES a second acceptance and issues no update at all", async () => {

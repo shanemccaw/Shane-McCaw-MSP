@@ -64,12 +64,19 @@
  * because a fabricated likelihood would land a risk on the heat map at
  * coordinates nobody chose.
  *
- * ── Two lifecycles, deliberately not merged ────────────────────────────────
- * `status` is the ACCEPTANCE's state (pending_signature / active / expired /
- * revoked). `riskStatus` is the RISK's own (Open / Mitigating / Accepted /
- * Closed / Expired). A risk can be Mitigating with no acceptance at all, and an
+ * ── Three lifecycles, deliberately not merged ──────────────────────────────
+ * `status` is the ACCEPTANCE's state (pending_signature / active / revoked).
+ * `riskStatus` is the RISK's own (Open / Mitigating / Accepted / Closed /
+ * Expired). A risk can be Mitigating with no acceptance at all, and an
  * acceptance can be revoked while the risk stays Open. The register shows the
  * second; the acceptance panel acts on the first.
+ *
+ * The THIRD clock — the REVIEW (`reviewState` / `reviewDueAt`) — was split out
+ * of `status` on #1507. An acceptance is a signed fact and does not expire; what
+ * lapses is the review. So `status` no longer carries `expired`: a past-due
+ * review surfaces as `reviewState = "overdue"` on an acceptance that stays
+ * `active`. `WireAcceptance` therefore has no `until` — the "look again" date is
+ * `reviewDueAt`, on the risk, not a lifetime on the acceptance.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -108,8 +115,12 @@ interface WireAcceptance {
   readonly by: string;
   /** When they typed it — the server's clock, never the client's. */
   readonly on: string;
-  /** How long the acceptance runs for. */
-  readonly until: string | null;
+  // NO `until`. An acceptance is a signed fact and does not expire (#1507): a
+  // thing that happened does not stop having happened. The date that used to sit
+  // here (`expiration_date`) framed the acceptance as time-boxed, which is the
+  // exact conflation this module was built to remove. The "when must this be
+  // looked at again" date now belongs to the review clock — `WireRisk.reviewDueAt`
+  // / `WireRisk.reviewState` — not to the acceptance.
   readonly register: string | null;
   readonly why: string | null;
   readonly compensating: string | null;
@@ -126,7 +137,16 @@ interface WireRisk {
   readonly residual: string | null;
   readonly status: string | null;
   readonly owner: string | null;
+  /** The review date as display copy, e.g. "27 Aug 2026" — never money. */
   readonly review: string | null;
+  /** The review clock (#1507), split out of the acceptance `status`. The machine
+   * due date (ISO, UTC) the display `review` describes — so overdue is computable,
+   * not parsed from copy. Null when no review is scheduled. */
+  readonly reviewDueAt: string | null;
+  /** The review's operational state (RISK_REVIEW_STATES: on_track / due /
+   * overdue). Null when no review is scheduled. A past-due review is a flag on a
+   * still-accepted risk; it does NOT lapse the acceptance (#1507). */
+  readonly reviewState: string | null;
   readonly weight: number | null;
   readonly likelihood: number | null;
   readonly impact: number | null;
@@ -155,7 +175,13 @@ interface WirePolicyDecision {
   readonly owner: string | null;
   readonly ownerId: string | null;
   readonly approved: string | null;
+  /** Review date as display copy. See `reviewDueAt` / `reviewState` for the clock. */
   readonly review: string | null;
+  /** Machine review due date (ISO, UTC), #1507. Null when none scheduled. */
+  readonly reviewDueAt: string | null;
+  /** Review state (RISK_REVIEW_STATES). A past-due review is an operational flag
+   * on a decision that stays `live` — `expired` was removed here (#1527). */
+  readonly reviewState: string | null;
   readonly register: string | null;
   readonly rationale: string | null;
   readonly compensating: string | null;
@@ -165,8 +191,8 @@ interface WirePolicyDecision {
 type RiskRow = typeof mspRiskDecisionsTable.$inferSelect;
 
 /** ISO 8601, UTC. The wire carries machine time; the page formats it. */
-function iso(value: Date | string | null): string | null {
-  if (value === null) return null;
+function iso(value: Date | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
@@ -198,7 +224,6 @@ function toWireRisk(row: RiskRow): WireRisk {
       ? {
           by: approver.name,
           on: acceptedAt,
-          until: row.expirationDate ?? null,
           register: row.registerRef ?? null,
           why: row.rationale ?? null,
           compensating: compensatingSentence(row.compensatingControls),
@@ -215,6 +240,8 @@ function toWireRisk(row: RiskRow): WireRisk {
     status: row.riskStatus ?? null,
     owner: row.owner ?? null,
     review: row.reviewDate ?? null,
+    reviewDueAt: iso(row.reviewDueAt),
+    reviewState: row.reviewState ?? null,
     weight: row.weight ?? null,
     likelihood: row.likelihood ?? null,
     impact: row.impact ?? null,
@@ -245,6 +272,8 @@ function toWirePolicyDecision(row: RiskRow): WirePolicyDecision {
     // falling back to the MSP-side display string `msp-rbd.ts` writes.
     approved: iso(row.acceptedAt) ?? approver?.signedAt ?? null,
     review: row.reviewDate ?? null,
+    reviewDueAt: iso(row.reviewDueAt),
+    reviewState: row.reviewState ?? null,
     register: row.registerRef ?? null,
     rationale: row.rationale ?? null,
     compensating: compensatingSentence(row.compensatingControls),
@@ -500,7 +529,8 @@ router.post(
         accepted: {
           by: parsed.data.fullName,
           on: acceptedAt.toISOString(),
-          until: existing.expirationDate ?? null,
+          // No `until`: the acceptance does not expire (#1507). The review clock
+          // (WireRisk.reviewDueAt / reviewState) owns any "look again" date.
           register: existing.registerRef ?? null,
           why: existing.rationale ?? null,
           compensating: compensatingSentence(existing.compensatingControls),

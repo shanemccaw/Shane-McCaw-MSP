@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspRiskDecisionsTable, monitorChecksTable } from "@workspace/db";
+import { db, mspRiskDecisionsTable, monitorChecksTable, RISK_ACCEPTANCE_STATUSES } from "@workspace/db";
 import { eq, and, desc, asc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
@@ -50,7 +50,9 @@ const createRbdSchema = z.object({
   compensatingControls: z.array(compensatingControlSchema),
   clientApprover: clientApproverSchema,
   expirationDate: z.string(),
-  status: z.enum(["active", "pending_signature", "expired", "revoked"]),
+  // `expired` was removed on #1507 — an acceptance is a signed fact and does not
+  // expire; what lapses is the review clock. See RISK_ACCEPTANCE_STATUSES.
+  status: z.enum(RISK_ACCEPTANCE_STATUSES),
   /** Optional: the monitor_checks.key this decision covers, for #1279 alert
    * suppression. Omitted/null when this is a free-standing liability record. */
   checkKey: z.string().nullable().optional(),
