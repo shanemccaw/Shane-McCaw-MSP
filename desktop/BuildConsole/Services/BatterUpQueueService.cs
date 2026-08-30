@@ -101,14 +101,20 @@ namespace BuildConsole.Services
         /// <summary>
         /// One full refresh pass: reads the real Batter Up board, resolves each item's
         /// `BUILD:` comment + real blocked-by state, auto-queues anything new through
-        /// <paramref name="queueDb"/>.QueueBuildAsync, and returns every row for display —
-        /// tracked or not, blocked or not, parsed or not, so the panel can show all of it.
+        /// <paramref name="queueDb"/>.QueueBuildAsync, and returns rows for display —
+        /// but only ones NOT already genuinely tracked in the build queue (Git #1808):
+        /// once an item is tracked (found by dedup) or was just auto-queued this pass, the
+        /// Build Queue panel is the only place Shane wants to see it, so it's dropped here
+        /// rather than shown forever with a TRACKED badge. <c>JustQueuedCount</c> still
+        /// reports how many were auto-queued this pass, even though those rows are no
+        /// longer in <c>Rows</c>, so callers can still react (e.g. repaint the queue).
         /// </summary>
-        public static async Task<List<BatterUpRow>> RefreshAndAutoQueueAsync(
+        public static async Task<(List<BatterUpRow> Rows, int JustQueuedCount)> RefreshAndAutoQueueAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
             var boardItems = await gh.GetBatterUpIssuesAsync();
             var rows = new List<BatterUpRow>();
+            int justQueuedCount = 0;
 
             foreach (var item in boardItems)
             {
@@ -167,6 +173,15 @@ namespace BuildConsole.Services
                     }
                 }
 
+                if (alreadyTracked || justQueued)
+                {
+                    // Git #1808 — genuinely tracked in bt_build_queue now; the Build Queue
+                    // panel is the only place this belongs from here on, not shown here
+                    // forever with a TRACKED badge.
+                    if (justQueued) justQueuedCount++;
+                    continue;
+                }
+
                 rows.Add(new BatterUpRow
                 {
                     Number = item.Number,
@@ -183,7 +198,7 @@ namespace BuildConsole.Services
                 });
             }
 
-            return rows;
+            return (rows, justQueuedCount);
         }
     }
 }

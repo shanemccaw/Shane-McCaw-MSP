@@ -79,9 +79,10 @@ namespace BuildConsole.Controls
 
                 var gh = new Services.GitHubApiClient(settings.GitHubPat);
                 List<Services.BatterUpRow> rows;
+                int justQueuedCount;
                 try
                 {
-                    rows = await Services.BatterUpQueueService.RefreshAndAutoQueueAsync(
+                    (rows, justQueuedCount) = await Services.BatterUpQueueService.RefreshAndAutoQueueAsync(
                         gh, _db, msg => Services.ActivityLog.Log("batter-up", msg));
                 }
                 catch (Exception ex)
@@ -103,8 +104,7 @@ namespace BuildConsole.Controls
                 TxtEmpty.Visibility = (rows.Count == 0 && anyVisible) ? Visibility.Visible : Visibility.Collapsed;
                 if (rows.Count == 0) TxtEmpty.Text = "No open issues in Batter Up.";
 
-                int queuedNow = rows.Count(r => r.JustAutoQueued);
-                if (queuedNow > 0)
+                if (justQueuedCount > 0)
                 {
                     try { RowsAutoQueued?.Invoke(this, EventArgs.Empty); }
                     catch { /* best-effort visual refresh of the sibling queue panel */ }

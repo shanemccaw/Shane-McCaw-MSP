@@ -33,7 +33,16 @@ namespace BuildConsole.Services
     /// </summary>
     public static class AiBatterUpQueueService
     {
-        /// <summary>One read pass: the real AI Batter Up board rows, each with its BUILD: comment parsed (reusing #1709's parser read-only) if one exists yet.</summary>
+        /// <summary>
+        /// One read pass: the real AI Batter Up board rows, each with its BUILD: comment parsed
+        /// (reusing #1709's parser read-only) if one exists yet.
+        /// Git #1808 — checked whether this panel has an equivalent "shown forever after it's
+        /// actually queued" case: it doesn't. This service only ever reads items whose real board
+        /// Status is "AI Batter Up"; the instant Yes promotes one to "Batter Up"
+        /// (<see cref="PromoteToBatterUpAsync"/>), it stops matching that query and drops out of
+        /// this panel's own next refresh on its own, before #1709's queue/dedup logic ever runs
+        /// against it. No filtering needed here.
+        /// </summary>
         public static async Task<List<AiBatterUpRow>> RefreshAsync(GitHubApiClient gh)
         {
             var boardItems = await gh.GetAiBatterUpIssuesAsync();
