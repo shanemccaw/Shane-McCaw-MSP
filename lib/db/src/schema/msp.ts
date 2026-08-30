@@ -3967,11 +3967,22 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   /** The m365_change_resolutions row (the count) that tripped the routing trigger. */
   sourceResolutionId: integer("source_resolution_id"),
 
+  /**
+   * #1498 — set only when this CR was raised by executing a pre-approved
+   * standard change catalog item, rather than the wizard or Microsoft routing.
+   * Forward reference: `changeCatalogItemsTable` is declared later in this
+   * file. `set null` on delete rather than `cascade` — a catalog item is never
+   * hard-deleted (only revoked), but if it ever were, the CRs it already
+   * produced are a real historical record and must not disappear with it.
+   */
+  catalogItemId: integer("catalog_item_id").references((): AnyPgColumn => changeCatalogItemsTable.id, { onDelete: "set null" }),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_change_requests_msp_id_idx").on(t.mspId),
   index("msp_change_requests_tenant_id_idx").on(t.tenantId),
+  index("msp_change_requests_catalog_item_id_idx").on(t.catalogItemId),
   // One auto-routed CR per (interpretation × tenant): the routing sweep's
   // idempotency guard so a nightly re-run never creates a second CR for the
   // same Microsoft change on the same tenant. Partial — only routed rows carry
@@ -4077,6 +4088,73 @@ export type CrApproval = typeof crApprovalsTable.$inferSelect;
 export type InsertCrApproval = typeof crApprovalsTable.$inferInsert;
 export type CrApprovalDecision = CrApproval["decision"];
 export type CrApproverRole = CrApproval["approverRole"];
+
+// ── Standard Change Catalog (#1498) ──────────────────────────────────────────
+//
+// Pre-approved templates that skip CAB. A catalog item points at a `packKey` —
+// approve once, execute many. This is a GOVERNED OBJECT, not a config file:
+// each item's approval is itself a signed, dated, revocable decision, because
+// every auto-approved `standard` change request raised from it inherits ITS
+// authority. That is exactly what `cr_approvals.approver_role =
+// 'catalog_inherited'` above already anticipates ("Populated once the change
+// catalog carries an approver; the column exists now so the model is
+// complete") — a catalog-raised CR is inserted with `approvedBy` set to this
+// row's `approvedByName`, and `materializeApprovalsForChange`'s existing
+// "already-approved at creation" branch records that same real name into the
+// ledger. No approver is ever "the system".
+//
+// Two settled decisions this table is built to satisfy exactly, no more:
+//   • #1554 — standard vs non-standard is a property of the WHOLE runbook
+//     (the config pack a `packKey` resolves to), decided at authoring time.
+//     There is no partial/mixed/half-approved state here — `status` covers the
+//     whole item, never a subset of its steps.
+//   • #1555 — once approved, a catalog item runs unattended INDEFINITELY. No
+//     expiry, no periodic re-approval, no review cycle — deliberately no
+//     `reviewDueAt` / `expiresAt` column exists. The only way out of `approved`
+//     is a human revoking it, and that takes effect immediately: every execute
+//     checks live `status`, never a cached/JWT-carried flag.
+export const CHANGE_CATALOG_ITEM_STATUS = ["draft", "approved", "revoked"] as const;
+export type ChangeCatalogItemStatus = typeof CHANGE_CATALOG_ITEM_STATUS[number];
+
+export const changeCatalogItemsTable = pgTable("change_catalog_items", {
+  id: serial("id").primaryKey(),
+  /** Owning MSP — each MSP curates and governs its own catalog. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The runbook this item pre-authorises. A real `config_packs.pack_key`. */
+  packKey: text("pack_key").notNull().references(() => configPacksTable.packKey),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  // Same widened vocabulary as msp_change_requests.category (see that column's
+  // own note) — a catalog-raised CR must classify onto the same workload chips
+  // as every other CR in the register.
+  category: text("category", { enum: ["ConditionalAccess", "Exchange", "Identity", "Intune", "Defender", "SharePoint", "Purview", "Teams"] }).notNull().default("Identity"),
+  // The badge a catalog-raised CR carries. requiredStages() is 0 for `standard`
+  // regardless of risk (see portal-change-approvals.ts), so this is display
+  // only, never a gate — pre-approved routine work defaults to low.
+  riskLevel: text("risk_level", { enum: ["critical", "high", "medium", "low"] }).notNull().default("low"),
+  status: text("status", { enum: CHANGE_CATALOG_ITEM_STATUS }).notNull().default("draft"),
+  // ── The governing decision — WHO, WHEN, never "the system" ──────────────────
+  approvedByPersonId: text("approved_by_person_id"),
+  approvedByName: text("approved_by_name"),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  // ── Revocation — the control, and it is immediate (#1555) ───────────────────
+  revokedByPersonId: text("revoked_by_person_id"),
+  revokedByName: text("revoked_by_name"),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedReason: text("revoked_reason"),
+  createdByPersonId: text("created_by_person_id"),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("change_catalog_items_msp_id_idx").on(t.mspId),
+  index("change_catalog_items_pack_key_idx").on(t.packKey),
+  index("change_catalog_items_msp_status_idx").on(t.mspId, t.status),
+]);
+
+export const insertChangeCatalogItemSchema = createInsertSchema(changeCatalogItemsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type ChangeCatalogItem = typeof changeCatalogItemsTable.$inferSelect;
+export type InsertChangeCatalogItem = typeof changeCatalogItemsTable.$inferInsert;
 
 // ── MSP SOPs (Standard Operating Procedures) ─────────────────────────────────
 //
