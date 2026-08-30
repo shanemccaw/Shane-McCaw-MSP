@@ -26,6 +26,14 @@
  * item — is recorded as an optional `catalogItemId` reference and is built out
  * by #1550, not here. Enactment (#1548) and continuous evaluation (#1549) are
  * separate builds; this route ends at the wire contract.
+ *
+ *   GET /msp/standing-policies/:id/enactment?customerId=  — #1551: preview the
+ *   enactment ROUTE this policy would take for one tenant right now, using
+ *   policy.isActive + that tenant's own Graph/write-back consent (state that
+ *   already exists — see policy-enactment-route.ts). This does not detect a
+ *   divergence or enact anything; #1549/#1553 own that. It answers "if this
+ *   policy fired for this tenant today, which of the three settled shapes
+ *   would it take, and why".
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -34,6 +42,7 @@ import {
   standingPoliciesTable,
   activeDirectoryOusTable,
   changeCatalogItemsTable,
+  tenantsTable,
   STANDING_POLICY_TARGET_KIND,
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
@@ -45,6 +54,7 @@ import { personIdForUser } from "../lib/portal-ownership";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
 import { toWireStandingPolicy } from "../lib/standing-policies";
+import { resolvePolicyEnactmentRoute } from "../lib/policy-enactment-route";
 
 const log = logger.child({ channel: "workflow.change-control" });
 
@@ -164,6 +174,83 @@ router.post(
       res.status(201).json(toWireStandingPolicy(inserted));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/standing-policies failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// ── Enactment preview (#1551) ──────────────────────────────────────────────
+const enactmentQuerySchema = z.object({
+  customerId: z.coerce.number().int().positive(),
+});
+
+router.get(
+  "/msp/standing-policies/:id/enactment",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+        return;
+      }
+
+      const policyId = Number(req.params.id);
+      if (!Number.isInteger(policyId) || policyId <= 0) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid standing policy id");
+        return;
+      }
+
+      const parsedQuery = enactmentQuerySchema.safeParse(req.query);
+      if (!parsedQuery.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "customerId is required", parsedQuery.error.flatten());
+        return;
+      }
+
+      // The policy must be this MSP's own — never resolve enactment for
+      // another MSP's policy from a borrowed id.
+      const [policy] = await db
+        .select()
+        .from(standingPoliciesTable)
+        .where(and(eq(standingPoliciesTable.id, policyId), eq(standingPoliciesTable.mspId, mspId)))
+        .limit(1);
+      if (!policy) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, `Standing policy '${policyId}' not found`);
+        return;
+      }
+
+      // Same customerId == tenants.id convention runSopForCustomer/graphWriteForTenant
+      // use — and the same "must belong to this MSP" guard, so a policy can never be
+      // previewed against a tenant it has no authority over.
+      const [customer] = await db
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId, consent: tenantsTable.consent })
+        .from(tenantsTable)
+        .where(and(eq(tenantsTable.id, parsedQuery.data.customerId), eq(tenantsTable.mspId, mspId)))
+        .limit(1);
+      if (!customer) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, `Customer '${parsedQuery.data.customerId}' not found for this MSP`);
+        return;
+      }
+
+      const decision = resolvePolicyEnactmentRoute({ policyActive: policy.isActive, consent: customer.consent });
+
+      log.info(
+        { mspId, standingPolicyId: policy.id, customerId: customer.id, route: decision.route, reason: decision.reason },
+        "policy enactment route resolved",
+      );
+
+      res.json({
+        policyId: policy.id,
+        customerId: customer.id,
+        targetKind: policy.targetKind,
+        sopId: policy.sopId,
+        catalogItemId: policy.catalogItemId,
+        route: decision.route,
+        reason: decision.reason,
+      });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/standing-policies/:id/enactment failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

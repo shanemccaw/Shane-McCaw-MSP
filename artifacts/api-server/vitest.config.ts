@@ -8,6 +8,7 @@ export default defineConfig({
       "src/lib/retainer-hours.test.ts",
       "src/lib/remediation-catalog.test.ts",
       "src/lib/remediation-fix-route.test.ts",
+      "src/lib/policy-enactment-route.test.ts",
       "src/lib/remediation-checklist.test.ts",
       "src/lib/remediation-reveal-gate.test.ts",
       "src/lib/remediation-bypass-resolutions.test.ts",
@@ -267,6 +268,9 @@ export default defineConfig({
       // #1547 — the Policy Engine's declarative object: the standing-policy wire
       // contract and the target-kind vocabulary (pure, no database).
       "src/lib/standing-policies.test.ts",
+      // #1551 — write consent decides the enactment shape (the NASA case): the
+      // route file's authorization/scoping and the resolved wire response.
+      "src/routes/msp-standing-policies.test.ts",
       "src/lib/zoho-foundation.test.ts",
       "src/lib/zoho-crm.test.ts",
       "src/lib/zoho-projects.test.ts",
