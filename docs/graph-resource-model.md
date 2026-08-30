@@ -446,6 +446,15 @@ does, from a real Graph response, and that evidence is gone until `verify-sample
 re-run. **Re-running it is exactly "re-deriving the Graph half," which this issue's
 scope explicitly forbids, so it was not run.** Filed as #1895 rather than worked around.
 
+**Resolved 2026-08-30 (#1895).** `config_resource_samples` is no longer deleted by
+`build-resource-model.mjs`, and no longer even reachable by cascade — it now keys on the
+stable `resource_key` text column instead of the volatile `config_resources.id`,
+matching the precedent `config_resource_property_divergence` and `config-snapshots.ts`
+already set. Every rebuild now calls `reconcile-live-evidence.mjs` to re-apply
+`verified_live` / `failed_live` / `needs_license` from the surviving samples onto the
+freshly-derived rows. Live-verified after a real end-to-end rebuild run: all 29 sample
+rows survived, and all four resources above correctly read `needs_license` again.
+
 ### Findings filed (milestone v1.1, board status "AI Batter Up")
 
 - **#1895** → #1850 — `build-resource-model.mjs` wholesale-deletes

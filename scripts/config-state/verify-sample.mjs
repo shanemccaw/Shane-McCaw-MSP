@@ -35,6 +35,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { detectPropertyDivergence } from "./detect-property-divergence.mjs";
+import { applyLiveEvidence } from "./reconcile-live-evidence.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -167,6 +168,7 @@ async function main() {
       const started = Date.now();
       let out = {
         sample_run_id: sampleRunId,
+        resource_key: r.resource_key,
         config_resource_id: r.id,
         tenant_id: TENANT_ID,
         graph_version: r.graph_version,
@@ -245,33 +247,17 @@ async function main() {
              updated_at = now()
        WHERE read_transport <> 'graph' AND verification_status = 'derived_not_verified'`);
 
-    const sampledIds = rows.map((r) => r.config_resource_id);
-    await client.query(
-      `UPDATE config_resources SET verification_status = 'verified_live', updated_at = now()
-        WHERE id = ANY($1) AND id IN (SELECT config_resource_id FROM config_resource_samples
-                                       WHERE sample_run_id = $2 AND ok = TRUE)`,
-      [sampledIds, sampleRunId]);
-    await client.query(
-      `UPDATE config_resources SET verification_status = 'failed_live', updated_at = now()
-        WHERE id = ANY($1) AND id IN (SELECT config_resource_id FROM config_resource_samples
-                                       WHERE sample_run_id = $2 AND ok = FALSE)`,
-      [sampledIds, sampleRunId]);
-
-    // A live license/feature gap is the ONLY evidence that may set needs_license.
-    const licenseGap = await client.query(
-      `UPDATE config_resources r
-          SET availability = 'needs_license',
-              availability_reason = 'live read returned a license/feature gap: ' || s.error_code,
-              updated_at = now()
-         FROM config_resource_samples s
-        WHERE s.sample_run_id = $1 AND s.config_resource_id = r.id AND s.ok = FALSE
-          AND (s.error_message ILIKE '%license%' OR s.error_code IN ('ResourceNotFound','NotLicensed'))
-        RETURNING r.resource_key`, [sampleRunId]);
+    // #1895 — shared with build-resource-model.mjs's post-rebuild reconciliation, so
+    // "what counts as a live license gap" has exactly one definition, not two copies
+    // that could drift.
+    const evidence = await applyLiveEvidence(client, { sampleRunId });
 
     const ok = rows.filter((r) => r.ok).length;
     console.log(`\nSample run ${sampleRunId}`);
     console.log(`  ${ok}/${rows.length} returned 200; ${rows.length - ok} failed (recorded with the real Graph error code)`);
-    if (licenseGap.rowCount) console.log(`  ${licenseGap.rowCount} marked needs_license from live evidence`);
+    if (evidence.licenseGapKeys.length) {
+      console.log(`  ${evidence.licenseGapKeys.length} marked needs_license from live evidence: ${evidence.licenseGapKeys.join(", ")}`);
+    }
     const breakdown = (await client.query(
       "SELECT verification_status, count(*) n FROM config_resources GROUP BY 1 ORDER BY 2 DESC")).rows;
     console.log("  verification status across the whole model:");

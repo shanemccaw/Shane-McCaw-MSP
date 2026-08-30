@@ -514,12 +514,27 @@ export type InsertConfigResourceCheckCoverage = typeof configResourceCheckCovera
  * `observedShape` (property → JSON type) are enough to prove the model matches
  * reality, and keep real tenant data out of the platform database. The testbed is
  * Shane's own production Microsoft 365 tenant.
+ *
+ * Git #1895 — `configResourceId` carries NO foreign key (previously an `ON DELETE
+ * CASCADE` to `config_resources.id`). `build-resource-model.mjs` DELETEs and
+ * re-INSERTs every `config_resources` row on each run, re-issuing serial ids from
+ * scratch; a cascading FK from here to that volatile id silently wiped this table's
+ * entire accumulated live-observation history on every rebuild, taking real
+ * `needs_license` verdicts with it (see #1794 → #1865 → this issue). `resourceKey`
+ * (e.g. `graph:v1.0:/auditLogs/signIns`) is the STABLE identity this table actually
+ * keys on — `config_resource_property_divergence` and `config-snapshots.ts` already
+ * set this precedent and cite this same issue. `configResourceId` is kept as a
+ * best-effort denormalised pointer, re-pointed at whatever id `resourceKey` currently
+ * resolves to by `reconcile-live-evidence.mjs`'s `refreshSampleResourceLinks()` after
+ * every `build-resource-model.mjs` rebuild — never the join a rebuild can destroy.
  */
 export const configResourceSamplesTable = pgTable("config_resource_samples", {
   id: serial("id").primaryKey(),
   sampleRunId: uuid("sample_run_id").notNull(),
-  configResourceId: integer("config_resource_id").notNull()
-    .references(() => configResourcesTable.id, { onDelete: "cascade" }),
+  /** Stable identity — see the table comment for why this, not the FK, is load-bearing. */
+  resourceKey: text("resource_key").notNull(),
+  /** Best-effort current id for convenience joins; NOT a FK, refreshed after every rebuild. */
+  configResourceId: integer("config_resource_id").notNull(),
   tenantId: integer("tenant_id").notNull()
     .references(() => tenantsTable.id, { onDelete: "cascade" }),
   graphVersion: text("graph_version", { enum: GRAPH_VERSIONS }).notNull(),
@@ -541,6 +556,7 @@ export const configResourceSamplesTable = pgTable("config_resource_samples", {
   observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("config_resource_samples_resource_idx").on(t.configResourceId),
+  index("config_resource_samples_resource_key_idx").on(t.resourceKey),
   index("config_resource_samples_run_idx").on(t.sampleRunId),
   index("config_resource_samples_tenant_idx").on(t.tenantId),
 ]);

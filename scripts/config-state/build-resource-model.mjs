@@ -35,6 +35,7 @@ import {
   normalizeGraphEndpoint, matchEndpointToResource, resolvePsCmdletCatalog,
 } from "./map-monitor-checks.mjs";
 import { reconcilePowershellAgainstSurvey } from "./reconcile-ps-survey.mjs";
+import { refreshSampleResourceLinks, applyLiveEvidence } from "./reconcile-live-evidence.mjs";
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -238,9 +239,12 @@ async function main() {
 
     // ── 3. Build config_resources ────────────────────────────────────────────
     console.log("── Building config_resources ─────────────────────────────────");
+    // Git #1895 — config_resource_samples is NEVER deleted here. It is the only place
+    // verify-sample.mjs's live Graph evidence lives, and it keys on the stable
+    // resource_key text column (see configResourceSamplesTable's schema comment), not
+    // on config_resources.id — so it survives the id churn below by construction.
     await client.query("DELETE FROM config_resource_check_coverage");
     await client.query("DELETE FROM config_resource_properties");
-    await client.query("DELETE FROM config_resource_samples");
     await client.query("DELETE FROM config_resources");
 
     // Granted scopes, read live from the database rather than assumed.
@@ -479,6 +483,22 @@ async function main() {
     const idByKey = new Map();
     for (const r of (await client.query("SELECT id, resource_key FROM config_resources")).rows) {
       idByKey.set(r.resource_key, r.id);
+    }
+
+    // ── 3a-bis. Restore accumulated live evidence onto the freshly-rebuilt rows ──
+    // Every config_resources row above was just re-derived from published sources
+    // alone, which can never itself produce needs_license (see resolveAvailability's
+    // own comment). Re-apply whatever verify-sample.mjs has actually observed live,
+    // keyed by the resource_key that survived the rebuild — this is what makes "the
+    // model regresses on every rebuild" (#1895) no longer true.
+    console.log("── Restoring live evidence from config_resource_samples ──────");
+    const relink = await refreshSampleResourceLinks(client);
+    const evidence = await applyLiveEvidence(client);
+    console.log(`  ${relink.relinked} sample rows re-pointed at their current config_resources.id`
+      + (relink.orphaned ? `, ${relink.orphaned} orphaned (resource_key no longer in the model)` : ""));
+    console.log(`  ${evidence.verifiedCount} verified_live, ${evidence.failedCount} failed_live restored from the latest sample per resource`);
+    if (evidence.licenseGapKeys.length) {
+      console.log(`  ${evidence.licenseGapKeys.length} resources restored to needs_license from live evidence: ${evidence.licenseGapKeys.join(", ")}`);
     }
 
     const propRowsOut = [];
