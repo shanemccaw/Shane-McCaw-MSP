@@ -42,6 +42,26 @@ namespace BuildConsole.Controls
         }
     }
 
+    /// <summary>Git #1893 — the rollup's per-build-set send button was clicked. Carries the
+    /// already-formatted "Git #NNNN — landed" list text for that set's real, current Verifying
+    /// items, plus a callback to report the send outcome back on that specific row's own status
+    /// text. A callback (rather than a persistent named XAML element like SqlDocumentView's
+    /// ExecStatus) because rollup rows are rebuilt from scratch on every RenderBuildSetRollup
+    /// call (see BuildRollupRow) rather than being long-lived controls.</summary>
+    public sealed class SendBuildSetVerifyingEventArgs : EventArgs
+    {
+        public string BuildSetName { get; }
+        public string Text { get; }
+        public Action<string, bool> ShowStatus { get; }
+
+        public SendBuildSetVerifyingEventArgs(string buildSetName, string text, Action<string, bool> showStatus)
+        {
+            BuildSetName = buildSetName;
+            Text = text;
+            ShowStatus = showStatus;
+        }
+    }
+
     /// <summary>
     /// Build Queue panel — visual DAG redesign (#860 reference):
     /// Reads live queue state (GET /extension/queue) and renders a real Canvas-based
@@ -65,6 +85,10 @@ namespace BuildConsole.Controls
         /// <summary>Git #1636 — fires exactly once, the moment every build in a Priority-marked
         /// build set reaches a terminal state. See <see cref="CheckPriorityBuildSetCompletion"/>.</summary>
         public event EventHandler<BuildSetPriorityCompletedEventArgs>? BuildSetPriorityCompleted;
+        /// <summary>Git #1893 — fires when a rollup row's send button is clicked; MainWindow wires
+        /// this to the shared SendTextToActiveClaudeChatAsync path (#937), same pattern as
+        /// WireSqlRunnerSendToChat (#940).</summary>
+        public event EventHandler<SendBuildSetVerifyingEventArgs>? SendBuildSetVerifyingRequested;
         private bool _isPinned = true;
 
         private int _refreshGeneration;
@@ -2298,6 +2322,7 @@ namespace BuildConsole.Controls
             var headerGrid = new Grid();
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var summaryText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
             summaryText.Inlines.Add(new System.Windows.Documents.Run($"{buildSetKey} — ") { FontWeight = FontWeights.SemiBold, Foreground = accentBrush });
@@ -2316,6 +2341,31 @@ namespace BuildConsole.Controls
             Grid.SetColumn(summaryText, 0);
             headerGrid.Children.Add(summaryText);
 
+            // Git #1893 — "send this set's Verifying items as a landed-list to the active chat"
+            // button. Only rendered when there's something real to send (#1893 requirement 3: a
+            // build set with zero Verifying items doesn't offer a broken/empty send) — rather than
+            // rendering a disabled button, it's simply absent, since a row only exists here at all
+            // when at least one of the three counts is non-zero.
+            Button? sendButton = null;
+            if (verifying.Count > 0)
+            {
+                sendButton = new Button
+                {
+                    Content = "✈",
+                    FontSize = 12,
+                    Padding = new Thickness(5, 1, 5, 2),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = Cursors.Hand,
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                    ToolTip = $"Send {buildSetKey}'s {verifying.Count} verifying item(s) as a landed-list to the active chat"
+                };
+                Grid.SetColumn(sendButton, 1);
+                headerGrid.Children.Add(sendButton);
+            }
+
             var chevron = new ToggleButton
             {
                 Style = (Style)Application.Current.FindResource("ExpandCollapseToggleStyle"),
@@ -2325,11 +2375,44 @@ namespace BuildConsole.Controls
                 Margin = new Thickness(6, 0, 0, 0),
                 ToolTip = "Expand for the full per-category breakdown"
             };
-            Grid.SetColumn(chevron, 1);
+            Grid.SetColumn(chevron, 2);
             headerGrid.Children.Add(chevron);
 
             headerBorder.Child = headerGrid;
             wrapper.Children.Add(headerBorder);
+
+            // Git #1893 — brief send-outcome status, same purpose as SqlDocumentView's ExecStatus
+            // strip (#940) but scoped to this one row (rows are rebuilt from scratch every
+            // RenderBuildSetRollup call, so there's no persistent named element to reuse). Hidden
+            // until a send is attempted, then auto-hides itself after a few seconds.
+            var statusText = new TextBlock
+            {
+                FontSize = 10,
+                Margin = new Thickness(2, 2, 2, 0),
+                TextWrapping = TextWrapping.Wrap,
+                Visibility = Visibility.Collapsed
+            };
+            wrapper.Children.Add(statusText);
+
+            if (sendButton != null)
+            {
+                sendButton.Click += (s, e) =>
+                {
+                    string text = string.Join("\n", verifying.Select(n => $"Git {FormatIssueRef(n)} — landed"));
+                    ActivityLog.Log("build-queue.rollup-send-to-chat", $"send-clicked: {buildSetKey}, {verifying.Count} verifying item(s)");
+                    SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(buildSetKey, text, (msg, isError) =>
+                    {
+                        statusText.Text = msg;
+                        statusText.Foreground = isError
+                            ? (Brush)Application.Current.FindResource("RedBrush")
+                            : (Brush)Application.Current.FindResource("GreenBrush");
+                        statusText.Visibility = Visibility.Visible;
+                        var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+                        hideTimer.Tick += (ts, te) => { statusText.Visibility = Visibility.Collapsed; hideTimer.Stop(); };
+                        hideTimer.Start();
+                    }));
+                };
+            }
 
             var detail = new StackPanel
             {

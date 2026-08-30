@@ -627,6 +627,16 @@ namespace BuildConsole
             BuildQueuePanel.IssueChatRequested += (s, githubNumber) => OpenChatForIssue(githubNumber);
             BuildQueuePanel.QueueItemChatRequested += (s, item) => OpenChatForQueueItem(item);
             BuildQueuePanel.BuildSetPriorityCompleted += (s, e) => OnBuildSetPriorityCompleted(e);
+            // Git #1893 — build-set rollup's "send Verifying items as a landed-list" button,
+            // routed through the exact same shared SendTextToActiveClaudeChatAsync path (#937)
+            // as WireSqlRunnerSendToChat (#940) below uses for the SQL Runner's own Send to Chat.
+            BuildQueuePanel.SendBuildSetVerifyingRequested += async (s, e) =>
+                await SendTextToActiveClaudeChatAsync(
+                    e.Text,
+                    showMessage: (msg, isError) => e.ShowStatus(msg, isError),
+                    onInserted: null,
+                    logChannel: "build-queue.rollup-send-to-chat",
+                    whatSingular: "landed list");
             BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
             // Git #1836 — this used to call LeftSidebar.PopulateGitTrackerBoard(forceFresh:
             // true) directly, bypassing the disable-button + critter-strip feedback that
