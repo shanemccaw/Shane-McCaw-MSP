@@ -1203,7 +1203,8 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            // ── 4. Swimlane Allocation DAG Algorithm (#860, reworked) ──
+            // ── 4. Swimlane Allocation DAG Algorithm (#860, reworked; fork lane reuse
+            // added by #1760) ──
             // Nodes now arrive parent-before-child (OrderByDependency above), so by the
             // time a node is processed its blocker's column is already known — no more
             // "reserve this lane for a key I haven't seen yet" trick the old top-down
@@ -1213,7 +1214,41 @@ namespace BuildConsole.Controls
             // A blocked node either continues straight down its (single, first) parent's
             // lane — if it's the first child to claim it — or branches into a fresh lane
             // when a sibling already has (a fork, multiple items freed by one blocker).
+            //
+            // #1760 — Shane: the DAG's connector lines look tangled/crossing, worse with
+            // more builds and more blockers. An off-screen harness (BuildQueuePanel
+            // constructed with no Window shown, real synthetic QueueItem sets fed through
+            // this exact RenderQueue path) confirmed the cause, and it's worse than the
+            // "first available slot may be far from the parent" theory the issue opened
+            // with: `lanes[col]` was NEVER set back to null anywhere once a lane was
+            // claimed, so `lanes.FindIndex(k => k == null)` could never find anything —
+            // every fork (and every non-trunk-continuing child at all, since lane 0 never
+            // holds a real key) permanently grabbed a brand-new lane at the far right,
+            // monotonically, for the rest of that render. A synthetic queue of 14
+            // independent 4-way-fork chains (70 nodes) measured 57 lanes, with forks
+            // landing an average of 28.5 lanes from their own parent and only 1 of 56
+            // within a single lane of it — exactly the "gets worse with scale" shape
+            // Shane described. The fix: track the last row each key is ever claimed as a
+            // parent (precomputed below, order-only — doesn't touch column assignment)
+            // and free that key's lane the moment its last child has been placed, so a
+            // later fork can reuse a nearby freed lane instead of the graph only ever
+            // growing wider. Lane 0 (TrunkOwner) is never a real key here, so it can never
+            // be freed by this — the trunk stays exactly as before.
             const int TrunkOwner = int.MinValue;
+
+            var seenKeys = new HashSet<int>();
+            var effectiveParentByRow = new int?[_currentGraphNodes.Count];
+            var lastChildRowForKey = new Dictionary<int, int>();
+            for (int i = 0; i < _currentGraphNodes.Count; i++)
+            {
+                var node = _currentGraphNodes[i];
+                int? pk = null;
+                foreach (var b in node.BlockedBy) { if (seenKeys.Contains(b)) { pk = b; break; } }
+                effectiveParentByRow[i] = pk;
+                if (pk.HasValue) lastChildRowForKey[pk.Value] = i; // last write wins = last row
+                seenKeys.Add(node.Key);
+            }
+
             var lanes = new List<int?> { TrunkOwner };
             var columnByKey = new Dictionary<int, int>();
             int maxLaneCount = 1;
@@ -1222,8 +1257,8 @@ namespace BuildConsole.Controls
                 var node = _currentGraphNodes[i];
                 node.Row = i;
 
-                int? parentKey = null;
-                foreach (var b in node.BlockedBy) { if (columnByKey.ContainsKey(b)) { parentKey = b; break; } }
+                int? parentKey = effectiveParentByRow[i];
+                bool continuesParentLane = false;
 
                 int col;
                 if (parentKey == null)
@@ -1234,15 +1269,54 @@ namespace BuildConsole.Controls
                 else
                 {
                     int parentCol = columnByKey[parentKey.Value];
-                    col = (parentCol < lanes.Count && lanes[parentCol] == parentKey.Value)
-                        ? parentCol
-                        : lanes.FindIndex(k => k == null);
-                    if (col < 0) { lanes.Add(null); col = lanes.Count - 1; }
+                    continuesParentLane = parentCol < lanes.Count && lanes[parentCol] == parentKey.Value;
+                    if (continuesParentLane)
+                    {
+                        col = parentCol;
+                    }
+                    else
+                    {
+                        // Nearest free lane to the parent's own column, not strictly the
+                        // first free lane from the left — a fork should land visually
+                        // close to where it branched rather than wherever an unrelated
+                        // earlier chain happened to free up first.
+                        col = -1;
+                        int bestDist = int.MaxValue;
+                        for (int li = 0; li < lanes.Count; li++)
+                        {
+                            if (lanes[li] != null) continue;
+                            int dist = Math.Abs(li - parentCol);
+                            if (dist < bestDist) { bestDist = dist; col = li; }
+                        }
+                        if (col < 0) { lanes.Add(null); col = lanes.Count - 1; }
+                    }
                     lanes[col] = node.Key;
                 }
 
                 node.Column = col;
                 columnByKey[node.Key] = col;
+
+                // A lane becomes reusable the moment nothing further will ever need to
+                // continue from it. Two cases:
+                // (a) this node itself will never have children of its own (a fork leaf —
+                //     nothing ever lists it in BlockedBy) — free its own just-claimed lane
+                //     right away, so the very next fork can reuse it instead of the graph
+                //     only ever growing wider;
+                // (b) this node was the last child anything will ever claim from its
+                //     parent's lane, AND it didn't inherit that lane by continuing straight
+                //     down it (a genuine fork elsewhere) — the parent's lane then has
+                //     nothing left pointing at it either, so free that one too.
+                // Lane 0 (trunk) is excluded from both — TrunkOwner is never a real key, so
+                // it can never appear in BlockedBy and case (b)'s guard leaves it alone.
+                if (col != 0 && !lastChildRowForKey.ContainsKey(node.Key))
+                {
+                    lanes[col] = null;
+                }
+                if (parentKey.HasValue && !continuesParentLane && lastChildRowForKey[parentKey.Value] == i)
+                {
+                    int ownerCol = columnByKey[parentKey.Value];
+                    if (ownerCol != 0) lanes[ownerCol] = null; // never free the trunk lane
+                }
 
                 while (lanes.Count > 1 && lanes[lanes.Count - 1] == null) lanes.RemoveAt(lanes.Count - 1);
                 maxLaneCount = Math.Max(maxLaneCount, Math.Max(lanes.Count, col + 1));
