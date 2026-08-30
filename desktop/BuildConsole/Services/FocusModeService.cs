@@ -487,6 +487,20 @@ namespace BuildConsole.Services
         {
             _chats = chats?.ToList() ?? new();
             _epicById = epicById != null ? new Dictionary<int, BoardEpic>(epicById) : new();
+
+            // Shane: "the top bar where the In Progress chats are stored... loads
+            // everything, Primary & Secondary... then I have to click [something] to get
+            // it to narrow down." Root cause: InProgressChatsForAccount fails OPEN
+            // (returns the unfiltered list) while _chats is still empty — true for every
+            // render before this snapshot's first real fetch lands, including
+            // FocusModeBar's very first Loaded-triggered render. Nothing told it to
+            // re-render once _chats stopped being empty, so it kept showing that
+            // unfiltered snapshot until some unrelated event (the account toggle, marking
+            // a chat in progress) happened to fire InProgressChatsChanged. Firing it here
+            // — the moment real per-chat account data actually becomes known — is the fix:
+            // the account-correct filtered list is now shown as soon as it can be, not on
+            // whatever later click happens to ask for a repaint.
+            InProgressChatsChanged?.Invoke();
         }
 
         // ================================================================
