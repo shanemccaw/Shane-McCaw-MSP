@@ -31,6 +31,22 @@
  * and name exactly this `sopId` (a policy only gets credit for the procedure
  * it actually named). `origin` is forced to `"policy"` when set this way.
  *
+ * ── The CR-flood resolution (#1550) ───────────────────────────────────────────
+ * "A policy IS a standard change catalog item." A policy-enacted run still
+ * needs an approved CR to authorize its write (#1497) same as any other run —
+ * but raising a fresh, manually-approved CR per enactment would flood the
+ * register (onboarding twenty VIPs = twenty approval requests for a rule
+ * already agreed). So in the Authorization step below, a `standingPolicyId`
+ * run that carries NO explicit `changeRequestAuthorization` does not fall
+ * through to the testbed-only fallback: it auto-raises its own real
+ * `changeClass: "standard"` CR from the policy's bound, currently-approved
+ * `change_catalog_items` row (`raisePolicyEnactmentChangeRequest`,
+ * policy-enactment.ts), inheriting that item's real, signed approver —
+ * "approve once, execute many" applied to policy enactments instead of
+ * customer self-service (`routes/portal-change-catalog.ts`'s "execute").
+ * Live-checked at every call, never cached: revoking the catalog item stops
+ * future enactments cold even mid-rollout.
+ *
  * ── Reconciliation, not a live callback ──────────────────────────────────────
  * The Workflow Engine has no per-SOP-run completion hook, so — exactly like
  * #1497's `settleAuthorizedChangeRequests` — `settleSopRuns` is a periodic
@@ -65,6 +81,7 @@ import {
 import { formatChangeRequestCode } from "./portal-change-control";
 import { readSteps } from "./portal-sops";
 import { buildSopWorkflowGraph, sopDefinitionName } from "./sop-workflow-graph";
+import { raisePolicyEnactmentChangeRequest } from "./policy-enactment";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "engine.config-pack" });
@@ -79,6 +96,10 @@ export type SopExecutionErrorCode =
   | "customer_not_testbed"
   | "change_request_not_authorized"
   | "concurrency_limit"
+  // #1550 — a policy-enacted run's own auto-raise (no explicit CR given)
+  // could not currently produce an auto-approved CR — the bound catalog item
+  // is missing, draft, or revoked. Live-checked, never cached.
+  | "standing_policy_catalog_item_not_approved"
   // #1548 — a run claiming a `standingPolicyId` must actually be that policy's
   // named procedure, and that policy must be switched on.
   | "standing_policy_not_found"
@@ -241,6 +262,42 @@ export async function runSopForCustomer(opts: {
         "change_request_not_authorized",
         `Change request ${opts.changeRequestAuthorization.changeRequestId} does not authorize this write: ${claim.reason}`,
         { changeRequestId: opts.changeRequestAuthorization.changeRequestId, reason: claim.reason },
+      );
+    }
+    claimedChangeRequestId = claim.changeRequestId;
+  } else if (opts.standingPolicyId !== undefined) {
+    // #1550 — no explicit CR was given for this policy-enacted run: auto-raise
+    // one from the policy's bound, currently-approved catalog item rather than
+    // falling through to the testbed-only fallback below. Fails closed with
+    // the real reason (no catalog item bound / draft / revoked) — never a
+    // silent fallback to "just needs a testbed customer".
+    const raised = await raisePolicyEnactmentChangeRequest({
+      mspId,
+      standingPolicyId: opts.standingPolicyId,
+      customerId,
+      targetDescription: targetEntity || `SOP ${sopId} run`,
+      requestedBy: opts.operator,
+    });
+    if (!raised.ok) {
+      throw new SopExecutionError(
+        "standing_policy_catalog_item_not_approved",
+        `Standing policy ${opts.standingPolicyId} cannot currently enact: ${raised.reason}`,
+        { standingPolicyId: opts.standingPolicyId, reason: raised.reason },
+      );
+    }
+    const claim = await claimChangeRequestForWrite({
+      changeRequestId: raised.changeRequestId,
+      mspId,
+      tenantId: customer.tenantId,
+    });
+    if (!claim.ok) {
+      // Should not happen — the CR was just raised fully pre-approved via
+      // materializeApprovalsForChange — but the claim is still the real,
+      // atomic authorization step, never assumed.
+      throw new SopExecutionError(
+        "change_request_not_authorized",
+        `Change request ${raised.changeRequestId} does not authorize this write: ${claim.reason}`,
+        { changeRequestId: raised.changeRequestId, reason: claim.reason },
       );
     }
     claimedChangeRequestId = claim.changeRequestId;
