@@ -11,7 +11,14 @@ namespace BuildConsole.Services
     /// </summary>
     public static class BuildLogPaths
     {
+        /// <summary>
+        /// Git #1876 — the shared directory both sides write/read under, exposed so
+        /// callers that need to reason about "which ids have a log" (a directory
+        /// listing) don't have to re-derive it from <see cref="ForQueueItem"/>.
+        /// </summary>
+        public static string LogDirectory => Path.Combine(Path.GetTempPath(), "bt-build-queue-logs");
+
         public static string ForQueueItem(int id) =>
-            Path.Combine(Path.GetTempPath(), "bt-build-queue-logs", $"queue-{id}.log");
+            Path.Combine(LogDirectory, $"queue-{id}.log");
     }
 }

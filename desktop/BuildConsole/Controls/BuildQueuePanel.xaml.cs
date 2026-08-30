@@ -2654,7 +2654,33 @@ namespace BuildConsole.Controls
                 cardGrid.Children.Add(mascot);
             }
 
-            card.Child = cardGrid;
+            // Git #1876 — quiet "a real log file exists for this queue id" dot, top-right
+            // corner of the card. Cached/batched via BuildLogExistenceCache so hundreds of
+            // cards rendering every poll tick cost one directory listing, not one
+            // File.Exists per card. Deliberately unobtrusive — this is a diagnostic signal
+            // ("did this genuinely start running"), not a status indicator; the status
+            // pill above already owns that job.
+            Grid cardOverlay;
+            if (Services.BuildLogExistenceCache.HasLog(item.Id))
+            {
+                cardOverlay = new Grid();
+                cardOverlay.Children.Add(cardGrid);
+                cardOverlay.Children.Add(new Ellipse
+                {
+                    Width = 6,
+                    Height = 6,
+                    Fill = (Brush)Application.Current.FindResource("TealBrush"),
+                    HorizontalAlignment = HorizontalAlignment.Right,
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Margin = new Thickness(0, -4, -4, 0),
+                    ToolTip = $"Log file exists — this build genuinely started running.\n{Services.BuildLogExistenceCache.PathFor(item.Id)}"
+                });
+                card.Child = cardOverlay;
+            }
+            else
+            {
+                card.Child = cardGrid;
+            }
 
             // Context Menu
             card.ContextMenu = BuildCardContextMenu(item);
