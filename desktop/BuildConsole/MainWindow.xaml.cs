@@ -74,6 +74,8 @@ namespace BuildConsole
         //    real launch connections (Build Tracker board / in-flight / queue / deploy +
         //    Claude usage meter) settle; fades to Home once all are done or timed out. ──
         private BuildConsole.Services.StartupConnectivityService? _startupConnectivity;
+        // #1882 — guards RunDeferredStartupAsync so ContentRendered only kicks it once.
+        private bool _deferredStartupBegun;
 
         // ── Git #967: background scheduled regression-suite runs + on-failure push alert ──
         private BuildConsole.Services.RegressionScheduleService? _regressionScheduler;
@@ -373,6 +375,47 @@ namespace BuildConsole
             ClaudeWebView.NavigationCompleted += WebView_NavigationCompleted;
             ClaudeWebView.SourceChanged       += WebView_SourceChanged;
 
+            // #1882 — Get the animated startup overlay ON SCREEN before any heavy startup
+            // work runs. A real cold-start trace showed ~8s of synchronous construction
+            // (WebView2 env warmup, queue watcher, panels, Home tab, focus mode…) executing
+            // on the UI thread BEFORE the window was ever shown — so the user saw a frozen
+            // black window first and the overlay only appeared at the tail end, then
+            // dismissed while WebView2/Home were still settling. Fix: wire the overlay's
+            // honest rows + events now (cheap; no probes yet), then defer ALL of that heavy
+            // work to RunDeferredStartupAsync, kicked off once the first frame has actually
+            // rendered (ContentRendered). The overlay paints and animates immediately and
+            // stays up — via the shell-ready gate — until the real work below is genuinely
+            // done.
+            InitializeStartupOverlayShell();
+            ContentRendered += MainWindow_FirstRender;
+        }
+
+        /// <summary>
+        /// #1882 — fires once, after the window's first frame is on screen (so the animated
+        /// startup overlay is already painting). Kicks off <see cref="RunDeferredStartupAsync"/>.
+        /// </summary>
+        private void MainWindow_FirstRender(object? sender, EventArgs e)
+        {
+            // ContentRendered can fire more than once over a window's lifetime; only the
+            // first firing starts up, and we unhook immediately so it can't run twice.
+            ContentRendered -= MainWindow_FirstRender;
+            if (_deferredStartupBegun) return;
+            _deferredStartupBegun = true;
+            RunDeferredStartupAsync();
+        }
+
+        /// <summary>
+        /// #1882 — the heavy startup work, deferred to run AFTER the window's first frame is
+        /// on screen so the animated overlay appears first and keeps animating while this
+        /// runs. Chunked with Dispatcher yields at natural phase boundaries so the UI thread
+        /// stays responsive (the overlay never freezes), and it always calls
+        /// <c>MarkShellReady()</c> in the finally — so the overlay dismisses only once this
+        /// real work is done, and ALWAYS dismisses even if a step throws.
+        /// </summary>
+        private async void RunDeferredStartupAsync()
+        {
+            try
+            {
             _ = InitializeClaudeTabAsync();
 
             // Build Queue selection -> Build Log
@@ -581,6 +624,17 @@ namespace BuildConsole
             {
                 _usageMeter.Start();
             }
+
+            // #1882 — the overlay's rows + events were wired in the ctor
+            // (InitializeStartupOverlayShell). Now that the services its probes need exist
+            // (_buildTrackerApi / _replitWatcher / _queueDb), kick off the real launch
+            // probes. They run on background threads and report in via ConnectionChanged;
+            // the overlay stays up until BOTH they and the shell-ready signal settle.
+            _startupConnectivity?.Start(_buildTrackerApi, _replitWatcher, _queueDb);
+
+            // Let the freshly-painted overlay animate and show these first rows before we
+            // press on into the remaining (heavier) shell initialization below.
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
 
             // Git #967 (Epic #803) — background scheduler for unattended full-suite runs.
             // Reuses the same DispatcherTimer/ApplyConfig pattern as the Replit watcher,
@@ -808,6 +862,9 @@ namespace BuildConsole
             // same shared WebView2 environment — the visible tab was redundant.
             // Replit now only opens a real tab on genuine user action (ActivityBar
             // button, Home's Replit tile, etc.).
+            // #1882 — yield first so the overlay animation keeps ticking across the Home
+            // tab build (its board render + What's-New) instead of the UI thread pausing.
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             OpenHomeTab();
             // "What's New" patch notes — compute the real commit titles since the last
             // launch off the UI thread, then render into the (already-open) Home tab and
@@ -865,6 +922,8 @@ namespace BuildConsole
             // Focus Mode (active-milestone global filter + downtime quick-tasks +
             // context save/restore + game layer). All logic lives in FocusModeService
             // and MainWindow.FocusMode.cs — this is the single shell-side entry point.
+            // #1882 — one more yield so the overlay breathes before Focus Mode wires in.
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             InitFocusMode();
 
             // Git #1934 safety net: if a PRIOR (pre-#1934) blocking build persisted Queue
@@ -973,12 +1032,22 @@ namespace BuildConsole
 
             UpdateZoomDisplay();
 
-            // Animated startup loading overlay (StartupOverlay in XAML, already painting
-            // its running-character animation). Build its honest per-connection rows and
-            // kick off the real probes now that _buildTrackerApi + _usageMeter exist; it
-            // fades out to reveal Home once every real launch connection settles (or times
-            // out). See InitializeStartupOverlay for the full wiring.
-            InitializeStartupOverlay();
+                // #1882 — everything above is the real startup work. The overlay's network
+                // probes were kicked off earlier (right after their services were built);
+                // here, in the finally, we signal shell-ready so AllSettled can complete and
+                // the overlay fades out — meaning the app is genuinely ready to use.
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("startup", $"deferred startup failed: {ex.Message}");
+                BuildConsole.Services.ActivityLog.Log("startup", ex.ToString());
+            }
+            finally
+            {
+                // Always mark ready — even on a partial/failed init the overlay must never
+                // hang. The service's own global cap is a further backstop.
+                _startupConnectivity?.MarkShellReady();
+            }
         }
 
         /// <summary>
@@ -4054,11 +4123,17 @@ namespace BuildConsole
         /// is removed from the visual tree so it costs nothing after launch. Called at the
         /// end of the constructor, after _buildTrackerApi + _usageMeter exist.
         /// </summary>
-        private void InitializeStartupOverlay()
+        private void InitializeStartupOverlayShell()
         {
             if (StartupOverlay == null) return;
 
-            _startupConnectivity = new BuildConsole.Services.StartupConnectivityService(_buildTrackerApi, _replitWatcher, _queueDb);
+            // #1882 — created with NO services here so it can be wired the instant the
+            // window paints, before the heavy startup work runs. The probes that need
+            // _buildTrackerApi / _replitWatcher / _queueDb are kicked off later, from
+            // RunDeferredStartupAsync via _startupConnectivity.Start(...), once those
+            // services exist. The static Connections list doesn't depend on them, so the
+            // honest per-connection rows show (as "waiting…") from the very first frame.
+            _startupConnectivity = new BuildConsole.Services.StartupConnectivityService();
 
             // Build one row per real connection, in order, before any probe reports in.
             StartupOverlay.Initialize(_startupConnectivity.Connections);
@@ -4066,13 +4141,11 @@ namespace BuildConsole
             // Per-connection repaint (marshals onto the UI thread itself).
             _startupConnectivity.ConnectionChanged += status => StartupOverlay.UpdateConnection(status);
 
-            // All real connections settled → play the brief "Ready!" beat + fade-out.
+            // Every real connection AND the shell-ready signal settled → "Ready!" + fade-out.
             _startupConnectivity.AllSettled += () => StartupOverlay.FadeOutAndDismiss();
 
             // Fade-out finished → drop the overlay from the tree entirely.
             StartupOverlay.DismissRequested += StartupOverlay_DismissRequested;
-
-            _startupConnectivity.Start();
         }
 
         private void StartupOverlay_DismissRequested()

@@ -195,6 +195,9 @@ const SOP_RUN_ERROR_STATUS: Record<SopExecutionErrorCode, number> = {
   // #1497 — reached the write path without an approved, unconsumed CR.
   change_request_not_authorized: 403,
   concurrency_limit: 409,
+  // #1550 — a policy-enacted run with no explicit CR could not auto-raise one
+  // (the bound catalog item is missing/draft/revoked).
+  standing_policy_catalog_item_not_approved: 409,
   // #1548 — a run claiming a standingPolicyId that doesn't check out.
   standing_policy_not_found: 404,
   standing_policy_inactive: 422,

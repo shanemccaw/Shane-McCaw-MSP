@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   toWireStandingPolicy,
   isStandingPolicyTargetKind,
+  evaluatePolicyEnactmentGate,
   STANDING_POLICY_TARGET_KIND_LABELS,
   type WireStandingPolicy,
 } from "./standing-policies";
@@ -88,5 +89,40 @@ describe("isStandingPolicyTargetKind", () => {
   it("has a display label for every kind and no orphan labels", () => {
     const labelKeys = Object.keys(STANDING_POLICY_TARGET_KIND_LABELS).sort();
     expect(labelKeys).toEqual([...STANDING_POLICY_TARGET_KIND].sort());
+  });
+});
+
+// #1550 — "a policy IS a standard change catalog item". The pure gate
+// `raisePolicyEnactmentChangeRequest` (policy-enactment.ts) reads its verdict
+// from: an enactment may proceed only when the policy is active AND its
+// bound catalog item is currently 'approved' — live facts, never cached.
+describe("evaluatePolicyEnactmentGate", () => {
+  it("passes when active with an approved catalog item", () => {
+    expect(evaluatePolicyEnactmentGate({ isActive: true, catalogItemId: 99, catalogItemStatus: "approved" })).toEqual({ ok: true });
+  });
+
+  it("fails closed when the policy is not active", () => {
+    const verdict = evaluatePolicyEnactmentGate({ isActive: false, catalogItemId: 99, catalogItemStatus: "approved" });
+    expect(verdict).toEqual({ ok: false, reason: "standing policy is not active" });
+  });
+
+  it("fails closed when no catalog item is bound", () => {
+    const verdict = evaluatePolicyEnactmentGate({ isActive: true, catalogItemId: null, catalogItemStatus: null });
+    expect(verdict).toEqual({ ok: false, reason: "standing policy has no bound catalog item" });
+  });
+
+  it("fails closed when the bound catalog item no longer exists", () => {
+    const verdict = evaluatePolicyEnactmentGate({ isActive: true, catalogItemId: 99, catalogItemStatus: null });
+    expect(verdict).toEqual({ ok: false, reason: "the catalog item bound to this policy no longer exists" });
+  });
+
+  it("fails closed — never cached — when the bound catalog item is only a draft", () => {
+    const verdict = evaluatePolicyEnactmentGate({ isActive: true, catalogItemId: 99, catalogItemStatus: "draft" });
+    expect(verdict).toEqual({ ok: false, reason: "the catalog item bound to this policy is 'draft', not 'approved'" });
+  });
+
+  it("fails closed — revocation stops future enactments cold — when the bound catalog item was revoked", () => {
+    const verdict = evaluatePolicyEnactmentGate({ isActive: true, catalogItemId: 99, catalogItemStatus: "revoked" });
+    expect(verdict).toEqual({ ok: false, reason: "the catalog item bound to this policy is 'revoked', not 'approved'" });
   });
 });

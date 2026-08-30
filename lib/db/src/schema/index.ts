@@ -2853,6 +2853,7 @@ export interface WfNode {
     | "msp_dunning_advance"
     | "msp_overage_meter"
     | "alert_evaluate_rules"
+    | "policy_evaluate_due"
     // Notifications & Alerts
     | "send_browser_notification"
     | "send_mobile_push"

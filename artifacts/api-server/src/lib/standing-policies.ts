@@ -69,3 +69,48 @@ export function toWireStandingPolicy(row: StandingPolicy): WireStandingPolicy {
     updatedAt: row.updatedAt.toISOString(),
   };
 }
+
+// ── #1550: the enactment gate, as a pure rule ────────────────────────────────
+//
+// "A policy IS a standard change catalog item." The verdict of whether ONE
+// enactment may proceed as an auto-approved standard change never depends on
+// anything but these two live facts — the policy's own `isActive` flag and its
+// bound catalog item's CURRENT `status` — so it is extracted as a pure rule the
+// same way `change-control-write-gate.ts`'s `evaluateChangeRequestAuthorization`
+// is: unit-testable in isolation, and the one place `lib/policy-enactment.ts`
+// (the actual CR raise, invoked from `sop-execution.ts`'s policy-enactment
+// path) reads the verdict from.
+
+/** The verdict of the pure enactment-gate rule. */
+export type PolicyEnactmentGateVerdict =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: string };
+
+/** The live facts the gate reasons over — nothing from a request, nothing cached. */
+export interface PolicyEnactmentGateFacts {
+  readonly isActive: boolean;
+  readonly catalogItemId: number | null;
+  /** The bound catalog item's CURRENT status, or null when it could not be loaded (e.g. deleted). */
+  readonly catalogItemStatus: string | null;
+}
+
+/**
+ * PURE — may a standing policy currently produce an auto-approved enactment?
+ * Fail-closed: every branch that is not an unambiguous yes returns a specific
+ * reason. Never reads a database; unit-tested in isolation.
+ */
+export function evaluatePolicyEnactmentGate(facts: PolicyEnactmentGateFacts): PolicyEnactmentGateVerdict {
+  if (!facts.isActive) {
+    return { ok: false, reason: "standing policy is not active" };
+  }
+  if (facts.catalogItemId === null) {
+    return { ok: false, reason: "standing policy has no bound catalog item" };
+  }
+  if (facts.catalogItemStatus === null) {
+    return { ok: false, reason: "the catalog item bound to this policy no longer exists" };
+  }
+  if (facts.catalogItemStatus !== "approved") {
+    return { ok: false, reason: `the catalog item bound to this policy is '${facts.catalogItemStatus}', not 'approved'` };
+  }
+  return { ok: true };
+}
