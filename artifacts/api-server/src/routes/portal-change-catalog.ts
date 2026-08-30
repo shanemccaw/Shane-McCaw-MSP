@@ -30,7 +30,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, changeCatalogItemsTable, configPacksTable, mspChangeRequestsTable } from "@workspace/db";
+import { db, changeCatalogItemsTable, configPacksTable, mspChangeRequestsTable, type InsertMspChangeRequest } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
@@ -170,7 +170,7 @@ router.post(
           description: `Raised from the standard change catalog: ${item.title}. Pre-approved — no CAB required.`,
           changeClass: "standard",
           riskLevel: item.riskLevel as "critical" | "high" | "medium" | "low",
-          category: item.category as typeof mspChangeRequestsTable.$inferInsert.category,
+          category: item.category as InsertMspChangeRequest["category"],
           targetResource: `Config pack: ${item.packKey}`,
           psaTicketId: "No ticket reference",
           requestedBy,
