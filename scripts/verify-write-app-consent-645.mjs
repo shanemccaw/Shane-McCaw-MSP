@@ -18,7 +18,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -36,16 +36,32 @@ function loadEnvLocal() {
 
 const env = loadEnvLocal();
 const TESTBED_TENANT = "c4c814d4-3afe-441e-9145-62461d0a4fd3";
-const WRITE_APP_ID = "3308b280-e41e-42ba-9f73-73aac2ad3dee"; // graph.ts REQUIRED_WRITE_APP_PERMISSIONS header
 const GRAPH_RESOURCE_APPID = "00000003-0000-0000-c000-000000000000"; // Microsoft Graph
 
-// What the code declares the write app REQUIRES (graph.ts REQUIRED_WRITE_APP_PERMISSIONS)
-const REQUIRED_WRITE_APP_PERMISSIONS = [
-  "Application.ReadWrite.All",
-  "Group.Create",
-  "RoleManagement.ReadWrite.Directory",
-  "User.ReadWrite.All", // #1328
-];
+// #1875 — this used to hardcode the PRODUCTION write app
+// (3308b280-e41e-42ba-9f73-73aac2ad3dee). Since #1812 gave local dev its own
+// registrations, `.env.local` points at the DEV write app instead, so the
+// hardcoded id meant this script cheerfully verified an app the local platform
+// never uses. Default to whatever the running config actually uses, and allow
+// an explicit override to check the other one:
+//     node scripts/verify-write-app-consent-645.mjs --app-id <appId>
+const argAppId = (() => {
+  const i = process.argv.indexOf("--app-id");
+  return i === -1 ? null : process.argv[i + 1] ?? null;
+})();
+const WRITE_APP_ID = argAppId ?? env.MT_APP_WRITE_CLIENT_ID;
+if (!WRITE_APP_ID) {
+  console.log("ABORT: MT_APP_WRITE_CLIENT_ID is not set in .env.local and no --app-id was given.");
+  process.exit(2);
+}
+
+// #1875 — and this used to duplicate the required list as a hardcoded array,
+// which then went stale the moment graph.ts changed (it still named 4 of the 16
+// permissions the packs actually need). Import the single source of truth so it
+// cannot drift again.
+const { DERIVED_WRITE_APP_PERMISSIONS: REQUIRED_WRITE_APP_PERMISSIONS } = await import(
+  pathToFileURL(join(__dirname, "..", "artifacts", "api-server", "src", "lib", "graph-write-permissions.ts")).href
+);
 
 async function tokenFor(tenant, clientId, clientSecret) {
   const params = new URLSearchParams({
