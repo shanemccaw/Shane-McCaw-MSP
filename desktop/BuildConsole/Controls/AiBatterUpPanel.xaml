@@ -51,38 +51,11 @@
             <ScrollViewer x:Name="RowsScroller" DockPanel.Dock="Top"
                           VerticalScrollBarVisibility="Auto"
                           MaxHeight="220">
-                <ItemsControl x:Name="RowsList" Margin="4,0,4,6">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1"
-                                    Padding="6,5">
-                                <StackPanel>
-                                    <TextBlock Text="{Binding HeaderText}"
-                                               FontSize="12" TextWrapping="Wrap"
-                                               Foreground="{StaticResource TextBrush}"/>
-                                    <TextBlock Text="{Binding DetailText}" FontSize="10.5"
-                                               Foreground="{StaticResource Subtext0Brush}"
-                                               TextWrapping="Wrap" Margin="0,2,0,4"/>
-                                    <StackPanel Orientation="Horizontal">
-                                        <Button Content="Yes" Padding="10,2" Margin="0,0,6,0"
-                                                Background="{StaticResource GreenBrush}"
-                                                Foreground="White" BorderThickness="0" Cursor="Hand"
-                                                ToolTip="Promote to Batter Up"
-                                                Tag="{Binding}" Click="BtnYes_Click"/>
-                                        <Button Content="No" Padding="10,2"
-                                                Background="{StaticResource Surface0Brush}"
-                                                Foreground="{StaticResource TextBrush}" BorderThickness="0" Cursor="Hand"
-                                                ToolTip="Decline to Backlog"
-                                                Tag="{Binding}" Click="BtnNo_Click"/>
-                                        <TextBlock Text="{Binding StatusText}" Margin="8,0,0,0"
-                                                   FontSize="10.5" VerticalAlignment="Center"
-                                                   Foreground="{StaticResource Subtext0Brush}"/>
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <!-- Git #1803 — cards are built in code-behind (BuildAiBatterUpCard), the same way
+                     BuildQueuePanel builds BuildQueueCard, so this row carries the exact same
+                     critter-avatar/card-border language, with Yes/No as real in-card footer
+                     actions instead of a DataTemplate text row with bare buttons. -->
+                <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
             </ScrollViewer>
 
             <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"

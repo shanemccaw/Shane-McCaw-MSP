@@ -7,15 +7,6 @@ using System.Windows.Media;
 
 namespace BuildConsole.Controls
 {
-    /// <summary>Git #1709 — one Batter Up row bound into <see cref="BatterUpPanel"/>'s list.</summary>
-    public class BatterUpRowVm
-    {
-        public string HeaderText { get; set; } = "";
-        public string DetailText { get; set; } = "";
-        public string StatusBadgeText { get; set; } = "";
-        public Brush StatusBadgeBrush { get; set; } = Brushes.Gray;
-    }
-
     /// <summary>
     /// Git #1709 — additive Batter Up panel. Polls the real project-board "Batter Up"
     /// status on a timer, parses each item's BUILD: comment, and auto-queues anything not
@@ -23,6 +14,10 @@ namespace BuildConsole.Controls
     /// (which itself calls the existing BuildQueuePostgresClient.QueueBuildAsync — the same
     /// pipeline Queue / Send to Builder use). Never touches BuildQueuePanel or its launch
     /// paths; this control only reads GitHub + writes new rows via the same queue client.
+    ///
+    /// Git #1803 — rows render via <see cref="BuildBatterUpCard"/>, the same card shell/
+    /// critter-mascot/status-pill pattern BuildQueuePanel's BuildQueueCard uses, instead of
+    /// a plain-text ItemsControl row.
     /// </summary>
     public partial class BatterUpPanel : UserControl
     {
@@ -62,7 +57,7 @@ namespace BuildConsole.Controls
             bool collapsed = BtnCollapse.IsChecked == true;
             RowsScroller.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
             TxtEmpty.Visibility = collapsed ? Visibility.Collapsed :
-                (RowsList.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed);
+                (RowsList.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed);
             BtnCollapse.Content = collapsed ? "▸" : "▾";
         }
 
@@ -76,7 +71,7 @@ namespace BuildConsole.Controls
                 if (!settings.HasGitHubPat)
                 {
                     TxtCount.Text = "";
-                    RowsList.ItemsSource = null;
+                    RowsList.Children.Clear();
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
                     return;
@@ -93,14 +88,15 @@ namespace BuildConsole.Controls
                 {
                     Services.ActivityLog.Log("batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
-                    RowsList.ItemsSource = null;
+                    RowsList.Children.Clear();
                     TxtEmpty.Text = $"Couldn't read Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
                     return;
                 }
 
-                var vms = rows.Select(ToVm).ToList();
-                RowsList.ItemsSource = vms;
+                RowsList.Children.Clear();
+                foreach (var row in rows)
+                    RowsList.Children.Add(BuildBatterUpCard(row));
                 TxtCount.Text = rows.Count == 0 ? "" : $"({rows.Count})";
 
                 bool anyVisible = BtnCollapse.IsChecked != true;
@@ -120,9 +116,50 @@ namespace BuildConsole.Controls
             }
         }
 
-        private static BatterUpRowVm ToVm(Services.BatterUpRow r)
+        /// <summary>
+        /// Git #1803 — one Batter Up row, built in the same card shape as
+        /// BuildQueuePanel.BuildQueueCard: status pill + issue-number badge on top, title,
+        /// blocked/model detail line, and the same critter mascot on the right (mood
+        /// Blocked when a real open blocker exists, Normal otherwise — "waiting to be
+        /// picked up", the same as a freshly queued item).
+        /// </summary>
+        private static Border BuildBatterUpCard(Services.BatterUpRow r)
         {
-            string header = $"#{r.Number} {r.Title}";
+            var card = BuildQueuePanel.BuildGenericCardShell(r.IsBlocked);
+
+            var mainStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+
+            var topRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
+            topRow.Children.Add(BuildStatusPill(r));
+
+            var numBadge = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x28, 0x29, 0x3D)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(5, 1.5, 5, 1.5),
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            numBadge.Child = new TextBlock
+            {
+                Text = Services.LocalBuildId.FormatRef(r.Number),
+                FontSize = 9.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.FindResource("PeachBrush")
+            };
+            topRow.Children.Add(numBadge);
+            mainStack.Children.Add(topRow);
+
+            mainStack.Children.Add(new TextBlock
+            {
+                Text = r.Title,
+                FontSize = 11.5,
+                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(1, 2, 1, 0)
+            });
+
             var detailParts = new List<string>();
             if (r.HasBuildComment)
             {
@@ -133,24 +170,61 @@ namespace BuildConsole.Controls
             {
                 detailParts.Add("no BUILD: comment — not auto-queued");
             }
-            if (r.IsBlocked)
-                detailParts.Add($"blocked by #{string.Join(", #", r.OpenBlockedByNumbers)}");
-
-            string badge;
-            Brush badgeBrush;
-            if (!r.HasBuildComment) { badge = "NO BUILD"; badgeBrush = (Brush)Application.Current.FindResource("Subtext0Brush"); }
-            else if (r.IsBlocked) { badge = "BLOCKED"; badgeBrush = (Brush)Application.Current.FindResource("RedBrush"); }
-            else if (r.JustAutoQueued) { badge = "QUEUED"; badgeBrush = (Brush)Application.Current.FindResource("GreenBrush"); }
-            else if (r.AlreadyTracked) { badge = "TRACKED"; badgeBrush = (Brush)Application.Current.FindResource("BlueBrush"); }
-            else { badge = ""; badgeBrush = Brushes.Transparent; }
-
-            return new BatterUpRowVm
+            mainStack.Children.Add(new TextBlock
             {
-                HeaderText = header,
-                DetailText = string.Join("  ·  ", detailParts),
-                StatusBadgeText = badge,
-                StatusBadgeBrush = badgeBrush,
-            };
+                Text = string.Join("  ·  ", detailParts),
+                FontSize = 10,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(1, 2, 0, 0)
+            });
+
+            if (r.IsBlocked)
+            {
+                mainStack.Children.Add(new TextBlock
+                {
+                    Text = $"waiting on #{string.Join(", #", r.OpenBlockedByNumbers)}",
+                    FontSize = 10,
+                    FontStyle = FontStyles.Italic,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
+                    Margin = new Thickness(1, 2, 0, 0)
+                });
+            }
+
+            var cardGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
+            cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            Grid.SetColumn(mainStack, 0);
+            cardGrid.Children.Add(mainStack);
+
+            var mood = r.IsBlocked ? BuildQueuePanel.CritterMood.Blocked
+                : r.JustAutoQueued ? BuildQueuePanel.CritterMood.Done
+                : BuildQueuePanel.CritterMood.Normal;
+            var mascot = BuildQueuePanel.CreateGenericCardMascot(r.Number, mood, r.IsBlocked);
+            Grid.SetColumn(mascot, 1);
+            cardGrid.Children.Add(mascot);
+
+            card.Child = cardGrid;
+            return card;
+        }
+
+        private static Border BuildStatusPill(Services.BatterUpRow r)
+        {
+            if (!r.HasBuildComment)
+                return BuildQueuePanel.BuildStatusPill("NO BUILD",
+                    Color.FromRgb(0x21, 0x22, 0x34), Color.FromRgb(0x6C, 0x70, 0x86), Color.FromRgb(0xBA, 0xB4, 0xCD));
+            if (r.IsBlocked)
+                return BuildQueuePanel.BuildStatusPill("🔒 BLOCKED",
+                    Color.FromRgb(0x3A, 0x1E, 0x26), Color.FromRgb(0xF3, 0x8B, 0xA8), Color.FromRgb(0xF3, 0x8B, 0xA8));
+            if (r.JustAutoQueued)
+                return BuildQueuePanel.BuildStatusPill("✨ QUEUED",
+                    Color.FromRgb(0x1C, 0x35, 0x27), Color.FromRgb(0xA6, 0xE3, 0xA1), Color.FromRgb(0xA6, 0xE3, 0xA1));
+            if (r.AlreadyTracked)
+                return BuildQueuePanel.BuildStatusPill("TRACKED",
+                    Color.FromRgb(0x1D, 0x2E, 0x45), Color.FromRgb(0x89, 0xB4, 0xFA), Color.FromRgb(0x89, 0xB4, 0xFA));
+            return BuildQueuePanel.BuildStatusPill("⏳ UP NEXT",
+                Color.FromRgb(0x21, 0x22, 0x34), Color.FromRgb(0x6C, 0x70, 0x86), Color.FromRgb(0xBA, 0xB4, 0xCD));
         }
     }
 }
