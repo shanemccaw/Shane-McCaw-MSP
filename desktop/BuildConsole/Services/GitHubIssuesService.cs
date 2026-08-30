@@ -285,9 +285,28 @@ namespace BuildConsole.Services
             }
         }
 
-        public static async Task<string?> GetIssueTitleAsync(int issueNumber)
+        /// <summary>
+        /// Result of a title lookup. <see cref="NotFound"/> is only true when `gh` itself reported
+        /// the number doesn't resolve to any issue/PR (GraphQL "Could not resolve to an issue or pull
+        /// request" — a permanent condition, safe to cache hard). Any other failure (couldn't start
+        /// the CLI, non-zero exit for a different reason, unparseable output) leaves <see cref="NotFound"/>
+        /// false so a transient blip (network/auth/rate-limit) doesn't get treated as a dead number —
+        /// see Git #1979.
+        /// </summary>
+        public readonly struct IssueTitleLookup
         {
-            if (!IsQueryableIssueNumber(issueNumber, "view")) return null;
+            public string? Title { get; }
+            public bool NotFound { get; }
+            public IssueTitleLookup(string? title, bool notFound)
+            {
+                Title = title;
+                NotFound = notFound;
+            }
+        }
+
+        public static async Task<IssueTitleLookup> GetIssueTitleAsync(int issueNumber)
+        {
+            if (!IsQueryableIssueNumber(issueNumber, "view")) return new IssueTitleLookup(null, false);
 
             var psi = new ProcessStartInfo
             {
@@ -313,15 +332,17 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log("github", $"Couldn't start gh CLI for issue #{issueNumber}: {ex.Message}");
-                return null;
+                return new IssueTitleLookup(null, false);
             }
             string stdout = await proc.StandardOutput.ReadToEndAsync();
             string stderr = await proc.StandardError.ReadToEndAsync();
             await proc.WaitForExitAsync();
             if (proc.ExitCode != 0)
             {
-                ActivityLog.Log("github", $"gh issue view #{issueNumber} failed (exit {proc.ExitCode}): {stderr.Trim()}");
-                return null;
+                var trimmedStderr = stderr.Trim();
+                ActivityLog.Log("github", $"gh issue view #{issueNumber} failed (exit {proc.ExitCode}): {trimmedStderr}");
+                bool notFound = trimmedStderr.Contains("Could not resolve to an issue", StringComparison.OrdinalIgnoreCase);
+                return new IssueTitleLookup(null, notFound);
             }
 
             try
@@ -329,14 +350,14 @@ namespace BuildConsole.Services
                 using var doc = System.Text.Json.JsonDocument.Parse(stdout);
                 if (doc.RootElement.TryGetProperty("title", out var titleProp))
                 {
-                    return titleProp.GetString();
+                    return new IssueTitleLookup(titleProp.GetString(), false);
                 }
-                return null;
+                return new IssueTitleLookup(null, false);
             }
             catch (Exception ex)
             {
                 ActivityLog.Log("github", $"Couldn't parse gh issue view output for #{issueNumber}: {ex.Message}");
-                return null;
+                return new IssueTitleLookup(null, false);
             }
         }
 

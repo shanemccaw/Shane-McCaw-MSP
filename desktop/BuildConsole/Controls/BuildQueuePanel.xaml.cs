@@ -133,6 +133,10 @@ namespace BuildConsole.Controls
         private int? _selectedQueueItemId;
         private static readonly Dictionary<int, string> _issueTitleCache = new();
         private static readonly HashSet<int> _pendingFetches = new();
+        /// <summary>Git #1979 — issue numbers `gh` has confirmed do not resolve to any issue/PR in this repo
+        /// (a permanent condition, not a transient network/auth/rate-limit blip). Checked alongside
+        /// `_issueTitleCache` so a known-bad number isn't re-queried via `gh issue view` on every refresh.</summary>
+        private static readonly HashSet<int> _unresolvableIssueNumbers = new();
 
         private const double IssueRowTitleReserve = 50;
         private const double MinIssueRowTitleWidth = 24;
@@ -4047,6 +4051,7 @@ namespace BuildConsole.Controls
             {
                 bool alreadyCached;
                 bool alreadyPending;
+                bool knownUnresolvable;
                 lock (_issueTitleCache)
                 {
                     alreadyCached = _issueTitleCache.ContainsKey(num);
@@ -4055,8 +4060,12 @@ namespace BuildConsole.Controls
                 {
                     alreadyPending = _pendingFetches.Contains(num);
                 }
+                lock (_unresolvableIssueNumbers)
+                {
+                    knownUnresolvable = _unresolvableIssueNumbers.Contains(num);
+                }
 
-                if (!alreadyCached && !alreadyPending)
+                if (!alreadyCached && !alreadyPending && !knownUnresolvable)
                 {
                     lock (_pendingFetches)
                     {
@@ -4071,18 +4080,30 @@ namespace BuildConsole.Controls
         {
             try
             {
-                var title = await Services.GitHubIssuesService.GetIssueTitleAsync(issueNumber);
-                if (title != null)
+                var result = await Services.GitHubIssuesService.GetIssueTitleAsync(issueNumber);
+                if (result.Title != null)
                 {
                     lock (_issueTitleCache)
                     {
-                        _issueTitleCache[issueNumber] = title;
+                        _issueTitleCache[issueNumber] = result.Title;
                     }
                     _ = Dispatcher.BeginInvoke(new Action(() =>
                     {
                         UpdateTooltipForIssue(issueNumber);
                     }));
                 }
+                else if (result.NotFound)
+                {
+                    // Git #1979 — `gh` confirmed this number doesn't resolve to anything in this repo.
+                    // Cache it hard so it isn't re-spawned as a `gh issue view` process on every refresh.
+                    lock (_unresolvableIssueNumbers)
+                    {
+                        _unresolvableIssueNumbers.Add(issueNumber);
+                    }
+                }
+                // else: transient failure (couldn't start gh, non-zero exit for another reason, bad
+                // output) — deliberately NOT cached, so it's retried on the next refresh rather than
+                // permanently blanking a real title on a network/auth/rate-limit blip.
             }
             catch (Exception ex)
             {
