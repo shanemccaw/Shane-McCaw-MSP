@@ -705,7 +705,17 @@
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
-         SCROLL BAR — thin (8 px) dark rounded thumb, no arrows
+         SCROLL BAR — dark rounded thumb, no arrows
+         Git #1831 — was Width=8 with 2px of template padding cutting into
+         that further (~4px of actual grabbable thumb), too thin to reliably
+         click/drag, especially on a multi-monitor setup where missing it by
+         a pixel clicks through onto the adjacent monitor. Widened to 14px
+         overall. The visible pill stays slim (Width="8", unchanged) inside
+         an outer transparent Border that fills the whole 14px track — that
+         outer Border is what Thumb hit-tests against (WPF hit-tests any
+         Border with a non-null Background, including Transparent), so the
+         real grab/hover area is the full track width even though the color
+         pill drawn inside it still looks the same slim width as before.
          ══════════════════════════════════════════════════════════════════ -->
     <Style x:Key="SbThumbStyle" TargetType="{x:Type Thumb}">
         <Setter Property="OverridesDefaultStyle" Value="True"/>
@@ -713,7 +723,35 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type Thumb}">
-                    <Border x:Name="Bd" Background="{StaticResource Surface2Brush}" CornerRadius="4" Opacity="0.5"/>
+                    <Border Background="Transparent">
+                        <Border x:Name="Bd" Background="{StaticResource Surface2Brush}" CornerRadius="4" Opacity="0.5" Width="8" HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.8"/>
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Bd" Property="Opacity"    Value="1.0"/>
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource BlueBrush}"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Horizontal counterpart of SbThumbStyle above — same outer-transparent/
+         inner-slim-pill trick, just rotated (Height="8" instead of Width="8",
+         stretch horizontally instead of vertically). -->
+    <Style x:Key="SbThumbHorizontalStyle" TargetType="{x:Type Thumb}">
+        <Setter Property="OverridesDefaultStyle" Value="True"/>
+        <Setter Property="IsTabStop"             Value="False"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type Thumb}">
+                    <Border Background="Transparent">
+                        <Border x:Name="Bd" Background="{StaticResource Surface2Brush}" CornerRadius="4" Opacity="0.5" Height="8" VerticalAlignment="Center" HorizontalAlignment="Stretch"/>
+                    </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="Bd" Property="Opacity" Value="0.8"/>
@@ -743,8 +781,8 @@
 
     <Style TargetType="{x:Type ScrollBar}">
         <Setter Property="OverridesDefaultStyle" Value="True"/>
-        <Setter Property="Width"      Value="8"/>
-        <Setter Property="MinWidth"   Value="8"/>
+        <Setter Property="Width"      Value="14"/>
+        <Setter Property="MinWidth"   Value="14"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -767,8 +805,8 @@
         </Setter>
         <Style.Triggers>
             <Trigger Property="Orientation" Value="Horizontal">
-                <Setter Property="Height"    Value="8"/>
-                <Setter Property="MinHeight" Value="8"/>
+                <Setter Property="Height"    Value="14"/>
+                <Setter Property="MinHeight" Value="14"/>
                 <Setter Property="Width"     Value="Auto"/>
                 <Setter Property="Template">
                     <Setter.Value>
@@ -779,7 +817,7 @@
                                         <RepeatButton Command="ScrollBar.PageLeftCommand" Style="{StaticResource SbPageButtonStyle}"/>
                                     </Track.DecreaseRepeatButton>
                                     <Track.Thumb>
-                                        <Thumb Style="{StaticResource SbThumbStyle}" MinWidth="20"/>
+                                        <Thumb Style="{StaticResource SbThumbHorizontalStyle}" MinWidth="20"/>
                                     </Track.Thumb>
                                     <Track.IncreaseRepeatButton>
                                         <RepeatButton Command="ScrollBar.PageRightCommand" Style="{StaticResource SbPageButtonStyle}"/>

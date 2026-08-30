@@ -941,8 +941,15 @@
                               VerticalAlignment="Stretch"
                               ShowsPreview="False"/>
 
-                <!-- ── Build Queue column: AI Batter Up review (Git #1710) + Batter Up (Git #1709) above the existing Build Queue Panel ── -->
-                <DockPanel Grid.Column="5" LastChildFill="True">
+                <!-- ── Build Queue column: AI Batter Up review (Git #1710) + Batter Up (Git #1709) above the existing Build Queue Panel ──
+                     Git #1831 - Margin="0,0,8,0" pulls the whole column (and its outer
+                     scrollbar) 8px in from the literal window right edge, which the
+                     scrollbar previously rendered flush against - confirmed via
+                     UIAutomation (ScrollViewer BoundingRectangle right edge landed
+                     exactly on the window's right edge, 0px of buffer). On a
+                     multi-monitor setup a slightly-off click used to pass straight
+                     through onto the adjacent monitor; now it lands on this panel. -->
+                <DockPanel Grid.Column="5" LastChildFill="True" Margin="0,0,8,0">
                     <ctrl:DispatchPanel x:Name="DispatchPanel" DockPanel.Dock="Top"/>
                     <ctrl:AiBatterUpPanel x:Name="AiBatterUpPanel" DockPanel.Dock="Top"/>
                     <ctrl:BatterUpPanel x:Name="BatterUpPanel" DockPanel.Dock="Top"/>
