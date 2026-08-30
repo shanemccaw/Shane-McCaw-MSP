@@ -72,7 +72,7 @@ namespace BuildConsole.Controls
         private Services.BuildQueuePostgresClient? _db;
         private DispatcherTimer? _pollTimer;
         private List<QueueItem> _lastItems = new();
-        private string _filter = "Active";
+        private string _filter = "Running";
         private readonly HashSet<int> _manuallyHiddenQueueIds = new();
         private int? _selectedQueueItemId;
         private static readonly Dictionary<int, string> _issueTitleCache = new();
@@ -731,9 +731,9 @@ namespace BuildConsole.Controls
         ///
         /// Deliberately walks the FULL <paramref name="items"/> list from RefreshAsync — not the
         /// filtered list RenderQueue's header loop groups into buildSetBuckets — because the
-        /// default "Active" filter drops "done" items entirely; grouping off the filtered view
+        /// default "Running" filter drops "done" items entirely; grouping off the filtered view
         /// would mean a finished priority set's bucket goes empty and this would never fire while
-        /// Shane is looking at the normal Active tab.
+        /// Shane is looking at the normal Running tab.
         /// </summary>
         private void CheckPriorityBuildSetCompletion(List<QueueItem> items)
         {
@@ -918,12 +918,18 @@ namespace BuildConsole.Controls
 
         private List<QueueItem> ApplyFilter(List<QueueItem> items) => _filter switch
         {
-            // Git #1469 — "verifying" (session done, real GitHub issue not yet closed)
-            // stays visible here too, not archived into Done — that's the whole point.
-            "Active"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
+            // Git #1829 — split from the old combined "Active" filter. "Running" = a build
+            // that's actively executing or wrapping up: real running work plus "verifying"
+            // (session done, real GitHub issue not yet closed — Git #1469 — stays visible
+            // here, not archived into Done, since it's still visually "in motion" work).
+            "Running"  => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "running" or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
+            // Git #1829 — "Queued" = genuinely not executing right now: real queued rows plus
+            // limit-paused (Git #1600 — same practical meaning as queued even though the DB
+            // status string differs, waiting to resume later rather than in flight).
+            "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus)).ToList(),
             // Git #1638 — the Park staging area: a "parked" row is deliberately excluded from
-            // "Active" above (the watcher's claim query never picks it up either — that's the
-            // whole point of a staging spot), so it needs its own filter to be findable at all.
+            // Running/Queued above (the watcher's claim query never picks it up either — that's
+            // the whole point of a staging spot), so it needs its own filter to be findable at all.
             "Parked"   => items.Where(i => i.Status == "parked" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
             // Git #1638 — "Send to Builder" tracking rows: never claimable, never in the 8-slot
             // grid, but still real rows that should be findable rather than lost.
@@ -951,7 +957,8 @@ namespace BuildConsole.Controls
 
             string targetFilter = item.Status switch
             {
-                "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus => "Active",
+                "running" or BuildQueuePostgresClient.VerifyingStatus                              => "Running",
+                "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus               => "Queued",
                 "parked"              => "Parked",
                 "external"            => "External",
                 "done"                => "Done",
@@ -986,7 +993,7 @@ namespace BuildConsole.Controls
         private void QueueFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (QueueFilterCombo.SelectedItem is not ComboBoxItem selected) return;
-            _filter = selected.Tag as string ?? "Active";
+            _filter = selected.Tag as string ?? "Running";
             if (QueueGraphContainer == null) return;
 
             if (_filter == "Tests") RenderTestsTree();
@@ -1212,7 +1219,8 @@ namespace BuildConsole.Controls
                 ? $"No queued item matches #{search}."
                 : _filter switch
                 {
-                    "Active"   => "Nothing queued or running.",
+                    "Running"  => "Nothing running.",
+                    "Queued"   => "Nothing queued.",
                     "Done"     => "Nothing done yet.",
                     "Canceled" => "Nothing canceled.",
                     _          => "Queue is empty.",

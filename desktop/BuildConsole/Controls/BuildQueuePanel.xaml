@@ -325,9 +325,14 @@
                                       Margin="0,0,0,8"
                                       SelectedIndex="0"
                                       SelectionChanged="QueueFilterCombo_SelectionChanged">
-                                <ComboBoxItem Content="Queued &amp; Running" Tag="Active"/>
+                                <!-- Git #1829 — split from the old combined "Queued & Running"
+                                     entry: Running = running + VerifyingStatus (still visually
+                                     "in motion" work), Queued = queued + LimitPausedStatus
+                                     (genuinely not executing right now, waiting to resume). -->
+                                <ComboBoxItem Content="Running" Tag="Running"/>
+                                <ComboBoxItem Content="Queued"  Tag="Queued"/>
                                 <!-- Git #1638 — the Park staging area: never shown under
-                                     "Queued &amp; Running" (that's the whole point of a
+                                     Running/Queued (that's the whole point of a
                                      staging spot the watcher can't pick up), only here. -->
                                 <ComboBoxItem Content="Parked"               Tag="Parked"/>
                                 <!-- Git #1638 — "Send to Builder" launches tracked purely
