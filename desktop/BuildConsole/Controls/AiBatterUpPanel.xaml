@@ -15,102 +15,121 @@
 
         Git #1872 — this control now lives ONLY inside its own document tab (moved out of
         the narrow queue column entirely; MainWindow hoists a single instance as a field —
-        see MainWindow.BatterUpTabs.cs). The old MaxHeight="260" root cap and RowsScroller's
-        MaxHeight="220" existed only to keep this readable stacked in that narrow column;
-        with no column context left to preserve, they're gone. RowsScroller is now the
-        DockPanel's un-docked last child, so it fills the whole document tab and scrolls
-        internally — the 220px-scroller-for-45-rows problem this issue exists to fix.
+        see MainWindow.BatterUpTabs.cs).
+
+        Shane, 2026-08-30 — two real problems with that document-tab form: (1) it opened
+        with the rows list collapsed behind the leftover BtnCollapse toggle (a holdover
+        from the narrow docked-column days, never actually needed once #1872 gave this its
+        own full tab) — fixed by removing the toggle outright, RowsScroller is now always
+        visible; (2) "left side being smaller than the right... right side having the
+        GitHub issue details right where I can read what it's talking about directly" —
+        added a second column (same 1*/Auto-splitter/2* recipe GraphApiDocumentView already
+        uses) hosting a real IssueDetailView (the same Git #840 "read description/comments
+        directly" control the Git Board's detail tabs use), wired in code-behind
+        (SelectCard) to load whichever row was last clicked — auto-selecting the first row
+        on refresh so the pane is never blank.
     -->
-    <Border Background="{StaticResource MantleBrush}"
-            BorderBrush="{StaticResource Surface0Brush}"
-            BorderThickness="0,0,0,1">
-        <DockPanel LastChildFill="True">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1*" MinWidth="240"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="2*" MinWidth="320"/>
+        </Grid.ColumnDefinitions>
 
-            <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing is now
-                 the Build Queue header's single shared icon (BuildQueuePanel.xaml
-                 BtnRefreshGitHubTiles), which cascades here via BoardRefreshCompleted
-                 (#1813). TxtCount also carries the "no items" empty-state note inline now,
-                 so an empty panel never grows past this one header row.
+        <Border Grid.Column="0"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,1,0">
+            <DockPanel LastChildFill="True">
 
-                 Git #1863 — TxtFilter fits into this same column-1 slot next to TxtCount
-                 (same overlay-placeholder trick as the Build Queue's #950 QueueSearchBox,
-                 shrunk down since there's no row to spare here). It's display-only — see
-                 TxtFilter_TextChanged — and is hidden whenever TxtCount reads "none open"
-                 (RefreshAsync) so an empty panel doesn't reserve space for a box with
-                 nothing to filter. -->
-            <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+                <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing is now
+                     the Build Queue header's single shared icon (BuildQueuePanel.xaml
+                     BtnRefreshGitHubTiles), which cascades here via BoardRefreshCompleted
+                     (#1813). TxtCount also carries the "no items" empty-state note inline now,
+                     so an empty panel never grows past this one header row.
 
-                <TextBlock Grid.Column="0" Text="🔍 AI Batter Up"
-                           FontWeight="SemiBold" FontSize="13"
-                           Foreground="{StaticResource TextBrush}"
-                           VerticalAlignment="Center"/>
+                     Git #1863 — TxtFilter fits into this same column-1 slot next to TxtCount
+                     (same overlay-placeholder trick as the Build Queue's #950 QueueSearchBox,
+                     shrunk down since there's no row to spare here). It's display-only — see
+                     TxtFilter_TextChanged — and is hidden whenever TxtCount reads "none open"
+                     (RefreshAsync) so an empty panel doesn't reserve space for a box with
+                     nothing to filter. -->
+                <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-                <DockPanel Grid.Column="1" Margin="8,0,0,0" LastChildFill="False">
-                    <TextBlock x:Name="TxtCount" DockPanel.Dock="Right"
-                               Foreground="{StaticResource Subtext0Brush}" FontSize="11"
-                               VerticalAlignment="Center" Text=""/>
+                    <TextBlock Grid.Column="0" Text="🔍 AI Batter Up"
+                               FontWeight="SemiBold" FontSize="13"
+                               Foreground="{StaticResource TextBrush}"
+                               VerticalAlignment="Center"/>
 
-                    <Grid x:Name="FilterBoxHost" DockPanel.Dock="Left" Margin="0,0,6,0"
-                          Visibility="Collapsed">
-                        <TextBox x:Name="TxtFilter"
-                                 Width="70" Height="18"
-                                 Padding="4,0,4,0" FontSize="10.5"
-                                 VerticalContentAlignment="Center"
-                                 Background="{StaticResource Surface0Brush}"
-                                 TextChanged="TxtFilter_TextChanged"/>
-                        <TextBlock IsHitTestVisible="False"
-                                   Text="Search #"
-                                   FontSize="10.5"
-                                   Margin="5,0,0,0"
-                                   VerticalAlignment="Center"
-                                   HorizontalAlignment="Left"
-                                   Foreground="{StaticResource Subtext1Brush}">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Text, ElementName=TxtFilter}" Value="">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Grid>
-                </DockPanel>
+                    <DockPanel Grid.Column="1" Margin="8,0,0,0" LastChildFill="False">
+                        <TextBlock x:Name="TxtCount" DockPanel.Dock="Right"
+                                   Foreground="{StaticResource Subtext0Brush}" FontSize="11"
+                                   VerticalAlignment="Center" Text=""/>
 
-                <ToggleButton x:Name="BtnCollapse" Grid.Column="2"
-                              Style="{StaticResource ExpandCollapseToggleStyle}"
-                              Cursor="Hand"
-                              IsChecked="True" Click="BtnCollapse_Click"/>
-            </Grid>
+                        <Grid x:Name="FilterBoxHost" DockPanel.Dock="Left" Margin="0,0,6,0"
+                              Visibility="Collapsed">
+                            <TextBox x:Name="TxtFilter"
+                                     Width="70" Height="18"
+                                     Padding="4,0,4,0" FontSize="10.5"
+                                     VerticalContentAlignment="Center"
+                                     Background="{StaticResource Surface0Brush}"
+                                     TextChanged="TxtFilter_TextChanged"/>
+                            <TextBlock IsHitTestVisible="False"
+                                       Text="Search #"
+                                       FontSize="10.5"
+                                       Margin="5,0,0,0"
+                                       VerticalAlignment="Center"
+                                       HorizontalAlignment="Left"
+                                       Foreground="{StaticResource Subtext1Brush}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, ElementName=TxtFilter}" Value="">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </DockPanel>
+                </Grid>
 
-            <!-- Git #1816 — reserved only for the rarer no-PAT/error messages now; the plain
-                 "zero items" case is shown inline in TxtCount above instead, so the common
-                 empty state no longer reserves this block's own margin/wrap space. -->
-            <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"
-                       Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
-                       TextWrapping="Wrap" Text=""
-                       Visibility="Collapsed"/>
+                <!-- Git #1816 — reserved only for the rarer no-PAT/error messages now; the plain
+                     "zero items" case is shown inline in TxtCount above instead, so the common
+                     empty state no longer reserves this block's own margin/wrap space. -->
+                <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"
+                           Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
+                           TextWrapping="Wrap" Text=""
+                           Visibility="Collapsed"/>
 
-            <!-- Git #1872 — no DockPanel.Dock: as the DockPanel's last child (LastChildFill="True")
-                 this fills the whole document tab instead of being capped to a fixed height, so it
-                 scrolls internally over the tab's real available space. -->
-            <ScrollViewer x:Name="RowsScroller"
-                          VerticalScrollBarVisibility="Auto"
-                          Visibility="Collapsed">
-                <!-- Git #1803 — cards are built in code-behind (BuildAiBatterUpCard), the same way
-                     BuildQueuePanel builds BuildQueueCard, so this row carries the exact same
-                     critter-avatar/card-border language, with Yes/No as real in-card footer
-                     actions instead of a DataTemplate text row with bare buttons. -->
-                <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
-            </ScrollViewer>
+                <!-- Git #1872 — no DockPanel.Dock: as the DockPanel's last child (LastChildFill="True")
+                     this fills the whole document tab instead of being capped to a fixed height, so it
+                     scrolls internally over the tab's real available space. Shane, 2026-08-30 — always
+                     visible now; the old BtnCollapse toggle that hid this behind a click is gone. -->
+                <ScrollViewer x:Name="RowsScroller"
+                              VerticalScrollBarVisibility="Auto">
+                    <!-- Git #1803 — cards are built in code-behind (BuildAiBatterUpCard), the same way
+                         BuildQueuePanel builds BuildQueueCard, so this row carries the exact same
+                         critter-avatar/card-border language, with Yes/No as real in-card footer
+                         actions instead of a DataTemplate text row with bare buttons. -->
+                    <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
+                </ScrollViewer>
 
-        </DockPanel>
-    </Border>
+            </DockPanel>
+        </Border>
+
+        <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                      Background="{StaticResource Surface0Brush}"/>
+
+        <!-- Shane, 2026-08-30 — the same Git #840 issue-detail control the Git Board's detail
+             tabs use (real description + comments, GitHubApiClient.GetIssueAsync/GetIssueCommentsAsync),
+             wired here instead to whichever row was last clicked (see SelectCard). -->
+        <local:IssueDetailView x:Name="DetailPane" Grid.Column="2"/>
+    </Grid>
 </UserControl>

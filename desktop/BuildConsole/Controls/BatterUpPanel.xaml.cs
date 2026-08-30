@@ -30,11 +30,14 @@ namespace BuildConsole.Controls
         private Services.BuildQueuePostgresClient? _db;
         private bool _refreshing;
 
-        // Git #1816 — TxtEmpty is now reserved for the rarer no-PAT/error messages only
-        // (the plain "zero rows" case shows inline in TxtCount instead); this tracks
-        // whether TxtEmpty currently holds one of those real messages, so BtnCollapse_Click
-        // can restore/hide it correctly without re-deriving it from row count.
-        private bool _emptyMessageActive;
+        // Shane, 2026-08-30 — the right-column IssueDetailView tracks whichever row was
+        // last clicked (SelectCard). _selectedNumber survives a RefreshAsync rebuild (cards
+        // are rebuilt fresh every call) so the same issue re-highlights instead of silently
+        // reverting to "no selection"; _selectedCard/_selectedCardOriginalBrush let a plain
+        // click swap the highlight without a full rebuild.
+        private int? _selectedNumber;
+        private Border? _selectedCard;
+        private Brush? _selectedCardOriginalBrush;
 
         /// <summary>Fired after a refresh pass auto-queued one or more rows, so MainWindow can
         /// tell the sibling BuildQueuePanel to repaint — same "best-effort visual refresh"
@@ -69,14 +72,6 @@ namespace BuildConsole.Controls
         public void Initialize(Services.BuildQueuePostgresClient? db)
         {
             _db = db;
-        }
-
-        private void BtnCollapse_Click(object sender, RoutedEventArgs e)
-        {
-            bool collapsed = BtnCollapse.IsChecked == true;
-            RowsScroller.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-            TxtEmpty.Visibility = (!collapsed && _emptyMessageActive) ? Visibility.Visible : Visibility.Collapsed;
-            BtnCollapse.Content = collapsed ? "▸" : "▾";
         }
 
         /// <summary>
@@ -175,7 +170,6 @@ namespace BuildConsole.Controls
                 {
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
-                    _emptyMessageActive = true;
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
                     SetCount(0);
@@ -212,7 +206,6 @@ namespace BuildConsole.Controls
                     Services.ActivityLog.Log("batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
-                    _emptyMessageActive = true;
                     TxtEmpty.Text = $"Couldn't read Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
                     SetCount(0);
@@ -220,8 +213,24 @@ namespace BuildConsole.Controls
                 }
 
                 RowsList.Children.Clear();
+                // Cards are rebuilt fresh below — the old Border instance _selectedCard
+                // points at is gone; _selectedNumber is what survives, re-applied to
+                // whichever new card matches (or the top row, if nothing was selected yet).
+                _selectedCard = null;
+                _selectedCardOriginalBrush = null;
+                Border? toSelect = null;
+                int toSelectNumber = 0;
                 foreach (var row in rows)
-                    RowsList.Children.Add(BuildBatterUpCard(row));
+                {
+                    var card = BuildBatterUpCard(row);
+                    RowsList.Children.Add(card);
+                    if (row.Number == _selectedNumber || (toSelect == null && _selectedNumber == null))
+                    {
+                        toSelect = card;
+                        toSelectNumber = row.Number;
+                    }
+                }
+                if (toSelect != null) SelectCard(toSelect, toSelectNumber);
 
                 // Git #1816 — the "zero rows" empty state reads inline in the header's
                 // TxtCount instead of the separate TxtEmpty block, so an empty panel's
@@ -230,7 +239,6 @@ namespace BuildConsole.Controls
                 // Shane never assumes builds are flowing when they aren't.
                 string mode = freeFlow ? "free flow" : "gated";
                 TxtCount.Text = rows.Count == 0 ? $"— none · {mode}" : $"({rows.Count}) · {mode}";
-                _emptyMessageActive = false;
                 TxtEmpty.Visibility = Visibility.Collapsed;
                 SetCount(rows.Count);
 
@@ -361,7 +369,32 @@ namespace BuildConsole.Controls
             cardGrid.Children.Add(mascot);
 
             card.Child = cardGrid;
+
+            // Shane, 2026-08-30 — click anywhere on the card (that isn't the Queue button —
+            // ButtonBase already marks its own MouseLeftButtonUp Handled, so this bubbling
+            // handler never fires for that) to load it into DetailPane.
+            card.Cursor = System.Windows.Input.Cursors.Hand;
+            card.MouseLeftButtonUp += (_, _) => SelectCard(card, r.Number);
+
             return card;
+        }
+
+        /// <summary>
+        /// Highlights <paramref name="card"/> (restoring whatever card was previously
+        /// selected to its normal border) and loads its issue into the right-hand
+        /// <see cref="DetailPane"/>. Shared by a plain row click and the auto-select
+        /// RefreshAsync does on every refresh.
+        /// </summary>
+        private void SelectCard(Border card, int number)
+        {
+            if (_selectedCard != null && _selectedCard != card)
+                _selectedCard.BorderBrush = _selectedCardOriginalBrush ?? _selectedCard.BorderBrush;
+
+            if (_selectedCard != card) _selectedCardOriginalBrush = card.BorderBrush;
+            card.BorderBrush = (Brush)Application.Current.FindResource("BlueBrush");
+            _selectedCard = card;
+            _selectedNumber = number;
+            DetailPane.LoadIssue(number);
         }
 
         private static Border BuildStatusPill(Services.BatterUpRow r)
