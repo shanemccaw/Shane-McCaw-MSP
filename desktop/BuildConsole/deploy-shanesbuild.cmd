@@ -1,5 +1,5 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
 set "PROJECT_DIR=%~dp0"
 set "PROJECT_DIR_NOSLASH=%~dp0"
@@ -7,24 +7,63 @@ if "%PROJECT_DIR_NOSLASH:~-1%"=="\" set "PROJECT_DIR_NOSLASH=%PROJECT_DIR_NOSLAS
 set "CONFIG=Release"
 set "BUILD_OUT=%PROJECT_DIR%bin\%CONFIG%\net8.0-windows"
 set "OUT_DIR=%PROJECT_DIR%bin\ShanesBuild"
+set "NOTIFY_PS1=%~dp0deploy-shanesbuild-notify.ps1"
+set "CLAUDE_EXE=%USERPROFILE%\.local\bin\claude.exe"
 
+REM Any failure below shows a dismissable dialog before exiting instead of
+REM letting the console window just vanish (that was the original complaint —
+REM the message was there in the console output, but the window closed before
+REM anyone could read it).
+
+set "GIT_CLEAN_FIX_TRIED=0"
+set "GIT_MERGE_FIX_TRIED=0"
+
+:CHECK_CLEAN
 echo === Checking working tree is clean ===
-for /f "delims=" %%S in ('git -C "%PROJECT_DIR_NOSLASH%" status --porcelain') do (
-  echo Working tree at %PROJECT_DIR% is dirty. Refusing to build over uncommitted changes.
-  echo Commit, stash elsewhere, or discard the change, then re-run.
+set "DIRTY="
+for /f "delims=" %%S in ('git -C "%PROJECT_DIR_NOSLASH%" status --porcelain 2^>nul') do set "DIRTY=1"
+if defined DIRTY (
+  if "%GIT_CLEAN_FIX_TRIED%"=="0" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -YesNo -Title "ShanesBuild Deploy - Git issue" -Message "Working tree at %PROJECT_DIR% is dirty - refusing to build over uncommitted changes. Spawn Claude Code to fix it automatically?"
+    if not errorlevel 1 (
+      set "GIT_CLEAN_FIX_TRIED=1"
+      echo === Spawning Claude Code to fix the dirty working tree ===
+      if exist "%CLAUDE_EXE%" (
+        "%CLAUDE_EXE%" --permission-mode auto --print --output-format text -- "The working tree at %PROJECT_DIR_NOSLASH% is dirty (uncommitted or untracked changes), which is blocking a ShanesBuild deploy (deploy-shanesbuild.cmd refuses to build over a dirty tree). Investigate what changed, then follow this repo's own CLAUDE.md git conventions ('Leave the working tree clean') to resolve it: commit and push any genuine work of yours, git checkout -- any accidental/scratch edits, or delete (and .gitignore if it will recur) stray untracked files - whichever is actually appropriate for what you find. Do not force-discard anything you did not create without first understanding what it is. When done, git status --porcelain at that path must be empty."
+      ) else (
+        echo claude.exe not found at %CLAUDE_EXE% - cannot auto-fix.
+      )
+      goto CHECK_CLEAN
+    )
+  )
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "Working tree at %PROJECT_DIR% is still dirty. Commit, stash elsewhere, or discard the change, then re-run deploy-shanesbuild.cmd."
   exit /b 1
 )
 
 echo === Pulling latest from origin/main ===
 git -C "%PROJECT_DIR_NOSLASH%" fetch origin main
 if errorlevel 1 (
-  echo git fetch failed. Aborting deploy.
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "git fetch origin main failed at %PROJECT_DIR%. Check network/auth, then re-run deploy-shanesbuild.cmd."
   exit /b 1
 )
+
+:CHECK_MERGE
 git -C "%PROJECT_DIR_NOSLASH%" merge --ff-only origin/main
 if errorlevel 1 (
-  echo Local history has diverged from origin/main and cannot fast-forward. Aborting deploy.
-  echo Resolve manually ^(rebase/merge^) in the main checkout, then re-run.
+  if "%GIT_MERGE_FIX_TRIED%"=="0" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -YesNo -Title "ShanesBuild Deploy - Git issue" -Message "Local history at %PROJECT_DIR% has diverged from origin/main and cannot fast-forward. Spawn Claude Code to fix it automatically?"
+    if not errorlevel 1 (
+      set "GIT_MERGE_FIX_TRIED=1"
+      echo === Spawning Claude Code to fix the diverged history ===
+      if exist "%CLAUDE_EXE%" (
+        "%CLAUDE_EXE%" --permission-mode auto --print --output-format text -- "The local main branch at %PROJECT_DIR_NOSLASH% has diverged from origin/main and 'git merge --ff-only origin/main' just failed there, which is blocking a ShanesBuild deploy (deploy-shanesbuild.cmd requires a clean fast-forward). Reconcile it per this repo's own CLAUDE.md git conventions - commit directly to main, no new branches - by rebasing or merging onto the current origin/main and pushing, so a plain 'git merge --ff-only origin/main' would succeed afterward. If you find uncommitted work of your own in the process, commit and push it first; leave anything you did not create alone. Confirm the branch is genuinely an ancestor of/equal to origin/main when done."
+      ) else (
+        echo claude.exe not found at %CLAUDE_EXE% - cannot auto-fix.
+      )
+      goto CHECK_MERGE
+    )
+  )
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "Local history at %PROJECT_DIR% has diverged from origin/main and cannot fast-forward. Resolve manually (rebase/merge) in the main checkout, then re-run deploy-shanesbuild.cmd."
   exit /b 1
 )
 
@@ -37,7 +76,7 @@ if exist "%PROJECT_DIR%obj" rmdir /s /q "%PROJECT_DIR%obj"
 echo === Building BuildConsole (%CONFIG%) ===
 dotnet build "%PROJECT_DIR%BuildConsole.csproj" -c %CONFIG%
 if errorlevel 1 (
-  echo Build failed. Aborting deploy.
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "dotnet build failed for %PROJECT_DIR%BuildConsole.csproj (%CONFIG%). See the console output above for the real compiler error, fix it, then re-run deploy-shanesbuild.cmd."
   exit /b 1
 )
 
@@ -48,7 +87,7 @@ powershell -NoProfile -Command ^
 echo === Deploying to %OUT_DIR% ===
 robocopy "%BUILD_OUT%" "%OUT_DIR%" /E
 if %ERRORLEVEL% GEQ 8 (
-  echo Deploy failed - robocopy exit code %ERRORLEVEL%.
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "Deploy failed - robocopy exit code %ERRORLEVEL% copying %BUILD_OUT% to %OUT_DIR%."
   exit /b 1
 )
 
