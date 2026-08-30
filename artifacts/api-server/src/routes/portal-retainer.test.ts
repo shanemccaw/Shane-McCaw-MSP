@@ -11,10 +11,13 @@
  * And the scope guard: a session with no `customerId` claim gets 400, never a
  * DB read for someone else's ledger.
  *
- * Also covers `statusReports` (Git #1410) — scoped via `resolveSiblingUserIds`
- * (the users.id bridge, a DIFFERENT id space from `resolveCustomerId`'s
- * tenants.id used for settings/entries above), and filtered to
- * `reportStatus: "sent"` only.
+ * Also covers `statusReports` (Git #1410, id-space settled by #1589) — it is
+ * user-scoped (`status_reports.clientUserId` is a `users.id`), but the users.id
+ * set is now derived from the SAME `customerId` (tenants.id) that scopes
+ * settings/entries above, via `resolveCustomerUserIds(customerId)` — one tenant
+ * resolution for the whole route, not a second independent one off
+ * `req.user!.id`. Filtered to `reportStatus: "sent"` only. An unclaimed customer
+ * (empty users.id set) does no status_reports DB read at all and returns `[]`.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -68,9 +71,9 @@ vi.mock("../lib/portal-customer-scope", () => ({
   resolveCustomerId: (req: any) => req.user?.customerId ?? null,
 }));
 
-const mockResolveSiblingUserIds = vi.fn(async (userId: number) => [userId]);
+const mockResolveCustomerUserIds = vi.fn(async (customerId: number) => [customerId]);
 vi.mock("../lib/tenant-signals", () => ({
-  resolveSiblingUserIds: (userId: number) => mockResolveSiblingUserIds(userId),
+  resolveCustomerUserIds: (customerId: number) => mockResolveCustomerUserIds(customerId),
 }));
 
 vi.mock("../lib/logger", () => {
@@ -100,8 +103,8 @@ function makeApp(user: Record<string, unknown> | null) {
 
 beforeEach(() => {
   mockSelectResultsQueue = [];
-  mockResolveSiblingUserIds.mockClear();
-  mockResolveSiblingUserIds.mockImplementation(async (userId: number) => [userId]);
+  mockResolveCustomerUserIds.mockClear();
+  mockResolveCustomerUserIds.mockImplementation(async (customerId: number) => [customerId]);
 });
 
 describe("GET /api/portal/retainer", () => {
@@ -172,11 +175,11 @@ describe("GET /api/portal/retainer", () => {
   });
 });
 
-describe("GET /api/portal/retainer — statusReports (Git #1410)", () => {
-  it("scopes status_reports via resolveSiblingUserIds(req.user.id), NOT clientUserId or resolveCustomerId's tenants.id", async () => {
-    mockResolveSiblingUserIds.mockImplementation(async (userId: number) => {
-      expect(userId).toBe(7); // the caller's own users.id, not customerId=42
-      return [7, 8]; // the caller plus a sibling login on the same tenant
+describe("GET /api/portal/retainer — statusReports (Git #1410, id-space #1589)", () => {
+  it("scopes status_reports via resolveCustomerUserIds(customerId) — the SAME tenants.id that scopes the ledger, fanned out to its users.id set, NOT a second resolution off req.user.id", async () => {
+    mockResolveCustomerUserIds.mockImplementation(async (customerId: number) => {
+      expect(customerId).toBe(42); // the JWT's customerId (tenants.id), NOT the caller's users.id=7
+      return [7, 8]; // every login linked to that tenant
     });
     mockSelectResultsQueue = [
       [], // settings
@@ -200,7 +203,7 @@ describe("GET /api/portal/retainer — statusReports (Git #1410)", () => {
     ];
     const res = await request(makeApp({ id: 7, customerId: 42 })).get("/api/portal/retainer");
     expect(res.status).toBe(200);
-    expect(mockResolveSiblingUserIds).toHaveBeenCalledWith(7);
+    expect(mockResolveCustomerUserIds).toHaveBeenCalledWith(42);
     expect(res.body.statusReports).toHaveLength(1);
     expect(res.body.statusReports[0]).toMatchObject({
       id: 5,
@@ -236,5 +239,21 @@ describe("GET /api/portal/retainer — statusReports (Git #1410)", () => {
     expect(res.status).toBe(200);
     expect(res.body.configured).toBe(false);
     expect(res.body.statusReports).toHaveLength(1);
+  });
+
+  it("fails closed for an unclaimed customer: empty users.id set → no status_reports DB read, returns []", async () => {
+    mockResolveCustomerUserIds.mockImplementation(async () => []); // customer has no linked logins
+    // Only settings + entries are read; status_reports is skipped entirely, so
+    // the queue carries exactly two results (a third would go unread).
+    mockSelectResultsQueue = [
+      [], // settings
+      [], // entries
+    ];
+    const res = await request(makeApp({ id: 1, customerId: 42 })).get("/api/portal/retainer");
+    expect(res.status).toBe(200);
+    expect(mockResolveCustomerUserIds).toHaveBeenCalledWith(42);
+    expect(res.body.statusReports).toEqual([]);
+    // The status_reports query never ran, so nothing was shifted off the queue for it.
+    expect(mockSelectResultsQueue).toHaveLength(0);
   });
 });

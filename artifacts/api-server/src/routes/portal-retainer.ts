@@ -9,14 +9,26 @@
  * retainer_work_log are keyed the same way admin-retainer.ts already
  * established) uses — no admin privilege, no cross-tenant surface.
  *
- * `statusReports` (Git #1410) is a DIFFERENT id space — `status_reports.
- * clientUserId` is a `users.id`, not a `tenants.id` — so it is scoped via
- * `resolveSiblingUserIds(req.user!.id)` (`tenant-signals.ts`'s bridge, the
- * same one #1397 fixed `portal-projects.ts` onto), never `clientUserId`
- * directly and never `resolveCustomerId`'s tenants.id. Only `reportStatus:
- * "sent"` rows are returned — a draft the architect hasn't published yet is
- * not the customer's to see, the same rule `portal-projects.ts` already
- * applies to a project's status reports.
+ * `statusReports` (Git #1410) lives in a DIFFERENT id space — `status_reports.
+ * clientUserId` is a `users.id`, not a `tenants.id`. That mismatch is the
+ * foundation issue #1589 settled: `status_reports` STAYS user-scoped (its
+ * clientUserId targets a specific person — every notification, email, audit row
+ * and project link in `admin-status-reports.ts` depends on that users.id, and
+ * realigning it to tenants.id would re-architect a working CRM table for no
+ * customer-visible gain). What #1589 fixed is the DUAL tenant resolution: this
+ * route now resolves the caller's tenant EXACTLY ONCE — `customerId`
+ * (`resolveCustomerId`, the JWT's tenants.id claim) — and the users.id bridge
+ * for `status_reports` is sourced from THAT same tenants.id via
+ * `resolveCustomerUserIds(customerId)` (`tenant-signals.ts`'s canonical
+ * tenants.id → users.id fan-out — all of the customer's linked logins, active
+ * and inactive). Previously the two reads resolved the tenant independently
+ * (`retainer_work_log` off the JWT claim, `status_reports` off
+ * `req.user!.id`'s own `users.tenantId`), so a divergence between those two
+ * could have put one customer's retainer ledger on a page beside another's
+ * status reports. Both halves now derive from one `customerId`, so they cannot
+ * disagree on whose data the page shows. Only `reportStatus: "sent"` rows are
+ * returned — a draft the architect hasn't published yet is not the customer's
+ * to see, the same rule `portal-projects.ts` already applies.
  *
  * GET /api/portal/retainer — settings + this month's bucket + the full ledger
  * for the caller's own retainer, plus their own sent status reports.
@@ -32,7 +44,7 @@ import { db, retainerSettingsTable, retainerWorkLogTable, statusReportsTable } f
 import { eq, and, inArray, desc } from "drizzle-orm";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { resolveCustomerId } from "../lib/portal-customer-scope.ts";
-import { resolveSiblingUserIds } from "../lib/tenant-signals.ts";
+import { resolveCustomerUserIds } from "../lib/tenant-signals.ts";
 import { logger } from "../lib/logger.ts";
 import { periodMonthOf, computeMonthBucket, usedMinutesByPeriod, minutesToHours } from "../lib/retainer-hours.ts";
 import { DEFAULT_RETAINED_MINUTES, entryToWire, bucketToWire } from "./admin-retainer.ts";
@@ -66,16 +78,22 @@ router.get("/portal/retainer", requireAuth, async (req: Request, res: Response) 
     const period = periodMonthOf(new Date());
     const bucket = computeMonthBucket(period, retainedMinutes, usedByPeriod);
 
-    // #1410: users.id-shaped bridge — NOT resolveCustomerId's tenants.id.
-    const siblingIds = await resolveSiblingUserIds(req.user!.id);
-    const statusReports = await db
-      .select()
-      .from(statusReportsTable)
-      .where(and(
-        inArray(statusReportsTable.clientUserId, siblingIds),
-        eq(statusReportsTable.reportStatus, "sent"),
-      ))
-      .orderBy(desc(statusReportsTable.sentAt));
+    // #1589: status_reports is user-scoped (clientUserId is a users.id), but the
+    // users.id set is derived from the SAME customerId (tenants.id) that scopes
+    // the retainer ledger above — one tenant resolution for the whole route, no
+    // second independent one off req.user!.id. Empty set (unclaimed customer) →
+    // inArray matches nothing → no reports, which fails closed correctly.
+    const customerUserIds = await resolveCustomerUserIds(customerId);
+    const statusReports = customerUserIds.length === 0
+      ? []
+      : await db
+          .select()
+          .from(statusReportsTable)
+          .where(and(
+            inArray(statusReportsTable.clientUserId, customerUserIds),
+            eq(statusReportsTable.reportStatus, "sent"),
+          ))
+          .orderBy(desc(statusReportsTable.sentAt));
 
     res.json({
       configured: !!settings && settings.active,
