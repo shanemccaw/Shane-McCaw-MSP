@@ -4440,3 +4440,5 @@ export type BtBuildQueueItem       = typeof btBuildQueueTable.$inferSelect;
 export * from "./msp";
 
 export * from "./config-state";
+
+export * from "./config-snapshots";
