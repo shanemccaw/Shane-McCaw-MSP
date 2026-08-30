@@ -164,6 +164,8 @@
                                 <MenuItem Header="Zoom In"             Click="ZoomIn_Click"    InputGestureText="Ctrl++"/>
                                 <MenuItem Header="Zoom Out"            Click="ZoomOut_Click"   InputGestureText="Ctrl+-"/>
                                 <MenuItem Header="Reset Zoom"          Click="ZoomReset_Click" InputGestureText="Ctrl+0"/>
+                                <Separator/>
+                                <MenuItem Header="Activity Log…" Click="OpenStreamingConsole_Click"/>
                             </MenuItem>
 
                             <MenuItem Header="_Go">
@@ -181,8 +183,6 @@
                                 <Separator/>
                                 <!-- Git #968 (Epic #803) - chronological run history + per-manifest streaks, read from test-results/_history.jsonl -->
                                 <MenuItem Header="Test History…" Click="OpenTestHistory_Click"/>
-                                <Separator/>
-                                <MenuItem Header="ShaneApp Streaming Console…" Click="OpenStreamingConsole_Click"/>
                             </MenuItem>
 
                             <MenuItem Header="_Terminal" Click="OpenTerminal_Click">
