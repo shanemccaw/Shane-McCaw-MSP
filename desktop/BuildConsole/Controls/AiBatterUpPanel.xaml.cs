@@ -28,6 +28,12 @@ namespace BuildConsole.Controls
         private System.Windows.Threading.DispatcherTimer? _timer;
         private bool _refreshing;
 
+        // Git #1816 — TxtEmpty is now reserved for the rarer no-PAT/error messages only
+        // (the plain "zero rows" case shows inline in TxtCount instead); this tracks
+        // whether TxtEmpty currently holds one of those real messages, so BtnCollapse_Click
+        // can restore/hide it correctly without re-deriving it from row count.
+        private bool _emptyMessageActive;
+
         public AiBatterUpPanel()
         {
             InitializeComponent();
@@ -46,14 +52,11 @@ namespace BuildConsole.Controls
             _ = RefreshAsync();
         }
 
-        private async void BtnRefresh_Click(object sender, RoutedEventArgs e) => await RefreshAsync();
-
         private void BtnCollapse_Click(object sender, RoutedEventArgs e)
         {
             bool collapsed = BtnCollapse.IsChecked == true;
             RowsScroller.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-            TxtEmpty.Visibility = collapsed ? Visibility.Collapsed :
-                (RowsList.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed);
+            TxtEmpty.Visibility = (!collapsed && _emptyMessageActive) ? Visibility.Visible : Visibility.Collapsed;
             BtnCollapse.Content = collapsed ? "▸" : "▾";
         }
 
@@ -68,10 +71,6 @@ namespace BuildConsole.Controls
         {
             if (_refreshing) return; // a slow GitHub round-trip shouldn't stack on the next timer tick
             _refreshing = true;
-            // Git #1813 — same #1635 pattern Git Board's own manual Refresh button uses:
-            // disable the button for the full in-flight duration, re-enable in a finally
-            // on success or failure so a slow/failed GitHub round-trip can't leave it stuck.
-            BtnRefresh.IsEnabled = false;
             try
             {
                 var gh = GetClient();
@@ -79,6 +78,7 @@ namespace BuildConsole.Controls
                 {
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
+                    _emptyMessageActive = true;
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
                     return;
@@ -94,6 +94,7 @@ namespace BuildConsole.Controls
                     Services.ActivityLog.Log("ai-batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
+                    _emptyMessageActive = true;
                     TxtEmpty.Text = $"Couldn't read AI Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
                     return;
@@ -102,16 +103,17 @@ namespace BuildConsole.Controls
                 RowsList.Children.Clear();
                 foreach (var row in rows)
                     RowsList.Children.Add(BuildAiBatterUpCard(row));
-                TxtCount.Text = rows.Count == 0 ? "" : $"({rows.Count})";
 
-                bool anyVisible = BtnCollapse.IsChecked != true;
-                TxtEmpty.Visibility = (rows.Count == 0 && anyVisible) ? Visibility.Visible : Visibility.Collapsed;
-                if (rows.Count == 0) TxtEmpty.Text = "No open issues in AI Batter Up.";
+                // Git #1816 — the "zero rows" empty state reads inline in the header's
+                // TxtCount instead of the separate TxtEmpty block, so an empty panel's
+                // footprint never grows past this one header line.
+                TxtCount.Text = rows.Count == 0 ? "— none open" : $"({rows.Count})";
+                _emptyMessageActive = false;
+                TxtEmpty.Visibility = Visibility.Collapsed;
             }
             finally
             {
                 _refreshing = false;
-                BtnRefresh.IsEnabled = true;
             }
         }
 

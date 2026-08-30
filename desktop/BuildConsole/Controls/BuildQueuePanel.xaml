@@ -112,10 +112,19 @@
                         <!-- Manual-only GitHub (Shane, 2026-08-14): the three GitHub-backed
                              tiles below (In-Flight / To-Do / Completed) no longer poll on a
                              timer — this is their single, explicit refresh trigger, matching
-                             the Git Board's own #863 header refresh icon. -->
+                             the Git Board's own #863 header refresh icon.
+                             Git #1816 — this is now also THE one shared refresh control for
+                             Git Board + Batter Up + AI Batter Up: BtnRefreshGitHubTiles_Click
+                             raises FullGitRefreshRequested, which MainWindow wires to
+                             LeftSidebar.PopulateGitTrackerBoard(forceFresh: true); that fetch
+                             fires BoardRefreshCompleted on completion, which #1813 already
+                             wired to also await BatterUpPanel.RefreshAsync() and
+                             AiBatterUpPanel.RefreshAsync(). No second button needed — this one
+                             already cascades into both panels, so it's relabeled here instead
+                             of duplicated. -->
                         <Button x:Name="BtnRefreshGitHubTiles"
                                 Style="{StaticResource IconButton}"
-                                ToolTip="Refresh Git board, milestones, focus progress, and GitHub tiles"
+                                ToolTip="Refresh Git board, Batter Up, AI Batter Up, milestones, focus progress, and GitHub tiles"
                                 Padding="5,4"
                                 Margin="2,0,0,0"
                                 Click="BtnRefreshGitHubTiles_Click">

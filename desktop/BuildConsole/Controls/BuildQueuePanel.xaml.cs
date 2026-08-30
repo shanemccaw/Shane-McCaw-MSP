@@ -4107,10 +4107,18 @@ namespace BuildConsole.Controls
             PinToggled?.Invoke(this, _isPinned);
         }
 
+        // Git #1816 — the single shared refresh control for Git Board + Batter Up + AI
+        // Batter Up. FullGitRefreshRequested drives LeftSidebar.PopulateGitTrackerBoard
+        // (forceFresh: true), whose completion fires BoardRefreshCompleted — #1813 already
+        // wired that event to also await BatterUpPanel.RefreshAsync() and
+        // AiBatterUpPanel.RefreshAsync(), so clicking this one icon cascades into both
+        // panels for free. Both are fire-and-forget from here (same as the Git Board fetch
+        // itself), so the toast below fires once THIS panel's own refresh work is done, not
+        // once every cascaded panel has repainted.
         private async void BtnRefreshGitHubTiles_Click(object sender, RoutedEventArgs e)
         {
             ActivityLog.Log("github.manual-refresh",
-                "Build Queue panel [manual Refresh click]: re-fetching GitHub components (Board + Issues in Epic + In-Flight + Focus Progress).");
+                "Build Queue panel [manual Refresh click]: re-fetching GitHub components (Board + Batter Up + AI Batter Up + Issues in Epic + In-Flight + Focus Progress).");
 
             FullGitRefreshRequested?.Invoke(this, EventArgs.Empty);
 
@@ -4119,7 +4127,7 @@ namespace BuildConsole.Controls
                 RefreshInFlightIssuesAsync("manual Refresh click"),
                 RefreshAsync());
 
-            ToastEngine.Success("Git Sync", "Refreshed Git Board, epic issues, and queue!");
+            ToastEngine.Success("Git Sync", "Refreshed Git Board, Batter Up, AI Batter Up, epic issues, and queue!");
         }
 
         private void TileInFlight_Click(object sender, RoutedEventArgs e)

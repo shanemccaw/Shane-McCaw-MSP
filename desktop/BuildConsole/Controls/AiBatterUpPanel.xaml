@@ -19,12 +19,15 @@
             BorderThickness="0,0,0,1">
         <DockPanel LastChildFill="True">
 
-            <!-- Header -->
+            <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing is now
+                 the Build Queue header's single shared icon (BuildQueuePanel.xaml
+                 BtnRefreshGitHubTiles), which cascades here via BoardRefreshCompleted
+                 (#1813). TxtCount also carries the "no items" empty-state note inline now,
+                 so an empty panel never grows past this one header row. -->
             <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
@@ -37,12 +40,7 @@
                            Foreground="{StaticResource Subtext0Brush}" FontSize="11"
                            VerticalAlignment="Center" Text=""/>
 
-                <Button x:Name="BtnRefresh" Grid.Column="2" Content="⟳" Padding="6,2" Margin="0,0,4,0"
-                        Background="Transparent" BorderThickness="0"
-                        Foreground="{StaticResource Subtext0Brush}" Cursor="Hand"
-                        ToolTip="Refresh AI Batter Up now" Click="BtnRefresh_Click"/>
-
-                <ToggleButton x:Name="BtnCollapse" Grid.Column="3"
+                <ToggleButton x:Name="BtnCollapse" Grid.Column="2"
                               Style="{StaticResource ExpandCollapseToggleStyle}"
                               Cursor="Hand"
                               IsChecked="True" Click="BtnCollapse_Click"/>
@@ -59,9 +57,12 @@
                 <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
             </ScrollViewer>
 
+            <!-- Git #1816 — reserved only for the rarer no-PAT/error messages now; the plain
+                 "zero items" case is shown inline in TxtCount above instead, so the common
+                 empty state no longer reserves this block's own margin/wrap space. -->
             <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"
                        Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
-                       TextWrapping="Wrap" Text="No open issues in AI Batter Up."
+                       TextWrapping="Wrap" Text=""
                        Visibility="Collapsed"/>
 
         </DockPanel>
