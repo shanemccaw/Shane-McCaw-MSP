@@ -3,7 +3,7 @@
  * drill-down's "gaps" and "partial" body content (Git #1234).
  *
  * `secMfaData.ts` previously documented the gap-user list and the partial-
- * enrollment roster as needing "a per-user Graph feed the war-room-pillars
+ * enrollment roster as needing "a per-user Graph feed the /portal/pillars
  * payload does not carry" — true of that payload, but `identity:mfa-
  * registration` (real `userDisplayName`/`isAdmin`/`isMfaRegistered` per
  * user, off `/reports/authenticationMethods/userRegistrationDetails`) is

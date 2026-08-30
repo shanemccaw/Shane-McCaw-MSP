@@ -35,7 +35,7 @@ import { emitWorkflowEvent } from "./workflow-executor";
 import { capturePillarDisplaySnapshots } from "./pillar-snapshot";
 import { generateCioNarrative } from "./cio-narrative-generator";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
-import { resolveSeatFigures, type SeatFigures } from "./war-room-pillar-stats";
+import { resolveSeatFigures, type SeatFigures } from "./pillar-summary-stats";
 import { DEFAULT_LICENSE_WASTE_CHECK_KEY } from "./license-waste-source";
 import { reverifyRemediationTrackerSteps } from "./remediation-tracker-verification";
 import {
@@ -370,7 +370,7 @@ function buildRecommendation(result: CheckResult): Record<string, unknown> | nul
 // for this cross-check-derived figure (the dashboard registry's own
 // `licensing.wasteEstimateBreakdown` metric names the same key), and its `cost:`
 // domain prefix already resolves to the Licensing/War Room pillar via
-// `WAR_ROOM_PILLAR_CHECK_DOMAINS` with no new mapping required.
+// `PILLAR_CHECK_DOMAINS` with no new mapping required.
 
 /**
  * Severe vs. merely present waste. Half or more of a tenant's paid, priced seats

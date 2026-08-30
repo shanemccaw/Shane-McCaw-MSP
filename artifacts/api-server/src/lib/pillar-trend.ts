@@ -23,7 +23,7 @@
  * scanned with, and applied to every checkpoint exactly like the live path does.
  * Only the NUMERATOR — which signals are actually fired — varies by checkpoint,
  * driven by that day's real profile state. This is the same denominator every
- * other pillar-scoring caller (war-room-pillar-stats.ts, telemetry-comparison.ts)
+ * other pillar-scoring caller (pillar-summary-stats.ts, telemetry-comparison.ts)
  * uses; nothing here invents a second one.
  *
  * The ONE thing that had to change for #413 beyond swapping the function: the

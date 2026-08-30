@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
-// war-room-pillar-stats.ts imports @workspace/db, whose index throws at module
-// scope without a DATABASE_URL. Same hoisted fake as war-room-pillar-stats.test.ts
+// pillar-summary-stats.ts imports @workspace/db, whose index throws at module
+// scope without a DATABASE_URL. Same hoisted fake as pillar-summary-stats.test.ts
 // — pg.Pool is lazy, so nothing ever connects and nothing here touches the DB.
 vi.hoisted(() => {
   process.env.DATABASE_URL ??= "postgres://test:test@127.0.0.1:5432/test";
@@ -23,7 +23,7 @@ vi.hoisted(() => {
  * exactly why it survived review. The chain is:
  *
  *   copilotReadinessReport.ts  picks a stat by `statId`            (msp-portal)
- *     → WAR_ROOM_PILLAR_STAT_SPECS  maps that id to a `metricKey`  (api-server)
+ *     → PILLAR_STAT_SPECS  maps that id to a `metricKey`  (api-server)
  *       → DASHBOARD_METRICS         maps that key to a `sourceKey` (lib/registry)
  *         → monitor_checks.key      ← the only link that is DATA, not code
  *
@@ -43,13 +43,13 @@ import {
   sourceKeyIsCatalogClaim,
 } from "@workspace/dashboard-registry";
 import {
-  WAR_ROOM_PILLAR_KEYS,
-  WAR_ROOM_PILLAR_STAT_SPECS,
-  WAR_ROOM_STAT_WIRING_FAULT_REASONS,
+  PILLAR_SUMMARY_KEYS,
+  PILLAR_STAT_SPECS,
+  PILLAR_STAT_WIRING_FAULT_REASONS,
   isStatWiringFault,
-} from "./war-room-pillar-stats.ts";
+} from "./pillar-summary-stats.ts";
 
-const ALL_SPECS = WAR_ROOM_PILLAR_KEYS.flatMap((p) => [...WAR_ROOM_PILLAR_STAT_SPECS[p]]);
+const ALL_SPECS = PILLAR_SUMMARY_KEYS.flatMap((p) => [...PILLAR_STAT_SPECS[p]]);
 
 /**
  * Every `statId` the Copilot Readiness Report grounds a row in, verbatim from
@@ -57,7 +57,7 @@ const ALL_SPECS = WAR_ROOM_PILLAR_KEYS.flatMap((p) => [...WAR_ROOM_PILLAR_STAT_S
  * `PREREQUISITE_PICKS`).
  *
  * Duplicated rather than imported: msp-portal and api-server are separate apps
- * with no shared module between them, exactly as `WAR_ROOM_PILLAR_KEYS` is
+ * with no shared module between them, exactly as `PILLAR_SUMMARY_KEYS` is
  * duplicated into msp-portal's `warRoomScan.ts` and asserted on both sides. The
  * msp-portal half of the contract lives in `copilotReadinessReport.test.ts`,
  * which pins its picks against its own copy; this half proves each id survives
@@ -152,7 +152,7 @@ describe("#441 — the Copilot Readiness Report's grounding survives every hop",
     // If these two lists drift, one side hides a reason the other shows, and the
     // report is either leaking our bugs again or silently swallowing a real gap
     // in the customer's scan.
-    expect([...WAR_ROOM_STAT_WIRING_FAULT_REASONS].sort()).toEqual([
+    expect([...PILLAR_STAT_WIRING_FAULT_REASONS].sort()).toEqual([
       "resolver_error",
       "unknown_check_key",
       "unknown_metric_key",

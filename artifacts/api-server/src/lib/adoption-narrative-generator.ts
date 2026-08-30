@@ -12,7 +12,7 @@
  * Adoption report.
  *
  * NO METRIC IS RESOLVED ON THE SIDE, and in this report's case there is not one
- * to resolve. `WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an EMPTY ARRAY, so
+ * to resolve. `PILLAR_STAT_SPECS.adoption` is an EMPTY ARRAY, so
  * `collectFactsForPillars` produces no stat lines for this pillar and
  * `{{statBlock}}` is always the "no measured figure has a value" placeholder.
  * That is a documented state rather than a wiring miss — the card's four old

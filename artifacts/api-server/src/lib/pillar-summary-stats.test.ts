@@ -1,5 +1,5 @@
 /**
- * war-room-pillar-stats.test.ts — #320 (War Room epic #302).
+ * pillar-summary-stats.test.ts — #320 (War Room epic #302).
  *
  * The issue's verification ask is that each pillar's score and all four stat
  * callouts reflect genuine findings rather than fixed fictional numbers. The
@@ -33,7 +33,7 @@
  * which is the whole of that issue: five of seven cards reported `no_data`
  * ("the check ran and found nothing") for checks their scan package never ran.
  *
- * Run: pnpm --filter @workspace/api-server exec vitest run src/lib/war-room-pillar-stats.test.ts
+ * Run: pnpm --filter @workspace/api-server exec vitest run src/lib/pillar-summary-stats.test.ts
  */
 
 import { describe, it, expect, vi } from "vitest";
@@ -44,27 +44,27 @@ vi.hoisted(() => {
 import { getMetric } from "@workspace/dashboard-registry";
 import { RADAR_PILLARS } from "./pillar-coverage.ts";
 import {
-  WAR_ROOM_PILLAR_KEYS,
-  WAR_ROOM_ENGINE_PILLAR,
-  WAR_ROOM_PILLAR_STAT_SPECS,
-  WAR_ROOM_PILLAR_CHECK_DOMAINS,
-  warRoomPillarForCheckKey,
-  warRoomPillarForRulePillar,
+  PILLAR_SUMMARY_KEYS,
+  ENGINE_PILLAR_FOR_DISPLAY_PILLAR,
+  PILLAR_STAT_SPECS,
+  PILLAR_CHECK_DOMAINS,
+  pillarForCheckKey,
+  pillarForRulePillar,
   buildCheckKeyPillarMap,
   statFromMetricResult,
   refineStatUnavailability,
-  WAR_ROOM_STAT_NOT_SCANNED,
-  type WarRoomStat,
-  type WarRoomStatSpec,
-} from "./war-room-pillar-stats.ts";
+  PILLAR_STAT_NOT_SCANNED,
+  type PillarStat,
+  type PillarStatSpec,
+} from "./pillar-summary-stats.ts";
 import type { MetricResult } from "./dashboard-resolvers.ts";
 
-const ALL_SPECS: WarRoomStatSpec[] = WAR_ROOM_PILLAR_KEYS.flatMap((p) => [...WAR_ROOM_PILLAR_STAT_SPECS[p]]);
+const ALL_SPECS: PillarStatSpec[] = PILLAR_SUMMARY_KEYS.flatMap((p) => [...PILLAR_STAT_SPECS[p]]);
 
 describe("stat specs cover exactly the 27 producible callouts", () => {
   it("has four stats for every pillar except compliance (three)", () => {
-    expect(WAR_ROOM_PILLAR_KEYS).toHaveLength(7);
-    for (const pillar of WAR_ROOM_PILLAR_KEYS) {
+    expect(PILLAR_SUMMARY_KEYS).toHaveLength(7);
+    for (const pillar of PILLAR_SUMMARY_KEYS) {
       // adoption was empty since #441 (its four stats resolved through
       // `usage:*` registry sourceKeys, and `usage:` is not a check-key domain
       // that exists in this platform's catalog, so all four were permanently
@@ -78,7 +78,7 @@ describe("stat specs cover exactly the 27 producible callouts", () => {
       // #441, caught this time by the registry's own not_collected sentinel
       // guard rather than reaching a customer first.
       const expected = pillar === "compliance" ? 3 : 4;
-      expect(WAR_ROOM_PILLAR_STAT_SPECS[pillar], `pillar ${pillar}`).toHaveLength(expected);
+      expect(PILLAR_STAT_SPECS[pillar], `pillar ${pillar}`).toHaveLength(expected);
     }
     expect(ALL_SPECS).toHaveLength(27);
   });
@@ -94,10 +94,10 @@ describe("stat specs cover exactly the 27 producible callouts", () => {
     }
     // The 27 surviving originals are accounted for exactly once. Four
     // ("1,631 daily active users", "22% meetings transcribed", "0 named
-    // champions", "64% files shared in chat") moved to WAR_ROOM_UNPRODUCIBLE_STATS
+    // champions", "64% files shared in chat") moved to PILLAR_UNPRODUCIBLE_STATS
     // when the adoption card emptied (#441), then moved back here (#1115) once
     // #1105 closed the real gap. "184,000 files evaluated" moved to
-    // WAR_ROOM_UNPRODUCIBLE_STATS when compliance.retentionDrift was dropped
+    // PILLAR_UNPRODUCIBLE_STATS when compliance.retentionDrift was dropped
     // (#1103) — it was always one of the original nine unproducible numbers
     // (see this file's own header), just miscategorized as replaced until the
     // phantom sourceKey was caught.
@@ -129,60 +129,60 @@ describe("every metric-backed stat names a real registry metric", () => {
 
 describe("pillar → engine pillar mapping", () => {
   it("maps the seven War Room pillars onto the seven distinct engine pillars", () => {
-    const mapped = WAR_ROOM_PILLAR_KEYS.map((p) => WAR_ROOM_ENGINE_PILLAR[p]);
+    const mapped = PILLAR_SUMMARY_KEYS.map((p) => ENGINE_PILLAR_FOR_DISPLAY_PILLAR[p]);
     expect(new Set(mapped).size).toBe(7);
     expect([...mapped].sort()).toEqual([...RADAR_PILLARS].sort());
   });
 
   it("maps the War Room's `health` onto the engine's `architecture`, the one non-identity pair", () => {
-    expect(WAR_ROOM_ENGINE_PILLAR.health).toBe("architecture");
-    for (const pillar of WAR_ROOM_PILLAR_KEYS) {
+    expect(ENGINE_PILLAR_FOR_DISPLAY_PILLAR.health).toBe("architecture");
+    for (const pillar of PILLAR_SUMMARY_KEYS) {
       if (pillar === "health") continue;
-      expect(WAR_ROOM_ENGINE_PILLAR[pillar]).toBe(pillar);
+      expect(ENGINE_PILLAR_FOR_DISPLAY_PILLAR[pillar]).toBe(pillar);
     }
   });
 });
 
 describe("finding → pillar grouping by real check-key domain", () => {
   it("routes real check keys to the pillar that owns their domain", () => {
-    expect(warRoomPillarForCheckKey("sharepoint:anonymous-links")).toBe("governance");
-    expect(warRoomPillarForCheckKey("identity:mfa-registration")).toBe("security");
-    expect(warRoomPillarForCheckKey("adoption:teams-activity-trend")).toBe("adoption");
+    expect(pillarForCheckKey("sharepoint:anonymous-links")).toBe("governance");
+    expect(pillarForCheckKey("identity:mfa-registration")).toBe("security");
+    expect(pillarForCheckKey("adoption:teams-activity-trend")).toBe("adoption");
     // `usage` stays in the domain map as an accepted alias even though #441
     // found no `usage:*` row in the catalog — the map routes real FINDINGS by
     // their stored check key, and dropping a domain is a claim about live data
     // that belongs in SQL, not here. No finding can match it today.
-    expect(warRoomPillarForCheckKey("usage:teams-activity")).toBe("adoption");
-    expect(warRoomPillarForCheckKey("compliance:missing-labels")).toBe("compliance");
-    expect(warRoomPillarForCheckKey("copilot:overshare-exposure")).toBe("copilot");
+    expect(pillarForCheckKey("usage:teams-activity")).toBe("adoption");
+    expect(pillarForCheckKey("compliance:missing-labels")).toBe("compliance");
+    expect(pillarForCheckKey("copilot:overshare-exposure")).toBe("copilot");
     // The three domains this module claims that #305's map left unowned.
-    expect(warRoomPillarForCheckKey("intune:non-compliant-devices")).toBe("health");
-    expect(warRoomPillarForCheckKey("cost:unused-unassigned-licenses")).toBe("licensing");
-    expect(warRoomPillarForCheckKey("collaboration:mailboxes")).toBe("adoption");
+    expect(pillarForCheckKey("intune:non-compliant-devices")).toBe("health");
+    expect(pillarForCheckKey("cost:unused-unassigned-licenses")).toBe("licensing");
+    expect(pillarForCheckKey("collaboration:mailboxes")).toBe("adoption");
   });
 
   it("leaves an unclaimed domain unattached rather than forcing it onto a card", () => {
-    expect(warRoomPillarForCheckKey("audit:signins")).toBeNull();
-    expect(warRoomPillarForCheckKey(null)).toBeNull();
-    expect(warRoomPillarForCheckKey("")).toBeNull();
+    expect(pillarForCheckKey("audit:signins")).toBeNull();
+    expect(pillarForCheckKey(null)).toBeNull();
+    expect(pillarForCheckKey("")).toBeNull();
   });
 
   it("leaves `exchange` unclaimed — deliberately (#389: removed from the Copilot Assessment package, any exchange:* findings are stale/historical only)", () => {
-    expect(warRoomPillarForCheckKey("exchange:dkim-spf-dmarc-status")).toBeNull();
+    expect(pillarForCheckKey("exchange:dkim-spf-dmarc-status")).toBeNull();
   });
 
   it("routes #397's five previously-unmapped-but-real domains to their pillars", () => {
-    expect(warRoomPillarForCheckKey("appgov:risky-permission-grants")).toBe("security");
-    expect(warRoomPillarForCheckKey("m365:service-health")).toBe("health");
-    expect(warRoomPillarForCheckKey("license:copilot-assignment")).toBe("licensing");
-    expect(warRoomPillarForCheckKey("onedrive:external-sharing-settings")).toBe("governance");
-    expect(warRoomPillarForCheckKey("platform:queue-depth")).toBe("governance");
+    expect(pillarForCheckKey("appgov:risky-permission-grants")).toBe("security");
+    expect(pillarForCheckKey("m365:service-health")).toBe("health");
+    expect(pillarForCheckKey("license:copilot-assignment")).toBe("licensing");
+    expect(pillarForCheckKey("onedrive:external-sharing-settings")).toBe("governance");
+    expect(pillarForCheckKey("platform:queue-depth")).toBe("governance");
   });
 
   it("claims no domain for two different pillars", () => {
     const seen = new Set<string>();
-    for (const pillar of WAR_ROOM_PILLAR_KEYS) {
-      for (const domain of WAR_ROOM_PILLAR_CHECK_DOMAINS[pillar]) {
+    for (const pillar of PILLAR_SUMMARY_KEYS) {
+      for (const domain of PILLAR_CHECK_DOMAINS[pillar]) {
         expect(seen.has(domain), `domain ${domain} claimed twice`).toBe(false);
         seen.add(domain);
       }
@@ -192,26 +192,26 @@ describe("finding → pillar grouping by real check-key domain", () => {
 
 describe("finding -> pillar grouping by signal_derivation_rules.pillar (#521)", () => {
   it("maps every SIGNAL_PILLARS value onto its War Room pillar, plus the `cost` alias", () => {
-    expect(warRoomPillarForRulePillar("governance")).toBe("governance");
-    expect(warRoomPillarForRulePillar("security")).toBe("security");
-    expect(warRoomPillarForRulePillar("compliance")).toBe("compliance");
-    expect(warRoomPillarForRulePillar("adoption")).toBe("adoption");
-    expect(warRoomPillarForRulePillar("copilot")).toBe("copilot");
-    expect(warRoomPillarForRulePillar("licensing")).toBe("licensing");
-    // The one non-identity pair — same translation `WAR_ROOM_ENGINE_PILLAR`
+    expect(pillarForRulePillar("governance")).toBe("governance");
+    expect(pillarForRulePillar("security")).toBe("security");
+    expect(pillarForRulePillar("compliance")).toBe("compliance");
+    expect(pillarForRulePillar("adoption")).toBe("adoption");
+    expect(pillarForRulePillar("copilot")).toBe("copilot");
+    expect(pillarForRulePillar("licensing")).toBe("licensing");
+    // The one non-identity pair — same translation `ENGINE_PILLAR_FOR_DISPLAY_PILLAR`
     // already uses for the score beside these findings.
-    expect(warRoomPillarForRulePillar("architecture")).toBe("health");
-    // The live-data alias `WAR_ROOM_PILLAR_CHECK_DOMAINS` already documents for
+    expect(pillarForRulePillar("architecture")).toBe("health");
+    // The live-data alias `PILLAR_CHECK_DOMAINS` already documents for
     // the `cost:*` check-key domain — `signal_derivation_rules.pillar` uses it
     // interchangeably with `licensing` too.
-    expect(warRoomPillarForRulePillar("cost")).toBe("licensing");
+    expect(pillarForRulePillar("cost")).toBe("licensing");
   });
 
   it("returns null for blank or unrecognised pillar text rather than guessing", () => {
-    expect(warRoomPillarForRulePillar(null)).toBeNull();
-    expect(warRoomPillarForRulePillar(undefined)).toBeNull();
-    expect(warRoomPillarForRulePillar("")).toBeNull();
-    expect(warRoomPillarForRulePillar("not-a-real-pillar")).toBeNull();
+    expect(pillarForRulePillar(null)).toBeNull();
+    expect(pillarForRulePillar(undefined)).toBeNull();
+    expect(pillarForRulePillar("")).toBeNull();
+    expect(pillarForRulePillar("not-a-real-pillar")).toBeNull();
   });
 
   // #521's own confirmed-live example: since #469 these three checks score as
@@ -235,21 +235,21 @@ describe("finding -> pillar grouping by signal_derivation_rules.pillar (#521)", 
   const RECLASSIFIED_MAP = buildCheckKeyPillarMap(RECLASSIFIED_RULES, RECLASSIFIED_CHECK_DEFS);
 
   it("resolves a reclassified check to its rule's pillar, not its domain prefix", () => {
-    expect(warRoomPillarForCheckKey("governance:sensitivity-label-adoption", RECLASSIFIED_MAP)).toBe("compliance");
-    expect(warRoomPillarForCheckKey("governance:auto-labeling-coverage", RECLASSIFIED_MAP)).toBe("compliance");
-    expect(warRoomPillarForCheckKey("copilot:sensitivity-labels-exist", RECLASSIFIED_MAP)).toBe("compliance");
+    expect(pillarForCheckKey("governance:sensitivity-label-adoption", RECLASSIFIED_MAP)).toBe("compliance");
+    expect(pillarForCheckKey("governance:auto-labeling-coverage", RECLASSIFIED_MAP)).toBe("compliance");
+    expect(pillarForCheckKey("copilot:sensitivity-labels-exist", RECLASSIFIED_MAP)).toBe("compliance");
     // Without the map, the same checks still fall back to their old domain —
     // proving the map (not a change to the domain fallback) is what moved them.
-    expect(warRoomPillarForCheckKey("governance:sensitivity-label-adoption")).toBe("governance");
-    expect(warRoomPillarForCheckKey("copilot:sensitivity-labels-exist")).toBe("copilot");
+    expect(pillarForCheckKey("governance:sensitivity-label-adoption")).toBe("governance");
+    expect(pillarForCheckKey("copilot:sensitivity-labels-exist")).toBe("copilot");
   });
 
   it("agrees with the domain map when the rule's pillar and the domain already agree", () => {
-    expect(warRoomPillarForCheckKey("identity:mfa-registration", RECLASSIFIED_MAP)).toBe("security");
+    expect(pillarForCheckKey("identity:mfa-registration", RECLASSIFIED_MAP)).toBe("security");
   });
 
   it("falls back to the domain map for a check with no matching rule row", () => {
-    expect(warRoomPillarForCheckKey("sharepoint:anonymous-links", RECLASSIFIED_MAP)).toBe("governance");
+    expect(pillarForCheckKey("sharepoint:anonymous-links", RECLASSIFIED_MAP)).toBe("governance");
   });
 
   it("reaches a check no domain claims at all when its rule names a pillar (#521's exchange example)", () => {
@@ -258,10 +258,10 @@ describe("finding -> pillar grouping by signal_derivation_rules.pillar (#521)", 
     ];
     const checkDefs = [{ key: "exchange:litigation-hold-coverage", mapping: null, properties: null }];
     const map = buildCheckKeyPillarMap(rules, checkDefs);
-    // `exchange` is deliberately unmapped in WAR_ROOM_PILLAR_CHECK_DOMAINS
+    // `exchange` is deliberately unmapped in PILLAR_CHECK_DOMAINS
     // (#389) — without the rule the finding renders on no card at all.
-    expect(warRoomPillarForCheckKey("exchange:litigation-hold-coverage")).toBeNull();
-    expect(warRoomPillarForCheckKey("exchange:litigation-hold-coverage", map)).toBe("compliance");
+    expect(pillarForCheckKey("exchange:litigation-hold-coverage")).toBeNull();
+    expect(pillarForCheckKey("exchange:litigation-hold-coverage", map)).toBe("compliance");
   });
 
   it("leaves a check out of the map — falling back to the domain map — when two rules disagree on its pillar", () => {
@@ -272,7 +272,7 @@ describe("finding -> pillar grouping by signal_derivation_rules.pillar (#521)", 
     const checkDefs = [{ key: "governance:ambiguous-check", mapping: null, properties: null }];
     const map = buildCheckKeyPillarMap(rules, checkDefs);
     expect(map.has("governance:ambiguous-check")).toBe(false);
-    expect(warRoomPillarForCheckKey("governance:ambiguous-check", map)).toBe("governance");
+    expect(pillarForCheckKey("governance:ambiguous-check", map)).toBe("governance");
   });
 
   it("ignores a rule with no real owning check, and a rule with no recognised pillar", () => {
@@ -287,7 +287,7 @@ describe("finding -> pillar grouping by signal_derivation_rules.pillar (#521)", 
 });
 
 describe("statFromMetricResult never fabricates", () => {
-  const spec = WAR_ROOM_PILLAR_STAT_SPECS.governance[0]!;
+  const spec = PILLAR_STAT_SPECS.governance[0]!;
 
   it("passes a real number straight through", () => {
     const result: MetricResult = {
@@ -424,13 +424,13 @@ const CORE_SECURITY_BASELINE_CHECKS = new Set([
 ]);
 
 /** The real check key each metric-backed stat needs, via the real registry. */
-function checkKeysFor(pillar: (typeof WAR_ROOM_PILLAR_KEYS)[number]): string[] {
-  return WAR_ROOM_PILLAR_STAT_SPECS[pillar]
+function checkKeysFor(pillar: (typeof PILLAR_SUMMARY_KEYS)[number]): string[] {
+  return PILLAR_STAT_SPECS[pillar]
     .filter((s) => s.source.kind === "metric")
     .map((s) => getMetric((s.source as { metricKey: string }).metricKey)!.sourceKey);
 }
 
-function statWith(over: Partial<WarRoomStat>): WarRoomStat {
+function statWith(over: Partial<PillarStat>): PillarStat {
   return {
     id: "governance.sites",
     label: "sites inventoried",
@@ -445,8 +445,8 @@ function statWith(over: Partial<WarRoomStat>): WarRoomStat {
 
 describe("#341 — which pillars CAN have stats under the canonical scan package", () => {
   it("reproduces the reported 2-of-7 split from the real package curation", () => {
-    const canProduce = WAR_ROOM_PILLAR_KEYS.filter((pillar) =>
-      WAR_ROOM_PILLAR_STAT_SPECS[pillar].some((spec) =>
+    const canProduce = PILLAR_SUMMARY_KEYS.filter((pillar) =>
+      PILLAR_STAT_SPECS[pillar].some((spec) =>
         spec.source.kind === "pillarScore" ||
         (spec.source.kind === "metric" &&
           CORE_SECURITY_BASELINE_CHECKS.has(getMetric(spec.source.metricKey)!.sourceKey)),
@@ -461,7 +461,7 @@ describe("#341 — which pillars CAN have stats under the canonical scan package
   });
 
   it("names the four checks that overlap, so a curation change is visible here", () => {
-    const overlap = WAR_ROOM_PILLAR_KEYS
+    const overlap = PILLAR_SUMMARY_KEYS
       .flatMap(checkKeysFor)
       .filter((k) => CORE_SECURITY_BASELINE_CHECKS.has(k));
     expect([...new Set(overlap)].sort()).toEqual([
@@ -483,8 +483,8 @@ describe("#341 — which pillars CAN have stats under the canonical scan package
     // The Health card's stats name `intune:*`; the package runs the parallel
     // `devices:*` checks, whose FINDINGS already land on this card. That gap is
     // the one place a stat could be made real by re-pointing it, and the reason
-    // that was not done blind is recorded in war-room-pillar-stats.ts's header.
-    expect(warRoomPillarForCheckKey("devices:compliant-vs-noncompliant")).toBe("health");
+    // that was not done blind is recorded in pillar-summary-stats.ts's header.
+    expect(pillarForCheckKey("devices:compliant-vs-noncompliant")).toBe("health");
     expect(checkKeysFor("health").every((k) => k.startsWith("intune:"))).toBe(true);
   });
 });
@@ -497,7 +497,7 @@ describe("#341 — a stat says WHICH kind of nothing it is", () => {
       statWith({ unavailableReason: "no_data", checkKey: "compliance:sharepoint-sites" }),
       scanned,
     );
-    expect(stat.unavailableReason).toBe(WAR_ROOM_STAT_NOT_SCANNED);
+    expect(stat.unavailableReason).toBe(PILLAR_STAT_NOT_SCANNED);
     expect(stat.value).toBeNull();
   });
 
@@ -549,13 +549,13 @@ describe("#341 — a stat says WHICH kind of nothing it is", () => {
   });
 
   it("carries the real check key on every metric-backed stat, so the gap can be named", () => {
-    const stat = statFromMetricResult(WAR_ROOM_PILLAR_STAT_SPECS.health[0]!, "intune:non-compliant-devices", {
+    const stat = statFromMetricResult(PILLAR_STAT_SPECS.health[0]!, "intune:non-compliant-devices", {
       metricKey: "intune.nonCompliantDeviceCount",
       status: "not_available",
       reason: "no_data",
     });
     expect(stat.checkKey).toBe("intune:non-compliant-devices");
-    expect(refineStatUnavailability(stat, scanned).unavailableReason).toBe(WAR_ROOM_STAT_NOT_SCANNED);
+    expect(refineStatUnavailability(stat, scanned).unavailableReason).toBe(PILLAR_STAT_NOT_SCANNED);
   });
 });
 
@@ -570,7 +570,7 @@ describe("#341 — end to end over the real specs and the real package", () => {
     // `adoption:*`/`onedrive:*` checks are in core:security-baseline, so they
     // go dark the same way the other pillars do.
     for (const pillar of ["governance", "licensing", "adoption", "compliance", "health"] as const) {
-      const reasons = WAR_ROOM_PILLAR_STAT_SPECS[pillar]
+      const reasons = PILLAR_STAT_SPECS[pillar]
         .filter((s) => s.source.kind === "metric")
         .map((spec) =>
           refineStatUnavailability(
@@ -582,7 +582,7 @@ describe("#341 — end to end over the real specs and the real package", () => {
             CORE_SECURITY_BASELINE_CHECKS,
           ).unavailableReason,
         );
-      expect(new Set(reasons), `pillar ${pillar}`).toEqual(new Set([WAR_ROOM_STAT_NOT_SCANNED]));
+      expect(new Set(reasons), `pillar ${pillar}`).toEqual(new Set([PILLAR_STAT_NOT_SCANNED]));
     }
   });
 
@@ -590,7 +590,7 @@ describe("#341 — end to end over the real specs and the real package", () => {
     // The other half of the verify bar: a scanned check with a real number must
     // render as that number, with no unavailability reason attached at all.
     const values = [96, 14, 3];
-    const stats = WAR_ROOM_PILLAR_STAT_SPECS.security
+    const stats = PILLAR_STAT_SPECS.security
       .slice(0, 3)
       .map((spec, i) =>
         refineStatUnavailability(
@@ -606,12 +606,12 @@ describe("#341 — end to end over the real specs and the real package", () => {
     // …and the fourth, whose check is genuinely outside the package, is the one
     // that goes dark — the exact card Shane saw showing three numbers, not four.
     const fourth = refineStatUnavailability(
-      statFromMetricResult(WAR_ROOM_PILLAR_STAT_SPECS.security[3]!, "copilot:overshare-exposure", {
+      statFromMetricResult(PILLAR_STAT_SPECS.security[3]!, "copilot:overshare-exposure", {
         metricKey: "x", status: "not_available", reason: "no_data",
       }),
       CORE_SECURITY_BASELINE_CHECKS,
     );
-    expect(fourth.unavailableReason).toBe(WAR_ROOM_STAT_NOT_SCANNED);
+    expect(fourth.unavailableReason).toBe(PILLAR_STAT_NOT_SCANNED);
   });
 });
 

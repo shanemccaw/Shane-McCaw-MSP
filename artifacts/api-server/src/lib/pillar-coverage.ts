@@ -387,7 +387,7 @@ async function resolveCoveredSignalKeys(
  * run EXISTENCE regardless of `package_key`, so a run stored with a null
  * package_key still counts as "has been scanned" rather than "never scanned".
  *
- * Lives here (rather than in war-room-pillar-stats.ts, where it was written for
+ * Lives here (rather than in pillar-summary-stats.ts, where it was written for
  * #341's `not_in_scan_package` honesty fix) because the scoring denominator and
  * the stat-unavailability reason must be answering the same question about the
  * same tenant — two copies could disagree, and a card reading "never scanned"
@@ -471,7 +471,7 @@ export async function fetchScannedCheckKeys(customerId: number): Promise<{
  * reached deliberately rather than papered over by the fallback.
  *
  * `opts.scannedCheckKeys` lets a caller that has ALREADY resolved the tenant's
- * scan scope (war-room-pillar-stats.ts needs it for `not_in_scan_package`) pass
+ * scan scope (pillar-summary-stats.ts needs it for `not_in_scan_package`) pass
  * it in rather than repeat the two queries — `undefined` means "resolve it",
  * `null` means "already resolved, and there was nothing to conclude from". A
  * caller passing `scannedCheckKeys` should also pass `hasAnyRun` (from the same

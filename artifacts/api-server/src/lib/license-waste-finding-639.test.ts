@@ -9,14 +9,14 @@
  * gap: `classifyLicenseWasteSeverity` and `buildLicenseWasteFinding`.
  *
  * diagnostics-runner.ts pulls in the DB, the workflow executor, the narrative
- * generator, the SSE hub, and (since #639) `war-room-pillar-stats.ts` and
+ * generator, the SSE hub, and (since #639) `pillar-summary-stats.ts` and
  * `license-waste-source.ts` at module load. None of them participate in this
  * arithmetic, so they are stubbed to the minimum that lets the import succeed —
  * same pattern as diagnostics-finding-title.test.ts.
  */
 
 import { describe, it, expect, vi } from "vitest";
-import type { SeatFigures } from "./war-room-pillar-stats";
+import type { SeatFigures } from "./pillar-summary-stats";
 
 vi.mock("@workspace/db", () => ({
   db: {},
@@ -32,7 +32,7 @@ vi.mock("./monitor-executor", () => ({ executeMonitoringPackage: vi.fn() }));
 vi.mock("./workflow-executor", () => ({ emitWorkflowEvent: vi.fn() }));
 vi.mock("./cio-narrative-generator", () => ({ generateCioNarrative: vi.fn() }));
 vi.mock("./doc-gate-coverage", () => ({ evaluateDocGateCoverage: vi.fn() }));
-vi.mock("./war-room-pillar-stats", () => ({ resolveSeatFigures: vi.fn() }));
+vi.mock("./pillar-summary-stats", () => ({ resolveSeatFigures: vi.fn() }));
 vi.mock("./license-waste-source", () => ({ DEFAULT_LICENSE_WASTE_CHECK_KEY: "cost:license-waste-estimate" }));
 vi.mock("./sse-channels", () => ({
   broadcastDiagnosticsRunProgress: vi.fn(),

@@ -18,8 +18,8 @@
  *
  * WHAT THE GROUNDING REALLY IS
  * ----------------------------
- * `buildWarRoomPillarStats(customerId)` — the same function, on the same
- * customer, that `GET /portal/assessment/war-room-pillars` serves to the Reveal
+ * `buildPillarSummary(customerId)` — the same function, on the same
+ * customer, that `GET /portal/pillars` serves to the Reveal
  * and to this report's own pure-data sections, so the prose and the tables
  * beside it cannot disagree about the same tenant. The Gate is
  * `computeCopilotGate(customerId)` — the engine's Copilot pillar (#358/#359).
@@ -30,8 +30,8 @@
  * over the real `security:secure-score` check) with a real resolver branch in
  * `dashboard-resolvers.ts`, and the Security Posture Summary is the one place in
  * the platform that has to show it — but it is NOT one of
- * `WAR_ROOM_PILLAR_STAT_SPECS`' 28 stats, so nothing puts it on the
- * `war-room-pillars` wire.
+ * `PILLAR_STAT_SPECS`' 28 stats, so nothing puts it on the
+ * `/portal/pillars` wire.
  *
  * It is resolved HERE rather than added to that spec list, and that is a
  * deliberate call: the spec list is consumed by the War Room security card, by
@@ -85,13 +85,13 @@ import {
   type SectionFacts,
 } from "./narrative-grounding.ts";
 import {
-  buildWarRoomPillarStats,
+  buildPillarSummary,
   refineStatUnavailability,
   statFromMetricResult,
-  type WarRoomPillarKey,
-  type WarRoomStat,
-  type WarRoomStatSpec,
-} from "./war-room-pillar-stats.ts";
+  type PillarSummaryKey,
+  type PillarStat,
+  type PillarStatSpec,
+} from "./pillar-summary-stats.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -119,7 +119,7 @@ export interface SecurityPostureNarrativeSection {
 
 /**
  * One extra stat this route resolves for the report's structural rows, in the
- * SAME shape `war-room-pillars` sends its own — so the client can run it
+ * SAME shape `/portal/pillars` sends its own — so the client can run it
  * through the exact helpers (`isRealStat`, `formatStat`, `buildRows`) it already
  * uses for every other row, instead of a parallel set that could classify an
  * unavailable value differently.
@@ -158,7 +158,7 @@ export interface SecurityPostureAttribution {
 
 /**
  * Which pillars ground which section. Not a new grouping: these are the same
- * `WAR_ROOM_PILLAR_KEYS` the payload already carries, selected by what each
+ * `PILLAR_SUMMARY_KEYS` the payload already carries, selected by what each
  * section is actually about.
  *
  * `blastRadius` reads governance and compliance alongside security because the
@@ -166,7 +166,7 @@ export interface SecurityPostureAttribution {
  * and `governance.exposure` are the SAME metric (`copilot.overshareExposureCount`)
  * shown on two cards, and the site counts that give it scale are governance's.
  */
-const SECTION_PILLARS: Record<SecurityPostureSectionKey, readonly WarRoomPillarKey[]> = {
+const SECTION_PILLARS: Record<SecurityPostureSectionKey, readonly PillarSummaryKey[]> = {
   summary: ["security"],
   blastRadius: ["security", "governance", "compliance"],
   copilotImpact: ["security", "copilot"],
@@ -201,7 +201,7 @@ const PROMPT_FALLBACKS: Record<SecurityPostureSectionKey, string> = {
  * ------------------------------------------------------------------ */
 
 /**
- * The extra metrics this route resolves, as `WarRoomStatSpec`s so they go
+ * The extra metrics this route resolves, as `PillarStatSpec`s so they go
  * through `statFromMetricResult` unchanged.
  *
  * `replaces` is a required field on that spec and means "the fictional
@@ -209,7 +209,7 @@ const PROMPT_FALLBACKS: Record<SecurityPostureSectionKey, string> = {
  * never on a War Room card. Said outright rather than left blank so a reader of
  * the wire payload is not left wondering which card they came off.
  */
-const EXTRA_STAT_SPECS: readonly WarRoomStatSpec[] = [
+const EXTRA_STAT_SPECS: readonly PillarStatSpec[] = [
   {
     id: "security.secureScore",
     label: "Microsoft Secure Score",
@@ -231,7 +231,7 @@ async function resolveExtraStats(
   customerId: number,
   mspId: number,
   scannedCheckKeys: ReadonlySet<string> | null,
-): Promise<WarRoomStat[]> {
+): Promise<PillarStat[]> {
   const ctx = { customerId, mspId };
   return Promise.all(
     EXTRA_STAT_SPECS.map(async (spec) => {
@@ -253,7 +253,7 @@ async function resolveExtraStats(
 }
 
 /** The wire shape, dropping the two fields only the War Room card uses. */
-function toExtraStat(stat: WarRoomStat): SecurityPostureExtraStat {
+function toExtraStat(stat: PillarStat): SecurityPostureExtraStat {
   return {
     id: stat.id,
     label: stat.label,
@@ -380,7 +380,7 @@ export async function generateSecurityPostureNarrative(params: {
   readonly attribution: SecurityPostureAttribution;
 }): Promise<SecurityPostureNarrativeResult> {
   const [payload, gate, tenantRow, scanned] = await Promise.all([
-    buildWarRoomPillarStats(params.customerId),
+    buildPillarSummary(params.customerId),
     computeCopilotGate(params.customerId),
     db
       .select({ mspId: tenantsTable.mspId })

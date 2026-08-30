@@ -23,7 +23,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // so a bare `const mockSelect = vi.fn()` is still uninitialized when the SUT's
 // own `import "@workspace/db"` triggers the factory ("Cannot access 'mockSelect'
 // before initialization"). Creating them in vi.hoisted() is the repo's standard
-// fix (cf. war-room-pillar-stats.test.ts) — they exist before any import runs.
+// fix (cf. pillar-summary-stats.test.ts) — they exist before any import runs.
 const { mockSelect, mockInsert, generateSowDocumentMock, resolveCustomerPortalUserIdMock } = vi.hoisted(() => ({
   mockSelect: vi.fn(),
   mockInsert: vi.fn(),

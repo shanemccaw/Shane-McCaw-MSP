@@ -23,7 +23,7 @@
     {
       "name": "A-GOV -- war-room-pillars carries the governance card's REAL finding counts. pillars[0] is governance (WAR_ROOM_PILLAR_KEYS order). This page reads the SAME payload via useLivePillarHero (#1204); the source marker below proves it is on it.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[0].findingCounts.critical", "exists": true }
     }

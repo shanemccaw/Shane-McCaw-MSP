@@ -26,7 +26,7 @@
     {
       "name": "A1 -- extract the REAL Governance score (pillars[0]). The Governance hero ring renders THIS number, not the fixture 62.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[0].pillar", "value": "governance" },
       "extract": { "as": "govScore", "jsonPath": "$.pillars[0].score" }
@@ -34,7 +34,7 @@
     {
       "name": "A2 -- extract the REAL Security score (pillars[5]). The Security hero ring renders THIS number, not the fixture 54.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[5].pillar", "value": "security" },
       "extract": { "as": "secScore", "jsonPath": "$.pillars[5].score" }
@@ -42,7 +42,7 @@
     {
       "name": "A3 -- extract the REAL Compliance score (pillars[3]). The Compliance hero ring renders THIS number, not the fixture 78.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[3].pillar", "value": "compliance" },
       "extract": { "as": "cmpScore", "jsonPath": "$.pillars[3].score" }
@@ -50,7 +50,7 @@
     {
       "name": "A4 -- extract the REAL Security critical finding count. The red critical headline AND the 'Critical Exposures' tile render THIS number, not the fixture 3.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[5].findingCounts.critical", "exists": true },
       "extract": { "as": "secCritical", "jsonPath": "$.pillars[5].findingCounts.critical" }
@@ -58,7 +58,7 @@
     {
       "name": "A5 -- the REAL global-administrator count sits at security stats[1] (security.globalAdmins). The GOVERNANCE hero reads it CROSS-PILLAR for its 'Global Administrators' tile.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[5].stats[1].id", "value": "security.globalAdmins" },
       "extract": { "as": "secGlobalAdmins", "jsonPath": "$.pillars[5].stats[1].value" }

@@ -31,7 +31,7 @@
     {
       "name": "A-SEC -- war-room-pillars carries the security card's REAL finding counts. pillars[5] is security (WAR_ROOM_PILLAR_KEYS order). These drill-downs read this SAME payload via useLivePillarHero (#1204); the source markers below prove each page is on it.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[5].findingCounts.critical", "exists": true }
     },

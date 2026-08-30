@@ -25,9 +25,9 @@ import {
   stripFence,
   withExtraStats,
 } from "./narrative-grounding.ts";
-import type { WarRoomPillarCard, WarRoomStat } from "./war-room-pillar-stats.ts";
+import type { PillarSummaryCard, PillarStat } from "./pillar-summary-stats.ts";
 
-function stat(overrides: Partial<WarRoomStat> & Pick<WarRoomStat, "id">): WarRoomStat {
+function stat(overrides: Partial<PillarStat> & Pick<PillarStat, "id">): PillarStat {
   return {
     label: "things",
     unit: "count",
@@ -36,10 +36,10 @@ function stat(overrides: Partial<WarRoomStat> & Pick<WarRoomStat, "id">): WarRoo
     source: "monitor_profile:x",
     replaces: "",
     ...overrides,
-  } as WarRoomStat;
+  } as PillarStat;
 }
 
-function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "pillar">): WarRoomPillarCard {
+function card(overrides: Partial<PillarSummaryCard> & Pick<PillarSummaryCard, "pillar">): PillarSummaryCard {
   return {
     enginePillar: "security",
     score: null,
@@ -49,7 +49,7 @@ function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "p
     findingCounts: { critical: 0, warning: 0 },
     trend: null,
     ...overrides,
-  } as WarRoomPillarCard;
+  } as PillarSummaryCard;
 }
 
 /* ------------------------------------------------------------------ *

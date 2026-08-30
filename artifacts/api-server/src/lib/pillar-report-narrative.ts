@@ -28,14 +28,14 @@
  *
  * WHAT THE GROUNDING REALLY IS
  * ----------------------------
- * `buildWarRoomPillarStats(customerId)` — the same function, on the same
- * customer, that `GET /portal/assessment/war-room-pillars` serves to the Reveal
+ * `buildPillarSummary(customerId)` — the same function, on the same
+ * customer, that `GET /portal/pillars` serves to the Reveal
  * and to each report's own pure-data sections, so the prose and the tables beside
  * it cannot disagree about the same tenant. The Gate is
  * `computeCopilotGate(customerId)` — the engine's Copilot pillar (#358/#359).
  *
  * NONE OF THE FOUR REPORTS RESOLVES A METRIC OF ITS OWN, deliberately. Every
- * figure they show is already one of `WAR_ROOM_PILLAR_STAT_SPECS`' stats and
+ * figure they show is already one of `PILLAR_STAT_SPECS`' stats and
  * therefore already on the wire — unlike Secure Score, which is a real registry
  * metric that no spec carries. So there is no second, laxer path from a value to
  * a sentence anywhere in this file, and `withExtraStats` is not used.
@@ -59,7 +59,7 @@ import {
   type NarrativeOmission,
   type SectionFacts,
 } from "./narrative-grounding.ts";
-import { buildWarRoomPillarStats, type WarRoomPillarKey } from "./war-room-pillar-stats.ts";
+import { buildPillarSummary, type PillarSummaryKey } from "./pillar-summary-stats.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -106,7 +106,7 @@ export interface PillarReportAttribution {
 /**
  * One prose section, declared by the report that owns it.
  *
- * `pillars` is the grounding scope — which of `WAR_ROOM_PILLAR_KEYS`' cards this
+ * `pillars` is the grounding scope — which of `PILLAR_SUMMARY_KEYS`' cards this
  * section may reason from. It is deliberately per-section rather than
  * per-report: a Copilot Readiness Impact section needs the copilot card that its
  * report's own Summary must not see, and a section handed a figure it does not
@@ -115,7 +115,7 @@ export interface PillarReportAttribution {
 export interface PillarReportSectionSpec {
   readonly key: string;
   readonly heading: string;
-  readonly pillars: readonly WarRoomPillarKey[];
+  readonly pillars: readonly PillarSummaryKey[];
   /** The `ai_prompts` key a DB row would override this section's body under. */
   readonly promptKey: string;
   /** The canonical body, from the report's own leaf prompts module. */
@@ -258,7 +258,7 @@ export async function generatePillarReportNarrative(
   },
 ): Promise<PillarReportNarrativeResult> {
   const [payload, gate, tenantRow] = await Promise.all([
-    buildWarRoomPillarStats(params.customerId),
+    buildPillarSummary(params.customerId),
     computeCopilotGate(params.customerId),
     db
       .select({ mspId: tenantsTable.mspId })

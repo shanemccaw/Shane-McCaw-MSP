@@ -1,11 +1,11 @@
 /**
- * war-room-pillar-stats.ts
+ * pillar-summary-stats.ts
  *
  * Real backing for the War Room's seven completed-scan pillar summary cards
  * (#320, parent epic #302) — each card's SCORE and its four STAT CALLOUTS.
  *
  * Before this, all of it was the hardcoded `HERO_PHASE` literal in msp-portal's
- * `warRoomData.ts`: seven fixed scores (34/38/54/34/58/41/34) and 28 fixed stat
+ * `pillarData.ts`: seven fixed scores (34/38/54/34/58/41/34) and 28 fixed stat
  * numbers invented for the fictional "Northline Health" demo tenant — "1,204
  * sites inventoried", "$847,608 annual waste", "214,806 files reachable", and so
  * on. They were identical for every customer and touched no scan.
@@ -31,7 +31,7 @@
  * ── The pillar name mismatch, resolved once, here ─────────────────────────────
  * The War Room names its fifth pillar `health`; the engine calls the same thing
  * `architecture` (`HEALTH_PILLARS` / `RADAR_PILLARS`). Every other key matches
- * 1:1. `WAR_ROOM_ENGINE_PILLAR` below is that translation, and it is the only
+ * 1:1. `ENGINE_PILLAR_FOR_DISPLAY_PILLAR` below is that translation, and it is the only
  * place it exists — see the table for why `health → architecture` is the honest
  * mapping rather than a convenience.
  *
@@ -61,7 +61,7 @@
  * Nine of the original 28 asked for a number nothing in this platform collects.
  * They are NOT approximated and NOT carried over; each spec below records what
  * it replaced in `replaces`, and the ones with no real sibling at all are listed
- * in `WAR_ROOM_UNPRODUCIBLE_STATS` so the gap stays visible instead of quietly
+ * in `PILLAR_UNPRODUCIBLE_STATS` so the gap stays visible instead of quietly
  * disappearing:
  *
  *   "files reachable" / "files in blast radius"  — no check counts files; the
@@ -139,7 +139,7 @@
  * `signal_derivation_rules.pillar` for that check's owning signal — #469's
  * enforced single source of truth for "what pillar does this signal belong
  * to", joined via the same `resolveOwningCheckKey` hop `buildFindingRankWeights`
- * already uses (`buildCheckKeyPillarMap`, below). `WAR_ROOM_PILLAR_CHECK_DOMAINS`
+ * already uses (`buildCheckKeyPillarMap`, below). `PILLAR_CHECK_DOMAINS`
  * (the domain grouping #305 introduced) is now only the FALLBACK, for a check
  * with no matching rule row or an ambiguous one. Before #521 the domain map was
  * the ONLY signal read here, so a check reclassified to a different pillar
@@ -198,11 +198,11 @@ const log = logger.child({ channel: "engine.dashboard" });
 
 /**
  * The seven War Room pillars, in `HERO_PHASE` order. MUST stay in lockstep with
- * `WAR_ROOM_PILLAR_KEYS` in msp-portal's warRoomScan.ts — that file cannot be
+ * `PILLAR_SUMMARY_KEYS` in msp-portal's warRoomScan.ts — that file cannot be
  * imported here (separate app, and it is the client's own copy), so the order is
  * asserted by a test on both sides.
  */
-export const WAR_ROOM_PILLAR_KEYS = [
+export const PILLAR_SUMMARY_KEYS = [
   "governance",
   "licensing",
   "adoption",
@@ -212,7 +212,7 @@ export const WAR_ROOM_PILLAR_KEYS = [
   "copilot",
 ] as const;
 
-export type WarRoomPillarKey = (typeof WAR_ROOM_PILLAR_KEYS)[number];
+export type PillarSummaryKey = (typeof PILLAR_SUMMARY_KEYS)[number];
 
 /**
  * War Room pillar → the engine pillar that really scores it.
@@ -225,7 +225,7 @@ export type WarRoomPillarKey = (typeof WAR_ROOM_PILLAR_KEYS)[number];
  * orphaned resources"). There is no separate `health` pillar in the engine, and
  * inventing one would be the new scoring formula this must not add.
  */
-export const WAR_ROOM_ENGINE_PILLAR: Record<WarRoomPillarKey, RadarPillar> = {
+export const ENGINE_PILLAR_FOR_DISPLAY_PILLAR: Record<PillarSummaryKey, RadarPillar> = {
   governance: "governance",
   licensing: "licensing",
   adoption: "adoption",
@@ -266,7 +266,7 @@ export const WAR_ROOM_ENGINE_PILLAR: Record<WarRoomPillarKey, RadarPillar> = {
  * progress; its findings simply attach to no card rather than being forced onto
  * the nearest one.
  */
-export const WAR_ROOM_PILLAR_CHECK_DOMAINS: Record<WarRoomPillarKey, readonly string[]> = {
+export const PILLAR_CHECK_DOMAINS: Record<PillarSummaryKey, readonly string[]> = {
   governance: ["governance", "sharepoint", "teams", "onedrive", "platform"],
   licensing: ["licensing", "cost", "license"],
   adoption: ["adoption", "usage", "collaboration"],
@@ -276,23 +276,23 @@ export const WAR_ROOM_PILLAR_CHECK_DOMAINS: Record<WarRoomPillarKey, readonly st
   copilot: ["copilot"],
 };
 
-const PILLAR_BY_DOMAIN = new Map<string, WarRoomPillarKey>();
-for (const pillar of WAR_ROOM_PILLAR_KEYS) {
-  for (const domain of WAR_ROOM_PILLAR_CHECK_DOMAINS[pillar]) PILLAR_BY_DOMAIN.set(domain, pillar);
+const PILLAR_BY_DOMAIN = new Map<string, PillarSummaryKey>();
+for (const pillar of PILLAR_SUMMARY_KEYS) {
+  for (const domain of PILLAR_CHECK_DOMAINS[pillar]) PILLAR_BY_DOMAIN.set(domain, pillar);
 }
 
 /**
  * `signal_derivation_rules.pillar` (free text, `SIGNAL_PILLARS`) → the War Room
- * pillar it names, inverted from `WAR_ROOM_ENGINE_PILLAR` so the two naming
+ * pillar it names, inverted from `ENGINE_PILLAR_FOR_DISPLAY_PILLAR` so the two naming
  * schemes can never disagree (`architecture` → `health`, same as the engine
  * pillar every score already resolves through). `cost` is kept as a second
  * accepted string alongside `licensing`, mirroring the SAME real alias
- * `WAR_ROOM_PILLAR_CHECK_DOMAINS` already documents for the `cost:*` check-key
+ * `PILLAR_CHECK_DOMAINS` already documents for the `cost:*` check-key
  * domain — the live table uses it interchangeably with `licensing` (see that
  * map's own comment).
  */
-const RADAR_PILLAR_BY_RULE_PILLAR = new Map<string, WarRoomPillarKey>(
-  WAR_ROOM_PILLAR_KEYS.map((pillar) => [WAR_ROOM_ENGINE_PILLAR[pillar], pillar]),
+const RADAR_PILLAR_BY_RULE_PILLAR = new Map<string, PillarSummaryKey>(
+  PILLAR_SUMMARY_KEYS.map((pillar) => [ENGINE_PILLAR_FOR_DISPLAY_PILLAR[pillar], pillar]),
 );
 RADAR_PILLAR_BY_RULE_PILLAR.set("cost", "licensing");
 
@@ -301,7 +301,7 @@ RADAR_PILLAR_BY_RULE_PILLAR.set("cost", "licensing");
  * null when the column is blank or names something outside `SIGNAL_PILLARS`
  * (an unset/typo'd row, not a claim on any card). Pure; exported for tests.
  */
-export function warRoomPillarForRulePillar(rulePillar: string | null | undefined): WarRoomPillarKey | null {
+export function pillarForRulePillar(rulePillar: string | null | undefined): PillarSummaryKey | null {
   if (!rulePillar) return null;
   return RADAR_PILLAR_BY_RULE_PILLAR.get(rulePillar.trim().toLowerCase()) ?? null;
 }
@@ -311,15 +311,15 @@ export function warRoomPillarForRulePillar(rulePillar: string | null | undefined
  * unclaimed (#521). Resolved primarily from `checkKeyPillars`
  * (`buildCheckKeyPillarMap` — `signal_derivation_rules.pillar` for that check's
  * owning signal, #469's enforced single source of truth), falling back to the
- * `WAR_ROOM_PILLAR_CHECK_DOMAINS` prefix map only for a check with no matching
+ * `PILLAR_CHECK_DOMAINS` prefix map only for a check with no matching
  * rule row (or an ambiguous one — see `buildCheckKeyPillarMap`). Callers with no
  * rule data at all (tests, or a caller that genuinely has none) get the domain
  * fallback outright, same as before #521. Pure.
  */
-export function warRoomPillarForCheckKey(
+export function pillarForCheckKey(
   checkKey: string | null | undefined,
-  checkKeyPillars?: ReadonlyMap<string, WarRoomPillarKey>,
-): WarRoomPillarKey | null {
+  checkKeyPillars?: ReadonlyMap<string, PillarSummaryKey>,
+): PillarSummaryKey | null {
   if (!checkKey) return null;
   const fromRules = checkKeyPillars?.get(checkKey);
   if (fromRules) return fromRules;
@@ -328,26 +328,26 @@ export function warRoomPillarForCheckKey(
 }
 
 /** Severities the pillar cards surface, matching telemetry-comparison.ts. */
-export const WAR_ROOM_FINDING_SEVERITIES = ["critical", "warning"] as const;
-export type WarRoomFindingSeverity = (typeof WAR_ROOM_FINDING_SEVERITIES)[number];
+export const PILLAR_FINDING_SEVERITIES = ["critical", "warning"] as const;
+export type PillarFindingSeverity = (typeof PILLAR_FINDING_SEVERITIES)[number];
 
 // ── Stat specs ────────────────────────────────────────────────────────────────
 
 /** How the client should render a resolved number. The number itself is raw. */
-export type WarRoomStatUnit = "count" | "percent" | "currency";
+export type PillarStatUnit = "count" | "percent" | "currency";
 
-export type WarRoomStatSource =
+export type PillarStatSource =
   | { kind: "metric"; metricKey: string }
   | { kind: "licenseSeats"; field: "provisioned" | "unassigned" | "annualWasteDollars" }
   | { kind: "pillarScore" };
 
-export interface WarRoomStatSpec {
+export interface PillarStatSpec {
   /** Stable id, so the client can key/test a stat without matching on its label. */
   id: string;
   /** The customer-facing caption under the number. */
   label: string;
-  unit: WarRoomStatUnit;
-  source: WarRoomStatSource;
+  unit: PillarStatUnit;
+  source: PillarStatSource;
   /**
    * The fictional `HERO_PHASE` stat this replaces, verbatim — kept so the swap
    * stays auditable and so a reviewer can see which originals had no real
@@ -367,7 +367,7 @@ export interface WarRoomStatSpec {
  * here, so a rename or removal in the catalog fails a test instead of reaching
  * a customer's report as an unresolved key.
  */
-export const WAR_ROOM_PILLAR_STAT_SPECS: Record<WarRoomPillarKey, readonly WarRoomStatSpec[]> = {
+export const PILLAR_STAT_SPECS: Record<PillarSummaryKey, readonly PillarStatSpec[]> = {
   // Exact matches: the governance card's own four numbers all have a real check.
   governance: [
     { id: "governance.sites", label: "sites inventoried", unit: "count",
@@ -530,7 +530,7 @@ export const WAR_ROOM_PILLAR_STAT_SPECS: Record<WarRoomPillarKey, readonly WarRo
  * a future reader can see the gap rather than rediscover it. Each was replaced
  * by a real sibling above (see each spec's `replaces`); none was approximated.
  */
-export const WAR_ROOM_UNPRODUCIBLE_STATS: readonly string[] = [
+export const PILLAR_UNPRODUCIBLE_STATS: readonly string[] = [
   "files reachable / files in blast radius (no check counts files; item-level over-exposure is used instead)",
   "% of meetings transcribed (no transcription-state check)",
   "named champions (no champion nomination source)",
@@ -549,10 +549,10 @@ export const WAR_ROOM_UNPRODUCIBLE_STATS: readonly string[] = [
 
 // ── Payload ───────────────────────────────────────────────────────────────────
 
-export interface WarRoomStat {
+export interface PillarStat {
   id: string;
   label: string;
-  unit: WarRoomStatUnit;
+  unit: PillarStatUnit;
   /** The real number, or null when the source genuinely has no data for it. */
   value: number | null;
   /**
@@ -597,7 +597,7 @@ export interface WarRoomStat {
  * for checks that were never scanned, which reads as a broken pillar sitting
  * next to a perfectly real score.
  */
-export const WAR_ROOM_STAT_NOT_SCANNED = "not_in_scan_package";
+export const PILLAR_STAT_NOT_SCANNED = "not_in_scan_package";
 
 /**
  * Reasons that are a PLATFORM WIRING FAULT rather than a fact about the tenant.
@@ -618,7 +618,7 @@ export const WAR_ROOM_STAT_NOT_SCANNED = "not_in_scan_package";
  * Exported so the consumers of this payload classify identically rather than
  * each re-deciding which reasons are ours.
  */
-export const WAR_ROOM_STAT_WIRING_FAULT_REASONS: readonly string[] = [
+export const PILLAR_STAT_WIRING_FAULT_REASONS: readonly string[] = [
   "unknown_check_key",
   "unknown_metric_key",
   "resolver_error",
@@ -626,7 +626,7 @@ export const WAR_ROOM_STAT_WIRING_FAULT_REASONS: readonly string[] = [
 
 /** True when a stat is unavailable because of OUR wiring, not the tenant's data. */
 export function isStatWiringFault(reason: string | undefined): boolean {
-  return reason != null && WAR_ROOM_STAT_WIRING_FAULT_REASONS.includes(reason);
+  return reason != null && PILLAR_STAT_WIRING_FAULT_REASONS.includes(reason);
 }
 
 /**
@@ -648,19 +648,19 @@ export function isStatWiringFault(reason: string | undefined): boolean {
  * exits at the first guard.
  */
 export function refineStatUnavailability(
-  stat: WarRoomStat,
+  stat: PillarStat,
   scannedCheckKeys: ReadonlySet<string> | null,
-): WarRoomStat {
+): PillarStat {
   if (stat.value != null) return stat;
   if (stat.unavailableReason !== "no_data") return stat;
   if (!stat.checkKey) return stat;
   if (scannedCheckKeys == null || scannedCheckKeys.size === 0) return stat;
   if (scannedCheckKeys.has(stat.checkKey)) return stat;
-  return { ...stat, unavailableReason: WAR_ROOM_STAT_NOT_SCANNED };
+  return { ...stat, unavailableReason: PILLAR_STAT_NOT_SCANNED };
 }
 
-export interface WarRoomPillarFinding {
-  severity: WarRoomFindingSeverity;
+export interface PillarFinding {
+  severity: PillarFindingSeverity;
   checkKey: string;
   title: string;
   /**
@@ -670,8 +670,8 @@ export interface WarRoomPillarFinding {
    * number comes from.
    *
    * Deliberately a flat number rather than a per-pillar map: a
-   * `WarRoomPillarCard` is already pillar-scoped, and a finding reaches exactly
-   * one card (`warRoomPillarForCheckKey` is single-valued), so the pillar is
+   * `PillarSummaryCard` is already pillar-scoped, and a finding reaches exactly
+   * one card (`pillarForCheckKey` is single-valued), so the pillar is
    * known at the point this is written and carrying the other six columns to
    * the client would be dead weight the wire cannot use.
    *
@@ -844,7 +844,7 @@ type PillarImpactField = keyof Omit<SignalHealthImpactConfig, "signalKey">;
  * Note the live table labels one pillar `cost` where the engine calls it
  * `licensing`; that is a value in `signal_derivation_rules.pillar`, a free-text
  * column this lookup never reads. Ranking is keyed by the ENGINE pillar the card
- * was scored as (`WAR_ROOM_ENGINE_PILLAR`), so the two naming schemes cannot
+ * was scored as (`ENGINE_PILLAR_FOR_DISPLAY_PILLAR`), so the two naming schemes cannot
  * disagree here.
  */
 export const FINDING_RANK_IMPACT_FIELD = PILLAR_FIELD as Record<RadarPillar, PillarImpactField>;
@@ -852,7 +852,7 @@ export const FINDING_RANK_IMPACT_FIELD = PILLAR_FIELD as Record<RadarPillar, Pil
 /**
  * A check's rank weight for every engine pillar, so one pass over the rules
  * serves all seven cards (#414). Read at the point a finding is filed under its
- * pillar; see `WarRoomPillarFinding.rankWeight` for why only one of the seven
+ * pillar; see `PillarFinding.rankWeight` for why only one of the seven
  * survives onto the wire.
  */
 export type CheckRankWeights = Record<RadarPillar, number>;
@@ -922,8 +922,8 @@ export function buildFindingRankWeights(
 
 /**
  * Real check key → the War Room pillar its owning signal's
- * `signal_derivation_rules.pillar` names (#521), for `warRoomPillarForCheckKey`
- * to prefer over `WAR_ROOM_PILLAR_CHECK_DOMAINS`. Joins through
+ * `signal_derivation_rules.pillar` names (#521), for `pillarForCheckKey`
+ * to prefer over `PILLAR_CHECK_DOMAINS`. Joins through
  * `resolveOwningCheckKey` — the SAME check-ownership hop `buildFindingRankWeights`
  * uses just above, over the SAME `rules` — rather than a second mapping that
  * could drift from it: a check's pillar and a check's rank-weight column both
@@ -947,18 +947,18 @@ export function buildFindingRankWeights(
 export function buildCheckKeyPillarMap(
   rules: readonly Pick<SignalDerivationRule, "ruleType" | "sourceKey" | "pillar">[],
   checkDefinitions: readonly RankCheckDefinition[],
-): Map<string, WarRoomPillarKey> {
-  const pillarsByCheckKey = new Map<string, Set<WarRoomPillarKey>>();
+): Map<string, PillarSummaryKey> {
+  const pillarsByCheckKey = new Map<string, Set<PillarSummaryKey>>();
   for (const rule of rules) {
-    const pillar = warRoomPillarForRulePillar(rule.pillar);
+    const pillar = pillarForRulePillar(rule.pillar);
     if (!pillar) continue;
     const checkKey = resolveOwningCheckKey(rule, checkDefinitions);
     if (!checkKey) continue;
-    const pillars = pillarsByCheckKey.get(checkKey) ?? new Set<WarRoomPillarKey>();
+    const pillars = pillarsByCheckKey.get(checkKey) ?? new Set<PillarSummaryKey>();
     pillars.add(pillar);
     pillarsByCheckKey.set(checkKey, pillars);
   }
-  const resolved = new Map<string, WarRoomPillarKey>();
+  const resolved = new Map<string, PillarSummaryKey>();
   for (const [checkKey, pillars] of pillarsByCheckKey) {
     if (pillars.size === 1) resolved.set(checkKey, [...pillars][0]!);
   }
@@ -973,8 +973,8 @@ export function buildCheckKeyPillarMap(
  *
  * Pure; exported for tests.
  */
-export function compareRankedFindings(a: WarRoomPillarFinding, b: WarRoomPillarFinding): number {
-  const severityRank: Record<WarRoomFindingSeverity, number> = { critical: 0, warning: 1 };
+export function compareRankedFindings(a: PillarFinding, b: PillarFinding): number {
+  const severityRank: Record<PillarFindingSeverity, number> = { critical: 0, warning: 1 };
   return (
     severityRank[a.severity] - severityRank[b.severity] ||
     b.rankWeight - a.rankWeight ||
@@ -994,15 +994,15 @@ export function compareRankedFindings(a: WarRoomPillarFinding, b: WarRoomPillarF
  * `checkKeys` is this pillar's real gapped checks only, so the card can name its
  * own evidence rather than the category's full roster.
  */
-export interface WarRoomPillarUpgradeLink {
+export interface PillarUpgradeLink {
   skuKey: string;
   skuName: string;
   url: string;
   checkKeys: string[];
 }
 
-export interface WarRoomPillarCard {
-  pillar: WarRoomPillarKey;
+export interface PillarSummaryCard {
+  pillar: PillarSummaryKey;
   /** The engine pillar this score really came from — provenance, not decoration. */
   enginePillar: RadarPillar;
   /** 0–100, higher = healthier. Null when no evaluable rule feeds it — never fabricated. */
@@ -1018,9 +1018,9 @@ export interface WarRoomPillarCard {
   evaluation: PillarEvaluation;
   /** The engine's raw risk accumulation for the pillar (higher = worse). */
   rawRiskScore: number;
-  stats: WarRoomStat[];
+  stats: PillarStat[];
   /** Real findings for this pillar's checks, worst first, capped. */
-  findings: WarRoomPillarFinding[];
+  findings: PillarFinding[];
   findingCounts: { critical: number; warning: number };
   /**
    * Real `tenant_monitor_profiles` history replayed through the same
@@ -1033,17 +1033,17 @@ export interface WarRoomPillarCard {
    * Purchase links for the licence gaps THIS pillar's own checks reported
    * (#489). Empty for a pillar with no gapped check — never a placeholder.
    */
-  licenseGapUpgrades: WarRoomPillarUpgradeLink[];
+  licenseGapUpgrades: PillarUpgradeLink[];
 }
 
-export interface WarRoomPillarStatsPayload {
-  pillars: WarRoomPillarCard[];
+export interface PillarSummaryPayload {
+  pillars: PillarSummaryCard[];
   /**
    * Real per-SKU ledger for the Licensing pillar's money page (Git #1230):
    * purchased/assigned/unassigned counts and dollar figures, one row per priced
    * SKU. Null when this tenant has no /subscribedSkus check with a complete
    * stored page at all — never a guessed row. Top-level (not per-pillar stats)
-   * because it is row data, not a scalar the WarRoomStat shape can carry.
+   * because it is row data, not a scalar the PillarStat shape can carry.
    */
   licenseSkuLedger: LicenseSkuLedger | null;
   /**
@@ -1083,8 +1083,8 @@ export interface WarRoomPillarStatsPayload {
   scannedCheckKeys: string[];
   /**
    * Real `monitor_checks.key` → War Room pillar, for every real check in the
-   * catalog — resolved through `warRoomPillarForCheckKey` (#521: rule-derived
-   * `signal_derivation_rules.pillar` first, `WAR_ROOM_PILLAR_CHECK_DOMAINS`
+   * catalog — resolved through `pillarForCheckKey` (#521: rule-derived
+   * `signal_derivation_rules.pillar` first, `PILLAR_CHECK_DOMAINS`
    * fallback second), the SAME function `findingsByPillar` above is filed with.
    *
    * Exists so a live consumer streaming per-check results off the diagnostics
@@ -1095,7 +1095,7 @@ export interface WarRoomPillarStatsPayload {
    * genuinely maps to no pillar, not that the client needs a fallback of its
    * own.
    */
-  checkKeyPillars: Record<string, WarRoomPillarKey>;
+  checkKeyPillars: Record<string, PillarSummaryKey>;
   generatedAt: string;
 }
 
@@ -1109,10 +1109,10 @@ const ACTIVE_RUN_STATUSES = ["pending", "running"] as const;
  * its real reason, NOT a zero) is testable without a database.
  */
 export function statFromMetricResult(
-  spec: WarRoomStatSpec,
+  spec: PillarStatSpec,
   metricSourceKey: string,
   result: MetricResult | null,
-): WarRoomStat {
+): PillarStat {
   const base = {
     id: spec.id,
     label: spec.label,
@@ -1187,7 +1187,7 @@ export async function resolveSeatFigures(tenantId: string): Promise<SeatFigures 
     annualWasteDollars =
       breakdown.totalAnnualCents > 0 ? centsToDollars(breakdown.totalAnnualCents) : null;
   } catch (err) {
-    log.warn({ err, tenantId }, "war-room-pillar-stats: SKU cost breakdown failed; annual waste omitted");
+    log.warn({ err, tenantId }, "pillar-summary-stats: SKU cost breakdown failed; annual waste omitted");
   }
 
   return {
@@ -1205,7 +1205,7 @@ export async function resolveSeatFigures(tenantId: string): Promise<SeatFigures 
  * `ResolveContext`; every metric used here is `scope: "customer"`, so it never
  * drives a value.
  */
-export async function buildWarRoomPillarStats(customerId: number): Promise<WarRoomPillarStatsPayload> {
+export async function buildPillarSummary(customerId: number): Promise<PillarSummaryPayload> {
   const [tenantRow] = await db
     .select({ tenantId: tenantsTable.tenantId, mspId: tenantsTable.mspId })
     .from(tenantsTable)
@@ -1245,7 +1245,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   // sku_price_reference data so the two can never disagree about the estate.
   const licenseSkuLedger = tenantRow?.tenantId
     ? await resolveLicenseSkuLedger(tenantRow.tenantId).catch((err) => {
-        log.warn({ err, customerId }, "war-room-pillar-stats: license SKU ledger computation failed");
+        log.warn({ err, customerId }, "pillar-summary-stats: license SKU ledger computation failed");
         return null;
       })
     : null;
@@ -1255,8 +1255,8 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   // Resolve every distinct metric once — several specs share one (the
   // over-exposure count appears on three cards).
   const metricKeys = new Set<string>();
-  for (const pillar of WAR_ROOM_PILLAR_KEYS) {
-    for (const spec of WAR_ROOM_PILLAR_STAT_SPECS[pillar]) {
+  for (const pillar of PILLAR_SUMMARY_KEYS) {
+    for (const spec of PILLAR_STAT_SPECS[pillar]) {
       if (spec.source.kind === "metric") metricKeys.add(spec.source.metricKey);
     }
   }
@@ -1267,7 +1267,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       if (!def) {
         // A spec naming a metric the registry doesn't have is a wiring bug, not a
         // tenant with no data — say so rather than rendering an empty card.
-        log.error({ metricKey }, "war-room-pillar-stats: spec references an unknown registry metric");
+        log.error({ metricKey }, "pillar-summary-stats: spec references an unknown registry metric");
         metricResults.set(metricKey, { result: null, sourceKey: metricKey });
         return;
       }
@@ -1296,14 +1296,14 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   const checkKeyPillars = buildCheckKeyPillarMap(rules, rankCheckDefinitions);
 
   // #526: the FULLY resolved check→pillar table (rule-based above, falling back
-  // to `WAR_ROOM_PILLAR_CHECK_DOMAINS` via `warRoomPillarForCheckKey` itself, the
+  // to `PILLAR_CHECK_DOMAINS` via `pillarForCheckKey` itself, the
   // exact same call `findingsByPillar` below is filed with) for every real check
   // in the catalog — not just the subset a rule names. Sent on the wire so a live
   // consumer never needs its own domain-guessing fallback: this one table already
   // is the fallback, applied server-side.
-  const wireCheckKeyPillars: Record<string, WarRoomPillarKey> = {};
+  const wireCheckKeyPillars: Record<string, PillarSummaryKey> = {};
   for (const def of rankCheckDefinitions) {
-    const pillar = warRoomPillarForCheckKey(def.key, checkKeyPillars);
+    const pillar = pillarForCheckKey(def.key, checkKeyPillars);
     if (pillar) wireCheckKeyPillars[def.key] = pillar;
   }
 
@@ -1321,19 +1321,19 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
   if (licenseGapPurchase?.uncategorisedCheckKeys.length) {
     log.warn(
       { customerId, checkKeys: licenseGapPurchase.uncategorisedCheckKeys },
-      "war-room-pillar-stats: license_gap checks map to no purchase category — no upgrade link can be offered for them",
+      "pillar-summary-stats: license_gap checks map to no purchase category — no upgrade link can be offered for them",
     );
   }
 
   /**
    * The links one card shows, grouped by SKU. Derived from the tenant's real
-   * gapped keys through `warRoomPillarForCheckKey` — the same function that
+   * gapped keys through `pillarForCheckKey` — the same function that
    * files a finding under a card — rather than from a second category→pillar
    * table that could disagree with it.
    */
-  const upgradesByPillar = new Map<WarRoomPillarKey, WarRoomPillarUpgradeLink[]>();
+  const upgradesByPillar = new Map<PillarSummaryKey, PillarUpgradeLink[]>();
   for (const checkKey of licenseGapCheckKeys) {
-    const pillar = warRoomPillarForCheckKey(checkKey, checkKeyPillars);
+    const pillar = pillarForCheckKey(checkKey, checkKeyPillars);
     const recommendation: LicenseGapRecommendation | null = recommendationForCheckKey(
       licenseGapPurchase,
       checkKey,
@@ -1367,8 +1367,8 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
     .orderBy(desc(mspDiagnosticRunsTable.createdAt))
     .limit(1);
 
-  const pillars: WarRoomPillarCard[] = WAR_ROOM_PILLAR_KEYS.map((pillar) => {
-    const enginePillar = WAR_ROOM_ENGINE_PILLAR[pillar];
+  const pillars: PillarSummaryCard[] = PILLAR_SUMMARY_KEYS.map((pillar) => {
+    const enginePillar = ENGINE_PILLAR_FOR_DISPLAY_PILLAR[pillar];
     const view = byEnginePillar.get(enginePillar);
     const score = view?.displayScore ?? null;
     // `buildPillarViews` covers every RADAR_PILLARS entry, so a missing view is
@@ -1383,7 +1383,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       reason: `the engine produced no ${enginePillar} pillar view for this tenant`,
     };
 
-    const stats = WAR_ROOM_PILLAR_STAT_SPECS[pillar].map((spec): WarRoomStat => {
+    const stats = PILLAR_STAT_SPECS[pillar].map((spec): PillarStat => {
       const base = {
         id: spec.id,
         label: spec.label,
@@ -1440,7 +1440,7 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
       if (isStatWiringFault(stat.unavailableReason)) {
         log.error(
           { customerId, pillar, statId: stat.id, checkKey: stat.checkKey, reason: stat.unavailableReason },
-          "war-room-pillar-stats: stat is unresolvable for every tenant — registry sourceKey does not match the live monitor_checks catalog",
+          "pillar-summary-stats: stat is unresolvable for every tenant — registry sourceKey does not match the live monitor_checks catalog",
         );
       }
     }
@@ -1496,11 +1496,11 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
  *
  * Which of a check's seven weights applies is decided HERE (corrected
  * 2026-08-06), because this is the first point at which the pillar is known:
- * `warRoomPillarForCheckKey` files the finding, `WAR_ROOM_ENGINE_PILLAR`
+ * `pillarForCheckKey` files the finding, `ENGINE_PILLAR_FOR_DISPLAY_PILLAR`
  * translates that to the engine pillar the card was actually scored as, and
  * `FINDING_RANK_IMPACT_FIELD` names that pillar's own impact column.
  *
- * `checkKeyPillars` (#521, `buildCheckKeyPillarMap`) is what `warRoomPillarForCheckKey`
+ * `checkKeyPillars` (#521, `buildCheckKeyPillarMap`) is what `pillarForCheckKey`
  * uses to file a finding by its check's real `signal_derivation_rules.pillar`
  * before falling back to the domain map — passed in so the caller resolves it
  * once from the same `rules`/`checkDefinitions` pair `rankWeights` was built
@@ -1509,14 +1509,14 @@ export async function buildWarRoomPillarStats(customerId: number): Promise<WarRo
 async function fetchPillarFindings(
   customerId: number,
   rankWeights: ReadonlyMap<string, CheckRankWeights>,
-  checkKeyPillars: ReadonlyMap<string, WarRoomPillarKey>,
+  checkKeyPillars: ReadonlyMap<string, PillarSummaryKey>,
 ): Promise<{
-  findingsByPillar: Map<WarRoomPillarKey, WarRoomPillarFinding[]>;
+  findingsByPillar: Map<PillarSummaryKey, PillarFinding[]>;
   findingsRunId: string | null;
   findingsRunStatus: string | null;
   licenseGapCheckKeys: string[];
 }> {
-  const findingsByPillar = new Map<WarRoomPillarKey, WarRoomPillarFinding[]>();
+  const findingsByPillar = new Map<PillarSummaryKey, PillarFinding[]>();
 
   const [latest] = await db
     .select({ runId: mspDiagnosticFindingsTable.runId })
@@ -1547,20 +1547,20 @@ async function fetchPillarFindings(
     .where(
       and(
         eq(mspDiagnosticFindingsTable.runId, latest.runId),
-        inArray(mspDiagnosticFindingsTable.severity, [...WAR_ROOM_FINDING_SEVERITIES]),
+        inArray(mspDiagnosticFindingsTable.severity, [...PILLAR_FINDING_SEVERITIES]),
       ),
     );
 
   for (const row of rows) {
-    const pillar = warRoomPillarForCheckKey(row.checkKey, checkKeyPillars);
+    const pillar = pillarForCheckKey(row.checkKey, checkKeyPillars);
     if (!pillar) continue;
     const list = findingsByPillar.get(pillar) ?? [];
     const obligationCopy = obligationCopyForCheckKey(row.checkKey);
     list.push({
-      severity: row.severity as WarRoomFindingSeverity,
+      severity: row.severity as PillarFindingSeverity,
       checkKey: row.checkKey,
       title: row.title,
-      rankWeight: rankWeights.get(row.checkKey)?.[WAR_ROOM_ENGINE_PILLAR[pillar]] ?? 0,
+      rankWeight: rankWeights.get(row.checkKey)?.[ENGINE_PILLAR_FOR_DISPLAY_PILLAR[pillar]] ?? 0,
       description: row.description,
       recommendation: row.recommendation as MspDiagnosticFindingRecommendation | null,
       evidence: buildFindingEvidence(row.checkKey, row.extractedProperties),

@@ -90,9 +90,9 @@
 -- ── SEVERITY: "warning", matching #470's precedent for this same class of
 --    bug (missing severity rule on a real hygiene/governance signal) — no
 --    basis in the issue for a higher band, and "warning" (unlike "medium"/
---    "high"/"low") is one of the two severities WAR_ROOM_FINDING_SEVERITIES
+--    "high"/"low") is one of the two severities PILLAR_FINDING_SEVERITIES
 --    actually surfaces on customer-facing War Room pillar cards
---    (war-room-pillar-stats.ts) ─────────────────────────────────────────────
+--    (pillar-summary-stats.ts) ─────────────────────────────────────────────
 --
 -- ── VERIFICATION: no DATABASE_URL in this environment. PART A is read-only
 --    and prints the current row so the before-state is on record. Real

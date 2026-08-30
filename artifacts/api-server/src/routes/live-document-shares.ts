@@ -24,7 +24,7 @@
  * WHAT "review" VS "purchasing" ACTUALLY GATES
  * ---------------------------------------------
  * Both variants return the same 7 live pillar reports (scores, stats,
- * findings, AI-written narrative — reusing `buildWarRoomPillarStats()` and
+ * findings, AI-written narrative — reusing `buildPillarSummary()` and
  * the same 7 narrative generators `portal-assessment.ts`'s own narrative
  * routes call). "purchasing" additionally returns the SOW's real priced
  * scope: `runSalesOfferEngineForTenant()` + the same monitoring/retainer
@@ -79,7 +79,7 @@ import { randomBytes } from "crypto";
 import { requireAuth } from "../middlewares/requireAuth.ts";
 import { resolveMspSlugForUser } from "../lib/resolve-msp-id.ts";
 import { getMspPortalBaseUrl } from "../lib/portal-url.ts";
-import { buildWarRoomPillarStats } from "../lib/war-room-pillar-stats.ts";
+import { buildPillarSummary } from "../lib/pillar-summary-stats.ts";
 import { generateCopilotReadinessNarrative } from "../lib/copilot-readiness-narrative-generator.ts";
 import { generateSecurityPostureNarrative } from "../lib/security-posture-narrative-generator.ts";
 import { generateGovernancePostureNarrative } from "../lib/governance-posture-narrative-generator.ts";
@@ -227,7 +227,7 @@ router.get("/public/live-document-shares/:token", async (req: Request, res: Resp
     const attribution = { mspId: tenantRow.mspId, customerId: tenantsId, triggerSource: "live-document-share" };
 
     const [pillarStats, reports] = await Promise.all([
-      buildWarRoomPillarStats(tenantsId),
+      buildPillarSummary(tenantsId),
       cached(`${token}:narratives`, () =>
         Promise.all(
           LIVE_DOCUMENT_SHARE_REPORTS.map(async (r) => {

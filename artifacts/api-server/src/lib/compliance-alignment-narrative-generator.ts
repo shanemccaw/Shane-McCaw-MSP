@@ -12,7 +12,7 @@
  * Compliance report.
  *
  * NO METRIC IS RESOLVED ON THE SIDE. Every figure this report shows is already
- * on the `war-room-pillars` wire — the compliance card's four stats (missing
+ * on the `/portal/pillars` wire — the compliance card's four stats (missing
  * sensitivity labels, retention policy drift, weak DLP policies, guest users)
  * are the whole of it.
  *

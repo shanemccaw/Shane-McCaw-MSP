@@ -30,7 +30,7 @@
     {
       "name": "A-CMP -- war-room-pillars carries the compliance card's REAL finding counts. pillars[3] is compliance (WAR_ROOM_PILLAR_KEYS order). These drill-downs read this SAME payload via useLivePillarHero (#1204); the source markers below prove each page is on it, and the Open gaps header count is critical+warning off THIS card.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[3].findingCounts.critical", "exists": true }
     },

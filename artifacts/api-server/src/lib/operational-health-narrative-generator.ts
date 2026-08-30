@@ -12,7 +12,7 @@
  * Operational Health report.
  *
  * NO METRIC IS RESOLVED ON THE SIDE. Every figure this report shows is already
- * on the `war-room-pillars` wire — the health card's four Intune posture counts
+ * on the `/portal/pillars` wire — the health card's four Intune posture counts
  * (non-compliant devices, configuration drift, unencrypted devices, outdated OS
  * builds) are the whole of it.
  *
@@ -82,7 +82,7 @@ export type OperationalHealthSectionKey = (typeof OPERATIONAL_HEALTH_NARRATIVE_S
  * itself.
  *
  * `health` here is the War Room pillar name for the engine's `architecture`
- * pillar — `WAR_ROOM_ENGINE_PILLAR` is where that single translation lives, and
+ * pillar — `ENGINE_PILLAR_FOR_DISPLAY_PILLAR` is where that single translation lives, and
  * the card this grounds from is the same one the Reveal's Health satellite
  * shows.
  *

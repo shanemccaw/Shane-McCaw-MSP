@@ -55,28 +55,28 @@
     {
       "name": "A1 -- war-room-pillars responds 200 to a CustomerUser/Assessment bearer. This is the single endpoint every v2 page reads.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars", "exists": true }
     },
     {
       "name": "A2 -- the payload carries a generatedAt stamp, which the Overview and each pillar page print as provenance rather than implying the numbers are live-to-the-second.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.generatedAt", "exists": true }
     },
     {
       "name": "A2b -- the payload now carries a top-level licenseSkuLedger (Git #1230): real per-SKU purchased/assigned/unassigned + dollar rows for the Licensing pillar's ledger, sourced from the tenant's own /subscribedSkus + sku_price_reference data. Row data, not a per-pillar scalar stat, which is why it sits beside `pillars` rather than inside the licensing card's `stats`.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.licenseSkuLedger.checkKey", "value": "license:sku-utilization" }
     },
     {
       "name": "A2c (Git #1474) -- confirm this testbed tenant's real ledger is genuinely fully assigned (0 unassigned seats), and extract the real totalPurchased/totalAssigned so L6/L7 below assert against the true API numbers rather than a guessed literal.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.licenseSkuLedger.totalUnassigned", "value": 0 },
       "extract": { "as": "licTotalPurchased", "jsonPath": "$.licenseSkuLedger.totalPurchased" },
@@ -85,7 +85,7 @@
     {
       "name": "A2d (Git #1474) -- extract totalAssigned too, interpolated alongside licTotalPurchased.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.licenseSkuLedger.totalAssigned", "exists": true },
       "extract": { "as": "licTotalAssigned", "jsonPath": "$.licenseSkuLedger.totalAssigned" },
@@ -94,7 +94,7 @@
     {
       "name": "A3 -- pillars[0] is governance. The array is emitted in WAR_ROOM_PILLAR_KEYS order (governance, licensing, adoption, compliance, health, security, copilot), and journeyTokens' PILLAR_KEYS indexes straight into these cards by name, which is why the v2 pages reuse the pillar identity map unchanged.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": {
         "status": 200,
@@ -105,7 +105,7 @@
     {
       "name": "A4 -- the governance card's `evaluation` is an OBJECT carrying a `status`, NOT a bare status string. This is the honest-null contract the v2 pages depend on, and asserting the nested path pins the real wire shape: a regression that flattened it back to a string would make every pillar render the wrong 'no data' copy. Asserted as exists, not as a value -- an honestly-unscored tenant must not fail this manifest.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": {
         "status": 200,
@@ -116,7 +116,7 @@
     {
       "name": "A5 -- the copilot card rides in the SAME payload at index 6. The v2 Overview renders its score as the Copilot Gate against COPILOT_GATE_TARGET (82) rather than issuing a second request, because it is the same computePillarDisplayScore number the live surfaces use.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": {
         "status": 200,
@@ -127,7 +127,7 @@
     {
       "name": "A6 -- extract the REAL Licensing score. pillars[1] is licensing in WAR_ROOM_PILLAR_KEYS order. The value is interpolated into L2's DOM assertion so a page that renders the fixture 71 instead of the live engine score fails there.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[1].pillar", "value": "licensing" },
       "extract": { "as": "licScore", "jsonPath": "$.pillars[1].score" }
@@ -135,7 +135,7 @@
     {
       "name": "A7 -- extract the REAL Adoption score. pillars[2] is adoption. Interpolated into A-3.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[2].pillar", "value": "adoption" },
       "extract": { "as": "adpScore", "jsonPath": "$.pillars[2].score" }
@@ -143,7 +143,7 @@
     {
       "name": "A8 -- extract the REAL Health score. pillars[4] is health (the engine's 'architecture' pillar, #1098). Interpolated into H5.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[4].pillar", "value": "health" },
       "extract": { "as": "hltScore", "jsonPath": "$.pillars[4].score" }
@@ -151,7 +151,7 @@
     {
       "name": "A9 -- extract the REAL Governance score. pillars[0] is governance (A3). Interpolated into G1: the rebuilt Governance hero ring now renders THIS number, not the fixture 62.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[0].score", "exists": true },
       "extract": { "as": "govScore", "jsonPath": "$.pillars[0].score" }
@@ -159,7 +159,7 @@
     {
       "name": "A10 -- extract the REAL Security score. pillars[5] is security. Interpolated into S2: the Security hero ring now renders THIS number, not the fixture 54.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[5].pillar", "value": "security" },
       "extract": { "as": "secScore", "jsonPath": "$.pillars[5].score" }
@@ -167,7 +167,7 @@
     {
       "name": "A11 -- extract the REAL Compliance score. pillars[3] is compliance. Interpolated into C1: the Compliance hero ring now renders THIS number, not the fixture 78.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[3].pillar", "value": "compliance" },
       "extract": { "as": "cmpScore", "jsonPath": "$.pillars[3].score" }
@@ -175,7 +175,7 @@
     {
       "name": "A12 -- the security card's REAL critical finding count. The Security page's red critical headline AND its 'Critical Exposures' hero tile render THIS number now, not the fixture 3.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[5].findingCounts.critical", "exists": true },
       "extract": { "as": "secCritical", "jsonPath": "$.pillars[5].findingCounts.critical" }
@@ -183,7 +183,7 @@
     {
       "name": "A13 -- the security card's REAL global-administrator count sits at stats[1] (security.globalAdmins, pinned here). The GOVERNANCE hero reads it CROSS-PILLAR for its 'Global Administrators' tile off the same payload, so this value is interpolated into that Governance tile assertion.",
       "method": "GET",
-      "path": "/api/portal/assessment/war-room-pillars",
+      "path": "/api/portal/pillars",
       "headers": { "Authorization": "Bearer {{authToken}}" },
       "expect": { "status": 200, "jsonPath": "$.pillars[5].stats[1].id", "value": "security.globalAdmins" },
       "extract": { "as": "secGlobalAdmins", "jsonPath": "$.pillars[5].stats[1].value" }

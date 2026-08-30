@@ -20,8 +20,8 @@
  * NO METRIC IS RESOLVED ON THE SIDE
  * ---------------------------------
  * Unlike `security-posture-narrative-generator.ts`, which resolves Microsoft
- * Secure Score because no `WAR_ROOM_PILLAR_STAT_SPECS` entry carries it, every
- * figure this report shows is already on the `war-room-pillars` wire. The
+ * Secure Score because no `PILLAR_STAT_SPECS` entry carries it, every
+ * figure this report shows is already on the `/portal/pillars` wire. The
  * governance card's four stats — sites inventoried, overshared sites, items
  * over-exposed, public channels — are the whole of it, so there is no second
  * path from a value to a sentence anywhere in this report.

@@ -26,7 +26,7 @@
  *
  * THE RULE, RESTATED SO IT CANNOT BE LOST IN THE EXTRACTION
  * ---------------------------------------------------------
- *   • A `WarRoomStat` with a null `value` NEVER reaches the model as a number.
+ *   • A `PillarStat` with a null `value` NEVER reaches the model as a number.
  *     It is listed separately, by its real `monitor_checks` key and the
  *     resolver's own machine reason (`no_data`, `not_in_scan_package`,
  *     `license_gap`, …), under an instruction never to speak to it. That
@@ -38,7 +38,7 @@
  *     no boilerplate paragraph, no "generic advice" fallback anywhere.
  */
 
-import type { WarRoomPillarCard, WarRoomPillarKey, WarRoomStat } from "./war-room-pillar-stats.ts";
+import type { PillarSummaryCard, PillarSummaryKey, PillarStat } from "./pillar-summary-stats.ts";
 
 /**
  * Why a section carries no prose. Machine-stable, so a viewer can say WHICH
@@ -52,7 +52,7 @@ export type NarrativeOmission = "no_real_data" | "generation_failed" | "empty_re
  * reason.
  *
  * `licenseFeature` rides along ONLY when the reason is `license_gap`, carrying
- * the real add-on name the tenant's own scan reported (`WarRoomStat
+ * the real add-on name the tenant's own scan reported (`PillarStat
  * .licenseFeature`). #451 renders those under their own Upgrade Opportunity
  * category rather than in the generic "could not measure" list, and naming the
  * tier from the tenant's own response is what keeps that copy factual instead of
@@ -75,7 +75,7 @@ export interface SectionFacts {
 }
 
 /** A stat the model may cite: it has a real, finite number behind it. */
-export function isRealStat(stat: WarRoomStat): boolean {
+export function isRealStat(stat: PillarStat): boolean {
   return typeof stat.value === "number" && Number.isFinite(stat.value);
 }
 
@@ -84,7 +84,7 @@ export function isRealStat(stat: WarRoomStat): boolean {
  * "approximately" — the number the reader sees in the table beside this prose
  * is the number the model is given.
  */
-export function formatStatValue(stat: WarRoomStat): string {
+export function formatStatValue(stat: PillarStat): string {
   const value = stat.value as number;
   if (stat.unit === "percent") return `${value}%`;
   if (stat.unit === "currency") return `$${value.toLocaleString("en-US")}`;
@@ -121,8 +121,8 @@ function missingLines(missing: readonly MissingCheck[]): string {
  * an unavailable stat is deliberately not one of them.
  */
 export function collectFactsForPillars(
-  pillars: readonly WarRoomPillarKey[],
-  cards: readonly WarRoomPillarCard[],
+  pillars: readonly PillarSummaryKey[],
+  cards: readonly PillarSummaryCard[],
 ): SectionFacts {
   const wanted = new Set<string>(pillars);
   const relevant = cards.filter((c) => wanted.has(c.pillar));
@@ -190,7 +190,7 @@ export function collectFactsForPillars(
 export function withExtraStats(
   facts: SectionFacts,
   qualifier: string,
-  stats: readonly WarRoomStat[],
+  stats: readonly PillarStat[],
 ): SectionFacts {
   if (stats.length === 0) return facts;
 

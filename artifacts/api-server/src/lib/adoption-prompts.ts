@@ -11,7 +11,7 @@
  * --------------------------------------------------
  * 1. NO USAGE COUNT AND NO ADOPTION PERCENTAGE. This is the only report in the
  *    set whose pillar card carries NO measured stats at all —
- *    `WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an empty array, because the six
+ *    `PILLAR_STAT_SPECS.adoption` is an empty array, because the six
  *    real adoption checks are Graph usage-report DETAIL endpoints (one row per
  *    person, one row per site) and a metric pointed at one renders the licensed
  *    roster under a caption reading "active users". So `{{statBlock}}` is

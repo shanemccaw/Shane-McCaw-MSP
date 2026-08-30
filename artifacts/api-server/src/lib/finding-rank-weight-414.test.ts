@@ -8,7 +8,7 @@
  * exist" as Security's headline on the real test tenant.
  *
  * These drive the REAL exported functions — `buildFindingRankWeights` and
- * `compareRankedFindings` from war-room-pillar-stats.ts, and
+ * `compareRankedFindings` from pillar-summary-stats.ts, and
  * `resolveOwningCheckKey` from pillar-coverage.ts underneath the first — over
  * the REAL check keys of `core:security-baseline`. Nothing about the ordering
  * is reimplemented here.
@@ -46,12 +46,12 @@ import {
   buildFindingRankWeights,
   compareRankedFindings,
   FINDING_RANK_IMPACT_FIELD,
-  WAR_ROOM_ENGINE_PILLAR,
-  WAR_ROOM_PILLAR_KEYS,
+  ENGINE_PILLAR_FOR_DISPLAY_PILLAR,
+  PILLAR_SUMMARY_KEYS,
   type CheckRankWeights,
-  type WarRoomPillarFinding,
-  type WarRoomPillarKey,
-} from "./war-room-pillar-stats.ts";
+  type PillarFinding,
+  type PillarSummaryKey,
+} from "./pillar-summary-stats.ts";
 import { RADAR_PILLARS, type RadarPillar } from "./pillar-coverage.ts";
 import type { SignalHealthImpactConfig } from "./health-engine.ts";
 
@@ -120,7 +120,7 @@ function impactsOn(
 
 /**
  * The real weights for the issue's own example, carried on `securityImpact`
- * because these are `identity:*` checks and `warRoomPillarForCheckKey` files
+ * because these are `identity:*` checks and `pillarForCheckKey` files
  * them under the Security card: CA-MFA coverage 20, break-glass health 18.
  * The whole point of the issue is that 20 must beat 18 rather than `b` beating
  * `c` — and the whole point of the correction is that it must do so while
@@ -144,13 +144,13 @@ function finding(
   checkKey: string,
   severity: "critical" | "warning",
   title: string,
-  pillar: WarRoomPillarKey = "security",
-): WarRoomPillarFinding {
+  pillar: PillarSummaryKey = "security",
+): PillarFinding {
   return {
     severity,
     checkKey,
     title,
-    rankWeight: RANK_WEIGHTS.get(checkKey)?.[WAR_ROOM_ENGINE_PILLAR[pillar]] ?? 0,
+    rankWeight: RANK_WEIGHTS.get(checkKey)?.[ENGINE_PILLAR_FOR_DISPLAY_PILLAR[pillar]] ?? 0,
   };
 }
 
@@ -271,10 +271,10 @@ describe("#414 the headline the issue reported, ranked by securityImpact", () =>
   });
 
   it("routes an identity:* finding to the Security card's own column", () => {
-    // The wiring the correction depends on: warRoomPillarForCheckKey files
-    // identity checks under `security`, WAR_ROOM_ENGINE_PILLAR keeps that as the
+    // The wiring the correction depends on: pillarForCheckKey files
+    // identity checks under `security`, ENGINE_PILLAR_FOR_DISPLAY_PILLAR keeps that as the
     // engine's `security`, and FINDING_RANK_IMPACT_FIELD names securityImpact.
-    expect(WAR_ROOM_ENGINE_PILLAR.security).toBe("security");
+    expect(ENGINE_PILLAR_FOR_DISPLAY_PILLAR.security).toBe("security");
     expect(FINDING_RANK_IMPACT_FIELD.security).toBe("securityImpact");
     expect(finding("identity:ca-mfa-coverage", "critical", "x").rankWeight).toBe(20);
   });
@@ -282,7 +282,7 @@ describe("#414 the headline the issue reported, ranked by securityImpact", () =>
 
 describe("#414 per-pillar ranking is the general rule, copilot just one case", () => {
   it("maps every War Room card to its own engine pillar's impact column", () => {
-    const expected: Record<WarRoomPillarKey, string> = {
+    const expected: Record<PillarSummaryKey, string> = {
       governance: "governanceImpact",
       licensing: "licensingImpact",
       adoption: "adoptionImpact",
@@ -291,8 +291,8 @@ describe("#414 per-pillar ranking is the general rule, copilot just one case", (
       security: "securityImpact",
       copilot: "copilotImpact",
     };
-    for (const pillar of WAR_ROOM_PILLAR_KEYS) {
-      expect(FINDING_RANK_IMPACT_FIELD[WAR_ROOM_ENGINE_PILLAR[pillar]], `pillar ${pillar}`).toBe(
+    for (const pillar of PILLAR_SUMMARY_KEYS) {
+      expect(FINDING_RANK_IMPACT_FIELD[ENGINE_PILLAR_FOR_DISPLAY_PILLAR[pillar]], `pillar ${pillar}`).toBe(
         expected[pillar],
       );
     }
@@ -313,7 +313,7 @@ describe("#414 per-pillar ranking is the general rule, copilot just one case", (
         { key: "copilot:license-assignment", mapping: null, properties: null },
       ],
     );
-    const cards: WarRoomPillarFinding[] = [
+    const cards: PillarFinding[] = [
       {
         severity: "critical",
         checkKey: "copilot:license-assignment",
@@ -385,7 +385,7 @@ describe("#414 degrades honestly rather than arbitrarily", () => {
       }),
       RANK_CHECK_DEFS,
     );
-    const tied: WarRoomPillarFinding[] = [
+    const tied: PillarFinding[] = [
       "identity:ca-policy-count",
       "identity:break-glass-health",
       "identity:ca-mfa-coverage",
@@ -423,7 +423,7 @@ describe("#414 degrades honestly rather than arbitrarily", () => {
       expect(flatOwn.get(key)?.security, `check ${key}`).toBe(0);
     }
 
-    const tied: WarRoomPillarFinding[] = [
+    const tied: PillarFinding[] = [
       "identity:ca-policy-count",
       "identity:ca-mfa-coverage",
       "identity:break-glass-health",
@@ -447,7 +447,7 @@ describe("#414 degrades honestly rather than arbitrarily", () => {
   });
 
   it("leaves an empty pillar empty", () => {
-    expect(([] as WarRoomPillarFinding[]).sort(compareRankedFindings)).toEqual([]);
+    expect(([] as PillarFinding[]).sort(compareRankedFindings)).toEqual([]);
   });
 
   it("orders every real finding by weight, not just a capped head", () => {

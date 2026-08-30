@@ -18,10 +18,10 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import type { WarRoomPillarCard, WarRoomPillarStatsPayload } from "./war-room-pillar-stats.ts";
+import type { PillarSummaryCard, PillarSummaryPayload } from "./pillar-summary-stats.ts";
 
 let anthropicPrompts: string[] = [];
-let pillarPayload: WarRoomPillarStatsPayload;
+let pillarPayload: PillarSummaryPayload;
 let gateResult: { score: number | null; threshold: number; status: string | null; source: string };
 
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
@@ -54,8 +54,8 @@ vi.mock("./prompt-loader.ts", () => ({
 // `@workspace/db` at load, which throws without a DATABASE_URL — and there is
 // none in a Claude Code session or in CI for this suite. The generator uses
 // exactly one value from it, so a full stub loses nothing.
-vi.mock("./war-room-pillar-stats.ts", () => ({
-  buildWarRoomPillarStats: async () => pillarPayload,
+vi.mock("./pillar-summary-stats.ts", () => ({
+  buildPillarSummary: async () => pillarPayload,
 }));
 
 vi.mock("./copilot-gate.ts", () => ({
@@ -74,7 +74,7 @@ const { generateCopilotReadinessNarrative, MIN_FACTS_FOR_NARRATIVE, __testables 
  * Fixtures
  * ------------------------------------------------------------------ */
 
-function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "pillar">): WarRoomPillarCard {
+function card(overrides: Partial<PillarSummaryCard> & Pick<PillarSummaryCard, "pillar">): PillarSummaryCard {
   return {
     enginePillar: "security",
     score: null,
@@ -84,10 +84,10 @@ function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "p
     findingCounts: { critical: 0, warning: 0 },
     trend: null,
     ...overrides,
-  } as WarRoomPillarCard;
+  } as PillarSummaryCard;
 }
 
-function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
+function payload(pillars: PillarSummaryCard[]): PillarSummaryPayload {
   return {
     pillars,
     // No per-SKU ledger: these fixtures test narrative grounding, not #1230's
@@ -108,7 +108,7 @@ function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
   };
 }
 
-const EMPTY_PILLARS: WarRoomPillarCard[] = [
+const EMPTY_PILLARS: PillarSummaryCard[] = [
   "governance",
   "licensing",
   "adoption",
@@ -116,7 +116,7 @@ const EMPTY_PILLARS: WarRoomPillarCard[] = [
   "health",
   "security",
   "copilot",
-].map((p) => card({ pillar: p as WarRoomPillarCard["pillar"] }));
+].map((p) => card({ pillar: p as PillarSummaryCard["pillar"] }));
 
 const ATTRIBUTION = { mspId: 1, customerId: 42, triggerSource: "test" };
 
