@@ -4018,12 +4018,31 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
    */
   catalogItemId: integer("catalog_item_id").references((): AnyPgColumn => changeCatalogItemsTable.id, { onDelete: "set null" }),
 
+  /**
+   * #1499 — set only when this CR is the INVERSE ROLLBACK of another CR. A
+   * rollback is itself a change: reverting an executed change is not a silent
+   * button, it is a new change request that carries its own record and clears
+   * its own approval before anything is written back to the tenant. This column
+   * is the link from that inverse CR to the original it reverses.
+   *
+   * NULL on every ordinary CR (the overwhelming majority) — a forward change
+   * reverses nothing. Self-reference, `set null` on delete rather than cascade:
+   * the inverse CR is a real historical change in its own right and must not
+   * vanish if the original it reversed is ever pruned. See
+   * `lib/db/migrations/manual/2026-08-29-cr-executions-rollback-writeback-1499.sql`.
+   */
+  rollbackOfChangeRequestId: integer("rollback_of_change_request_id").references(
+    (): AnyPgColumn => mspChangeRequestsTable.id,
+    { onDelete: "set null" },
+  ),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_change_requests_msp_id_idx").on(t.mspId),
   index("msp_change_requests_tenant_id_idx").on(t.tenantId),
   index("msp_change_requests_catalog_item_id_idx").on(t.catalogItemId),
+  index("msp_change_requests_rollback_of_idx").on(t.rollbackOfChangeRequestId),
   // #1497 — the reconciliation sweep joins in-flight CRs to their executor
   // wf_run by this column, so index it for the (small, frequent) settle query.
   index("msp_change_requests_executor_run_id_idx").on(t.executorRunId),
@@ -4208,6 +4227,126 @@ export type CrApproval = typeof crApprovalsTable.$inferSelect;
 export type InsertCrApproval = typeof crApprovalsTable.$inferInsert;
 export type CrApprovalDecision = CrApproval["decision"];
 export type CrApproverRole = CrApproval["approverRole"];
+
+// ── Change Control execution record (#1499) ──────────────────────────────────
+//
+// A CR AUTHORIZES a change; it does not EXECUTE one. Before #1499 the only trace
+// of execution was `msp_change_requests.executed_at` — a single timestamp with
+// no implementer, no bound executor, no planned-vs-actual, and no rollback
+// verification. `cr_executions` is the durable EXECUTION record: one row per time
+// an authorized change is actually carried out, binding the CR to WHICHEVER of
+// the three executors did the work.
+//
+//   • `runbook_run` / `write_action` — a Workflow Engine run (the config-pack
+//     orchestrator, #1497). `wf_run_id` soft-links `wf_runs.id`, and `pack_key`
+//     records which pack executed. This is a change a code path can confirm.
+//   • `human_action` — a change only a person can make (a tenant admin toggling a
+//     portal setting Graph cannot reach). No code path observes it, so it needs
+//     an ATTESTATION — who, when, against which CR — recorded in the `attested_*`
+//     columns. Without that, a human change is indistinguishable from
+//     unattributed drift.
+//
+// The `wf_run_id` link is SOFT (no FK) — the same discipline
+// `msp_change_requests.executor_run_id` follows — so a pruned wf_run never
+// cascades an execution record away; the row keeps its own `pack_key`/`outcome`
+// as the standing history. `msp_id`/`tenant_id` are denormalised from the parent
+// CR so this table scopes on the exact same predicate pair every other Change
+// Control read uses.
+export const CR_EXECUTOR_KINDS = ["runbook_run", "write_action", "human_action"] as const;
+export type CrExecutorKind = (typeof CR_EXECUTOR_KINDS)[number];
+
+/** How an execution ended. `pending` while in flight; `rolled_back` once an inverse CR has reverted it. */
+export const CR_EXECUTION_OUTCOMES = ["pending", "succeeded", "failed", "rolled_back"] as const;
+export type CrExecutionOutcome = (typeof CR_EXECUTION_OUTCOMES)[number];
+
+/** The verification state of a rollback execution (only set on an execution of an inverse/rollback CR). */
+export const CR_ROLLBACK_OUTCOMES = ["pending", "verified", "failed"] as const;
+export type CrRollbackOutcome = (typeof CR_ROLLBACK_OUTCOMES)[number];
+
+export const crExecutionsTable = pgTable("cr_executions", {
+  id: serial("id").primaryKey(),
+  /** The authorizing change this execution carried out. Real FK — an execution cannot outlive its CR. */
+  changeRequestId: integer("change_request_id")
+    .notNull()
+    .references(() => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  /** Denormalised from the parent CR so this table scopes on the same (mspId, tenantId) pair. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+  /** Which of the three executors carried the change out. */
+  executorKind: text("executor_kind", { enum: CR_EXECUTOR_KINDS }).notNull(),
+  /**
+   * The Workflow Engine run that executed this change, when a run did. SOFT link
+   * (no FK) — a pruned wf_run must not cascade this record away, so this tolerates
+   * a run row that no longer exists, exactly as `executor_run_id` does. NULL for a
+   * `human_action` (nothing ran).
+   */
+  wfRunId: integer("wf_run_id"),
+  /** The config pack that executed, for a runbook/write execution. NULL for a human action. */
+  packKey: text("pack_key"),
+  /** Who actually implemented the change — the same vocabulary the CR's own `implementer` uses. */
+  implementer: text("implementer", { enum: CHANGE_REQUEST_IMPLEMENTERS }),
+  outcome: text("outcome", { enum: CR_EXECUTION_OUTCOMES }).notNull().default("pending"),
+
+  // ── Planned-vs-actual (#1499) ──────────────────────────────────────────────
+  // The `planOnly` preview already exists in the config-pack orchestrator
+  // (config-pack-dry-run.ts). Capturing it here at authorization time and
+  // diffing it against what actually happened is what turns "we ran something"
+  // into "we ran what was approved, and here is where reality differed".
+  /** The captured `planOnly` plan — the ConfigPackDryRun the CR was approved against. NULL until captured. */
+  plannedPlan: jsonb("planned_plan").$type<unknown>(),
+  /** The real per-step outcome captured after the run (wf_run node outputs, normalised). NULL until reconciled. */
+  actualOutcome: jsonb("actual_outcome").$type<unknown>(),
+  /** The diff verdict: true when every planned step executed as planned. NULL until the diff is computed. */
+  planMatched: boolean("plan_matched"),
+  /** The structured planned-vs-actual diff. NULL until computed. */
+  planDiff: jsonb("plan_diff").$type<unknown>(),
+
+  // ── crRef writeback (#1499) ────────────────────────────────────────────────
+  // On completion of the authorized action the authorizing CR reference
+  // (`CR-<id>`) is written back here. This is the durable, direct binding drift
+  // attribution reads — a change that carries its authorizing reference is
+  // `approved` drift, not the unattributed kind.
+  /** The authorizing CR reference (`CR-2026-<n>`), written back on completion. NULL until the action completes. */
+  crRef: text("cr_ref"),
+  /** When the `cr_ref` was written back. NULL while the action is still in flight. */
+  writtenBackAt: timestamp("written_back_at", { withTimezone: true }),
+
+  // ── Human-action attestation (#1499) ───────────────────────────────────────
+  // A `human_action` has no code path to confirm it. These record who attests
+  // they performed it, when, and any note — the only thing that makes a manual
+  // change attributable rather than indistinguishable from drift.
+  /** Display name / email of the person attesting they performed the human action. NULL until attested. */
+  attestedBy: text("attested_by"),
+  /** The attester's wire person id ("u<userId>"). NULL until attested. */
+  attestedByPersonId: text("attested_by_person_id"),
+  /** When the human action was attested. NULL while unattested — a `human_action` is not confirmed until this is set. */
+  attestedAt: timestamp("attested_at", { withTimezone: true }),
+  /** An optional note the attester left describing what they did. */
+  attestationNote: text("attestation_note"),
+
+  // ── Rollback verification (#1499) ──────────────────────────────────────────
+  // Set only on the execution of an INVERSE/rollback CR (one whose
+  // `msp_change_requests.rollback_of_change_request_id` is non-null). A rollback
+  // is a real change, so it executes and is verified like any other — these two
+  // columns are its verification result.
+  /** When the rollback was verified to have restored the pre-change state. NULL until verified. */
+  rollbackVerifiedAt: timestamp("rollback_verified_at", { withTimezone: true }),
+  /** The rollback verification outcome. NULL on a forward (non-rollback) execution. */
+  rollbackOutcome: text("rollback_outcome", { enum: CR_ROLLBACK_OUTCOMES }),
+
+  /** When the change was actually carried out (run finish, or the attested time for a human action). NULL while pending. */
+  executedAt: timestamp("executed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cr_executions_change_request_id_idx").on(t.changeRequestId),
+  index("cr_executions_msp_tenant_idx").on(t.mspId, t.tenantId),
+  index("cr_executions_wf_run_id_idx").on(t.wfRunId),
+]);
+
+export const insertCrExecutionSchema = createInsertSchema(crExecutionsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type CrExecution = typeof crExecutionsTable.$inferSelect;
+export type InsertCrExecution = typeof crExecutionsTable.$inferInsert;
 
 // ── Standard Change Catalog (#1498) ──────────────────────────────────────────
 //
