@@ -450,6 +450,20 @@ namespace BuildConsole.Services
         /// <summary>Global queue paused state, remembered across app restarts.</summary>
         public bool QueuePaused { get; set; } = false;
 
+        /// <summary>
+        /// Git #1870 — Batter Up "Free flow" gate. This is a DIFFERENT gate from
+        /// <see cref="QueuePaused"/>: QueuePaused stops rows LAUNCHING out of bt_build_queue;
+        /// this stops board rows ENTERING it. When ON, BatterUpPanel auto-queues every eligible
+        /// Batter Up board item on each refresh (the pre-#1870 behaviour). When OFF (the DEFAULT),
+        /// the panel only LISTS the board and Shane queues rows one at a time by hand — nothing is
+        /// auto-queued, ever. DEFAULT OFF is deliberate and load-bearing: #1870 exists because 45
+        /// items entered the queue unasked, so a restart must never silently resume auto-queueing.
+        /// BatterUpPanel.RefreshAsync reads this LIVE every tick, so toggling takes effect on the
+        /// next refresh without a restart. A pre-#1870 settings.json (no "batterUpFreeFlow" key)
+        /// deserializes with this false default intact — i.e. an existing install lands gated.
+        /// </summary>
+        public bool BatterUpFreeFlow { get; set; } = false;
+
         /// <summary>IDs of build queue items that have been paused by the user.</summary>
         public List<int> PausedBuildIds { get; set; } = new List<int>();
 

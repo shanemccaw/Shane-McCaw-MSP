@@ -24,10 +24,17 @@
                  BtnRefreshGitHubTiles), which cascades here via BoardRefreshCompleted
                  (#1813). TxtCount also carries the "no items" empty-state note inline now,
                  so an empty panel never grows past this one header row. -->
+            <!-- Git #1870 — the Free flow gate toggle sits in this same header row (title,
+                 count, toggle, collapse) so the collapsed footprint #1816 minimised does not
+                 grow. State is unmistakable at a glance: TxtCount carries a "· gated" / "· free
+                 flow" suffix and the toggle itself flips label/colour (see UpdateFreeFlowVisual).
+                 This is a separate gate from the global Build Queue pause (QueueWatcherService) —
+                 it stops board rows ENTERING the queue, not launching out of it. -->
             <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
@@ -40,7 +47,18 @@
                            Foreground="{StaticResource Subtext0Brush}" FontSize="11"
                            VerticalAlignment="Center" Text=""/>
 
-                <ToggleButton x:Name="BtnCollapse" Grid.Column="2"
+                <ToggleButton x:Name="BtnFreeFlow" Grid.Column="2"
+                              Margin="6,0,6,0" Padding="7,1,7,1"
+                              FontSize="10.5" FontWeight="SemiBold"
+                              Background="{StaticResource Surface0Brush}"
+                              BorderBrush="{StaticResource Surface1Brush}"
+                              BorderThickness="1"
+                              Cursor="Hand"
+                              VerticalAlignment="Center"
+                              Content="⏸ Gated"
+                              Click="BtnFreeFlow_Click"/>
+
+                <ToggleButton x:Name="BtnCollapse" Grid.Column="3"
                               Style="{StaticResource ExpandCollapseToggleStyle}"
                               Cursor="Hand"
                               IsChecked="True" Click="BtnCollapse_Click"/>

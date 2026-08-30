@@ -18,6 +18,10 @@ namespace BuildConsole.Services
         public string? Model { get; init; }
         public string? Effort { get; init; }
         public string? BuildSet { get; init; }
+        /// <summary>Git #1870 — the resolved `BUILD:` comment prompt body, carried on the row so the
+        /// manual per-row queue action (BatterUpPanel) can queue it without re-reading GitHub. Null
+        /// when this item has no `BUILD:` comment yet (<see cref="HasBuildComment"/> is false).</summary>
+        public string? Prompt { get; init; }
         /// <summary>False when this Batter Up item has no `BUILD:` comment yet — shown in the table, never auto-queued.</summary>
         public bool HasBuildComment { get; init; }
         /// <summary>Every real GitHub `blocked_by` dependency number declared on this issue (open or closed).</summary>
@@ -32,14 +36,18 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
-    /// Git #1709 — reads the real "Batter Up" project-board status, parses each item's
-    /// `BUILD:` comment, and auto-queues anything not already tracked through the exact
-    /// same <see cref="BuildQueuePostgresClient.QueueBuildAsync"/> path Queue / Send to
-    /// Builder already use — this is a new SOURCE feeding that one real pipeline, not a
-    /// second launch mechanism. Blocked-by numbers are always passed straight through
-    /// from GitHub's real dependency data so the existing #1600 fail-closed watcher (see
-    /// BuildQueuePostgresClient.GetNextAsync) governs whether a queued item actually
-    /// launches, exactly like every other launch path.
+    /// Git #1709 — reads the real "Batter Up" project-board status and parses each item's
+    /// `BUILD:` comment. Git #1870 splits the old one-pass read+queue into two: the READ
+    /// (<see cref="RefreshAsync"/>, which resolves and lists rows but QUEUES NOTHING) and the
+    /// QUEUE (<see cref="QueueRowAsync"/>, which queues exactly one already-resolved row
+    /// through the exact same <see cref="BuildQueuePostgresClient.QueueBuildAsync"/> path
+    /// Queue / Send to Builder use). This is a new SOURCE feeding that one real pipeline, not
+    /// a second launch mechanism. <see cref="RefreshAndAutoQueueAsync"/> is now just the free-
+    /// flow composition of the two — the caller (BatterUpPanel) only invokes it when the Free
+    /// flow gate is on; with the gate off it calls <see cref="RefreshAsync"/> alone. Blocked-by
+    /// numbers are always passed straight through from GitHub's real dependency data so the
+    /// existing #1600 fail-closed watcher (see BuildQueuePostgresClient.GetNextAsync) governs
+    /// whether a queued item actually launches, exactly like every other launch path.
     /// </summary>
     public static class BatterUpQueueService
     {
@@ -99,22 +107,23 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// One full refresh pass: reads the real Batter Up board, resolves each item's
-        /// `BUILD:` comment + real blocked-by state, auto-queues anything new through
-        /// <paramref name="queueDb"/>.QueueBuildAsync, and returns rows for display —
-        /// but only ones NOT already genuinely tracked in the build queue (Git #1808):
-        /// once an item is tracked (found by dedup) or was just auto-queued this pass, the
-        /// Build Queue panel is the only place Shane wants to see it, so it's dropped here
-        /// rather than shown forever with a TRACKED badge. <c>JustQueuedCount</c> still
-        /// reports how many were auto-queued this pass, even though those rows are no
-        /// longer in <c>Rows</c>, so callers can still react (e.g. repaint the queue).
+        /// Git #1870 — the READ half of the old one-pass refresh, split out so the board can
+        /// be listed WITHOUT queuing anything (the Free flow gate). Reads the real Batter Up
+        /// board and resolves each item EXACTLY as before — the `BUILD:` comment parse, the
+        /// real GitHub blocked-by split (open vs closed), and the already-tracked check via
+        /// <paramref name="queueDb"/>.FindDedupCandidateAsync — then returns the rows for
+        /// display. It QUEUES NOTHING: no <see cref="BuildQueuePostgresClient.QueueBuildAsync"/>
+        /// call is reachable from here. Same #1808 drop rule as before: an item already tracked
+        /// in bt_build_queue is dropped from the list (the Build Queue panel owns it from then
+        /// on), whichever path put it there. Rows with no `BUILD:` comment are listed (never
+        /// queueable). Displayed rows always carry <c>AlreadyTracked = false</c> /
+        /// <c>JustAutoQueued = false</c>, exactly as the old method's returned rows did.
         /// </summary>
-        public static async Task<(List<BatterUpRow> Rows, int JustQueuedCount)> RefreshAndAutoQueueAsync(
+        public static async Task<List<BatterUpRow>> RefreshAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
             var boardItems = await gh.GetBatterUpIssuesAsync();
             var rows = new List<BatterUpRow>();
-            int justQueuedCount = 0;
 
             foreach (var item in boardItems)
             {
@@ -139,47 +148,17 @@ namespace BuildConsole.Services
                 }
 
                 var (model, effort, buildSet, prompt) = parsed!.Value;
-                bool alreadyTracked = false;
-                bool justQueued = false;
 
                 if (queueDb != null)
                 {
                     var existing = await queueDb.FindDedupCandidateAsync(item.Number, prompt);
                     if (existing != null)
                     {
-                        alreadyTracked = true;
+                        // Git #1808 — genuinely tracked in bt_build_queue now; the Build Queue
+                        // panel is the only place this belongs from here on, not shown here
+                        // forever with a TRACKED badge.
+                        continue;
                     }
-                    else
-                    {
-                        try
-                        {
-                            await queueDb.QueueBuildAsync(
-                                title: item.Title,
-                                prompt: prompt,
-                                model: model,
-                                effort: effort,
-                                cwd: null,
-                                githubNumber: item.Number,
-                                blockedByNumbers: blockedByNumbers,
-                                buildSet: buildSet);
-                            justQueued = true;
-                            log($"Batter Up #{item.Number} \"{item.Title}\" — auto-queued (model={model ?? "default"}, effort={effort ?? "default"}, buildSet={buildSet ?? "none"}" +
-                                (blockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", blockedByNumbers)}" : "") + ").");
-                        }
-                        catch (Exception ex)
-                        {
-                            log($"Batter Up #{item.Number} \"{item.Title}\" — auto-queue FAILED: {ex.Message}");
-                        }
-                    }
-                }
-
-                if (alreadyTracked || justQueued)
-                {
-                    // Git #1808 — genuinely tracked in bt_build_queue now; the Build Queue
-                    // panel is the only place this belongs from here on, not shown here
-                    // forever with a TRACKED badge.
-                    if (justQueued) justQueuedCount++;
-                    continue;
                 }
 
                 rows.Add(new BatterUpRow
@@ -190,12 +169,95 @@ namespace BuildConsole.Services
                     Model = model,
                     Effort = effort,
                     BuildSet = buildSet,
+                    Prompt = prompt,
                     HasBuildComment = true,
                     BlockedByNumbers = blockedByNumbers,
                     OpenBlockedByNumbers = openBlockedByNumbers,
-                    AlreadyTracked = alreadyTracked,
-                    JustAutoQueued = justQueued,
+                    AlreadyTracked = false,
+                    JustAutoQueued = false,
                 });
+            }
+
+            return rows;
+        }
+
+        /// <summary>
+        /// Git #1870 — the QUEUE half: queues exactly ONE already-resolved row through the same
+        /// <see cref="BuildQueuePostgresClient.QueueBuildAsync"/> path Queue / Send to Builder use.
+        /// It OWNS the <see cref="BuildQueuePostgresClient.FindDedupCandidateAsync"/> guard (so a
+        /// double-click across the 90s refresh window can't queue twice) and the existing auto-queue
+        /// log line, verbatim. Blocked-by numbers are passed straight through, unchanged — the #1600
+        /// fail-closed watcher still governs whether a queued blocked item actually launches; there
+        /// is NO bypass here. Returns true only when a fresh queue row was actually inserted this
+        /// call; false when the row is not queueable (no `BUILD:` comment / no queue DB), was already
+        /// tracked (dedup hit), or the insert failed (logged, not thrown — same stance as before).
+        /// </summary>
+        public static async Task<bool> QueueRowAsync(
+            BuildQueuePostgresClient? queueDb, BatterUpRow row, Action<string> log)
+        {
+            if (queueDb == null || !row.HasBuildComment || row.Prompt == null)
+                return false;
+
+            var existing = await queueDb.FindDedupCandidateAsync(row.Number, row.Prompt);
+            if (existing != null)
+                return false; // already tracked — dedup guard against a double-click / a peer pass
+
+            try
+            {
+                await queueDb.QueueBuildAsync(
+                    title: row.Title,
+                    prompt: row.Prompt,
+                    model: row.Model,
+                    effort: row.Effort,
+                    cwd: null,
+                    githubNumber: row.Number,
+                    blockedByNumbers: row.BlockedByNumbers,
+                    buildSet: row.BuildSet);
+                log($"Batter Up #{row.Number} \"{row.Title}\" — auto-queued (model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
+                    (row.BlockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", row.BlockedByNumbers)}" : "") + ").");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                log($"Batter Up #{row.Number} \"{row.Title}\" — auto-queue FAILED: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// The free-flow path (Git #1870): now just <see cref="RefreshAsync"/> followed by
+        /// <see cref="QueueRowAsync"/> for every eligible row, preserving the exact observable
+        /// behaviour of the old one-pass method when free flow is on — same
+        /// <c>(Rows, JustQueuedCount)</c> shape, same #1808 drop of anything that just got queued,
+        /// same skip/log lines. Only the free-flow caller (<c>BatterUpPanel</c> when the Free flow
+        /// setting is on) invokes this; with the gate off the panel calls <see cref="RefreshAsync"/>
+        /// alone and queues nothing.
+        /// </summary>
+        public static async Task<(List<BatterUpRow> Rows, int JustQueuedCount)> RefreshAndAutoQueueAsync(
+            GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
+        {
+            var resolved = await RefreshAsync(gh, queueDb, log);
+            var rows = new List<BatterUpRow>();
+            int justQueuedCount = 0;
+
+            foreach (var row in resolved)
+            {
+                if (!row.HasBuildComment)
+                {
+                    rows.Add(row);
+                    continue;
+                }
+
+                if (await QueueRowAsync(queueDb, row, log))
+                {
+                    // Git #1808 — just landed in bt_build_queue; drop from the displayed list.
+                    justQueuedCount++;
+                    continue;
+                }
+
+                // Not queued (dedup already handled by RefreshAsync's own drop, or a queue
+                // failure that was logged, not thrown) — keep it visible, exactly as before.
+                rows.Add(row);
             }
 
             return (rows, justQueuedCount);
