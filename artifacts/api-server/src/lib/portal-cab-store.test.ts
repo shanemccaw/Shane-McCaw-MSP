@@ -77,6 +77,7 @@ async function makeChangeRequest(overrides: {
       status: overrides.status,
       backupVerified: false,
       backupHash: "",
+      rollbackScriptSnippet: "",
     })
     .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
   createdCrIds.push(inserted.id);
