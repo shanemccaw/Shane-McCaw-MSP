@@ -4254,6 +4254,158 @@ export const insertChangeCatalogItemSchema = createInsertSchema(changeCatalogIte
 export type ChangeCatalogItem = typeof changeCatalogItemsTable.$inferSelect;
 export type InsertChangeCatalogItem = typeof changeCatalogItemsTable.$inferInsert;
 
+// ── Change Advisory Board — membership, meetings, agenda, ECAB (#1501) ───────
+//
+// `useChangeControl.ts:22` recorded the gap: no CAB agenda table. This closes
+// it with three tables and NO second approval model — a CAB's recorded
+// decision on an agenda item IS a `cr_approvals` row (#1496), reached the same
+// way any other decision is (`recordApproval` / `recordRejection`), just
+// initiated from a meeting instead of the customer register. `cab_agenda_items
+// .cr_approval_id` is the join back to that ledger; it is the only place a
+// "decision" is durably recorded.
+//
+// The CAB is scoped by `mspId`, not `(mspId, tenantId)`. An MSP runs ONE
+// advisory board across its managed estate — the same board reviews a normal
+// change on one customer's tenant and another's in the same meeting — so the
+// board itself is MSP-wide. Each individual AGENDA ITEM still carries its own
+// `tenantId` (denormalised from the change request it discusses), because the
+// change it is about belongs to exactly one tenant, and that is the scope any
+// cross-tenant guard has to check.
+//
+// Standard changes never reach an agenda, structurally rather than by a filter
+// that can be forgotten: `requiredStages("standard", …)` is 0, so a standard
+// change never has a pending `cr_approvals` row, and agenda eligibility (see
+// `eligibleChangesForAgenda` in `portal-cab-store.ts`) is defined as "has a
+// pending approval slot" — a standard change has none to have.
+
+export const CAB_MEMBER_ROLES = ["chair", "voting", "advisory", "secretary"] as const;
+export type CabMemberRole = (typeof CAB_MEMBER_ROLES)[number];
+
+/** Which side of the engagement a member represents — same split as `cr_approvals.approver_role`'s customer/msp halves. */
+export const CAB_MEMBER_SIDES = ["msp", "customer"] as const;
+export type CabMemberSide = (typeof CAB_MEMBER_SIDES)[number];
+
+export const cabMembersTable = pgTable("cab_members", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The member's wire person id ("u<userId>", see portal-ownership.personIdForUser) — one vocabulary for every party in the approval model. */
+  personId: text("person_id").notNull(),
+  /** Denormalised display cache, same reasoning as `cr_approvals.approver_name` — the roster reads without a join back to `users` for a removed account. */
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  role: text("role", { enum: CAB_MEMBER_ROLES }).notNull().default("voting"),
+  side: text("side", { enum: CAB_MEMBER_SIDES }).notNull(),
+  /**
+   * Set only for a `customer`-side member: the one tenant they sit on the board
+   * for. NULL for an `msp`-side member, who attends board-wide. This is what
+   * would let a future read scope a customer member's OWN agenda view to only
+   * the tenants they represent — not exercised by this build (no UI to wire),
+   * but the column exists so that scoping is possible without a migration.
+   */
+  tenantId: text("tenant_id"),
+  /** Also sits on the smaller emergency board — see `cab_meetings.meeting_type`. */
+  isEcab: boolean("is_ecab").notNull().default(false),
+  active: boolean("active").notNull().default(true),
+  addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cab_members_msp_id_idx").on(t.mspId),
+  // One ACTIVE membership per person per board — declared as a partial unique
+  // index in the manual migration (Drizzle cannot express the WHERE clause
+  // here); a removed member can rejoin under a fresh row.
+]);
+
+export const insertCabMemberSchema = createInsertSchema(cabMembersTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type CabMember = typeof cabMembersTable.$inferSelect;
+export type InsertCabMember = typeof cabMembersTable.$inferInsert;
+
+export const CAB_MEETING_TYPES = ["cab", "ecab"] as const;
+export type CabMeetingType = (typeof CAB_MEETING_TYPES)[number];
+
+export const CAB_MEETING_STATUSES = ["scheduled", "in_progress", "completed", "cancelled"] as const;
+export type CabMeetingStatus = (typeof CAB_MEETING_STATUSES)[number];
+
+export const cabMeetingsTable = pgTable("cab_meetings", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /**
+   * `cab` — the standing board, agenda built from pending NORMAL changes.
+   * `ecab` — the emergency board convened for an EMERGENCY change that has
+   * already executed (or is executing) and needs retroactive approval; agenda
+   * items on an `ecab` meeting are always `isRetroactive = true`.
+   */
+  meetingType: text("meeting_type", { enum: CAB_MEETING_TYPES }).notNull().default("cab"),
+  status: text("status", { enum: CAB_MEETING_STATUSES }).notNull().default("scheduled"),
+  scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+  /** Set when the meeting is actually opened (`status` → `in_progress`). NULL before then. */
+  heldAt: timestamp("held_at", { withTimezone: true }),
+  /** Set when the meeting is closed (`status` → `completed`). NULL before then. */
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  /** The chairing member's person id. Free text, not a FK to `cab_members` — a chair from a since-removed membership row must not orphan the historical record of who chaired. */
+  chairPersonId: text("chair_person_id"),
+  chairName: text("chair_name").notNull().default(""),
+  /** Where it was held — "Teams call", "Async / email vote", etc. No calendar/video integration exists, so this is free text, same discipline as `msp_change_requests.scheduled_for`. */
+  location: text("location").notNull().default(""),
+  /** The chair's pre-meeting framing notes. Distinct from `minutes`, which is generated FROM the recorded decisions once the meeting closes. */
+  notes: text("notes").notNull().default(""),
+  /** Compiled at close time from the agenda's own recommendations/decisions — see `buildMinutes` in `lib/portal-cab.ts`. Empty until closed. */
+  minutes: text("minutes").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cab_meetings_msp_id_idx").on(t.mspId),
+  index("cab_meetings_status_idx").on(t.status),
+]);
+
+export const insertCabMeetingSchema = createInsertSchema(cabMeetingsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type CabMeeting = typeof cabMeetingsTable.$inferSelect;
+export type InsertCabMeeting = typeof cabMeetingsTable.$inferInsert;
+
+/** The board's own determination, distinct from the formal `cr_approvals` decision it produces once recorded. `defer` rolls the item to a future meeting rather than deciding it now. */
+export const CAB_AGENDA_RECOMMENDATIONS = ["approve", "reject", "defer"] as const;
+export type CabAgendaRecommendation = (typeof CAB_AGENDA_RECOMMENDATIONS)[number];
+
+export const cabAgendaItemsTable = pgTable("cab_agenda_items", {
+  id: serial("id").primaryKey(),
+  meetingId: integer("meeting_id").notNull().references(() => cabMeetingsTable.id, { onDelete: "cascade" }),
+  /** The change under discussion. Real FK — an agenda item cannot outlive its CR. */
+  changeRequestId: integer("change_request_id").notNull().references(() => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  /** Denormalised from the CR so this table scopes on the same predicate pair every other Change Control table uses. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+  /** Presentation order within the meeting. */
+  ordinal: integer("ordinal").notNull().default(0),
+  presenterName: text("presenter_name").notNull().default(""),
+  /** Notes taken live during discussion. */
+  discussionNotes: text("discussion_notes").notNull().default(""),
+  recommendation: text("recommendation", { enum: CAB_AGENDA_RECOMMENDATIONS }),
+  decidedAt: timestamp("decided_at", { withTimezone: true }),
+  /**
+   * The REAL approval/rejection ledger row this item's decision produced — the
+   * join back to `cr_approvals` (#1496). NULL until `approve`/`reject` is
+   * recorded; stays NULL forever for a `defer`, which decides nothing.
+   */
+  crApprovalId: integer("cr_approval_id").references(() => crApprovalsTable.id),
+  /** True for every item on an `ecab` meeting — the change already executed and this is the retroactive review. See `cab_meetings.meeting_type`. */
+  isRetroactive: boolean("is_retroactive").notNull().default(false),
+  /** Set when `recommendation = 'defer'` and the item is carried to a future meeting. */
+  deferredToMeetingId: integer("deferred_to_meeting_id").references((): AnyPgColumn => cabMeetingsTable.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cab_agenda_items_meeting_id_idx").on(t.meetingId),
+  index("cab_agenda_items_change_request_id_idx").on(t.changeRequestId),
+  index("cab_agenda_items_msp_tenant_idx").on(t.mspId, t.tenantId),
+  // A change appears on a given meeting's agenda at most once.
+  unique("cab_agenda_items_meeting_cr_unique").on(t.meetingId, t.changeRequestId),
+]);
+
+export const insertCabAgendaItemSchema = createInsertSchema(cabAgendaItemsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type CabAgendaItem = typeof cabAgendaItemsTable.$inferSelect;
+export type InsertCabAgendaItem = typeof cabAgendaItemsTable.$inferInsert;
+
 // ── MSP SOPs (Standard Operating Procedures) ─────────────────────────────────
 //
 // ITIL v4 Incident Response and Drift Remediation templates representing standard
