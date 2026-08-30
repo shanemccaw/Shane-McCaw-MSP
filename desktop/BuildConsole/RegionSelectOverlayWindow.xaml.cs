@@ -146,5 +146,11 @@ namespace BuildConsole
             if (e.Key == Key.Escape)
                 DialogResult = false;
         }
+
+        // Git #1891 — right-click also cancels, mirroring Esc's cleanup path exactly.
+        private void RootCanvas_MouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            DialogResult = false;
+        }
     }
 }
