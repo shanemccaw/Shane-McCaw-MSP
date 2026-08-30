@@ -303,6 +303,132 @@ anything that was not sampled.**
 
 ---
 
+## #1865 — PowerShell reconciliation against the real capability survey (2026-08-30)
+
+**This is a new section recording a reversal, not an edit of the numbers above.** The
+"What the first extraction measured" and "Live verification" sections above are the
+honest record of the **2026-08-30 initial extraction** (Git #1794) and are left as they
+were written. Everything below is what changed when #1865 re-ran the pipeline against
+real data #1794 didn't have yet.
+
+### The claim this issue existed to check
+
+#1794's own "Known limits" said: *"`ps_capability_survey_results` was empty at
+extraction time... re-running `build-resource-model.mjs` afterwards will pick it up
+automatically."* **That claim was false.** `build-resource-model.mjs` contained zero
+references to `ps_capability_survey_results` or the survey tables at all — re-running it
+as-is would have reproduced the exact same unreconciled 211 `powershell` resources,
+forever. #1865 built the reconciliation that claim assumed already existed:
+`scripts/config-state/reconcile-ps-survey.mjs`, wired into the pipeline as a new step
+between building `config_resources` and mapping the check catalog. This is code, not a
+schema change — no new tables or columns.
+
+### `ps_capability_survey_results` was verified populated before anything else ran
+
+`SELECT run_id, count(*) FROM ps_capability_survey_results GROUP BY run_id` returned
+run 4 = **1,166 rows**, matching #1793's own reported per-session breakdown
+(`compliance` 126, `exchange` 365, `teams` 675) exactly. #1793 did not fail; the table is
+real. Run 4 (`ca-ps-execution-dev--survey1793d`, `status = 'completed'`) is the run
+reconciled against — the same run #1793's own comment identifies as "the one rendered."
+
+### Reconciliation rule (evidence discipline, not a heuristic upgrade)
+
+For each of the 211 `powershell`-transport resources, its `read_cmdlets` (from
+Microsoft365DSC) are matched against the survey's real per-cmdlet results:
+
+- **≥1 cmdlet surveyed `ok`** → live proof the app-only read path genuinely works.
+  Overrides a derived `unknown` / `needs_additional_scope` verdict UP to
+  `available_now`, sets `verification_status = 'verified_live'`, and names the exact
+  cmdlet(s) in `availability_reason`. Never downgrades an already-`available_now` row —
+  it only adds live confirmation (`notes`).
+- **≥1 cmdlet surveyed `access_denied` / `not_supported_app_only` / `cmdlet_unavailable`,
+  none `ok`** → live proof it does *not* work app-only. Downgrades to `unavailable`,
+  `verification_status = 'failed_live'`. (Zero resources hit this path against run 4 —
+  logged for when a future run's results differ.)
+- **Matched but only `error` / `not_attempted`** → inconclusive. Availability is left
+  exactly as derived; `notes` records what the survey actually returned instead of
+  silently looking reconciled.
+- **None of the resource's cmdlets appear in the survey's cmdlet catalog at all** →
+  labelled unreconciled in `notes`, availability untouched.
+
+### The real before/after delta
+
+Two real extraction runs in `config_model_extractions`: **run 6** (the last pre-#1865
+state, captured live before this session changed anything) and **run 7** (post-#1865,
+same Graph/DSC inputs — `m365dsc_commit f79f2971`, same 30 granted scopes, same 154/3
+check mapping — with PS reconciliation now wired in).
+
+| | Run 6 (pre-#1865) | Run 7 (post-#1865) | Δ |
+|---|---:|---:|---:|
+| `available_now` (all 1,539) | 594 | **658** | +64 |
+| `needs_additional_scope` | 505 | 502 | −3 |
+| `unknown` | 414 | 357 | −57 |
+| `unavailable` | 22 | 22 | 0 |
+| `needs_license` | 4 | **0** | −4 (see regression below — not a correction) |
+| `available_now` AND uncovered (readable today, asked about by nothing) | 554 | **612** | +58 |
+
+**PowerShell-transport only** (211 resources), the actual reconciliation:
+
+| | Before | After | Δ |
+|---|---:|---:|---:|
+| `available_now` | 138 | **198** | **+60** |
+| `needs_additional_scope` | 12 | 9 | −3 |
+| `unknown` | 61 | 4 | −57 |
+
+Exact reconciliation-function counts for the 211: **60 upgraded** to `available_now`
+(from a mix of `unknown` and `needs_additional_scope` — the −57/−3 rows above are the
+per-verdict breakdown), **105 confirmed** already-`available_now` with new live
+evidence, **0 downgraded**, **14 inconclusive** (matched a survey cmdlet but got
+`error`/`not_attempted`, left as derived), **32 not reconciled** (no cmdlet in the
+survey's catalog at all — see finding below).
+
+The `teams` surface moved from 0 `available_now`-and-uncovered (not listed in #1794's
+table at all) to **58** — the single largest driver of the +58 uncovered-and-actionable
+figure. Teams DSC resources use `Get-Cs*` cmdlets and declare no RBAC roles, so
+#1794's derivation fell through to `unknown`; the survey proves 58 of them work
+app-only. Updated `available_now`-and-uncovered by surface: device-management 191 ·
+reporting 143 · exchange 93 · **teams 58** · directory 41 · compliance 36 · policy 21 ·
+identity 20 · security 5 · groups 2 · sharing 1 · other 1.
+
+### A regression this re-run caused, left uncorrected on purpose
+
+`build-resource-model.mjs` does `DELETE FROM config_resource_samples` before rebuilding
+`config_resources` from scratch — **every** re-run, not just this one. #1794's live
+`verify-sample.mjs` sample (29 resources, 21 successes / 8 failures) lived only in that
+table, and re-running the extraction per this issue's own instructions wiped it,
+including the four real license-gap verdicts documented above in "Failures observed":
+`/roleManagement/directory/roleEligibilitySchedules`, `/auditLogs/signIns`,
+`/reports/authenticationMethods/userRegistrationDetails`,
+`/identityProtection/riskDetections`. All four now read `available_now` in the live
+model — **wrong**, per this same document's own recorded live evidence three sections
+up. `resolveAvailability()` never emits `needs_license` itself; only `verify-sample.mjs`
+does, from a real Graph response, and that evidence is gone until `verify-sample.mjs` is
+re-run. **Re-running it is exactly "re-deriving the Graph half," which this issue's
+scope explicitly forbids, so it was not run.** Filed as #1895 rather than worked around.
+
+### Findings filed (milestone v1.1, board status "AI Batter Up")
+
+- **#1895** → #1850 — `build-resource-model.mjs` wholesale-deletes
+  `config_resource_samples` on every re-run with no safeguard, silently discarding
+  `verify-sample.mjs`'s accumulated live evidence (including all `needs_license`
+  verdicts, which only that script can set). Live-caused regression above is the
+  evidence.
+- **#1896** → #1850 — 12 of the 32 unreconciled `powershell` resources cite
+  `Get-MSCloudLoginConnectionProfile` (an M365DSC-internal connection helper, not a
+  real session cmdlet) as their `read_cmdlets` value. `parse-m365dsc.mjs`'s psm1-body
+  fallback (used for the 142 DSC resources with no declared `commands` block) is
+  picking up the connection-setup call instead of the real read cmdlet for at least
+  these 12.
+
+### Housekeeping fix (not a finding — fixed in this session)
+
+`scripts/config-state/fetch-sources.mjs`'s `tar` invocation failed outright on this
+Windows worktree (`Cannot connect to C: resolve failed`, then a raw MSYS argv-mangling
+error) because the `tar` resolved on `PATH` is Git Bash's GNU tar, which needs a POSIX
+path and misreads a bare Windows path's drive-letter colon as a remote-host prefix.
+Fixed with `--force-local` plus a `toMsysPath()` conversion on the two path arguments.
+Verified by deleting the extracted tree and re-running from scratch twice.
+
 ## Running it
 
 ```bash
@@ -360,8 +486,11 @@ SELECT m.permission, count(*)
 - **414 resources sit at `unknown` availability.** These are Graph-metadata-derived paths
   that neither Microsoft365DSC nor Microsoft's permissions reference documents a read
   permission for. Establishing those would need probing, which this issue forbids.
-- **`ps_capability_survey_results` was empty at extraction time**, so PowerShell resources
-  are not reconciled against real cmdlet availability. #1793 is the sibling survey that
-  fills it; re-running `build-resource-model.mjs` afterwards will pick it up.
+- ~~**`ps_capability_survey_results` was empty at extraction time**, so PowerShell
+  resources are not reconciled against real cmdlet availability. #1793 is the sibling
+  survey that fills it; re-running `build-resource-model.mjs` afterwards will pick it
+  up.~~ **Superseded by #1865** — see the section below. That last sentence was untrue
+  as written: nothing in `build-resource-model.mjs` referenced the survey table until
+  #1865 built the reconciliation. It has now run against the real survey.
 - **The sample is 29 resources.** It was chosen to be representative across surfaces, not
   exhaustive. Everything else is labelled accordingly.

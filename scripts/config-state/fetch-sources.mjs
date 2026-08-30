@@ -33,6 +33,19 @@ async function exists(p) {
   try { await stat(p); return true; } catch { return false; }
 }
 
+/**
+ * The `tar` resolved on PATH in this environment is MSYS/Git-Bash's GNU tar, which
+ * expects POSIX-style paths. A native Windows path ("C:\wt\...") passed straight
+ * through gets mis-parsed by MSYS's argv path translation (backslashes read as
+ * escapes) and by GNU tar's own "host:path" remote-archive heuristic (the bare
+ * drive-letter colon). Converting to the MSYS POSIX form ("/c/wt/...") avoids both.
+ */
+function toMsysPath(p) {
+  const m = /^([A-Za-z]):(.*)$/.exec(p);
+  if (!m) return p;
+  return `/${m[1].toLowerCase()}${m[2].replace(/\\/g, "/")}`;
+}
+
 async function download(url, dest, { accept } = {}) {
   if (!FORCE && await exists(dest)) {
     const s = await stat(dest);
@@ -56,7 +69,12 @@ async function download(url, dest, { accept } = {}) {
 /** Untar just the DSC resource tree — settings.json, schema.mof and the psm1 we read URIs from. */
 function extractDscResources(tarball, into) {
   return new Promise((resolve, reject) => {
-    const p = spawn("tar", ["xzf", tarball, "-C", into, "--wildcards", "*/Modules/Microsoft365DSC/DscResources/*"], {
+    // --force-local, belt-and-braces against GNU tar's "host:path" remote-archive
+    // heuristic (the drive-letter colon otherwise reads as a hostname separator —
+    // "Cannot connect to C: resolve failed"), plus toMsysPath() for MSYS's own argv
+    // path translation, which mis-parses a raw Windows backslash path outright
+    // (Git #1865 — hit re-running this pipeline on Windows).
+    const p = spawn("tar", ["xzf", toMsysPath(tarball), "-C", toMsysPath(into), "--force-local", "--wildcards", "*/Modules/Microsoft365DSC/DscResources/*"], {
       stdio: ["ignore", "inherit", "inherit"],
     });
     p.on("error", reject);

@@ -34,6 +34,7 @@ import { connect, insertRows } from "./db.mjs";
 import {
   normalizeGraphEndpoint, matchEndpointToResource, resolvePsCmdletCatalog,
 } from "./map-monitor-checks.mjs";
+import { reconcilePowershellAgainstSurvey } from "./reconcile-ps-survey.mjs";
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(name);
@@ -500,6 +501,18 @@ async function main() {
       FROM (SELECT config_resource_id, count(*) n FROM config_resource_properties
             WHERE is_connection_parameter = FALSE GROUP BY 1) c
       WHERE c.config_resource_id = r.id`);
+
+    // ── 3c. Reconcile powershell-transport resources against #1793's real survey ──
+    // #1794 shipped with `ps_capability_survey_results` empty. Re-checking here means
+    // "picks it up automatically" (as #1794 claimed) is actually true, not assumed.
+    console.log("── Reconciling PowerShell resources against #1793's capability survey ──");
+    const psReconciliation = await reconcilePowershellAgainstSurvey(client);
+    if (psReconciliation.ranAgainstRunId === null) {
+      console.log("  no completed ps_capability_survey_runs row found — powershell resources left unreconciled");
+    } else {
+      console.log(`  reconciled against survey run ${psReconciliation.ranAgainstRunId} (${psReconciliation.containerRevision}), ${psReconciliation.cmdletCatalogSize} cmdlets enumerated`);
+      console.log(`  ${psReconciliation.total} powershell resources: ${psReconciliation.upgraded} upgraded to available_now, ${psReconciliation.confirmed} confirmed already-available_now, ${psReconciliation.negative} downgraded to unavailable, ${psReconciliation.inconclusive} inconclusive (left as derived), ${psReconciliation.unmatched} not reconciled (no cmdlet in survey catalog)`);
+    }
 
     // ── 4. Map the existing monitor_checks catalog onto the model ────────────
     console.log("── Mapping monitor_checks onto the resource model ────────────");
