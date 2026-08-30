@@ -128,6 +128,12 @@ namespace BuildConsole.Controls
         }
 
         private readonly List<QueueGraphNode> _currentGraphNodes = new();
+        // Git #1815 — RenderQueue fully rebuilds QueueCardsHost.Children every call, so
+        // without remembering which node Keys were already on screen, every card would
+        // re-fade-in on every poll tick. Persist the set across renders and only animate
+        // a card whose Key genuinely wasn't present last render.
+        private HashSet<int> _knownQueueCardKeys = new();
+        private bool _hasRenderedQueueOnce = false;
         private int _currentMaxLanes = 1;
 
         private void ApplyTitleMaxWidths(ListBox listBox, List<TextBlock> registry)
@@ -1075,6 +1081,11 @@ namespace BuildConsole.Controls
             QueueCardsHost.Children.Clear();
             _currentGraphNodes.Clear();
 
+            // Git #1815 — snapshot what was known before this rebuild, then start a fresh
+            // set to populate as cards are (re)built below.
+            var previousKnownQueueCardKeys = _knownQueueCardKeys;
+            var thisRenderQueueCardKeys = new HashSet<int>();
+
             if (_queueIsStale)
             {
                 var staleBanner = new Border
@@ -1430,6 +1441,9 @@ namespace BuildConsole.Controls
                 if (cardElement != null)
                 {
                     node.CardElement = cardElement;
+                    thisRenderQueueCardKeys.Add(node.Key);
+                    bool isNewCard = _hasRenderedQueueOnce && !previousKnownQueueCardKeys.Contains(node.Key);
+
                     if (currentSetPanel != null)
                     {
                         cardElement.Margin = new Thickness(0, 2, 0, 2);
@@ -1439,12 +1453,64 @@ namespace BuildConsole.Controls
                     {
                         QueueCardsHost.Children.Add(cardElement);
                     }
+
+                    if (isNewCard)
+                    {
+                        AnimateNewQueueCardIn(cardElement);
+                    }
                 }
             }
+
+            _knownQueueCardKeys = thisRenderQueueCardKeys;
+            _hasRenderedQueueOnce = true;
 
             // ── 6. Trigger Canvas Redraw on Layout ──
             Dispatcher.InvokeAsync(RedrawQueueGraph, DispatcherPriority.Loaded);
             UpdateCritterLoungeVisibility();
+        }
+
+        /// <summary>
+        /// Git #1815 — Shane: new cards "just pop in instantly and shove everything else
+        /// out of the way." Reuses UiFadeHelper's opacity fade for the card itself, and
+        /// grows the card's own Height from 0 up to its real measured size alongside it
+        /// so WPF's normal layout pass naturally reflows the surrounding siblings — no
+        /// separate per-sibling slide/position system needed to get the "make room" feel.
+        /// Card starts at Height 0 / Opacity 0 before it's ever visible, so there's no
+        /// flash of the fully-sized card before the animation begins.
+        /// </summary>
+        private void AnimateNewQueueCardIn(Border cardElement)
+        {
+            const double durationMs = 170;
+
+            double measureWidth = QueueCardsHost.ActualWidth > 0 ? QueueCardsHost.ActualWidth : double.PositiveInfinity;
+            cardElement.Measure(new Size(measureWidth, double.PositiveInfinity));
+            double targetHeight = cardElement.DesiredSize.Height;
+
+            cardElement.Height = 0;
+            cardElement.ClipToBounds = true;
+            UiFadeHelper.FadeIn(cardElement, durationMs);
+
+            if (targetHeight > 0)
+            {
+                var heightAnim = new DoubleAnimation(0, targetHeight, TimeSpan.FromMilliseconds(durationMs))
+                {
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                };
+                heightAnim.Completed += (s, e) =>
+                {
+                    cardElement.BeginAnimation(FrameworkElement.HeightProperty, null);
+                    cardElement.Height = double.NaN;
+                    cardElement.ClipToBounds = false;
+                };
+                cardElement.BeginAnimation(FrameworkElement.HeightProperty, heightAnim);
+            }
+            else
+            {
+                // Couldn't get a real measured height (e.g. host not laid out yet) —
+                // don't leave the card permanently pinned at Height 0.
+                cardElement.Height = double.NaN;
+                cardElement.ClipToBounds = false;
+            }
         }
 
         private void QueueCardsHost_SizeChanged(object sender, SizeChangedEventArgs e)
