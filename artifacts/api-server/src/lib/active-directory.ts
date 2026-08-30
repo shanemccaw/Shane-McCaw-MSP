@@ -520,9 +520,12 @@ export function buildCustomerDetail(params: {
 // ── Organizational Unit placeholder objects (Phase 5) ────────────────────────
 //
 // A real, creatable/browsable OU container node — genuinely persisted, but
-// with NO policy enforcement logic. Policy semantics are explicitly
-// undefined per Shane, reserved for a future version. Do not add policy
-// columns or an object-to-OU membership model here.
+// with NO policy enforcement logic. The policy semantics reserved here are now
+// defined by #1547: the OU is the attachment point for a standing policy
+// (`standing_policies.ou_id`), and enactment/evaluation belong to #1548/#1549,
+// not to this browse tree. Still do not add policy columns or an object-to-OU
+// membership model HERE — the policy object is its own table that references
+// the OU, never columns bolted onto this container node.
 
 export interface OuRow {
   id: number;

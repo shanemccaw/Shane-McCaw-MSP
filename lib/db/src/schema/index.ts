@@ -4252,10 +4252,13 @@ export type BotConversation = typeof botConversationsTable.$inferSelect;
 
 // ── Active Directory — Organizational Units (Phase 5, placeholder objects) ────
 // A real, creatable/browsable OU container node in the Active Directory tree.
-// No policy semantics yet — Shane: "OUs undefined right now, but put a
-// placeholder for later policies... this might be where we lock the MSP in
-// the next version." Deliberately no policy columns and no object-to-OU
-// membership model in this phase.
+// Shane's original note: "OUs undefined right now, but put a placeholder for
+// later policies... this might be where we lock the MSP in the next version."
+// That later version is #1547: the OU is now the attachment point for a
+// standing policy (`standingPoliciesTable`, schema/msp.ts, `ou_id` FK). The
+// directive still holds HERE — deliberately no policy columns and no
+// object-to-OU membership model on THIS table; the policy object is a separate
+// table that references this one, not columns bolted onto the container.
 
 export const activeDirectoryOusTable = pgTable("active_directory_ous", {
   id: serial("id").primaryKey(),

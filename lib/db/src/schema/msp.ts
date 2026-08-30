@@ -24,7 +24,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
-import { wfRunsTable, usersTable, scriptPackagesTable, type MspRole } from "./index";
+import { wfRunsTable, usersTable, scriptPackagesTable, activeDirectoryOusTable, type MspRole } from "./index";
 
 // ── MSPs (Managed Service Provider organisations) ─────────────────────────────
 
@@ -4572,6 +4572,88 @@ export const changeCatalogItemsTable = pgTable("change_catalog_items", {
 export const insertChangeCatalogItemSchema = createInsertSchema(changeCatalogItemsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type ChangeCatalogItem = typeof changeCatalogItemsTable.$inferSelect;
 export type InsertChangeCatalogItem = typeof changeCatalogItemsTable.$inferInsert;
+
+// ── Standing Policies (#1547) — the Policy Engine's declarative object ──────────
+//
+// A standing policy is DECLARATIVE and operationally live: it states a target
+// state; it cites no obligation, follows no finding, and requires no signature.
+// This is the SECOND object of the Policy Engine, and it is deliberately NOT a
+// row on `mspRiskDecisionsTable` (msp_risk_decisions) — that table is the
+// register of reactive, obligation-bound, SIGNED deviation decisions
+// (#1525-#1529). Both are called "policy"; they are not the same object and
+// must not share a table on the strength of the word. #1547 exists to establish
+// exactly this separation, because the rest of the Policy Engine (#1548-#1553)
+// depends on it existing first.
+//
+// The target state does two jobs from ONE declaration:
+//   forward  — what an SOP drives toward when provisioning (a new exec tagged
+//              VIP -> add to these groups). #1548 enacts via an SOP; the engine
+//              itself never executes directly.
+//   backward — what a check compares against to find a member out of state (a
+//              VIP who is NOT in the right groups). #1553 turns that divergence
+//              into a finding on msp_diagnostic_findings.
+//
+// Attachment point is the OU (active_directory_ous): a policy binds to a
+// container, and container membership determines what applies. This is exactly
+// the object the reserved OU scaffolding at
+// active-directory.ts ("reserved for a future version") was placed for.
+//
+// `catalogItemId` records the #1550 relationship — a policy IS a standard change
+// catalog item; a forward enactment raises its auto-approved CR from that
+// pre-approved catalog item. Nullable here on purpose: #1547 establishes the
+// object and the relationship; #1550 builds the enactment/approval flow that
+// makes the binding load-bearing.
+export const STANDING_POLICY_TARGET_KIND = [
+  // e.g. "mailbox size 150MB" — a directory/mailbox attribute target.
+  "mailbox_attribute",
+  // e.g. "VIP -> membership of these groups" — a group-membership target.
+  "group_membership",
+  // e.g. "VIP -> extra spam filtering" — a service-configuration target.
+  "service_policy",
+] as const;
+
+export const standingPoliciesTable = pgTable("standing_policies", {
+  id: serial("id").primaryKey(),
+  /** Owning MSP — each MSP authors and governs its own standing policies. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The container this policy binds to — the attachment point (#1547). */
+  ouId: integer("ou_id").notNull().references(() => activeDirectoryOusTable.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  targetKind: text("target_kind", { enum: STANDING_POLICY_TARGET_KIND }).notNull(),
+  /**
+   * The declaration itself — the SAME map read forward (provisioning) and
+   * backward (compliance comparison). Its shape varies by `targetKind`, so
+   * jsonb is the honest representation of "a container -> target-state map".
+   * Never money and never a signature; this object carries neither.
+   */
+  targetState: jsonb("target_state").notNull().default({}),
+  /**
+   * #1550: the pre-approved `change_catalog_items` row a forward enactment
+   * raises its auto-approved CR from. Nullable — the relationship exists at
+   * #1547; #1550 makes it load-bearing.
+   */
+  catalogItemId: integer("catalog_item_id").references(() => changeCatalogItemsTable.id, { onDelete: "set null" }),
+  /**
+   * Opt-in, default-off (#1549's continuous-evaluation default): a policy can
+   * be authored and inspected before it is switched on to drive provisioning
+   * or raise findings.
+   */
+  isActive: boolean("is_active").notNull().default(false),
+  createdByPersonId: text("created_by_person_id"),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("standing_policies_msp_id_idx").on(t.mspId),
+  index("standing_policies_ou_id_idx").on(t.ouId),
+  index("standing_policies_msp_active_idx").on(t.mspId, t.isActive),
+]);
+
+export const insertStandingPolicySchema = createInsertSchema(standingPoliciesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type StandingPolicy = typeof standingPoliciesTable.$inferSelect;
+export type InsertStandingPolicy = typeof standingPoliciesTable.$inferInsert;
+export type StandingPolicyTargetKind = (typeof STANDING_POLICY_TARGET_KIND)[number];
 
 // ── Change Advisory Board — membership, meetings, agenda, ECAB (#1501) ───────
 //

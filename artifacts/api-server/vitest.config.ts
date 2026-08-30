@@ -257,6 +257,9 @@ export default defineConfig({
       "src/routes/mfa-admin-reset.test.ts",
       "src/routes/admin-active-directory-user-actions.test.ts",
       "src/routes/admin-active-directory-delete.test.ts",
+      // #1547 — the Policy Engine's declarative object: the standing-policy wire
+      // contract and the target-kind vocabulary (pure, no database).
+      "src/lib/standing-policies.test.ts",
       "src/lib/zoho-foundation.test.ts",
       "src/lib/zoho-crm.test.ts",
       "src/lib/zoho-projects.test.ts",
