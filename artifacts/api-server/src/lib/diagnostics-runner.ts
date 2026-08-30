@@ -49,9 +49,10 @@ const log = logger.child({ channel: "tenant.portal" });
 
 // ── Finding severity classification ──────────────────────────────────────────
 
-type FindingSeverity = "ok" | "info" | "warning" | "critical";
+export type FindingSeverity = "ok" | "info" | "warning" | "critical";
 
-function classifyCheckSeverity(result: CheckResult): FindingSeverity {
+/** Exported for the #1540 pointed-verify workflow node — the SAME classification a full rescan applies, so a one-check on-demand re-scan can never disagree with what a full scan would have said about that check. */
+export function classifyCheckSeverity(result: CheckResult): FindingSeverity {
   if (result.status === "consent_revoked") return "critical";
   // A check-execution error is a technical failure, not a real security finding
   // (#522) — never a warning-severity row the customer reads as genuine signal.

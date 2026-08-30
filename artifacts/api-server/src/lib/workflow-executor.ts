@@ -8823,6 +8823,108 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      // ── Remediation Tracker — on-demand pointed verify (#1540) ────────────
+      // "Done means verified, never claimed." Re-runs THIS step's mapped
+      // check(s) right now via the same executeMonitorCheck() Graph path
+      // execute_monitor_check uses above, classifies severity the SAME way a
+      // full rescan would (diagnostics-runner.ts's classifyCheckSeverity), and
+      // writes the verdict through applyPointedVerification() — the exact
+      // write shape #732's passive reconciliation already uses, so a step can
+      // never disagree with itself depending on which path last touched it.
+      case "remediation_pointed_verify": {
+        if (dryRun) {
+          output = { dryRun: true, skipped: true, reason: "remediation_pointed_verify does not support dry-run execution" };
+          break;
+        }
+
+        const rpvStepId = interp(node.data.stepId as string | undefined, payload);
+        if (!rpvStepId) {
+          nodeError = true;
+          output = { error: "remediation_pointed_verify requires stepId" };
+          break;
+        }
+
+        const rpvCustomerIdRaw = interp(node.data.customerId as string | undefined, payload);
+        const rpvCustomerId = rpvCustomerIdRaw ? parseInt(rpvCustomerIdRaw, 10) : NaN;
+        if (isNaN(rpvCustomerId)) {
+          nodeError = true;
+          output = { error: "remediation_pointed_verify requires a valid customerId" };
+          break;
+        }
+
+        try {
+          const { stepCheckKeysFor, applyPointedVerification } = await import("./remediation-tracker-verification");
+          const { classifyCheckSeverity } = await import("./diagnostics-runner");
+          const { executeMonitorCheck } = await import("./monitor-executor");
+          const { monitorChecksTable } = await import("@workspace/db");
+
+          const rpvMappedKeys = stepCheckKeysFor(rpvStepId);
+          if (!rpvMappedKeys || rpvMappedKeys.length === 0) {
+            nodeError = true;
+            output = { error: `remediation_pointed_verify: step ${rpvStepId} has no mapped check — nothing to verify` };
+            break;
+          }
+
+          const [rpvCustomerRow] = await db.select({ tenantId: tenantsTable.tenantId }).from(tenantsTable).where(eq(tenantsTable.id, rpvCustomerId)).limit(1);
+          if (!rpvCustomerRow?.tenantId) {
+            nodeError = true;
+            output = { error: `remediation_pointed_verify: no tenant found for customerId ${rpvCustomerId}` };
+            break;
+          }
+
+          const rpvChecks = await db.select().from(monitorChecksTable).where(inArray(monitorChecksTable.key, [...rpvMappedKeys]));
+          const rpvChecksByKey = new Map(rpvChecks.map((c) => [c.key, c]));
+
+          const rpvScriptOnly = rpvMappedKeys.filter((key) => rpvChecksByKey.get(key)?.requiresCustomerScript);
+          if (rpvScriptOnly.length > 0) {
+            nodeError = true;
+            output = { error: `remediation_pointed_verify: ${rpvScriptOnly.join(", ")} requires a customer-side script — cannot be automatically re-scanned` };
+            break;
+          }
+
+          const rpvRunId = randomUUID();
+          const rpvFindings: Array<{ checkKey: string; severity: string }> = [];
+          for (const key of rpvMappedKeys) {
+            const checkRow = rpvChecksByKey.get(key);
+            if (!checkRow) {
+              log.warn({ runId, rpvStepId, key }, "wf-executor: remediation_pointed_verify — mapped check not found in catalog, skipped");
+              continue;
+            }
+            const result = await executeMonitorCheck({
+              check: checkRow,
+              tenantId: rpvCustomerRow.tenantId,
+              triggerId: `remverify_${rpvRunId}_${node.id}`,
+              skipIdempotency: true,
+            });
+            rpvFindings.push({ checkKey: key, severity: classifyCheckSeverity(result) });
+          }
+
+          const rpvVerification = await applyPointedVerification({
+            customerId: rpvCustomerId,
+            stepId: rpvStepId,
+            runId: rpvRunId,
+            findings: rpvFindings,
+          });
+
+          output = {
+            success: rpvVerification.ok,
+            verdict: rpvVerification.ok ? rpvVerification.verdict : null,
+            reason: rpvVerification.ok ? null : rpvVerification.reason,
+            checksRun: rpvFindings,
+            verifiedByRunId: rpvRunId,
+          };
+          if (!rpvVerification.ok) nodeError = true;
+
+          log.info({ runId, rpvStepId, rpvCustomerId, rpvVerification }, "wf-executor: remediation_pointed_verify completed");
+        } catch (rpvErr) {
+          nodeError = true;
+          const errMsg = rpvErr instanceof Error ? rpvErr.message : String(rpvErr);
+          output = { error: errMsg, success: false };
+          log.error({ runId, rpvErr, rpvStepId }, "wf-executor: remediation_pointed_verify failed");
+        }
+        break;
+      }
+
       // ── Execute Baseline Template ─────────────────────────────────────────
       case "execute_baseline_template": {
         if (dryRun) {

@@ -2970,6 +2970,8 @@ export interface WfNode {
     | "engagebay_search_contacts" | "engagebay_list_tags"
     // MSP Baseline Actions
     | "graph_write_operation" | "execute_baseline_template" | "execute_monitor_check"
+    // Remediation Tracker — on-demand pointed verification (#1540)
+    | "remediation_pointed_verify"
     // Utilities
     | "comment";
   position: { x: number; y: number };

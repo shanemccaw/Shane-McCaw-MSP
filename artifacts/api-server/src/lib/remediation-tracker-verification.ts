@@ -145,11 +145,24 @@ function verdictFor(mappedKeys: readonly string[], findings: readonly RescanFind
   return null;
 }
 
+/** The mapped check key(s) for one tracker step, or undefined for a gap/process-only step. Exported for the pointed-verify workflow node (#1540) — the SAME table #732's passive reconciliation reads, so a step can never be eligible for one path and not the other. */
+export function stepCheckKeysFor(stepId: string): readonly string[] | undefined {
+  return STEP_CHECK_KEYS[stepId];
+}
+
 /**
  * Reconciles one customer's claimed remediation-tracker rows against ONE
  * rescan's real findings. Fired from `runDiagnostics()`; best-effort, and a
  * failure here must never fail the scan itself.
  */
+/**
+ * Tracker statuses that represent an actual customer claim, as opposed to an
+ * untouched `not_started` row. Shared by the passive full-rescan reconciliation
+ * below and the on-demand pointed verify (#1540) so the two paths can never
+ * apply a different eligibility rule to the same claim.
+ */
+const CLAIMED_STATUSES = ["completed", "already_handled", "not_applicable", "deferred", "shane_handles"] as const;
+
 export async function reverifyRemediationTrackerSteps(opts: {
   readonly customerId: number;
   readonly runId: string;
@@ -166,13 +179,7 @@ export async function reverifyRemediationTrackerSteps(opts: {
       .where(
         and(
           eq(remediationTrackerStepsTable.customerId, customerId),
-          inArray(remediationTrackerStepsTable.status, [
-            "completed",
-            "already_handled",
-            "not_applicable",
-            "deferred",
-            "shane_handles",
-          ]),
+          inArray(remediationTrackerStepsTable.status, CLAIMED_STATUSES),
         ),
       );
 
@@ -213,4 +220,67 @@ export async function reverifyRemediationTrackerSteps(opts: {
   } catch (err) {
     log.warn({ err, customerId, runId }, "remediation-tracker-verification: reverify failed (non-fatal)");
   }
+}
+
+/** Why an on-demand pointed verify could not run or resolve to a verdict. */
+export type PointedVerificationRefusalReason =
+  | "unknown_step"
+  | "no_mapped_check"
+  | "no_claim"
+  | "no_verdict";
+
+export type PointedVerificationResult =
+  | { readonly ok: true; readonly verdict: "verified" | "drift" }
+  | { readonly ok: false; readonly reason: PointedVerificationRefusalReason };
+
+/**
+ * The on-demand half of #732's verification model (#1540 — "Done means
+ * verified, never claimed"). Reconciles ONE step against a real rescan's
+ * findings that were run RIGHT NOW for exactly this step's mapped check(s) —
+ * not the next scheduled full package scan. Same eligibility rule, same
+ * verdict function, same write shape as `reverifyRemediationTrackerSteps`
+ * above, so a step can never read "verified" from one path and mean something
+ * different from the other.
+ *
+ * Never throws — the caller (the `remediation_pointed_verify` workflow node)
+ * decides how to report a refusal; this only ever returns a typed result.
+ */
+export async function applyPointedVerification(opts: {
+  readonly customerId: number;
+  readonly stepId: string;
+  readonly runId: string;
+  readonly findings: readonly RescanFindingForVerification[];
+}): Promise<PointedVerificationResult> {
+  const { customerId, stepId, runId, findings } = opts;
+
+  const mappedKeys = STEP_CHECK_KEYS[stepId];
+  if (!mappedKeys || mappedKeys.length === 0) return { ok: false, reason: "no_mapped_check" };
+
+  const [row] = await db
+    .select({ status: remediationTrackerStepsTable.status })
+    .from(remediationTrackerStepsTable)
+    .where(and(eq(remediationTrackerStepsTable.customerId, customerId), eq(remediationTrackerStepsTable.stepId, stepId)))
+    .limit(1);
+
+  // No row = `not_started` (see the header on this file) — nothing claimed, nothing to verify.
+  if (!row || !(CLAIMED_STATUSES as readonly string[]).includes(row.status)) {
+    return { ok: false, reason: "no_claim" };
+  }
+
+  const verdict = verdictFor(mappedKeys, findings);
+  if (verdict === null) {
+    // Either a mapped check didn't produce a usable severity (e.g. it errored)
+    // or coverage was partial — an ambiguous pointed check proves nothing, so
+    // the row is left exactly as it was rather than guessed at.
+    return { ok: false, reason: "no_verdict" };
+  }
+
+  const now = new Date();
+  await db
+    .update(remediationTrackerStepsTable)
+    .set({ verificationState: verdict, verifiedAt: now, verifiedByRunId: runId, updatedAt: now })
+    .where(and(eq(remediationTrackerStepsTable.customerId, customerId), eq(remediationTrackerStepsTable.stepId, stepId)));
+
+  log.info({ customerId, stepId, runId, verdict }, "remediation tracker step pointed-verified on demand");
+  return { ok: true, verdict };
 }

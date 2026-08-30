@@ -78,6 +78,7 @@ vi.mock("@workspace/db", () => {
       verifiedByRunId: "verified_by_run_id",
       updatedAt: "updated_at",
     },
+    tenantsTable: { id: "id", tenantId: "tenant_id" },
     REMEDIATION_TRACKER_STEP_STATUS: [
       "not_started",
       "completed",
@@ -88,6 +89,22 @@ vi.mock("@workspace/db", () => {
     ] as const,
   };
 });
+
+// #1540 — the pointed-verify route fires a real Workflow Engine run rather than
+// calling any tracker-writing logic itself; that write path is
+// remediation-tracker-verification.test.ts's job. Here it is just a spy.
+const mockEmitWorkflowEvent = vi.fn().mockResolvedValue(undefined);
+vi.mock("../lib/workflow-executor", () => ({
+  emitWorkflowEvent: (...args: unknown[]) => mockEmitWorkflowEvent(...args),
+}));
+
+// #1540 — the verification-guide route reads published KB rows only; this test
+// file drives what "published" resolves to per test rather than hitting a DB.
+let mockKbRows = new Map<string, { validationStep: string | null; validationCommand: string | null; expectedOutcome: string | null }>();
+vi.mock("../lib/remediation-knowledge-base", () => ({
+  fetchPublishedKnowledgeBaseRows: (keys: string[]) =>
+    Promise.resolve(new Map([...mockKbRows.entries()].filter(([k]) => keys.includes(k)))),
+}));
 
 // requireRole is exercised elsewhere; here it is stubbed so the tests can drive
 // the handler's own customerId resolution directly.
@@ -121,6 +138,8 @@ beforeEach(() => {
   mockInsertValues = [];
   mockConflictSets = [];
   mockSelectResultsQueue = [];
+  mockEmitWorkflowEvent.mockClear();
+  mockKbRows = new Map();
 });
 
 describe("the route's step ids still match the guide's own catalogue", () => {
@@ -382,5 +401,101 @@ describe("PUT /api/portal/remediation-tracker/steps/:stepId", () => {
     // The write itself never reads the row's prior verification state before
     // resetting it — it is an unconditional part of every PUT.
     expect(mockConflictSets[0].verificationState).toBe("unverified");
+  });
+});
+
+describe("POST /api/portal/remediation-tracker/steps/:stepId/verify (#1540)", () => {
+  it("403s a token with no customer identity", async () => {
+    const res = await request(makeApp({ id: 1, role: "admin" })).post("/api/portal/remediation-tracker/steps/s1/verify");
+    expect(res.status).toBe(403);
+    expect(mockEmitWorkflowEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a step id the guide does not hold", async () => {
+    const res = await request(makeApp(CUSTOMER)).post("/api/portal/remediation-tracker/steps/s31/verify");
+    expect(res.status).toBe(400);
+    expect(mockEmitWorkflowEvent).not.toHaveBeenCalled();
+  });
+
+  it("refuses a step with no mapped check behind it, without querying the DB", async () => {
+    // s18 is a platform-wide measurement gap — no STEP_CHECK_KEYS entry.
+    const res = await request(makeApp(CUSTOMER)).post("/api/portal/remediation-tracker/steps/s18/verify");
+    expect(res.status).toBe(400);
+    expect(mockSelectResultsQueue).toHaveLength(0);
+    expect(mockEmitWorkflowEvent).not.toHaveBeenCalled();
+  });
+
+  it("refuses to verify a step with no row (not_started)", async () => {
+    mockSelectResultsQueue = [[]];
+    const res = await request(makeApp(CUSTOMER)).post("/api/portal/remediation-tracker/steps/s1/verify");
+    expect(res.status).toBe(400);
+    expect(mockEmitWorkflowEvent).not.toHaveBeenCalled();
+  });
+
+  it("refuses to verify an explicit not_started row", async () => {
+    mockSelectResultsQueue = [[{ status: "not_started" }]];
+    const res = await request(makeApp(CUSTOMER)).post("/api/portal/remediation-tracker/steps/s1/verify");
+    expect(res.status).toBe(400);
+    expect(mockEmitWorkflowEvent).not.toHaveBeenCalled();
+  });
+
+  it("refuses a claimed step with no connected tenant", async () => {
+    mockSelectResultsQueue = [[{ status: "completed" }], []];
+    const res = await request(makeApp(CUSTOMER)).post("/api/portal/remediation-tracker/steps/s1/verify");
+    expect(res.status).toBe(400);
+    expect(mockEmitWorkflowEvent).not.toHaveBeenCalled();
+  });
+
+  it("fires the visible Workflow Engine event and 202s for a claimed step with a connected tenant", async () => {
+    mockSelectResultsQueue = [[{ status: "completed" }], [{ tenantId: "tenant-abc" }]];
+    const res = await request(makeApp(CUSTOMER)).post("/api/portal/remediation-tracker/steps/s1/verify");
+    expect(res.status).toBe(202);
+    expect(res.body.checkKeys).toEqual(["sharepoint:orgwide-links"]);
+    expect(mockEmitWorkflowEvent).toHaveBeenCalledTimes(1);
+    expect(mockEmitWorkflowEvent).toHaveBeenCalledWith("remediation.verify_requested", { customerId: 42, stepId: "s1" });
+  });
+});
+
+describe("GET /api/portal/remediation-tracker/steps/:stepId/verification-guide (#1540)", () => {
+  it("403s a token with no customer identity", async () => {
+    const res = await request(makeApp({ id: 1, role: "admin" })).get(
+      "/api/portal/remediation-tracker/steps/s1/verification-guide",
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("rejects a step id the guide does not hold", async () => {
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker/steps/s31/verification-guide");
+    expect(res.status).toBe(400);
+  });
+
+  it("404s a step with no mapped check", async () => {
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker/steps/s18/verification-guide");
+    expect(res.status).toBe(404);
+  });
+
+  it("serves nulls for a mapped check with no published KB row — never fabricated guidance", async () => {
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker/steps/s1/verification-guide");
+    expect(res.status).toBe(200);
+    expect(res.body.checkKeys).toEqual(["sharepoint:orgwide-links"]);
+    expect(res.body.guidance).toEqual([
+      { checkKey: "sharepoint:orgwide-links", validationStep: null, validationCommand: null, expectedOutcome: null },
+    ]);
+  });
+
+  it("serves the real published KB row's validation fields when one exists", async () => {
+    mockKbRows.set("sharepoint:orgwide-links", {
+      validationStep: "Re-run the org-wide sharing report and confirm zero links remain.",
+      validationCommand: "Get-SPOSite | Get-SPOSiteGroup",
+      expectedOutcome: "No results returned.",
+    });
+    const res = await request(makeApp(CUSTOMER)).get("/api/portal/remediation-tracker/steps/s1/verification-guide");
+    expect(res.status).toBe(200);
+    expect(res.body.guidance[0]).toEqual({
+      checkKey: "sharepoint:orgwide-links",
+      validationStep: "Re-run the org-wide sharing report and confirm zero links remain.",
+      validationCommand: "Get-SPOSite | Get-SPOSiteGroup",
+      expectedOutcome: "No results returned.",
+    });
   });
 });

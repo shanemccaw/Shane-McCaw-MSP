@@ -31,6 +31,7 @@ vi.mock("@workspace/db", () => {
     const chain: any = {
       from: () => chain,
       where: () => chain,
+      limit: () => chain,
       then: (onfulfilled: any, onrejected?: any) =>
         Promise.resolve(mockSelectResultsQueue.shift() ?? []).then(onfulfilled, onrejected),
     };
@@ -69,7 +70,12 @@ vi.mock("./logger", () => {
   return { logger: noopLogger };
 });
 
-import { reverifyRemediationTrackerSteps, REMEDIATION_TRACKER_STEP_CHECK_KEYS } from "./remediation-tracker-verification";
+import {
+  reverifyRemediationTrackerSteps,
+  applyPointedVerification,
+  stepCheckKeysFor,
+  REMEDIATION_TRACKER_STEP_CHECK_KEYS,
+} from "./remediation-tracker-verification";
 
 const CUSTOMER_ID = 42;
 const RUN_ID = "11111111-1111-1111-1111-111111111111";
@@ -235,5 +241,96 @@ describe("reverifyRemediationTrackerSteps — the verdict rule", () => {
     await expect(
       reverifyRemediationTrackerSteps({ customerId: CUSTOMER_ID, runId: RUN_ID, findings: [] }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("stepCheckKeysFor (#1540)", () => {
+  it("returns the mapped keys for a real step", () => {
+    expect(stepCheckKeysFor("s1")).toEqual(["sharepoint:orgwide-links"]);
+  });
+
+  it("returns undefined for a gap / process-only step", () => {
+    expect(stepCheckKeysFor("s18")).toBeUndefined();
+    expect(stepCheckKeysFor("s27")).toBeUndefined();
+  });
+
+  it("returns undefined for an unknown step id", () => {
+    expect(stepCheckKeysFor("s999")).toBeUndefined();
+  });
+});
+
+describe("applyPointedVerification — the on-demand half (#1540)", () => {
+  it("refuses a step with no mapped check without touching the DB", async () => {
+    const result = await applyPointedVerification({
+      customerId: CUSTOMER_ID,
+      stepId: "s18",
+      runId: RUN_ID,
+      findings: [{ checkKey: "anything:at-all", severity: "critical" }],
+    });
+    expect(result).toEqual({ ok: false, reason: "no_mapped_check" });
+    expect(mockUpdateSets).toHaveLength(0);
+  });
+
+  it("refuses a step with no row at all (not_started)", async () => {
+    mockSelectResultsQueue = [[]];
+    const result = await applyPointedVerification({
+      customerId: CUSTOMER_ID,
+      stepId: "s1",
+      runId: RUN_ID,
+      findings: [{ checkKey: "sharepoint:orgwide-links", severity: "ok" }],
+    });
+    expect(result).toEqual({ ok: false, reason: "no_claim" });
+    expect(mockUpdateSets).toHaveLength(0);
+  });
+
+  it("refuses an explicit not_started row", async () => {
+    mockSelectResultsQueue = [[{ status: "not_started" }]];
+    const result = await applyPointedVerification({
+      customerId: CUSTOMER_ID,
+      stepId: "s1",
+      runId: RUN_ID,
+      findings: [{ checkKey: "sharepoint:orgwide-links", severity: "ok" }],
+    });
+    expect(result).toEqual({ ok: false, reason: "no_claim" });
+    expect(mockUpdateSets).toHaveLength(0);
+  });
+
+  it("verifies a claimed step whose pointed re-scan came back clean", async () => {
+    mockSelectResultsQueue = [[{ status: "completed" }]];
+    const result = await applyPointedVerification({
+      customerId: CUSTOMER_ID,
+      stepId: "s1",
+      runId: RUN_ID,
+      findings: [{ checkKey: "sharepoint:orgwide-links", severity: "ok" }],
+    });
+    expect(result).toEqual({ ok: true, verdict: "verified" });
+    expect(mockUpdateSets).toHaveLength(1);
+    expect(mockUpdateSets[0].verificationState).toBe("verified");
+    expect(mockUpdateSets[0].verifiedByRunId).toBe(RUN_ID);
+  });
+
+  it("drifts a claimed step whose pointed re-scan still fires", async () => {
+    mockSelectResultsQueue = [[{ status: "already_handled" }]];
+    const result = await applyPointedVerification({
+      customerId: CUSTOMER_ID,
+      stepId: "s1",
+      runId: RUN_ID,
+      findings: [{ checkKey: "sharepoint:orgwide-links", severity: "critical" }],
+    });
+    expect(result).toEqual({ ok: true, verdict: "drift" });
+    expect(mockUpdateSets[0].verificationState).toBe("drift");
+  });
+
+  it("reports no_verdict rather than guessing when the pointed re-scan is ambiguous", async () => {
+    // s8 maps to two checks; the pointed re-scan only produced usable evidence for one.
+    mockSelectResultsQueue = [[{ status: "completed" }]];
+    const result = await applyPointedVerification({
+      customerId: CUSTOMER_ID,
+      stepId: "s8",
+      runId: RUN_ID,
+      findings: [{ checkKey: "identity:ca-policy-count", severity: "ok" }],
+    });
+    expect(result).toEqual({ ok: false, reason: "no_verdict" });
+    expect(mockUpdateSets).toHaveLength(0);
   });
 });

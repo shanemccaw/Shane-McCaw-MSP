@@ -2506,6 +2506,41 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
       ],
     },
   },
+  // ── Remediation Tracker — on-demand pointed verify (#1540) ──────────────────
+  {
+    name: "__system__: Remediation Pointed Verification",
+    description:
+      "#1540 — 'Done means verified, never claimed. A human marking an item complete is a claim " +
+      "awaiting proof, not a state change.' Fired by portal-remediation-tracker.ts's " +
+      "POST /steps/:stepId/verify on the customer's own on-demand 'Verify' click — re-runs THIS " +
+      "step's mapped monitor check(s) against the tenant right now (not the next scheduled full " +
+      "package scan) and writes verified/drift straight to remediation_tracker_steps.verificationState. " +
+      "A visible Workflow Engine node (remediation_pointed_verify), not a bare route-side function call.",
+    triggerType: "event",
+    eventNames: ["remediation.verify_requested"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Verify Requested" } },
+        {
+          id: "verify",
+          type: "remediation_pointed_verify",
+          position: { x: 100, y: 200 },
+          data: {
+            nodeType: "remediation_pointed_verify",
+            label: "Pointed Verify Remediation Step",
+            customerId: "{{customerId}}",
+            stepId: "{{stepId}}",
+          },
+        },
+        { id: "end", type: "end", position: { x: 100, y: 300 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "verify" },
+        { id: "e2", source: "verify", target: "end" },
+      ],
+    },
+  },
   // ── Zoho Queue Drain (Zoho Integration Foundation, #82) ─────────────────────
   {
     name: "Zoho Queue Drain",

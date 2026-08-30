@@ -458,6 +458,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Executes a specified monitor check and extracts properties",
   },
   {
+    nodeType: "remediation_pointed_verify",
+    isAIDependent: false,
+    description: "On-demand targeted re-scan of one remediation-tracker step's mapped check(s), writing verified/drift to remediation_tracker_steps.verificationState — deterministic, no AI (#1540)",
+  },
+  {
     nodeType: "execute_baseline_template",
     isAIDependent: false,
     description: "Executes a template action with verification-gate halting",

@@ -56,7 +56,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, remediationTrackerStepsTable, REMEDIATION_TRACKER_STEP_STATUS } from "@workspace/db";
+import { db, remediationTrackerStepsTable, tenantsTable, REMEDIATION_TRACKER_STEP_STATUS } from "@workspace/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
@@ -64,6 +64,9 @@ import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 import { computeRemediationTrackerPricing } from "../lib/remediation-tracker-pricing";
 import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
+import { stepCheckKeysFor } from "../lib/remediation-tracker-verification";
+import { emitWorkflowEvent } from "../lib/workflow-executor";
+import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base";
 
 /**
  * Roles that represent SHANE / the MSP acting, as opposed to the customer
@@ -312,6 +315,126 @@ router.put(
     } catch (err) {
       log.error({ err, customerId, stepId, status }, "PUT /portal/remediation-tracker/steps failed");
       res.status(500).json({ error: "Failed to save remediation step" });
+    }
+  },
+);
+
+// ── Pointed verify (#1540) ───────────────────────────────────────────────────
+//
+// "Done means verified, never claimed." A customer ticking a step is a claim;
+// only a real re-scan closes it. This is the on-demand half: instead of
+// waiting for the next full package scan to happen to cover this step's
+// check(s), fire ONE targeted re-scan right now. Fire-and-forget through the
+// Workflow Engine (`remediation_pointed_verify`, seeded as
+// "__system__: Remediation Pointed Verification") — never a bare function
+// call — so the run is a real, visible, auditable workflow_runs row. The
+// verdict lands on the row this route already serves (verificationState /
+// verifiedAt); the client re-polls GET /portal/remediation-tracker to see it,
+// the same poll-after-kick shape every other async action on this platform
+// uses (document generation, monitor check runs, …).
+router.post(
+  "/portal/remediation-tracker/steps/:stepId/verify",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const stepId = String(req.params.stepId ?? "");
+    if (!STEP_ID_SET.has(stepId)) {
+      res.status(400).json({ error: "Unknown remediation step" });
+      return;
+    }
+
+    const mappedKeys = stepCheckKeysFor(stepId);
+    if (!mappedKeys || mappedKeys.length === 0) {
+      res.status(400).json({ error: "This step has no automated check behind it — there is nothing a re-scan could verify" });
+      return;
+    }
+
+    try {
+      const [row] = await db
+        .select({ status: remediationTrackerStepsTable.status })
+        .from(remediationTrackerStepsTable)
+        .where(and(eq(remediationTrackerStepsTable.customerId, customerId), eq(remediationTrackerStepsTable.stepId, stepId)))
+        .limit(1);
+
+      if (!row || row.status === "not_started") {
+        res.status(400).json({ error: "Nothing to verify yet — this step has no claim on it" });
+        return;
+      }
+
+      const [tenant] = await db.select({ tenantId: tenantsTable.tenantId }).from(tenantsTable).where(eq(tenantsTable.id, customerId)).limit(1);
+      if (!tenant?.tenantId) {
+        res.status(400).json({ error: "No connected M365 tenant — nothing to re-scan against" });
+        return;
+      }
+
+      await emitWorkflowEvent("remediation.verify_requested", { customerId, stepId });
+      log.info({ customerId, stepId, checkKeys: mappedKeys }, "remediation tracker pointed verify requested");
+
+      res.status(202).json({
+        message: "Pointed verification started — poll GET /portal/remediation-tracker for the result.",
+        stepId,
+        checkKeys: mappedKeys,
+      });
+    } catch (err) {
+      log.error({ err, customerId, stepId }, "POST /portal/remediation-tracker/steps/:stepId/verify failed");
+      res.status(500).json({ error: "Failed to start pointed verification" });
+    }
+  },
+);
+
+// ── Verification guide (#1540) ───────────────────────────────────────────────
+//
+// Surfaces `remediation_knowledge_base.validationStep` / `.validationCommand` /
+// `.expectedOutcome` for a step's mapped check(s) — human-readable "how to
+// validate" content, "already anticipated, never wired" per #1540's own body.
+// Read-only: nothing here executes `validationCommand`. The pointed re-scan
+// above is the platform's own proof; this is the same guidance a customer can
+// read to check it themselves, published rows only (same provenance rule as
+// the Remediation Plan document — a draft row is not yet a claim anyone signed
+// off on).
+router.get(
+  "/portal/remediation-tracker/steps/:stepId/verification-guide",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const stepId = String(req.params.stepId ?? "");
+    if (!STEP_ID_SET.has(stepId)) {
+      res.status(400).json({ error: "Unknown remediation step" });
+      return;
+    }
+
+    const mappedKeys = stepCheckKeysFor(stepId);
+    if (!mappedKeys || mappedKeys.length === 0) {
+      res.status(404).json({ error: "This step has no automated check behind it — there is no validation guidance to show" });
+      return;
+    }
+
+    try {
+      const kbRows = await fetchPublishedKnowledgeBaseRows([...mappedKeys]);
+      const guidance = mappedKeys.map((checkKey) => {
+        const row = kbRows.get(checkKey);
+        return {
+          checkKey,
+          validationStep: row?.validationStep ?? null,
+          validationCommand: row?.validationCommand ?? null,
+          expectedOutcome: row?.expectedOutcome ?? null,
+        };
+      });
+
+      res.json({ stepId, checkKeys: mappedKeys, guidance });
+    } catch (err) {
+      log.error({ err, customerId, stepId }, "GET /portal/remediation-tracker/steps/:stepId/verification-guide failed");
+      res.status(500).json({ error: "Failed to load verification guidance" });
     }
   },
 );
