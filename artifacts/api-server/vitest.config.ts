@@ -274,6 +274,12 @@ export default defineConfig({
       // #1553 — Policy Engine finding source: the mailbox_attribute compliance
       // comparison logic (pure, no database, no Graph).
       "src/lib/policy-compliance.test.ts",
+      // #1549 — Policy Engine continuous-evaluation reconciliation loop: the
+      // gate decision (tenant resolution + opt-in), pure, no database.
+      "src/lib/policy-engine-evaluator.test.ts",
+      // #1552 — VIP classification: the wire contract, the source vocabulary, and
+      // the "told always wins, discovery never overwrites" precedence rule (pure).
+      "src/lib/vip-classifications.test.ts",
       "src/lib/zoho-foundation.test.ts",
       "src/lib/zoho-crm.test.ts",
       "src/lib/zoho-projects.test.ts",

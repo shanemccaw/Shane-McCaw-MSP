@@ -4719,6 +4719,70 @@ export type StandingPolicy = typeof standingPoliciesTable.$inferSelect;
 export type InsertStandingPolicy = typeof standingPoliciesTable.$inferInsert;
 export type StandingPolicyTargetKind = (typeof STANDING_POLICY_TARGET_KIND)[number];
 
+// ── VIP Classification (#1552) ──────────────────────────────────────────────
+//
+// #1552's own resolution (2026-08-28, on the issue): "A user becomes VIP by
+// one of three routes: Told, group membership, AD attribute" — but the three
+// are NOT equal truth-holders. THE PLATFORM IS AUTHORITATIVE, not the tenant.
+//
+//   told                  — a decision made HERE, in the platform. The only
+//                            source that establishes or changes the current
+//                            classification once one exists.
+//   discovered_group       — a tenant-side group-membership READ HINT, useful
+//   discovered_attribute      only for DISCOVERY at onboarding to seed who is
+//                            already VIP in an existing estate. Once the
+//                            platform holds a classification for a principal,
+//                            these are no longer sources of truth — a
+//                            tenant-side change becomes DRIFT to correct
+//                            (#1553's job), not a value to adopt here.
+//
+// This is why the table is a CURRENT-STATE object (one row per customer +
+// principal, upserted by "told") rather than an append-only event log: only
+// one classification is ever live, and only "told" may move it. De-VIP is
+// itself an act performed here (a runbook, #1548's enactment path) — never
+// something this table infers from a tenant-side removal.
+//
+// Identified by the Graph user object id (`principal_id`) the same way
+// `license_assignment_snapshots.user_id` and `overshared_items.principal_id`
+// already do elsewhere in this schema — no local directory-user inventory
+// table exists to FK against, and none is needed: the identity IS the Graph
+// object id.
+export const VIP_CLASSIFICATION_SOURCES = ["told", "discovered_group", "discovered_attribute"] as const;
+export type VipClassificationSource = (typeof VIP_CLASSIFICATION_SOURCES)[number];
+
+export const vipClassificationsTable = pgTable("vip_classifications", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — no FK by design (see Phase 7 audit; same convention as msp_audit_logs.customerId). */
+  customerId: integer("customer_id").notNull(),
+  /** Graph user object id — the stable identity. */
+  principalId: text("principal_id").notNull(),
+  /** Display/reference only — never the join key. */
+  principalUpn: text("principal_upn").notNull(),
+  isVip: boolean("is_vip").notNull(),
+  /** Which route produced the CURRENT value. "told" is the only source that can move this once set. */
+  source: text("source", { enum: VIP_CLASSIFICATION_SOURCES }).notNull(),
+  /**
+   * Provenance for a discovery-sourced row (e.g. { groupId, groupName } or
+   * { attributeName, attributeValue }). Null for "told" — a platform decision
+   * cites no tenant-side evidence.
+   */
+  discoveryDetail: jsonb("discovery_detail").$type<Record<string, unknown> | null>(),
+  /** Who told it. Null for a discovery-seeded row — nothing was "told" yet. */
+  classifiedByPersonId: text("classified_by_person_id"),
+  classifiedByName: text("classified_by_name"),
+  classifiedAt: timestamp("classified_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("vip_classifications_customer_principal_uniq").on(t.customerId, t.principalId),
+  index("vip_classifications_customer_id_idx").on(t.customerId),
+  index("vip_classifications_customer_vip_idx").on(t.customerId, t.isVip),
+]);
+
+export const insertVipClassificationSchema = createInsertSchema(vipClassificationsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type VipClassification = typeof vipClassificationsTable.$inferSelect;
+export type InsertVipClassification = typeof vipClassificationsTable.$inferInsert;
+
 // ── Policy Evaluation Runs (#1549) — the continuous-evaluation reconciliation loop ──
 //
 // #1549 SETTLED: "the policy engine evaluates continuously," on two triggers —

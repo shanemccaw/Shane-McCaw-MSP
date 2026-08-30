@@ -14,82 +14,97 @@
 
         Git #1872 — this control now lives ONLY inside its own document tab (moved out of the
         queue column entirely; MainWindow hoists a single instance as a field — see
-        MainWindow.BatterUpTabs.cs). The old MaxHeight="260" root cap and RowsScroller's
-        MaxHeight="220" existed only to keep this readable stacked in that narrow column; with
-        no column context left to preserve, they're gone. RowsScroller is now the DockPanel's
-        un-docked last child, so it fills the whole document tab and scrolls internally — the
-        220px-scroller-for-45-rows problem this issue exists to fix.
+        MainWindow.BatterUpTabs.cs).
+
+        Shane, 2026-08-30 — same two fixes as AiBatterUpPanel's sibling document tab: (1) the
+        leftover BtnCollapse toggle (a holdover from the narrow docked-column days) opened this
+        tab with the rows list collapsed — removed outright, RowsScroller is now always visible;
+        (2) "left side being smaller than the right... right side having the GitHub issue
+        details right where I can read what it's talking about directly" — added a second
+        column (same 1*/Auto-splitter/2* recipe GraphApiDocumentView already uses) hosting a
+        real IssueDetailView, wired in code-behind (SelectCard) to whichever row was last
+        clicked, auto-selecting the top row on refresh so the pane is never blank.
     -->
-    <Border Background="{StaticResource MantleBrush}"
-            BorderBrush="{StaticResource Surface0Brush}"
-            BorderThickness="0,0,0,1">
-        <DockPanel LastChildFill="True">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="1*" MinWidth="240"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="2*" MinWidth="320"/>
+        </Grid.ColumnDefinitions>
 
-            <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing is now
-                 the Build Queue header's single shared icon (BuildQueuePanel.xaml
-                 BtnRefreshGitHubTiles), which cascades here via BoardRefreshCompleted
-                 (#1813). TxtCount also carries the "no items" empty-state note inline now,
-                 so an empty panel never grows past this one header row. -->
-            <!-- Git #1870 — the Free flow gate toggle sits in this same header row (title,
-                 count, toggle, collapse) so the collapsed footprint #1816 minimised does not
-                 grow. State is unmistakable at a glance: TxtCount carries a "· gated" / "· free
-                 flow" suffix and the toggle itself flips label/colour (see UpdateFreeFlowVisual).
-                 This is a separate gate from the global Build Queue pause (QueueWatcherService) —
-                 it stops board rows ENTERING the queue, not launching out of it. -->
-            <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+        <Border Grid.Column="0"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,1,0">
+            <DockPanel LastChildFill="True">
 
-                <TextBlock Grid.Column="0" Text="⚾ Batter Up"
-                           FontWeight="SemiBold" FontSize="13"
-                           Foreground="{StaticResource TextBrush}"
-                           VerticalAlignment="Center"/>
+                <!-- Header — Git #1816: this panel's own BtnRefresh is gone; refreshing is now
+                     the Build Queue header's single shared icon (BuildQueuePanel.xaml
+                     BtnRefreshGitHubTiles), which cascades here via BoardRefreshCompleted
+                     (#1813). TxtCount also carries the "no items" empty-state note inline now,
+                     so an empty panel never grows past this one header row. -->
+                <!-- Git #1870 — the Free flow gate toggle sits in this same header row (title,
+                     count, toggle) so the collapsed footprint #1816 minimised does not grow.
+                     State is unmistakable at a glance: TxtCount carries a "· gated" / "· free
+                     flow" suffix and the toggle itself flips label/colour (see UpdateFreeFlowVisual).
+                     This is a separate gate from the global Build Queue pause (QueueWatcherService) —
+                     it stops board rows ENTERING the queue, not launching out of it. -->
+                <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
 
-                <TextBlock x:Name="TxtCount" Grid.Column="1" Margin="8,0,0,0"
-                           Foreground="{StaticResource Subtext0Brush}" FontSize="11"
-                           VerticalAlignment="Center" Text=""/>
+                    <TextBlock Grid.Column="0" Text="⚾ Batter Up"
+                               FontWeight="SemiBold" FontSize="13"
+                               Foreground="{StaticResource TextBrush}"
+                               VerticalAlignment="Center"/>
 
-                <ToggleButton x:Name="BtnFreeFlow" Grid.Column="2"
-                              Margin="6,0,6,0" Padding="7,1,7,1"
-                              FontSize="10.5" FontWeight="SemiBold"
-                              Background="{StaticResource Surface0Brush}"
-                              BorderBrush="{StaticResource Surface1Brush}"
-                              BorderThickness="1"
-                              Cursor="Hand"
-                              VerticalAlignment="Center"
-                              Content="⏸ Gated"
-                              Click="BtnFreeFlow_Click"/>
+                    <TextBlock x:Name="TxtCount" Grid.Column="1" Margin="8,0,0,0"
+                               Foreground="{StaticResource Subtext0Brush}" FontSize="11"
+                               VerticalAlignment="Center" Text=""/>
 
-                <ToggleButton x:Name="BtnCollapse" Grid.Column="3"
-                              Style="{StaticResource ExpandCollapseToggleStyle}"
-                              Cursor="Hand"
-                              IsChecked="True" Click="BtnCollapse_Click"/>
-            </Grid>
+                    <ToggleButton x:Name="BtnFreeFlow" Grid.Column="2"
+                                  Margin="6,0,0,0" Padding="7,1,7,1"
+                                  FontSize="10.5" FontWeight="SemiBold"
+                                  Background="{StaticResource Surface0Brush}"
+                                  BorderBrush="{StaticResource Surface1Brush}"
+                                  BorderThickness="1"
+                                  Cursor="Hand"
+                                  VerticalAlignment="Center"
+                                  Content="⏸ Gated"
+                                  Click="BtnFreeFlow_Click"/>
+                </Grid>
 
-            <!-- Git #1816 — reserved only for the rarer no-PAT/error messages now; the plain
-                 "zero items" case is shown inline in TxtCount above instead, so the common
-                 empty state no longer reserves this block's own margin/wrap space. -->
-            <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"
-                       Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
-                       TextWrapping="Wrap" Text=""
-                       Visibility="Collapsed"/>
+                <!-- Git #1816 — reserved only for the rarer no-PAT/error messages now; the plain
+                     "zero items" case is shown inline in TxtCount above instead, so the common
+                     empty state no longer reserves this block's own margin/wrap space. -->
+                <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"
+                           Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
+                           TextWrapping="Wrap" Text=""
+                           Visibility="Collapsed"/>
 
-            <!-- Git #1872 — no DockPanel.Dock: as the DockPanel's last child (LastChildFill="True")
-                 this fills the whole document tab instead of being capped to a fixed height, so it
-                 scrolls internally over the tab's real available space. -->
-            <ScrollViewer x:Name="RowsScroller"
-                          VerticalScrollBarVisibility="Auto"
-                          Visibility="Collapsed">
-                <!-- Git #1803 — cards are built in code-behind (BuildBatterUpCard), the same way
-                     BuildQueuePanel builds BuildQueueCard, so this row can carry the exact same
-                     critter-avatar/card-border language instead of a DataTemplate text row. -->
-                <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
-            </ScrollViewer>
+                <!-- Git #1872 — no DockPanel.Dock: as the DockPanel's last child (LastChildFill="True")
+                     this fills the whole document tab instead of being capped to a fixed height, so it
+                     scrolls internally over the tab's real available space. Shane, 2026-08-30 — always
+                     visible now; the old BtnCollapse toggle that hid this behind a click is gone. -->
+                <ScrollViewer x:Name="RowsScroller"
+                              VerticalScrollBarVisibility="Auto">
+                    <!-- Git #1803 — cards are built in code-behind (BuildBatterUpCard), the same way
+                         BuildQueuePanel builds BuildQueueCard, so this row can carry the exact same
+                         critter-avatar/card-border language instead of a DataTemplate text row. -->
+                    <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
+                </ScrollViewer>
 
-        </DockPanel>
-    </Border>
+            </DockPanel>
+        </Border>
+
+        <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center" VerticalAlignment="Stretch"
+                      Background="{StaticResource Surface0Brush}"/>
+
+        <!-- Shane, 2026-08-30 — same Git #840 issue-detail control used elsewhere (real
+             description + comments), wired here to whichever row was last clicked (SelectCard). -->
+        <local:IssueDetailView x:Name="DetailPane" Grid.Column="2"/>
+    </Grid>
 </UserControl>

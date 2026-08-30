@@ -27,16 +27,19 @@ namespace BuildConsole.Controls
         private Services.GitHubApiClient? _gh;
         private bool _refreshing;
 
-        // Git #1816 — TxtEmpty is now reserved for the rarer no-PAT/error messages only
-        // (the plain "zero rows" case shows inline in TxtCount instead); this tracks
-        // whether TxtEmpty currently holds one of those real messages, so BtnCollapse_Click
-        // can restore/hide it correctly without re-deriving it from row count.
-        private bool _emptyMessageActive;
-
         // Git #1863 — the real fetched/sorted rows from the last RefreshAsync. TxtFilter
         // narrows what's rendered from this list; it never touches what's fetched or the
         // Yes/No board mutations, which always operate on the row object already in hand.
         private List<Services.AiBatterUpRow> _allRows = new();
+
+        // Shane, 2026-08-30 — the right-column IssueDetailView tracks whichever row was
+        // last clicked (SelectCard). _selectedNumber survives a RenderFilteredRows rebuild
+        // (cards are rebuilt fresh every call) so the same issue re-highlights instead of
+        // silently reverting to "no selection"; _selectedCard/_selectedCardOriginalBrush
+        // let a plain click swap the highlight without a full rebuild.
+        private int? _selectedNumber;
+        private Border? _selectedCard;
+        private Brush? _selectedCardOriginalBrush;
 
         /// <summary>Git #1872 — fired every time RefreshAsync lands (success, no-PAT, or error),
         /// carrying the same row count TxtCount renders. MainWindow's title-bar button badge
@@ -69,22 +72,13 @@ namespace BuildConsole.Controls
         {
         }
 
-        private void BtnCollapse_Click(object sender, RoutedEventArgs e)
-        {
-            bool collapsed = BtnCollapse.IsChecked == true;
-            RowsScroller.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
-            TxtEmpty.Visibility = (!collapsed && _emptyMessageActive) ? Visibility.Visible : Visibility.Collapsed;
-            BtnCollapse.Content = collapsed ? "▸" : "▾";
-            UpdateFilterBoxVisibility();
-        }
-
         // Git #1863 — the filter box shows only when there's something to filter: rows
-        // fetched (not the "none open" / no-PAT / error states) AND the panel expanded.
-        // Collapsing the panel hides it right along with the rows, per #1816.
+        // fetched (not the "none open" / no-PAT / error states). Shane, 2026-08-30 — no
+        // longer gated on a "panel expanded" check; the old BtnCollapse toggle (and the
+        // collapsed-by-default state it left this document tab opening into) is gone.
         private void UpdateFilterBoxVisibility()
         {
-            bool collapsed = BtnCollapse.IsChecked == true;
-            FilterBoxHost.Visibility = (!collapsed && _allRows.Count > 0) ? Visibility.Visible : Visibility.Collapsed;
+            FilterBoxHost.Visibility = _allRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private Services.GitHubApiClient? GetClient()
@@ -107,7 +101,6 @@ namespace BuildConsole.Controls
                     RowsList.Children.Clear();
                     _allRows = new List<Services.AiBatterUpRow>();
                     UpdateFilterBoxVisibility();
-                    _emptyMessageActive = true;
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
                     SetCount(0);
@@ -126,7 +119,6 @@ namespace BuildConsole.Controls
                     RowsList.Children.Clear();
                     _allRows = new List<Services.AiBatterUpRow>();
                     UpdateFilterBoxVisibility();
-                    _emptyMessageActive = true;
                     TxtEmpty.Text = $"Couldn't read AI Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
                     SetCount(0);
@@ -142,7 +134,6 @@ namespace BuildConsole.Controls
                 // TxtCount instead of the separate TxtEmpty block, so an empty panel's
                 // footprint never grows past this one header line.
                 TxtCount.Text = _allRows.Count == 0 ? "— none open" : $"({_allRows.Count})";
-                _emptyMessageActive = false;
                 TxtEmpty.Visibility = Visibility.Collapsed;
                 UpdateFilterBoxVisibility();
                 RenderFilteredRows();
@@ -169,6 +160,11 @@ namespace BuildConsole.Controls
         private void RenderFilteredRows()
         {
             RowsList.Children.Clear();
+            // Cards are rebuilt fresh below — the old Border instance _selectedCard points
+            // at is gone, so drop the reference (its highlight goes with it); _selectedNumber
+            // is what actually survives the rebuild, re-applied to whichever new card matches.
+            _selectedCard = null;
+            _selectedCardOriginalBrush = null;
 
             string term = TxtFilter.Text?.Trim() ?? "";
             IEnumerable<Services.AiBatterUpRow> visible = _allRows;
@@ -195,8 +191,39 @@ namespace BuildConsole.Controls
                 return;
             }
 
+            // Shane, 2026-08-30 — re-select the same issue if it's still in view, otherwise
+            // default to the top row, so the right-hand detail pane is never left blank.
+            Border? toSelect = null;
+            int toSelectNumber = 0;
             foreach (var row in visibleList)
-                RowsList.Children.Add(BuildAiBatterUpCard(row));
+            {
+                var card = BuildAiBatterUpCard(row);
+                RowsList.Children.Add(card);
+                if (row.Number == _selectedNumber || (toSelect == null && _selectedNumber == null))
+                {
+                    toSelect = card;
+                    toSelectNumber = row.Number;
+                }
+            }
+            if (toSelect != null) SelectCard(toSelect, toSelectNumber);
+        }
+
+        /// <summary>
+        /// Highlights <paramref name="card"/> (restoring whatever card was previously
+        /// selected to its normal border) and loads its issue into the right-hand
+        /// <see cref="DetailPane"/>. Shared by a plain row click and the auto-select
+        /// RenderFilteredRows does on every refresh.
+        /// </summary>
+        private void SelectCard(Border card, int number)
+        {
+            if (_selectedCard != null && _selectedCard != card)
+                _selectedCard.BorderBrush = _selectedCardOriginalBrush ?? _selectedCard.BorderBrush;
+
+            if (_selectedCard != card) _selectedCardOriginalBrush = card.BorderBrush;
+            card.BorderBrush = (Brush)Application.Current.FindResource("BlueBrush");
+            _selectedCard = card;
+            _selectedNumber = number;
+            DetailPane.LoadIssue(number);
         }
 
         /// <summary>
@@ -358,6 +385,13 @@ namespace BuildConsole.Controls
             cardGrid.Children.Add(mascot);
 
             card.Child = cardGrid;
+
+            // Shane, 2026-08-30 — click anywhere on the card (that isn't the Yes/No
+            // buttons — ButtonBase already marks its own MouseLeftButtonUp Handled, so
+            // this bubbling handler never fires for those) to load it into DetailPane.
+            card.Cursor = System.Windows.Input.Cursors.Hand;
+            card.MouseLeftButtonUp += (_, _) => SelectCard(card, r.Number);
+
             return card;
         }
     }
