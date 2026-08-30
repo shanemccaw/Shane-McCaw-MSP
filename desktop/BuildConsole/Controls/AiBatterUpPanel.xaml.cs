@@ -211,14 +211,19 @@ namespace BuildConsole.Controls
 
             // ── Footer action row: Yes/No as real in-card actions ──
             var footer = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(1, 0, 0, 0) };
+            // Git #1810 — de-brightened to match "No"'s calm dark visual weight (same
+            // dark-base-with-accent philosophy as #1705): dark Surface0Brush fill instead of a
+            // solid bright GreenBrush, with green kept only as the border/text accent so "Yes"
+            // still reads as green without being a jarring solid fill.
             var btnYes = new Button
             {
                 Content = "Yes",
                 Padding = new Thickness(10, 2, 10, 2),
                 Margin = new Thickness(0, 0, 6, 0),
-                Background = (Brush)Application.Current.FindResource("GreenBrush"),
-                Foreground = Brushes.White,
-                BorderThickness = new Thickness(0),
+                Background = (Brush)Application.Current.FindResource("Surface0Brush"),
+                Foreground = (Brush)Application.Current.FindResource("GreenBrush"),
+                BorderBrush = (Brush)Application.Current.FindResource("GreenBrush"),
+                BorderThickness = new Thickness(1),
                 Cursor = System.Windows.Input.Cursors.Hand,
                 ToolTip = "Promote to Batter Up"
             };
