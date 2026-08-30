@@ -5039,6 +5039,17 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
    * hand-started run rather than a null.
    */
   origin: text("origin", { enum: MSP_SOP_RUN_ORIGIN }).notNull().default("manual"),
+  /**
+   * `msp_sops.version` captured at the moment this run started (#1558). This is
+   * the run's own half of the version-ambiguity requirement the per-tenant
+   * custom-step overlay below has to satisfy: the base definition's `version`
+   * keeps moving forward as the MSP republishes it, so without this a run
+   * could never say which version of the procedure it actually followed once
+   * that column had since changed. Server-captured at insert, never
+   * client-supplied. Defaults to "" for historical rows and any writer not
+   * yet updated to set it — read as "not recorded", not a guess.
+   */
+  sopVersion: text("sop_version").notNull().default(""),
   startedAt: text("started_at").notNull(),
   completedAt: text("completed_at"),
   status: text("status").notNull(),
@@ -5058,6 +5069,71 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
 export const insertMspSopRunSchema = createInsertSchema(mspSopRunsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type MspSopRun = typeof mspSopRunsTable.$inferSelect;
 export type InsertMspSopRun = typeof mspSopRunsTable.$inferInsert;
+
+// ── SOP custom steps — per-tenant overlay on a versioned MSP definition (#1558) ──
+//
+// `msp_sops` is MSP-authored and versioned (`version`, `version_status`,
+// `last_updated_by`) — a customer must never write into its `steps` jsonb
+// directly, because that is editing someone else's authored, versioned
+// artifact out from under them. `portal_runbook_steps.is_custom` already lets a
+// customer graft their own steps onto a DIFFERENT object (their own runbook
+// checklist, see that table's own header). This is the same settled pattern
+// applied to the SOP library, per the architecture fixed on #1558 and #1493's
+// own thread: a tenant's custom steps live in their own table as an OVERLAY
+// the read layer appends after the base definition's own steps — never merged
+// into `msp_sops.steps`, never replacing it. Direct precedent:
+// `portalOwnershipAssignmentsTable` below layers a customer's saved edits over
+// a computed base RACI the same way.
+//
+// This is what keeps both halves of #1558's requirement true structurally:
+//   • A definition version bump (editing `msp_sops.version`/`steps` in place)
+//     cannot silently discard a tenant's custom steps, because they live in a
+//     wholly separate table that write never touches.
+//   • `basedOnVersion` records the base procedure's `version` at the moment
+//     the tenant added the step, so the overlay itself never becomes
+//     ambiguous about which definition it was layered onto — even as that
+//     definition's `version` keeps moving forward underneath it. (The other
+//     half — which version a given RUN actually followed — is
+//     `msp_sop_runs.sop_version`, above.)
+//
+// Keyed on `customer_id` (= tenants.id, the JWT's customerId) with NO foreign
+// key to `msp_sops`, matching every portal-* overlay table (see the Ownership
+// matrix write-persistence block below): `sopId` is the same opaque
+// `msp_sops.sop_id` string the read routes already join on, not a row id —
+// consistent with `msp_sop_runs.sop_id` (#4 in "Cross-surface edges", the
+// contract pack), which also survives its base definition being deleted.
+export const portalSopCustomStepsTable = pgTable("portal_sop_custom_steps", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  /** The base procedure this overlays — msp_sops.sop_id, not msp_sops.id. */
+  sopId: text("sop_id").notNull(),
+  /** 1-based render order among this tenant's OWN custom steps for this SOP. */
+  position: integer("position").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  /**
+   * `msp_sops.version` at the moment this step was added — this overlay row's
+   * own half of the version-ambiguity requirement (see the section header).
+   * Never updated after insert: this is what version the tenant was looking
+   * at when they added it, not whatever the base definition's version is now.
+   */
+  basedOnVersion: text("based_on_version").notNull(),
+  /** Who added it — the caller's own email, matching `msp_sops.last_updated_by`'s convention. */
+  addedBy: text("added_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_sop_custom_steps_customer_sop_idx").on(t.customerId, t.sopId),
+  uniqueIndex("portal_sop_custom_steps_customer_sop_position_idx").on(
+    t.customerId,
+    t.sopId,
+    t.position,
+  ),
+]);
+
+export type PortalSopCustomStep = typeof portalSopCustomStepsTable.$inferSelect;
+export type InsertPortalSopCustomStep = typeof portalSopCustomStepsTable.$inferInsert;
 
 // ── MSP Risk-Based Decisions & Liability Acceptances ─────────────────────────
 //

@@ -203,6 +203,18 @@ router.post(
         return;
       }
 
+      // #1558 — the version this run actually followed, captured from the base
+      // definition NOW rather than trusted from the caller: the base SOP keeps
+      // moving forward under `version` as it is republished, so this has to be
+      // read at the instant the run starts or it stops meaning anything. "" (no
+      // definition found for this sopId) reads honestly as not recorded, same
+      // as every other server-captured field's empty default.
+      const [sop] = await db
+        .select({ version: mspSopsTable.version })
+        .from(mspSopsTable)
+        .where(and(eq(mspSopsTable.mspId, mspId), eq(mspSopsTable.sopId, parsedBody.data.sopId)))
+        .limit(1);
+
       const [inserted] = await db
         .insert(mspSopRunsTable)
         .values({
@@ -215,6 +227,7 @@ router.post(
           targetEntity: parsedBody.data.targetEntity,
           operator: parsedBody.data.operator,
           origin: parsedBody.data.origin,
+          sopVersion: sop?.version ?? "",
           startedAt: parsedBody.data.startedAt,
           status: parsedBody.data.status,
           currentStepIndex: parsedBody.data.currentStepIndex,

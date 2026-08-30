@@ -57,13 +57,26 @@
  * construction (`sopRunnable()` stays false and the Execute path the gate guards
  * is never offered on it). It can only add a manual reference the customer's own
  * team wrote; it can never start anything.
+ *
+ * `POST /portal/sops/:sopId/custom-steps` (below) is a third act, narrower than
+ * either: a per-tenant OVERLAY on an EXISTING MSP-authored SOP (#1558), landing
+ * in `portal_sop_custom_steps` — never `msp_sops.steps` — so it can never edit
+ * the base definition, bump its version, or make it runnable. Same non-execution
+ * guarantee as above: an overlay step never carries a `graphEndpoint`.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { randomUUID } from "crypto";
-import { db, mspSopRunsTable, mspSopsTable, usersTable, type MspSopRunOrigin } from "@workspace/db";
-import { and, asc, eq } from "drizzle-orm";
+import {
+  db,
+  mspSopRunsTable,
+  mspSopsTable,
+  portalSopCustomStepsTable,
+  usersTable,
+  type MspSopRunOrigin,
+} from "@workspace/db";
+import { and, asc, eq, sql } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
@@ -119,6 +132,23 @@ interface WireSopRunSummary {
   readonly state: string;
   /** What invoked this run (#1556). The raw enum value — the page owns any label. */
   readonly origin: MspSopRunOrigin;
+  /**
+   * `msp_sops.version` this run actually followed (#1558), captured at the
+   * moment it started. "" for a historical run or one an older writer created
+   * before this was tracked — reads as not recorded, never a guess.
+   */
+  readonly sopVersion: string;
+}
+
+/**
+ * One step in the procedure as the customer reads it — base (MSP-authored) or
+ * their own overlay, in one ordered list. `isCustom` is what lets the page
+ * draw the two differently, the same distinction `portal_runbook_steps`
+ * already makes for a runbook's own checklist.
+ */
+interface WireSopStep {
+  readonly text: string;
+  readonly isCustom: boolean;
 }
 
 interface WireSopLibraryItem {
@@ -133,7 +163,7 @@ interface WireSopLibraryItem {
   readonly reviewCadence: string;
   readonly runnable: boolean;
   readonly finding: string | null;
-  readonly steps: readonly string[];
+  readonly steps: readonly WireSopStep[];
   readonly runs: readonly WireSopRunSummary[];
   readonly owner: WireOwner;
 }
@@ -185,6 +215,8 @@ interface WireSopQueueItem {
   readonly svc: string;
   /** What invoked this run (#1556). The raw enum value — the page owns any label. */
   readonly origin: MspSopRunOrigin;
+  /** `msp_sops.version` this run actually followed (#1558). See WireSopRunSummary. */
+  readonly sopVersion: string;
   readonly steps: readonly WireQueueStep[];
 }
 
@@ -281,6 +313,30 @@ function loadRuns(mspId: number, tenantId: string): Promise<RunRow[]> {
     .orderBy(asc(mspSopRunsTable.id));
 }
 
+type CustomStepRow = typeof portalSopCustomStepsTable.$inferSelect;
+
+/**
+ * This tenant's own custom-step overlay (#1558), grouped by the base SOP it
+ * overlays. `customer_id` is a direct predicate (this table was built for the
+ * portal, not adapted from the MSP console), unlike `loadSops`/`loadRuns`
+ * above which go through `mspId`/`tenantId` — see the file header on why the
+ * SOP tables need both shapes.
+ */
+async function loadCustomStepsBySop(customerId: number): Promise<Map<string, CustomStepRow[]>> {
+  const rows = await db
+    .select()
+    .from(portalSopCustomStepsTable)
+    .where(eq(portalSopCustomStepsTable.customerId, customerId))
+    .orderBy(asc(portalSopCustomStepsTable.position));
+  const out = new Map<string, CustomStepRow[]>();
+  for (const r of rows) {
+    const list = out.get(r.sopId) ?? [];
+    list.push(r);
+    out.set(r.sopId, list);
+  }
+  return out;
+}
+
 // ── GET /api/portal/sops ──────────────────────────────────────────────────────
 
 router.get(
@@ -301,11 +357,12 @@ router.get(
       }
 
       const now = new Date();
-      const [sopRows, runRows, ourEmails, names] = await Promise.all([
+      const [sopRows, runRows, ourEmails, names, customStepsBySop] = await Promise.all([
         loadSops(scope.mspId),
         loadRuns(scope.mspId, scope.tenantId),
         tenantAuthorEmails(customerId),
         displayNamesByEmail(scope.mspId),
+        loadCustomStepsBySop(customerId),
       ]);
 
       // Runs grouped by the SOP they ran, so the per-procedure history and the
@@ -345,7 +402,19 @@ router.get(
           reviewCadence: "Not recorded",
           runnable: sopRunnable(steps),
           finding: null,
-          steps: steps.map(stepText),
+          // The base definition's own steps, followed by this tenant's overlay
+          // (#1558) — one ordered list, `isCustom` marking which is which.
+          // `runnable`/`meta[id].auto` above are deliberately computed from the
+          // BASE `steps` only: a customer's own note can never make a procedure
+          // executable, matching how POST /portal/sops forces a customer-authored
+          // SOP non-runnable by construction (see the file header).
+          steps: [
+            ...steps.map((s) => ({ text: stepText(s), isCustom: false })),
+            ...(customStepsBySop.get(row.sopId) ?? []).map((c) => ({
+              text: c.description.trim() ? `${c.title} — ${c.description}` : c.title,
+              isCustom: true,
+            })),
+          ],
           runs: runsNewestFirst.map((r) => ({
             when: formatLongDate(r.startedAt),
             who: personLabel(r.operator, names.get(r.operator.trim().toLowerCase())),
@@ -355,6 +424,7 @@ router.get(
                 : `${r.passedStepsCount} of ${r.totalSteps} steps completed.`,
             state: runStateLabel(r.status, r.passedStepsCount, r.totalSteps),
             origin: r.origin,
+            sopVersion: r.sopVersion,
           })),
           owner: toOwner(author, names.get(author.toLowerCase())),
         });
@@ -497,6 +567,7 @@ router.get(
           cr: r.psaTicketId.trim() || "Not recorded",
           svc: workloads[0] ?? "—",
           origin: r.origin,
+          sopVersion: r.sopVersion,
           steps: steps.map((s, i) => ({
             t: (s.title ?? "").trim() || stepText(s),
             s: states[i] ?? "todo",
@@ -594,10 +665,12 @@ router.get(
 // ── POST /api/portal/sops ───────────────────────────────────────────────────
 //
 // Author a new procedure into the library — the New menu's "Procedure". This is
-// the ONE write in this file and it is deliberately narrow (see the header):
-// a manual, non-runnable DEFINITION, never an execution. Every authority-bearing
-// value is server-assigned; the body carries only what a customer legitimately
-// wrote.
+// deliberately narrow (see the header): a manual, non-runnable DEFINITION,
+// never an execution. Every authority-bearing value is server-assigned; the
+// body carries only what a customer legitimately wrote. (The other write in
+// this file, POST /portal/sops/:sopId/custom-steps below, is narrower still —
+// it can only graft a step onto an EXISTING MSP-authored SOP, never touch the
+// base definition itself.)
 const authorStepSchema = z.object({
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().max(2_000).optional(),
@@ -683,6 +756,110 @@ router.post(
     } catch (err) {
       log.error({ err, customerId }, "POST /portal/sops failed");
       res.status(500).json({ error: "Failed to save the SOP" });
+    }
+  },
+);
+
+// ── POST /api/portal/sops/:sopId/custom-steps ───────────────────────────────
+//
+// Add ONE step to this tenant's own overlay on an MSP-authored SOP (#1558).
+// Never touches `msp_sops.steps` — the base definition is somebody else's
+// authored, versioned artifact. Direct precedent:
+// `POST /portal/runbooks/:runbookId/steps` (portal-runbooks.ts) does the same
+// thing for a runbook's own checklist, `isCustom: true`. This is that pattern
+// for the SOP library, landing in `portal_sop_custom_steps` instead of
+// `portal_runbook_steps` because the two are different objects overlaying
+// different kinds of base row (see the schema section header).
+const MAX_CUSTOM_STEPS_PER_SOP = 60;
+
+const addCustomStepSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(2_000).optional(),
+});
+
+router.post(
+  "/portal/sops/:sopId/custom-steps",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const sopId = String(req.params.sopId ?? "").trim();
+    if (!sopId) {
+      res.status(400).json({ error: "Invalid SOP" });
+      return;
+    }
+
+    const parsed = addCustomStepSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+
+    try {
+      const scope = await resolveTenantScope(customerId);
+      if (scope === null) {
+        res.status(403).json({ error: "No tenant scope for this account" });
+        return;
+      }
+
+      // The base definition has to actually exist for this MSP — an overlay on
+      // nothing is meaningless, and this is also where `basedOnVersion` comes
+      // from (the version-ambiguity half of #1558 this table exists to keep
+      // honest). A 404 here reads the same as "this SOP is not in your
+      // library", not a hint about other tenants' data.
+      const [sop] = await db
+        .select({ version: mspSopsTable.version })
+        .from(mspSopsTable)
+        .where(and(eq(mspSopsTable.mspId, scope.mspId), eq(mspSopsTable.sopId, sopId)))
+        .limit(1);
+      if (!sop) {
+        res.status(404).json({ error: "SOP not found" });
+        return;
+      }
+
+      const [{ maxPosition, stepCount }] = await db
+        .select({
+          maxPosition: sql<number>`coalesce(max(${portalSopCustomStepsTable.position}), 0)`,
+          stepCount: sql<number>`count(*)`,
+        })
+        .from(portalSopCustomStepsTable)
+        .where(
+          and(
+            eq(portalSopCustomStepsTable.customerId, customerId),
+            eq(portalSopCustomStepsTable.sopId, sopId),
+          ),
+        );
+
+      if (Number(stepCount) >= MAX_CUSTOM_STEPS_PER_SOP) {
+        res.status(409).json({ error: "This procedure already has the maximum number of custom steps" });
+        return;
+      }
+
+      const position = Number(maxPosition) + 1;
+      const author = req.user?.email ?? "unknown";
+
+      await db.insert(portalSopCustomStepsTable).values({
+        customerId,
+        sopId,
+        position,
+        title: parsed.data.title,
+        description: parsed.data.description ?? "",
+        basedOnVersion: sop.version,
+        addedBy: author,
+      });
+
+      log.info(
+        { customerId, sopId, position, basedOnVersion: sop.version },
+        "custom SOP step added",
+      );
+      res.status(201).json({ position, title: parsed.data.title, basedOnVersion: sop.version });
+    } catch (err) {
+      log.error({ err, customerId, sopId }, "POST /portal/sops/:sopId/custom-steps failed");
+      res.status(500).json({ error: "Failed to add the step" });
     }
   },
 );
