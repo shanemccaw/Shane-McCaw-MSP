@@ -185,7 +185,13 @@ namespace BuildConsole.Services
 
         public GitHubApiClient(string pat)
         {
-            _http = new HttpClient { BaseAddress = new Uri("https://api.github.com/"), Timeout = TimeSpan.FromSeconds(20) };
+            // Git #1784 — raised from 20s. A full 18-page project walk measured ~16s on a bare
+            // network with zero overhead, close enough to the old 20s ceiling that Shane's real
+            // run genuinely timed out mid-walk ("The request was canceled due to the configured
+            // HttpClient.Timeout ... elapsing"). 60s is a meaningful per-request ceiling; the
+            // Batter Up scans additionally retry individual pages with backoff (see
+            // PostProjectItemsQueryWithRetryAsync) so one slow page no longer kills the walk.
+            _http = new HttpClient { BaseAddress = new Uri("https://api.github.com/"), Timeout = TimeSpan.FromSeconds(60) };
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("BuildConsole");
             _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
@@ -618,7 +624,20 @@ namespace BuildConsole.Services
 
         // ── Git #839: real Git Board data via GraphQL ───────────────────────
         private const int PageSize = 100;
-        private const int MaxPages = 10; // runaway guard (up to 1000 issues per state)
+        // Git #1784 — was 10 (1,000 items). The real project is already 1,781 items / 18 pages
+        // and growing, so a 10-page cap made items at page 17-18 structurally unreachable — a
+        // guaranteed miss, not a timing issue. 100 pages (10,000 items) gives real headroom
+        // without being truly unbounded; if the cap is ever actually hit, the paginated scans
+        // log a loud warning rather than truncating silently (never fail silently again).
+        private const int MaxPages = 100; // runaway guard (up to 10,000 items per walk)
+        // Git #1784 — reverse-pagination early-stop margin. Batter Up / AI Batter Up are
+        // early-lifecycle transient states, so their items reliably sit among the most-recently
+        // -added project items (the tail of forward order == the head of a backward last/before
+        // walk). Confirmed live: all 27 current matches landed in the last ~175 of 1,781 items.
+        // Once the backward walk has passed the cluster and seen this many consecutive
+        // all-miss pages (== a 300-item gap), we are safely past every candidate and stop —
+        // finding all matches in ~2 pages instead of re-scanning the whole backlog each poll.
+        private const int EmptyPageStopThreshold = 3;
 
         /// <summary>
         /// Git #839 (Git Board Phase 1) — lists the repo's real issues for the
@@ -768,59 +787,13 @@ namespace BuildConsole.Services
         /// </summary>
         public async Task<List<BatterUpBoardIssue>> GetBatterUpIssuesAsync()
         {
-            var result = new List<BatterUpBoardIssue>();
-            string? after = null;
-
-            for (int page = 0; page < MaxPages; page++)
+            var nodes = await ScanProjectItemsForStatusAsync(BatterUpOptionId, includeItemId: false, "Batter Up");
+            return nodes.Select(n => new BatterUpBoardIssue
             {
-                string afterArg = after == null ? "null" : $"\"{after}\"";
-                string query = $@"query {{
-  node(id: ""{BatterUpProjectId}"") {{
-    ... on ProjectV2 {{
-      items(first: {PageSize}, after: {afterArg}) {{
-        pageInfo {{ hasNextPage endCursor }}
-        nodes {{
-          fieldValueByName(name: ""Status"") {{
-            ... on ProjectV2ItemFieldSingleSelectValue {{ optionId }}
-          }}
-          content {{
-            ... on Issue {{
-              number title state url
-              repository {{ nameWithOwner }}
-            }}
-          }}
-        }}
-      }}
-    }}
-  }}
-}}";
-
-                var conn = await PostProjectItemsQueryAsync(query);
-                if (conn?.Nodes != null)
-                {
-                    foreach (var n in conn.Nodes)
-                    {
-                        var issue = n.Content;
-                        if (issue == null) continue;
-                        if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
-                        if (!string.Equals(issue.State, "OPEN", StringComparison.OrdinalIgnoreCase)) continue;
-                        if (!string.Equals(n.FieldValueByName?.OptionId, BatterUpOptionId, StringComparison.OrdinalIgnoreCase)) continue;
-
-                        result.Add(new BatterUpBoardIssue
-                        {
-                            Number = issue.Number,
-                            Title = issue.Title ?? "",
-                            HtmlUrl = issue.Url ?? "",
-                        });
-                    }
-                }
-
-                bool more = conn?.PageInfo?.HasNextPage == true && !string.IsNullOrEmpty(conn.PageInfo.EndCursor);
-                if (!more) break;
-                after = conn!.PageInfo!.EndCursor;
-            }
-
-            return result;
+                Number = n.Content!.Number,
+                Title = n.Content.Title ?? "",
+                HtmlUrl = n.Content.Url ?? "",
+            }).ToList();
         }
 
         // ── Git #1710: real "AI Batter Up" review-queue read + promote/demote mutation ──
@@ -843,19 +816,57 @@ namespace BuildConsole.Services
         /// </summary>
         public async Task<List<AiBatterUpBoardIssue>> GetAiBatterUpIssuesAsync()
         {
-            var result = new List<AiBatterUpBoardIssue>();
-            string? after = null;
+            var nodes = await ScanProjectItemsForStatusAsync(AiBatterUpOptionId, includeItemId: true, "AI Batter Up");
+            return nodes.Select(n => new AiBatterUpBoardIssue
+            {
+                Number = n.Content!.Number,
+                Title = n.Content.Title ?? "",
+                HtmlUrl = n.Content.Url ?? "",
+                ItemId = n.Id ?? "",
+            }).ToList();
+        }
+
+        /// <summary>
+        /// Git #1784 — shared, backward-paginated scan of the project board's items for a
+        /// single Status option, used by both <see cref="GetBatterUpIssuesAsync"/> and
+        /// <see cref="GetAiBatterUpIssuesAsync"/> (they share this exact pagination shape).
+        ///
+        /// Walks the ProjectV2 <c>items</c> connection with <c>last</c>/<c>before</c> (backward
+        /// from the end) rather than <c>first</c>/<c>after</c>. Confirmed live against the real
+        /// project: all Batter Up / AI Batter Up items cluster in the last ~175 of 1,781 items,
+        /// because both are early-lifecycle transient states and project items appear roughly in
+        /// added order. Walking backward therefore reaches every real candidate within the first
+        /// ~2 pages instead of re-scanning the entire 1,781-item (and rising) backlog on every
+        /// 90-second poll — the fix that actually scales as the project grows. The old forward
+        /// walk was doubly broken here: matches sat at forward page 17-18 while <c>MaxPages</c>
+        /// was 10, so they were structurally unreachable regardless of timeout.
+        ///
+        /// Correctness is preserved by only early-stopping <see cref="EmptyPageStopThreshold"/>
+        /// consecutive all-miss pages AFTER the cluster has been seen; and by the hard
+        /// <see cref="MaxPages"/> ceiling, which logs a loud warning if ever hit rather than
+        /// truncating silently. Individual pages retry with backoff so one slow page can't kill
+        /// the walk.
+        /// </summary>
+        private async Task<List<ProjectItemNodeData>> ScanProjectItemsForStatusAsync(string targetOptionId, bool includeItemId, string label)
+        {
+            var matches = new List<ProjectItemNodeData>();
+            string? before = null;
+            bool foundAny = false;
+            int consecutiveEmptyPages = 0;
+            int pagesWalked = 0;
 
             for (int page = 0; page < MaxPages; page++)
             {
-                string afterArg = after == null ? "null" : $"\"{after}\"";
+                pagesWalked = page + 1;
+                string beforeArg = before == null ? "null" : $"\"{before}\"";
+                string idField = includeItemId ? "id" : "";
                 string query = $@"query {{
   node(id: ""{BatterUpProjectId}"") {{
     ... on ProjectV2 {{
-      items(first: {PageSize}, after: {afterArg}) {{
-        pageInfo {{ hasNextPage endCursor }}
+      items(last: {PageSize}, before: {beforeArg}) {{
+        pageInfo {{ hasPreviousPage startCursor }}
         nodes {{
-          id
+          {idField}
           fieldValueByName(name: ""Status"") {{
             ... on ProjectV2ItemFieldSingleSelectValue {{ optionId }}
           }}
@@ -871,7 +882,9 @@ namespace BuildConsole.Services
   }}
 }}";
 
-                var conn = await PostProjectItemsQueryAsync(query);
+                var conn = await PostProjectItemsQueryWithRetryAsync(query, label);
+
+                int pageMatches = 0;
                 if (conn?.Nodes != null)
                 {
                     foreach (var n in conn.Nodes)
@@ -880,24 +893,57 @@ namespace BuildConsole.Services
                         if (issue == null) continue;
                         if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
                         if (!string.Equals(issue.State, "OPEN", StringComparison.OrdinalIgnoreCase)) continue;
-                        if (!string.Equals(n.FieldValueByName?.OptionId, AiBatterUpOptionId, StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!string.Equals(n.FieldValueByName?.OptionId, targetOptionId, StringComparison.OrdinalIgnoreCase)) continue;
 
-                        result.Add(new AiBatterUpBoardIssue
-                        {
-                            Number = issue.Number,
-                            Title = issue.Title ?? "",
-                            HtmlUrl = issue.Url ?? "",
-                            ItemId = n.Id ?? "",
-                        });
+                        matches.Add(n);
+                        pageMatches++;
                     }
                 }
 
-                bool more = conn?.PageInfo?.HasNextPage == true && !string.IsNullOrEmpty(conn.PageInfo.EndCursor);
-                if (!more) break;
-                after = conn!.PageInfo!.EndCursor;
+                if (pageMatches > 0) { foundAny = true; consecutiveEmptyPages = 0; }
+                else if (foundAny) { consecutiveEmptyPages++; }
+
+                // Early stop: we've passed the recent cluster (see EmptyPageStopThreshold).
+                if (foundAny && consecutiveEmptyPages >= EmptyPageStopThreshold)
+                    return matches;
+
+                bool more = conn?.PageInfo?.HasPreviousPage == true && !string.IsNullOrEmpty(conn.PageInfo.StartCursor);
+                if (!more)
+                    return matches;
+
+                before = conn!.PageInfo!.StartCursor;
             }
 
-            return result;
+            // Loud, non-silent cap notice — the walk exhausted MaxPages while more pages still
+            // remained. Never truncate quietly again (Git #1784).
+            ActivityLog.Log("git-board.data",
+                $"WARNING: {label} project scan hit the {MaxPages}-page ({MaxPages * PageSize}-item) cap with more items remaining after {pagesWalked} pages — results may be incomplete; raise MaxPages.");
+            return matches;
+        }
+
+        /// <summary>
+        /// Git #1784 — one project-items page fetch with retry-and-backoff, so a single slow or
+        /// transiently-failing page (an HttpClient.Timeout, a dropped connection) no longer kills
+        /// the whole multi-page walk. Non-transient errors (e.g. a GraphQL error) surface
+        /// immediately on the first attempt.
+        /// </summary>
+        private async Task<ProjectItemConnection?> PostProjectItemsQueryWithRetryAsync(string query, string label)
+        {
+            const int maxAttempts = 3;
+            for (int attempt = 1; ; attempt++)
+            {
+                try
+                {
+                    return await PostProjectItemsQueryAsync(query);
+                }
+                catch (Exception ex) when (attempt < maxAttempts && (ex is TaskCanceledException || ex is HttpRequestException))
+                {
+                    int delayMs = 500 * (int)Math.Pow(2, attempt - 1); // 500ms, 1000ms
+                    ActivityLog.Log("git-board.data",
+                        $"{label} project page fetch attempt {attempt}/{maxAttempts} failed ({ex.GetType().Name}: {ex.Message}); retrying in {delayMs}ms.");
+                    await Task.Delay(delayMs);
+                }
+            }
         }
 
         /// <summary>
@@ -1014,6 +1060,9 @@ namespace BuildConsole.Services
         {
             public bool HasNextPage { get; set; }
             public string? EndCursor { get; set; }
+            // Git #1784 — backward pagination (last/before) for the Batter Up project scans.
+            public bool HasPreviousPage { get; set; }
+            public string? StartCursor { get; set; }
         }
         private class IssueNodeData
         {
