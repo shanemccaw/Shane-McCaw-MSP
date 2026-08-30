@@ -348,10 +348,8 @@ namespace BuildConsole
             if (IsLoaded) ApplyRunFilters();
         }
 
-        private void BtnClearSearch_Click(object sender, RoutedEventArgs e)
-        {
-            TxtSearch.Text = "";
-        }
+        // BtnClearSearch_Click removed (Git #2000) — TxtSearch now uses the shared
+        // SearchTextBox style, whose baked-in ✕ clears it directly.
 
         private void BtnClearFilter_Click(object sender, RoutedEventArgs e)
         {

@@ -95,7 +95,8 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBox x:Name="ChatSearch"
-                                         Height="26" Padding="6,4" FontSize="12"
+                                         Style="{StaticResource SearchTextBox}"
+                                         Height="26" Padding="6,4,24,4" FontSize="12"
                                          VerticalContentAlignment="Center"
                                          Background="{StaticResource Surface0Brush}"
                                          TextChanged="ChatSearch_TextChanged"/>
@@ -250,7 +251,9 @@
                                     </TextBlock>
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                         <TextBlock Text="🔍" FontSize="11" Margin="4,0,6,0" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="SearchInputBox" Height="24" FontSize="12" Padding="2,2" HorizontalAlignment="Stretch" MinWidth="140"
+                                        <TextBox x:Name="SearchInputBox"
+                                                 Style="{StaticResource SearchTextBox}"
+                                                 Height="24" FontSize="12" Padding="2,2,18,2" HorizontalAlignment="Stretch" MinWidth="140"
                                                  VerticalContentAlignment="Center" Background="Transparent" BorderThickness="0"
                                                  Foreground="{StaticResource TextBrush}" KeyDown="SearchInputBox_KeyDown"/>
                                     </StackPanel>
@@ -276,13 +279,22 @@
                                 </TextBlock>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="📂" FontSize="10" Margin="4,0,6,0" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
-                                    <TextBox x:Name="SearchIncludesBox" Height="22" FontSize="11" Padding="2,1" HorizontalAlignment="Stretch" MinWidth="140"
+                                    <TextBox x:Name="SearchIncludesBox"
+                                             Style="{StaticResource SearchTextBox}"
+                                             Height="22" FontSize="11" Padding="2,1,18,1" HorizontalAlignment="Stretch" MinWidth="140"
                                              VerticalContentAlignment="Center" Background="Transparent" BorderThickness="0" Foreground="{StaticResource TextBrush}"/>
                                 </StackPanel>
                             </Grid>
                         </Border>
 
-                        <!-- Search & Clear Action Buttons -->
+                        <!-- Search & Clear Action Buttons — Git #2000: BtnClearSearch stays a
+                             standalone full-width button, NOT consolidated onto the shared
+                             SearchTextBox ✕. It clears BOTH SearchInputBox and
+                             SearchIncludesBox together AND resets SearchResultsTree /
+                             SearchSummaryText back to the pre-search empty state
+                             (BtnClearSearch_Click) — a whole-form reset, not "clear one
+                             box's typed text" the inline ✕ is for. SearchInputBox and
+                             SearchIncludesBox each still got their own inline ✕ above. -->
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -771,7 +783,8 @@
                              collapsed-by-default state. -->
                         <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
                             <TextBox x:Name="ManifestSearchBox"
-                                     Height="26" Padding="6,4" FontSize="12"
+                                     Style="{StaticResource SearchTextBox}"
+                                     Height="26" Padding="6,4,24,4" FontSize="12"
                                      VerticalContentAlignment="Center"
                                      Background="{StaticResource Surface0Brush}"
                                      TextChanged="ManifestSearchBox_TextChanged"/>
@@ -857,7 +870,8 @@
                     <!-- Search box -->
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
                         <TextBox x:Name="GraphApiSearchBox"
-                                 Height="26" Padding="6,4" FontSize="12"
+                                 Style="{StaticResource SearchTextBox}"
+                                 Height="26" Padding="6,4,24,4" FontSize="12"
                                  VerticalContentAlignment="Center"
                                  Background="{StaticResource Surface0Brush}"
                                  TextChanged="GraphApiSearchBox_TextChanged"/>

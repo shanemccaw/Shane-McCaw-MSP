@@ -412,8 +412,9 @@
                                  native placeholder), shown only while the box is empty. -->
                             <Grid Margin="0,0,0,8">
                                 <TextBox x:Name="QueueSearchBox"
+                                         Style="{StaticResource SearchTextBox}"
                                          Height="26"
-                                         Padding="6,4"
+                                         Padding="6,4,24,4"
                                          FontSize="12"
                                          VerticalContentAlignment="Center"
                                          Background="{StaticResource Surface0Brush}"

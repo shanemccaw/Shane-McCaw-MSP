@@ -15,7 +15,7 @@
                     <TextBlock Text="💬 Chat Database Mappings" FontSize="14" FontWeight="Bold" Foreground="{StaticResource MauveBrush}" VerticalAlignment="Center" Margin="0,0,16,0"/>
                     <Button x:Name="BtnReload" Content="↻ Refresh" Style="{StaticResource IconButton}" Padding="8,4" Margin="0,0,12,0" Click="BtnReload_Click"/>
                     <TextBlock Text="Filter:" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <TextBox x:Name="TxtFilter" Width="200" Padding="6,4" TextChanged="TxtFilter_TextChanged" Margin="0,0,12,0"/>
+                    <TextBox x:Name="TxtFilter" Style="{StaticResource SearchTextBox}" Width="200" Padding="6,4,24,4" TextChanged="TxtFilter_TextChanged" Margin="0,0,12,0"/>
                     <!-- Shane, 2026-08-30 — "I change the Linked Issue number, and they do not
                          save state when I leave the box... Just give me a button I can click
                          save next to the filter." A per-cell LostFocus save can miss (a DataGrid

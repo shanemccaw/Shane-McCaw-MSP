@@ -25,11 +25,12 @@
 
         <TextBox x:Name="SearchBox"
                  Grid.Row="1"
+                 Style="{StaticResource SearchTextBox}"
                  Background="{StaticResource MantleBrush}"
                  BorderBrush="{StaticResource Surface0Brush}"
                  BorderThickness="1"
                  Foreground="{StaticResource TextBrush}"
-                 Padding="6,4"
+                 Padding="6,4,24,4"
                  Margin="0,0,0,8"
                  TextChanged="SearchBox_TextChanged"/>
 
