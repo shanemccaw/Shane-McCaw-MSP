@@ -38,6 +38,9 @@ vi.mock("@workspace/db", () => ({
         onConflictDoNothing: vi.fn().mockReturnValue({
           returning: vi.fn().mockResolvedValue([{ profileId: "test-uuid" }]),
         }),
+        // #1871's tenant_azure_reach upsert. Resolves to a plain array like the
+        // real driver so `await`ing the builder does not hang.
+        onConflictDoUpdate: vi.fn().mockResolvedValue([]),
         returning: vi.fn().mockResolvedValue([{ profileId: "test-uuid" }]),
       }),
     }),
@@ -46,6 +49,7 @@ vi.mock("@workspace/db", () => ({
   monitoringPackagesTable: {},
   monitoringPackageChecksTable: {},
   tenantMonitorProfilesTable: {},
+  tenantAzureReachTable: { tenantId: "tenant_id" },
   tenantsTable: {},
   // #1847 — service-availability.ts reads the tenant's /subscribedSkus collection
   // and writes the tenant-level service row. The db mock above returns no rows, so
@@ -120,6 +124,19 @@ vi.mock("../power-platform-admin", () => ({
   getTenantSettings: vi.fn(),
   powerPlatformCredentialsPresent: vi.fn().mockReturnValue(true),
 }));
+// #1871 — only the two network-facing functions are replaced. The operation
+// registry, its per-scope outcome recording and resolveAzureRmOperation stay
+// REAL, because they are the parts under test here; mocking them would leave the
+// dispatch assertions testing the mock.
+vi.mock("../azure-rm", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../azure-rm")>();
+  return {
+    ...actual,
+    probeAzureRmReach: vi.fn(),
+    getArmAccessTokenForTenant: vi.fn().mockResolvedValue({ token: "arm-token", objectId: "oid", clientId: "arm-client" }),
+    armCredentialsPresent: vi.fn().mockReturnValue(true),
+  };
+});
 
 vi.mock("../ps-execution-client", () => ({
   callPsExecution: vi.fn(),
@@ -1612,6 +1629,7 @@ describe("executeMonitorCheck", () => {
     psParams: null,
     spOperation: null,
     ppOperation: null,
+    armOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -1774,6 +1792,7 @@ describe("executeMonitorCheck — cached result label recovery", () => {
     psParams: null,
     spOperation: null,
     ppOperation: null,
+    armOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2132,6 +2151,7 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     psParams: null,
     spOperation: null,
     ppOperation: null,
+    armOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2370,6 +2390,7 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     psParams: { Organization: "{organization}" } as Record<string, unknown>,
     spOperation: null,
     ppOperation: null,
+    armOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2548,6 +2569,7 @@ describe("executeMonitorCheck — SharePoint-admin-backed (executorType='sharepo
     psParams: null,
     spOperation: "tenant-sharing-capability",
     ppOperation: null,
+    armOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2721,6 +2743,7 @@ describe("executeMonitorCheck — Power-Platform-backed (executorType='power-pla
     psParams: null,
     spOperation: null,
     ppOperation: "dlp-policies",
+    armOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -3377,6 +3400,7 @@ describe("executeMonitorCheck — DNS-backed (executorType='dns', #496)", () => 
     psParams: null,
     spOperation: null,
     ppOperation: null,
+    armOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -3509,5 +3533,171 @@ describe("executeMonitorCheck — DNS-backed (executorType='dns', #496)", () => 
     expect(result.status).toBe("error");
     expect(result.errorMessage).toContain("cannot resolve a domain");
     expect(mockResolveTxt).not.toHaveBeenCalled();
+  });
+});
+
+// ── #1871: azure-rm transport dispatch and its honest no-data states ──────────
+
+describe("executeMonitorCheck — azure-rm transport (#1871)", () => {
+  const armCheck = {
+    id: 91,
+    checkId: "arm-check-uuid",
+    key: "azure:custom-role-definitions",
+    label: "Azure custom role definitions",
+    description: null,
+    endpoint: "(unused - executorType=azure-rm drives dispatch, not endpoint)",
+    method: "GET",
+    requestBody: null,
+    selectParams: null,
+    filterParams: null,
+    properties: [] as string[],
+    mapping: [
+      { sourceField: "roleName", targetField: "customRoleCount", transform: "count" },
+    ] as Array<{ sourceField: string; targetField: string; transform?: string }>,
+    severityRules: [] as Array<{ expression: string; severity: string; label?: string }>,
+    outputSchema: null,
+    engines: [] as string[],
+    frequency: "daily" as const,
+    requiresCustomerScript: false,
+    scriptPackageId: null,
+    fanOutSource: null,
+    fanOutItemIdField: null,
+    fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
+    executorType: "azure-rm" as const,
+    psCmdletKey: null,
+    psParams: null,
+    spOperation: null,
+    ppOperation: null,
+    armOperation: "list-custom-role-definitions",
+    schemaVersion: 1,
+    status: "active" as const,
+    createdByAdminId: null,
+    updatedByAdminId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const reach = (over: Record<string, unknown> = {}) => ({
+    state: "ok",
+    tokenAcquired: true,
+    subscriptionsHttpStatus: 200,
+    managementGroupsHttpStatus: null,
+    subscriptions: [{ subscriptionId: "sub-a", displayName: "Pay-As-You-Go", state: "Enabled", tenantId: "t", managedByTenantIds: [] }],
+    principalClientId: "arm-client",
+    principalObjectId: "oid",
+    errorMessage: null,
+    ...over,
+  });
+
+  let mockProbe: Mock;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    const azureRm = await import("../azure-rm");
+    mockProbe = azureRm.probeAzureRmReach as unknown as Mock;
+  });
+
+  it("dispatches to ARM and never to Graph, PowerShell or SharePoint", async () => {
+    mockProbe.mockResolvedValueOnce(reach());
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ value: [{ roleName: "Contoso Reader" }] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    )));
+
+    const result = await executeMonitorCheck({
+      check: armCheck, tenantId: "tenant-guid-arm", triggerId: "arm-1", skipIdempotency: true,
+    });
+
+    expect(graphFetchForTenant).not.toHaveBeenCalled();
+    expect(callPsExecution).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(1);
+    expect(result.extractedProperties.customRoleCount).toBe(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("reports azure_no_rbac — NOT an error and NOT no_subscriptions — when the platform holds no Azure role", async () => {
+    mockProbe.mockResolvedValueOnce(reach({
+      state: "no_rbac", subscriptions: [], managementGroupsHttpStatus: 403,
+    }));
+
+    const result = await executeMonitorCheck({
+      check: armCheck, tenantId: "tenant-guid-arm", triggerId: "arm-2", skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("azure_no_rbac");
+    expect(result.itemCount).toBe(0);
+    expect(result.severityMatched).toBeNull();
+    // The next action is named on the row, not left to be rediscovered.
+    const azure = result.extractedProperties._azure as Record<string, unknown>;
+    expect(azure.reachState).toBe("no_rbac");
+    expect(String(azure.requiredGrant)).toContain("Reader");
+    expect(String(azure.requiredGrant)).toContain("arm-client");
+  });
+
+  it("reports azure_no_subscriptions with NO required-grant ask — nothing needs granting", async () => {
+    mockProbe.mockResolvedValueOnce(reach({
+      state: "no_subscriptions", subscriptions: [], managementGroupsHttpStatus: 200,
+    }));
+
+    const result = await executeMonitorCheck({
+      check: armCheck, tenantId: "tenant-guid-arm", triggerId: "arm-3", skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("azure_no_subscriptions");
+    expect((result.extractedProperties._azure as Record<string, unknown>).requiredGrant).toBeNull();
+  });
+
+  it("reports a token failure as plain error, keeping unreachable distinct from both Azure states", async () => {
+    mockProbe.mockResolvedValueOnce(reach({
+      state: "unreachable", tokenAcquired: false, subscriptions: [],
+      subscriptionsHttpStatus: null, errorMessage: "ARM token request failed: 401 AADSTS7000215",
+    }));
+
+    const result = await executeMonitorCheck({
+      check: armCheck, tenantId: "tenant-guid-arm", triggerId: "arm-4", skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("AADSTS7000215");
+  });
+
+  it("reports partial when a scope answers 403, keeping the data that DID come back", async () => {
+    mockProbe.mockResolvedValueOnce(reach({
+      subscriptions: [
+        { subscriptionId: "sub-a", displayName: "A", state: "Enabled", tenantId: "t", managedByTenantIds: [] },
+        { subscriptionId: "sub-b", displayName: "B", state: "Enabled", tenantId: "t", managedByTenantIds: [] },
+      ],
+    }));
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      return url.includes("sub-a")
+        ? new Response(JSON.stringify({ value: [{ roleName: "Contoso Reader" }] }), { status: 200, headers: { "Content-Type": "application/json" } })
+        : new Response(JSON.stringify({ error: { code: "AuthorizationFailed", message: "denied" } }), { status: 403, headers: { "Content-Type": "application/json" } });
+    }));
+
+    const result = await executeMonitorCheck({
+      check: armCheck, tenantId: "tenant-guid-arm", triggerId: "arm-5", skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("partial");
+    expect(result.itemCount).toBe(1);
+    const azure = result.extractedProperties._azure as Record<string, unknown>;
+    expect(azure.scopesAttempted).toBe(2);
+    expect(azure.scopesReadable).toBe(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("fails loudly on an arm_operation that is not in the code-owned registry, before any network call", async () => {
+    const result = await executeMonitorCheck({
+      check: { ...armCheck, armOperation: "drop-all-resource-groups" },
+      tenantId: "tenant-guid-arm", triggerId: "arm-6", skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("not in the code-owned registry");
+    expect(mockProbe).not.toHaveBeenCalled();
   });
 });

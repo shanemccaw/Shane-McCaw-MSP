@@ -472,7 +472,10 @@ namespace BuildConsole
             // _queueDb.QueueBuildAsync pipeline BuildQueuePanel/chat buttons already use;
             // never touches BuildQueuePanel itself. Works with a null _queueDb too (shows
             // the board read-only, same "Not connected" posture as everything else here).
-            BatterUpPanel.RowsAutoQueued += (_, _) =>
+            // Git #1872 — _batterUpPanel is the hoisted instance MainWindow.BatterUpTabs.cs
+            // hosts inside the Batter Up document tab; this wiring is unaffected by whether
+            // that tab is currently open.
+            _batterUpPanel.RowsAutoQueued += (_, _) =>
             {
                 try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
             };
@@ -480,7 +483,7 @@ namespace BuildConsole
             // (read-only board, "Not connected" posture). In agent mode we pass null so the
             // panel still renders the Batter Up board but its own poll can NEVER auto-queue a
             // real build (RefreshAndAutoQueueAsync only queues when queueDb != null).
-            BatterUpPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
+            _batterUpPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
 
             // Git #1779 — "Dispatch #___": a third door into the SAME _queueDb.QueueBuildAsync
             // pipeline, for firing one specific issue right now regardless of its board status.
@@ -496,9 +499,15 @@ namespace BuildConsole
 
             // Git #1710 — additive "AI Batter Up" review panel: agent-filed findings
             // awaiting Shane's Yes/No. Owns no queue/launch logic of its own — Yes only
-            // flips the board Status to real "Batter Up" (BatterUpPanel above picks it
-            // up on its own next poll), No demotes to "Backlog". Never touches _queueDb.
-            AiBatterUpPanel.Initialize();
+            // flips the board Status to real "Batter Up" (_batterUpPanel above picks it
+            // up on its own next refresh), No demotes to "Backlog". Never touches _queueDb.
+            // Git #1872 — _aiBatterUpPanel is the hoisted instance MainWindow.BatterUpTabs.cs
+            // hosts inside the AI Batter Up document tab.
+            _aiBatterUpPanel.Initialize();
+
+            // Git #1872 — title-bar button counts feed off each panel's own CountChanged
+            // event (no new polling): see MainWindow.BatterUpTabs.cs.
+            WireBatterUpTitleBarCounts();
 
             // shaneapp://executeSql — the LOCAL protocol trigger (deliberately NOT
             // over HTTP like #898; SQL runs through this app's own direct local Postgres
@@ -703,10 +712,14 @@ namespace BuildConsole
             // Git #1813 — same event-piggyback pattern as the two hooks just above:
             // a Git Board refresh (manual button or startup) just proved GitHub is
             // reachable and fetched a fresh open-issue set, so ride that same
-            // completion to refresh Batter Up and AI Batter Up too, instead of making
-            // them wait out their own independent 90s timer.
-            LeftSidebar.BoardRefreshCompleted += async (s, e) => await BatterUpPanel.RefreshAsync();
-            LeftSidebar.BoardRefreshCompleted += async (s, e) => await AiBatterUpPanel.RefreshAsync();
+            // completion to refresh Batter Up and AI Batter Up too. Git #1890 removed
+            // both panels' own 90s auto-poll timer entirely — this cascade is now their
+            // only automatic refresh path. Git #1872 — these two panels now live inside
+            // MainWindow.BatterUpTabs.cs's hoisted document-tab instances instead of XAML
+            // x:Name fields; this cascade must (and does) still reach them while their tab
+            // is closed, since a closed tab only detaches the TabItem, not this instance.
+            LeftSidebar.BoardRefreshCompleted += async (s, e) => await _batterUpPanel.RefreshAsync();
+            LeftSidebar.BoardRefreshCompleted += async (s, e) => await _aiBatterUpPanel.RefreshAsync();
 
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the

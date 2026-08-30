@@ -41,6 +41,20 @@ namespace BuildConsole.Controls
         /// pattern every other queue-mutating action in this app already follows.</summary>
         public event EventHandler? RowsAutoQueued;
 
+        /// <summary>Git #1872 — fired every time RefreshAsync lands (success, no-PAT, or error),
+        /// carrying the same row count TxtCount renders. MainWindow's title-bar button badge
+        /// subscribes to this instead of re-fetching or polling on its own.</summary>
+        public event EventHandler<int>? CountChanged;
+
+        /// <summary>Current row count, kept in sync with TxtCount. 0 in the no-PAT/error states.</summary>
+        public int Count { get; private set; }
+
+        private void SetCount(int count)
+        {
+            Count = count;
+            CountChanged?.Invoke(this, count);
+        }
+
         public BatterUpPanel()
         {
             InitializeComponent();
@@ -164,6 +178,7 @@ namespace BuildConsole.Controls
                     _emptyMessageActive = true;
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
+                    SetCount(0);
                     return;
                 }
 
@@ -200,6 +215,7 @@ namespace BuildConsole.Controls
                     _emptyMessageActive = true;
                     TxtEmpty.Text = $"Couldn't read Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
+                    SetCount(0);
                     return;
                 }
 
@@ -216,6 +232,7 @@ namespace BuildConsole.Controls
                 TxtCount.Text = rows.Count == 0 ? $"— none · {mode}" : $"({rows.Count}) · {mode}";
                 _emptyMessageActive = false;
                 TxtEmpty.Visibility = Visibility.Collapsed;
+                SetCount(rows.Count);
 
                 if (justQueuedCount > 0)
                 {

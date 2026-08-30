@@ -1775,7 +1775,33 @@ export type MonitorCheckStatus = typeof MONITOR_CHECK_STATUS[number];
 // executor-specific column at all (the tenant's own `domain` is enough);
 // endpoint/method/fanOut*/ps*/spOperation are unused, the same way ps*/spOperation
 // are unused for the other non-Graph transports.
-export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell", "sharepoint-admin", "dns", "power-platform"] as const;
+//
+// 'power-platform' (#1869) is the fifth transport — the Power Platform admin
+// API, one credential against one tenant-level surface.
+//
+// 'azure-rm' (#1871, answering the other half of #1849) is the sixth transport:
+// Azure Resource Manager REST (https://management.azure.com), reached with an
+// app-only token whose AUDIENCE is ARM, not Graph. It exists because 22 modelled
+// config resources (config_resources.read_transport = 'azure-rm') have no Graph
+// or PowerShell read path at all — Microsoft365DSC reads them with
+// `Invoke-AzRestMethod` against that same management URL.
+//
+// The thing that makes this transport structurally different from every other
+// one above: **its authorization is not tenant-scoped.** Graph app permissions
+// and Entra directory roles confer NOTHING on ARM — separate control planes,
+// separate token audiences. Authorization comes from Azure RBAC role
+// assignments made at a management-group / subscription / resource-group scope,
+// which a customer must perform (see AZURE_RM_REACH_STATES). This was verified
+// live, not assumed: the platform MT app acquires a perfectly valid ARM token
+// for the testbed tenant and then sees ZERO subscriptions, because it holds no
+// Azure role assignment there. Checks on this transport carry `armOperation`
+// and nothing else; endpoint/method/fanOut*/ps*/spOperation are unused.
+//
+// #1869 and #1871 landed against the same enum and the same dispatch switch in
+// monitor-executor.ts; both transports are listed here and both have their own
+// `if (check.executorType === …)` branch. A seventh transport should be appended
+// the same way rather than replacing either.
+export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell", "sharepoint-admin", "dns", "power-platform", "azure-rm"] as const;
 export type MonitorCheckExecutorType = typeof MONITOR_CHECK_EXECUTOR_TYPES[number];
 
 export const monitorChecksTable = pgTable("monitor_checks", {
@@ -1865,6 +1891,17 @@ export const monitorChecksTable = pgTable("monitor_checks", {
    * NULL unless executorType = 'power-platform'. (#1869)
    */
   ppOperation: text("pp_operation"),
+  // ── Azure Resource Manager execution (#1871, additive, NULL for every other check) ──
+  /**
+   * Identifier resolved server-side against a code-owned operation registry
+   * (AZURE_RM_OPERATIONS in azure-rm.ts) — an identifier only, never a URL and
+   * never a script, the same contract ps_cmdlet_key / sp_operation /
+   * fan_out_item_normalizer already follow. The operation owns its ARM path and
+   * api-version; the subscriptions it runs against come from the live reach
+   * probe at dispatch time, never stored here.
+   * NULL unless executorType = 'azure-rm'.
+   */
+  armOperation: text("arm_operation"),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   createdByAdminId: integer("created_by_admin_id"),
@@ -1929,6 +1966,7 @@ export type MonitoringPackageCheck = typeof monitoringPackageChecksTable.$inferS
 // "ok" (which would hide that coverage was incomplete) and "error" (which would
 // throw away the real data that WAS collected). Only produced by the fan-out
 // execution path; the one-check-one-URL path never yields it.
+//
 // "service_not_configured" (Git #1847): the check's Microsoft SERVICE will not
 // answer for this tenant at all — Intune never enrolled, or never licensed. It is
 // deliberately NOT "ok with zero items", which is what these checks used to record
@@ -1937,7 +1975,30 @@ export type MonitoringPackageCheck = typeof monitoringPackageChecksTable.$inferS
 // not own this product" are different customer conversations. Which of the five real
 // service states it is, and the evidence, live on the ONE tenant-level
 // `tenant_service_availability` row this status refers to.
-export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap", "partial", "service_not_configured"] as const;
+//
+// The next two are produced ONLY by the 'azure-rm' transport (#1871) and are
+// deliberately distinct from EACH OTHER and from "error" (unreachable). Azure
+// RBAC is not tenant-scoped, so "we saw no Azure" has two completely different
+// causes with opposite meanings, and conflating them is the specific failure
+// this transport was built to avoid:
+//
+// "azure_no_rbac": an ARM token was acquired for the tenant successfully, and
+// GET /subscriptions returned 200 with an EMPTY list. The platform's principal
+// holds no Azure role assignment anywhere it can see. This says NOTHING about
+// whether the customer has Azure — an ARM listing is RBAC-filtered, so a tenant
+// with fifty subscriptions and no grant to us looks exactly like this. It is an
+// onboarding gap on our side, not a fact about the customer.
+//
+// "azure_no_subscriptions": the same empty listing, but this time the platform
+// ALSO has a tenant-root/management-group-scoped read (GET
+// /providers/Microsoft.Management/managementGroups returned 200). At that scope
+// the listing covers every subscription in the tenant, so an empty result IS
+// conclusive: the tenant genuinely has no Azure subscriptions. That is a normal,
+// complete, non-error condition for an M365 governance customer.
+//
+// A failure to acquire the ARM token at all stays "error" (or "consent_revoked"
+// on a documented consent signature) — the pre-existing "unreachable" bucket.
+export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap", "partial", "service_not_configured", "azure_no_rbac", "azure_no_subscriptions"] as const;
 export type TenantMonitorProfileStatus = typeof TENANT_MONITOR_PROFILE_STATUS[number];
 
 export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
@@ -1993,6 +2054,82 @@ export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
 ]);
 
 export type TenantMonitorProfile = typeof tenantMonitorProfilesTable.$inferSelect;
+
+// ── Azure Resource Manager reach (#1871) ───────────────────────────────────────
+//
+// What Azure the platform can actually SEE in a tenant, as last observed. This
+// table exists because Azure RBAC is a different control plane from Microsoft
+// Entra: `tenants.consent` records Graph app permissions, and those confer
+// exactly nothing on https://management.azure.com. Nothing else in the schema
+// could answer "can we read this customer's Azure at all, and if not, why not".
+//
+// Every column is written from a REAL observed HTTP result of the reach probe in
+// azure-rm.ts. There is no inferred or default row: a tenant with no row here has
+// simply never been probed, which is its own honest state (`never_probed` at the
+// read side), distinct from every state below.
+//
+// The `subscriptions` snapshot is the raw, unedited ARM listing for the tenant —
+// id, displayName, state, tenantId, managedByTenants — so a later run can tell a
+// revoked grant (subscription vanished from a listing that used to contain it)
+// from a tenant that never had Azure.
+export const AZURE_RM_REACH_STATES = [
+  // GET /subscriptions returned at least one subscription: real Azure reach.
+  "ok",
+  // 200 + empty listing, and no tenant-root read to corroborate it. We hold no
+  // Azure RBAC in this tenant; we cannot conclude anything about what Azure it has.
+  "no_rbac",
+  // 200 + empty listing AND a readable management-group scope, which covers every
+  // subscription in the tenant. Conclusive: the tenant genuinely has no Azure.
+  "no_subscriptions",
+  // The ARM token itself could not be acquired for this tenant (no service
+  // principal in the directory, invalid/expired platform credential, AAD error).
+  // Nothing at all is known about the tenant's Azure from this probe.
+  "unreachable",
+] as const;
+export type AzureRmReachState = typeof AZURE_RM_REACH_STATES[number];
+
+export interface AzureRmSubscriptionRef {
+  subscriptionId: string;
+  displayName: string | null;
+  state: string | null;
+  tenantId: string | null;
+  /** Non-empty when the subscription is delegated to a managing tenant via Azure Lighthouse. */
+  managedByTenantIds: string[];
+}
+
+export const tenantAzureReachTable = pgTable("tenant_azure_reach", {
+  id: serial("id").primaryKey(),
+  /** The Entra tenant GUID, matching tenants.tenant_id (text, same as tenant_monitor_profiles). */
+  tenantId: text("tenant_id").notNull().unique(),
+  state: text("state", { enum: AZURE_RM_REACH_STATES }).notNull(),
+  /** Observed: did the client-credentials call for the ARM audience succeed. */
+  tokenAcquired: boolean("token_acquired").notNull(),
+  /** Observed: HTTP status of GET /subscriptions. NULL when no token was acquired. */
+  subscriptionsHttpStatus: integer("subscriptions_http_status"),
+  /**
+   * Observed: HTTP status of GET /providers/Microsoft.Management/managementGroups.
+   * 200 means we hold a tenant-root/management-group read, which is the ONLY thing
+   * that makes an empty subscription listing conclusive. 403 is the normal answer
+   * for a principal holding only subscription- or resource-group-scoped roles.
+   */
+  managementGroupsHttpStatus: integer("management_groups_http_status"),
+  /** The real ARM listing, as returned. Empty array is a real observation, not a gap. */
+  subscriptions: jsonb("subscriptions").$type<AzureRmSubscriptionRef[]>().notNull().default([]),
+  /** The app registration (client id) the probe authenticated as — reach is per-principal, not per-tenant. */
+  principalClientId: text("principal_client_id"),
+  /** The service principal's object id in the probed tenant, from the ARM token's `oid` claim. */
+  principalObjectId: text("principal_object_id"),
+  /** Verbatim error text when state = 'unreachable'. NULL otherwise. */
+  errorMessage: text("error_message"),
+  probedAt: timestamp("probed_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("tenant_azure_reach_state_idx").on(t.state),
+]);
+
+export type TenantAzureReach = typeof tenantAzureReachTable.$inferSelect;
+export type InsertTenantAzureReach = typeof tenantAzureReachTable.$inferInsert;
 
 // ── Full per-check item detail ─────────────────────────────────────────────────
 //

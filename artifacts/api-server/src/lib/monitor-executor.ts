@@ -19,6 +19,7 @@ import {
   monitoringPackagesTable,
   monitoringPackageChecksTable,
   tenantMonitorProfilesTable,
+  tenantAzureReachTable,
   tenantsTable,
   mspChangeRequestsTable,
   type MonitorCheck,
@@ -50,6 +51,15 @@ import {
   powerPlatformCredentialsPresent,
   type PowerPlatformDlpPolicy,
 } from "./power-platform-admin";
+import {
+  probeAzureRmReach,
+  resolveAzureRmOperation,
+  getArmAccessTokenForTenant,
+  armCredentialsPresent,
+  AZURE_RM_LEAST_PRIVILEGE_ROLE,
+  type AzureRmContext,
+  type AzureRmReach,
+} from "./azure-rm";
 import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
 import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing";
 import { logger } from "./logger";
@@ -338,7 +348,7 @@ const MALFORMED_PARAMS = "__malformedParams__";
 
 export interface CheckResult {
   checkKey: string;
-  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial" | "service_not_configured";
+  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial" | "service_not_configured" | "azure_no_rbac" | "azure_no_subscriptions";
   extractedProperties: Record<string, unknown>;
   severityMatched: string | null;
   /**
@@ -2539,6 +2549,283 @@ async function runDnsCheck(opts: {
   };
 }
 
+// ── Azure Resource Manager check executor (#1871) ─────────────────────────────
+//
+// Runs a check whose data lives on Azure Resource Manager
+// (https://management.azure.com) rather than on Graph, PowerShell, SharePoint or
+// DNS. Like the three transports above it never touches graphFetchForTenant, and
+// for the same structural reason: an ARM authorization failure has nothing to do
+// with a customer's Graph consent, so this path must be UNABLE to throw
+// ConsentRevokedError, not merely unlikely to.
+//
+// What is different here, and why this executor is longer than runDnsCheck: on
+// every other transport, "the platform is authorized" is a tenant-level fact
+// settled at consent time. On ARM it is not. Azure RBAC is scoped to management
+// groups, subscriptions and resource groups, and a tenant that has granted the
+// platform every Graph permission Microsoft publishes may still expose zero
+// Azure. So this executor runs a reach probe first and treats its outcome as a
+// first-class result state, persisted alongside the check's own row.
+//
+// The three no-data outcomes are deliberately NOT collapsed into one:
+//
+//   error (unreachable)     — no ARM token could be acquired at all. Nothing is
+//                             known about this tenant's Azure.
+//   azure_no_rbac           — a valid ARM token, and an RBAC-filtered listing
+//                             that came back empty. We hold no Azure role here.
+//                             This says nothing about whether the customer HAS
+//                             Azure, and must never be reported as if it did.
+//   azure_no_subscriptions  — the same empty listing, corroborated by a readable
+//                             management-group scope that would have covered
+//                             every subscription in the tenant. The tenant
+//                             genuinely has no Azure. A complete, normal answer
+//                             for an M365 governance customer — not a failure.
+async function runAzureRmCheck(opts: {
+  check: MonitorCheck;
+  tenantId: string;
+  triggerId: string;
+  idempotencyKey: string;
+  includeItems?: boolean;
+  persistProfile: boolean;
+}): Promise<CheckResult> {
+  const { check, tenantId, triggerId, idempotencyKey } = opts;
+
+  // Resolved before any network call so a check pointing at a non-existent
+  // operation fails loudly on its own definition rather than after a live probe.
+  const operation = resolveAzureRmOperation(check.armOperation);
+
+  // Platform-wide credential guard, checked before any tenant work: a missing
+  // ARM principal is a platform configuration fault, not a customer's tenant
+  // being un-onboarded, and the two must not read the same. Same precedent as
+  // runSharePointAdminCheck's sharePointAdminCredentialsPresent() guard.
+  if (!armCredentialsPresent()) {
+    throw new Error(
+      `monitor check ${check.key} needs an ARM principal — set AZURE_RM_CLIENT_ID/AZURE_RM_CLIENT_SECRET, ` +
+      `or MT_APP_CLIENT_ID/MT_APP_CLIENT_SECRET for the multi-tenant app`,
+    );
+  }
+
+  const reach = await probeAzureRmReach(tenantId);
+  await persistAzureRmReach(opts.persistProfile, tenantId, reach);
+
+  if (reach.state !== "ok") {
+    return await persistAzureRmNoDataResult({ ...opts, reach });
+  }
+
+  const { token } = await getArmAccessTokenForTenant(tenantId);
+  const ctx: AzureRmContext = { tenantId, accessToken: token, reach, scopeOutcomes: [] };
+  const items = await operation(ctx);
+
+  // Same downstream contract as every other transport: mapping/properties ->
+  // schema validation -> severity classification -> persistence, all unmodified.
+  const mapping = (check.mapping ?? []) as MappingRule[];
+  const properties = (check.properties ?? []) as string[];
+  const extracted = applyMapping(items, mapping, properties);
+
+  // Coverage is a first-class part of an ARM answer, not a footnote: a run that
+  // read 2 of a customer's 5 subscriptions and got 403 on the rest produced real
+  // data whose denominator is wrong, and the raw per-scope HTTP outcomes are the
+  // only honest record of that. Written under a reserved `_azure` key alongside
+  // the check's own extracted properties, the same way the fan-out path reports
+  // `_fanOut`.
+  extracted._azure = azureCoverageSummary(reach, ctx);
+
+  if (check.outputSchema) {
+    const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
+    extracted._schemaValid = valid;
+    if (!valid) {
+      log.warn({ checkKey: check.key, errors }, "monitor-executor: azure-rm check output schema validation failed");
+      extracted._schemaErrors = errors;
+    }
+  }
+
+  const severityRules = (check.severityRules ?? []) as SeverityRule[];
+  const severityMatch = classifySeverity(severityRules, extracted);
+
+  // A scope that answered 403 means this run's item list is incomplete. That is
+  // exactly what "partial" was added for on the fan-out path (real data, known
+  // incomplete coverage), so it is reused rather than a new near-synonym invented.
+  const unauthorizedScopes = ctx.scopeOutcomes.filter((o) => !o.ok && o.httpStatus === 403);
+  const status: CheckResult["status"] = unauthorizedScopes.length > 0 ? "partial" : "ok";
+
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, status);
+
+  // One GET per scope, and armGetAll already exhausted nextLink within each —
+  // there is no per-check paging concept left to report, the same as the
+  // SharePoint-admin and DNS paths.
+  const pageCount = 1;
+
+  const profileId = await persistCheckProfile(opts.persistProfile, {
+    tenantId,
+    checkKey: check.key,
+    checkSchemaVersion: check.schemaVersion,
+    triggerId,
+    idempotencyKey,
+    status,
+    rawResponse: { armOperation: check.armOperation, scopeOutcomes: ctx.scopeOutcomes, items },
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
+    itemCount: items.length,
+    pageCount,
+  });
+
+  log.info(
+    {
+      checkKey: check.key,
+      tenantId,
+      armOperation: check.armOperation,
+      subscriptionCount: reach.subscriptions.length,
+      itemCount: items.length,
+      unauthorizedScopeCount: unauthorizedScopes.length,
+      status,
+    },
+    "monitor-executor: azure-rm check completed",
+  );
+
+  return {
+    checkKey: check.key,
+    status,
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
+    itemCount: items.length,
+    pageCount,
+    profileId,
+    ...(opts.includeItems ? { items } : {}),
+  };
+}
+
+/** The observed coverage of one azure-rm run — every field a real HTTP result, none inferred. */
+function azureCoverageSummary(reach: AzureRmReach, ctx: AzureRmContext): Record<string, unknown> {
+  const readable = ctx.scopeOutcomes.filter((o) => o.ok).length;
+  return {
+    reachState: reach.state,
+    principalClientId: reach.principalClientId,
+    subscriptionsVisible: reach.subscriptions.length,
+    lighthouseDelegatedSubscriptions: reach.subscriptions.filter((s) => s.managedByTenantIds.length > 0).length,
+    scopesAttempted: ctx.scopeOutcomes.length,
+    scopesReadable: readable,
+    scopeOutcomes: ctx.scopeOutcomes,
+  };
+}
+
+/**
+ * Persist the reach probe's real result. Upserted per tenant rather than
+ * appended, because "what can we see in this tenant's Azure right now" is a
+ * current-state fact; the per-run history lives on tenant_monitor_profiles.
+ */
+async function persistAzureRmReach(persist: boolean, tenantId: string, reach: AzureRmReach): Promise<void> {
+  if (!persist) return;
+  const now = new Date();
+  await db
+    .insert(tenantAzureReachTable)
+    .values({
+      tenantId,
+      state: reach.state,
+      tokenAcquired: reach.tokenAcquired,
+      subscriptionsHttpStatus: reach.subscriptionsHttpStatus,
+      managementGroupsHttpStatus: reach.managementGroupsHttpStatus,
+      subscriptions: reach.subscriptions,
+      principalClientId: reach.principalClientId,
+      principalObjectId: reach.principalObjectId,
+      errorMessage: reach.errorMessage,
+      probedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: tenantAzureReachTable.tenantId,
+      set: {
+        state: reach.state,
+        tokenAcquired: reach.tokenAcquired,
+        subscriptionsHttpStatus: reach.subscriptionsHttpStatus,
+        managementGroupsHttpStatus: reach.managementGroupsHttpStatus,
+        subscriptions: reach.subscriptions,
+        principalClientId: reach.principalClientId,
+        principalObjectId: reach.principalObjectId,
+        errorMessage: reach.errorMessage,
+        probedAt: now,
+        updatedAt: now,
+      },
+    });
+}
+
+/**
+ * Persist the honest no-data outcome of an azure-rm check. No items are
+ * fabricated and no severity rule is evaluated — there is nothing to evaluate —
+ * so the row records WHY there is no data, in a form a later reader can act on.
+ */
+async function persistAzureRmNoDataResult(opts: {
+  check: MonitorCheck;
+  tenantId: string;
+  triggerId: string;
+  idempotencyKey: string;
+  includeItems?: boolean;
+  persistProfile: boolean;
+  reach: AzureRmReach;
+}): Promise<CheckResult> {
+  const { check, tenantId, triggerId, idempotencyKey, reach } = opts;
+
+  const status: CheckResult["status"] =
+    reach.state === "no_subscriptions" ? "azure_no_subscriptions"
+      : reach.state === "no_rbac" ? "azure_no_rbac"
+        : "error";
+
+  const extracted: Record<string, unknown> = {
+    _azure: {
+      reachState: reach.state,
+      principalClientId: reach.principalClientId,
+      subscriptionsVisible: 0,
+      subscriptionsHttpStatus: reach.subscriptionsHttpStatus,
+      managementGroupsHttpStatus: reach.managementGroupsHttpStatus,
+      // The concrete next action, named on the row rather than left to be
+      // rediscovered. Only ever set for no_rbac — a tenant that genuinely has no
+      // Azure needs nothing granted.
+      requiredGrant: reach.state === "no_rbac"
+        ? `Azure RBAC "${AZURE_RM_LEAST_PRIVILEGE_ROLE}" on the customer's subscription(s), granted by the customer ` +
+          `(Azure Lighthouse delegation, or a direct role assignment) to principal ${reach.principalClientId ?? "(unknown)"}`
+        : null,
+    },
+  };
+
+  const errorMessage =
+    reach.state === "unreachable"
+      ? `Azure Resource Manager is unreachable for this tenant: ${reach.errorMessage ?? "no ARM token could be acquired"}`
+      : undefined;
+
+  const profileId = await persistCheckProfile(opts.persistProfile, {
+    tenantId,
+    checkKey: check.key,
+    checkSchemaVersion: check.schemaVersion,
+    triggerId,
+    idempotencyKey,
+    status,
+    rawResponse: { armOperation: check.armOperation, reach },
+    extractedProperties: extracted,
+    severityMatched: null,
+    severityLabel: null,
+    errorMessage,
+    itemCount: 0,
+    pageCount: 0,
+  });
+
+  log.info(
+    { checkKey: check.key, tenantId, reachState: reach.state, status },
+    "monitor-executor: azure-rm check produced no data — recording the reach state, not an empty result",
+  );
+
+  return {
+    checkKey: check.key,
+    status,
+    extractedProperties: extracted,
+    severityMatched: null,
+    severityLabel: null,
+    ...(errorMessage ? { errorMessage } : {}),
+    itemCount: 0,
+    pageCount: 0,
+    profileId,
+    ...(opts.includeItems ? { items: [] } : {}),
+  };
+}
+
 // ── Fan-out (group-scoped) check executor ─────────────────────────────────────
 //
 // Runs a check whose target endpoint has no tenant-wide form and must instead be
@@ -2974,6 +3261,17 @@ export async function executeMonitorCheck(opts: {
     // 'powershell'/'sharepoint-admin' check falls through exactly as before.
     if (check.executorType === "dns") {
       return await runDnsCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
+    }
+
+    // Azure Resource Manager-backed checks (executorType = 'azure-rm', #1871)
+    // take the same kind of separate, Graph-free path, for the same reason: the
+    // 22 modelled azure-rm config resources live on management.azure.com behind
+    // Azure RBAC, which is a different control plane from Graph consent
+    // entirely. Only a check whose row explicitly carries this executorType can
+    // reach it — every 'graph'/'powershell'/'sharepoint-admin'/'dns' check falls
+    // through exactly as before.
+    if (check.executorType === "azure-rm") {
+      return await runAzureRmCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
     }
 
     // Fan-out (group-scoped) checks take an entirely separate, additive path.

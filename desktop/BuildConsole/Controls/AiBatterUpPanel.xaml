@@ -2,8 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:BuildConsole.Controls"
-             MinWidth="220"
-             MaxHeight="260">
+             MinWidth="220">
 
     <!--
         Git #1710 — additive "AI Batter Up" review panel: agent-filed findings awaiting
@@ -13,6 +12,14 @@
         never launches or queues anything directly — it only flips Status to real
         "Batter Up", which #1709's panel picks up on its own next refresh. This is the
         one human gate in the whole #1708 design.
+
+        Git #1872 — this control now lives ONLY inside its own document tab (moved out of
+        the narrow queue column entirely; MainWindow hoists a single instance as a field —
+        see MainWindow.BatterUpTabs.cs). The old MaxHeight="260" root cap and RowsScroller's
+        MaxHeight="220" existed only to keep this readable stacked in that narrow column;
+        with no column context left to preserve, they're gone. RowsScroller is now the
+        DockPanel's un-docked last child, so it fills the whole document tab and scrolls
+        internally — the 220px-scroller-for-45-rows problem this issue exists to fix.
     -->
     <Border Background="{StaticResource MantleBrush}"
             BorderBrush="{StaticResource Surface0Brush}"
@@ -83,17 +90,6 @@
                               IsChecked="True" Click="BtnCollapse_Click"/>
             </Grid>
 
-            <ScrollViewer x:Name="RowsScroller" DockPanel.Dock="Top"
-                          VerticalScrollBarVisibility="Auto"
-                          MaxHeight="220"
-                          Visibility="Collapsed">
-                <!-- Git #1803 — cards are built in code-behind (BuildAiBatterUpCard), the same way
-                     BuildQueuePanel builds BuildQueueCard, so this row carries the exact same
-                     critter-avatar/card-border language, with Yes/No as real in-card footer
-                     actions instead of a DataTemplate text row with bare buttons. -->
-                <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
-            </ScrollViewer>
-
             <!-- Git #1816 — reserved only for the rarer no-PAT/error messages now; the plain
                  "zero items" case is shown inline in TxtCount above instead, so the common
                  empty state no longer reserves this block's own margin/wrap space. -->
@@ -101,6 +97,19 @@
                        Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
                        TextWrapping="Wrap" Text=""
                        Visibility="Collapsed"/>
+
+            <!-- Git #1872 — no DockPanel.Dock: as the DockPanel's last child (LastChildFill="True")
+                 this fills the whole document tab instead of being capped to a fixed height, so it
+                 scrolls internally over the tab's real available space. -->
+            <ScrollViewer x:Name="RowsScroller"
+                          VerticalScrollBarVisibility="Auto"
+                          Visibility="Collapsed">
+                <!-- Git #1803 — cards are built in code-behind (BuildAiBatterUpCard), the same way
+                     BuildQueuePanel builds BuildQueueCard, so this row carries the exact same
+                     critter-avatar/card-border language, with Yes/No as real in-card footer
+                     actions instead of a DataTemplate text row with bare buttons. -->
+                <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
+            </ScrollViewer>
 
         </DockPanel>
     </Border>

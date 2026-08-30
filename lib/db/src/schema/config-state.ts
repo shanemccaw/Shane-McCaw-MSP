@@ -52,7 +52,7 @@ export const GRAPH_VERSIONS = ["v1.0", "beta"] as const;
 export type GraphVersion = typeof GRAPH_VERSIONS[number];
 
 /**
- * How a resource is READ. The first five mirror `MONITOR_CHECK_EXECUTOR_TYPES` so the
+ * How a resource is READ. The first six mirror `MONITOR_CHECK_EXECUTOR_TYPES` so the
  * model and the existing monitor catalog stay on one vocabulary; the rest are real
  * transports Microsoft365DSC uses that this platform has no executor for yet — which
  * is itself part of the measured answer to "what can we not collect".
@@ -650,3 +650,71 @@ export const tenantServiceAvailabilityTable = pgTable("tenant_service_availabili
 
 export type TenantServiceAvailability = typeof tenantServiceAvailabilityTable.$inferSelect;
 export type InsertTenantServiceAvailability = typeof tenantServiceAvailabilityTable.$inferInsert;
+
+// ── $metadata vs. observed reality (Git #1846) ───────────────────────────────
+
+/**
+ * The two real cases a property observed live but absent from `config_resource_properties`
+ * (`source = 'graph-metadata'`) can be in, per Git #1846:
+ *
+ *  - version_gap          declared in the OTHER Graph version's `$metadata` (typically beta),
+ *                          just not the version this resource is actually read under. A
+ *                          versioning gap: Microsoft published it, just not where we're reading.
+ *  - undeclared_anywhere  declared in NEITHER v1.0 nor beta `$metadata`. Graph is returning
+ *                          something no published CSDL document describes. This is the class
+ *                          nobody can anticipate, and the reason this table exists.
+ */
+export const CONFIG_PROPERTY_DIVERGENCE_CLASSES = ["version_gap", "undeclared_anywhere"] as const;
+export type ConfigPropertyDivergenceClass = typeof CONFIG_PROPERTY_DIVERGENCE_CLASSES[number];
+
+/**
+ * Persists the gap Git #1846 exists to keep visible: a property Microsoft Graph actually
+ * returned live, that `$metadata` does not declare for the resource it was observed on.
+ *
+ * `resource_key` — NOT `config_resources.id` — is the stable identity this table keys on.
+ * `build-resource-model.mjs` deletes and re-inserts every `config_resources` row (fresh serial
+ * ids) on every run; a hard FK from here to that volatile id, with the cascade-delete this
+ * schema uses everywhere else, would wipe this table on every rebuild — the exact class of bug
+ * #1895 already found in `config_resource_samples`. `config_resource_id` is kept as a
+ * best-effort denormalised pointer, refreshed by the detector each run, but deliberately carries
+ * no FK constraint so a model rebuild can never cascade into deleting observed evidence.
+ *
+ * Re-derivable by construction: `scripts/config-state/detect-property-divergence.mjs` recomputes
+ * this table from whatever is currently in `config_resource_samples` (the newest successful
+ * sample per resource) joined against the live `graph_entity_properties` model, every time it
+ * runs — wired into `verify-sample.mjs` so a later run surfaces newly-observed undeclared
+ * properties automatically, not just the six found on 2026-08-30. A row's `declaredInGraphVersions`
+ * is recomputed on every detection run too, so a property that Microsoft later documents moves
+ * classes on its own rather than staying stuck at whatever was true the day it was first seen.
+ */
+export const configResourcePropertyDivergenceTable = pgTable("config_resource_property_divergence", {
+  id: serial("id").primaryKey(),
+  /** Stable identity — see the table comment for why this, not `config_resources.id`, is the key. */
+  resourceKey: text("resource_key").notNull(),
+  /** Best-effort current id for convenience joins; not a FK, refreshed each detection run. */
+  configResourceId: integer("config_resource_id"),
+  graphPath: text("graph_path"),
+  /** The Graph version the resource is actually READ under (what `config_resources.graph_version` says). */
+  graphVersion: text("graph_version", { enum: GRAPH_VERSIONS }),
+  /** The qualified entity type the property was observed on, e.g. `microsoft.graph.device`. */
+  graphEntityType: text("graph_entity_type"),
+  propertyName: text("property_name").notNull(),
+  divergenceClass: text("divergence_class", { enum: CONFIG_PROPERTY_DIVERGENCE_CLASSES }).notNull(),
+  /** Which Graph version(s), if any, DO declare this property on this entity type. Empty = neither. */
+  declaredInGraphVersions: jsonb("declared_in_graph_versions").$type<string[]>().notNull().default([]),
+  /** JSON type observed live for this property, from the sample that most recently confirmed it. */
+  observedJsonType: text("observed_json_type"),
+  /** The `config_resource_samples.sample_run_id` that most recently confirmed this divergence. */
+  lastSampleRunId: uuid("last_sample_run_id"),
+  /** How many distinct detection runs have observed this divergence, however far apart. */
+  observationCount: integer("observation_count").notNull().default(1),
+  firstObservedAt: timestamp("first_observed_at", { withTimezone: true }).notNull().defaultNow(),
+  lastObservedAt: timestamp("last_observed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("config_resource_property_divergence_uidx").on(t.resourceKey, t.propertyName),
+  index("config_resource_property_divergence_class_idx").on(t.divergenceClass),
+  index("config_resource_property_divergence_resource_idx").on(t.configResourceId),
+]);
+
+export type ConfigResourcePropertyDivergence = typeof configResourcePropertyDivergenceTable.$inferSelect;
+export type InsertConfigResourcePropertyDivergence = typeof configResourcePropertyDivergenceTable.$inferInsert;
