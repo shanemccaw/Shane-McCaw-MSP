@@ -5604,7 +5604,13 @@ namespace BuildConsole.Controls
         // panel stale until Shane happened to click over to it.
         private FileSystemWatcher? _gitWatcher;
         private System.Threading.Timer? _gitWatcherDebounceTimer;
-        private static readonly TimeSpan GitWatcherDebounceDelay = TimeSpan.FromMilliseconds(750);
+        // Git #1968 — raised from 750ms as a SUPPLEMENT only, not the fix: the
+        // real fix is excluding the actual churn source (IsIgnorableGitInternalPath)
+        // and the no-op gates below. A longer debounce on a watcher that never goes
+        // quiet just slows a broken loop down; it doesn't stop one. This only
+        // reduces cadence for genuine bursts (a large real commit/pull/checkout
+        // touching many files at once) that legitimately still need to coalesce.
+        private static readonly TimeSpan GitWatcherDebounceDelay = TimeSpan.FromMilliseconds(1500);
 
         private void SetupGitWatcher()
         {
@@ -5662,10 +5668,32 @@ namespace BuildConsole.Controls
         /// changed — without this filter the watcher would refresh-storm on
         /// git's own internal bookkeeping. Everything else under .git/ (HEAD,
         /// index, refs/) is a real signal worth refreshing on.
+        ///
+        /// Git #1968 — diagnosed with a real FileSystemWatcher probe (same
+        /// Path/IncludeSubdirectories/NotifyFilter as SetupGitWatcher below,
+        /// run directly against the live RootWorkspacePath while a real
+        /// BuildConsole session was active) rather than assuming the issue's
+        /// build-output/node_modules hypothesis: the actual, dominant,
+        /// continuous churn (217 events in one 30s sample) was almost
+        /// entirely writes to &lt;root&gt;/.logs/activity-&lt;date&gt;.log and
+        /// .logs/activity-latest.log — ActivityLog.cs's own WorkspaceLogDir
+        /// sink, which every ActivityLog.Log() call anywhere in the app
+        /// (queue polling, version checks, and this very panel's own
+        /// "rendered N commit(s)" line) appends to. That sits INSIDE the
+        /// watched tree, so it's a self-sustaining loop even in an
+        /// otherwise-idle session: this panel's own render writes a log
+        /// line, which re-fires the watcher, which re-arms the debounce,
+        /// which triggers the next render. Excluded here for the same
+        /// reason .git/objects and .git/logs are — the app's own
+        /// bookkeeping, not a real workspace change worth refreshing on.
         /// </summary>
         private static bool IsIgnorableGitInternalPath(string fullPath)
         {
             string normalized = fullPath.Replace('\\', '/');
+
+            if (normalized.IndexOf("/.logs/", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+
             int gitIdx = normalized.IndexOf("/.git/", StringComparison.OrdinalIgnoreCase);
             if (gitIdx < 0) return false;
 
@@ -5688,6 +5716,14 @@ namespace BuildConsole.Controls
         // straight from the old counts to the new ones.
         private System.Threading.Timer? _gitStatusLoadingTimer;
 
+        // Git #1968 — the raw `git status --porcelain -b` text from the last
+        // refresh that actually rebuilt GitChangesTree. `git status` still has to
+        // run every time (it's the cheapest available signal that anything
+        // working-tree-visible changed at all), but a repeated refresh whose
+        // output is byte-identical to last time skips the expensive part: the
+        // Clear()+rebuild of the staged/unstaged TreeViewItem visual tree.
+        private string? _lastGitStatusRawOutput;
+
         public async void RefreshGitStatus()
         {
             _gitStatusLoadingTimer?.Dispose();
@@ -5696,11 +5732,12 @@ namespace BuildConsole.Controls
                 Dispatcher.Invoke(() => GitStatusSummaryText.Text = "REFRESHING GIT STATUS...");
             }, null, TimeSpan.FromSeconds(30), System.Threading.Timeout.InfiniteTimeSpan);
 
-            var (branch, stagedItems, unstagedItems) = await System.Threading.Tasks.Task.Run(() =>
+            var (branch, stagedItems, unstagedItems, rawOutput) = await System.Threading.Tasks.Task.Run(() =>
             {
                 string b = "main";
                 var staged = new List<GitItem>();
                 var unstaged = new List<GitItem>();
+                string rawOut = "";
 
                 try
                 {
@@ -5720,6 +5757,7 @@ namespace BuildConsole.Controls
                     {
                         string output = proc.StandardOutput.ReadToEnd();
                         proc.WaitForExit();
+                        rawOut = output;
 
                         string[] lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
                         foreach (var line in lines)
@@ -5764,46 +5802,59 @@ namespace BuildConsole.Controls
                 }
                 catch { }
 
-                return (b, staged, unstaged);
+                return (b, staged, unstaged, rawOut);
             });
 
             _gitStatusLoadingTimer?.Dispose();
             _gitStatusLoadingTimer = null;
 
-            GitBranchText.Text = branch;
-            GitStatusSummaryText.Text = $"STAGED ({stagedItems.Count})  •  CHANGES ({unstagedItems.Count})";
+            // Git #1968 — genuine no-op: an unchanged porcelain status means the
+            // Changes tree we already have on screen is still byte-for-byte
+            // correct, so skip tearing it down and rebuilding it from scratch.
+            bool statusUnchanged = _lastGitStatusRawOutput != null && rawOutput == _lastGitStatusRawOutput;
+            _lastGitStatusRawOutput = rawOutput;
 
-            GitChangesTree.Items.Clear();
+            if (!statusUnchanged)
+            {
+                GitBranchText.Text = branch;
+                GitStatusSummaryText.Text = $"STAGED ({stagedItems.Count})  •  CHANGES ({unstagedItems.Count})";
 
-            // Staged Tree Header
-            var stagedTreeItem = new TreeViewItem
-            {
-                Header = CreateGitCategoryHeader("STAGED CHANGES", stagedItems.Count, "#A6E3A1"),
-                IsExpanded = true
-            };
-            foreach (var item in stagedItems)
-            {
-                stagedTreeItem.Items.Add(CreateGitFileTreeItem(item));
+                GitChangesTree.Items.Clear();
+
+                // Staged Tree Header
+                var stagedTreeItem = new TreeViewItem
+                {
+                    Header = CreateGitCategoryHeader("STAGED CHANGES", stagedItems.Count, "#A6E3A1"),
+                    IsExpanded = true
+                };
+                foreach (var item in stagedItems)
+                {
+                    stagedTreeItem.Items.Add(CreateGitFileTreeItem(item));
+                }
+
+                // Unstaged Tree Header
+                var unstagedTreeItem = new TreeViewItem
+                {
+                    Header = CreateGitCategoryHeader("CHANGES", unstagedItems.Count, "#FAB387"),
+                    IsExpanded = true
+                };
+                foreach (var item in unstagedItems)
+                {
+                    unstagedTreeItem.Items.Add(CreateGitFileTreeItem(item));
+                }
+
+                GitChangesTree.Items.Add(stagedTreeItem);
+                GitChangesTree.Items.Add(unstagedTreeItem);
             }
-
-            // Unstaged Tree Header
-            var unstagedTreeItem = new TreeViewItem
-            {
-                Header = CreateGitCategoryHeader("CHANGES", unstagedItems.Count, "#FAB387"),
-                IsExpanded = true
-            };
-            foreach (var item in unstagedItems)
-            {
-                unstagedTreeItem.Items.Add(CreateGitFileTreeItem(item));
-            }
-
-            GitChangesTree.Items.Add(stagedTreeItem);
-            GitChangesTree.Items.Add(unstagedTreeItem);
 
             // Git #860 (Git panel Phase 2) — the rendered commit graph lives in
             // the same scrollable panel below Changes; refresh it from the same
             // trigger so both sections stay in sync (view-switch, manual
             // refresh, own commit/push/pull, and #859's FileSystemWatcher).
+            // Git #1968 — PopulateGitGraph now gates its own work (collapsed
+            // skip + its own process-free no-op signature), independent of
+            // statusUnchanged above, since a real commit can land with no
+            // working-tree-visible status change (e.g. no upstream tracking).
             PopulateGitGraph();
 
             // Git #1898 — the real branch list refreshes off the same trigger too.
@@ -5812,13 +5863,22 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #1898 — collapses/expands the rendered commit graph. Shane: "I never use
         /// the commit graph, I want it out of the way" — collapsed by default (see XAML
-        /// IsChecked="True"). The graph itself is still built by PopulateGitGraph on every
-        /// refresh regardless of this toggle; only GitGraphHost's visibility is gated, so
-        /// expanding shows the latest data immediately with no extra fetch.</summary>
+        /// IsChecked="True").
+        /// Git #1968 — PopulateGitGraph no longer does any work while collapsed (it was
+        /// spawning `git log` + rebuilding the whole swimlane visual tree on every
+        /// RefreshGitStatus cycle regardless of whether anyone could see it). Expanding is
+        /// now the trigger that fetches it, so "latest data immediately on expand" still
+        /// holds — just from a fresh fetch here instead of one that silently already ran
+        /// while hidden.</summary>
         private void BtnGitGraphToggle_Click(object sender, RoutedEventArgs e)
         {
             bool collapsed = BtnGitGraphToggle.IsChecked == true;
             GitGraphHost.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+
+            if (!collapsed)
+            {
+                PopulateGitGraph();
+            }
         }
 
         /// <summary>Git #1898 — collapses/expands the real branch list. Collapsed by default,
@@ -6134,14 +6194,78 @@ namespace BuildConsole.Controls
         private static double GitLaneX(int column) => GitGraphLeftPad + column * GitGraphLaneWidth;
         private static double GitRowY(int row) => row * GitGraphRowHeight + GitGraphRowHeight / 2;
 
+        // Git #1968 — the last ComputeGitGraphSignature() result the graph was
+        // actually rendered from. Null until the first real render.
+        private string? _lastGitGraphSignature;
+
+        /// <summary>
+        /// Git #1968 — a cheap, process-free signal for "has anything the commit graph
+        /// cares about changed" (a commit, pull, checkout, merge, or branch move). Every
+        /// one of those always touches at least one of .git/HEAD, .git/packed-refs, a
+        /// file under .git/refs/heads, or .git/logs/HEAD, so the newest mtime among them
+        /// is a reliable proxy without spawning `git log` just to find out. Uncommitted
+        /// working-tree edits deliberately do NOT move any of these — the commit graph
+        /// only ever renders committed history, so that's correct, not a gap.
+        /// </summary>
+        private string ComputeGitGraphSignature()
+        {
+            try
+            {
+                string gitDir = System.IO.Path.Combine(RootWorkspacePath, ".git");
+                DateTime newest = DateTime.MinValue;
+
+                void Consider(string path)
+                {
+                    if (System.IO.File.Exists(path))
+                    {
+                        var t = System.IO.File.GetLastWriteTimeUtc(path);
+                        if (t > newest) newest = t;
+                    }
+                }
+
+                Consider(System.IO.Path.Combine(gitDir, "HEAD"));
+                Consider(System.IO.Path.Combine(gitDir, "packed-refs"));
+                Consider(System.IO.Path.Combine(gitDir, "logs", "HEAD"));
+
+                string headsDir = System.IO.Path.Combine(gitDir, "refs", "heads");
+                if (System.IO.Directory.Exists(headsDir))
+                {
+                    foreach (var f in System.IO.Directory.EnumerateFiles(headsDir, "*", System.IO.SearchOption.AllDirectories))
+                        Consider(f);
+                }
+
+                return newest.Ticks.ToString();
+            }
+            catch
+            {
+                // Never let a failed probe suppress a real refresh — a unique
+                // signature just means "always refresh," the safe failure direction.
+                return Guid.NewGuid().ToString();
+            }
+        }
+
         /// <summary>
         /// Fetches the real commit DAG and renders it into GitGraphHost. Runs
         /// the (blocking) git call on a worker thread, then builds the WPF
         /// visuals on the UI thread. Called from RefreshGitStatus so the graph
-        /// and the Changes list always refresh from the same trigger (#859).
+        /// and the Changes list always refresh from the same trigger (#859),
+        /// and from BtnGitGraphToggle_Click on expand.
+        ///
+        /// Git #1968 — this used to do all of that unconditionally on every single
+        /// call, including the ~40x/minute #859 FileSystemWatcher auto-refresh, even
+        /// though the graph is collapsed by default and most of those calls found
+        /// nothing had changed. Two gates now short-circuit the expensive part (the
+        /// `git log` subprocess + full swimlane visual-tree rebuild): skip entirely
+        /// while collapsed (nobody can see it), and skip if ComputeGitGraphSignature()
+        /// shows nothing graph-relevant has moved since the last real render.
         /// </summary>
         public async void PopulateGitGraph()
         {
+            if (GitGraphHost.Visibility != Visibility.Visible) return;
+
+            string signature = ComputeGitGraphSignature();
+            if (_lastGitGraphSignature != null && signature == _lastGitGraphSignature) return;
+
             var (commits, maxLanes) = await System.Threading.Tasks.Task.Run(() =>
             {
                 var parsed = new List<GitGraphCommit>();
@@ -6233,6 +6357,11 @@ namespace BuildConsole.Controls
 
                 return (parsed, Math.Max(maxLaneCount, 1));
             });
+
+            // Git #1968 — re-sampled after the fetch (not reused from before it) so what's
+            // stored reflects the git state actually captured, in case a commit landed in
+            // the narrow window while `git log` was running.
+            _lastGitGraphSignature = ComputeGitGraphSignature();
 
             GitGraphHost.Children.Clear();
             GitGraphHeaderText.Text = $"COMMIT GRAPH ({commits.Count})";
