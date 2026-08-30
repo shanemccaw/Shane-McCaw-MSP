@@ -73,8 +73,9 @@
                         <Grid x:Name="FilterBoxHost" DockPanel.Dock="Left" Margin="0,0,6,0"
                               Visibility="Collapsed">
                             <TextBox x:Name="TxtFilter"
+                                     Style="{StaticResource SearchTextBox}"
                                      Width="70" Height="18"
-                                     Padding="4,0,4,0" FontSize="10.5"
+                                     Padding="4,0,18,0" FontSize="10.5"
                                      VerticalContentAlignment="Center"
                                      Background="{StaticResource Surface0Brush}"
                                      TextChanged="TxtFilter_TextChanged"/>

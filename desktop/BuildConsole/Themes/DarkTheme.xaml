@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib"
+                    xmlns:behaviors="clr-namespace:BuildConsole.Behaviors">
 
     <!-- ══════════════════════════════════════════════════════════════════
          CATPPUCCIN MOCHA PALETTE
@@ -350,6 +351,77 @@
         <Setter Property="Background"  Value="#0D0D17"/>
         <Setter Property="Foreground"  Value="#A6E3A1"/>
         <Setter Property="FontSize"    Value="12"/>
+    </Style>
+
+    <!-- Search / filter TextBox (Git #2000) — ONE reusable affordance: a keyed
+         style whose control template bakes in an inline "✕" clear button at the
+         box's own right-hand edge, so applying Style="{StaticResource
+         SearchTextBox}" is the entire per-site change. No sibling Grid column,
+         no per-site layout surgery.
+
+         - The ✕ (PART_ClearButton) is only visible when Text is non-empty
+           (ControlTemplate.Triggers below) — an always-on ✕ over an empty box
+           is noise.
+         - De-brightened per the app's language: Subtext0Brush foreground,
+           transparent background, no border on the button itself — the same
+           treatment TestHistoryWindow's original inline clear used. Do not
+           brighten this on hover beyond the app's existing default Button
+           hover (a faint Surface0Brush wash) — see #1809/#1810/#1996.
+         - behaviors:SearchTextBoxBehavior.IsEnabled wires the ✕ click and
+           Escape-to-clear (both call TextBox.Clear(), which raises the box's
+           normal TextChanged — the same change path typing already fires, so
+           every site's live filter re-runs with zero per-site code).
+         - Padding reserves 24px on the right so typed text never runs under
+           the button, whether or not it's currently visible (no layout
+           shift when it appears/disappears).
+         - BasedOn the default TextBox style, so Background/BorderBrush/
+           BorderThickness/CaretBrush/SelectionBrush/the IsFocused→BlueBrush
+           border trigger are all inherited; a site overrides any of those
+           locally exactly as it does today (see e.g. SettingsTabView's
+           Transparent/borderless boxes hosted inside their own bordered
+           Border). -->
+    <Style x:Key="SearchTextBox" TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
+        <Setter Property="Padding" Value="8,4,24,4"/>
+        <Setter Property="behaviors:SearchTextBoxBehavior.IsEnabled" Value="True"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="{x:Type TextBox}">
+                    <Border x:Name="Bd"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="3"
+                            SnapsToDevicePixels="True">
+                        <Grid>
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"/>
+                            <Button x:Name="PART_ClearButton"
+                                    Content="✕"
+                                    Focusable="False"
+                                    IsTabStop="False"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,4,0"
+                                    Padding="4,0"
+                                    FontSize="10"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Foreground="{StaticResource Subtext0Brush}"
+                                    Cursor="Arrow"
+                                    ToolTip="Clear"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Text" Value="">
+                            <Setter TargetName="PART_ClearButton" Property="Visibility" Value="Collapsed"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bd" Property="Opacity" Value="0.56"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════

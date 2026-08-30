@@ -244,26 +244,16 @@ namespace BuildConsole.Controls
             _varSearchQuery = TestEnvSearchBox.Text.Trim();
             if (TestEnvSearchPlaceholder != null)
                 TestEnvSearchPlaceholder.Visibility = string.IsNullOrEmpty(_varSearchQuery) ? Visibility.Visible : Visibility.Collapsed;
-            if (BtnClearTestEnvSearch != null)
-                BtnClearTestEnvSearch.Visibility = string.IsNullOrEmpty(_varSearchQuery) ? Visibility.Collapsed : Visibility.Visible;
             RenderTestEnvVarsSettingsList();
         }
 
-        private void BtnClearTestEnvSearch_Click(object sender, RoutedEventArgs e)
-        {
-            TestEnvSearchBox.Text = "";
-            _varSearchQuery = "";
-            if (TestEnvSearchPlaceholder != null)
-                TestEnvSearchPlaceholder.Visibility = Visibility.Visible;
-            if (BtnClearTestEnvSearch != null)
-                BtnClearTestEnvSearch.Visibility = Visibility.Collapsed;
-            RenderTestEnvVarsSettingsList();
-        }
+        // BtnClearTestEnvSearch_Click removed (Git #2000) — TestEnvSearchBox now uses
+        // the shared SearchTextBox style, whose baked-in ✕ clears it directly (firing
+        // this same TextChanged handler, same as before).
 
         private void SettingsSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             _varSearchQuery = SettingsSearchBox.Text.Trim();
-            BtnClearSearch.Visibility = string.IsNullOrEmpty(_varSearchQuery) ? Visibility.Collapsed : Visibility.Visible;
             if (TestEnvSearchBox != null && TestEnvSearchBox.Text != _varSearchQuery)
             {
                 TestEnvSearchBox.Text = _varSearchQuery;
@@ -271,14 +261,10 @@ namespace BuildConsole.Controls
             RenderTestEnvVarsSettingsList();
         }
 
-        private void BtnClearSearch_Click(object sender, RoutedEventArgs e)
-        {
-            SettingsSearchBox.Text = "";
-            if (TestEnvSearchBox != null) TestEnvSearchBox.Text = "";
-            _varSearchQuery = "";
-            BtnClearSearch.Visibility = Visibility.Collapsed;
-            RenderTestEnvVarsSettingsList();
-        }
+        // BtnClearSearch_Click removed (Git #2000) — SettingsSearchBox now uses the
+        // shared SearchTextBox style. Its baked-in ✕ clears the box, which fires
+        // SettingsSearchBox_TextChanged above and mirrors the empty query into
+        // TestEnvSearchBox exactly as before.
 
         // ══════════════════════════════════════════════════════════════════════
         // TEST ENVIRONMENT & MANIFEST VARIABLES (SUPERCHARGED)

@@ -235,6 +235,13 @@ namespace BuildConsole
                     break;
                 case Key.Escape:
                     e.Handled = true;
+                    // Git #2000 — Escape clears typed text too (same as every other
+                    // search box's inline ✕), on top of this box's own existing
+                    // dismiss-the-dropdown-and-blur behavior. TitleSearchBox opts out
+                    // of SearchTextBoxBehavior's generic Escape handling
+                    // (HandlesEscape="False" in MainWindow.xaml) so the two don't race.
+                    if (!string.IsNullOrEmpty(TitleSearchBox.Text))
+                        TitleSearchBox.Clear();
                     HideCommandPalette();
                     Keyboard.ClearFocus();
                     break;

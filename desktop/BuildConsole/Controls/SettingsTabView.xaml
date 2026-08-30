@@ -80,16 +80,14 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="🔍" FontSize="11" Foreground="{StaticResource Subtext0Brush}"
                                        VerticalAlignment="Center" Margin="2,0,6,0"/>
-                            <TextBox x:Name="SettingsSearchBox" Grid.Column="1" Background="Transparent"
-                                     BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="12"
+                            <TextBox x:Name="SettingsSearchBox" Grid.Column="1"
+                                     Style="{StaticResource SearchTextBox}"
+                                     Background="Transparent" BorderThickness="0" Padding="0,0,20,0"
+                                     Foreground="{StaticResource TextBrush}" FontSize="12"
                                      TextChanged="SettingsSearchBox_TextChanged"/>
-                            <Button x:Name="BtnClearSearch" Grid.Column="2" Content="✕" FontSize="10"
-                                    Style="{StaticResource IconButton}" Padding="4,0" Visibility="Collapsed"
-                                    Click="BtnClearSearch_Click"/>
                         </Grid>
                     </Border>
                 </StackPanel>
@@ -314,19 +312,17 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="🔍" FontSize="13" Foreground="{StaticResource Subtext0Brush}"
                                                    VerticalAlignment="Center" Margin="2,0,8,0"/>
-                                        <TextBox x:Name="TestEnvSearchBox" Grid.Column="1" Background="Transparent"
-                                                 BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="12.5"
+                                        <TextBox x:Name="TestEnvSearchBox" Grid.Column="1"
+                                                 Style="{StaticResource SearchTextBox}"
+                                                 Background="Transparent" BorderThickness="0" Padding="0,0,20,0"
+                                                 Foreground="{StaticResource TextBrush}" FontSize="12.5"
                                                  VerticalAlignment="Center" TextChanged="TestEnvSearchBox_TextChanged"/>
                                         <TextBlock Grid.Column="1" x:Name="TestEnvSearchPlaceholder" Text="Search variables by name, value, manifest file, or area..."
                                                    FontSize="12" Foreground="{StaticResource Subtext0Brush}" IsHitTestVisible="False"
                                                    VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Visible"/>
-                                        <Button x:Name="BtnClearTestEnvSearch" Grid.Column="2" Content="✕ Clear" FontSize="11"
-                                                Style="{StaticResource IconButton}" Padding="8,2" Visibility="Collapsed"
-                                                Click="BtnClearTestEnvSearch_Click"/>
                                     </Grid>
                                 </Border>
 
