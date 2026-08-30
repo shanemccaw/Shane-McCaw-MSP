@@ -18,13 +18,27 @@ or via the protocol:
 shaneapp://reportProgress?buildId=<id>&step=<N>&total=<M>&label=<description>
 ```
 
-**Standard Phase Checkpoints:**
-1. **Phase 1: Investigation & Research** — `node scripts/report-progress.mjs <id> 1 3 "Investigation & Discovery"`
-2. **Phase 2: Core Implementation** — `node scripts/report-progress.mjs <id> 2 3 "Core Implementation"`
-3. **Phase 3: Verification & Test Suite** — `node scripts/report-progress.mjs <id> 3 3 "Verification & Testing"`
+**Minimum phase checkpoints — a template to adapt, not a literal script.** These three
+are the floor, not the whole plan. Derive your actual `step`/`total`/label from your own
+real work breakdown for *this* task — a session with more genuine phases reports more of
+them (`total` isn't pinned to 3), and a label should describe what you're actually doing,
+not just repeat these examples verbatim:
 
-**Call it again at EVERY phase change — not just once (Git #1206).** The panel only advances when a report arrives, so reporting a single early step and then going quiet leaves Build Watch **frozen on that first phase** while real work continues — it looks stalled even though it isn't. Re-report at each real transition (bump `step`, update `label`), matching the milestones you're already tracking in your own checklist — at minimum the three standard checkpoints above, and again whenever your checklist genuinely advances to a new phase. Keep it to major phases (not noisy per-line spam), but definitely **more than once**, and always send a **final** call with `step == total` (e.g. `... <id> 3 3 "Verification & Testing"`) so the panel reaches 100% instead of freezing mid-way.
-BuildConsole displays this in Build Watch per-slot with visual progress bars, percentage, active phase card, and heuristic estimated time remaining. If a running build reports nothing new for a few minutes, the phase card now shows a soft "⚠ No progress update in Xm" notice — a cue that this reporting has gone quiet, not that the build is stuck.
+1. **Investigation** — understand the problem before changing anything, e.g.
+   `node scripts/report-progress.mjs <id> 1 3 "Investigation & Discovery"`
+2. **Implementation** — the core code change, e.g.
+   `node scripts/report-progress.mjs <id> 2 3 "Core Implementation"`
+3. **Verification** — confirm the change actually works, e.g.
+   `node scripts/report-progress.mjs <id> 3 3 "Verification"`. This does **not** mean
+   "write a test manifest" — `desktop/BuildConsole` (the WPF app) is explicitly out of
+   scope for test manifests (see the Test Coverage section below), so a BuildConsole
+   session's verification phase is normally a clean build, a real/simulated run, or a
+   manual check, not a manifest. Use whatever real verification your task actually calls
+   for and label it plainly (e.g. `"Verification & Build"`, `"Verification & Manual QA"`).
+
+**Call it again at EVERY phase change — not just once (Git #1206).** The panel only advances when a report arrives, so reporting a single early step and then going quiet leaves Build Watch **frozen on that phase** while real work continues — it looks stalled even though it isn't. Re-report at each real transition (bump `step`, update `label`) to match your own checklist as it genuinely advances — at minimum the checkpoints above, more if your task actually has more phases. Keep it to major phases (not noisy per-line spam), but definitely **more than once**, and always send a **final** call with `step == total` (e.g. `... <id> 3 3 "Verification"`) so the panel reaches 100% instead of freezing mid-way.
+
+BuildConsole displays this in Build Watch per-slot with visual progress bars, percentage, active phase card, and heuristic estimated time remaining. If a running build reports nothing new for a few minutes, the phase card now shows a soft "⚠ No progress update in Xm" notice — a cue that this reporting has gone quiet, not that the build is stuck. That same staleness window is also what lets Build Watch's checklist-derived fallback (Git #1251) resume advancing the panel from your visible checklist if your own explicit calls go quiet for that long (Git #1799) — another reason to keep re-reporting at real transitions rather than relying on one early call to hold the display.
 
 ## Customer Portal build — design source
 

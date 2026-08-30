@@ -32,8 +32,23 @@ namespace BuildConsole.Services
         /// build reports for itself, the synthesized checklist-derived progress stands down so the
         /// two never fight over this panel. A build that never reports keeps this false and is driven
         /// entirely by the bridge.
+        ///
+        /// Git #1799 — this is a time-bounded lockout, not a permanent one. See
+        /// <see cref="ExplicitReportIsActive"/>: once <see cref="StaleThreshold"/> has passed since
+        /// the last explicit call, the lockout lapses and the bridge is allowed to take back over,
+        /// so a build that reports once early and then goes quiet doesn't freeze the panel forever.
+        /// The flag itself is left set (it still records "this build has ever self-reported"); only
+        /// its enforcement in <see cref="BuildProgressTracker.Report"/> is time-bounded.
         /// </summary>
         public bool HasExplicitReport { get; set; }
+
+        /// <summary>
+        /// Git #1799 — whether the explicit-report lockout is still in force right now. True only
+        /// while <see cref="HasExplicitReport"/> is set AND the last report (of either kind) landed
+        /// within <see cref="StaleThreshold"/>. Reuses the exact same staleness window the "no
+        /// progress update in Xm" warning already keys off, rather than inventing a second duration.
+        /// </summary>
+        public bool ExplicitReportIsActive => HasExplicitReport && TimeSinceLastReport < StaleThreshold;
 
         public double Percent => Total > 0 ? Math.Clamp((double)Step / Total * 100.0, 0, 100) : 0;
 
@@ -139,14 +154,20 @@ namespace BuildConsole.Services
                 StartedAtUtc = DateTime.UtcNow
             });
 
-            // Git #1251 / #1252 — Allow checklist-bridge and explicit reportProgress updates to coexist,
-            // but once a build has reported for itself explicitly, the checklist-derived progress
-            // stands down so they don't fight and cause values/totals to jump back and forth.
+            // Git #1251 / #1252 / #1799 — Allow checklist-bridge and explicit reportProgress updates
+            // to coexist, but while a build's explicit reporting is still active (see
+            // ExplicitReportIsActive), the checklist-derived progress stands down so they don't fight
+            // and cause values/totals to jump back and forth. This lockout is time-bounded, not
+            // permanent: it reuses the same StaleThreshold the "no progress update in Xm" warning
+            // already keys off, so a build that reports once early and then goes quiet no longer
+            // freezes the panel forever — once that window lapses, the bridge resumes driving the
+            // display from the agent's real, ongoing checklist activity. A fresh explicit call always
+            // re-arms the lockout immediately (isExplicit still wins in real time).
             if (isExplicit)
             {
                 report.HasExplicitReport = true;
             }
-            else if (report.HasExplicitReport)
+            else if (report.ExplicitReportIsActive)
             {
                 return report;
             }
@@ -206,9 +227,13 @@ namespace BuildConsole.Services
         /// #1206 strengthened the instruction to "report at every checkpoint" and it still didn't
         /// stick, so this stops relying on the agent's compliance: <paramref name="doneCount"/> of
         /// <paramref name="totalCount"/> detected items becomes step/total, advancing the same panel
-        /// #1206 built. An explicit reportProgress call always takes precedence — if this build has
-        /// ever reported for itself, this is a no-op (see <see cref="Report"/>'s isExplicit guard).
-        /// Returns the updated report, or null when there's nothing to report or explicit has won.
+        /// #1206 built. An explicit reportProgress call takes precedence in real time — while a
+        /// build's explicit reporting is still active (<see cref="BuildProgressReport.ExplicitReportIsActive"/>),
+        /// this is a no-op (see <see cref="Report"/>'s isExplicit guard). Git #1799 — that precedence
+        /// is time-bounded: once explicit reporting has gone stale for longer than
+        /// <see cref="BuildProgressReport.StaleThreshold"/>, this bridge resumes driving the panel
+        /// from the checklist instead of leaving it frozen at the last explicit value forever.
+        /// Returns the updated report, or null when there's nothing to report or explicit is still active.
         /// </summary>
         public static BuildProgressReport? BridgeFromChecklist(int queueItemId, int doneCount, int totalCount, string label)
         {
