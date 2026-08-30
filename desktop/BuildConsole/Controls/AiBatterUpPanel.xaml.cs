@@ -34,6 +34,11 @@ namespace BuildConsole.Controls
         // can restore/hide it correctly without re-deriving it from row count.
         private bool _emptyMessageActive;
 
+        // Git #1863 — the real fetched/sorted rows from the last RefreshAsync. TxtFilter
+        // narrows what's rendered from this list; it never touches what's fetched or the
+        // Yes/No board mutations, which always operate on the row object already in hand.
+        private List<Services.AiBatterUpRow> _allRows = new();
+
         public AiBatterUpPanel()
         {
             InitializeComponent();
@@ -58,6 +63,16 @@ namespace BuildConsole.Controls
             RowsScroller.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
             TxtEmpty.Visibility = (!collapsed && _emptyMessageActive) ? Visibility.Visible : Visibility.Collapsed;
             BtnCollapse.Content = collapsed ? "▸" : "▾";
+            UpdateFilterBoxVisibility();
+        }
+
+        // Git #1863 — the filter box shows only when there's something to filter: rows
+        // fetched (not the "none open" / no-PAT / error states) AND the panel expanded.
+        // Collapsing the panel hides it right along with the rows, per #1816.
+        private void UpdateFilterBoxVisibility()
+        {
+            bool collapsed = BtnCollapse.IsChecked == true;
+            FilterBoxHost.Visibility = (!collapsed && _allRows.Count > 0) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private Services.GitHubApiClient? GetClient()
@@ -78,6 +93,8 @@ namespace BuildConsole.Controls
                 {
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
+                    _allRows = new List<Services.AiBatterUpRow>();
+                    UpdateFilterBoxVisibility();
                     _emptyMessageActive = true;
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
@@ -94,27 +111,77 @@ namespace BuildConsole.Controls
                     Services.ActivityLog.Log("ai-batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
+                    _allRows = new List<Services.AiBatterUpRow>();
+                    UpdateFilterBoxVisibility();
                     _emptyMessageActive = true;
                     TxtEmpty.Text = $"Couldn't read AI Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
                     return;
                 }
 
-                RowsList.Children.Clear();
-                foreach (var row in rows)
-                    RowsList.Children.Add(BuildAiBatterUpCard(row));
+                // Git #1863 — highest issue number first, always. Sorted here in the panel,
+                // not in AiBatterUpQueueService: the service has no other caller today, but
+                // its fetch/board-mutation order isn't this panel's display order to redefine.
+                _allRows = rows.OrderByDescending(r => r.Number).ToList();
 
                 // Git #1816 — the "zero rows" empty state reads inline in the header's
                 // TxtCount instead of the separate TxtEmpty block, so an empty panel's
                 // footprint never grows past this one header line.
-                TxtCount.Text = rows.Count == 0 ? "— none open" : $"({rows.Count})";
+                TxtCount.Text = _allRows.Count == 0 ? "— none open" : $"({_allRows.Count})";
                 _emptyMessageActive = false;
                 TxtEmpty.Visibility = Visibility.Collapsed;
+                UpdateFilterBoxVisibility();
+                RenderFilteredRows();
             }
             finally
             {
                 _refreshing = false;
             }
+        }
+
+        // Git #1863 — Shane: "AI Batter Up needs a small search by number filter." Display-only:
+        // narrows what RenderFilteredRows draws from the already-fetched _allRows. Never
+        // refetches, never touches PromoteToBatterUpAsync/DemoteToBacklogAsync.
+        private void TxtFilter_TextChanged(object sender, TextChangedEventArgs e) => RenderFilteredRows();
+
+        /// <summary>
+        /// Renders <see cref="_allRows"/> (already sorted number-descending) filtered by
+        /// TxtFilter's current text. A numeric-looking term substring-matches the issue
+        /// number (typing "18" surfaces #1837, #1862, #1838 — no leading '#', no exact-match
+        /// requirement); anything else falls back to matching the title too, so a
+        /// non-numeric search doesn't just read as a broken, emptied panel.
+        /// </summary>
+        private void RenderFilteredRows()
+        {
+            RowsList.Children.Clear();
+
+            string term = TxtFilter.Text?.Trim() ?? "";
+            IEnumerable<Services.AiBatterUpRow> visible = _allRows;
+            if (term.Length > 0)
+            {
+                visible = _allRows.Where(r =>
+                    r.Number.ToString().Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    (r.Title?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            var visibleList = visible.ToList();
+            if (visibleList.Count == 0 && _allRows.Count > 0)
+            {
+                // Git #1863 — a filter that hides everything must say so, not just present
+                // an empty panel that reads as though the queue itself drained.
+                RowsList.Children.Add(new TextBlock
+                {
+                    Text = $"no match for \"{term}\"",
+                    FontSize = 11,
+                    FontStyle = FontStyles.Italic,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    Margin = new Thickness(6, 4, 6, 4)
+                });
+                return;
+            }
+
+            foreach (var row in visibleList)
+                RowsList.Children.Add(BuildAiBatterUpCard(row));
         }
 
         /// <summary>
