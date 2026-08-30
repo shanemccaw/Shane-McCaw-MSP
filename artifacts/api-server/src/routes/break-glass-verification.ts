@@ -39,6 +39,9 @@ import { requireAuth, assertCustomerAccess, type AuthUser } from "../middlewares
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "auth" });
 import { decryptSecret, encryptSecret } from "../lib/secret-crypto";
+// Type-only — the store is imported dynamically so the Azure SDK is not pulled
+// into this route's static module graph (#1911).
+import type { GeneratedSecretRef } from "../lib/generated-secret-store";
 import {
   graphWriteForTenant,
   sendMailViaGraph,
@@ -289,6 +292,53 @@ export function generateStrongPassword(): string {
   // 4 char classes guaranteed + entropy from random bytes.
   const rand = randomBytes(24).toString("base64").replace(/[^a-zA-Z0-9]/g, "");
   return `Bg9!${rand}`.slice(0, 28);
+}
+
+// ── Where a pending secret's plaintext actually lives (#1911) ────────────────
+// Key Vault is the store; `break_glass_pending_secrets.secret_ref` is the
+// pointer. `encrypted_value` is the gate's own encrypted copy — untouched by
+// #1911, and the fallback for rows written before the store existed.
+
+/**
+ * Resolve a pending secret to its plaintext for the reveal page. Returns null
+ * when neither source can produce it (purged, expired, or a row whose ciphertext
+ * was already emptied on delivery) — the caller must surface that, not an empty
+ * reveal box.
+ */
+async function resolvePendingSecretPlaintext(
+  secret: { id: number; encryptedValue: string; secretRef: unknown },
+): Promise<string | null> {
+  if (secret.secretRef != null) {
+    const { readGeneratedSecret } = await import("../lib/generated-secret-store");
+    const fromVault = await readGeneratedSecret(secret.secretRef as GeneratedSecretRef);
+    if (fromVault != null) return fromVault;
+    log.warn({ pendingSecretId: secret.id }, "break-glass: Key Vault reference did not resolve — falling back to the gate's encrypted copy");
+  }
+  if (!secret.encryptedValue) return null;
+  try {
+    return decryptSecret(secret.encryptedValue);
+  } catch (err) {
+    log.error({ err, pendingSecretId: secret.id }, "break-glass: failed to decrypt the gate's stored copy");
+    return null;
+  }
+}
+
+/**
+ * Remove the vault copy of a pending secret. Called on acknowledgement (the
+ * "purge on acknowledgement" the design promises the customer) and when an
+ * admin-override supersedes a secret that was never delivered.
+ */
+async function purgePendingSecretFromVault(
+  secret: { id: number; secretRef: unknown },
+  reason: string,
+): Promise<void> {
+  if (secret.secretRef == null) return;
+  try {
+    const { purgeGeneratedSecret } = await import("../lib/generated-secret-store");
+    await purgeGeneratedSecret(secret.secretRef as GeneratedSecretRef, `${reason} (pending secret ${secret.id})`);
+  } catch (err) {
+    log.warn({ err, pendingSecretId: secret.id }, "break-glass: vault purge failed (non-fatal — the orphan sweep is the backstop)");
+  }
 }
 
 const effectiveRoleOf = (user: AuthUser) => (user.role === "admin" ? "PlatformAdmin" : user.mspRole);
@@ -564,7 +614,25 @@ router.get("/public/break-glass/verify/callback", publicLimiter, async (req: Req
         return res.status(409).send(renderPage("Already delivered", `<h1>This credential has already been delivered</h1>`, branding));
       }
 
-      const plaintext = decryptSecret(secret.encryptedValue);
+      // #1911 — the store is Key Vault; the reference on this row is where the
+      // reveal reads from. `encryptedValue` remains the gate's own encrypted copy
+      // (deliberately unchanged, see #1911's constraints) and is the fallback for
+      // rows written before the store existed.
+      //
+      // This is the delivery path a customer's tenant admin is standing on. If
+      // the reference no longer resolves AND there is no ciphertext to fall back
+      // to, say so plainly rather than rendering an empty box — a secret that is
+      // safely stored and unreachable is a broken product, not a secure one.
+      const plaintext = await resolvePendingSecretPlaintext(secret);
+      if (plaintext == null) {
+        log.error(
+          { pendingSecretId: secret.id, runId: secret.runId, hasRef: secret.secretRef != null },
+          "break-glass: reveal could not resolve the credential from Key Vault or the gate's encrypted copy",
+        );
+        return res.status(409).send(renderPage("Unavailable",
+          `<h1>This credential is no longer available</h1>` +
+          `<p>It has expired or already been delivered. Ask your provider to issue a new one.</p>`, branding));
+      }
       // Reveal-once page (server-rendered so the plaintext never enters client
       // routing/history). Requires an explicit acknowledgment click to proceed.
       const ackBody =
@@ -662,6 +730,14 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
 
     // Purge: actually remove the ciphertext (column is NOT NULL → empty string),
     // mark delivered, and record who received it.
+    //
+    // #1911 — the store is Key Vault now, so purging the row's ciphertext alone
+    // would leave the real copy behind. Purge the vault secret too (delete AND
+    // purge — a soft-delete would keep it recoverable for the vault's 90-day
+    // retention, which is not what "permanently purges the stored copy" on the
+    // reveal page promises). The reference is kept on the row as the audit record
+    // of where it lived; it points at nothing after this.
+    await purgePendingSecretFromVault(secret, "delivered and acknowledged");
     await db.update(breakGlassPendingSecretsTable)
       .set({ status: "delivered_purged", encryptedValue: "", deliveredAt: new Date(), deliveredToEmail: attempt.invitedEmail })
       .where(eq(breakGlassPendingSecretsTable.id, pendingSecretId));
@@ -759,6 +835,26 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
       return res.status(502).json({ error: "Failed to reset the tenant credential", detail: write.errorType });
     }
 
+    // 1b. #1911 — the replacement is a generated credential on the write path
+    // exactly like the original, so it goes to Key Vault and the new row carries
+    // a reference. This runs AFTER the tenant reset succeeded, so a failed reset
+    // cannot leave a secret in the vault for a password the tenant never got.
+    // Fail-closed: if the store cannot take it, the override is refused rather
+    // than falling back to holding the credential only in the database.
+    const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("../lib/generated-secret-store");
+    let newSecretRef: GeneratedSecretRef | null = null;
+    if (generatedSecretStoreConfigured()) {
+      newSecretRef = await storeGeneratedSecret({
+        value: newPassword,
+        purpose: "break-glass",
+        customerId: ctx.secret.customerId,
+        runId: ctx.secret.runId,
+      });
+    } else {
+      req.log.error({ pendingSecretId }, "break-glass: admin-override cannot store the replacement credential — generated-secret store is not configured");
+      return res.status(503).json({ error: "The generated-credential store is not configured — the replacement was not issued" });
+    }
+
     // 2–4. Supersede old, insert new pending secret, write audit — in one tx.
     const oldPendingSecretId = pendingSecretId;
     let newPendingSecretId = 0;
@@ -771,6 +867,7 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
         runId: ctx.secret.runId,
         customerId: ctx.secret.customerId,
         encryptedValue: encryptSecret(newPassword),
+        secretRef: newSecretRef,
         gateNodeId: ctx.secret.gateNodeId,
         status: "pending_delivery",
       }).returning({ id: breakGlassPendingSecretsTable.id });
@@ -784,6 +881,12 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
         newPendingSecretId,
       });
     });
+
+    // 4b. #1911 — the superseded credential was never delivered and never will
+    // be, so its vault copy is an orphan the moment the new row exists. Purge it
+    // here rather than leaving it for the sweep: the run is still live (paused on
+    // the new secret), so the terminal-state purge will never see it.
+    await purgePendingSecretFromVault(ctx.secret, "superseded by admin-override reset");
 
     // 5. Repeated-override alert (only ever fires from here).
     await maybeFireOverrideAlert(ctx.secret.customerId, ctx.domain);

@@ -116,22 +116,250 @@ import { getPrompt, getDocumentStylePrefix } from "./prompt-loader";
 import { evaluateDocGateCoverage, type CoverageDecision } from "./doc-gate-coverage";
 import { persistSowPricing } from "./sow-pricing-persist.js";
 import { seedKanbanCardsForPhase } from "./kanban-phase-advance";
+// Type-only: the store itself is imported dynamically so the Azure SDK stays out
+// of the executor's static module graph (#1911).
+import type { GeneratedSecretRef } from "./generated-secret-store";
 
-// ── Sensitive payload redaction for node-input logging ───────────────────────
-// wf_run_node_outputs.input snapshots the full run payload at the moment a node
-// executes. That payload can carry secrets a break_glass_verification_gate is
-// about to consume/redact — but nodes execute (and log their input) before the
-// gate ever runs, so those keys would otherwise land in plaintext regardless of
-// the gate's own redactedPayload handling. Mirrors the gate's default field
-// names (see the break_glass_verification_gate case) so an input log can never
-// contain what the gate itself would have stripped.
-const SENSITIVE_PAYLOAD_KEYS = new Set(["generatedPassword", "breakGlassSecret", "breakGlassAccountId"]);
+// ── Sensitive payload redaction for persisted run rows ───────────────────────
+// `wf_run_node_outputs` snapshots the run payload as `input` and the node's own
+// result as `output`. Either can carry a secret a break_glass_verification_gate
+// is about to consume — and nodes execute (and persist) BEFORE the gate ever
+// runs, so the gate's own redactedPayload handling cannot save them.
+//
+// Git #1900 / #1911 — the previous version of this only deleted TOP-LEVEL keys
+// from `input`, and was never applied to `output` at all. Both halves leaked:
+//
+//   • `output` — the `start` node's output is literally `{ started: true,
+//     ...payload }`, so the generated Global Administrator password for a
+//     customer tenant was written to the audit trail verbatim, and stayed there
+//     for every run that failed before reaching the gate. All three known
+//     instances did.
+//   • `input`  — the engine accumulates each node's output back onto the payload
+//     under `steps.<nodeId>` / `nodes.<nodeId>`, so a top-level `delete` left
+//     nested copies of the same plaintext untouched one level down.
+//
+// So the redaction here is RECURSIVE, applied to input AND output, and works two
+// ways: by key name, and by value. The value pass is what covers ERROR payloads —
+// a failed Graph write surfaces as `{ error: String(err) }`, and an SDK error
+// string can echo the request body that contained the password. Error paths are
+// exactly the gap that produced #1900, since all three affected runs failed.
+const SENSITIVE_PAYLOAD_KEYS = new Set([
+  "generatedPassword",
+  "breakGlassSecret",
+  "breakGlassAccountId",
+  "password",
+  "newPassword",
+  "clientSecret",
+  // Graph returns the real app-registration secret in `secretText` on
+  // POST /applications/{id}/addPassword. Today's packs only ever read it back as
+  // null, but a pack that mints one would leak it the same way #1900 leaked the
+  // break-glass password.
+  "secretText",
+]);
 
+const REDACTED_SENTINEL = "[redacted]";
+
+/** Depth ceiling — a payload deep enough to hit this is malformed, and an
+ *  unbounded walk on a persistence path is its own hazard. */
+const REDACT_MAX_DEPTH = 12;
+
+/** Shorter strings are not credentials and scrubbing them by value would corrupt
+ *  legitimate run data (ids, statuses, short labels). */
+const MIN_SCRUBBABLE_SECRET_LENGTH = 8;
+
+/**
+ * Gather every secret VALUE reachable in a payload, so occurrences of it can be
+ * scrubbed out of free-text error messages elsewhere in the same row.
+ */
+function collectSecretValues(
+  value: unknown,
+  acc: Set<string> = new Set(),
+  depth = 0,
+  seen: WeakSet<object> = new WeakSet(),
+): Set<string> {
+  if (depth > REDACT_MAX_DEPTH || value == null || typeof value !== "object") return acc;
+  if (seen.has(value as object)) return acc;
+  seen.add(value as object);
+
+  if (Array.isArray(value)) {
+    for (const item of value) collectSecretValues(item, acc, depth + 1, seen);
+    return acc;
+  }
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (SENSITIVE_PAYLOAD_KEYS.has(key) && typeof child === "string" && child.length >= MIN_SCRUBBABLE_SECRET_LENGTH) {
+      acc.add(child);
+    }
+    collectSecretValues(child, acc, depth + 1, seen);
+  }
+  return acc;
+}
+
+function scrubSecretValuesFromString(text: string, secretValues: Set<string>): string {
+  let out = text;
+  for (const secret of secretValues) {
+    if (out.includes(secret)) out = out.split(secret).join(REDACTED_SENTINEL);
+  }
+  return out;
+}
+
+/**
+ * Recursively redact a value for PERSISTENCE. Never mutates its input — the
+ * in-memory run payload must keep the real secret so the tenant write it
+ * authorizes can still happen.
+ *
+ * A sensitive key holding a non-empty string becomes the sentinel; a sensitive
+ * key holding null/false/a number is left alone, so real scan results such as
+ * `"secretText": null` or `passwordExpirationDays: 90` survive intact.
+ */
+function redactSensitiveDeep<T>(
+  value: T,
+  secretValues: Set<string>,
+  depth = 0,
+  seen: WeakSet<object> = new WeakSet(),
+): T {
+  if (depth > REDACT_MAX_DEPTH) return REDACTED_SENTINEL as unknown as T;
+
+  if (typeof value === "string") {
+    return scrubSecretValuesFromString(value, secretValues) as unknown as T;
+  }
+  if (value == null || typeof value !== "object") return value;
+  if (seen.has(value as object)) return REDACTED_SENTINEL as unknown as T;
+  seen.add(value as object);
+
+  if (Array.isArray(value)) {
+    return value.map((item) => redactSensitiveDeep(item, secretValues, depth + 1, seen)) as unknown as T;
+  }
+  if (value instanceof Date) return value;
+
+  const out: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (SENSITIVE_PAYLOAD_KEYS.has(key) && typeof child === "string" && child.length > 0) {
+      out[key] = REDACTED_SENTINEL;
+      continue;
+    }
+    out[key] = redactSensitiveDeep(child, secretValues, depth + 1, seen);
+  }
+  return out as unknown as T;
+}
+
+/**
+ * The one entry point every persistence site uses. `payload` is the live run
+ * payload — it is read only to learn which VALUES are secret, so that a secret
+ * echoed into an unrelated free-text field of `value` is scrubbed too.
+ */
+function redactForPersistence<T>(value: T, payload?: Record<string, unknown>): T {
+  const secretValues = collectSecretValues(payload ?? {});
+  collectSecretValues(value as unknown, secretValues);
+  return redactSensitiveDeep(value, secretValues);
+}
+
+/** Back-compat name for the `input` snapshot — now deep, not top-level only. */
 function redactSensitivePayloadKeys(payload: Record<string, unknown>): Record<string, unknown> {
   if (payload == null || typeof payload !== "object") return payload;
-  const redacted = { ...payload };
-  for (const key of SENSITIVE_PAYLOAD_KEYS) delete redacted[key];
-  return redacted;
+  return redactForPersistence(payload, payload);
+}
+
+// ── Generated credentials: reference in the database, value in Key Vault ─────
+// Git #1911. `wf_runs.payload` carries `generatedSecretRefs` — a map of payload
+// field name → GeneratedSecretRef — in place of the values themselves. The
+// executor resolves them into the in-memory payload at run start, and purges them
+// from the vault when the run reaches a terminal state without having delivered
+// them (the case every one of #1900's three leaked runs was in).
+
+/** The payload key holding `{ <fieldName>: GeneratedSecretRef }`. */
+export const GENERATED_SECRET_REFS_FIELD = "generatedSecretRefs";
+
+// Guarded locally rather than via the store's own `isGeneratedSecretRef` so this
+// hot path never statically pulls the Azure SDK into the executor's module graph
+// — the store is imported dynamically, only when a run actually carries a ref.
+function isRefShape(value: unknown): value is GeneratedSecretRef {
+  if (value == null || typeof value !== "object") return false;
+  const r = value as Partial<GeneratedSecretRef>;
+  return r.kind === "azure-key-vault" && typeof r.secretName === "string";
+}
+
+function generatedSecretRefsOf(payload: Record<string, unknown>): Array<[string, GeneratedSecretRef]> {
+  const raw = payload[GENERATED_SECRET_REFS_FIELD];
+  if (raw == null || typeof raw !== "object") return [];
+  return Object.entries(raw as Record<string, unknown>)
+    .filter((entry): entry is [string, GeneratedSecretRef] => isRefShape(entry[1]));
+}
+
+/**
+ * Resolve every generated-credential reference on this payload into its real
+ * value, IN MEMORY ONLY. Mutates the passed payload deliberately — the caller's
+ * `payload` is the live run payload and must carry the real value onward to the
+ * node that performs the tenant write.
+ *
+ * A reference that no longer resolves (already purged, or expired past its TTL)
+ * leaves the field absent, which downstream nodes surface as a normal missing
+ * variable rather than as a silent write with a wrong password.
+ */
+async function rehydrateGeneratedSecrets(payload: Record<string, unknown>, runId: number): Promise<void> {
+  const refs = generatedSecretRefsOf(payload);
+  if (refs.length === 0) return;
+
+  const { readGeneratedSecret } = await import("./generated-secret-store");
+  for (const [field, ref] of refs) {
+    try {
+      const value = await readGeneratedSecret(ref);
+      if (value != null) {
+        payload[field] = value;
+      } else {
+        log.warn(
+          { runId, field, secretName: ref.secretName },
+          "wf-executor: generated credential reference no longer resolves — the field stays absent",
+        );
+      }
+    } catch (err) {
+      // Never interpolate anything but the NAME; an error here must not become
+      // a channel for the value.
+      log.error({ err, runId, field, secretName: ref.secretName }, "wf-executor: failed to resolve generated credential");
+    }
+  }
+}
+
+/**
+ * Purge the vault copy of every generated credential this run minted, once the
+ * run has reached a terminal state.
+ *
+ * `hasUndeliveredSecret` is what makes this safe: a run that PAUSED at the
+ * break-glass gate is not terminal, and a run whose secret is still awaiting
+ * tenant-admin delivery must keep it. Everything else — failed, cancelled, or
+ * completed without a pending delivery — is an orphan by definition, and #1900's
+ * three runs all died before the gate, so this is the normal path, not the edge.
+ */
+async function purgeGeneratedSecretsForTerminalRun(
+  payload: Record<string, unknown>,
+  runId: number,
+  reason: string,
+): Promise<void> {
+  const refs = generatedSecretRefsOf(payload);
+  if (refs.length === 0) return;
+
+  try {
+    const { purgeGeneratedSecret } = await import("./generated-secret-store");
+
+    const undelivered = await db
+      .select({ id: breakGlassPendingSecretsTable.id })
+      .from(breakGlassPendingSecretsTable)
+      .where(and(
+        eq(breakGlassPendingSecretsTable.runId, runId),
+        eq(breakGlassPendingSecretsTable.status, "pending_delivery"),
+      ))
+      .limit(1);
+    if (undelivered.length > 0) {
+      log.info({ runId }, "wf-executor: run terminal but a generated credential is still awaiting delivery — keeping it");
+      return;
+    }
+
+    for (const [field, ref] of refs) {
+      await purgeGeneratedSecret(ref, `${reason} (run ${runId}, field ${field})`);
+    }
+  } catch (err) {
+    log.warn({ err, runId }, "wf-executor: terminal-state generated-credential purge failed (non-fatal — the orphan sweep is the backstop)");
+  }
 }
 
 // ── Insights document generation helpers ─────────────────────────────────────
@@ -7230,7 +7458,7 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
             runId,
             nodeId: node.id,
             input: redactSensitivePayloadKeys(payload),
-            output,
+            output: redactForPersistence(output, payload),
             durationMs,
             status: "ok",
           }).catch(() => { });
@@ -7310,6 +7538,10 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           runId,
           customerId: gateCustomerId,
           encryptedValue: encryptSecret(plaintext),
+          // #1911 — carry the Key Vault reference through to the reveal path, so
+          // it reads from the store rather than only from the gate's own copy.
+          // Null when this credential predates the store or was minted without it.
+          secretRef: generatedSecretRefsOf(payload).find(([field]) => field === secretField)?.[1] ?? null,
           gateNodeId: node.id,
           status: "pending_delivery",
         }).returning();
@@ -7318,6 +7550,11 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // (the configured field plus any top-level keys referenced by secretTemplate)
         // so it never lands in wf_runs.payload or flows to downstream nodes. The
         // acknowledge endpoint reads this snapshot back to resume the run.
+        //
+        // `generatedSecretRefs` deliberately SURVIVES this strip: it is a pointer,
+        // not a secret, and the acknowledge/terminal paths need it to purge the
+        // vault copy. Rehydration only happens at run start, never on resume, so
+        // keeping it here cannot put the plaintext back on a resumed payload.
         const redactedPayload: Record<string, unknown> = { ...payload };
         delete redactedPayload[secretField];
         if (typeof node.data.secretTemplate === "string") {
@@ -7333,8 +7570,13 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
           redactedPayload.breakGlassAccountId = String(resolvedAccountId);
         }
 
+        // #1911 — the top-level `delete` above is not sufficient on its own: the
+        // engine accumulates each node's output back onto the payload under
+        // `steps.<nodeId>` / `nodes.<nodeId>`, so the start node's copy of the
+        // plaintext sat one level below the key that was deleted. Deep-redact
+        // before this reaches wf_runs.payload.
         await db.update(wfRunsTable)
-          .set({ status: "awaiting_approval", payload: redactedPayload })
+          .set({ status: "awaiting_approval", payload: redactForPersistence(redactedPayload, payload) })
           .where(eq(wfRunsTable.id, runId));
 
         // Redacted output only — never the plaintext.
@@ -7359,6 +7601,78 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         // tail so the secret can never leak into wf_run_node_outputs (full payload),
         // wf_node_output_samples, or the run payload spread.
         return { output, nextPayload: redactedPayload, cancelRun: false, nodeError: false, pauseForApproval: true };
+      }
+
+      // ── Generated-credential orphan sweep (#1911) ──────────────────────────
+      // A run that fails BEFORE the break-glass gate leaves its Key Vault secret
+      // with no one to deliver it and no gate to purge it. That is the normal
+      // case, not the exception — runs 30166, 30171 and 30301 all died there.
+      // The orchestrator and the executor's terminal path purge eagerly; this is
+      // the backstop that catches whatever those two missed (a process that died
+      // mid-run, a secret whose run id was never stamped, an expired TTL).
+      //
+      // It is a NODE, not a scheduler: every purge is a visible workflow run with
+      // an audit trail, per the platform's no-bare-schedulers rule.
+      //
+      //   node.data.dryRun        — report what WOULD be purged, purge nothing
+      //   node.data.unboundGraceMinutes — how old an unbound secret must be (60)
+      case "purge_orphaned_generated_secrets": {
+        const { generatedSecretStoreConfigured, findOrphanedGeneratedSecrets, purgeGeneratedSecretByName } =
+          await import("./generated-secret-store");
+
+        if (!generatedSecretStoreConfigured()) {
+          output = { skipped: true, reason: "generated-credential store is not configured" };
+          break;
+        }
+
+        const sweepDryRun = node.data.dryRun === true || dryRun;
+        const graceMinutes = Number(node.data.unboundGraceMinutes ?? 60);
+        const orphans = await findOrphanedGeneratedSecrets({
+          unboundGraceMs: (Number.isFinite(graceMinutes) && graceMinutes >= 0 ? graceMinutes : 60) * 60_000,
+          isRunLive: async (candidateRunId: number) => {
+            const [row] = await db
+              .select({ status: wfRunsTable.status })
+              .from(wfRunsTable)
+              .where(eq(wfRunsTable.id, candidateRunId))
+              .limit(1);
+            // A run we cannot find is NOT live — its secret has nothing to deliver
+            // to. A run that is pending/running/awaiting_approval still owns its
+            // credential and must keep it.
+            if (!row) return false;
+            return row.status === "pending" || row.status === "running" || row.status === "awaiting_approval";
+          },
+        });
+
+        let purged = 0;
+        const failed: string[] = [];
+        if (!sweepDryRun) {
+          for (const orphan of orphans) {
+            const ok = await purgeGeneratedSecretByName(orphan.secretName, `orphan sweep: ${orphan.reason}`);
+            if (ok) purged += 1;
+            else failed.push(orphan.secretName);
+          }
+        }
+
+        // Names and reasons only — an orphan report must never carry a value.
+        output = {
+          dryRun: sweepDryRun,
+          found: orphans.length,
+          purged,
+          failed,
+          orphans: orphans.map((o) => ({
+            secretName: o.secretName,
+            runId: o.runId,
+            customerId: o.customerId,
+            purpose: o.purpose,
+            reason: o.reason,
+            createdOn: o.createdOn,
+          })),
+        };
+        log.info(
+          { found: orphans.length, purged, failedCount: failed.length, dryRun: sweepDryRun },
+          "purge_orphaned_generated_secrets: sweep complete",
+        );
+        break;
       }
 
       // ── Exchange Calendar nodes ────────────────────────────────────────────
@@ -9161,14 +9475,24 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
   const durationMs = Date.now() - startMs;
   const status = nodeError ? "error" : "ok";
 
+  // #1900/#1911 — `output` is persisted verbatim into the run audit trail, and
+  // for a `start` node it IS the run payload (`{ started: true, ...payload }`).
+  // Redact by key AND by value, so both the plaintext field and any error string
+  // that echoed it are stripped before this row exists. Computed once and reused
+  // for the sample capture below, which is how two of the leaked rows were made.
+  const persistedOutput = redactForPersistence(output, payload);
+  const persistedErrorMessage = nodeError
+    ? redactForPersistence(String(output.error ?? "node error"), payload)
+    : null;
+
   await db.insert(wfRunNodeOutputsTable).values({
     runId,
     nodeId: node.id,
     input: redactSensitivePayloadKeys(payload),
-    output,
+    output: persistedOutput,
     durationMs,
     status,
-    errorMessage: nodeError ? (output.error as string ?? "node error") : null,
+    errorMessage: persistedErrorMessage,
   }).catch(() => { /* non-fatal */ });
 
   // ── Capture output sample for the variable picker ─────────────────────────
@@ -9181,6 +9505,11 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
   // Its handler returns early (above) so this is normally unreachable, but the
   // guard guarantees a sensitive value can never land in wf_node_output_samples
   // even if that early return is ever refactored away.
+  //
+  // That gate-only guard was not enough (#1911): the leak came through the START
+  // node, which is not the gate, so two `wf_node_output_samples` rows held the
+  // plaintext password too. The sample is now the same redacted value the audit
+  // row got — the variable picker only ever needed the SHAPE, never the secret.
   if (!nodeError && definitionId != null && node.type !== "break_glass_verification_gate") {
     const resolvedNodeType = (node.data?.actionType as string | undefined) ?? node.type;
     Promise.resolve().then(() =>
@@ -9188,14 +9517,14 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         definitionId,
         nodeId: node.id,
         nodeType: resolvedNodeType,
-        sample: output,
+        sample: persistedOutput,
         capturedAt: new Date(),
         sourceRunId: runId,
       }).onConflictDoUpdate({
         target: [wfNodeOutputSamplesTable.definitionId, wfNodeOutputSamplesTable.nodeId],
         set: {
           nodeType: resolvedNodeType,
-          sample: output,
+          sample: persistedOutput,
           capturedAt: new Date(),
           sourceRunId: runId,
         },
@@ -9325,10 +9654,12 @@ async function executeItemSubgraph(
         runId,
         nodeId: `${node.id}[${iterationIndex}]`,
         input: redactSensitivePayloadKeys(nodeInputPayload),
-        output,
+        output: redactForPersistence(output, nodeInputPayload),
         durationMs: null,
         status: nodeError ? "error" : "ok",
-        errorMessage: nodeError ? (output.error as string ?? "node error") : null,
+        errorMessage: nodeError
+          ? redactForPersistence(String(output.error ?? "node error"), nodeInputPayload)
+          : null,
       }).catch(() => { });
     }
 
@@ -9531,6 +9862,13 @@ async function executeWorkflowRunInner(
   const branchPath: string[] = [];
   let payload: Record<string, unknown> = { ...(run.payload as Record<string, unknown> ?? {}) };
 
+  // #1911 — a generated credential is NOT in `wf_runs.payload`; only a Key Vault
+  // reference is. Resolve those references into the IN-MEMORY payload now, so the
+  // tenant write this run authorizes still has the real value, while the database
+  // never held it at any point (an UPDATE would not have removed it from the
+  // audit trail — it was never written).
+  await rehydrateGeneratedSecrets(payload, runId);
+
   // Queue holds { nodeId, skip } — skip=true when all predecessors were skipped
   const readyQueue: Array<{ nodeId: string; skip: boolean }> = [];
 
@@ -9589,6 +9927,7 @@ async function executeWorkflowRunInner(
       if (cancelRun) {
         await db.update(wfRunsTable).set({ status: "cancelled", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
         await db.insert(wfRunNodeLogsTable).values({ runId, nodeId, level: "info", message: "Run cancelled" }).catch(() => { });
+        await purgeGeneratedSecretsForTerminalRun(payload, runId, "run cancelled");
         return;
       }
 
@@ -10319,8 +10658,14 @@ async function executeWorkflowRunInner(
 
     await db.update(wfRunsTable).set({ status: "completed", finishedAt: new Date(), branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
     log.info({ runId, steps: branchPath.length }, "wf-executor: run completed");
+    await purgeGeneratedSecretsForTerminalRun(payload, runId, "run completed");
   } catch (err) {
-    const errMsg = String(err);
+    // #1911 — the raw error string is persisted to wf_runs.error_message, to a
+    // node log, AND broadcast over SSE. An SDK error can echo the request body
+    // that carried the generated password, so it is scrubbed once, here, before
+    // any of those three see it. This is the exact path all of #1900's leaked
+    // runs took.
+    const errMsg = redactForPersistence(String(err), payload);
     // Broadcast phase_gen error to client SSE channel so the UI can show the escape hatch
     const rawPresId = payload.presentationId;
     const presId = typeof rawPresId === "number" ? rawPresId : typeof rawPresId === "string" ? parseInt(rawPresId, 10) : NaN;
@@ -10331,7 +10676,10 @@ async function executeWorkflowRunInner(
     await db.update(wfRunsTable).set({ status: "failed", finishedAt: new Date(), errorMessage: errMsg, branchPath: branchPath as unknown as string[] }).where(eq(wfRunsTable.id, runId));
     if (runId != null) broadcastWorkflowRunError(String(runId), errMsg);
     await db.insert(wfRunNodeLogsTable).values({ runId, nodeId: "__executor__", level: "error", message: `Executor error: ${errMsg}` }).catch(() => { });
-    log.warn({ runId, err }, "wf-executor: run failed");
+    // `err` is passed as a structured field, never interpolated — pino serialises
+    // the stack, and the message it carries has not been through the scrubber.
+    log.warn({ runId, errMsg }, "wf-executor: run failed");
+    await purgeGeneratedSecretsForTerminalRun(payload, runId, "run failed");
   }
 }
 

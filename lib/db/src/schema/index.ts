@@ -2872,6 +2872,9 @@ export interface WfNode {
     | "approval_gate"
     | "break_glass_verification_gate"
     | "report_progress"
+    // Generated-credential hygiene (#1911) — a visible engine node, not a
+    // background scheduler, so every purge is a run with an audit trail.
+    | "purge_orphaned_generated_secrets"
     // Calendar (Exchange Online via Microsoft Graph)
     | "check_exchange_calendar_availability"
     | "create_exchange_calendar_event"

@@ -26,7 +26,10 @@ import {
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
 import { generateStrongPassword } from "../routes/break-glass-verification";
-import { fireWorkflowForDefinition } from "./workflow-executor";
+import { fireWorkflowForDefinition, GENERATED_SECRET_REFS_FIELD } from "./workflow-executor";
+// Type-only — the store is imported dynamically so the Azure SDK is loaded only
+// on a run that actually mints a credential (#1911).
+import type { GeneratedSecretRef } from "./generated-secret-store";
 import { graphFetchForTenant } from "./graph";
 import {
   bindChangeRequestToRun,
@@ -49,6 +52,40 @@ import {
 } from "./config-pack-graph";
 
 export { ConfigPackError, type PackTemplateResolved } from "./config-pack-graph";
+
+// ── Generated credentials on the write path (#1911) ──────────────────────────
+// Every payload field this orchestrator MINTS a credential into. A field listed
+// here never reaches the database: it is stored in Key Vault and replaced by a
+// reference before the run payload is persisted.
+//
+// A repo-wide grep for credential generation (#1911) found six generators. Only
+// one of them mints a credential that is WRITTEN TO A CUSTOMER TENANT, which is
+// the class #1900 is about:
+//
+//   • generateStrongPassword (routes/break-glass-verification.ts) — IN SCOPE.
+//     Two call sites: here (the pack's break-glass account password,
+//     `GATE_SECRET_FIELD`) and the admin-override reset in that same route,
+//     which mints a replacement for an already-gated secret and stores it
+//     through this same path at its own call site.
+//
+// The other five are platform-local and already store only a one-way hash, so
+// none of them can leave a plaintext credential in the audit trail:
+//
+//   • the `Temp-…!9` reset passwords in routes/msp-settings.ts and
+//     routes/portal-team.ts — bcrypt-hashed into users.password_hash, returned
+//     to the caller once, never persisted in plaintext;
+//   • generateSixDigitCode in lib/purchase-account-flow.ts and
+//     routes/public-assessment-account.ts — bcrypt-hashed verification codes;
+//   • generateWebhookSecret in lib/webhook-delivery.ts — referenced only by its
+//     own test, so it mints nothing in production today.
+//
+// Add a field here if a new generator ever writes a credential to a tenant.
+const GENERATED_CREDENTIAL_FIELDS: string[] = [GATE_SECRET_FIELD];
+
+/** Field → the `purpose` tag its vault secret carries. */
+const GENERATED_CREDENTIAL_PURPOSES: Record<string, string> = {
+  [GATE_SECRET_FIELD]: "break-glass",
+};
 
 // ── Pack loading ───────────────────────────────────────────────────────────────
 
@@ -356,6 +393,12 @@ export async function prepareConfigPackRun(opts: {
   if (gatedTemplateId !== null || requiredVars.has(GATE_SECRET_FIELD)) {
     // Reuse the platform's single break-glass password generator; the gate's
     // secretField is wired to this exact key.
+    //
+    // #1911 — this value is IN-MEMORY ONLY. `prepareConfigPackRun` is also what
+    // the Buy flow's dry-run calls, and a dry-run must not mint a vault secret it
+    // will never deliver (that is an orphan on every preview). The real run stores
+    // it in Key Vault and swaps it for a reference before anything is persisted —
+    // see `persistGeneratedSecretsForRun` below.
     payload[GATE_SECRET_FIELD] = generateStrongPassword();
   }
 
@@ -483,8 +526,20 @@ export async function runConfigPackForCustomer(opts: {
   // From here a CR may already be CLAIMED (in_progress). Any failure before the
   // run is bound must RELEASE it so the approved CR can authorize a retry rather
   // than being stranded in_progress forever.
+  // #1911 — everything the vault holds for this run, so a failure between the
+  // store and a live run can purge rather than orphan it. Runs 30166, 30171 and
+  // 30301 all died in exactly this window.
+  const storedSecrets: Array<[string, GeneratedSecretRef]> = [];
+
   try {
+    // ── Generated credentials go to Key Vault; the payload carries a REFERENCE ──
+    // The in-memory `ctx.payload` keeps the real value (nothing here needs it, but
+    // it stays the single source for the run about to be fired); `persistedPayload`
+    // is what actually reaches `wf_runs.payload`, and it never holds the plaintext.
+    // The executor resolves the reference back into its own in-memory payload at
+    // run start, so the tenant write still happens with the real password.
     const payload = ctx.payload;
+    const persistedPayload = await persistGeneratedSecretsForRun(payload, customerId, storedSecrets);
 
     const { definitionId, versionId, reusedVersion } = await persistConfigPackWorkflow(packKey, pack.label, graph);
 
@@ -492,7 +547,7 @@ export async function runConfigPackForCustomer(opts: {
       definitionId,
       "manual",
       opts.triggeredBy ?? `config-pack:${packKey}:customer:${customerId}`,
-      payload,
+      persistedPayload,
       { versionId },
     );
 
@@ -501,6 +556,14 @@ export async function runConfigPackForCustomer(opts: {
         "concurrency_limit",
         `Run not started — the definition's concurrency limit is reached (another '${packKey}' run is in flight)`,
       );
+    }
+
+    // Stamp the run id onto each stored secret's tags now that it exists — this is
+    // what lets the orphan sweep correlate a vault secret with the run that owns
+    // it. Non-fatal; the sweep falls back to the age/expiry rule without it.
+    if (storedSecrets.length > 0) {
+      const { bindGeneratedSecretToRun } = await import("./generated-secret-store");
+      await Promise.all(storedSecrets.map(([, ref]) => bindGeneratedSecretToRun(ref, runId)));
     }
 
     // Cite the authorizing CR on the run it authorized. Its completion is what
@@ -573,6 +636,74 @@ export async function runConfigPackForCustomer(opts: {
         );
       });
     }
+    // #1911 — a run that never started must not leave a credential behind in the
+    // vault. This is the eager half of the cleanup; the executor's terminal-state
+    // purge covers a run that started and then failed, and the orphan-sweep node
+    // is the backstop for both.
+    if (storedSecrets.length > 0) {
+      const { purgeGeneratedSecret } = await import("./generated-secret-store");
+      for (const [field, ref] of storedSecrets) {
+        await purgeGeneratedSecret(ref, `config pack run never started (customer ${customerId}, field ${field})`);
+      }
+    }
     throw err;
   }
+}
+
+/**
+ * Swap every generated credential on a run payload for a Key Vault reference,
+ * returning the payload that is safe to PERSIST. The input payload is not
+ * mutated — the caller keeps the real values in memory.
+ *
+ * Fail-CLOSED: with no store configured this throws rather than falling back to
+ * writing the credential into the database. That fallback is precisely the
+ * behaviour #1900 recorded, and "the database must never hold the value at any
+ * point" is not satisfiable by a code path that quietly writes it when Azure is
+ * unreachable.
+ *
+ * Exported for #1911's own verification harness.
+ */
+export async function persistGeneratedSecretsForRun(
+  payload: Record<string, unknown>,
+  customerId: number,
+  storedSecrets: Array<[string, GeneratedSecretRef]> = [],
+): Promise<Record<string, unknown>> {
+  const generatedFields = GENERATED_CREDENTIAL_FIELDS.filter(
+    (field) => typeof payload[field] === "string" && (payload[field] as string).length > 0,
+  );
+  if (generatedFields.length === 0) return { ...payload };
+
+  const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("./generated-secret-store");
+  if (!generatedSecretStoreConfigured()) {
+    throw new ConfigPackError(
+      "generated_secret_store_unavailable",
+      "This pack generates a credential, and the generated-credential store is not configured "
+      + "(GENERATED_SECRET_VAULT_URL or AZURE_KEY_VAULT_URL, plus AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET). "
+      + "The run is refused rather than writing the credential to the database.",
+      { generatedFields },
+    );
+  }
+
+  const persisted: Record<string, unknown> = { ...payload };
+  const refs: Record<string, GeneratedSecretRef> = {
+    ...((payload[GENERATED_SECRET_REFS_FIELD] as Record<string, GeneratedSecretRef> | undefined) ?? {}),
+  };
+
+  for (const field of generatedFields) {
+    const ref = await storeGeneratedSecret({
+      value: payload[field] as string,
+      purpose: GENERATED_CREDENTIAL_PURPOSES[field] ?? "generated",
+      customerId,
+    });
+    storedSecrets.push([field, ref]);
+    refs[field] = ref;
+    delete persisted[field];
+  }
+
+  persisted[GENERATED_SECRET_REFS_FIELD] = refs;
+  log.info(
+    { customerId, fields: generatedFields, secretNames: storedSecrets.map(([, r]) => r.secretName) },
+    "config-pack-orchestrator: generated credentials stored in Key Vault — the run payload carries references only",
+  );
+  return persisted;
 }

@@ -86,7 +86,11 @@ export class ConfigPackError extends Error {
       | "concurrency_limit"
       // #1497 — Change Control gate: the write path was reached without an
       // approved, unconsumed CR that authorizes writing to the target tenant.
-      | "change_request_not_authorized",
+      | "change_request_not_authorized"
+      // #1911 — this pack mints a credential and the Key Vault store that must
+      // hold it is not configured. Fail closed: refusing the run is correct,
+      // writing the credential into the database instead is the bug #1900 filed.
+      | "generated_secret_store_unavailable",
     message: string,
     public readonly details?: Record<string, unknown>,
   ) {

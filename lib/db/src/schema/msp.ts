@@ -3795,6 +3795,26 @@ export const breakGlassPendingSecretsTable = pgTable("break_glass_pending_secret
   runId: integer("run_id").notNull().references((): AnyPgColumn => wfRunsTable.id),
   customerId: integer("customer_id").notNull(), // tenants.id — successor id-space after Phase 0 absorbed msp_customers; no FK by design (see Phase 7 audit)
   encryptedValue: text("encrypted_value").notNull(),
+  // Git #1911 — the Key Vault REFERENCE for this credential (vault url, secret
+  // name, immutable version, expiry). The vault is the store; this column is the
+  // pointer, and it is safe to persist and to show in an admin surface.
+  //
+  // The gate's own encrypted copy above is deliberately UNCHANGED: #1911 moves
+  // where the plaintext lives, it does not weaken the gate. The reveal path
+  // prefers this reference and falls back to `encryptedValue` for rows written
+  // before the store existed, and acknowledgement purges BOTH.
+  //
+  // Nullable: a row predating #1911, or one written while the store was
+  // unconfigured, simply has no reference.
+  secretRef: jsonb("secret_ref").$type<{
+    kind: "azure-key-vault";
+    vaultUrl: string;
+    secretName: string;
+    version: string | null;
+    expiresOn: string;
+    purpose: string;
+    customerId: number;
+  }>(),
   // The paused workflow node id, so the /acknowledge path can resume the run via
   // resumeWorkflowRun(runId, gateNodeId, ...). One pause per pending secret.
   gateNodeId: text("gate_node_id"),

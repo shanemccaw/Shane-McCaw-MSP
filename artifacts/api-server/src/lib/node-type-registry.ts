@@ -617,6 +617,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Pauses the run until a customer-tenant admin proves control via Microsoft OAuth and the break-glass secret is delivered — no AI",
   },
+  {
+    nodeType: "purge_orphaned_generated_secrets",
+    isAIDependent: false,
+    description: "Purges Key Vault credentials whose run is terminal, expired, or never bound to a run — no AI",
+  },
 
   // ── Marketing ───────────────────────────────────────────────────────────────
   {
