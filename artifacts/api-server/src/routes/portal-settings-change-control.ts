@@ -30,10 +30,13 @@
  * nothing on the approval path read; #1759 dropped it, resolving #1757 (which
  * proposed cross-validating the two stores) by deletion rather than by patch.
  *
- * ── `enforce_freeze_calendar` is CURRENT-unenforced ──────────────────────────
- * The policy column persists and round-trips, but nothing reads it: freeze
- * windows (#1500) are not built, so there is no calendar to enforce against.
- * It is deliberately not surfaced as a working control until #1500 lands.
+ * ── `enforce_freeze_calendar` IS now enforced (by #1500) ─────────────────────
+ * When #1759's scope was written, freeze windows (#1500) were unbuilt and this
+ * toggle read by nothing. #1500 has since landed: the CR-creation path in
+ * `routes/portal-change-control.ts` reads
+ * `portal_change_control_policy.enforce_freeze_calendar` (with `enabled`) and
+ * blocks a submit that lands inside an active freeze. This route still only
+ * persists the toggle; enforcement lives on the write path, as designed.
  *
  * ── Scoping ───────────────────────────────────────────────────────────────
  * `resolveCustomerId` off the JWT, identical to `portal-ownership.ts` — these
@@ -85,8 +88,8 @@ interface WireCcPolicy {
   readonly gated: Record<string, boolean>;
   readonly approvals: number;
   readonly separate: boolean;
-  /** CURRENT-unenforced (#1759): persists and round-trips, but no freeze
-   *  calendar (#1500) exists to enforce it against yet. */
+  /** Enforced by #1500's freeze windows on the CR write path; this route only
+   *  persists it. */
   readonly freeze: boolean;
   readonly emergency: boolean;
 }

@@ -19,8 +19,8 @@ export interface CcPolicy {
   readonly gated: Record<string, boolean>;
   readonly approvals: number;
   readonly separate: boolean;
-  /** CURRENT-unenforced (#1759): the toggle persists, but no freeze calendar
-   *  (#1500) exists to enforce it against yet. */
+  /** Enforced by #1500's freeze windows on the CR write path; the settings
+   *  page only persists it. */
   readonly freeze: boolean;
   readonly emergency: boolean;
 }
