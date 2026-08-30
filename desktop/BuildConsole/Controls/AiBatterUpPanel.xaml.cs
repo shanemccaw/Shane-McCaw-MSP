@@ -58,6 +58,9 @@ namespace BuildConsole.Controls
         public AiBatterUpPanel()
         {
             InitializeComponent();
+            // Shane, 2026-08-30 — replace DetailPane's default SQL/test-manifest actions
+            // sidebar with the linked-chat column (see IssueDetailView.RenderChatColumnAsync).
+            DetailPane.ShowChatInsteadOfActions = true;
         }
 
         /// <summary>

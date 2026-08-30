@@ -66,66 +66,119 @@
                 <ColumnDefinition Width="340" MinWidth="260"/>
             </Grid.ColumnDefinitions>
 
-            <ScrollViewer Grid.Column="0"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
-                          Padding="12">
-                <StackPanel x:Name="ContentPanel">
+            <DockPanel Grid.Column="0">
 
-                    <TextBlock x:Name="LoadingText"
-                               Text=""
-                               FontSize="12"
-                               Foreground="{StaticResource Subtext1Brush}"
-                               Visibility="Collapsed"/>
+                <!-- Shane, 2026-08-30 — "I should be able to respond to the issue and post
+                     a comment directly to it." Docked at the bottom (not inside the
+                     scrolling body/comments area below) so it stays put regardless of scroll
+                     position — a real compose box, not a read-only view. Posts via the new
+                     GitHubApiClient.AddIssueCommentAsync and appends the result to
+                     CommentsList immediately rather than waiting on a full reload. -->
+                <Border DockPanel.Dock="Bottom"
+                        Background="{StaticResource MantleBrush}"
+                        BorderBrush="{StaticResource Surface0Brush}"
+                        BorderThickness="0,1,0,0"
+                        Padding="10">
+                    <DockPanel>
+                        <Button x:Name="BtnPostComment"
+                                DockPanel.Dock="Right"
+                                Content="Post Comment"
+                                Padding="10,0"
+                                Margin="8,0,0,0"
+                                VerticalAlignment="Bottom"
+                                Background="{StaticResource BlueBrush}"
+                                Foreground="{StaticResource CrustBrush}"
+                                FontWeight="SemiBold"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Click="BtnPostComment_Click"/>
+                        <TextBox x:Name="CommentBox"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 MinHeight="52"
+                                 MaxHeight="120"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Background="{StaticResource Surface0Brush}"
+                                 Foreground="{StaticResource TextBrush}"
+                                 BorderBrush="{StaticResource Surface1Brush}"
+                                 BorderThickness="1"
+                                 Padding="6"
+                                 FontSize="12"/>
+                    </DockPanel>
+                </Border>
 
-                    <TextBlock x:Name="EpicLabel"
-                               Text="PARENT EPIC"
-                               FontSize="10"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource Subtext0Brush}"
-                               Margin="0,0,0,4"
-                               Visibility="Collapsed"/>
-                    <TextBlock x:Name="EpicText"
-                               FontSize="12"
-                               Margin="0,0,0,16"
-                               Visibility="Collapsed"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Padding="12">
+                    <StackPanel x:Name="ContentPanel">
 
-                    <TextBlock x:Name="BodyLabel"
-                               Text="DESCRIPTION"
-                               FontSize="10"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource Subtext0Brush}"
-                               Margin="0,0,0,4"
-                               Visibility="Collapsed"/>
-                    <RichTextBox x:Name="BodyText"
-                                 IsReadOnly="True"
-                                 IsDocumentEnabled="True"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 Margin="0,0,0,16"/>
+                        <TextBlock x:Name="LoadingText"
+                                   Text=""
+                                   FontSize="12"
+                                   Foreground="{StaticResource Subtext1Brush}"
+                                   Visibility="Collapsed"/>
 
-                    <TextBlock x:Name="CommentsLabel"
-                               Text="COMMENTS"
-                               FontSize="10"
-                               FontWeight="SemiBold"
-                               Foreground="{StaticResource Subtext0Brush}"
-                               Margin="0,0,0,4"
-                               Visibility="Collapsed"/>
+                        <TextBlock x:Name="EpicLabel"
+                                   Text="PARENT EPIC"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext0Brush}"
+                                   Margin="0,0,0,4"
+                                   Visibility="Collapsed"/>
+                        <TextBlock x:Name="EpicText"
+                                   FontSize="12"
+                                   Margin="0,0,0,16"
+                                   Visibility="Collapsed"/>
 
-                    <ItemsControl x:Name="CommentsList"/>
+                        <TextBlock x:Name="BodyLabel"
+                                   Text="DESCRIPTION"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext0Brush}"
+                                   Margin="0,0,0,4"
+                                   Visibility="Collapsed"/>
+                        <RichTextBox x:Name="BodyText"
+                                     IsReadOnly="True"
+                                     IsDocumentEnabled="True"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     Margin="0,0,0,16"/>
 
-                </StackPanel>
-            </ScrollViewer>
+                        <TextBlock x:Name="CommentsLabel"
+                                   Text="COMMENTS"
+                                   FontSize="10"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext0Brush}"
+                                   Margin="0,0,0,4"
+                                   Visibility="Collapsed"/>
+
+                        <ItemsControl x:Name="CommentsList"/>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
 
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="{StaticResource Surface0Brush}"/>
 
-            <ScrollViewer Grid.Column="2"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled"
-                          Background="{StaticResource MantleBrush}"
-                          Padding="10">
-                <StackPanel x:Name="ActionsPanel"/>
-            </ScrollViewer>
+            <!-- Shane, 2026-08-30 — this column shows one of two things, toggled by
+                 ShowChatInsteadOfActions: the original SQL-migration/test-manifest
+                 ActionsPanel (default, used by the Git Board's detail tabs), or — for
+                 Batter Up / AI Batter Up's document tabs — a live Claude.ai chat resolved
+                 by walking up the issue's parent-epic chain (see RenderChatColumn). Only
+                 one is ever visible; the other's content is simply not built. -->
+            <Grid Grid.Column="2">
+                <ScrollViewer x:Name="ActionsScroller"
+                              VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              Background="{StaticResource MantleBrush}"
+                              Padding="10">
+                    <StackPanel x:Name="ActionsPanel"/>
+                </ScrollViewer>
+
+                <Border x:Name="ChatColumnHost"
+                        Background="{StaticResource CrustBrush}"
+                        Visibility="Collapsed"/>
+            </Grid>
         </Grid>
 
         <!-- Empty state / sparse document overlay with Donald Duck in sailboat -->

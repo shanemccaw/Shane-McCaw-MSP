@@ -23,6 +23,16 @@ namespace BuildConsole.Controls
     {
         private const string Channel = "git-board.issue-detail";
         private int _requestId;
+        private int _currentNumber;
+
+        /// <summary>
+        /// Shane, 2026-08-30 — when true, LoadIssue renders a live Claude.ai chat in the
+        /// right column (see RenderChatColumnAsync) instead of the default SQL-migration/
+        /// test-manifest ActionsPanel. Used by Batter Up / AI Batter Up's document tabs;
+        /// the Git Board's own detail tabs leave this false and keep the original actions
+        /// sidebar unchanged.
+        /// </summary>
+        public bool ShowChatInsteadOfActions { get; set; }
 
         public IssueDetailView()
         {
@@ -32,6 +42,9 @@ namespace BuildConsole.Controls
         public async void LoadIssue(int number)
         {
             int myRequest = ++_requestId;
+            _currentNumber = number;
+            CommentBox.Text = "";
+            ChatColumnHost.Child = null;
 
             EmptyState.Visibility = Visibility.Collapsed;
             NumberBadgeText.Text = $"#{number}";
@@ -151,9 +164,21 @@ namespace BuildConsole.Controls
                     CommentsList.Items.Add(CreateCommentCard(comment, executedMigrations, latestTestRuns));
                 }
 
-                // Populate side ActionsPanel with extracted SQL scripts and Test Manifests
+                // Populate the right column — either the default SQL-migration/test-manifest
+                // actions sidebar, or (Batter Up / AI Batter Up) a live linked chat.
                 var commentBodies = comments.Select(c => c.Body ?? "");
-                RenderActionsColumn(ActionsPanel, issue.Body, commentBodies, executedMigrations, latestTestRuns);
+                if (ShowChatInsteadOfActions)
+                {
+                    ActionsScroller.Visibility = Visibility.Collapsed;
+                    ChatColumnHost.Visibility = Visibility.Visible;
+                    _ = RenderChatColumnAsync(number, myRequest);
+                }
+                else
+                {
+                    ActionsScroller.Visibility = Visibility.Visible;
+                    ChatColumnHost.Visibility = Visibility.Collapsed;
+                    RenderActionsColumn(ActionsPanel, issue.Body, commentBodies, executedMigrations, latestTestRuns);
+                }
 
                 LoadingText.Visibility = Visibility.Collapsed;
                 ActivityLog.Log(Channel, $"#{number}: loaded ({comments.Count} comment(s))");
@@ -164,6 +189,147 @@ namespace BuildConsole.Controls
                 LoadingText.Text = $"Couldn't load #{number}: {ex.Message}";
                 ActivityLog.Log(Channel, $"#{number}: load FAILED: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Shane, 2026-08-30 — "I should be able to respond to the issue and post a
+        /// comment directly to it." Posts via the real GitHub API and appends the
+        /// created comment to the thread immediately rather than waiting on a full
+        /// reload.
+        /// </summary>
+        private async void BtnPostComment_Click(object sender, RoutedEventArgs e)
+        {
+            string text = CommentBox.Text?.Trim() ?? "";
+            if (string.IsNullOrEmpty(text) || _currentNumber <= 0) return;
+
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat)
+            {
+                ToastEngine.Warning("Post Comment", "No GitHub PAT configured — set one in Settings.");
+                return;
+            }
+
+            int number = _currentNumber;
+            var originalContent = BtnPostComment.Content;
+            BtnPostComment.IsEnabled = false;
+            BtnPostComment.Content = "Posting…";
+            try
+            {
+                var client = new GitHubApiClient(settings.GitHubPat);
+                var created = await client.AddIssueCommentAsync(number, text);
+                if (_currentNumber != number) return; // switched issues mid-post — don't append to the wrong thread
+
+                CommentsList.Items.Add(CreateCommentCard(created));
+                CommentsLabel.Text = $"COMMENTS ({CommentsList.Items.Count})";
+                CommentsLabel.Visibility = Visibility.Visible;
+                CommentBox.Text = "";
+                ActivityLog.Log(Channel, $"#{number}: posted a comment ({text.Length} chars).");
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Post Comment", $"Couldn't post to #{number}: {ex.Message}");
+                ActivityLog.Log(Channel, $"#{number}: post comment FAILED: {ex.Message}");
+            }
+            finally
+            {
+                BtnPostComment.Content = originalContent;
+                BtnPostComment.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Shane, 2026-08-30 — "look at find the parent, all the way to the parent
+        /// Epic until you find the Epic with the chat associated." Walks
+        /// LeftSidebar.FindChatForIssue up the issue's own cached parent-epic chain
+        /// (LeftSidebar.BuildDetailIssue(n).ParentNumber) until a chat turns up or the
+        /// chain runs out (guards against a cycle with `seen`). Depends on the Git
+        /// Board having loaded at least once this session to populate that cache —
+        /// same dependency the existing parent-epic lookup above already has.
+        /// </summary>
+        private static (BuildConsole.Services.BoardChat Chat, int ResolvedAtNumber)? FindChatWalkingUpToEpic(MainWindow mw, int startNumber)
+        {
+            var seen = new System.Collections.Generic.HashSet<int>();
+            int? current = startNumber;
+            while (current.HasValue && seen.Add(current.Value))
+            {
+                var chat = mw.LeftSidebar.FindChatForIssue(current.Value);
+                if (chat != null && !string.IsNullOrWhiteSpace(chat.ClaudeUrl))
+                    return (chat, current.Value);
+                var issue = mw.LeftSidebar.BuildDetailIssue(current.Value);
+                current = issue?.ParentNumber;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Shane, 2026-08-30 — Batter Up / AI Batter Up's chat column. Resolves the
+        /// nearest chat via <see cref="FindChatWalkingUpToEpic"/>, embeds a real chat
+        /// WebView2 navigated to it, and pre-fills (never sends) "lets discuss Git
+        /// #&lt;n&gt;" via the same bt_prefill poll mechanism the "New Epic Chat" flow
+        /// already uses (MainWindow.EpicChatPrefillPollScript) — a fresh chat's SPA
+        /// composer can take several seconds to mount, so a fixed short delay isn't
+        /// reliable here; the poll script already handles that (~15s, 500ms interval).
+        /// </summary>
+        private async System.Threading.Tasks.Task RenderChatColumnAsync(int number, int myRequest)
+        {
+            ChatColumnHost.Child = new TextBlock
+            {
+                Text = "Looking for a linked chat…",
+                FontSize = 11.5,
+                Foreground = GetBrush("Subtext1Brush"),
+                Margin = new Thickness(16),
+                TextWrapping = TextWrapping.Wrap
+            };
+
+            if (Application.Current.MainWindow is not MainWindow mw) return;
+
+            // In-memory walk over LeftSidebar's already-cached board data — fast enough
+            // to run inline on the UI thread; those lists aren't safe to touch off it.
+            var found = FindChatWalkingUpToEpic(mw, number);
+            if (myRequest != _requestId) return; // superseded by a newer click
+            await System.Threading.Tasks.Task.Yield(); // keep this genuinely async for the awaits below
+
+            if (found == null)
+            {
+                ChatColumnHost.Child = new TextBlock
+                {
+                    Text = $"No chat linked to #{number}, its parent, or any ancestor epic yet.",
+                    FontSize = 11.5,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    Margin = new Thickness(16),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                return;
+            }
+
+            var (chat, resolvedAt) = found.Value;
+            ActivityLog.Log(Channel, resolvedAt == number
+                ? $"#{number}: chat resolved directly ({chat.Title})."
+                : $"#{number}: chat resolved via ancestor #{resolvedAt} ({chat.Title}).");
+
+            string prefillUrl = chat.ClaudeUrl
+                + (chat.ClaudeUrl.Contains('?') ? "&" : "?")
+                + "bt_prefill=" + Uri.EscapeDataString($"lets discuss Git #{number}");
+
+            var wv = new ChatSafeWebView2 { DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37) };
+            wv.NavigationCompleted += async (s, e) =>
+            {
+                if (!e.IsSuccess) return;
+                try { await wv.ExecuteScriptAsync(MainWindow.EpicChatPrefillPollScript); }
+                catch { }
+            };
+            bool navigated = false;
+            wv.Loaded += (s, e) =>
+            {
+                if (!navigated && wv.CoreWebView2 != null)
+                {
+                    navigated = true;
+                    wv.CoreWebView2.Navigate(prefillUrl);
+                }
+            };
+
+            if (myRequest != _requestId) return; // superseded while we were resolving
+            ChatColumnHost.Child = wv;
         }
 
         private Border CreateCommentCard(GitHubIssueComment comment, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)

@@ -2130,7 +2130,10 @@ namespace BuildConsole
         /// doesn't re-insert. Deliberately does NOT replicate the extension's
         /// renameCurrentChat step — Shane presses Enter himself (#922).
         /// </summary>
-        private const string EpicChatPrefillPollScript = @"
+        /// <summary>Shane, 2026-08-30 — internal (was private) so IssueDetailView's chat
+        /// column (Batter Up / AI Batter Up) can reuse this exact poll-and-insert script
+        /// on its own embedded WebView2 instead of reimplementing it.</summary>
+        internal const string EpicChatPrefillPollScript = @"
 (function () {
   try {
     var PARAM = 'bt_prefill';

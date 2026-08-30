@@ -546,6 +546,27 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Shane, 2026-08-30 — real `POST /issues/{n}/comments`, the write half of
+        /// <see cref="GetIssueCommentsAsync"/>: posts a comment directly from
+        /// IssueDetailView's new compose box instead of round-tripping through
+        /// github.com. Returns the created comment (GitHub's response body) so the
+        /// caller can append it to the thread immediately rather than waiting on a
+        /// full re-fetch.
+        /// </summary>
+        public async Task<GitHubIssueComment> AddIssueCommentAsync(int number, string body)
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, $"repos/{Owner}/{Repo}/issues/{number}/comments")
+            {
+                Content = JsonContent.Create(new { body }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+            var created = await res.Content.ReadFromJsonAsync<GitHubIssueComment>(JsonOpts);
+            if (created == null) throw new Exception("GitHub returned an empty response for the created comment.");
+            return created;
+        }
+
         /// <summary>Git #843 (Git Board Phase 5) — real `PATCH /issues/{n}` via the REST API, same PAT/HttpClient as every other direct GitHub call here.</summary>
         public async Task UpdateIssueAsync(int number, string title, string body)
         {
