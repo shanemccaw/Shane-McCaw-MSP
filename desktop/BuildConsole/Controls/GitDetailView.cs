@@ -467,6 +467,69 @@ namespace BuildConsole.Controls
                 _mainColumn.Children.Add(blockedBanner);
             }
 
+            // Git #1930 — the issue's real, current labels (already carried on GitIssue,
+            // no fetch needed — see the Labels doc-comment on GitIssue).
+            if (issue.Labels.Count > 0)
+            {
+                var labelsPanel = new WrapPanel { Margin = new Thickness(0, 0, 0, 10) };
+                foreach (var l in issue.Labels)
+                    labelsPanel.Children.Add(LabelChip(l.Name));
+                _mainColumn.Children.Add(labelsPanel);
+            }
+
+            // Git #1930 — real board status (project Status field) + Send to Batter Up
+            // action. Fetched in the background block below alongside comments/blocker,
+            // reusing GitHubApiClient's existing updateProjectV2ItemFieldValue mutation.
+            var boardStatusRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 14) };
+            var boardStatusText = new TextBlock
+            {
+                Text = "Board status: loading…",
+                FontSize = 11,
+                Foreground = GetBrush("Subtext1Brush"),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 10, 0),
+            };
+            boardStatusRow.Children.Add(boardStatusText);
+
+            string? boardItemId = null;
+            var batterUpBtn = new Button
+            {
+                Content = "→ Send to Batter Up",
+                FontSize = 11,
+                Padding = new Thickness(8, 3, 8, 3),
+                Cursor = Cursors.Hand,
+                IsEnabled = false,
+                Visibility = Visibility.Collapsed,
+                ToolTip = $"Move #{issue.IssueNumber} directly to Batter Up status on the project board",
+            };
+            int capturedIssueNumberForBatterUp = issue.IssueNumber;
+            batterUpBtn.Click += async (s, e) =>
+            {
+                if (string.IsNullOrEmpty(boardItemId)) return;
+                batterUpBtn.IsEnabled = false;
+                batterUpBtn.Content = "Moving…";
+                try
+                {
+                    var clickSettings = BuildConsoleSettings.Load();
+                    if (!clickSettings.HasGitHubPat)
+                        throw new InvalidOperationException("No GitHub PAT configured.");
+                    var clickClient = new GitHubApiClient(clickSettings.GitHubPat);
+                    await clickClient.SetProjectItemStatusAsync(boardItemId, GitHubApiClient.BatterUpPromoteOptionId);
+                    boardStatusText.Text = "Board status: Batter Up";
+                    batterUpBtn.Visibility = Visibility.Collapsed;
+                    ActivityLog.Log(Channel, $"issue #{capturedIssueNumberForBatterUp} sent to Batter Up");
+                }
+                catch (Exception ex)
+                {
+                    boardStatusText.Text = $"Board status: move to Batter Up FAILED ({ex.Message})";
+                    batterUpBtn.Content = "→ Send to Batter Up";
+                    batterUpBtn.IsEnabled = true;
+                    ActivityLog.Log(Channel, $"issue #{capturedIssueNumberForBatterUp} send-to-Batter-Up FAILED: {ex.Message}");
+                }
+            };
+            boardStatusRow.Children.Add(batterUpBtn);
+            _mainColumn.Children.Add(boardStatusRow);
+
             // Linked epic shown in a subtle call out box above the description.
             if (linkedEpicNumber.HasValue)
                 _mainColumn.Children.Add(LinkedEpicCard(linkedEpicNumber.Value, linkedEpicTitle));
@@ -520,6 +583,7 @@ namespace BuildConsole.Controls
                 List<GitHubIssueComment> comments = new();
                 GitHubIssueResult? blocker = null;
                 string? errorMsg = null;
+                GitHubApiClient.IssueBoardStatus? boardStatus = null;
 
                 if (!settings.HasGitHubPat)
                 {
@@ -532,9 +596,13 @@ namespace BuildConsole.Controls
                         var client = new GitHubApiClient(settings.GitHubPat);
                         var commentsTask = client.GetIssueCommentsAsync(issue.IssueNumber);
                         var blockerTask = client.GetOpenBlockedByAsync(issue.IssueNumber);
-                        await Task.WhenAll(commentsTask, blockerTask);
+                        // Git #1930 — real board status, same GraphQL client, run alongside
+                        // comments/blocker rather than blocking or being blocked by them.
+                        var boardStatusTask = client.GetIssueBoardStatusAsync(issue.IssueNumber);
+                        await Task.WhenAll(commentsTask, blockerTask, boardStatusTask);
                         comments = await commentsTask;
                         blocker = await blockerTask;
+                        boardStatus = await boardStatusTask;
                     }
                     catch (Exception ex)
                     {
@@ -576,6 +644,22 @@ namespace BuildConsole.Controls
                             else
                                 _mainColumn.Children.Add(blockedBanner);
                         }
+                    }
+
+                    // Git #1930 — real board status, resolved alongside comments/blocker above.
+                    if (boardStatus != null)
+                    {
+                        boardStatusText.Text = $"Board status: {boardStatus.StatusName ?? "(unknown option)"}";
+                        boardItemId = boardStatus.ItemId;
+                        bool alreadyBatterUp = string.Equals(boardStatus.OptionId, GitHubApiClient.BatterUpPromoteOptionId, StringComparison.OrdinalIgnoreCase);
+                        batterUpBtn.Visibility = alreadyBatterUp ? Visibility.Collapsed : Visibility.Visible;
+                        batterUpBtn.IsEnabled = true;
+                    }
+                    else
+                    {
+                        boardStatusText.Text = errorMsg != null
+                            ? "Board status: couldn't load"
+                            : "Board status: not on the project board";
                     }
 
                     _mainColumn.Children.Remove(loading);
@@ -732,6 +816,33 @@ namespace BuildConsole.Controls
                 Padding = new Thickness(9, 3, 9, 3),
                 Margin = new Thickness(0, 0, 6, 6),
                 Child = new TextBlock { Text = text, FontSize = 11, FontWeight = FontWeights.SemiBold, Foreground = GetBrush(brushKey) },
+            };
+        }
+
+        /// <summary>Git #1930 — a real GitHub label rendered as a small chip, matching the
+        /// rest of this view's pill visual language. Escalates a few known label names to
+        /// their existing brush (peach for in-flight/Shane To-Do, green for complete, red
+        /// for blocked); anything else falls back to a neutral subtext brush rather than
+        /// inventing a color scheme.</summary>
+        private Border LabelChip(string text)
+        {
+            string brushKey = text.ToLowerInvariant() switch
+            {
+                "in-flight" => "PeachBrush",
+                "shane to-do" => "PeachBrush",
+                "complete" => "GreenBrush",
+                "blocked" => "RedBrush",
+                _ => "Subtext1Brush",
+            };
+            return new Border
+            {
+                Background = GetBrush("MantleBrush"),
+                BorderBrush = GetBrush(brushKey),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(10),
+                Padding = new Thickness(9, 2, 9, 2),
+                Margin = new Thickness(0, 0, 6, 6),
+                Child = new TextBlock { Text = text, FontSize = 10, FontWeight = FontWeights.SemiBold, Foreground = GetBrush(brushKey) },
             };
         }
 

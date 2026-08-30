@@ -125,6 +125,7 @@ namespace BuildConsole
                     Status = string.Equals(detail.State, "closed", StringComparison.OrdinalIgnoreCase) ? "CLOSED" : "OPEN",
                     Body = detail.Body,
                     IsEpic = subs.Count > 0,
+                    Labels = detail.Labels,
                 };
                 ActivityLog.Log(GitDetailChannel, $"open #{number} by number: resolved via live fetch ({(gi.IsEpic ? "epic" : "issue")})");
                 OpenGitIssueDetailTab(gi, sideBySide);
