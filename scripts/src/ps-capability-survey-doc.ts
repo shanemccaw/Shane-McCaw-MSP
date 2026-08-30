@@ -107,13 +107,22 @@ async function main(): Promise<void> {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
   try {
+    // Without an explicit --run, the newest COMPLETED run is used, never merely
+    // the newest. A run that aborted part-way has a real, partial row set; if
+    // this document rendered one it would report every unreached cmdlet as
+    // absent, which reads as "doesn't work" — the false-negative table #1793
+    // exists to prevent.
     const { rows: runs } = await pool.query<RunRow>(
       runArg
         ? `SELECT * FROM ps_capability_survey_runs WHERE id = $1`
-        : `SELECT * FROM ps_capability_survey_runs ORDER BY started_at DESC LIMIT 1`,
+        : `SELECT * FROM ps_capability_survey_runs WHERE status = 'completed' ORDER BY started_at DESC LIMIT 1`,
       runArg ? [runArg] : [],
     );
-    if (runs.length === 0) throw new Error("no survey run found — run ps-capability-survey first");
+    if (runs.length === 0) {
+      throw new Error(
+        "no COMPLETED survey run found — run ps-capability-survey first, or pass --run <id> to render a specific (possibly incomplete) run",
+      );
+    }
     const run = runs[0];
 
     const { rows: results } = await pool.query<ResultRow>(

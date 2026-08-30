@@ -372,6 +372,15 @@ function Invoke-SurveyProbe {
             continue
         }
 
+        # Emitted BEFORE the cmdlet runs, on purpose. A cmdlet that hangs past
+        # the parent's child timeout gets its whole process killed, so its
+        # result never reaches the response — the only surviving evidence of
+        # which cmdlet it was is this line in the container's log stream (the
+        # parent relays child stderr onto its own stdout). Without it, a hang
+        # is only identifiable by bisecting the batch from the client side,
+        # which costs one full child timeout per halving.
+        Write-Log -Level "info" -Message "survey probing cmdlet" -Extra @{ session = $SessionType; cmdlet = $record.Name; index = ($skip + $processed) }
+
         $rows += (Invoke-SurveyCommandProbe -Record $record)
         $processed++
     }

@@ -91,6 +91,25 @@ type SessionType = (typeof SESSION_TYPES)[number];
 const INITIAL_TAKE = 60;
 const BUDGET_SECONDS = 150;
 
+/**
+ * The local api-server is restarted out from under this script routinely — the
+ * dev-server coordinator restarts it whenever ANY concurrent build completes,
+ * and a full survey runs for far longer than the gap between those. That is
+ * not a survey result about a cmdlet, and the first version of this script
+ * wrongly recorded it as one: 36 cmdlets landed as `error` whose real cause was
+ * "the api-server was down", which is precisely the false-negative table #1793
+ * warns is worse than no table.
+ *
+ * So a transport failure is now NEVER written as a row. It is retried, and if
+ * it never clears the run is failed honestly instead of completed with fiction.
+ */
+const UNREACHABLE_RETRY_ATTEMPTS = 60;
+const UNREACHABLE_RETRY_DELAY_MS = 15_000;
+
+class ApiServerUnreachableError extends Error {}
+
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 interface InventoryRow {
   Name: string;
   Verb: string | null;
@@ -197,6 +216,31 @@ async function callCmdlet<T>(cmdletKey: string, params: Record<string, unknown>)
 let observedOrganization: string | null = null;
 
 /**
+ * Wraps `callCmdlet` so a DOWN api-server is waited out rather than recorded.
+ * Only `unreachable` is retried — a real container failure (auth_failed,
+ * script_error, a killed child) is a genuine observation and is returned to the
+ * caller to be written as a row.
+ */
+async function callCmdletWaitingOutRestarts<T>(
+  cmdletKey: string,
+  params: Record<string, unknown>,
+): Promise<CmdletCall<T>> {
+  for (let attempt = 1; attempt <= UNREACHABLE_RETRY_ATTEMPTS; attempt++) {
+    const result = await callCmdlet<T>(cmdletKey, params);
+    if (result.ok || result.kind !== "unreachable") return result;
+    if (attempt === 1) {
+      console.warn(`  api-server unreachable — waiting for it to come back (this is a restart, not a cmdlet result)`);
+    }
+    await sleep(UNREACHABLE_RETRY_DELAY_MS);
+  }
+  throw new ApiServerUnreachableError(
+    `api-server at ${API_BASE_URL} stayed unreachable across ${UNREACHABLE_RETRY_ATTEMPTS} attempts ` +
+      `(~${Math.round((UNREACHABLE_RETRY_ATTEMPTS * UNREACHABLE_RETRY_DELAY_MS) / 60000)} minutes). ` +
+      `Refusing to record transport failures as per-cmdlet survey results.`,
+  );
+}
+
+/**
  * Maps a whole-batch failure onto the per-cmdlet outcome vocabulary. Used when
  * a batch dies as a unit (the container could not connect, or the child was
  * killed by its own timeout) — every cmdlet in that window inherits the
@@ -283,7 +327,7 @@ async function upsertResults(pool: pg.Pool, runId: number, rows: ResultRow[]): P
 async function surveySession(pool: pg.Pool, runId: number, sessionType: SessionType): Promise<void> {
   console.log(`\n=== ${sessionType} ===`);
 
-  const inventoryCall = await callCmdlet<{ TotalCommands: number; EligibleCount: number; Modules: { Name: string }[]; Rows: InventoryRow[] }>(
+  const inventoryCall = await callCmdletWaitingOutRestarts<{ TotalCommands: number; EligibleCount: number; Modules: { Name: string }[]; Rows: InventoryRow[] }>(
     `survey-list-commands-${sessionType}`,
     {},
   );
@@ -321,19 +365,25 @@ async function surveySession(pool: pg.Pool, runId: number, sessionType: SessionT
   let take = INITIAL_TAKE;
 
   while (skip < total) {
-    const batch = await callCmdlet<{ Processed: number; StoppedEarly: boolean; TotalCommands: number; Rows: ProbeRow[] }>(
+    const batch = await callCmdletWaitingOutRestarts<{ Processed: number; StoppedEarly: boolean; TotalCommands: number; Rows: ProbeRow[] }>(
       `survey-probe-${sessionType}`,
       { Skip: skip, Take: take, BudgetSeconds: BUDGET_SECONDS },
     );
 
     if (!batch.ok) {
-      // Bisect. A batch can die as a unit because ONE cmdlet in it hung past
-      // the container's child timeout; halving isolates that cmdlet instead of
-      // writing off the whole window. At Take=1 the offender is named exactly.
+      // A batch dies as a unit when ONE cmdlet in it hangs past the container's
+      // child timeout — the child is killed, so every result in that window is
+      // lost, including the ones that had already succeeded.
+      //
+      // Drop straight to take=1 rather than halving. Halving costs one FULL
+      // child timeout (200s) per step and needs ~log2(take) of them before the
+      // window is narrow enough to exclude the offender; walking forward at
+      // take=1 and ramping back up on each success costs one cheap round trip
+      // per command instead, and names the offender exactly when the
+      // batch-of-one is the one that dies.
       if (take > 1) {
-        const nextTake = Math.max(1, Math.floor(take / 2));
-        console.warn(`  batch ${skip}..${skip + take - 1} failed (${batch.kind}); bisecting to take=${nextTake}`);
-        take = nextTake;
+        console.warn(`  batch ${skip}..${skip + take - 1} failed (${batch.kind}); dropping to take=1 to isolate`);
+        take = 1;
         continue;
       }
       // The container's window is the SAME deterministically sorted inventory
@@ -356,7 +406,8 @@ async function surveySession(pool: pg.Pool, runId: number, sessionType: SessionT
         },
       ]);
       skip += 1;
-      take = INITIAL_TAKE;
+      // Stay at 1 and ramp back up on success (below) — the next command could
+      // hang too, and jumping straight back to 60 would re-pay a full timeout.
       continue;
     }
 
@@ -398,7 +449,8 @@ async function surveySession(pool: pg.Pool, runId: number, sessionType: SessionT
       continue;
     }
     skip += payload.Processed;
-    take = INITIAL_TAKE;
+    // Geometric ramp back to the full batch size after an isolation walk.
+    take = Math.min(INITIAL_TAKE, Math.max(1, take) * 2);
   }
 }
 
@@ -449,8 +501,21 @@ async function main(): Promise<void> {
       console.log(`survey run #${runId}`);
     }
 
-    for (const sessionType of sessions) {
-      await surveySession(pool, runId, sessionType);
+    try {
+      for (const sessionType of sessions) {
+        await surveySession(pool, runId, sessionType);
+      }
+    } catch (err) {
+      // A run that could not finish is marked `failed`, never left looking
+      // complete. A partially-populated run silently read as the full picture
+      // is the exact way a capability table starts asserting false negatives.
+      const note = err instanceof ApiServerUnreachableError ? err.message : `run aborted: ${String(err)}`;
+      await pool.query(
+        `UPDATE ps_capability_survey_runs SET status = 'failed', completed_at = now(), notes = $2 WHERE id = $1`,
+        [runId, note],
+      );
+      console.error(`\nrun #${runId} marked FAILED: ${note}`);
+      throw err;
     }
 
     await pool.query(
