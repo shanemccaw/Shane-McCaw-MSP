@@ -86,6 +86,10 @@ namespace BuildConsole.Controls
         /// <summary>Opens or focuses the Claude chat that created this Build Queue item.</summary>
         public event EventHandler<QueueItem>? QueueItemChatRequested;
         public event EventHandler<int>? EpicSubIssueClicked;
+        /// <summary>Git #1994 — "Open Git #N" card context-menu item: reuses MainWindow's
+        /// existing OpenGitDetailByNumberAsync (focus-or-fetch, no second issue-opening path).
+        /// Tuple carries the real GitHub number plus whether to open it side-by-side.</summary>
+        public event EventHandler<(int Number, bool SideBySide)>? OpenGitIssueRequested;
         public event EventHandler? FullGitRefreshRequested;
         /// <summary>Git #1636 — fires exactly once, the moment every build in a Priority-marked
         /// build set reaches a terminal state. See <see cref="CheckPriorityBuildSetCompletion"/>.</summary>
@@ -3879,6 +3883,24 @@ namespace BuildConsole.Controls
                 cm.Items.Add(miRetry);
 
                 cm.Items.Add(BuildParkAnyMenuItem(item));
+            }
+
+            // Git #1994 — every state falls through to here, so this appears on queued,
+            // running, verifying, parked, limit-paused, capped, failed and done cards alike.
+            // Hidden (not disabled) for a --notGit local build, whose GithubNumber is either
+            // null (never set) or a negative local sentinel (see FormatRef) — neither is a
+            // real GitHub issue to open. Reuses MainWindow.OpenGitDetailByNumberAsync, which
+            // already focuses an existing tab instead of duplicating it.
+            if (item.GithubNumber is int ghNum && ghNum > 0)
+            {
+                cm.Items.Add(new Separator());
+                var miOpenGit = new MenuItem { Header = $"🔗 Open Git #{ghNum}" };
+                miOpenGit.Click += (_, _) => OpenGitIssueRequested?.Invoke(this, (ghNum, false));
+                cm.Items.Add(miOpenGit);
+
+                var miOpenGitSide = new MenuItem { Header = $"🔗 Open Git #{ghNum} (side-by-side)" };
+                miOpenGitSide.Click += (_, _) => OpenGitIssueRequested?.Invoke(this, (ghNum, true));
+                cm.Items.Add(miOpenGitSide);
             }
 
             // Always-available: the local (--notGit) build-id registry — every letter id

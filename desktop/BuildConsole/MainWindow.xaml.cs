@@ -732,6 +732,8 @@ namespace BuildConsole
                     logChannel: "build-queue.rollup-send-to-chat",
                     whatSingular: "landed list");
             BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
+            // Git #1994 — Build Queue card's "Open Git #N" context-menu item.
+            BuildQueuePanel.OpenGitIssueRequested += async (s, req) => await OpenGitDetailByNumberAsync(req.Number, req.SideBySide);
             // Git #1836 — this used to call LeftSidebar.PopulateGitTrackerBoard(forceFresh:
             // true) directly, bypassing the disable-button + critter-strip feedback that
             // Git Board's own refresh button (BtnRefreshGitBoard_Click) shows for the exact
