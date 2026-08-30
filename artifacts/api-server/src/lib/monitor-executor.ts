@@ -1501,6 +1501,24 @@ export function isIntuneServiceNotConfiguredError(endpoint: string, status: numb
   return false;
 }
 
+// ── "No company branding configured" detection (Git #1786) ─────────────────────
+// GET /organization/{id}/branding 404s with Request_ResourceNotFound when the
+// tenant has never set up Company Branding under Entra ID — a documented
+// Microsoft Graph quirk, not a permission or endpoint bug: the org itself
+// exists (that's the same {id} in the error body), the branding NAVIGATION
+// PROPERTY just has nothing behind it yet. Confirmed live on the testbed
+// (run 6083e510, platform:branding-config, 2026-08-30) — the exact error is
+// `Request_ResourceNotFound` naming the tenant's own GUID as the missing
+// resource. Same shape as the existing Intune "never configured" precedent
+// above: an honest, renderable "not configured" state, not a fault.
+const BRANDING_ENDPOINT_PREFIX = "/organization/";
+
+export function isBrandingNotConfiguredError(endpoint: string, status: number, body: string): boolean {
+  if (!endpoint.startsWith(BRANDING_ENDPOINT_PREFIX) || !endpoint.endsWith("/branding")) return false;
+  if (status !== 404) return false;
+  return body.includes('"code":"Request_ResourceNotFound"');
+}
+
 export async function graphFetchPaginated(
   tenantId: string,
   endpoint: string,
@@ -1581,6 +1599,16 @@ export async function graphFetchPaginated(
           "monitor-executor: Intune backend returned a known 'MDM never configured' signature (#487) — treating as a real ok result with zero devices/policies, not an error",
         );
         if (pageCount === 0) rawResponse = { value: [], _intuneNotConfigured: true };
+        pageCount++;
+        url = "";
+        continue;
+      }
+      if (isBrandingNotConfiguredError(resolvedEndpoint, res.status, text)) {
+        log.info(
+          { tenantId, endpoint: resolvedEndpoint, status: res.status },
+          "monitor-executor: tenant has no company branding configured (Git #1786) — treating as a real ok result with zero branding, not an error",
+        );
+        if (pageCount === 0) rawResponse = { value: [], _brandingNotConfigured: true };
         pageCount++;
         url = "";
         continue;
@@ -2358,12 +2386,20 @@ async function runFanOutCheck(opts: {
     if (sampleErrors.length < FAN_OUT_SAMPLE_ERROR_LIMIT) sampleErrors.push({ itemId, message });
   };
 
-  // Stop early on consent (auth-level, tenant-fatal) or on a license gap while
-  // nothing has succeeded yet (a tenant-wide missing SKU — no point hammering
-  // every remaining group to re-learn the tenant lacks the add-on).
+  // Stop early on consent (auth-level, tenant-fatal) or on a PURE license gap
+  // signal — every outcome so far is a license gap, none are a generic
+  // failure — while nothing has succeeded yet (a tenant-wide missing SKU, no
+  // point hammering every remaining group to re-learn it). Git #1786: this
+  // used to bail on `licenseErr && succeeded === 0` alone, which also fires
+  // on a MIXED first batch (e.g. 1 real license_gap + 3 unrelated transient
+  // "fetch failed" errors) — confirmed live on identity:pim-groups, where it
+  // silently abandoned 100 of 104 groups after one bad batch and reported the
+  // whole check as `error` even though the license-gap signal was not clean.
+  // Requiring `failed === 0` matches the "pure" signal the post-loop
+  // short-circuit throw below already uses, so the two conditions agree.
   for (
     let i = 0;
-    i < entries.length && !consentErr && !(licenseErr && succeeded === 0);
+    i < entries.length && !consentErr && !(licenseErr && succeeded === 0 && failed === 0);
     i += FAN_OUT_CONCURRENCY
   ) {
     const batch = entries.slice(i, i + FAN_OUT_CONCURRENCY);

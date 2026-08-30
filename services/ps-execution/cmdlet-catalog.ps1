@@ -405,17 +405,27 @@ $script:CmdletCatalog = @{
     # pick (flagged, same as the DLP "weak" bar above) for what counts as
     # "near quota", not a Microsoft-defined cutoff.
     "get-mailbox-quota-utilization" = @{
+        # Git #1786: was throwing "You cannot call a method on a null-valued
+        # expression" on live tenant data (confirmed via the container's own
+        # Log Analytics trace, not a guess). Root cause: ProhibitSendQuota and
+        # TotalItemSize are both Microsoft.Exchange.Data.Unlimited<T> — the
+        # correct not-unlimited test is the type's own `.IsUnlimited` bool,
+        # not a string-match against `.ToString() -ne "Unlimited"` (fragile —
+        # observed to pass that string check on at least one real mailbox
+        # whose `.Value` was nonetheless null). `.Value` is guarded again
+        # right before `.ToBytes()` as defense in depth, so a genuinely null
+        # value degrades to $null output instead of throwing.
         Script = {
             Get-Mailbox -ResultSize Unlimited -RecipientTypeDetails UserMailbox, SharedMailbox |
                 ForEach-Object {
                     $mbx = $_
                     $prohibitBytes = $null
-                    if ($mbx.ProhibitSendQuota -and $mbx.ProhibitSendQuota.ToString() -ne "Unlimited") {
+                    if ($mbx.ProhibitSendQuota -and -not $mbx.ProhibitSendQuota.IsUnlimited -and $null -ne $mbx.ProhibitSendQuota.Value) {
                         $prohibitBytes = $mbx.ProhibitSendQuota.Value.ToBytes()
                     }
                     $stats = Get-MailboxStatistics -Identity $mbx.Identity -ErrorAction SilentlyContinue
                     $usedBytes = $null
-                    if ($stats -and $stats.TotalItemSize) {
+                    if ($stats -and $stats.TotalItemSize -and -not $stats.TotalItemSize.IsUnlimited -and $null -ne $stats.TotalItemSize.Value) {
                         $usedBytes = $stats.TotalItemSize.Value.ToBytes()
                     }
                     $utilizationPercent = $null
