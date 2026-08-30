@@ -103,7 +103,7 @@ export type RunStatus = "pending" | "running" | "completed" | "failed";
 /** `CheckResult` from monitor-executor.ts. */
 export interface CheckResult {
   checkKey: string;
-  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial";
+  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial" | "service_not_configured";
   extractedProperties: Record<string, unknown>;
   severityMatched: string | null;
   severityLabel?: string | null;

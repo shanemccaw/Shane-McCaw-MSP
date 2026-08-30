@@ -47,6 +47,22 @@ vi.mock("@workspace/db", () => ({
   monitoringPackageChecksTable: {},
   tenantMonitorProfilesTable: {},
   tenantsTable: {},
+  // #1847 — service-availability.ts reads the tenant's /subscribedSkus collection
+  // and writes the tenant-level service row. The db mock above returns no rows, so
+  // the entitlement resolves "unknown" and the verdict falls back to the wire
+  // signature alone — which is exactly the branch these tests want to pin.
+  tenantCheckItemDetailsTable: {},
+  tenantServiceAvailabilityTable: {},
+  TENANT_SERVICE_KEYS: ["intune"],
+  TENANT_SERVICE_STATES: [
+    "available",
+    "not_licensed",
+    "not_configured",
+    "permission_denied",
+    "service_outage",
+    "unknown",
+  ],
+  TENANT_SERVICE_EVIDENCE_BASIS: ["wire-signature", "service-plan", "combined"],
 }));
 
 vi.mock("../graph", () => ({
@@ -1425,7 +1441,18 @@ describe("graphFetchPaginated", () => {
       .rejects.toThrow(/non-JSON body/);
   });
 
-  // ── #487 — Intune "MDM never configured" — treated as a real ok/empty result ──
+  // ── #487 signatures, #1847 semantics ────────────────────────────────────────
+  //
+  // These three signatures used to resolve to `{ items: [], rawResponse: { value:
+  // [], _intuneNotConfigured: true } }` — i.e. the check landed as `status: 'ok',
+  // item_count: 0`, a measured zero reported for something never measured. #1847
+  // makes the state first-class instead: the fetch layer throws
+  // ServiceNotConfiguredError, the executor classifies it as its own status, and the
+  // tenant-level fact is recorded once.
+  //
+  // The db mock returns no rows, so `readIntuneEntitlement` finds no /subscribedSkus
+  // collection and honestly reports `unknown` — which pins the wire-signature-only
+  // branch of `resolveIntuneServiceState`.
 
   function errRes(status: number, body: string) {
     return { ok: false, status, text: async () => body };
@@ -1440,29 +1467,49 @@ describe("graphFetchPaginated", () => {
   const IIS_503_BODY =
     '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">\r\n<HTML><HEAD><TITLE>Service Unavailable</TITLE></HEAD>\r\n<BODY><h2>Service Unavailable</h2>\r\n<hr><p>HTTP Error 503. The service is unavailable.</p>\r\n</BODY></HTML>\r\n';
 
-  it("treats the DeviceFE/StatelessDeviceFEService 401 as a real ok/empty result on a managedDevices endpoint", async () => {
+  it("raises a tenant-level service state for the DeviceFE/StatelessDeviceFEService 401, never an empty result", async () => {
     mockFetch.mockResolvedValue(errRes(401, DEVICE_FE_FORBIDDEN_BODY));
 
-    const result = await graphFetchPaginated("tenant1", "/deviceManagement/managedDevices", "GET");
-    expect(result.items).toEqual([]);
-    expect(result.pageCount).toBe(1);
-    expect(result.rawResponse).toEqual({ value: [], _intuneNotConfigured: true });
+    await expect(graphFetchPaginated("tenant1", "/deviceManagement/managedDevices", "GET"))
+      .rejects.toMatchObject({
+        name: "ServiceNotConfiguredError",
+        serviceKey: "intune",
+        state: "not_configured",
+        detectionSignature: "intune-legacy-devicefe-401",
+        httpStatus: 401,
+      });
   });
 
-  it("treats the windowsAutopilotDeploymentProfiles 'segment not found' 400 as a real ok/empty result", async () => {
+  it("raises a tenant-level service state for the windowsAutopilotDeploymentProfiles 'segment not found' 400", async () => {
     mockFetch.mockResolvedValue(errRes(400, AUTOPILOT_SEGMENT_BODY));
 
-    const result = await graphFetchPaginated("tenant1", "/deviceManagement/windowsAutopilotDeploymentProfiles", "GET");
-    expect(result.items).toEqual([]);
-    expect(result.rawResponse).toEqual({ value: [], _intuneNotConfigured: true });
+    await expect(graphFetchPaginated("tenant1", "/deviceManagement/windowsAutopilotDeploymentProfiles", "GET"))
+      .rejects.toMatchObject({
+        name: "ServiceNotConfiguredError",
+        serviceKey: "intune",
+        detectionSignature: "intune-segment-unresolved-400",
+      });
   });
 
-  it("treats a raw IIS 'Service Unavailable' 503 on an Intune endpoint as a real ok/empty result", async () => {
+  it("raises a tenant-level service state for a raw IIS 'Service Unavailable' 503 on an Intune endpoint", async () => {
     mockFetch.mockResolvedValue(errRes(503, IIS_503_BODY));
 
-    const result = await graphFetchPaginated("tenant1", "/deviceAppManagement/managedAppPolicies", "GET");
-    expect(result.items).toEqual([]);
-    expect(result.rawResponse).toEqual({ value: [], _intuneNotConfigured: true });
+    await expect(graphFetchPaginated("tenant1", "/deviceAppManagement/managedAppPolicies", "GET"))
+      .rejects.toMatchObject({
+        name: "ServiceNotConfiguredError",
+        serviceKey: "intune",
+        detectionSignature: "intune-backend-iis-503",
+      });
+  });
+
+  // #1847's own evidence includes a 503 from the BARE /deviceManagement root, which
+  // the pre-#1847 `"/deviceManagement/"` prefix (trailing slash) did not match — so
+  // the root's refusal fell through to a generic error.
+  it("matches the bare /deviceManagement root, not just paths beneath it", async () => {
+    mockFetch.mockResolvedValue(errRes(503, IIS_503_BODY));
+
+    await expect(graphFetchPaginated("tenant1", "/deviceManagement", "GET"))
+      .rejects.toMatchObject({ name: "ServiceNotConfiguredError", serviceKey: "intune" });
   });
 
   it("does NOT swallow the same 401/400/503 signatures on a non-Intune endpoint", async () => {

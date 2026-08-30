@@ -53,7 +53,7 @@
 export type PiiSignalSeverity = "High" | "Medium" | "Low";
 
 /** The real status of a backing check's most-recent collection for a tenant. */
-export type PiiCoverageStatus = "ok" | "error" | "license_gap" | "not_collected";
+export type PiiCoverageStatus = "ok" | "error" | "license_gap" | "service_not_configured" | "not_collected";
 
 /**
  * One backing check's static description. The `namesField` is the mapping
@@ -215,6 +215,14 @@ function reasonFor(row: PiiCheckRow): string | null {
       ? `Requires a licence: ${feature.trim()}`
       : "Requires a Microsoft licence this tenant does not have.";
   }
+  // #1847 — the Microsoft service behind the check is not stood up on this tenant.
+  // The executor already wrote the one authored sentence for that fact onto the row.
+  if (row.status === "service_not_configured") {
+    const msg = (row.errorMessage ?? "").trim();
+    return msg !== ""
+      ? msg
+      : "The Microsoft service this check reads is not set up on this tenant.";
+  }
   if (row.status === "error") {
     const msg = (row.errorMessage ?? "").trim();
     return msg !== "" ? msg : "The compliance scan could not complete for this tenant.";
@@ -226,6 +234,10 @@ function coverageStatus(rawStatus: string): PiiCoverageStatus {
   const s = rawStatus.trim().toLowerCase();
   if (s === "ok") return "ok";
   if (s === "license_gap") return "license_gap";
+  // #1847 — must not fall through to "error": a service that was never stood up is
+  // not a failed scan, and rendering it red is the platform blaming itself (or the
+  // customer) for a condition that is simply a fact about the tenant.
+  if (s === "service_not_configured") return "service_not_configured";
   return "error";
 }
 

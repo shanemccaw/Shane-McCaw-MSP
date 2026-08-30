@@ -48,6 +48,8 @@ interface ConfigResource {
   permissionSource: string | null;
   permissionPathMatched: string | null;
   requiredRoles: string[];
+  /** #1847 — which Microsoft service must be stood up for this resource to answer. */
+  serviceKey: string | null;
   availability: string;
   availabilityReason: string | null;
   missingPermissions: string[];
@@ -95,7 +97,38 @@ interface ResourceSample {
   observedAt: string;
 }
 
+/**
+ * Git #1847 — the per-tenant SERVICE-availability half of the model.
+ *
+ * `availability` above answers "do we hold the scope". This answers "will the service
+ * answer at all", which is a different fact and was previously not carried anywhere:
+ * on the reconciliation tenant, hundreds of `/deviceManagement*` rows read
+ * `available_now` on granted scopes while Intune returns nothing.
+ */
+interface ServiceAvailabilityState {
+  serviceKey: string;
+  state: string;
+  evidenceBasis: string;
+  reason: string;
+  detectionSignature: string | null;
+  observedEndpoint: string | null;
+  observedHttpStatus: number | null;
+  detectedByCheckKey: string | null;
+  firstObservedAt: string;
+  lastObservedAt: string;
+}
+
+interface ServiceAvailabilitySummary {
+  /** The Graph tenant GUID the states were observed on. Null when none is on record. */
+  tenantId: string | null;
+  reconciledAgainstTenantId: number | null;
+  services: ServiceAvailabilityState[];
+  /** Per service: resources still classified `available_now` while the service does not answer. */
+  contradictedByService: Record<string, number>;
+}
+
 interface ModelSummary {
+  serviceAvailability: ServiceAvailabilitySummary;
   totals: {
     resources: number;
     properties: number;
@@ -125,6 +158,25 @@ interface ModelSummary {
     finishedAt: string | null;
   } | null;
 }
+
+/** #1847 — real Microsoft product names, matching the api-server's own display map. */
+const SERVICE_LABELS: Record<string, string> = {
+  intune: "Microsoft Intune",
+};
+
+/**
+ * Never red for `not_configured` / `not_licensed`: neither is a fault. Amber says
+ * "there is a real limitation here", which is the truth. `service_outage` is red
+ * because it IS a live failure, and `available` is green.
+ */
+const SERVICE_STATE_TONE: Record<string, string> = {
+  available: "bg-emerald-100 text-emerald-800 border-emerald-200",
+  not_configured: "bg-amber-100 text-amber-900 border-amber-200",
+  not_licensed: "bg-violet-100 text-violet-900 border-violet-200",
+  permission_denied: "bg-rose-100 text-rose-900 border-rose-200",
+  service_outage: "bg-rose-100 text-rose-900 border-rose-200",
+  unknown: "bg-slate-100 text-slate-700 border-slate-200",
+};
 
 const AVAILABILITY_TONE: Record<string, string> = {
   available_now: "bg-emerald-100 text-emerald-800 border-emerald-200",
@@ -193,6 +245,20 @@ export default function ConfigResourceModel() {
 
   useEffect(() => { void loadSummary(); }, [loadSummary]);
   useEffect(() => { void loadResources(); }, [loadResources]);
+
+  /**
+   * #1847 — the tenant-level service state, looked up from the ONE summary payload
+   * rather than re-fetched per row. Undefined when the service has nothing observed,
+   * which stays honestly blank instead of being assumed available.
+   */
+  const serviceStateByKey = useMemo(
+    () => new Map((summary?.serviceAvailability.services ?? []).map((s) => [s.serviceKey, s.state])),
+    [summary],
+  );
+  const serviceStateFor = useCallback(
+    (key: string | null) => (key ? serviceStateByKey.get(key) ?? null : null),
+    [serviceStateByKey],
+  );
 
   const toggleExpand = useCallback(async (r: ConfigResource) => {
     if (expandedId === r.id) { setExpandedId(null); setDetail(null); return; }
@@ -276,6 +342,47 @@ export default function ConfigResourceModel() {
             />
           </div>
 
+          {/*
+            #1847 — the tenant-level service fact, reported ONCE. Ten devices:* checks
+            each announcing "Intune is not configured" is noise; this is the single
+            statement they all refer to, with the real evidence that settled it.
+          */}
+          {summary.serviceAvailability.services.length > 0 && (
+            <div className="space-y-3" data-testid="config-model-service-availability">
+              {summary.serviceAvailability.services.map((s) => (
+                <div
+                  key={s.serviceKey}
+                  className={`rounded-lg border p-4 text-sm ${SERVICE_STATE_TONE[s.state] ?? "bg-slate-100 text-slate-700 border-slate-200"}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{SERVICE_LABELS[s.serviceKey] ?? s.serviceKey}</span>
+                    <Badge variant="outline" className={SERVICE_STATE_TONE[s.state] ?? ""}>
+                      {s.state.replace(/_/g, " ")}
+                    </Badge>
+                    {summary.serviceAvailability.contradictedByService[s.serviceKey] != null && (
+                      <span className="text-xs opacity-80">
+                        {summary.serviceAvailability.contradictedByService[s.serviceKey]!.toLocaleString()} resources
+                        still classified available_now on granted scopes
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 leading-relaxed">{s.reason}</p>
+                  <p className="mt-2 text-xs opacity-80">
+                    Evidence: {s.evidenceBasis}
+                    {s.detectionSignature ? ` · ${s.detectionSignature}` : ""}
+                    {s.observedEndpoint ? ` · ${s.observedEndpoint}` : ""}
+                    {s.observedHttpStatus != null ? ` · HTTP ${s.observedHttpStatus}` : ""}
+                    {s.detectedByCheckKey ? ` · via ${s.detectedByCheckKey}` : ""}
+                    {" · first seen "}
+                    {new Date(s.firstObservedAt).toLocaleString()}
+                    {" · last seen "}
+                    {new Date(s.lastObservedAt).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="grid gap-4 md:grid-cols-2">
             <TallyCard title="Availability against granted scopes" tally={summary.byAvailability} tone={AVAILABILITY_TONE} />
             <TallyCard title="Live verification status" tally={summary.byVerificationStatus} tone={VERIFICATION_TONE} />
@@ -336,6 +443,17 @@ export default function ConfigResourceModel() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm">{r.displayName}</span>
                       <Badge variant="outline" className={AVAILABILITY_TONE[r.availability] ?? ""}>{r.availability}</Badge>
+                      {/*
+                        #1847 — the resource's permission verdict above and its service's
+                        state are separate facts. When the backing service is not answering
+                        for this tenant, say so on the row: an `available_now` badge alone
+                        is the model claiming a readability that live evidence contradicts.
+                      */}
+                      {r.serviceKey && serviceStateFor(r.serviceKey) && serviceStateFor(r.serviceKey) !== "available" && (
+                        <Badge variant="outline" className={SERVICE_STATE_TONE[serviceStateFor(r.serviceKey)!] ?? ""}>
+                          {SERVICE_LABELS[r.serviceKey] ?? r.serviceKey}: {serviceStateFor(r.serviceKey)!.replace(/_/g, " ")}
+                        </Badge>
+                      )}
                       <Badge variant="outline" className={VERIFICATION_TONE[r.verificationStatus] ?? ""}>{r.verificationStatus}</Badge>
                       <Badge variant="outline">{r.readTransport}</Badge>
                       <Badge variant="outline">{r.surface}</Badge>

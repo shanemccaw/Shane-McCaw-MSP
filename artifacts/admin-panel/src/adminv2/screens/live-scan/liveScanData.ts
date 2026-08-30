@@ -18,7 +18,9 @@ export type MonitorProfileStatus =
   | "consent_revoked"
   | "requires_script"
   | "license_gap"
-  | "partial";
+  | "partial"
+  /** Git #1847 — the Microsoft service behind the check does not answer for this tenant. */
+  | "service_not_configured";
 
 export type MonitorSeverity = "critical" | "warning" | "info" | null;
 
@@ -68,7 +70,17 @@ export function toneForRow(status: MonitorProfileStatus, severity: MonitorSeveri
   if (severity === "warning") return "#f2ca63";
   if (severity === "info") return "#7fb4d8";
   if (status === "error" || status === "consent_revoked") return "#e57a7a";
-  if (status === "requires_script" || status === "license_gap" || status === "partial") return "#f2ca63";
+  // #1847 — amber, never the red an "error" gets: the check ran correctly and the
+  // tenant simply has no such service stood up. Grouped with license_gap because it
+  // is the same kind of fact — a real limitation of the tenant, not a fault.
+  if (
+    status === "requires_script" ||
+    status === "license_gap" ||
+    status === "partial" ||
+    status === "service_not_configured"
+  ) {
+    return "#f2ca63";
+  }
   return "#7fae91";
 }
 

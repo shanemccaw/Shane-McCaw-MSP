@@ -62,7 +62,7 @@ const NARRATIVE_PROMPT_FALLBACK = `You are Shane McCaw, a senior Microsoft 365 A
 
 Client: {{clientName}}
 
-REAL FINDINGS FROM TODAY'S SCAN (already correctly classified — "license_gap" items are NOT security problems, they mean the tenant lacks a Microsoft 365 add-on and that check simply could not run; only genuine warning/critical items are real issues):
+REAL FINDINGS FROM TODAY'S SCAN (already correctly classified — "license_gap" items are NOT security problems, they mean the tenant lacks a Microsoft 365 add-on and that check simply could not run; items listed as a Microsoft service not being set up on the tenant are likewise NOT security problems and NOT a measurement of zero, they mean the service was never stood up so there was nothing to read; only genuine warning/critical items are real issues):
 {{findingsBlock}}
 
 REAL PEER-BENCHMARK DATA (only the pillars listed here have a real benchmark on file — never claim or imply a peer comparison for any pillar not listed):
@@ -83,8 +83,14 @@ INSTRUCTIONS:
 - CRITICAL: output the HTML fragment and then STOP. No commentary before or after.`;
 
 function findingsToBlock(findings: CioNarrativeFinding[]): string {
-  const real = findings.filter((f) => f.checkStatus !== "license_gap" && f.severity !== "ok");
+  const real = findings.filter(
+    (f) => f.checkStatus !== "license_gap" && f.checkStatus !== "service_not_configured" && f.severity !== "ok",
+  );
   const licenseGaps = findings.filter((f) => f.checkStatus === "license_gap");
+  // #1847 — a service the tenant never stood up is not a security finding and must
+  // not reach the narrative as one. Stated separately from licence gaps because the
+  // two are different conversations with the CIO.
+  const serviceGaps = findings.filter((f) => f.checkStatus === "service_not_configured");
   const lines: string[] = [];
 
   if (real.length === 0) {
@@ -98,6 +104,15 @@ function findingsToBlock(findings: CioNarrativeFinding[]): string {
   if (licenseGaps.length > 0) {
     const features = [...new Set(licenseGaps.map((f) => f.title.replace(/^Not checked — requires /, "")))];
     lines.push(`\n${licenseGaps.length} check(s) could not run — license gap only, NOT a finding: ${features.join(", ")}.`);
+  }
+
+  if (serviceGaps.length > 0) {
+    const services = [
+      ...new Set(serviceGaps.map((f) => f.title.replace(/^Not checked — /, "").trim())),
+    ];
+    lines.push(
+      `\n${serviceGaps.length} check(s) could not run because the Microsoft service behind them is not set up on this tenant — NOT a finding and NOT a measurement of zero: ${services.join("; ")}.`,
+    );
   }
 
   return lines.join("\n");

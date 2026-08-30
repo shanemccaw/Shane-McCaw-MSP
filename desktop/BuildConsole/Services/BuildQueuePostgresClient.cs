@@ -272,6 +272,13 @@ namespace BuildConsole.Services
         /// reports CLOSED, capped to <paramref name="limit"/>. Fail-closed (Git #1600): an
         /// unreachable/undetermined open-issue set holds every blocked candidate.
         ///
+        /// Git #1904 — the same live snapshot also self-checks each candidate's OWN issue:
+        /// a row whose <c>github_number</c> is a real (positive) issue that GitHub reports
+        /// CLOSED (completed or not_planned) is HELD with a distinct reason, never claimed,
+        /// even with zero unresolved blockers. --notGit rows (negative sentinel
+        /// <c>github_number</c>, Git #1645) and null-numbered rows have no real issue to
+        /// check and are exempt from the self-check.
+        ///
         /// This method issues NO UPDATE and claims nothing — the ONLY write in the entire
         /// claim path is GetNextAsync's Step 3, which runs AFTER this returns.
         ///
@@ -312,29 +319,55 @@ namespace BuildConsole.Services
             var heldReasons = new Dictionary<int, string>();
             var ready = new List<QueueItem>();
             var distinctBlockerNums = candidates.SelectMany(EffectiveBlockers).Distinct().ToList();
+            // Git #1904 — the same live open-issue snapshot also drives the self-check
+            // below (is the candidate's OWN issue still open?). A candidate carries a real
+            // GitHub issue to verify only when its github_number is POSITIVE: a --notGit
+            // LOCAL build stores a NEGATIVE sentinel (Git #1645) that is never a real issue,
+            // and a null github_number has nothing to check. So we still need the one live
+            // fetch whenever ANY candidate has blockers OR a real own-issue to verify —
+            // reusing that single result for both checks, never a second `gh` call.
+            bool anyOwnIssueToCheck = candidates.Any(c => c.GithubNumber is int g && g > 0);
             LiveOpenIssuesResult? live = presuppliedOpen;
-            if (distinctBlockerNums.Count > 0 && live == null)
+            if ((distinctBlockerNums.Count > 0 || anyOwnIssueToCheck) && live == null)
             {
                 live = await (liveOpenIssuesFetcher != null ? liveOpenIssuesFetcher() : GitHubIssuesService.TryGetOpenIssueNumbersAsync());
                 if (!live.Success)
                 {
-                    ActivityLog.Log("watcher", $"Git #1600: couldn't reach GitHub to re-check blocker(s) ({live.Error}) — holding every blocked candidate this tick (fail closed).");
+                    ActivityLog.Log("watcher", $"Git #1600/#1904: couldn't reach GitHub to re-check blocker(s)/own-issue state ({live.Error}) — holding every candidate that needs a live check this tick (fail closed).");
                 }
             }
             foreach (var item in candidates)
             {
                 if (ready.Count >= limit) break;
                 var blockers = EffectiveBlockers(item);
-                if (blockers.Count == 0) { ready.Add(item); continue; }
+                bool hasOwnIssue = item.GithubNumber is int gh && gh > 0;
 
+                // Nothing to verify against GitHub — no blockers and no real own-issue.
+                // (--notGit sentinel or null github_number, and unblocked.) Ready as before.
+                if (blockers.Count == 0 && !hasOwnIssue) { ready.Add(item); continue; }
+
+                // Fail-closed (Git #1600 / #1904): any candidate that needs a live GitHub
+                // check is held when we couldn't get a trustworthy open-issue snapshot.
                 if (live == null || !live.Success)
                 {
                     heldReasons[item.Id] = live == null
-                        ? "internal error — blockers not evaluated"
+                        ? "internal error — GitHub open-issue set not evaluated"
                         : $"GitHub unreachable ({live.Error}) — holding until it can be re-checked";
                     continue;
                 }
 
+                // Git #1904 self-check FIRST: a queue row whose OWN issue has been closed
+                // (for any reason — completed or not_planned) must never be claimed, even
+                // with zero unresolved blockers. Surface it as a distinct held reason so
+                // Shane sees the stale row and can cancel it, rather than it running
+                // unwanted or vanishing silently.
+                if (hasOwnIssue && !live.OpenNumbers.Contains(item.GithubNumber!.Value))
+                {
+                    heldReasons[item.Id] = $"underlying issue #{item.GithubNumber!.Value} is closed — this queue row needs manual review/cancellation";
+                    continue;
+                }
+
+                if (blockers.Count == 0) { ready.Add(item); continue; }
                 var stillOpen = blockers.Where(b => live.OpenNumbers.Contains(b)).ToList();
                 if (stillOpen.Count == 0) { ready.Add(item); continue; }
                 heldReasons[item.Id] = $"waiting on {string.Join(", ", stillOpen.Select(b => $"#{b}"))} (open)";

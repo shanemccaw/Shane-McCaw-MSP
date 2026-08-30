@@ -61,6 +61,10 @@ function classifyCheckSeverity(result: CheckResult): FindingSeverity {
   // A license gap is not a security finding — it's a known SKU limitation. Surface
   // it as informational, never as a red/critical item the customer must "fix".
   if (result.status === "license_gap") return "info";
+  // #1847 — the Microsoft service behind the check is not stood up on this tenant.
+  // Informational, exactly like a licence gap: it is a real fact about the tenant,
+  // not a security finding the customer must "fix", and never red.
+  if (result.status === "service_not_configured") return "info";
   if (result.severityMatched) {
     const s = result.severityMatched.toLowerCase();
     if (s === "critical" || s === "high") return "critical";
@@ -77,6 +81,19 @@ function classifyCheckSeverity(result: CheckResult): FindingSeverity {
 function licenseGapFeatureOf(result: CheckResult): string {
   const f = (result.extractedProperties as Record<string, unknown> | undefined)?._licenseGapFeature;
   return typeof f === "string" && f.trim() ? f : "a required Microsoft 365 add-on";
+}
+
+/** The real Microsoft product name monitor-executor stamped on a #1847 result. */
+function serviceNameOf(result: CheckResult): string {
+  const n = (result.extractedProperties as Record<string, unknown> | undefined)?._serviceName;
+  return typeof n === "string" && n.trim() ? n : "the Microsoft service behind this check";
+}
+
+/** Which of the real service states it is, so "not set up" and "not licensed" are
+ *  never collapsed into one sentence — they are different customer conversations. */
+function serviceStateOf(result: CheckResult): string | null {
+  const s = (result.extractedProperties as Record<string, unknown> | undefined)?._serviceState;
+  return typeof s === "string" && s.trim() ? s : null;
 }
 
 /**
@@ -96,6 +113,11 @@ export function buildFindingTitle(result: CheckResult): string {
   if (result.status === "error") return "This check couldn't complete";
   if (result.status === "requires_script") return "Requires customer-side script";
   if (result.status === "license_gap") return `Not checked — requires ${licenseGapFeatureOf(result)}`;
+  if (result.status === "service_not_configured") {
+    return serviceStateOf(result) === "not_licensed"
+      ? `Not checked — ${serviceNameOf(result)} isn't licensed on this tenant`
+      : `Not checked — ${serviceNameOf(result)} isn't set up on this tenant`;
+  }
   // The matched rule's OWN sentence, whenever it has one (#408). Everything
   // below it is a fallback for a rule that genuinely carries no label — the
   // generic band text is the last resort, not the normal case it used to be.
@@ -278,6 +300,17 @@ export function buildFindingDescription(result: CheckResult): string {
     const feature = licenseGapFeatureOf(result);
     return `We couldn't evaluate this because your Microsoft 365 tenant doesn't have ${feature}. This isn't a security problem — it means the capability isn't licensed on your tenant. Adding ${feature} would let us monitor and report on it.`;
   }
+  // #1847 — the executor already resolved the tenant-level fact and stamped its
+  // real sentence on `errorMessage` (from tenant_service_availability.reason). Use
+  // that verbatim: there is ONE authored wording of this fact per tenant, and it is
+  // the one backed by the recorded evidence. Only fall back if it is missing.
+  if (result.status === "service_not_configured") {
+    if (result.errorMessage?.trim()) return result.errorMessage.trim();
+    const service = serviceNameOf(result);
+    return serviceStateOf(result) === "not_licensed"
+      ? `We couldn't evaluate this because ${service} isn't licensed on your Microsoft 365 tenant. This isn't a security problem, and it isn't a measurement of zero — the service isn't there to read.`
+      : `We couldn't evaluate this because ${service} isn't set up on your Microsoft 365 tenant. This isn't a security problem, and it isn't a measurement of zero — the service isn't there to read.`;
+  }
   const props = result.extractedProperties;
   if (props && Object.keys(props).length > 0) {
     const template = CHECK_DESCRIPTION_TEMPLATES[result.checkKey];
@@ -324,6 +357,24 @@ function buildRecommendation(result: CheckResult): Record<string, unknown> | nul
     rec.feature = feature;
     const signalKey = licenseUpsellSignalKey(feature);
     if (signalKey) rec.signalKey = signalKey;
+    return rec;
+  } else if (result.status === "service_not_configured") {
+    // #1847 — the action genuinely differs by state, and getting it backwards is
+    // the confidently-wrong reporting this issue exists to stop. "Set up Intune" is
+    // useless advice to a tenant that doesn't own it; "buy Intune" is wrong for a
+    // tenant that already has it and never enrolled.
+    const service = serviceNameOf(result);
+    if (serviceStateOf(result) === "not_licensed") {
+      rec.action = `Consider licensing ${service} to enable device management monitoring`;
+      rec.priority = 4;
+      rec.category = "license_upsell";
+      rec.feature = service;
+    } else {
+      rec.action = `Set up ${service} on the tenant (enrol it and set an MDM authority) to enable device management monitoring`;
+      rec.priority = 3;
+      rec.category = "service_enablement";
+      rec.feature = service;
+    }
     return rec;
   } else if (result.status === "consent_revoked") {
     rec.action = "Re-establish application consent for the customer tenant";

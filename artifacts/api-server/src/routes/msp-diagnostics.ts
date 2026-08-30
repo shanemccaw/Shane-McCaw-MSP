@@ -109,7 +109,10 @@ export function isClassifiableFinding(finding: ClassifiableFinding): boolean {
   return (
     rawGraphErrorOf(finding) != null ||
     finding.checkStatus === "license_gap" ||
-    finding.checkStatus === "consent_revoked"
+    finding.checkStatus === "consent_revoked" ||
+    // #1847 — same reasoning: already classified upstream against the tenant's real
+    // wire signature and licence entitlement, and explicitly "not a fault".
+    finding.checkStatus === "service_not_configured"
   );
 }
 

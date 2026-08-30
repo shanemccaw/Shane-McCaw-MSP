@@ -212,7 +212,9 @@ export function resolvedReason(r: ResolvedMetric | undefined): string | null {
 
 /** The resolver's `detail` string for a not_available metric — for `license_gap`
  * this is the real, customer-safe sentence naming the missing M365 add-on
- * (dashboard-resolvers.ts, sourced from diagnostics-runner.ts's licenseGapMessage).
+ * (dashboard-resolvers.ts, sourced from diagnostics-runner.ts's licenseGapMessage),
+ * and for `service_not_configured` (#1847) it is the tenant's own recorded
+ * service-availability sentence naming the service and its real state.
  * Null for every other reason / for ok/error results. */
 export function resolvedDetail(r: ResolvedMetric | undefined): string | null {
   if (!r || r.status !== "not_available") return null;
@@ -247,6 +249,12 @@ export function reasonCopy(reason: string | null, detail?: string | null): strin
       return "The resolver returned an error for this metric";
     case "license_gap":
       return detail ?? "Requires a Microsoft 365 add-on license not present on this tenant";
+    // Git #1847 — the Microsoft service behind this metric is not stood up on the
+    // tenant. `detail` is the ONE authored sentence for that fact, read straight off
+    // the tenant's own service-availability row, so it names which service and which
+    // state (not set up vs not licensed) rather than a generic "no data".
+    case "service_not_configured":
+      return detail ?? "The Microsoft service behind this isn't set up on your tenant";
     default:
       return `No data (${reason})`;
   }

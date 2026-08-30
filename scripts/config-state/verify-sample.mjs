@@ -34,6 +34,7 @@ import { resolveDatabaseUrl } from "./db.mjs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { detectPropertyDivergence } from "./detect-property-divergence.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -275,6 +276,13 @@ async function main() {
       "SELECT verification_status, count(*) n FROM config_resources GROUP BY 1 ORDER BY 2 DESC")).rows;
     console.log("  verification status across the whole model:");
     for (const b of breakdown) console.log(`    ${String(b.n).padStart(5)}  ${b.verification_status}`);
+
+    // #1846 — every live sample is a chance to re-derive the $metadata-vs-observed
+    // divergence, so a newly-undeclared property surfaces here rather than needing
+    // someone to remember to run a separate query.
+    const divergence = await detectPropertyDivergence(client);
+    console.log(`\n  property divergence: ${divergence.total} observed-but-undeclared`
+      + ` (${divergence.versionGap} version_gap, ${divergence.undeclaredAnywhere} undeclared_anywhere)`);
   } finally {
     await client.end();
   }

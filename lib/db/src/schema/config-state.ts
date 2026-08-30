@@ -203,6 +203,58 @@ export type CheckCoverageMatchBasis = typeof CHECK_COVERAGE_MATCH_BASIS[number];
 export const CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
 export type ConfidenceLevel = typeof CONFIDENCE_LEVELS[number];
 
+/**
+ * The Microsoft services whose *service-level* reachability this platform tracks
+ * separately from the permission it holds (Git #1847).
+ *
+ * Deliberately one member today. A service earns a key here only once there is a
+ * real, distinguishable wire signature for "this service refuses to answer even
+ * though the token is right" — inventing keys for services we cannot detect would
+ * be a display vocabulary that maps onto nothing.
+ */
+export const TENANT_SERVICE_KEYS = ["intune"] as const;
+export type TenantServiceKey = typeof TENANT_SERVICE_KEYS[number];
+
+/**
+ * Whether a Microsoft service will actually ANSWER for a given tenant — a
+ * different fact from `CONFIG_AVAILABILITY` above, which says only whether the
+ * platform holds the permission to ask.
+ *
+ * Git #1847's whole point: a tenant with `DeviceManagementManagedDevices.Read.All`
+ * granted is `available_now` on permissions and still gets nothing back, because
+ * Intune itself has never been stood up. Collapsing that into "zero devices" is the
+ * platform telling the customer something untrue about their own tenant.
+ *
+ *  - available          the service answered 2xx (whether or not it held any rows)
+ *  - not_licensed       no service plan on the tenant entitles it at all
+ *  - not_configured     entitled, but never enrolled/activated - the service's own
+ *                       backend refuses with a documented never-configured signature
+ *  - permission_denied  an ordinary Graph authorization failure, scope actually missing
+ *  - service_outage     a transient refusal (5xx/429) that is NOT a never-configured
+ *                       signature - re-check, do not report to the customer as a state
+ *  - unknown            nothing has been observed either way yet
+ */
+export const TENANT_SERVICE_STATES = [
+  "available",
+  "not_licensed",
+  "not_configured",
+  "permission_denied",
+  "service_outage",
+  "unknown",
+] as const;
+export type TenantServiceState = typeof TENANT_SERVICE_STATES[number];
+
+/**
+ * How a `TenantServiceState` was reached. Recorded per row so a state can always be
+ * traced to the observation that produced it rather than taken on trust.
+ *
+ *  - wire-signature      a documented HTTP status + body signature from the service
+ *  - service-plan        the tenant's own /subscribedSkus service-plan entitlement
+ *  - combined            both agreed (or the entitlement disambiguated the signature)
+ */
+export const TENANT_SERVICE_EVIDENCE_BASIS = ["wire-signature", "service-plan", "combined"] as const;
+export type TenantServiceEvidenceBasis = typeof TENANT_SERVICE_EVIDENCE_BASIS[number];
+
 // ── Raw Graph entity model (from $metadata) ──────────────────────────────────
 
 /**
@@ -333,7 +385,26 @@ export const configResourcesTable = pgTable("config_resources", {
   /** Which source settled the availability verdict: m365dsc | graph-permissions | none. */
   permissionSource: text("permission_source"),
 
+  /**
+   * Which Microsoft service actually has to be stood up for this resource to answer
+   * (Git #1847). Derived deterministically from `graphPath`'s own root segment, NOT
+   * from `workload` — `workload` is Microsoft365DSC's label and is wrong for this
+   * purpose: 226 of the 261 `/deviceManagement*` rows carry workload
+   * `MicrosoftGraph`, which says nothing about Intune being stood up.
+   *
+   * Null for every resource whose backing service has no distinguishable
+   * service-level signature; those rows are answered by `availability` alone.
+   */
+  serviceKey: text("service_key", { enum: TENANT_SERVICE_KEYS }),
+
   // ── Reconciliation against what the testbed has actually granted ───────────
+  /**
+   * PERMISSION availability only — whether the platform holds the scope to ask.
+   * It deliberately does NOT mean the service will answer; that is the per-tenant
+   * `tenant_service_availability` fact, joined via `serviceKey`. Git #1847: 189
+   * `/deviceManagement*` rows sit at `available_now` on a tenant where Intune has
+   * never been stood up, and both facts are true at once.
+   */
   availability: text("availability", { enum: CONFIG_AVAILABILITY }).notNull().default("unknown"),
   availabilityReason: text("availability_reason"),
   /** Exactly which permissions are missing — named, so the gap is actionable. */
@@ -361,6 +432,7 @@ export const configResourcesTable = pgTable("config_resources", {
   index("config_resources_graph_path_idx").on(t.graphVersion, t.graphPath),
   index("config_resources_m365dsc_idx").on(t.m365dscResource),
   index("config_resources_coverage_idx").on(t.checkCoverageCount),
+  index("config_resources_service_key_idx").on(t.serviceKey),
 ]);
 
 export type ConfigResource = typeof configResourcesTable.$inferSelect;
@@ -511,3 +583,138 @@ export const configModelExtractionsTable = pgTable("config_model_extractions", {
 
 export type ConfigModelExtraction = typeof configModelExtractionsTable.$inferSelect;
 export type InsertConfigModelExtraction = typeof configModelExtractionsTable.$inferInsert;
+
+// ── Per-tenant service reachability (Git #1847) ──────────────────────────────
+
+/**
+ * ONE row per (tenant, Microsoft service): whether that service will answer for
+ * that tenant, and the evidence that settled it.
+ *
+ * This table exists because the platform had no way to say "Intune is not stood up
+ * on this tenant". Ten `devices:*` checks were each swallowing the refusal and
+ * persisting `status: 'ok', item_count: 0` — indistinguishable, to every consumer
+ * downstream, from a tenant that genuinely manages zero devices. Verified in the
+ * local database on 2026-08-30 before this table existed: every one of
+ * `devices:autopilot-coverage`, `devices:compliance-policy-coverage`,
+ * `devices:compliant-vs-noncompliant`, `devices:encryption-status`,
+ * `devices:enrollment-status`, `devices:kfm-configuration`,
+ * `devices:os-patch-compliance`, `devices:unassigned-intune-profiles` and
+ * `devices:update-rings-config` sat at `ok` / `item_count = 0`.
+ *
+ * The tenant-level fact is reported ONCE here. The individual checks resolve to
+ * `service_not_configured` and refer to this row rather than each independently
+ * announcing the same tenant-wide condition.
+ *
+ * `tenantId` is the Microsoft Graph tenant GUID (text), matching
+ * `tenant_monitor_profiles.tenant_id` — the key monitor data is already stored under.
+ *
+ * Timezone convention: all timestamps UTC (withTimezone: true), localized at display.
+ */
+export const tenantServiceAvailabilityTable = pgTable("tenant_service_availability", {
+  id: serial("id").primaryKey(),
+  /** Microsoft Graph tenant GUID, same key as tenant_monitor_profiles.tenant_id. */
+  tenantId: text("tenant_id").notNull(),
+  serviceKey: text("service_key", { enum: TENANT_SERVICE_KEYS }).notNull(),
+  state: text("state", { enum: TENANT_SERVICE_STATES }).notNull().default("unknown"),
+  /** Which kind of observation settled `state`. */
+  evidenceBasis: text("evidence_basis", { enum: TENANT_SERVICE_EVIDENCE_BASIS }).notNull(),
+  /**
+   * Operator-readable sentence stating what was observed and what it means.
+   * Written from the real observation, never a template filled with guesses.
+   */
+  reason: text("reason").notNull(),
+  /**
+   * Stable machine name of the wire signature that matched, when one did, e.g.
+   * `intune-legacy-devicefe-401`. Null when the verdict came from entitlement alone.
+   */
+  detectionSignature: text("detection_signature"),
+  /** The Graph path whose response produced the verdict. */
+  observedEndpoint: text("observed_endpoint"),
+  observedHttpStatus: integer("observed_http_status"),
+  /**
+   * Verbatim evidence — the truncated response body, and the tenant's own service-plan
+   * entitlement rows read from /subscribedSkus. Kept so the verdict is re-derivable
+   * later without re-hitting Graph.
+   */
+  evidence: jsonb("evidence").$type<Record<string, unknown>>().notNull().default({}),
+  /** The monitor check whose run produced the current verdict. */
+  detectedByCheckKey: text("detected_by_check_key"),
+  firstObservedAt: timestamp("first_observed_at", { withTimezone: true }).notNull().defaultNow(),
+  lastObservedAt: timestamp("last_observed_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("tenant_service_availability_tenant_service_uidx").on(t.tenantId, t.serviceKey),
+  index("tenant_service_availability_state_idx").on(t.state),
+]);
+
+export type TenantServiceAvailability = typeof tenantServiceAvailabilityTable.$inferSelect;
+export type InsertTenantServiceAvailability = typeof tenantServiceAvailabilityTable.$inferInsert;
+
+// ── $metadata vs. observed reality (Git #1846) ───────────────────────────────
+
+/**
+ * The two real cases a property observed live but absent from `config_resource_properties`
+ * (`source = 'graph-metadata'`) can be in, per Git #1846:
+ *
+ *  - version_gap          declared in the OTHER Graph version's `$metadata` (typically beta),
+ *                          just not the version this resource is actually read under. A
+ *                          versioning gap: Microsoft published it, just not where we're reading.
+ *  - undeclared_anywhere  declared in NEITHER v1.0 nor beta `$metadata`. Graph is returning
+ *                          something no published CSDL document describes. This is the class
+ *                          nobody can anticipate, and the reason this table exists.
+ */
+export const CONFIG_PROPERTY_DIVERGENCE_CLASSES = ["version_gap", "undeclared_anywhere"] as const;
+export type ConfigPropertyDivergenceClass = typeof CONFIG_PROPERTY_DIVERGENCE_CLASSES[number];
+
+/**
+ * Persists the gap Git #1846 exists to keep visible: a property Microsoft Graph actually
+ * returned live, that `$metadata` does not declare for the resource it was observed on.
+ *
+ * `resource_key` — NOT `config_resources.id` — is the stable identity this table keys on.
+ * `build-resource-model.mjs` deletes and re-inserts every `config_resources` row (fresh serial
+ * ids) on every run; a hard FK from here to that volatile id, with the cascade-delete this
+ * schema uses everywhere else, would wipe this table on every rebuild — the exact class of bug
+ * #1895 already found in `config_resource_samples`. `config_resource_id` is kept as a
+ * best-effort denormalised pointer, refreshed by the detector each run, but deliberately carries
+ * no FK constraint so a model rebuild can never cascade into deleting observed evidence.
+ *
+ * Re-derivable by construction: `scripts/config-state/detect-property-divergence.mjs` recomputes
+ * this table from whatever is currently in `config_resource_samples` (the newest successful
+ * sample per resource) joined against the live `graph_entity_properties` model, every time it
+ * runs — wired into `verify-sample.mjs` so a later run surfaces newly-observed undeclared
+ * properties automatically, not just the six found on 2026-08-30. A row's `declaredInGraphVersions`
+ * is recomputed on every detection run too, so a property that Microsoft later documents moves
+ * classes on its own rather than staying stuck at whatever was true the day it was first seen.
+ */
+export const configResourcePropertyDivergenceTable = pgTable("config_resource_property_divergence", {
+  id: serial("id").primaryKey(),
+  /** Stable identity — see the table comment for why this, not `config_resources.id`, is the key. */
+  resourceKey: text("resource_key").notNull(),
+  /** Best-effort current id for convenience joins; not a FK, refreshed each detection run. */
+  configResourceId: integer("config_resource_id"),
+  graphPath: text("graph_path"),
+  /** The Graph version the resource is actually READ under (what `config_resources.graph_version` says). */
+  graphVersion: text("graph_version", { enum: GRAPH_VERSIONS }),
+  /** The qualified entity type the property was observed on, e.g. `microsoft.graph.device`. */
+  graphEntityType: text("graph_entity_type"),
+  propertyName: text("property_name").notNull(),
+  divergenceClass: text("divergence_class", { enum: CONFIG_PROPERTY_DIVERGENCE_CLASSES }).notNull(),
+  /** Which Graph version(s), if any, DO declare this property on this entity type. Empty = neither. */
+  declaredInGraphVersions: jsonb("declared_in_graph_versions").$type<string[]>().notNull().default([]),
+  /** JSON type observed live for this property, from the sample that most recently confirmed it. */
+  observedJsonType: text("observed_json_type"),
+  /** The `config_resource_samples.sample_run_id` that most recently confirmed this divergence. */
+  lastSampleRunId: uuid("last_sample_run_id"),
+  /** How many distinct detection runs have observed this divergence, however far apart. */
+  observationCount: integer("observation_count").notNull().default(1),
+  firstObservedAt: timestamp("first_observed_at", { withTimezone: true }).notNull().defaultNow(),
+  lastObservedAt: timestamp("last_observed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("config_resource_property_divergence_uidx").on(t.resourceKey, t.propertyName),
+  index("config_resource_property_divergence_class_idx").on(t.divergenceClass),
+  index("config_resource_property_divergence_resource_idx").on(t.configResourceId),
+]);
+
+export type ConfigResourcePropertyDivergence = typeof configResourcePropertyDivergenceTable.$inferSelect;
+export type InsertConfigResourcePropertyDivergence = typeof configResourcePropertyDivergenceTable.$inferInsert;
