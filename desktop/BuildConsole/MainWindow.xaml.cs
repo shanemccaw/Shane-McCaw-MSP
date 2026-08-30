@@ -337,6 +337,22 @@ namespace BuildConsole
             BuildConsole.Services.ActivityLog.LineLogged += AppendOutputLog;
             BuildConsole.Services.ActivityLog.Log("startup", "BuildConsole starting…");
 
+            // Git #1838 — passive agent shell (--agent / --dev / BUILDCONSOLE_AGENT=1). Make the
+            // mode visible: the title-bar [AGENT] marker (a screenshot then proves which mode ran)
+            // and the native window Title (Alt+Tab/taskbar hover read this even with the custom
+            // title bar), plus ONE system.core line naming the mode and everything it suppressed.
+            if (BuildConsole.Services.AppMode.IsAgent)
+            {
+                AgentModeMarkerText.Visibility = Visibility.Visible;
+                Title += " - [AGENT]";
+                BuildConsole.Services.ActivityLog.Log("system.core",
+                    $"Launch mode: AGENT (passive shell, selected by {BuildConsole.Services.AppMode.SelectedBy}). " +
+                    "Suppressed: queue watcher, session-limit auto-restart, Batter Up auto-queue, " +
+                    "Dispatch, post-build deploy pipeline, test-trigger poll, regression scheduler, " +
+                    "Replit watcher, usage meter, shaneapp:// pipe listener, AI Batter Up Yes/No. " +
+                    "No builds are claimed, launched, deployed or tested and no pipe is taken.");
+            }
+
             // Clock
             _clockTimer = new DispatcherTimer(DispatcherPriority.Background)
             {
@@ -411,26 +427,39 @@ namespace BuildConsole
                 {
                     try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
                 });
-                _ = _sessionLimitAutoRestart.StartAsync();
 
-                _queueWatcher.Start();
+                // Git #1838 — every autonomous starter below claims, launches, deploys or
+                // writes against Shane's real Postgres queue. In agent mode BuildConsole is a
+                // passive shell, so NONE of them arm — the guard is here at the arming site
+                // (not inside the service on tick 2, which is already too late). The queue DB
+                // client + watcher are still CONSTRUCTED above so BuildQueuePanel can render the
+                // queue read-only; they simply never poll or launch.
+                if (!BuildConsole.Services.AppMode.IsAgent)
+                {
+                    // Session-limit auto-restart re-arms a PERSISTED restart across app runs and
+                    // runs the first-set bootstrap — an agent instance must never resume Shane's
+                    // limit-paused builds or clear his global pause.
+                    _ = _sessionLimitAutoRestart.StartAsync();
 
-                // Git #898 — same "app is already open for the build queue" assumption:
-                // start listening for remote UI-test run requests too.
-                StartTestTriggerPoll();
+                    _queueWatcher.Start();
 
-                // Epic #803 — auto deploy+verify+test on build completion. Reuses the exact
-                // endpoints trigger-deploy-and-wait.ps1 drives by hand (#911 build-complete +
-                // #805 deploy-status) and the in-process regression sweep, fired automatically
-                // off QueueWatcherService.BuildFinished (see QueueWatcher_BuildFinished) instead
-                // of requiring the .ps1 + a manual test run. Injected-delegate shape mirrors
-                // RegressionScheduleService above.
-                _postBuildDeploy = new BuildConsole.Services.PostBuildDeployPipeline(
-                    BuildConsole.Services.BuildTrackerConfig.FindRepoRoot() ?? "",
-                    () => _buildTrackerApi.PostBuildCompleteAsync(),
-                    () => _buildTrackerApi.GetDeployStatusAsync(),
-                    RunScopedManifestsAsync,
-                    SurfacePostBuildDeployOutcome);
+                    // Git #898 — same "app is already open for the build queue" assumption:
+                    // start listening for remote UI-test run requests too.
+                    StartTestTriggerPoll();
+
+                    // Epic #803 — auto deploy+verify+test on build completion. Reuses the exact
+                    // endpoints trigger-deploy-and-wait.ps1 drives by hand (#911 build-complete +
+                    // #805 deploy-status) and the in-process regression sweep, fired automatically
+                    // off QueueWatcherService.BuildFinished (see QueueWatcher_BuildFinished) instead
+                    // of requiring the .ps1 + a manual test run. Injected-delegate shape mirrors
+                    // RegressionScheduleService above.
+                    _postBuildDeploy = new BuildConsole.Services.PostBuildDeployPipeline(
+                        BuildConsole.Services.BuildTrackerConfig.FindRepoRoot() ?? "",
+                        () => _buildTrackerApi.PostBuildCompleteAsync(),
+                        () => _buildTrackerApi.GetDeployStatusAsync(),
+                        RunScopedManifestsAsync,
+                        SurfacePostBuildDeployOutcome);
+                }
 
                 BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher, _queueDb);
             }
@@ -447,7 +476,11 @@ namespace BuildConsole
             {
                 try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
             };
-            BatterUpPanel.Initialize(_queueDb);
+            // Git #1838 — a null queue client is already a supported, documented state
+            // (read-only board, "Not connected" posture). In agent mode we pass null so the
+            // panel still renders the Batter Up board but its own poll can NEVER auto-queue a
+            // real build (RefreshAndAutoQueueAsync only queues when queueDb != null).
+            BatterUpPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
 
             // Git #1779 — "Dispatch #___": a third door into the SAME _queueDb.QueueBuildAsync
             // pipeline, for firing one specific issue right now regardless of its board status.
@@ -456,7 +489,10 @@ namespace BuildConsole
             {
                 try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
             };
-            DispatchPanel.Initialize(_queueDb);
+            // Git #1838 — DispatchPanel is a second door into QueueBuildAsync. In agent mode we
+            // pass null; DispatchAsync already refuses with "Not connected to the build queue
+            // database." when _db is null, so the panel renders but can't dispatch a real build.
+            DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
 
             // Git #1710 — additive "AI Batter Up" review panel: agent-filed findings
             // awaiting Shane's Yes/No. Owns no queue/launch logic of its own — Yes only
@@ -469,7 +505,26 @@ namespace BuildConsole
             // connection, zero round-trip to the deployed api-server). Started
             // unconditionally, even when no databaseUrl is configured, so an invocation
             // is always logged and gets a clear error result rather than silence.
-            StartShaneAppProtocolListener();
+            //
+            // Git #1838 — the pipe is BuildConsole.ShaneApp.{UserName} opened with
+            // MaxAllowedServerInstances, so a second listener could WIN a shaneapp:// URI
+            // meant for Shane's real console (TryForwardToRunningInstance can't tell the two
+            // apart). In agent mode we do NOT open the listener at all. The courier path in
+            // App.OnStartup is unaffected: a shaneapp:// launch still forwards to Shane's
+            // instance or cold-starts if none is up. If this process WAS cold-started with a
+            // pending URI and is also agent mode, agent mode wins — honour it and log the
+            // dropped URI by name rather than silently discarding it or self-promoting.
+            if (!BuildConsole.Services.AppMode.IsAgent)
+            {
+                StartShaneAppProtocolListener();
+            }
+            else if (!string.IsNullOrEmpty(App.PendingProtocolUri))
+            {
+                var droppedUri = App.PendingProtocolUri;
+                App.PendingProtocolUri = null;
+                BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
+                    $"Agent mode — NOT opening the shaneapp:// pipe listener; dropping pending cold-start URI: {droppedUri}");
+            }
 
             LeftSidebar.Initialize(_buildTrackerApi, _queueDb);
             BuildLogView.Initialize(_buildTrackerApi);
@@ -496,7 +551,12 @@ namespace BuildConsole
             // Git #954 — the Replit watcher's "re-apply on save" hook moved onto the
             // Settings tab (SettingsTabView.ReplitWatcherSettingsChanged), wired per
             // tab instance in OpenSettingsTab; the sidebar no longer owns it.
-            _replitWatcher.ApplyConfig();
+            // Git #1838 — ApplyConfig drives a hidden WebView2 that clicks Run inside Shane's
+            // authenticated Replit session. Never arm it in agent mode.
+            if (!BuildConsole.Services.AppMode.IsAgent)
+            {
+                _replitWatcher.ApplyConfig();
+            }
 
             // Claude usage meter — a background poll (same DispatcherTimer + hidden
             // WebView2 shape as the Replit watcher) of claude.ai/settings/usage,
@@ -507,7 +567,11 @@ namespace BuildConsole
             _usageMeter = new BuildConsole.Services.ClaudeUsageMeterService(
                 UsageMeterWebView, EnsureWebViewInitializedAsync);
             _usageMeter.StatusChanged += UsageMeter_StatusChanged;
-            _usageMeter.Start();
+            // Git #1838 — polls claude.ai/settings/usage through Shane's login. Never in agent mode.
+            if (!BuildConsole.Services.AppMode.IsAgent)
+            {
+                _usageMeter.Start();
+            }
 
             // Git #967 (Epic #803) — background scheduler for unattended full-suite runs.
             // Reuses the same DispatcherTimer/ApplyConfig pattern as the Replit watcher,
@@ -522,7 +586,11 @@ namespace BuildConsole
                     _buildTrackerApi != null
                         ? _buildTrackerApi.SendTestAlertAsync(title, body, linkPath)
                         : System.Threading.Tasks.Task.FromResult(false));
-            _regressionScheduler.ApplyConfig();
+            // Git #1838 — unattended full-suite runs plus admin alert POSTs. Never in agent mode.
+            if (!BuildConsole.Services.AppMode.IsAgent)
+            {
+                _regressionScheduler.ApplyConfig();
+            }
 
             // Claude Online Status (status.anthropic.com) — polls Anthropic's public Statuspage
             _claudeOnlineService = new BuildConsole.Services.ClaudeStatusService();

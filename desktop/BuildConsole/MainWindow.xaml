@@ -262,6 +262,18 @@
                                        VerticalAlignment="Center"
                                        Margin="10,0,0,0"
                                        Visibility="Collapsed"/>
+                            <!-- Git #1838 - agent/passive-shell mode marker. Same title-bar
+                                 TextBlock styling as [DEBUG]; Visibility driven from code-behind
+                                 when AppMode.IsAgent. Proves from a screenshot which mode ran. -->
+                            <TextBlock x:Name="AgentModeMarkerText"
+                                       Text="[AGENT]"
+                                       FontSize="11"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource MauveBrush}"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
+                                       ToolTip="Passive agent shell (--agent): no builds are claimed, launched, deployed or tested, and the shaneapp:// pipe is not taken."
+                                       Visibility="Collapsed"/>
                         </StackPanel>
 
                         <!-- Universal search box (primary, spans the center). Focusing/typing

@@ -316,6 +316,19 @@ namespace BuildConsole.Controls
             };
             btnNo.Click += async (_, _) => await ApplyDecisionAsync(footer, r, promote: false);
             footer.Children.Add(btnNo);
+
+            // Git #1838 — Yes writes a real board Status change (Yes → "Batter Up"). This panel
+            // owns no queue/launch logic, but a UI-automation agent clicks things, so in agent
+            // mode the decision controls are disabled: the review board stays fully visible and
+            // read-only. Only Shane's real instance can promote/demote.
+            if (Services.AppMode.IsAgent)
+            {
+                btnYes.IsEnabled = false;
+                btnNo.IsEnabled = false;
+                btnYes.ToolTip = "Agent mode — board decisions are disabled";
+                btnNo.ToolTip = "Agent mode — board decisions are disabled";
+            }
+
             mainStack.Children.Add(footer);
 
             var cardGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };

@@ -56,6 +56,14 @@ namespace BuildConsole
                 PendingProtocolUri = protocolUri; // cold start — MainWindow handles it
             }
 
+            // Git #1838 — decide the launch mode ONCE, here, before base.OnStartup builds
+            // any window and before MainWindow's ctor can arm a single background service.
+            // In agent mode (--agent / --dev / BUILDCONSOLE_AGENT=1) BuildConsole is a passive
+            // shell: nothing polls, claims, launches, deploys, tests, drives Shane's browser
+            // sessions, or takes the shaneapp:// pipe. Placed AFTER the courier branch above so
+            // that path still forwards+Shutdowns without a window exactly as before.
+            Services.AppMode.Initialize(e.Args);
+
             base.OnStartup(e);
 
             try { SetCurrentProcessExplicitAppUserModelID("ShaneMcCaw.BuildConsole"); } catch { }
