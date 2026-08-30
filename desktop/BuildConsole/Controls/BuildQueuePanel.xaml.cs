@@ -735,6 +735,7 @@ namespace BuildConsole.Controls
                 if (myGeneration != _refreshGeneration) return;
                 BuildConsole.Services.NotGitNumberRegistry.SyncFromQueue(_lastItems);
                 CheckPriorityBuildSetCompletion(_lastItems);
+                ReportActiveBuildSets(_lastItems);
 
                 string restartSignature;
                 try { restartSignature = System.Text.Json.JsonSerializer.Serialize(MainWindow.GetPersistedQueueDisplayItems()); }
@@ -1196,6 +1197,25 @@ namespace BuildConsole.Controls
         /// silently dropped from the rollup.</summary>
         private static string NormalizeBuildSetKey(string? buildSet) =>
             string.IsNullOrWhiteSpace(buildSet) ? UngroupedBuildSetKey : buildSet.Trim();
+
+        /// <summary>Git #1920 — declare to <see cref="Services.BuildSetColorRegistry"/> which
+        /// named build sets the queue is currently showing, so it can coordinate a
+        /// collision-free accent color per set and free a color once its set drops out of the
+        /// queue. "Active/visible" here matches the rollup: a set with any queued / running /
+        /// verifying item. The "Ungrouped" pseudo-set is excluded — it draws in Subtext0, not a
+        /// palette color, so it never competes for one.</summary>
+        private static void ReportActiveBuildSets(List<QueueItem> items)
+        {
+            var active = items
+                .Where(i => i.Status is "queued" or "running"
+                             or Services.SessionLimitAutoRestartService.LimitPausedStatus
+                             or BuildQueuePostgresClient.VerifyingStatus)
+                .Select(i => i.BuildSet)
+                .Where(bs => !string.IsNullOrWhiteSpace(bs))
+                .Select(bs => bs!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase);
+            Services.BuildSetColorRegistry.ReportActive("queue", active);
+        }
 
         public bool HasActiveQueueItems =>
             _lastItems.Any(i => i.Status is "queued" or "running");
@@ -2163,33 +2183,12 @@ namespace BuildConsole.Controls
             return cm;
         }
 
+        /// <summary>Git #1920 — accent brush for a build set. Delegates to
+        /// <see cref="Services.BuildSetColorRegistry"/>, which coordinates a collision-free
+        /// color among all currently-active build sets (see <see cref="ReportActiveBuildSets"/>)
+        /// rather than the old stateless <c>hash % 10</c> that let two distinct sets collide.</summary>
         public static Brush GetBuildSetBrush(string buildSetName)
-        {
-            if (string.IsNullOrWhiteSpace(buildSetName))
-                return (Brush)Application.Current.FindResource("MauveBrush");
-
-            string[] resourceKeys = {
-                "MauveBrush",
-                "BlueBrush",
-                "LavenderBrush",
-                "SapphireBrush",
-                "TealBrush",
-                "SkyBrush",
-                "GreenBrush",
-                "PeachBrush",
-                "YellowBrush",
-                "MaroonBrush"
-            };
-
-            int hash = 0;
-            foreach (char c in buildSetName)
-            {
-                hash = (hash * 31) + c;
-            }
-            int index = Math.Abs(hash) % resourceKeys.Length;
-
-            return (Brush)Application.Current.FindResource(resourceKeys[index]);
-        }
+            => Services.BuildSetColorRegistry.GetBrush(buildSetName);
 
         /// <summary>Group header card for a stack of builds sharing the same --buildSet name.
         /// Purely visual — carries no QueueGraphNode, so it plays no part in blocked-by
@@ -2204,6 +2203,13 @@ namespace BuildConsole.Controls
                 accentColor = scb.Color;
             }
 
+            // Git #1920 — past the 10th simultaneously-active build set the palette is
+            // exhausted and this set's color may be shared with another. Layer on a secondary
+            // differentiator so color isn't the only cue: a dashed accent underline and a
+            // "shared color" note. In the normal (≤10 active) case this is false and the header
+            // draws exactly as before.
+            bool sharedColor = Services.BuildSetColorRegistry.IsColorShared(buildSetName);
+
             var header = new Border
             {
                 Background = new SolidColorBrush(Color.FromArgb(0x22, accentColor.R, accentColor.G, accentColor.B)),
@@ -2213,14 +2219,20 @@ namespace BuildConsole.Controls
                 Padding = new Thickness(8, 4, 8, 3),
                 Margin = new Thickness(0, 8, 0, 0)
             };
+            var stack = new StackPanel { Orientation = Orientation.Vertical };
             var row = new StackPanel { Orientation = Orientation.Horizontal };
             row.Children.Add(new TextBlock
             {
-                Text = "▤ ",
+                Text = sharedColor ? "▦ " : "▤ ",
                 FontSize = 11,
                 Foreground = accentBrush,
                 VerticalAlignment = VerticalAlignment.Center
             });
+            string tip = sharedColor
+                ? $"Build Set \"{buildSetName}\" — merges + restarts together as one wave. " +
+                  "More than 10 build sets are active at once, so its color is shared with " +
+                  "another set — read the name, not just the color."
+                : $"Build Set \"{buildSetName}\" — merges + restarts together as one wave";
             row.Children.Add(new TextBlock
             {
                 Text = buildSetName,
@@ -2228,9 +2240,35 @@ namespace BuildConsole.Controls
                 FontWeight = FontWeights.SemiBold,
                 Foreground = accentBrush,
                 TextWrapping = TextWrapping.Wrap,
-                ToolTip = $"Build Set \"{buildSetName}\" — merges + restarts together as one wave"
+                ToolTip = tip
             });
-            header.Child = row;
+            if (sharedColor)
+            {
+                row.Children.Add(new TextBlock
+                {
+                    Text = "  ⚠ shared color",
+                    FontSize = 9.5,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = tip
+                });
+            }
+            stack.Children.Add(row);
+            if (sharedColor)
+            {
+                // Dashed accent underline — a shape-based cue that survives two sets sharing
+                // the same solid accent color.
+                stack.Children.Add(new System.Windows.Shapes.Rectangle
+                {
+                    Height = 2,
+                    Margin = new Thickness(0, 3, 0, 0),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    Stroke = accentBrush,
+                    StrokeThickness = 2,
+                    StrokeDashArray = new DoubleCollection(new double[] { 2, 2 })
+                });
+            }
+            header.Child = stack;
             return header;
         }
 

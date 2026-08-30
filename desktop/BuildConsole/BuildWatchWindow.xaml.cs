@@ -981,6 +981,17 @@ namespace BuildConsole
                 // 2) Admit newly-running builds into free / oldest-completed slots.
                 AdmitNewRunning(queue);
 
+                // Git #1920 — declare the build sets currently occupying slots so
+                // BuildSetColorRegistry can coordinate a collision-free accent color across
+                // Build Watch AND the Build Queue panel, freeing a color once its set has no
+                // slot left. Done after AdmitNewRunning so every slot's BuildSet is current.
+                BuildConsole.Services.BuildSetColorRegistry.ReportActive(
+                    "watch",
+                    _slots.Where(s => s.Occupied)
+                          .Select(s => s.BuildSet)
+                          .Where(bs => !string.IsNullOrWhiteSpace(bs))
+                          .Select(bs => bs!.Trim()));
+
                 // 3) Manual-only GitHub (Shane, 2026-08-14): the old ≈30s automatic
                 // `gh` issue-closure check (CheckIssueClosuresAsync — one gh CLI
                 // spawn against GitHub's shared 5,000/hr limit, every 10th 3s
