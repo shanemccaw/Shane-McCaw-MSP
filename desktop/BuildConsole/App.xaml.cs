@@ -74,6 +74,14 @@ namespace BuildConsole
             // pre-removal work-preservation.
             try { Services.BuildTrackerConfig.InitializeRepoRoot(); } catch { }
 
+            // Git #1914 — self-heal the mybuilder:// registry command against this
+            // process's own known-current repo root on every startup, rather than
+            // relying on a one-time manual scripts/setup-extension-host.ps1 run whose
+            // baked-in path can silently go stale if the repo ever moves. Cheap,
+            // idempotent, and must never block/interrupt startup — errors are logged,
+            // not thrown.
+            try { Services.MyBuilderProtocolRegistration.EnsureRegistered(Services.BuildTrackerConfig.FindRepoRoot()); } catch { }
+
             try { SetCurrentProcessExplicitAppUserModelID("ShaneMcCaw.BuildConsole"); } catch { }
 
             // Catch UI thread unhandled exceptions
