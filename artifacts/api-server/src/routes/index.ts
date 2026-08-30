@@ -156,6 +156,7 @@ import portalRemediationTrackerExportRouter from "./portal-remediation-tracker-e
 import portalRemediationTrackerScoresRouter from "./portal-remediation-tracker-scores";
 import portalRemediationFixRoutesRouter from "./portal-remediation-fix-routes";
 import portalRemediationChecklistRouter from "./portal-remediation-checklist";
+import portalRemediationRevealRouter from "./portal-remediation-reveal";
 import portalTenantCheckItemsRouter from "./portal-tenant-check-items";
 import portalAccountSecurityGraphRouter from "./portal-account-security-graph";
 import portalChangeControlRouter from "./portal-change-control";
@@ -438,6 +439,7 @@ router.use(portalRemediationTrackerExportRouter);
 router.use(portalRemediationTrackerScoresRouter);
 router.use(portalRemediationFixRoutesRouter);
 router.use(portalRemediationChecklistRouter);
+router.use(portalRemediationRevealRouter);
 router.use(portalTenantCheckItemsRouter);
 router.use(portalAccountSecurityGraphRouter);
 router.use(portalChangeControlRouter);

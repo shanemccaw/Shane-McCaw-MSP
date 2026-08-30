@@ -4144,6 +4144,25 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
    * wizard raises exactly those.
    */
   linkedFinding: text("linked_finding"),
+  /**
+   * #1541 — the STRUCTURED counterpart to `linkedFinding` above. `linkedFinding`
+   * is free text for display ("Governance · External Sharing Drift"); this is
+   * the exact `remediation_knowledge_base.checkKey` / `monitor_checks.key` this
+   * CR was raised to fix, when it was raised from a remediation item rather than
+   * typed by hand. It is the join the CR gate (`remediation-reveal-gate.ts`)
+   * queries to answer "is there an approved change request authorizing this
+   * customer to see the script for THIS finding" — `linkedFinding`'s prose
+   * cannot be queried exactly, and a finding is not always representable as one
+   * DB row (see `linkedFinding`'s own comment), which is why this is a second,
+   * narrower column rather than a repurposing of that one.
+   *
+   * No FK on purpose: the check-key space is the UNION of published KB rows and
+   * live-pack-mapped checks (`remediation-fix-route.ts`'s `allKeys`), not any
+   * single table, so a hard FK to either would reject a real key from the other
+   * source. NULL on every CR that predates this column and every CR raised
+   * directly (a wizard submission with no `remediationCheckKey` in its body).
+   */
+  remediationCheckKey: text("remediation_check_key"),
 
   // ── Automatic routing of Microsoft changes (#1534, part of #1494) ──────────
   //
@@ -4204,6 +4223,8 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   // #1497 — the reconciliation sweep joins in-flight CRs to their executor
   // wf_run by this column, so index it for the (small, frequent) settle query.
   index("msp_change_requests_executor_run_id_idx").on(t.executorRunId),
+  // #1541 — the CR gate's own lookup: "every CR raised for this (tenant, check)".
+  index("msp_change_requests_remediation_check_key_idx").on(t.remediationCheckKey),
   // One auto-routed CR per (interpretation × tenant): the routing sweep's
   // idempotency guard so a nightly re-run never creates a second CR for the
   // same Microsoft change on the same tenant. Partial — only routed rows carry
@@ -4853,6 +4874,16 @@ export const CR_EVENT_TYPES = [
   "in_progress",
   "completed",
   "rolled_back",
+  /**
+   * #1541 — the customer's own PowerShell for a `you_must_run` fix was shown to
+   * them. Fired every time it is shown, not once — a re-open is a real, separate
+   * fact ("we told them again"), and the count is itself evidence. `toValue`
+   * carries the checkKey that was revealed. NOT proof the script was ever run:
+   * the platform never observes that for a customer-executed fix (see the CR
+   * gate's own header) — this is the record that the reveal happened at all,
+   * against an approved CR, rather than "nobody knows".
+   */
+  "script_revealed",
 ] as const;
 export type CrEventType = (typeof CR_EVENT_TYPES)[number];
 

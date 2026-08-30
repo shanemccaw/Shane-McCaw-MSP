@@ -218,6 +218,16 @@ interface WireChangeRequest {
    */
   readonly linkedFinding: string | null;
   /**
+   * #1541 — the structured counterpart to `linkedFinding` above: the exact
+   * remediation checkKey this CR was raised to fix, when it was raised from a
+   * remediation item. NULL for a hand-typed wizard submission with no item
+   * behind it. This is what the reveal gate (`remediation-reveal-gate.ts`)
+   * matches against the caller's checkKey — exposed here so the register can
+   * show a CR is the one authorizing a given item's script, not because
+   * anything renders it as prose yet.
+   */
+  readonly remediationCheckKey: string | null;
+  /**
    * #1534 — set only on an automatically-routed Microsoft change. `intake` is the
    * "do I have to act" axis (Informed / Approval / Advisory); `implementer` names
    * who executes it ("Microsoft" for a forced change the tenant cannot refuse).
@@ -275,6 +285,7 @@ interface ChangeRequestRow {
   executedAt: string | null;
   approvedBy: string | null;
   linkedFinding: string | null;
+  remediationCheckKey: string | null;
   intake: string | null;
   implementer: string | null;
   sourceGraphMessageId: string | null;
@@ -338,6 +349,7 @@ function toWire(
     executedAt: row.executedAt,
     backupVerified: row.backupVerified,
     linkedFinding: row.linkedFinding,
+    remediationCheckKey: row.remediationCheckKey,
     intake: displayIntake(row.intake),
     implementer: displayImplementer(row.implementer),
     sourceGraphMessageId: row.sourceGraphMessageId,
@@ -505,6 +517,7 @@ router.get(
           executedAt: mspChangeRequestsTable.executedAt,
           approvedBy: mspChangeRequestsTable.approvedBy,
           linkedFinding: mspChangeRequestsTable.linkedFinding,
+          remediationCheckKey: mspChangeRequestsTable.remediationCheckKey,
           intake: mspChangeRequestsTable.intake,
           implementer: mspChangeRequestsTable.implementer,
           sourceGraphMessageId: mspChangeRequestsTable.sourceGraphMessageId,
@@ -591,6 +604,14 @@ const createSchema = z.object({
   // justification, submitted with the change itself. Absent/blank means "no
   // exception requested", which is what a submission during a freeze needs.
   freezeException: z.object({ justification: z.string().trim().min(1).max(2_000) }).optional(),
+  // #1541 — set only when this CR is raised FROM a remediation item (the
+  // structured counterpart to the free-text `linkedFinding` below). Absent for
+  // every hand-typed wizard submission with no remediation item behind it,
+  // which is every submission today — nothing in this codebase sends it yet
+  // (see the CR gate's own header). Accepting it here is what lets a future
+  // "raise a change for this fix" affordance produce a CR the reveal gate can
+  // actually resolve, without a second create path.
+  remediationCheckKey: z.string().trim().min(1).max(200).optional(),
 }).refine(
   (d) => !(d.scheduledStart && d.scheduledEnd) || new Date(d.scheduledEnd).getTime() > new Date(d.scheduledStart).getTime(),
   { message: "Scheduled end must be after scheduled start", path: ["scheduledEnd"] },
@@ -735,6 +756,13 @@ router.post(
           preChangeSnapshot: parseJsonField(body.pre),
           proposedPayload: parseJsonField(body.post),
           rollbackScriptSnippet: "",
+          // #1541 — NULL unless the caller supplied one (see the schema comment
+          // above). The CR gate resolves this exact match, so it is stored
+          // verbatim rather than normalized/validated against a check catalogue
+          // here — an unknown key simply never resolves a reveal, which is the
+          // correct fail-closed outcome rather than a 400 on an otherwise valid
+          // change submission.
+          remediationCheckKey: body.remediationCheckKey?.trim() || null,
         })
         .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
 
