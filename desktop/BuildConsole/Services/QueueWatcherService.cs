@@ -942,11 +942,26 @@ namespace BuildConsole.Services
                     // once its process is gone and a short grace window has passed (so a quick Reply
                     // /resume can still reuse it). Merge-back is left to the session for ungrouped
                     // non-BuildConsole runs; here it is automatic.
-                    if (!limitParked && !string.IsNullOrWhiteSpace(entry.WorktreeName))
+                    if (!string.IsNullOrWhiteSpace(entry.WorktreeName))
                     {
                         var wtName = entry.WorktreeName!;
                         var wtPath = entry.WorktreePath;
-                        if (exitCode == 0 && !string.IsNullOrWhiteSpace(wtPath))
+                        if (limitParked)
+                        {
+                            // Git #1965/#1971 — a session-limit-parked build's process has just exited,
+                            // but its worktree STILL holds uncommitted work and its session will be
+                            // RESUMED in place (--resume) after the limit reset. Previously this whole
+                            // block was skipped for a limit-parked build (`!limitParked && ...`), which
+                            // left the worktree record `active` with a now-dead owner pid and NO
+                            // keep-for-debug flag — so the 5-minute cleanup sweep reclaimed it (and
+                            // force-deleted its `agent/*` branch) in the gap before auto-restart,
+                            // wiping in-flight work and orphaning committed bookends (build-journal/
+                            // 1882.md, 1548.md). Retain it explicitly so the sweep leaves it alone
+                            // until the resume re-activates it (provision-worktree's reuse path clears
+                            // this keep-for-debug flag when it re-owns the worktree).
+                            _ = WorktreeCleanupService.MarkWorktreeStaleAsync(wtName, "session-limit paused — resume pending");
+                        }
+                        else if (exitCode == 0 && !string.IsNullOrWhiteSpace(wtPath))
                         {
                             var setEnv = BuildSetEnvFor(entry);
                             _ = WorktreeProvisionService.MergeBackAsync(wtPath!, wtName, setEnv);

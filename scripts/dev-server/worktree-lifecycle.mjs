@@ -32,9 +32,23 @@ import path from "node:path";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { loadConfig, isWindows } from "./config.mjs";
-import { git, listWorktrees, removeWorktree, pruneWorktrees, deleteBranch } from "./git.mjs";
+import {
+  git,
+  listWorktrees,
+  removeWorktree,
+  pruneWorktrees,
+  deleteBranch,
+  revParse,
+  isAncestor,
+  resolveCommit,
+  isGitRepo,
+} from "./git.mjs";
 import { pidAlive } from "./lock.mjs";
 import { findAndUnlinkWorktreeJunctions } from "./link-deps.mjs";
+
+// markWorktreeStale() drops this untracked marker into a retained worktree; it is
+// BuildConsole bookkeeping, never real work, so preservation must not count it as "dirty".
+const STALE_MARKER_NAME = ".stale-worktree.json";
 
 export function normalizePath(p) {
   if (!p) return "";
@@ -217,9 +231,109 @@ export function markWorktreeStale(config, nameOrPath, { reason = "build error / 
 }
 
 /**
+ * Git #1971 — PRESERVE a worktree's unpublished work before it is destroyed.
+ *
+ * The single silent-data-loss hazard this whole file exists to prevent came back from the
+ * REMOVE side: `removeWorktreeSafe` force-removed the directory AND force-deleted the `agent/*`
+ * branch, so any uncommitted edits and any commits not yet on origin/main (e.g. a committed
+ * bookend) were discarded — recoverable only via `git fsck` dangling objects, twice observed
+ * (build-journal/1882.md, build-journal/1548.md). This function is the choke point that makes
+ * that impossible: EVERY removal path (the periodic sweep and explicit cleanup both route through
+ * removeWorktreeSafe) preserves first.
+ *
+ * It is best-effort and never throws — a preservation failure must not block cleanup, but the
+ * common case leaves a durable, named, recoverable ref instead of a dangling object:
+ *   1. Any uncommitted changes are WIP-committed onto the worktree's own branch (identity is
+ *      forced so it works even if the worktree has no user.name/email), turning working-tree
+ *      state into reachable objects.
+ *   2. A durable branch `rescued/<name>-<ts>` is stamped at the (post-WIP) branch tip, so the
+ *      subsequent force-delete of the ephemeral `agent/*` branch can never orphan the commits —
+ *      they stay reachable and discoverable via `git branch --list 'rescued/*'`, no fsck needed.
+ *
+ * Skips entirely when there is genuinely nothing to save (clean tree AND the branch tip is
+ * already an ancestor of origin/main), so a normal completed+merged build leaves no noise.
+ *
+ * @returns {{ preserved: boolean, reason: string, wip?: string|null, rescueBranch?: string|null }}
+ */
+export function preserveWorktreeWork(config, wtPath, rec) {
+  try {
+    if (!existsSync(wtPath) || !isGitRepo(wtPath)) {
+      return { preserved: false, reason: "path gone or not a git worktree" };
+    }
+
+    // Uncommitted changes (the stale-debug marker is BuildConsole bookkeeping, not real work).
+    const status = git(wtPath, ["status", "--porcelain"]);
+    const dirtyLines = (status.stdout || "")
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0)
+      .filter((l) => !l.endsWith(STALE_MARKER_NAME));
+    const dirty = status.code === 0 && dirtyLines.length > 0;
+
+    // Unpushed commits: the branch tip isn't yet an ancestor of the base ref (origin/main).
+    // If the base can't be resolved, err toward preserving rather than discarding.
+    const head = revParse(wtPath, "HEAD");
+    const base =
+      resolveCommit(config.mainRepoRoot, config.baseRef) ||
+      revParse(config.mainRepoRoot, config.baseRef);
+    const unpushed = head ? (base ? !isAncestor(wtPath, head, base) : true) : false;
+
+    if (!dirty && !unpushed) {
+      return { preserved: false, reason: "nothing to preserve (clean tree, branch already on origin/main)" };
+    }
+
+    // 1. WIP-commit any uncommitted changes onto the branch so they become reachable objects.
+    const idFlags = ["-c", "user.name=BuildConsole Rescue", "-c", "user.email=rescue@localhost"];
+    let wip = null;
+    if (dirty) {
+      git(wtPath, ["add", "-A"]);
+      const msg = `WIP: rescued uncommitted work before worktree removal (${new Date().toISOString()})`;
+      const c = git(wtPath, [...idFlags, "commit", "--no-verify", "-m", msg]);
+      if (c.code === 0) wip = revParse(wtPath, "HEAD");
+    }
+
+    // 2. Stamp a durable rescue branch at the (post-WIP) tip so branch-delete can't orphan it.
+    const tip = revParse(wtPath, "HEAD");
+    let rescueBranch = null;
+    if (tip) {
+      const safe = sanitizeId(rec?.name || path.basename(wtPath));
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      const ref = `refs/heads/rescued/${safe}-${ts}`;
+      const u = git(config.mainRepoRoot, ["update-ref", ref, tip]);
+      if (u.code === 0) rescueBranch = ref.replace("refs/heads/", "");
+    }
+
+    if (wip || rescueBranch) {
+      appendCleanupLog(config, {
+        action: "preserved_before_removal",
+        path: wtPath,
+        wip,
+        rescueBranch,
+        dirty,
+        unpushed,
+      });
+      console.log(
+        `[worktree-cleanup] PRESERVED work before removing ${wtPath}` +
+          (rescueBranch ? ` -> branch '${rescueBranch}'` : "") +
+          (wip ? ` (WIP commit ${wip.slice(0, 8)})` : "")
+      );
+      return { preserved: true, reason: "work rescued", wip, rescueBranch };
+    }
+    return { preserved: false, reason: "had work but could not create a rescue ref (logged)" };
+  } catch (e) {
+    // Best effort — never block cleanup on a preservation failure, but make it visible.
+    try { appendCleanupLog(config, { action: "preserve_failed", path: wtPath, error: e.message }); } catch {}
+    console.warn(`[worktree-cleanup] Warning: could not preserve work in ${wtPath}: ${e.message}`);
+    return { preserved: false, reason: `preserve error: ${e.message}` };
+  }
+}
+
+/**
  * Safely remove an isolated worktree.
  *
  * CRITICAL SAFETY:
+ *   0. PRESERVES any uncommitted / unpushed work to a durable `rescued/*` branch first
+ *      (Git #1971) — a removal can never silently discard in-progress work.
  *   1. Verifies path is not main repo root or dev-server checkout.
  *   2. Unlinks all directory junctions (node_modules, dist) so git worktree remove
  *      or rmdir NEVER follows junctions into the main repo.
@@ -243,6 +357,10 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
   if (normTarget === normServer) {
     throw new Error(`Refusing to remove dedicated dev-server worktree: ${wtPath}`);
   }
+
+  // Git #1971 — preserve unpublished work BEFORE any destructive step (junction unlink, worktree
+  // remove, branch delete). Best-effort; never blocks removal.
+  const preservation = preserveWorktreeWork(config, wtPath, rec);
 
   let junctionsUnlinked = [];
   if (existsSync(wtPath)) {
@@ -303,10 +421,12 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
     gitRemoveOk,
     fsRemoved,
     branchDeleted,
+    rescuedBranch: preservation.rescueBranch || null,
+    rescuedWip: preservation.wip || null,
   };
   appendCleanupLog(config, logEntry);
 
-  console.log(`[worktree-cleanup] REMOVED worktree at ${wtPath} (reason: ${reason}, junctionsUnlinked: ${junctionsUnlinked.length}, branchDeleted: ${branchDeleted || "none"})`);
+  console.log(`[worktree-cleanup] REMOVED worktree at ${wtPath} (reason: ${reason}, junctionsUnlinked: ${junctionsUnlinked.length}, branchDeleted: ${branchDeleted || "none"}${preservation.rescueBranch ? `, rescued -> ${preservation.rescueBranch}` : ""})`);
 
   return {
     ok: true,
@@ -314,6 +434,8 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
     reason,
     junctionsUnlinkedCount: junctionsUnlinked.length,
     branchDeleted,
+    rescuedBranch: preservation.rescueBranch || null,
+    rescuedWip: preservation.wip || null,
   };
 }
 
@@ -368,9 +490,15 @@ export function sweepWorktrees(config, opts = {}) {
       continue;
     }
 
-    // Check 2: Was it created very recently (active grace period)?
-    if (rec && !rec.keepForDebug && (now - (rec.createdAt || 0) < maxAgeMs) && !force) {
-      retained.push({ path: wt.path, reason: `created recently (${Math.round((now - rec.createdAt) / 1000)}s ago < grace ${Math.round(maxAgeMs / 1000)}s)` });
+    // Check 2: Is it inside the active grace period? Git #1971 — key this off the MOST RECENT
+    // of createdAt / lastActiveAt, not createdAt alone. A long build whose owner pid has just
+    // died (crash, or a session-limit park about to be resumed in place) is well past a
+    // created-at grace, but its record was re-stamped (updateWorktreeRecord bumps lastActiveAt)
+    // when it was provisioned/resumed — honouring that keeps a freshly-active worktree out of
+    // the candidate list during the brief window before its resume re-attaches.
+    const lastTouch = Math.max(rec?.createdAt || 0, rec?.lastActiveAt || 0);
+    if (rec && !rec.keepForDebug && (now - lastTouch < maxAgeMs) && !force) {
+      retained.push({ path: wt.path, reason: `active recently (${Math.round((now - lastTouch) / 1000)}s ago < grace ${Math.round(maxAgeMs / 1000)}s)` });
       continue;
     }
 

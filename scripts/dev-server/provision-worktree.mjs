@@ -27,7 +27,7 @@
 // worktree of the same path reuses it instead of failing.
 
 import path from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { loadConfig, isWindows } from "./config.mjs";
 import { git, resolveCommit, shortSha, listWorktrees } from "./git.mjs";
@@ -94,7 +94,17 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
           baseCommit,
           creatorPid,
         });
-      updateWorktreeRecord(config, wtPath, { creatorPid, status: "active" });
+      // Git #1971 — re-activating a reused worktree clears any keep-for-debug retention (and
+      // its on-disk marker) left by a prior failure or session-limit park. The worktree is
+      // live again under the new owner pid; leaving it flagged stale would keep it out of the
+      // normal sweep for 24h after this resumed session actually finishes.
+      updateWorktreeRecord(config, wtPath, {
+        creatorPid,
+        status: "active",
+        keepForDebug: false,
+        debugReason: null,
+      });
+      try { rmSync(path.join(wtPath, ".stale-worktree.json"), { force: true }); } catch {}
       // Env files (#1633): unconditional, not gated behind --link, and idempotent --
       // even a reused worktree may be missing one if it was provisioned before this fix.
       // Git #1646 — do NOT call logEnvCopy() here: this function is also invoked with
