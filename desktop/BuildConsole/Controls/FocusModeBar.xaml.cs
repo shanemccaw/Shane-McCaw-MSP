@@ -21,8 +21,6 @@ namespace BuildConsole.Controls
         private const double TrackWidth = 120;
         private string _pickerSignature = "";
 
-        /// <summary>A quick task was tapped — MainWindow opens the issue, then the service restores context.</summary>
-        public event Action<FocusSuggestion>? SuggestionActivated;
         /// <summary>The active-milestone chip was clicked — open its detail tab.</summary>
         public event Action<int>? MilestoneOpenRequested;
         /// <summary>The achievements chip was clicked — show the earned list.</summary>
@@ -39,22 +37,18 @@ namespace BuildConsole.Controls
             {
                 var svc = FocusModeService.Instance;
                 svc.StateChanged += OnStateChanged;
-                svc.DowntimeChanged += OnDowntimeChanged;
                 svc.InProgressChatsChanged += OnInProgressChatsChanged;
                 Refresh();
-                RefreshDowntime();
             };
             Unloaded += (_, _) =>
             {
                 var svc = FocusModeService.Instance;
                 svc.StateChanged -= OnStateChanged;
-                svc.DowntimeChanged -= OnDowntimeChanged;
                 svc.InProgressChatsChanged -= OnInProgressChatsChanged;
             };
         }
 
         private void OnStateChanged() => Dispatcher.Invoke(Refresh);
-        private void OnDowntimeChanged() => Dispatcher.Invoke(RefreshDowntime);
         private void OnInProgressChatsChanged() => Dispatcher.Invoke(RefreshInProgressChats);
 
         // ----------------------------------------------------------------
@@ -193,57 +187,6 @@ namespace BuildConsole.Controls
         }
 
         // ----------------------------------------------------------------
-        // Downtime panel
-        // ----------------------------------------------------------------
-        private void RefreshDowntime()
-        {
-            var svc = FocusModeService.Instance;
-            if (!svc.InDowntime || svc.Suggestions.Count == 0)
-            {
-                DowntimePanel.Visibility = Visibility.Collapsed;
-                return;
-            }
-
-            DowntimePanel.Visibility = Visibility.Visible;
-            DowntimeHeader.Text = $"⏳ Build running — {svc.Suggestions.Count} quick win{(svc.Suggestions.Count == 1 ? "" : "s")} while you wait:";
-            SuggestionsPanel.Children.Clear();
-            foreach (var s in svc.Suggestions)
-                SuggestionsPanel.Children.Add(BuildSuggestionChip(s));
-            svc.NoteSuggestionsShown();
-        }
-
-        private UIElement BuildSuggestionChip(FocusSuggestion s)
-        {
-            var content = new StackPanel { Orientation = Orientation.Horizontal };
-            content.Children.Add(new TextBlock { Text = s.Emoji + " ", FontSize = 11, VerticalAlignment = VerticalAlignment.Center });
-            content.Children.Add(new TextBlock
-            {
-                Text = $"{s.NumberStr}  {s.Title}",
-                FontSize = 11,
-                Foreground = Res("TextBrush"),
-                VerticalAlignment = VerticalAlignment.Center,
-                MaxWidth = 320,
-                TextTrimming = TextTrimming.CharacterEllipsis
-            });
-            if (!string.IsNullOrWhiteSpace(s.Effort))
-                content.Children.Add(new TextBlock { Text = $"  ·{s.Effort}", FontSize = 9.5, Foreground = Res("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center });
-
-            var btn = new Button
-            {
-                Content = content,
-                Margin = new Thickness(0, 0, 8, 6),
-                Padding = new Thickness(10, 5, 10, 5),
-                Cursor = Cursors.Hand,
-                Background = Res("Surface1Brush"),
-                BorderThickness = new Thickness(0),
-                ToolTip = $"{s.Kind} — open it now; you'll snap back when the build's done",
-                Tag = s
-            };
-            btn.Click += (_, _) => SuggestionActivated?.Invoke(s);
-            return btn;
-        }
-
-        // ----------------------------------------------------------------
         // Interactions
         // ----------------------------------------------------------------
         private void StartFocusBtn_Click(object sender, RoutedEventArgs e)
@@ -256,8 +199,6 @@ namespace BuildConsole.Controls
 
         private void ImmersiveBtn_Click(object sender, RoutedEventArgs e) => ImmersiveRequested?.Invoke();
 
-        private void BackNowBtn_Click(object sender, RoutedEventArgs e) => FocusModeService.Instance.RequestRestoreNow();
-
         private void ActiveTitle_Click(object sender, MouseButtonEventArgs e)
         {
             var n = FocusModeService.Instance.ActiveMilestoneNumber;
@@ -265,8 +206,5 @@ namespace BuildConsole.Controls
         }
 
         private void AchvChip_Click(object sender, MouseButtonEventArgs e) => AchievementsRequested?.Invoke();
-
-        /// <summary>App-level brush lookup (works whether or not this control is in the visual tree yet).</summary>
-        private static Brush Res(string key) => (Brush)Application.Current.FindResource(key);
     }
 }

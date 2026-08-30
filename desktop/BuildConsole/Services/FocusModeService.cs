@@ -3,37 +3,35 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using System.Windows.Threading;
 
 namespace BuildConsole.Services
 {
     /// <summary>
     /// Focus Mode — the single behavioral-design spine that sits on TOP of every
-    /// panel (Git Board, Chats, Build Queue, Home). It is deliberately one service,
-    /// not four features, because Shane's problem is one thing: builds have downtime,
-    /// downtime turns into "more fun" side quests, side quests eat the day.
+    /// panel (Git Board, Chats, Build Queue, Home).
     ///
-    /// The five pieces this owns:
+    /// The pieces this owns:
     ///   1. Active-milestone declaration (one at a time, persisted).
     ///   2. The hard global filter predicate every panel consults to HIDE off-milestone
     ///      content (genuinely hidden, not deprioritised).
-    ///   3. Downtime detection — genuine build-slot saturation: every one of the 8 Build
-    ///      Watch slots is occupied AND the queue still has items waiting behind them —
-    ///      with quick on-milestone task suggestions. (No idle timer: Shane never lets
-    ///      builds sit, so "he's idle" was the wrong signal; a full-and-backed-up queue
-    ///      is the real "nothing more I can start right now" moment.)
-    ///   4. Automatic context snapshot on downtime + auto-restore when the build that
-    ///      caused it finishes (or a quick task is finished/dismissed).
-    ///   5. A tasteful game layer over the REAL milestone numbers (honest closed/total,
+    ///   3. A tasteful game layer over the REAL milestone numbers (honest closed/total,
     ///      a least-squares ETA reusing <see cref="UsageProjection"/>'s math, points and
     ///      earned achievements).
+    ///
+    /// (#1874 — the downtime "quick wins while you wait" band, its build-slot-saturation
+    /// detection, and the context capture/auto-restore behind it were removed. Shane never
+    /// used it and it had no close affordance, appearing exactly when all 8 build slots
+    /// were busy — the moment he had the least screen to spare. <see cref="Suggestions"/>
+    /// / <see cref="RecomputeSuggestions"/> survive, kept alive purely as the data source
+    /// for <c>FocusImmersiveView</c>'s own empty-state suggestion chips — a different
+    /// surface Shane didn't ask to remove.)
     ///
     /// Everything is single-window: this raises events; MainWindow / FocusModeBar react
     /// inside the existing multi-pane shell. Nothing here opens a window.
     ///
     /// Threading: every entry point runs on the WPF UI Dispatcher (LeftSidebar populate,
-    /// the queue watcher's DispatcherTimer, this class's own DispatcherTimer), so state
-    /// is single-threaded by construction; only disk I/O is wrapped defensively.
+    /// the queue watcher's DispatcherTimer), so state is single-threaded by construction;
+    /// only disk I/O is wrapped defensively.
     /// All notable transitions are logged on the <c>focus-mode</c> ActivityLog channel.
     /// </summary>
     public class FocusModeService
@@ -49,16 +47,8 @@ namespace BuildConsole.Services
         private const int MinEtaSamples = 3;
         private static readonly TimeSpan MinEtaSpan = TimeSpan.FromHours(1);
 
-        // ---- injected probes (set once by MainWindow.InitFocusMode) -----
-        /// <summary>Real build-slot saturation right now (occupied slots, queued backlog, slot capacity)
-        /// read from the shared server queue snapshot. This — not any idle timer — is the downtime signal.</summary>
-        private Func<FocusBuildSaturation>? _buildSaturation;
-        private Func<FocusContextSnapshot?>? _captureContext;
-        private Action<FocusContextSnapshot>? _restoreContext;
-
         // ---- live state ------------------------------------------------
         private FocusPersistState _state = new();
-        private DispatcherTimer? _timer;
         private bool _started;
 
         // board snapshot (issue -> milestone map + raw issues for suggestions)
@@ -74,21 +64,16 @@ namespace BuildConsole.Services
         private List<BoardChat> _chats = new();
         private Dictionary<int, BoardEpic> _epicById = new();
 
-        // downtime machine
-        private bool _inDowntime;
-        private FocusContextSnapshot? _pendingRestore; // captured context awaiting a restore trigger
-        private bool _suppressReentry;                 // Shane took a quick task — don't re-nag until resolved
-        private DateTime _lastDowntimeEnd = DateTime.MinValue;
-        private static readonly TimeSpan ReentryCooldown = TimeSpan.FromSeconds(30);
-
         // ---- public read state -----------------------------------------
         public bool IsActive => _state.IsActive && _state.ActiveMilestoneNumber.HasValue;
         public int? ActiveMilestoneNumber => _state.ActiveMilestoneNumber;
         public string ActiveMilestoneTitle => _state.ActiveMilestoneTitle;
         public int Points => _state.Points;
-        public bool InDowntime => _inDowntime;
         public IReadOnlyList<FocusMilestone> Milestones => _milestones;
         public IReadOnlyList<FocusAchievement> Achievements => _state.Achievements;
+        /// <summary>On-milestone quick-task suggestions. No longer used by the (removed) downtime band —
+        /// kept purely as the data source for <c>FocusImmersiveView.ShowEmptyState</c>'s own suggestion
+        /// chips (#1874). Recomputed on <see cref="Activate"/> and every <see cref="UpdateBoardSnapshot"/>.</summary>
         public IReadOnlyList<FocusSuggestion> Suggestions { get; private set; } = new List<FocusSuggestion>();
         public FocusProgress Progress { get; private set; } = new();
 
@@ -162,8 +147,6 @@ namespace BuildConsole.Services
         public event Action? StateChanged;
         /// <summary>The filter changed — every panel must re-render (hide/show).</summary>
         public event Action? FilterChanged;
-        /// <summary>Downtime started/ended or its suggestions changed — the bar shows/hides the quick list.</summary>
-        public event Action? DowntimeChanged;
         /// <summary>A real achievement was just unlocked — pop a tasteful toast.</summary>
         public event Action<FocusAchievement>? AchievementUnlocked;
         /// <summary>The immersive full-screen view was engaged / dismissed — MainWindow shows or hides the
@@ -184,26 +167,13 @@ namespace BuildConsole.Services
         // Wiring / lifecycle
         // ================================================================
 
-        /// <summary>Called once by MainWindow.InitFocusMode with the probes only the shell can
-        /// provide, then starts the downtime timer. Safe to call before any board data exists.</summary>
-        public void Start(Dispatcher ui, Func<FocusBuildSaturation> buildSaturation,
-                          Func<FocusContextSnapshot?> captureContext,
-                          Action<FocusContextSnapshot> restoreContext)
+        /// <summary>Called once by MainWindow.InitFocusMode. Safe to call before any board data exists.</summary>
+        public void Start()
         {
             if (_started) return;
             _started = true;
-            _buildSaturation = buildSaturation;
-            _captureContext = captureContext;
-            _restoreContext = restoreContext;
 
             Load();
-
-            _timer = new DispatcherTimer(DispatcherPriority.Background, ui)
-            {
-                Interval = TimeSpan.FromSeconds(5)
-            };
-            _timer.Tick += (_, _) => Tick();
-            _timer.Start();
 
             ActivityLog.Log("focus-mode",
                 IsActive
@@ -248,9 +218,6 @@ namespace BuildConsole.Services
             _state.IsActive = false;
             // keep ActiveMilestoneNumber/Title as the "last focused" for quick re-entry;
             // IsActive is the switch panels read.
-            _pendingRestore = null;
-            _suppressReentry = false;
-            ExitDowntime(restore: false, reason: "focus deactivated");
             bool wasImmersive = _state.ImmersiveActive;
             _state.ImmersiveActive = false; // can't be immersive in an epic you're no longer focused on
             ActivityLog.Log("focus-mode", $"milestone deactivated (was '{was}') — all panels unfiltered");
@@ -523,100 +490,9 @@ namespace BuildConsole.Services
         }
 
         // ================================================================
-        // Piece 3 — downtime detection + quick-task suggestions
+        // Quick-task suggestions — real on-milestone data, no downtime tie-in (#1874).
+        // Kept solely as the data source for FocusImmersiveView's empty-state chips.
         // ================================================================
-
-        private void Tick()
-        {
-            if (!IsActive) { if (_inDowntime) ExitDowntime(false, "focus off"); return; }
-
-            FocusBuildSaturation sat;
-            try { sat = _buildSaturation?.Invoke() ?? default; }
-            catch { sat = default; }
-
-            // The precise real trigger: every build slot occupied AND items still queued
-            // behind them — genuine saturation, no idle timer (see FocusBuildSaturation).
-            bool downtimeNow = sat.IsSaturated;
-
-            if (downtimeNow && !_inDowntime && !_suppressReentry
-                && (DateTime.Now - _lastDowntimeEnd) > ReentryCooldown)
-            {
-                EnterDowntime(sat);
-            }
-            else if (!downtimeNow && _inDowntime)
-            {
-                // Saturation broke — a slot freed (running < slots) or the queue drained
-                // (nothing left queued behind them). Stop nagging, but do NOT auto-restore on
-                // mere de-saturation; restore is reserved for the genuine build-complete signal
-                // (the finished build that freed the slot fires it) or a resolved quick task.
-                string reason = sat.RunningCount < sat.SlotCount
-                    ? $"a slot freed ({sat.RunningCount}/{sat.SlotCount} occupied, {sat.QueuedCount} queued)"
-                    : $"queue drained (0 waiting behind {sat.RunningCount}/{sat.SlotCount} occupied)";
-                ExitDowntime(restore: false, reason: reason);
-                // No builds running at all → no build-complete signal will ever come to trigger a
-                // restore; drop the now-orphaned capture so it can't restore out of nowhere later.
-                if (sat.RunningCount == 0) { _pendingRestore = null; _suppressReentry = false; }
-            }
-        }
-
-        private void EnterDowntime(FocusBuildSaturation sat)
-        {
-            _inDowntime = true;
-
-            // Capture EXACTLY what Shane was doing, before suggestions can pull him elsewhere.
-            // Only on a FRESH downtime (no capture already pending) — re-entries must not clobber
-            // the original "what I was doing" snapshot with a half-done quick-task view.
-            if (_pendingRestore == null)
-            {
-                try
-                {
-                    var snap = _captureContext?.Invoke();
-                    if (snap != null && !snap.IsEmpty)
-                    {
-                        _pendingRestore = snap;
-                        _state.LastContext = snap;
-                        Save();
-                        ActivityLog.Log("focus-mode",
-                            $"context saved — {snap.Tabs.Count} tab(s), active pane {snap.ActivePaneIndex + 1}, layout '{snap.LayoutMode}'");
-                    }
-                }
-                catch (Exception ex) { ActivityLog.Log("focus-mode", $"context capture failed: {ex.Message}"); }
-            }
-
-            RecomputeSuggestions();
-            ActivityLog.Log("focus-mode",
-                $"downtime detected — genuine saturation: all {sat.RunningCount}/{sat.SlotCount} build slots occupied with {sat.QueuedCount} item(s) queued behind them; offering {Suggestions.Count} quick on-milestone task(s)");
-            DowntimeChanged?.Invoke();
-        }
-
-        private void ExitDowntime(bool restore, string reason)
-        {
-            if (!_inDowntime && !restore) { return; }
-            bool was = _inDowntime;
-            _inDowntime = false;
-            _lastDowntimeEnd = DateTime.Now;
-            Suggestions = new List<FocusSuggestion>();
-
-            if (restore && _pendingRestore != null)
-            {
-                var snap = _pendingRestore;
-                _pendingRestore = null;
-                _suppressReentry = false;
-                try
-                {
-                    _restoreContext?.Invoke(snap);
-                    ActivityLog.Log("focus-mode",
-                        $"context restored ({reason}) — snapping back to {snap.Tabs.Count} tab(s), pane {snap.ActivePaneIndex + 1}");
-                }
-                catch (Exception ex) { ActivityLog.Log("focus-mode", $"context restore failed: {ex.Message}"); }
-            }
-            else if (was)
-            {
-                ActivityLog.Log("focus-mode", $"downtime ended ({reason})");
-            }
-
-            if (was || restore) DowntimeChanged?.Invoke();
-        }
 
         private void RecomputeSuggestions()
         {
@@ -642,47 +518,6 @@ namespace BuildConsole.Services
         {
             title = (title ?? "").Trim();
             return title.Length > 70 ? title.Substring(0, 68) + "…" : title;
-        }
-
-        /// <summary>Shane tapped a quick task. Open it and stop nagging, but keep the captured
-        /// context pending — he'll be snapped back when the build finishes (or he hits "back now").
-        /// Suppress re-entry so a second idle spell mid-quick-task doesn't clobber the capture.</summary>
-        public void SuggestionTaken(int issueNumber)
-        {
-            _suppressReentry = true;
-            ActivityLog.Log("focus-mode",
-                $"suggestion taken: #{issueNumber} — opening it; will restore prior context when the build finishes");
-            ExitDowntime(restore: false, reason: $"quick task #{issueNumber} taken");
-        }
-
-        /// <summary>Shane hit "back to my task" — restore the saved context right now.</summary>
-        public void RequestRestoreNow()
-        {
-            if (_pendingRestore == null) { ActivityLog.Log("focus-mode", "manual return requested but nothing was saved"); return; }
-            ActivityLog.Log("focus-mode", "manual 'back to my task' — restoring saved context now");
-            ExitDowntime(restore: true, reason: "manual return");
-        }
-
-        /// <summary>Fired when a suggestion is first surfaced to the user (bar shown).</summary>
-        public void NoteSuggestionsShown()
-        {
-            if (Suggestions.Count > 0)
-                ActivityLog.Log("focus-mode", $"suggestions shown: {string.Join(", ", Suggestions.Select(s => "#" + s.IssueNumber))}");
-        }
-
-        // ================================================================
-        // Piece 4 — build-complete restore hook
-        // ================================================================
-
-        /// <summary>The queue watcher's genuine "this build finished" signal. If we captured
-        /// context because of downtime, snap Shane back to it now.</summary>
-        public void NotifyBuildFinished(int queueItemId, string title, int exitCode)
-        {
-            if (_pendingRestore != null)
-            {
-                ActivityLog.Log("focus-mode", $"build finished ('{title}', exit {exitCode}) — auto-restoring saved context");
-                ExitDowntime(restore: true, reason: $"build '{title}' finished");
-            }
         }
 
         // ================================================================

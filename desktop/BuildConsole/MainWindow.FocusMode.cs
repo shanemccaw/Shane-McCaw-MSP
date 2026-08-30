@@ -11,10 +11,8 @@ namespace BuildConsole
     /// Focus Mode — MainWindow's integration glue (the ONLY shell-side wiring, kept in
     /// this partial so MainWindow.xaml.cs needs a single call: InitFocusMode()).
     ///
-    /// This is where the three things only the shell can do live:
+    /// This is where the things only the shell can do live:
     ///   • host the <see cref="FocusModeBar"/> inside the existing single-window layout,
-    ///   • report real build-slot saturation (occupied slots + queued backlog) and
-    ///     capture/restore Shane's exact context,
     ///   • fan a filter-change out to every panel and route the bar's open-issue / open-milestone
     ///     intents into real tabs.
     /// The behavioural logic itself all lives in <see cref="FocusModeService"/>.
@@ -28,7 +26,6 @@ namespace BuildConsole
             try
             {
                 _focusBar = new FocusModeBar();
-                _focusBar.SuggestionActivated += OnFocusSuggestionActivated;
                 _focusBar.MilestoneOpenRequested += OnFocusMilestoneOpen;
                 _focusBar.AchievementsRequested += OnFocusAchievementsRequested;
                 _focusBar.ImmersiveRequested += () => FocusModeService.Instance.EnterImmersive();
@@ -53,16 +50,7 @@ namespace BuildConsole
                 FocusModeService.Instance.AchievementUnlocked += a =>
                     Dispatcher.Invoke(() => ToastEngine.Success($"{a.Emoji} {a.Title}", a.Detail));
 
-                // Real build-complete signal → auto-restore whatever we snapshotted at downtime.
-                if (_queueWatcher != null)
-                    _queueWatcher.BuildFinished += (id, title, exit) => FocusModeService.Instance.NotifyBuildFinished(id, title, exit);
-
-                // Start the service with the probes only the shell can supply.
-                FocusModeService.Instance.Start(
-                    Dispatcher,
-                    GetBuildSaturation,
-                    CaptureFocusContext,
-                    RestoreFocusContext);
+                FocusModeService.Instance.Start();
 
                 // Wire the dedicated immersive full-screen view on top of everything above (runs AFTER
                 // Start() so the service's persisted state — including whether immersive was engaged — is
@@ -98,122 +86,6 @@ namespace BuildConsole
             }
         }
 
-        // ---- probes -----------------------------------------------------
-
-        /// <summary>Real build-slot saturation for downtime detection: how many slots are occupied
-        /// (running), how many items are queued behind them, and the slot capacity (Build Watch's 8).
-        /// Read from the shared server queue snapshot (<see cref="BuildQueuePanel.CurrentQueueItems"/>),
-        /// which covers foreign / standalone-watcher builds too — the same source Build Watch fills its
-        /// slots from. Downtime is genuine saturation: running ≥ slots AND queued &gt; 0.</summary>
-        private FocusBuildSaturation GetBuildSaturation()
-        {
-            try
-            {
-                var items = BuildQueuePanel.CurrentQueueItems;
-                return new FocusBuildSaturation
-                {
-                    RunningCount = items.Count(i => i.Status == "running"),
-                    QueuedCount = items.Count(i => i.Status == "queued"),
-                    SlotCount = BuildWatchWindow.SlotCount
-                };
-            }
-            catch { return default; }
-        }
-
-        private static readonly Func<MainWindow, TabControl[]> PanesOf =
-            mw => new[] { mw.EditorTabs, mw.EditorTabs2, mw.EditorTabs3, mw.EditorTabs4 };
-
-        // ---- context capture / restore (Piece 4) ------------------------
-
-        private FocusContextSnapshot CaptureFocusContext()
-        {
-            var panes = PanesOf(this);
-            var snap = new FocusContextSnapshot { SavedAt = DateTime.Now, LayoutMode = DerivePaneMode() };
-
-            foreach (var kv in _chatTabs)
-            {
-                var tab = kv.Key;
-                if (tab.Tag is not BuildConsole.Services.BoardChat chat) continue;
-                int pane = Array.IndexOf(panes, tab.Parent as TabControl);
-                if (pane < 0) pane = 0;
-                snap.Tabs.Add(new FocusContextTab
-                {
-                    ConversationId = chat.ConversationId,
-                    Title = chat.Title,
-                    ClaudeUrl = chat.ClaudeUrl,
-                    EpicId = chat.EpicId,
-                    IssueGithubNumber = kv.Value.GithubNumber ?? chat.IssueGithubNumber,
-                    PaneIndex = pane
-                });
-            }
-
-            snap.ActivePaneIndex = Math.Max(0, Array.IndexOf(panes, _activeEditorPane));
-
-            var (_, activeTab) = GetActiveEditorTabWebView();
-            if (activeTab?.Tag is BuildConsole.Services.BoardChat ac)
-                snap.ActiveTabConversationId = ac.ConversationId;
-            else if (activeTab?.Tag as string == HomeTabTag)
-                snap.ActiveTabWasHome = true;
-
-            return snap;
-        }
-
-        private void RestoreFocusContext(FocusContextSnapshot snap)
-        {
-            // Snap Shane back to exactly what he had focused before the quick-task detour.
-            if (snap.ActiveTabWasHome) { OpenHomeTab(); return; }
-
-            if (!string.IsNullOrEmpty(snap.ActiveTabConversationId))
-            {
-                // Prefer re-selecting the still-open tab (it usually never closed).
-                foreach (var tab in _chatTabs.Keys.ToList())
-                {
-                    if (tab.Tag is BuildConsole.Services.BoardChat c && c.ConversationId == snap.ActiveTabConversationId)
-                    {
-                        if (tab.Parent is TabControl pane)
-                        {
-                            pane.SelectedItem = tab;
-                            _activeEditorPane = pane;
-                            tab.Focus();
-                        }
-                        return;
-                    }
-                }
-                // Closed since capture — reopen from the snapshot.
-                var ct = snap.Tabs.FirstOrDefault(t => t.ConversationId == snap.ActiveTabConversationId)
-                         ?? snap.Tabs.FirstOrDefault();
-                if (ct != null) { ReopenFocusTab(ct); return; }
-            }
-
-            var first = snap.Tabs.FirstOrDefault();
-            if (first != null) ReopenFocusTab(first);
-        }
-
-        private void ReopenFocusTab(FocusContextTab ct)
-        {
-            OpenChatTab(new BuildConsole.Services.BoardChat
-            {
-                ConversationId = ct.ConversationId,
-                Title = ct.Title,
-                ClaudeUrl = ct.ClaudeUrl,
-                EpicId = ct.EpicId,
-                IssueGithubNumber = ct.IssueGithubNumber
-            }, ct.IssueGithubNumber);
-        }
-
-        /// <summary>Best-effort layout-mode string from the pane visibility (for the snapshot's
-        /// diagnostic record; restore re-selects the active tab rather than rebuilding the split).</summary>
-        private string DerivePaneMode()
-        {
-            bool p2 = EditorTabs2.Visibility == Visibility.Visible;
-            bool p3 = EditorTabs3.Visibility == Visibility.Visible;
-            bool p4 = EditorTabs4.Visibility == Visibility.Visible;
-            if (p2 && p3 && p4) return "Grid4";
-            if (p3) return "SplitV";
-            if (p2) return "SplitH";
-            return "single";
-        }
-
         // ---- filter fan-out (Piece 2) -----------------------------------
 
         private void OnFocusFilterChanged()
@@ -240,13 +112,9 @@ namespace BuildConsole
 
         // ---- bar intents ------------------------------------------------
 
-        private void OnFocusSuggestionActivated(FocusSuggestion s)
-        {
-            // Open the quick task, then tell the service he engaged it — it stops nagging and
-            // keeps the saved context pending until the build finishes (or he hits "back").
-            OpenChatForIssue(s.IssueNumber);
-            FocusModeService.Instance.SuggestionTaken(s.IssueNumber);
-        }
+        /// <summary>A quick-task suggestion chip was tapped — currently only raised by the immersive
+        /// view's empty state (#1874 removed the downtime band, the other former source).</summary>
+        private void OnFocusSuggestionActivated(FocusSuggestion s) => OpenChatForIssue(s.IssueNumber);
 
         private void OnFocusMilestoneOpen(int milestoneNumber)
         {

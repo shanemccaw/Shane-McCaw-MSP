@@ -8,9 +8,10 @@ namespace BuildConsole.Services
     // the FocusModeBar control and MainWindow's integration partial.
     //
     // Shane's ask (verbatim): a real focus mode that HIDES everything except the
-    // one milestone he's working, gives him small on-milestone quick tasks during
-    // build downtime, snapshots exactly what he was doing and snaps him back when
-    // the build finishes — with a tasteful game layer on the REAL milestone numbers.
+    // one milestone he's working, with a tasteful game layer on the REAL milestone
+    // numbers. (#1874 — the downtime quick-task band and its context capture/
+    // auto-restore were removed; the FocusSuggestion list survives only as the
+    // immersive empty state's own data source.)
     // These types are the currency all of that passes around.
     // ---------------------------------------------------------------------
 
@@ -29,9 +30,10 @@ namespace BuildConsole.Services
         public int ProgressPercent => TotalIssues == 0 ? 0 : (ClosedIssues * 100 / TotalIssues);
     }
 
-    /// <summary>One bounded, low-commitment thing to do during downtime — always
-    /// scoped to the ACTIVE milestone (never an off-milestone side quest, by
-    /// design). Backed by a real open issue.</summary>
+    /// <summary>One bounded, low-commitment thing to do — always scoped to the ACTIVE
+    /// milestone (never an off-milestone side quest, by design). Backed by a real open
+    /// issue. Surfaced only by <c>FocusImmersiveView</c>'s empty state (#1874 removed the
+    /// downtime band this originally fed).</summary>
     public class FocusSuggestion
     {
         public int IssueNumber { get; set; }
@@ -43,26 +45,6 @@ namespace BuildConsole.Services
         public string? Effort { get; set; }
         public string Emoji { get; set; } = "•";
         public string NumberStr => $"#{IssueNumber}";
-    }
-
-    /// <summary>A snapshot of real build-slot saturation, the ONLY thing downtime detection
-    /// keys off (there is no idle timer — Shane never lets builds sit, so "idle" was the wrong
-    /// signal). Downtime is genuine saturation: every one of the <see cref="SlotCount"/> Build
-    /// Watch slots is occupied by a running build AND at least one more item is still
-    /// <c>queued</c> behind them — the precise moment Shane has zero builds he can start and
-    /// wanders off into a side quest. All three counts come from the shared server queue
-    /// snapshot (<c>BuildQueuePanel.CurrentQueueItems</c>), so foreign / standalone-watcher
-    /// builds count too. A default value (<see cref="SlotCount"/> == 0) reads as "not saturated".</summary>
-    public struct FocusBuildSaturation
-    {
-        /// <summary>Items with server status <c>running</c> — i.e. occupied Build Watch slots.</summary>
-        public int RunningCount { get; set; }
-        /// <summary>Items with server status <c>queued</c> — the backlog waiting behind the running ones (blocked or not; either way Shane can't start them and there's no free slot).</summary>
-        public int QueuedCount { get; set; }
-        /// <summary>The number of concurrent build slots (Build Watch's 8). Saturation needs RunningCount ≥ this.</summary>
-        public int SlotCount { get; set; }
-        /// <summary>All slots occupied AND real backlog behind them — the genuine downtime trigger.</summary>
-        public readonly bool IsSaturated => SlotCount > 0 && RunningCount >= SlotCount && QueuedCount > 0;
     }
 
     /// <summary>A tasteful, earned badge for a REAL event under the active milestone
@@ -100,37 +82,11 @@ namespace BuildConsole.Services
     }
 
     // ----- persisted snapshot POCOs (focus-mode.json) --------------------
-
-    /// <summary>One captured open chat tab — the serializable slice of MainWindow's
-    /// live tab state needed to reopen it exactly where it was. Mirrors
-    /// <see cref="PersistedChatTab"/> but is owned by Focus Mode so context capture
-    /// is independent of the #874 "Where You Left Off" persistence.</summary>
-    public class FocusContextTab
-    {
-        public string ConversationId { get; set; } = "";
-        public string Title { get; set; } = "";
-        public string ClaudeUrl { get; set; } = "";
-        public int? EpicId { get; set; }
-        public int? IssueGithubNumber { get; set; }
-        public int PaneIndex { get; set; }
-    }
-
-    /// <summary>Exactly what Shane was doing when downtime began — restored verbatim
-    /// when the build that caused the downtime finishes (or he finishes a quick task).</summary>
-    public class FocusContextSnapshot
-    {
-        public List<FocusContextTab> Tabs { get; set; } = new();
-        public int ActivePaneIndex { get; set; }
-        /// <summary>The pane layout mode string ("SplitH"/"SplitV"/"Grid4"/single) so the
-        /// arrangement — not just the tabs — comes back.</summary>
-        public string LayoutMode { get; set; } = "";
-        /// <summary>ConversationId of the tab that had focus (null if the focused tab
-        /// wasn't a chat, e.g. Home).</summary>
-        public string? ActiveTabConversationId { get; set; }
-        public bool ActiveTabWasHome { get; set; }
-        public DateTime SavedAt { get; set; }
-        public bool IsEmpty => Tabs.Count == 0 && !ActiveTabWasHome;
-    }
+    //
+    // (#1874 — FocusContextTab / FocusContextSnapshot, the serializable open-tab snapshot
+    // used by the downtime context-capture/auto-restore machinery, were removed along with
+    // it, along with FocusPersistState.LastContext. Any snapshot a prior session already
+    // wrote to focus-mode.json is left alone on disk — just no longer modeled or read.)
 
     /// <summary>One (time, closed-count) reading for a milestone — the series the ETA
     /// is fit over. Persisted so pace/ETA survive a restart.</summary>
@@ -164,7 +120,6 @@ namespace BuildConsole.Services
         public int Points { get; set; }
         public List<FocusAchievement> Achievements { get; set; } = new();
         public List<FocusClosedSample> ClosedSamples { get; set; } = new();
-        public FocusContextSnapshot? LastContext { get; set; }
         /// <summary>milestoneNumber -> last-seen closed count, so a close that happens while
         /// the app was shut still isn't mis-counted as "just closed" on next launch.</summary>
         public Dictionary<int, int> ClosedBaseline { get; set; } = new();

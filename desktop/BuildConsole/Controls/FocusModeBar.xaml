@@ -111,24 +111,10 @@
                  up here in the Focus strip. Detection/tracking (ChecklistExtractor / the shared
                  TaskChecklistViewModel) is unchanged — only this stray render was dropped. -->
 
-            <!-- ===== downtime panel (quick tasks) ===== -->
-            <Border x:Name="DowntimePanel" Background="{StaticResource Surface0Brush}"
-                    BorderBrush="{StaticResource Surface1Brush}" BorderThickness="0,1,0,0"
-                    Padding="14,7" Visibility="Collapsed">
-                <StackPanel>
-                    <TextBlock x:Name="DowntimeHeader" FontSize="11" FontWeight="SemiBold"
-                               Foreground="{StaticResource PeachBrush}"/>
-                    <WrapPanel x:Name="SuggestionsPanel" Margin="0,7,0,0"/>
-                    <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
-                        <TextBlock Text="Tap one — you'll snap right back to what you were doing when the build's done."
-                                   FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
-                        <Button x:Name="BackNowBtn" Content="↩ Back to my task" Margin="14,0,0,0"
-                                Padding="8,2" FontSize="10" Cursor="Hand"
-                                Foreground="{StaticResource BlueBrush}" Background="Transparent"
-                                BorderThickness="0" Click="BackNowBtn_Click"/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
+            <!-- The downtime "quick wins while you wait" band that lived here (#1874) was REMOVED:
+                 it had no close affordance and appeared exactly when all 8 build slots were busy —
+                 the moment Shane had the least room. The context capture/auto-restore behind it is
+                 also gone (see FocusModeService); this bar no longer snapshots or rearranges tabs. -->
         </StackPanel>
     </Border>
 </UserControl>
