@@ -2071,9 +2071,21 @@ router.get("/simulator/ps-execution/capability-survey", requireAdminOrIngestToke
     const statusArg = typeof req.query.status === "string" ? req.query.status.trim() : "";
     const cmdletArg = typeof req.query.cmdlet === "string" ? req.query.cmdlet.trim() : "";
 
+    // Default to the newest COMPLETED run, not merely the newest. An aborted
+    // run has a real but PARTIAL row set, and every cmdlet it never reached is
+    // simply absent — read as a capability table, absence looks like "doesn't
+    // work". That false negative is the exact failure #1793 says is worse than
+    // no table at all. A caller can still ask for a specific run by id, and
+    // `run.status` is always returned so an incomplete one is never mistaken
+    // for a finished one.
     const [run] = runIdArg
       ? await db.select().from(psCapabilitySurveyRunsTable).where(eq(psCapabilitySurveyRunsTable.id, runIdArg)).limit(1)
-      : await db.select().from(psCapabilitySurveyRunsTable).orderBy(desc(psCapabilitySurveyRunsTable.startedAt)).limit(1);
+      : await db
+          .select()
+          .from(psCapabilitySurveyRunsTable)
+          .where(eq(psCapabilitySurveyRunsTable.status, "completed"))
+          .orderBy(desc(psCapabilitySurveyRunsTable.startedAt))
+          .limit(1);
 
     if (!run) {
       // An empty survey table is a real, reportable state — not an error, and
@@ -2084,7 +2096,10 @@ router.get("/simulator/ps-execution/capability-survey", requireAdminOrIngestToke
         run: null,
         totals: [],
         rows: [],
-        note: "No capability survey has been run against this database yet. Run: pnpm --filter @workspace/scripts run ps-capability-survey",
+        note:
+          "No COMPLETED capability survey run exists in this database. Either the survey has never been run " +
+          "(pnpm --filter @workspace/scripts run ps-capability-survey), or every run so far aborted part-way — " +
+          "pass ?runId= to inspect a specific incomplete run.",
       });
     }
 
