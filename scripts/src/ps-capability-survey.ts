@@ -112,6 +112,9 @@ const BUDGET_SECONDS = Number(process.env.SURVEY_BUDGET_SECONDS ?? 150);
 const UNREACHABLE_RETRY_ATTEMPTS = 60;
 const UNREACHABLE_RETRY_DELAY_MS = 15_000;
 
+/** Hard per-request deadline — see the `signal:` comment in callCmdlet. */
+const REQUEST_TIMEOUT_MS = Number(process.env.SURVEY_REQUEST_TIMEOUT_MS ?? 300_000);
+
 class ApiServerUnreachableError extends Error {}
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -176,8 +179,32 @@ async function callCmdlet<T>(cmdletKey: string, params: Record<string, unknown>)
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${INGEST_TOKEN}` },
       body: JSON.stringify({ cmdletKey, tenantId: TENANT_ID, params }),
+      // A hard client-side deadline. Observed live: the container's parent
+      // process stopped answering after killing a hung child, the api-server's
+      // own fetch to it never returned, and this driver sat on a single request
+      // for over half an hour with no output — indistinguishable from slow work.
+      // Neither the container's child timeout nor undici's defaults bounded it,
+      // so the bound has to be here. Comfortably above the container's own
+      // child timeout (200s) plus a Connect-* handshake, so a legitimately slow
+      // batch is never cut off by this.
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
   } catch (err) {
+    // A blown REQUEST_TIMEOUT_MS deadline is NOT the same condition as a
+    // restarting api-server, and must not be retried as one: the server
+    // answered the connection and then went quiet, which is a real failure of
+    // that batch. Returning a non-"unreachable" kind sends it down the
+    // isolation-walk path so the responsible cmdlet gets named, instead of the
+    // driver waiting out a restart that is not happening.
+    const isDeadline = err instanceof Error && (err.name === "TimeoutError" || err.name === "AbortError");
+    if (isDeadline) {
+      return {
+        ok: false,
+        kind: "request_timeout",
+        error: `no response within ${Math.round(REQUEST_TIMEOUT_MS / 1000)}s (client-side deadline; the container never answered)`,
+        elapsedMs: Date.now() - startedAt,
+      };
+    }
     return { ok: false, kind: "unreachable", error: `api-server unreachable: ${String(err)}`, elapsedMs: Date.now() - startedAt };
   }
 
@@ -254,8 +281,10 @@ async function callCmdletWaitingOutRestarts<T>(
  */
 function batchFailureStatus(kind: string | null, error: string): string {
   if (kind === "auth_failed") return "auth_failed";
-  if (/timed out/i.test(error)) return "error";
   if (kind === "cmdlet_unavailable") return "cmdlet_unavailable";
+  // Everything else — the container's own child timeout, a client-side
+  // deadline, a script_error — is an `error` against the cmdlet, always carrying
+  // the verbatim reason so a reader can tell WHICH kind of failure it was.
   return "error";
 }
 
