@@ -7,7 +7,7 @@
  *   1. The Gate boundary is exactly where Shane said it is. 82 is a Go, 81 is a
  *      No-Go, and no score has no verdict. This is the assertion #359 asks for
  *      by name.
- *   2. The Gate's score is the SAME number `buildWarRoomPillarStats` puts on its
+ *   2. The Gate's score is the SAME number `buildPillarSummary` puts on its
  *      copilot card — not a parallel computation that happens to look similar.
  *      Driven through the real `computePillarDisplayScore` / `buildPillarViews`
  *      with one real engine output, so a future divergence in either path turns
@@ -146,9 +146,9 @@ describe("the Gate's score and the War Room's copilot card are one number", () =
     expect(copilotGate(direct).status).toBe("no_go");
   });
 
-  it("agrees with the copilot entry buildWarRoomPillarStats reads", () => {
-    // buildWarRoomPillarStats maps its `copilot` card straight off this array
-    // (WAR_ROOM_ENGINE_PILLAR.copilot === "copilot", identity). Asserting
+  it("agrees with the copilot entry buildPillarSummary reads", () => {
+    // buildPillarSummary maps its `copilot` card straight off this array
+    // (ENGINE_PILLAR_FOR_DISPLAY_PILLAR.copilot === "copilot", identity). Asserting
     // equality here is what makes "one engine, one computation" a checked claim
     // rather than a comment.
     const { pillars } = buildPillarViews(OUTPUT, IMPACTS, EVALUABLE);

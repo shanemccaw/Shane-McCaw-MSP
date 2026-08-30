@@ -245,7 +245,7 @@ export default defineConfig({
       "src/lib/zoho-crm.test.ts",
       "src/lib/zoho-projects.test.ts",
       "src/lib/zoho-desk.test.ts",
-      "src/lib/war-room-pillar-stats.test.ts",
+      "src/lib/pillar-summary-stats.test.ts",
       "src/lib/registry-source-key-contract.test.ts",
       "src/lib/pillar-trend.test.ts",
       "src/lib/__tests__/sharepoint-sharing.test.ts",

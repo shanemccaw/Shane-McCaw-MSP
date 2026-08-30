@@ -152,7 +152,7 @@ COMMIT;
 -- ══════════════════════════════════════════════════════════════════════════════
 -- A NEW row, deliberately not a rewrite of compliance:overshared-sites.
 -- compliance:overshared-sites is already consumed live by copilot-readiness.ts
--- (the SharePoint/Teams sub-indicator's numerator), war-room-pillar-stats.ts and
+-- (the SharePoint/Teams sub-indicator's numerator), pillar-summary-stats.ts and
 -- the metric registry; repointing it at a fan-out with a different
 -- extracted_properties shape would change those numbers in the same commit that
 -- introduces the enumeration. This lands alongside it, and rewiring consumers is

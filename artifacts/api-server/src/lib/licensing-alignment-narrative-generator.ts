@@ -12,7 +12,7 @@
  * Licensing report.
  *
  * NO METRIC IS RESOLVED ON THE SIDE. Every figure this report shows is already
- * on the `war-room-pillars` wire — the licensing card's four stats. Three of
+ * on the `/portal/pillars` wire — the licensing card's four stats. Three of
  * them come from the real `/subscribedSkus` arithmetic
  * (`resolvePaidSeatFigures` + `computeSkuCostBreakdown`) and the fourth from
  * `licensing:inactive-user-licenses`.

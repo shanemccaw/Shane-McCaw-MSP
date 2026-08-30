@@ -97,7 +97,7 @@ const CATALOG_SIZE = 122;
  * the test tenant has run. Their identity is irrelevant to every result below —
  * their only role is to occupy the catalog-wide denominator, which is precisely
  * the mechanism under test. Domains are drawn from the real vocabulary in
- * war-room-pillar-stats.ts's WAR_ROOM_PILLAR_CHECK_DOMAINS.
+ * pillar-summary-stats.ts's PILLAR_CHECK_DOMAINS.
  */
 const FILLER_DOMAINS = [
   "governance", "compliance", "adoption", "usage", "collaboration", "licensing",

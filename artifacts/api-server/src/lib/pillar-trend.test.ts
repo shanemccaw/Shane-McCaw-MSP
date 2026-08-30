@@ -326,7 +326,7 @@ describe("getPillarScoreTrends", () => {
     wireDb({ tenantId: "tenant-1", windowRows });
 
     await getPillarScoreTrends(1);
-    // PILLAR_TREND_WINDOW_DAYS is what the caller (war-room-pillar-stats.ts)
+    // PILLAR_TREND_WINDOW_DAYS is what the caller (pillar-summary-stats.ts)
     // labels the wire payload's `window` field with — pin it so a change here
     // is a deliberate edit, not a silent drift between the two files.
     expect(PILLAR_TREND_WINDOW_DAYS).toBe(30);

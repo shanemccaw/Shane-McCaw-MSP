@@ -22,7 +22,7 @@
  * this is a guarantee:
  *
  *   • The grounding blocks are built ONLY from real values — a
- *     `WarRoomStat` with a null `value` never reaches the model as a number.
+ *     `PillarStat` with a null `value` never reaches the model as a number.
  *     It is listed separately, by its real `monitor_checks` key and the
  *     resolver's own machine reason (`no_data`, `not_in_scan_package`,
  *     `license_gap`, …), under an instruction never to speak to it. That
@@ -41,8 +41,8 @@
  *
  * WHAT THE GROUNDING REALLY IS
  * ----------------------------
- * `buildWarRoomPillarStats(customerId)` — the same function, on the same
- * customer, that `GET /portal/assessment/war-room-pillars` serves to the
+ * `buildPillarSummary(customerId)` — the same function, on the same
+ * customer, that `GET /portal/pillars` serves to the
  * Reveal and to this report's own pure-data sections. It is called here rather
  * than accepting numbers from the client for two reasons: the prose must cite
  * the same figures the reader can see beside it, and a narrative grounded in
@@ -80,10 +80,10 @@ import {
   type SectionFacts,
 } from "./narrative-grounding.ts";
 import {
-  buildWarRoomPillarStats,
-  type WarRoomPillarCard,
-  type WarRoomPillarKey,
-} from "./war-room-pillar-stats.ts";
+  buildPillarSummary,
+  type PillarSummaryCard,
+  type PillarSummaryKey,
+} from "./pillar-summary-stats.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -142,11 +142,11 @@ export interface ReadinessNarrativeAttribution {
 
 /**
  * Which pillars ground which section. Not a new grouping: these are the same
- * `WAR_ROOM_PILLAR_KEYS` the payload already carries, selected by what each
+ * `PILLAR_SUMMARY_KEYS` the payload already carries, selected by what each
  * section is actually about. `blockers` reads every pillar because the Gate is
  * the whole-tenant verdict.
  */
-const SECTION_PILLARS: Record<ReadinessNarrativeSectionKey, readonly WarRoomPillarKey[]> = {
+const SECTION_PILLARS: Record<ReadinessNarrativeSectionKey, readonly PillarSummaryKey[]> = {
   safety: ["governance", "security", "compliance"],
   enablement: ["adoption", "licensing"],
   blockers: ["governance", "licensing", "adoption", "compliance", "health", "security", "copilot"],
@@ -175,7 +175,7 @@ const SECTION_PROMPT_KEYS: Record<ReadinessNarrativeSectionKey, string> = {
  */
 function collectSectionFacts(
   key: ReadinessNarrativeSectionKey,
-  cards: readonly WarRoomPillarCard[],
+  cards: readonly PillarSummaryCard[],
 ): SectionFacts {
   return collectFactsForPillars(SECTION_PILLARS[key], cards);
 }
@@ -307,7 +307,7 @@ async function generateSection(
 /**
  * Generate all three prose sections for one real customer.
  *
- * Grounded in `buildWarRoomPillarStats(customerId)` and `computeCopilotGate(customerId)`
+ * Grounded in `buildPillarSummary(customerId)` and `computeCopilotGate(customerId)`
  * — the same two computations the Reveal and this report's own pure-data
  * sections read, so the prose and the tables beside it cannot disagree about
  * the same tenant.
@@ -322,7 +322,7 @@ export async function generateCopilotReadinessNarrative(params: {
   readonly attribution: ReadinessNarrativeAttribution;
 }): Promise<ReadinessNarrativeResult> {
   const [payload, gate] = await Promise.all([
-    buildWarRoomPillarStats(params.customerId),
+    buildPillarSummary(params.customerId),
     computeCopilotGate(params.customerId),
   ]);
 

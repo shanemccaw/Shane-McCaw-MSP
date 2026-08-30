@@ -34,7 +34,7 @@
  * sanitising are the REAL ones, so a test passing here means the real path
  * behaves this way.
  *
- * `war-room-pillar-stats.ts` is replaced wholesale rather than spread over the
+ * `pillar-summary-stats.ts` is replaced wholesale rather than spread over the
  * original, because the real module imports `@workspace/db` at load and there is
  * no DATABASE_URL in a Claude Code session or in CI for this suite — the same
  * stub both sibling suites use, for the same reason.
@@ -44,12 +44,12 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import type { WarRoomPillarCard, WarRoomPillarStatsPayload } from "./war-room-pillar-stats.ts";
+import type { PillarSummaryCard, PillarSummaryPayload } from "./pillar-summary-stats.ts";
 
 let anthropicPrompts: string[] = [];
 let anthropicText = "<p>Real reasoning about real numbers.</p>";
 let anthropicShouldThrow = false;
-let pillarPayload: WarRoomPillarStatsPayload;
+let pillarPayload: PillarSummaryPayload;
 let gateResult: { score: number | null; threshold: number; status: string | null; source: string };
 /** Every `{feature, nodeType}` the metering layer was asked to attribute. */
 let meteredCalls: { feature: string; nodeType: string; customerId: number | null }[] = [];
@@ -91,8 +91,8 @@ vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async (_key: string, fallback: string) => fallback,
 }));
 
-vi.mock("./war-room-pillar-stats.ts", () => ({
-  buildWarRoomPillarStats: async () => pillarPayload,
+vi.mock("./pillar-summary-stats.ts", () => ({
+  buildPillarSummary: async () => pillarPayload,
 }));
 
 vi.mock("./copilot-gate.ts", () => ({ computeCopilotGate: async () => gateResult }));
@@ -125,7 +125,7 @@ const { ADOPTION_SPEC, generateAdoptionNarrative, ADOPTION_NARRATIVE_SECTIONS } 
  * Fixtures
  * ------------------------------------------------------------------ */
 
-function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "pillar">): WarRoomPillarCard {
+function card(overrides: Partial<PillarSummaryCard> & Pick<PillarSummaryCard, "pillar">): PillarSummaryCard {
   return {
     enginePillar: "security",
     score: null,
@@ -135,10 +135,10 @@ function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "p
     findingCounts: { critical: 0, warning: 0 },
     trend: null,
     ...overrides,
-  } as WarRoomPillarCard;
+  } as PillarSummaryCard;
 }
 
-function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
+function payload(pillars: PillarSummaryCard[]): PillarSummaryPayload {
   return {
     pillars,
     // No per-SKU ledger: this fixture tests narrative grounding, not #1230's
@@ -168,8 +168,8 @@ const ALL_PILLARS = [
   "copilot",
 ] as const;
 
-const EMPTY_PILLARS = (): WarRoomPillarCard[] =>
-  ALL_PILLARS.map((p) => card({ pillar: p as WarRoomPillarCard["pillar"] }));
+const EMPTY_PILLARS = (): PillarSummaryCard[] =>
+  ALL_PILLARS.map((p) => card({ pillar: p as PillarSummaryCard["pillar"] }));
 
 const ATTRIBUTION = { mspId: 1, customerId: 42, triggerSource: "test" };
 
@@ -281,7 +281,7 @@ describe("each report declares three prose sections and grounds them honestly", 
 
   it("scopes the adoption report's data sections to adoption alone", () => {
     // Same reasoning as licensing's, with a sharper edge: the adoption card
-    // carries NO stats (`WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an empty array
+    // carries NO stats (`PILLAR_STAT_SPECS.adoption` is an empty array
     // by decision), so a borrowed pillar would put the ONLY number in a report
     // whose whole argument is that it has none — and the report's own tables
     // could not show it.

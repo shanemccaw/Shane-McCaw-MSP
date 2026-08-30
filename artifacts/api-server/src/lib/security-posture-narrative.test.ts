@@ -19,13 +19,13 @@
  * the block formatting are the REAL ones, so a test passing here means the real
  * path behaves this way.
  *
- * `war-room-pillar-stats.ts` is replaced wholesale rather than spread over the
+ * `pillar-summary-stats.ts` is replaced wholesale rather than spread over the
  * original, because the real module imports `@workspace/db` at load and there is
  * no DATABASE_URL in a Claude Code session or in CI for this suite — the same
  * stub the Copilot suite uses, for the same reason. Its two pure helpers
  * (`statFromMetricResult`, `refineStatUnavailability`) are therefore stubbed
  * here as pass-throughs driven by the fixture; their own classification
- * behaviour is covered by `war-room-pillar-stats.test.ts`, and this suite
+ * behaviour is covered by `pillar-summary-stats.test.ts`, and this suite
  * deliberately does not restate it. What it DOES test is everything this file
  * owns: that whatever those return is folded into the grounding under the
  * never-fabricate rule, and reaches the wire unchanged.
@@ -35,14 +35,14 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import type { WarRoomPillarCard, WarRoomPillarStatsPayload, WarRoomStat } from "./war-room-pillar-stats.ts";
+import type { PillarSummaryCard, PillarSummaryPayload, PillarStat } from "./pillar-summary-stats.ts";
 
 let anthropicPrompts: string[] = [];
 let anthropicText = "<p>Real reasoning about real numbers.</p>";
-let pillarPayload: WarRoomPillarStatsPayload;
+let pillarPayload: PillarSummaryPayload;
 let gateResult: { score: number | null; threshold: number; status: string | null; source: string };
 /** What the (stubbed) metric resolution yields for `security.secureScore`. */
-let extraStat: WarRoomStat;
+let extraStat: PillarStat;
 
 vi.mock("@workspace/integrations-anthropic-ai", () => ({
   anthropic: {
@@ -67,10 +67,10 @@ vi.mock("./prompt-loader.ts", () => ({
   getPrompt: async (_key: string, fallback: string) => fallback,
 }));
 
-vi.mock("./war-room-pillar-stats.ts", () => ({
-  buildWarRoomPillarStats: async () => pillarPayload,
+vi.mock("./pillar-summary-stats.ts", () => ({
+  buildPillarSummary: async () => pillarPayload,
   statFromMetricResult: () => extraStat,
-  refineStatUnavailability: (stat: WarRoomStat) => stat,
+  refineStatUnavailability: (stat: PillarStat) => stat,
 }));
 
 vi.mock("./copilot-gate.ts", () => ({ computeCopilotGate: async () => gateResult }));
@@ -110,7 +110,7 @@ const { generateSecurityPostureNarrative, SECURITY_POSTURE_NARRATIVE_SECTIONS, _
  * Fixtures
  * ------------------------------------------------------------------ */
 
-function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "pillar">): WarRoomPillarCard {
+function card(overrides: Partial<PillarSummaryCard> & Pick<PillarSummaryCard, "pillar">): PillarSummaryCard {
   return {
     enginePillar: "security",
     score: null,
@@ -120,10 +120,10 @@ function card(overrides: Partial<WarRoomPillarCard> & Pick<WarRoomPillarCard, "p
     findingCounts: { critical: 0, warning: 0 },
     trend: null,
     ...overrides,
-  } as WarRoomPillarCard;
+  } as PillarSummaryCard;
 }
 
-function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
+function payload(pillars: PillarSummaryCard[]): PillarSummaryPayload {
   return {
     pillars,
     // No per-SKU ledger: this fixture tests narrative grounding, not #1230's
@@ -143,7 +143,7 @@ function payload(pillars: WarRoomPillarCard[]): WarRoomPillarStatsPayload {
   };
 }
 
-const EMPTY_PILLARS: WarRoomPillarCard[] = [
+const EMPTY_PILLARS: PillarSummaryCard[] = [
   "governance",
   "licensing",
   "adoption",
@@ -151,9 +151,9 @@ const EMPTY_PILLARS: WarRoomPillarCard[] = [
   "health",
   "security",
   "copilot",
-].map((p) => card({ pillar: p as WarRoomPillarCard["pillar"] }));
+].map((p) => card({ pillar: p as PillarSummaryCard["pillar"] }));
 
-const REAL_SECURE_SCORE: WarRoomStat = {
+const REAL_SECURE_SCORE: PillarStat = {
   id: "security.secureScore",
   label: "Microsoft Secure Score",
   unit: "percent",

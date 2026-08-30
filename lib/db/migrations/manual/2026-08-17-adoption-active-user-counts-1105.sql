@@ -238,10 +238,10 @@ ORDER BY package_key;
 --     touched here, different check, needs its own look and its own decision
 --     on whether a 30-day newerThanDays/olderThanDays window changes the
 --     20-account severity threshold's meaning.
---   * war-room-pillar-stats.ts's `adoption: []` (deliberately emptied by #441,
+--   * pillar-summary-stats.ts's `adoption: []` (deliberately emptied by #441,
 --     with the exact 4 "active X users" stats this migration now makes real
---     sitting in WAR_ROOM_UNPRODUCIBLE_STATS) is the natural next beneficiary
+--     sitting in PILLAR_UNPRODUCIBLE_STATS) is the natural next beneficiary
 --     of this fix -- left alone here since it is a different resolution path
---     (war-room-pillar-stats.ts + its own tests), reported as a follow-up
+--     (pillar-summary-stats.ts + its own tests), reported as a follow-up
 --     rather than folded into this issue's scope.
 -- ============================================================================

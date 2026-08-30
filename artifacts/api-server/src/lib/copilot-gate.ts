@@ -14,7 +14,7 @@
  *      has ALWAYS carried `copilot` as a native pillar with its own
  *      `copilotImpact` field, normalized by `health-display.ts`'s
  *      `computePillarDisplayScore` exactly like every other pillar. This is what
- *      `war-room-pillars` already serves, and therefore what the Reveal's six
+ *      `/portal/pillars` already serves, and therefore what the Reveal's six
  *      pillar scenes have been reading.
  *
  * So the Reveal's headline number was not mathematically derived from the pillar
@@ -25,7 +25,7 @@
  * WHAT THIS FILE IS NOT
  * ---------------------
  * It is NOT a third scoring model. `computeCopilotPillarScore` runs the exact
- * same five-step chain `buildWarRoomPillarStats` runs for its copilot card —
+ * same five-step chain `buildPillarSummary` runs for its copilot card —
  * same engine output, same impacts map, same evaluable-signal-key denominator
  * guard, same `computePillarDisplayScore` call. Two callers, one definition; a
  * test asserts the two agree for the same engine input. Nothing here re-weights,
@@ -178,7 +178,7 @@ export function copilotGateNotEvaluated(reason: string): CopilotGateResult {
  * The Copilot pillar's display score for one customer, straight from the unified
  * engine.
  *
- * Identical chain to `buildWarRoomPillarStats`, deliberately:
+ * Identical chain to `buildPillarSummary`, deliberately:
  *   calculateArchitectureHealthScore → fetchSignalRulesAndGroups →
  *   fetchTenantEvaluableSignalKeys → getSignalHealthImpacts → computePillarDisplayScore
  *

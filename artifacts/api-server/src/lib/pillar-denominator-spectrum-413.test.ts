@@ -525,7 +525,7 @@ describe("#413 Part 2 — the score's real SHAPE across a spectrum of tenants", 
     // catalog-wide denominator those pillars had theoreticalMax > 0 (the rest of
     // the catalog feeds them) and rawScore 0, so `100 − 0/max × 100` rendered a
     // perfect 100 for a pillar the tenant was never measured on — the exact
-    // contradiction war-room-pillar-stats.ts documents from the other side, with
+    // contradiction pillar-summary-stats.ts documents from the other side, with
     // its honest "this check was never in your scan" card sitting under a dial
     // reading 100. Package-scoped, theoreticalMax is 0 and
     // `computePillarDisplayScore`'s existing never-fabricate guard returns null.

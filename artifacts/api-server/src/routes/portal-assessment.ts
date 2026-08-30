@@ -90,7 +90,7 @@ import { getPillarCoverage, PILLAR_LABELS, RADAR_PILLARS, type RadarPillar } fro
 // scan plan below can never disagree with what the run actually executes (#340).
 import { loadOrderedPackageChecks } from "../lib/monitor-executor";
 import { buildTelemetryComparison } from "../lib/telemetry-comparison";
-import { buildWarRoomPillarStats } from "../lib/war-room-pillar-stats";
+import { buildPillarSummary } from "../lib/pillar-summary-stats";
 import { resolveLicenseWasteCounts } from "../lib/license-waste-source";
 import { computeSkuCostBreakdown, type SkuCostBreakdown } from "../lib/cost-engine";
 import { evaluateDocGateCoverage, DOC_GATE_MIN_COVERAGE_PCT } from "../lib/doc-gate-coverage";
@@ -317,7 +317,7 @@ router.get(
       // showed a static pre-scan empty state instead of pillar scores building
       // as checks land. `getPillarCoverage` itself is NOT completion-gated (it
       // reads `tenant_monitor_profiles` rows that land the instant each check
-      // finishes — the same live computation `war-room-pillars` already relies
+      // finishes — the same live computation `/portal/pillars` already relies
       // on); only this route's own choice of which run to source it from was.
       // Widen the source to the run currently being scanned whenever there is
       // no completed+sufficient-coverage run yet, so a pillar can appear the
@@ -348,7 +348,7 @@ router.get(
       let copilotReadiness: CopilotReadinessResult | null = null;
       // The real Copilot Gate (#358/#359): the unified health engine's own
       // `copilot` pillar display score, gated at 82. This is the SAME number
-      // /portal/assessment/war-room-pillars serves for its copilot card — one
+      // /portal/pillars serves for its copilot card — one
       // engine, one computation, so the Reveal's headline verdict and its six
       // pillar scenes can no longer disagree about the tenant in front of them.
       // Keyed by customerId (the engine's own id space), not tenantId, and so
@@ -575,7 +575,7 @@ router.get(
 
 // ── Pillar display-score history (#1106) ─────────────────────────────────────
 //
-//   GET /api/portal/assessment/pillar-history
+//   GET /api/portal/pillars/history
 //
 // The customer's real first-scan-to-today trend of the 0-100 pillar DISPLAY
 // scores — the same numbers PillarGrid / HeroHealthScore / the radar show live.
@@ -590,7 +590,7 @@ router.get(
 // empty `pillars` and renders "not enough history yet" downstream — never a
 // fabricated point.
 router.get(
-  "/portal/assessment/pillar-history",
+  "/portal/pillars/history",
   // Same floor as /portal/assessment/status — the assessment wizard's own role.
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
@@ -650,7 +650,7 @@ router.get(
 
       res.json({ pillars });
     } catch (err) {
-      log.error({ err, customerId }, "GET /portal/assessment/pillar-history failed");
+      log.error({ err, customerId }, "GET /portal/pillars/history failed");
       res.status(500).json({ error: "Failed to load pillar history" });
     }
   },
@@ -692,23 +692,23 @@ router.get(
   },
 );
 
-// ── War Room pillar summary cards (#320, epic #302) ──────────────────────────
+// ── Pillar summary cards (#320, epic #302) ────────────────────────────────────
 //
-//   GET /api/portal/assessment/war-room-pillars
+//   GET /api/portal/pillars
 //
-// The seven completed-scan pillar cards in the War Room — each card's SCORE and
-// its four STAT CALLOUTS — computed from the REAL health engine (the same
+// The seven completed-scan pillar cards — each card's SCORE and its four STAT
+// CALLOUTS — computed from the REAL health engine (the same
 // `computePillarDisplayScore` path #245 already uses, no new formula) and the
 // customer's REAL `tenant_monitor_profiles` / `msp_diagnostic_findings` rows.
-// See lib/war-room-pillar-stats.ts for the per-stat provenance table, including
+// See lib/pillar-summary-stats.ts for the per-stat provenance table, including
 // which of the original fictional callouts had no real producer at all.
 //
 // A separate route from telemetry-comparison for the same reason that one is
 // separate from /status: it resolves ~20 distinct monitor metrics plus the seat
 // arithmetic, which the telemetry panel neither needs nor should pay for.
 router.get(
-  "/portal/assessment/war-room-pillars",
-  // Same floor as the telemetry panel — the assessment/War Room role.
+  "/portal/pillars",
+  // Same floor as the telemetry panel — the assessment/pillar-summary role.
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -718,10 +718,10 @@ router.get(
     }
 
     try {
-      res.json(await buildWarRoomPillarStats(customerId));
+      res.json(await buildPillarSummary(customerId));
     } catch (err) {
-      log.error({ err, customerId }, "GET /portal/assessment/war-room-pillars failed");
-      res.status(500).json({ error: "Failed to compute War Room pillar stats" });
+      log.error({ err, customerId }, "GET /portal/pillars failed");
+      res.status(500).json({ error: "Failed to compute pillar summary" });
     }
   },
 );
@@ -734,7 +734,7 @@ router.get(
 // Copilot Safety & Exposure, Workflow Enablement & Value, Gate Blockers &
 // Remediation Path. The report's OTHER sections (the readiness summary, the
 // pillar table, the technical prerequisites and the blast-radius row) are pure
-// data and are rendered client-side straight from `war-room-pillars`; nothing
+// data and are rendered client-side straight from `/portal/pillars`; nothing
 // about them needs, or goes anywhere near, an AI call.
 //
 // Deliberately its OWN route rather than a field on /status: it makes up to
@@ -796,13 +796,13 @@ router.get(
 // sections — the Summary's opening paragraph, the Blast Radius section's causal
 // explanation, and the Copilot Readiness Impact section's connection to the
 // Gate score — plus the one real metric the report needs that
-// `war-room-pillars` does not carry (Microsoft Secure Score; see the
-// generator's header for why it is resolved here rather than added to the War
-// Room spec list).
+// `/portal/pillars` does not carry (Microsoft Secure Score; see the
+// generator's header for why it is resolved here rather than added to the pillar
+// summary spec list).
 //
 // Every OTHER row in that report — the identity and endpoint figures, the
 // findings, the blast-radius row, the Upgrade Opportunity category — is pure
-// data rendered client-side straight from `war-room-pillars`, and goes nowhere
+// data rendered client-side straight from `/portal/pillars`, and goes nowhere
 // near an AI call.
 //
 // Deliberately its OWN route rather than a field on /status, and GET despite
@@ -866,7 +866,7 @@ router.get(
 //
 // Each report's OTHER content — every metric row, every finding, every declared
 // gap, the whole Upgrade Opportunity category — is pure data rendered
-// client-side straight from `war-room-pillars`, and goes nowhere near an AI
+// client-side straight from `/portal/pillars`, and goes nowhere near an AI
 // call.
 //
 // Deliberately their OWN routes rather than fields on /status, and GET despite
@@ -948,7 +948,7 @@ registerPillarReportNarrativeRoute(
   generateOperationalHealthNarrative,
 );
 // The seventh live-rendered report, and the only one whose pillar card carries
-// no measured stats at all — `WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an empty
+// no measured stats at all — `PILLAR_STAT_SPECS.adoption` is an empty
 // array by decision, not by omission. It needs nothing special here: the
 // grounding, the fact floor and the omission reasons are the same, and a
 // section that reaches the floor on the pillar score and its findings alone is
@@ -1142,7 +1142,7 @@ router.get(
 // The check keys the customer's latest diagnostics run really executes, in the
 // order it executes them.
 //
-// Why this exists: the War Room's pillar row/stack marks a pillar "done" off the
+// Why this exists: the pillar summary's pillar row/stack marks a pillar "done" off the
 // per-check SSE stream, but that stream only says which checks HAVE reported —
 // never how many a pillar is still owed. #340: the first result mapping to a
 // pillar was marking the whole pillar finished, so a pillar with five real
@@ -1161,7 +1161,7 @@ router.get(
 //
 // Its own route rather than more fields on /portal/scan-status: scan-status is
 // polled every 3s from the whole shell while a run is live, and the plan for a
-// given run never changes, so the War Room reads this once per runId instead.
+// given run never changes, so the pillar summary reads this once per runId instead.
 //
 // Grouping the keys into pillars is deliberately left to the client: the
 // domain→pillar mapping lives in one place (msp-portal's warRoomScan.ts,

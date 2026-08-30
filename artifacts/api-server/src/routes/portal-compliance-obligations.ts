@@ -33,7 +33,7 @@
  * complete against the catalog.
  *
  * ── Role floor ──────────────────────────────────────────────────────────────
- * `Assessment` — same floor as `war-room-pillars`/`useLivePillarHero`, since this
+ * `Assessment` — same floor as `/portal/pillars`/`useLivePillarHero`, since this
  * page carries no liability dollar figure (unlike risk-register's `CustomerUser`
  * floor).
  */

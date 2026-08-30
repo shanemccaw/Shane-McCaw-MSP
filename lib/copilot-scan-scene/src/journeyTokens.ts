@@ -53,9 +53,9 @@ export const DELTA_GRADIENT = `linear-gradient(90deg,${BRAND.blue},${BRAND.teal}
  * that. Keeping the two axes separate is the whole colour language of the
  * handoff, and it is why `severityColor()` below takes a score and not a pillar.
  *
- * The keys match `WAR_ROOM_PILLAR_KEYS` (minus `copilot`, which is the centre of
+ * The keys match `PILLAR_SUMMARY_KEYS` (minus `copilot`, which is the centre of
  * the composition rather than one of the six satellites), so a payload from
- * `GET /api/portal/assessment/war-room-pillars` indexes straight into this map.
+ * `GET /api/portal/pillars` indexes straight into this map.
  * ------------------------------------------------------------------ */
 export const PILLAR_KEYS = [
   "governance",
@@ -530,7 +530,7 @@ export const JOURNEY_LIVE_DOCUMENTS: readonly JourneyLiveDocument[] = [
   //
   // It was deliberately absent while every live report was assumed to need a
   // stat table, because the adoption pillar carries ZERO real stats —
-  // `WAR_ROOM_PILLAR_STAT_SPECS.adoption` is an empty array, and its own note
+  // `PILLAR_STAT_SPECS.adoption` is an empty array, and its own note
   // says why: the four figures it used to claim named `usage:*` keys that #441
   // established are not a check-key domain in this catalog at all, and the
   // nearest real checks are per-user and per-site Graph detail endpoints that
