@@ -182,6 +182,27 @@ describe("reverifyRemediationTrackerSteps — the verdict rule", () => {
     expect(mockUpdateSets[0].verificationState).toBe("drift");
   });
 
+  it("#1538: self-maps a checkKey-keyed row (the findings-derived checklist) to its own check", async () => {
+    mockSelectResultsQueue = [[{ stepId: "sharepoint:anonymous-links", status: "already_handled" }]];
+    await reverifyRemediationTrackerSteps({
+      customerId: CUSTOMER_ID,
+      runId: RUN_ID,
+      findings: [{ checkKey: "sharepoint:anonymous-links", severity: "ok" }],
+    });
+    expect(mockUpdateSets).toHaveLength(1);
+    expect(mockUpdateSets[0].verificationState).toBe("verified");
+  });
+
+  it("#1538: a checkKey-keyed row with no matching finding this run is left untouched, not force-drifted", async () => {
+    mockSelectResultsQueue = [[{ stepId: "sharepoint:anonymous-links", status: "completed" }]];
+    await reverifyRemediationTrackerSteps({
+      customerId: CUSTOMER_ID,
+      runId: RUN_ID,
+      findings: [{ checkKey: "identity:mfa-registration", severity: "critical" }], // a different check entirely
+    });
+    expect(mockUpdateSets).toHaveLength(0);
+  });
+
   it("is never eligible for a step with no mapped check at all (gap or process-only)", async () => {
     // s18 is a platform-wide measurement gap; s27 is process-only. Neither has
     // a STEP_CHECK_KEYS entry.

@@ -59,7 +59,30 @@
  * `STEP_CHECK_GAPS` and `PROCESS_ONLY_STEP_IDS` already state in the guide.
  * (Steps 24 and 25 were process-only too until #757 removed them from the
  * catalogue entirely.)
+ *
+ * #1538 — CHECKLIST ITEMS SELF-MAP
+ * ----------------------------------
+ * The findings-derived checklist (`remediation-checklist.ts`,
+ * `portal-remediation-checklist.ts`) writes tracker rows whose `step_id` is a
+ * real `checkKey` (e.g. "sharepoint:orgwide-links") rather than one of this
+ * legacy `s`-prefixed ids — the item's identity IS the finding's identity, so
+ * there is no separate mapping to author: a checkKey-keyed row maps to
+ * itself. `mappedKeysFor()` below returns that self-mapping for any `step_id`
+ * that is not one of this legacy `s\d+` catalogue ids, so those rows get the
+ * exact same real-rescan verify/drift treatment the s-id world already has,
+ * with zero new authored mapping.
  */
+const LEGACY_STEP_ID_PATTERN = /^s\d+$/;
+
+function mappedKeysFor(stepId: string): readonly string[] | undefined {
+  const legacy = STEP_CHECK_KEYS[stepId];
+  if (legacy) return legacy;
+  // A legacy id with no entry above (s18, s24, s25, s27, s28, s30) is a
+  // deliberate gap/process-only step — never eligible, same as always.
+  if (LEGACY_STEP_ID_PATTERN.test(stepId)) return undefined;
+  // #1538: anything else is a checklist item keyed by its own checkKey.
+  return [stepId];
+}
 
 import { and, eq, inArray } from "drizzle-orm";
 import { db, remediationTrackerStepsTable, type RemediationTrackerVerificationState } from "@workspace/db";
@@ -160,7 +183,7 @@ export async function reverifyRemediationTrackerSteps(opts: {
     let driftCount = 0;
 
     for (const row of rows) {
-      const mappedKeys = STEP_CHECK_KEYS[row.stepId];
+      const mappedKeys = mappedKeysFor(row.stepId);
       if (!mappedKeys || mappedKeys.length === 0) continue; // gap or process-only step — never eligible
 
       const verdict = verdictFor(mappedKeys, findings);
