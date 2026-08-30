@@ -3712,6 +3712,35 @@ namespace BuildConsole.Controls
                 };
                 cm.Items.Add(miRunNow);
 
+                // Git #1805 — "Start Now": Shane's own click is the explicit override for whatever
+                // is holding this ONE row (a real blocked_by dependency, or just poll timing) — but
+                // unlike Run Now above, it respects a genuinely full concurrency cap rather than
+                // ever exceeding it. See QueueWatcherService.StartNowAsync for the full contract and
+                // the watcher-channel logging of exactly what was overridden.
+                var miStartNow = new MenuItem { Header = "⚡ Start Now" };
+                miStartNow.Click += async (_, _) =>
+                {
+                    if (_watcher == null)
+                    {
+                        ToastEngine.Info("Start Now", "The in-app watcher isn't active, so Start Now can't launch locally. The background service will pick it up.");
+                        return;
+                    }
+                    try
+                    {
+                        var result = await _watcher.StartNowAsync(item.Id, item.Title);
+                        if (result.Outcome == Services.QueueWatcherService.StartNowOutcome.Launched)
+                            ToastEngine.Success("Start Now", result.Message);
+                        else
+                            ToastEngine.Warning("Start Now", result.Message);
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Warning("Start Now", $"Couldn't launch immediately: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miStartNow);
+
                 // Git #1832 — the reverse of Un-park: pulls a still-queued item out of
                 // the active queue into the parked staging area, only from 'queued'.
                 var miPark = new MenuItem { Header = "🅿️ Park" };

@@ -279,6 +279,12 @@ namespace BuildConsole.Services
 
         public int RunningCount => _running.Count;
 
+        /// <summary>Git #1805 — the real, configured concurrency cap (see <see cref="_maxConcurrent"/>,
+        /// sourced from scripts/build-queue-watcher.config.json's maxConcurrent, default 8). Exposed
+        /// so a manual per-item override (Start Now) can check it and refuse to launch a genuinely-full
+        /// queue instead of guessing or silently exceeding it.</summary>
+        public int MaxConcurrent => _maxConcurrent;
+
         /// <summary>
         /// Git #1600 — the real, current reason each held-on-a-blocker queue item is
         /// being held, as of the most recent live GitHub check (see
@@ -377,6 +383,80 @@ namespace BuildConsole.Services
 
         /// <summary>Git #820 — "Run Now": launches an item this app just force-claimed (bypassing the blocker/free-slot check GetNextQueueItemsAsync would normally enforce). Same launch path as the normal poll loop, just triggered directly instead of discovered.</summary>
         public void ForceLaunch(QueueItem item) => _ = SafeLaunch(item, isForced: true);
+
+        /// <summary>Git #1805 — the three things <see cref="StartNowAsync"/> can report back to the
+        /// caller so the UI's toast is honest about what actually happened, never a generic
+        /// "done"/"failed".</summary>
+        public enum StartNowOutcome { Launched, AtCapacity, Failed }
+
+        /// <summary>Git #1805 — <see cref="StartNowAsync"/>'s result: the outcome plus a
+        /// human-readable message safe to show directly in a toast.</summary>
+        public sealed record StartNowResult(StartNowOutcome Outcome, string Message);
+
+        /// <summary>
+        /// Git #1805 — "Start Now": Shane's explicit, one-at-a-time right-click override for a
+        /// queued row that's sitting there with no obvious reason (prompted by #1803: "QUEUED"
+        /// with visible free capacity, 5/8 building). Distinct from "Run Now" (#820,
+        /// <see cref="ForceLaunch"/>) in exactly the one way that matters: Run Now bypasses the
+        /// free-slot check unconditionally (it's a deliberate "spend headroom on this one build"
+        /// override), whereas Start Now overrides *waiting* — a real blocked_by dependency, or
+        /// just the poll not having reached this row yet — but never the actual concurrency cap.
+        /// Launching a 9th build when 8 are genuinely running would defeat the whole point of the
+        /// cap, so that case is refused, not silently honored.
+        ///
+        /// Every branch logs on the existing "watcher" channel exactly what was overridden
+        /// (blocker bypassed / poll timing skipped / genuinely at capacity) — the diagnostic
+        /// information #1805 asks for, not just a way to unstick something blindly.
+        /// </summary>
+        public async Task<StartNowResult> StartNowAsync(int queueItemId, string title)
+        {
+            // 1. The one thing this action must NEVER override: a genuinely full concurrency cap.
+            //    Checked first, before any claim, so a full queue is never even attempted.
+            if (_running.Count >= _maxConcurrent)
+            {
+                string msg = $"Not launched — genuinely at capacity ({_running.Count}/{_maxConcurrent} running). Start Now overrides waiting, never the concurrency cap itself.";
+                ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — {msg}");
+                return new StartNowResult(StartNowOutcome.AtCapacity, msg);
+            }
+
+            // 2. A per-item manual Pause (BuildConsoleSettings.PausedBuildIds) is also a "wait",
+            //    same as Run Now already treats it — clear it so this row isn't re-parked on the
+            //    very next tick right after we launch it.
+            var settings = BuildConsoleSettings.Load();
+            bool wasPaused = settings.PausedBuildIds.Remove(queueItemId);
+            if (wasPaused)
+            {
+                settings.Save();
+                ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — cleared its manual per-item Pause.");
+            }
+
+            // 3. Whatever real hold GetNextAsync's own live blocker re-check most recently recorded
+            //    for this row (Git #1600) — captured BEFORE the force-claim below removes it from
+            //    the candidate set entirely, so we can log the real reason it was actually held on.
+            string? heldReason = HeldBlockerReasons.TryGetValue(queueItemId, out var reason) ? reason : null;
+
+            QueueItem claimed;
+            try
+            {
+                claimed = _db != null
+                    ? await _db.ForceClaimAsync(queueItemId)
+                    : await _api.ForceClaimQueueItemAsync(queueItemId);
+            }
+            catch (Exception ex)
+            {
+                string msg = $"Couldn't claim: {ex.Message}";
+                ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — {msg}");
+                return new StartNowResult(StartNowOutcome.Failed, msg);
+            }
+
+            if (!string.IsNullOrWhiteSpace(heldReason))
+                ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — bypassed a real hold: {heldReason}.");
+            else
+                ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — no real blocker was holding it; it was only waiting on the next poll tick. Launching immediately.");
+
+            ForceLaunch(claimed);
+            return new StartNowResult(StartNowOutcome.Launched, $"Launched: {title}");
+        }
 
         /// <summary>Fire-and-forget wrapper for the now-async <see cref="LaunchItem"/> — used by the
         /// non-awaiting entry points (Run Now, Build Watch resume). Observes any exception so an
