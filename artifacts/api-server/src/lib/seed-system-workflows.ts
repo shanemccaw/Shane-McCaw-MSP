@@ -1086,6 +1086,68 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
       ],
     },
   },
+  // ── Policy Engine — Continuous Evaluation (Git #1549) ─────────────────────
+  //
+  // Two seeded workflows, ONE node type (policy_evaluate_due,
+  // policy-engine-nodes.ts) — #1549's SETTLED "two triggers" requirement, as a
+  // visible Workflow Engine node rather than a bare scheduler. The schedule
+  // workflow is the DIVERGENCE trigger (an existing VIP removed from a group by
+  // hand, caught on evaluation): it carries no payload, so the node sweeps
+  // every active standing policy across every opted-in tenant. The event
+  // workflow is the EVENT trigger: msp-standing-policies.ts calls
+  // fireWorkflowsForEvent("policy.standing_policy.activated", { customerId })
+  // when a new policy is authored active, so that ONE tenant is evaluated
+  // immediately rather than waiting for the next hourly sweep. Both gate on
+  // tenants.policy_engine_opt_in (default OFF) inside the node itself — see
+  // policy-engine-evaluator.ts for the honest not_evaluable/skipped_not_opted_in
+  // outcomes this records (#1548 enactment and #1553 finding-generation are
+  // separate, not-yet-built issues; this loop only detects and records).
+  {
+    name: "__system__: Policy Engine — Continuous Evaluation",
+    description:
+      "Hourly reconciliation sweep (matching the established monitoring-cadence convention, #1163) " +
+      "over every active standing policy across every tenant that has opted in to the Policy Engine. " +
+      "This is the 'not an onboarding-only trigger' half of #1549 — the DIVERGENCE trigger that catches " +
+      "drift introduced by hand between events. Records one policy_evaluation_runs row per policy " +
+      "considered via the policy_evaluate_due node; does not execute an SOP (#1548) or write a finding " +
+      "(#1553).",
+    triggerType: "schedule",
+    cron: "0 * * * *", // Hourly
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "Cron hourly" } },
+        { id: "evaluate", type: "policy_evaluate_due", position: { x: 100, y: 230 }, data: { nodeType: "policy_evaluate_due", label: "Evaluate Due Standing Policies (all tenants)" } },
+        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "evaluate" },
+        { id: "e2", source: "evaluate", target: "end" },
+      ],
+    },
+  },
+  {
+    name: "__system__: Policy Engine — Evaluate on Policy Change",
+    description:
+      "The EVENT half of #1549's two triggers: fires immediately when a standing policy is authored " +
+      "active (policy.standing_policy.activated, dispatched by msp-standing-policies.ts via " +
+      "fireWorkflowsForEvent), scoping the same policy_evaluate_due node to just that one tenant " +
+      "(payload.customerId) instead of waiting for the next hourly sweep.",
+    triggerType: "event",
+    eventNames: ["policy.standing_policy.activated"],
+    triggerEnabled: true,
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 100, y: 100 }, data: { nodeType: "start", label: "policy.standing_policy.activated" } },
+        { id: "evaluate", type: "policy_evaluate_due", position: { x: 100, y: 230 }, data: { nodeType: "policy_evaluate_due", label: "Evaluate Due Standing Policies (this tenant)" } },
+        { id: "end", type: "end", position: { x: 100, y: 360 }, data: { nodeType: "end", label: "Done" } },
+      ],
+      edges: [
+        { id: "e1", source: "start", target: "evaluate" },
+        { id: "e2", source: "evaluate", target: "end" },
+      ],
+    },
+  },
   {
     name: "__system__: Workflow Cleanup",
     description: "Nightly job (03:00 UTC) that deletes workflow runs older than 90 days.",

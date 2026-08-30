@@ -59,6 +59,9 @@ vi.mock("@workspace/db", () => {
       mockConflictSets.push(cfg.set);
       return insertChain;
     },
+    // #1542 — decline-to-risk's upsert reads back the row's id/status via
+    // .returning(); everything else in this file ignores the insert's result.
+    returning: () => Promise.resolve(mockSelectResultsQueue.shift() ?? []),
     then: (onfulfilled: any) => Promise.resolve({}).then(onfulfilled),
   };
 
@@ -86,6 +89,7 @@ vi.mock("@workspace/db", () => {
       "not_applicable",
       "deferred",
       "shane_handles",
+      "accepted_risk", // #1542
     ] as const,
   };
 });
@@ -118,6 +122,19 @@ vi.mock("../lib/logger", () => {
   return { logger: { child, info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } };
 });
 
+// #1542 — decline-to-risk's own two collaborators, mocked at the boundary so
+// this file stays a request/response contract test. `remediation-tracker-
+// risk-decline.ts`'s real derivation logic gets its own dedicated unit test
+// (remediation-tracker-risk-decline.test.ts).
+let mockTenantScope: unknown = { customerId: 42, mspId: 9, tenantId: "contoso.onmicrosoft.com", tenantName: "Contoso", primaryDomain: "contoso.com" };
+const mockDeclineRemediationStepToRisk = vi.fn();
+vi.mock("../lib/portal-customer-scope", () => ({
+  resolveTenantScope: vi.fn(() => Promise.resolve(mockTenantScope)),
+}));
+vi.mock("../lib/remediation-tracker-risk-decline", () => ({
+  declineRemediationStepToRisk: (...args: unknown[]) => mockDeclineRemediationStepToRisk(...args),
+}));
+
 import router, { REMEDIATION_TRACKER_STEP_IDS } from "./portal-remediation-tracker";
 import { REMEDIATION_TRACKER_STEP_STATUS } from "@workspace/db";
 
@@ -140,6 +157,9 @@ beforeEach(() => {
   mockSelectResultsQueue = [];
   mockEmitWorkflowEvent.mockClear();
   mockKbRows = new Map();
+  mockTenantScope = { customerId: 42, mspId: 9, tenantId: "contoso.onmicrosoft.com", tenantName: "Contoso", primaryDomain: "contoso.com" };
+  mockDeclineRemediationStepToRisk.mockReset();
+  mockDeclineRemediationStepToRisk.mockResolvedValue({ riskDecisionId: 501, rbdId: "RR-RT-42-s1", alreadyDeclined: false });
 });
 
 describe("the route's step ids still match the guide's own catalogue", () => {
@@ -172,8 +192,16 @@ describe("the status vocabulary has not drifted between lib/db and msp-portal", 
     const schemaValues = [...(schemaMatch?.[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]);
 
     const hookPath = path.resolve(
+      // #1542 — corrected from a stale "../../../msp-portal/..." path (that
+      // directory no longer exists in the repo; the live path is
+      // artifacts/portal/) which had left this drift guard silently ENOENT-ing
+      // rather than actually comparing the two vocabularies. Filed as a finding
+      // alongside the other two guide-catalogue guards this build found in the
+      // same broken state (previewRemediationGuide.ts / remediationLiveGuide.ts
+      // are missing from the repo entirely, not just moved, so those two are
+      // left as pre-existing failures rather than fixed here).
       here,
-      "../../../msp-portal/src/components/copilot-journey/useRemediationTracker.ts",
+      "../../../portal/src/components/copilot-journey/useRemediationTracker.ts",
     );
     const hookSource = readFileSync(hookPath, "utf8");
     const hookMatch = hookSource.match(/export const REMEDIATION_TRACKER_STEP_STATUS = \[([\s\S]*?)\] as const;/);
@@ -201,8 +229,10 @@ describe("the status vocabulary has not drifted between lib/db and msp-portal", 
     const schemaValues = [...(schemaMatch?.[1] ?? "").matchAll(/"(\w+)"/g)].map((m) => m[1]);
 
     const hookPath = path.resolve(
+      // #1542 — see the matching STEP_STATUS test above for why this was
+      // "msp-portal" and is now "portal".
       here,
-      "../../../msp-portal/src/components/copilot-journey/useRemediationTracker.ts",
+      "../../../portal/src/components/copilot-journey/useRemediationTracker.ts",
     );
     const hookSource = readFileSync(hookPath, "utf8");
     const hookMatch = hookSource.match(
@@ -264,6 +294,7 @@ describe("GET /api/portal/remediation-tracker", () => {
       updatedAt: when.toISOString(),
       verificationState: "verified",
       verifiedAt: when.toISOString(),
+      terminalState: "verified", // #1542
     });
   });
 
@@ -497,5 +528,83 @@ describe("GET /api/portal/remediation-tracker/steps/:stepId/verification-guide (
       validationCommand: "Get-SPOSite | Get-SPOSiteGroup",
       expectedOutcome: "No results returned.",
     });
+  });
+});
+
+describe("PUT rejects accepted_risk as a direct claim (#1542)", () => {
+  it("400s rather than letting the client set the signed state directly", async () => {
+    const res = await request(makeApp(CUSTOMER))
+      .put("/api/portal/remediation-tracker/steps/s10")
+      .send({ status: "accepted_risk" });
+
+    expect(res.status).toBe(400);
+    expect(mockDeclineRemediationStepToRisk).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/portal/remediation-tracker/steps/:stepId/decline-to-risk (#1542)", () => {
+  const body = { fullName: "Jordan Diaz", confirmed: true as const, statement: "We accept this risk for now." };
+
+  it("400s an unknown step id", async () => {
+    const res = await request(makeApp(CUSTOMER))
+      .post("/api/portal/remediation-tracker/steps/s999/decline-to-risk")
+      .send(body);
+    expect(res.status).toBe(400);
+    expect(mockDeclineRemediationStepToRisk).not.toHaveBeenCalled();
+  });
+
+  it("400s a malformed body (no confirmed checkbox)", async () => {
+    const res = await request(makeApp(CUSTOMER))
+      .post("/api/portal/remediation-tracker/steps/s10/decline-to-risk")
+      .send({ fullName: "Jordan Diaz", statement: "..." });
+    expect(res.status).toBe(400);
+    expect(mockDeclineRemediationStepToRisk).not.toHaveBeenCalled();
+  });
+
+  it("403s when no tenant scope resolves", async () => {
+    mockTenantScope = null;
+    const res = await request(makeApp(CUSTOMER))
+      .post("/api/portal/remediation-tracker/steps/s10/decline-to-risk")
+      .send(body);
+    expect(res.status).toBe(403);
+    expect(mockDeclineRemediationStepToRisk).not.toHaveBeenCalled();
+  });
+
+  it("409s a step already declined to risk, without re-signing it", async () => {
+    mockSelectResultsQueue = [[{ id: 501, status: "accepted_risk" }]];
+    const res = await request(makeApp(CUSTOMER))
+      .post("/api/portal/remediation-tracker/steps/s10/decline-to-risk")
+      .send(body);
+
+    expect(res.status).toBe(409);
+    expect(mockDeclineRemediationStepToRisk).not.toHaveBeenCalled();
+  });
+
+  it("declines a never-touched step: upserts a row, signs the risk, and flips the terminal state to accepted", async () => {
+    // First .returning() (the ensure-row-exists upsert) — the step has never
+    // been touched, not_started.
+    mockSelectResultsQueue = [[{ id: 501, status: "not_started" }]];
+
+    const res = await request(makeApp(CUSTOMER))
+      .post("/api/portal/remediation-tracker/steps/s10/decline-to-risk")
+      .send(body);
+
+    expect(res.status).toBe(201);
+    expect(mockDeclineRemediationStepToRisk).toHaveBeenCalledWith(
+      expect.objectContaining({
+        stepId: "s10",
+        trackerStepRowId: 501,
+        approverName: "Jordan Diaz",
+        statement: "We accept this risk for now.",
+      }),
+    );
+
+    expect(res.body.rbdId).toBe("RR-RT-42-s1");
+    expect(res.body.step.status).toBe("accepted_risk");
+    expect(res.body.step.terminalState).toBe("accepted");
+    expect(res.body.accepted.by).toBe("Jordan Diaz");
+
+    // The second upsert (the real write) carries the signed terminal state.
+    expect(mockConflictSets.at(-1)).toMatchObject({ status: "accepted_risk", verificationState: "unverified" });
   });
 });

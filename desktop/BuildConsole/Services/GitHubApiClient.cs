@@ -808,6 +808,21 @@ namespace BuildConsole.Services
         public const string BacklogOptionId = "63cc47c8";
 
         /// <summary>
+        /// Shane, 2026-08-30 — a real board bucket for a build a Claude agent had to
+        /// stop mid-session because it's genuinely blocked on something else: "Create
+        /// a new Bucket in Git like the 'Batter Up' called 'Park' and move the Git
+        /// issue there... then it pulls it out of the Batter Up queue, puts it in its
+        /// own queue away from the build." Added as a real option on the same Status
+        /// field (`gh api graphql updateProjectV2Field`, preserving every existing
+        /// option's id/name/color) — id confirmed live: 19cfa11c. Moving an issue here
+        /// pulls it out of Batter Up / AI Batter Up structurally, for free: both scans
+        /// filter on their own exact optionId, so a "Park"-valued item simply never
+        /// matches either. See <see cref="SetIssueStatusByNumberAsync"/> for the
+        /// by-issue-number write BuildQueuePanel's Park/Un-park actions use.
+        /// </summary>
+        public const string ParkOptionId = "19cfa11c";
+
+        /// <summary>
         /// Git #1710 — every real, OPEN issue currently sitting in the project board's
         /// "AI Batter Up" status: agent-filed findings awaiting Shane's Yes/No. Same
         /// paginated project-items GraphQL read as <see cref="GetBatterUpIssuesAsync"/>,
@@ -979,6 +994,69 @@ namespace BuildConsole.Services
         {
             public List<GraphQLError>? Errors { get; set; }
         }
+
+        /// <summary>
+        /// Resolves a plain GitHub issue number to its ProjectV2Item node id on THIS
+        /// project (an issue can sit on several projects; only this one's item id is
+        /// useful to <see cref="SetProjectItemStatusAsync"/>). Unlike
+        /// <see cref="ScanProjectItemsForStatusAsync"/> (a full paginated board walk,
+        /// built for "every item at option X") this goes straight at one issue via
+        /// `issue(number:).projectItems`, so it's cheap enough to call inline from a
+        /// button click. Returns null if the issue isn't on this project at all.
+        /// </summary>
+        public async Task<string?> GetProjectItemIdForIssueAsync(int issueNumber)
+        {
+            string query = $@"query {{
+  repository(owner: ""{Owner}"", name: ""{Repo}"") {{
+    issue(number: {issueNumber}) {{
+      projectItems(first: 20) {{
+        nodes {{ id project {{ id }} }}
+      }}
+    }}
+  }}
+}}";
+            using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+            {
+                Content = JsonContent.Create(new { query }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+            var body = await res.Content.ReadFromJsonAsync<ProjectItemLookupResponse>(JsonOpts);
+            if (body?.Errors is { Count: > 0 } errs)
+                throw new Exception("GitHub GraphQL: " + string.Join("; ", errs.Select(e => e.Message)));
+
+            var nodes = body?.Data?.Repository?.Issue?.ProjectItems?.Nodes;
+            return nodes?.FirstOrDefault(n => string.Equals(n.Project?.Id, BatterUpProjectId, StringComparison.OrdinalIgnoreCase))?.Id;
+        }
+
+        /// <summary>
+        /// Moves a plain GitHub issue number's Status field on this project — the
+        /// by-number convenience <see cref="SetProjectItemStatusAsync"/> (which needs
+        /// the item id up front) doesn't offer. Used by BuildQueuePanel's Park/Un-park
+        /// actions, which only ever have a QueueItem's github_number, not an item id.
+        /// A no-op (returns false, doesn't throw) if the issue isn't on the project —
+        /// a local-only build (no linked GitHub issue's project card yet) shouldn't
+        /// block the local park/un-park it's paired with.
+        /// </summary>
+        public async Task<bool> SetIssueStatusByNumberAsync(int issueNumber, string optionId)
+        {
+            var itemId = await GetProjectItemIdForIssueAsync(issueNumber);
+            if (string.IsNullOrEmpty(itemId)) return false;
+            await SetProjectItemStatusAsync(itemId, optionId);
+            return true;
+        }
+
+        private class ProjectItemLookupResponse
+        {
+            public ProjectItemLookupData? Data { get; set; }
+            public List<GraphQLError>? Errors { get; set; }
+        }
+        private class ProjectItemLookupData { public ProjectItemLookupRepo? Repository { get; set; } }
+        private class ProjectItemLookupRepo { public ProjectItemLookupIssue? Issue { get; set; } }
+        private class ProjectItemLookupIssue { public ProjectItemLookupConnection? ProjectItems { get; set; } }
+        private class ProjectItemLookupConnection { public List<ProjectItemLookupNode> Nodes { get; set; } = new(); }
+        private class ProjectItemLookupNode { public string? Id { get; set; } public ProjectItemLookupProject? Project { get; set; } }
+        private class ProjectItemLookupProject { public string? Id { get; set; } }
 
         private async Task<ProjectItemConnection?> PostProjectItemsQueryAsync(string query)
         {

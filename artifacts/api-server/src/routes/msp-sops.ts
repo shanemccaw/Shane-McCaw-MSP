@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspSopsTable, mspSopRunsTable, MSP_SOP_RUN_ORIGIN } from "@workspace/db";
+import { db, mspSopsTable, mspSopRunsTable, standingPoliciesTable, MSP_SOP_RUN_ORIGIN } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
@@ -53,6 +53,10 @@ const runSopSchema = z.object({
   // #1497 — an approved Change Request authorizes this write against a live
   // tenant. Optional only for a testbed customer.
   changeRequestId: z.number().int().positive().optional(),
+  // #1548 — attribute this run to the standing policy that named this SOP as
+  // its enacting procedure. runSopForCustomer verifies it (this MSP, active,
+  // names this same sopId) and forces origin to "policy".
+  standingPolicyId: z.number().int().positive().optional(),
 });
 
 const createSopRunSchema = z.object({
@@ -66,6 +70,9 @@ const createSopRunSchema = z.object({
   // What invoked this run (#1556). Optional so existing callers keep working; a
   // run without a stated origin is a hand-started one.
   origin: z.enum(MSP_SOP_RUN_ORIGIN).default("manual"),
+  // #1548 — traces this hand-entered run back to the standing policy that
+  // caused it, when it was one. Validated against this MSP below.
+  standingPolicyId: z.number().int().positive().optional(),
   startedAt: z.string(),
   status: z.enum(["In Progress", "Completed", "Blocked", "Failed"]),
   currentStepIndex: z.number().int().nonnegative(),
@@ -188,6 +195,11 @@ const SOP_RUN_ERROR_STATUS: Record<SopExecutionErrorCode, number> = {
   // #1497 — reached the write path without an approved, unconsumed CR.
   change_request_not_authorized: 403,
   concurrency_limit: 409,
+  // #1548 — a run claiming a standingPolicyId that doesn't check out.
+  standing_policy_not_found: 404,
+  standing_policy_inactive: 422,
+  standing_policy_sop_mismatch: 422,
+  standing_policy_requires_policy_origin: 400,
 };
 
 router.post(
@@ -217,6 +229,7 @@ router.post(
         variables: parsedBody.data.variables,
         operator: parsedBody.data.operator ?? req.user?.email ?? "unknown",
         origin: parsedBody.data.origin,
+        standingPolicyId: parsedBody.data.standingPolicyId,
         triggeredBy: `sop:${sopId}:customer:${parsedBody.data.customerId}:operator:${req.user?.id ?? "unknown"}`,
         ...(parsedBody.data.changeRequestId != null
           ? { changeRequestAuthorization: { changeRequestId: parsedBody.data.changeRequestId } }
@@ -235,6 +248,7 @@ router.post(
         automatedStepCount: result.automatedStepCount,
         totalSteps: result.totalSteps,
         authorizingChangeRequestId: result.authorizingChangeRequestId,
+        standingPolicyId: parsedBody.data.standingPolicyId ?? null,
       });
     } catch (err: unknown) {
       if (err instanceof SopExecutionError) {
@@ -297,6 +311,26 @@ router.post(
         return;
       }
 
+      // #1548 — a run claiming standingPolicyId must be this MSP's own policy,
+      // and its origin must actually read "policy" — this is a hand-entered
+      // write path (no runSopForCustomer verification below it), so the same
+      // coherence check has to happen here.
+      if (parsedBody.data.standingPolicyId !== undefined) {
+        if (parsedBody.data.origin !== "policy") {
+          apiError(res, 400, ApiErrorCode.VALIDATION, `A run naming a standingPolicyId must have origin "policy" (got "${parsedBody.data.origin}")`);
+          return;
+        }
+        const [policy] = await db
+          .select({ id: standingPoliciesTable.id })
+          .from(standingPoliciesTable)
+          .where(and(eq(standingPoliciesTable.id, parsedBody.data.standingPolicyId), eq(standingPoliciesTable.mspId, mspId)))
+          .limit(1);
+        if (!policy) {
+          apiError(res, 400, ApiErrorCode.VALIDATION, `Standing policy ${parsedBody.data.standingPolicyId} does not exist for this MSP`);
+          return;
+        }
+      }
+
       // #1558 — the version this run actually followed, captured from the base
       // definition NOW rather than trusted from the caller: the base SOP keeps
       // moving forward under `version` as it is republished, so this has to be
@@ -321,6 +355,7 @@ router.post(
           targetEntity: parsedBody.data.targetEntity,
           operator: parsedBody.data.operator,
           origin: parsedBody.data.origin,
+          standingPolicyId: parsedBody.data.standingPolicyId ?? null,
           sopVersion: sop?.version ?? "",
           startedAt: parsedBody.data.startedAt,
           status: parsedBody.data.status,

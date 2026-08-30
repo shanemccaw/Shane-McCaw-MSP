@@ -96,6 +96,7 @@ import { STATIC_NODE_SAMPLES } from "./workflow-node-default-samples";
 import { handleMspDunningAdvance, handleMspOverageMeter } from "./msp-billing-nodes";
 import { handleMspScoreSnapshot } from "./msp-engine.js";
 import { handleM365HealthSample } from "./m365-health-sample.js";
+import { handlePolicyEvaluateDue } from "./policy-engine-nodes.js";
 import { handleM365RoadmapSync } from "./m365-roadmap-sync.js";
 import { handleM365RouteChanges } from "./m365-change-router.js";
 import { handlePlatformLogStreamPrune } from "./telemetry-retention-nodes";
@@ -1166,6 +1167,9 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
 
     case "alert_evaluate_rules":
       return { dryRun: true, evaluated: false, note: "dry run — alert rule evaluation skipped" };
+
+    case "policy_evaluate_due":
+      return { dryRun: true, policiesConsidered: 0, note: "dry run — policy engine continuous evaluation pass skipped" };
 
     case "monitor_subscription_ensure": {
       const mseContentTypeDry = (node.data.contentType as string | undefined) ?? "Audit.AzureActiveDirectory";
@@ -6567,6 +6571,17 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         }
         log.info("wf-executor: alert_evaluate_rules completed");
         output = { evaluated: true };
+        break;
+      }
+
+      case "policy_evaluate_due": {
+        // Promoted node type (#1549): the Policy Engine's continuous-evaluation
+        // reconciliation loop. Seeded twice — once as the schedule-triggered
+        // divergence sweep (no payload.customerId, scope = every tenant), once
+        // as the event-triggered pass (payload.customerId set by
+        // msp-standing-policies.ts's fireWorkflowsForEvent call, scope = one
+        // tenant). Same node, same handler, both real Workflow Engine runs.
+        output = await handlePolicyEvaluateDue(node.data as Record<string, unknown>, payload) as unknown as Record<string, unknown>;
         break;
       }
 

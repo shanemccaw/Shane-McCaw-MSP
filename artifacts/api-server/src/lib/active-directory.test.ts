@@ -550,8 +550,8 @@ describe("buildCustomerDetail", () => {
 
 describe("buildOuNodes", () => {
   const OUS: OuRow[] = [
-    { id: 2, name: "Zebra Unit", createdAt: new Date("2026-07-01"), updatedAt: new Date("2026-07-01") },
-    { id: 1, name: "Acme Unit", createdAt: new Date("2026-07-02"), updatedAt: new Date("2026-07-02") },
+    { id: 2, name: "Zebra Unit", tenantId: null, createdAt: new Date("2026-07-01"), updatedAt: new Date("2026-07-01") },
+    { id: 1, name: "Acme Unit", tenantId: 42, createdAt: new Date("2026-07-02"), updatedAt: new Date("2026-07-02") },
   ];
 
   it("sorts OU nodes by name", () => {
@@ -559,9 +559,14 @@ describe("buildOuNodes", () => {
     expect(nodes.map((o) => o.name)).toEqual(["Acme Unit", "Zebra Unit"]);
   });
 
-  it("carries through id and name only — no policy fields", () => {
+  it("carries through id, name and tenantId only — no policy fields", () => {
     const nodes = buildOuNodes(OUS);
-    expect(nodes[0]).toEqual({ id: 1, name: "Acme Unit" });
+    expect(nodes[0]).toEqual({ id: 1, name: "Acme Unit", tenantId: 42 });
+  });
+
+  it("carries a null tenantId through for a platform/MSP-level OU", () => {
+    const nodes = buildOuNodes(OUS);
+    expect(nodes[1]).toEqual({ id: 2, name: "Zebra Unit", tenantId: null });
   });
 
   it("returns an empty array when there are no OUs", () => {

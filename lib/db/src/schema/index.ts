@@ -4265,9 +4265,23 @@ export type BotConversation = typeof botConversationsTable.$inferSelect;
 export const activeDirectoryOusTable = pgTable("active_directory_ous", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  /**
+   * Which real customer tenant this OU node governs (#1549). Nullable and
+   * additive — an OU created before this column, or one representing a
+   * platform/MSP-level grouping node in the admin tree rather than a single
+   * customer, legitimately has no tenant. A standing policy attached to a
+   * tenant-less OU has nothing for the continuous-evaluation loop to check
+   * against, and evaluates as `not_evaluable`, not a guess. Still no policy
+   * columns and no object-to-OU membership model here — see the note above:
+   * this is the attachment point's OWN missing link (which tenant), not the
+   * membership question that note deliberately still defers.
+   */
+  tenantId: integer("tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("active_directory_ous_tenant_id_idx").on(t.tenantId),
+]);
 
 export type InsertActiveDirectoryOu = typeof activeDirectoryOusTable.$inferInsert;
 export type ActiveDirectoryOu = typeof activeDirectoryOusTable.$inferSelect;
