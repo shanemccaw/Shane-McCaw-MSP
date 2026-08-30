@@ -119,6 +119,15 @@ namespace BuildConsole.Controls
         /// call (same reason _knownQueueCardKeys exists for the card list), so this is what
         /// survives across rebuilds instead of relying on the discarded UI elements.</summary>
         private readonly HashSet<string> _expandedRollupSets = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Git #1932 — per-build-set memory of which Verifying issue numbers the rollup's
+        /// send (✈) button has already sent, so the same already-reported items don't keep the
+        /// button visible/re-sendable forever. In-memory only, deliberately not persisted across
+        /// an app restart: a restart means BuildConsole itself is fresh, and Shane re-reading a
+        /// "landed" list he already saw in a still-open chat on the next send is a much smaller
+        /// cost than a real one going permanently unsent because state loaded stale/wrong across
+        /// a restart (e.g. a set renamed/reused between sessions). Keyed by the normalized build
+        /// set key (case-insensitive, matching <see cref="_expandedRollupSets"/>).</summary>
+        private readonly Dictionary<string, HashSet<int>> _sentVerifyingByBuildSet = new(StringComparer.OrdinalIgnoreCase);
         private const string UngroupedBuildSetKey = "Ungrouped";
         private int? _selectedQueueItemId;
         private static readonly Dictionary<int, string> _issueTitleCache = new();
@@ -2383,13 +2392,21 @@ namespace BuildConsole.Controls
             Grid.SetColumn(summaryText, 0);
             headerGrid.Children.Add(summaryText);
 
-            // Git #1893 — "send this set's Verifying items as a landed-list to the active chat"
-            // button. Only rendered when there's something real to send (#1893 requirement 3: a
-            // build set with zero Verifying items doesn't offer a broken/empty send) — rather than
-            // rendering a disabled button, it's simply absent, since a row only exists here at all
-            // when at least one of the three counts is non-zero.
+            // Git #1932 — only the Verifying items this build set hasn't already sent count
+            // toward whether the send button shows/what it sends. _sentVerifyingByBuildSet is
+            // never mutated here — TryGetValue + Except gives the unsent subset without side
+            // effects, so re-rendering this row (RenderBuildSetRollup runs on every refresh) never
+            // itself marks anything as sent.
+            var alreadySent = _sentVerifyingByBuildSet.TryGetValue(buildSetKey, out var sentSet) ? sentSet : null;
+            var unsentVerifying = alreadySent == null ? verifying : verifying.Where(n => !alreadySent.Contains(n)).ToList();
+
+            // Git #1893/#1932 — "send this set's not-yet-sent Verifying items as a landed-list to
+            // the active chat" button. Only rendered when there's something real and NEW to send
+            // (#1893 requirement 3, extended by #1932: a build set with zero unsent Verifying
+            // items doesn't offer a broken/empty/re-send) — rather than rendering a disabled
+            // button, it's simply absent.
             Button? sendButton = null;
-            if (verifying.Count > 0)
+            if (unsentVerifying.Count > 0)
             {
                 sendButton = new Button
                 {
@@ -2402,7 +2419,7 @@ namespace BuildConsole.Controls
                     Background = Brushes.Transparent,
                     BorderThickness = new Thickness(0),
                     Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
-                    ToolTip = $"Send {buildSetKey}'s {verifying.Count} verifying item(s) as a landed-list to the active chat"
+                    ToolTip = $"Send {buildSetKey}'s {unsentVerifying.Count} not-yet-sent verifying item(s) as a landed-list to the active chat"
                 };
                 Grid.SetColumn(sendButton, 1);
                 headerGrid.Children.Add(sendButton);
@@ -2440,17 +2457,47 @@ namespace BuildConsole.Controls
             {
                 sendButton.Click += (s, e) =>
                 {
-                    string text = string.Join("\n", verifying.Select(n => $"Git {FormatIssueRef(n)} — landed"));
-                    ActivityLog.Log("build-queue.rollup-send-to-chat", $"send-clicked: {buildSetKey}, {verifying.Count} verifying item(s)");
+                    // Git #1932 — snapshot the not-yet-sent set at click time; the closure below
+                    // marks exactly these as sent on success, never the row's full `verifying`
+                    // list (which may include items an earlier send already reported).
+                    var toSend = unsentVerifying;
+                    string text = string.Join("\n", toSend.Select(n => $"Git {FormatIssueRef(n)} — landed"));
+                    ActivityLog.Log("build-queue.rollup-send-to-chat", $"send-clicked: {buildSetKey}, {toSend.Count} not-yet-sent verifying item(s)");
                     SendBuildSetVerifyingRequested?.Invoke(this, new SendBuildSetVerifyingEventArgs(buildSetKey, text, (msg, isError) =>
                     {
+                        bool justSent = false;
+                        if (!isError)
+                        {
+                            // Git #1932 — mark sent immediately on a real successful send (not
+                            // deferred to the re-render below), so the button's visibility on the
+                            // NEXT render is already correct even if something else triggers a
+                            // rebuild before this row's own timer fires. A failed send marks
+                            // nothing, leaving the button visible/re-sendable.
+                            if (!_sentVerifyingByBuildSet.TryGetValue(buildSetKey, out var sent))
+                            {
+                                sent = new HashSet<int>();
+                                _sentVerifyingByBuildSet[buildSetKey] = sent;
+                            }
+                            foreach (var n in toSend) sent.Add(n);
+                            justSent = true;
+                        }
                         statusText.Text = msg;
                         statusText.Foreground = isError
                             ? (Brush)Application.Current.FindResource("RedBrush")
                             : (Brush)Application.Current.FindResource("GreenBrush");
                         statusText.Visibility = Visibility.Visible;
+                        // Rebuilding this row right now (RenderBuildSetRollup clears and recreates
+                        // every row) would destroy statusText before Shane ever sees the outcome
+                        // message, since the button's own success/fail feedback is the point.
+                        // Defer the rebuild — which is what actually makes the button disappear —
+                        // to the same timer that hides the status text, so he sees "Sent" first.
                         var hideTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-                        hideTimer.Tick += (ts, te) => { statusText.Visibility = Visibility.Collapsed; hideTimer.Stop(); };
+                        hideTimer.Tick += (ts, te) =>
+                        {
+                            hideTimer.Stop();
+                            if (justSent) RenderBuildSetRollup(_lastItems);
+                            else { statusText.Visibility = Visibility.Collapsed; }
+                        };
                         hideTimer.Start();
                     }));
                 };
