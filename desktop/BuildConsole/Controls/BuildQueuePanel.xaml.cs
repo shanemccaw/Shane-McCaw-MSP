@@ -3048,6 +3048,71 @@ namespace BuildConsole.Controls
                 topRow.Children.Add(numBadge);
             }
 
+            // Git #1998 — model/effort badge, always visible in every card state (not gated
+            // on Conservation Cap / #1989's toggle): the two values that decide whether a
+            // build launches or gets parked shouldn't be hidden the rest of the time, and a
+            // card that changes shape when the toggle flips is harder to read than one that
+            // doesn't. Short form only ("Sonnet · High") — never the full model id.
+            string? shortModel = ShortModelName(item.Model);
+            string? shortEffort = ShortEffortName(item.Effort);
+            if (shortModel != null || shortEffort != null)
+            {
+                string modelEffortText = shortModel != null && shortEffort != null
+                    ? $"{shortModel} · {shortEffort}"
+                    : (shortModel ?? shortEffort)!;
+                var modelBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x28, 0x29, 0x3D)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    ToolTip = "Model · effort this build launches (or launched) with"
+                };
+                modelBadge.Child = new TextBlock
+                {
+                    Text = modelEffortText,
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xB4, 0xCD))
+                };
+                topRow.Children.Add(modelBadge);
+            }
+
+            // Git #1998 — on a capped card, spell out which half of
+            // AccountCapPolicy.ExceedsSonnetHigh actually tripped the gate (Opus, Fable, or
+            // xhigh effort) instead of leaving Shane to reconstruct it from a bare status pill.
+            // Reuses AccountCapPolicy's own IsOpusModel/IsFableModel/IsAboveHighEffort rather
+            // than re-deriving the test. Peach to match the existing capped colour language
+            // (#1989) — no new accent.
+            if (item.Status == Services.AccountCapPolicy.CappedStatus)
+            {
+                var reasons = new List<string>();
+                if (Services.AccountCapPolicy.IsOpusModel(item.Model)) reasons.Add("Opus");
+                if (Services.AccountCapPolicy.IsFableModel(item.Model)) reasons.Add("Fable");
+                if (Services.AccountCapPolicy.IsAboveHighEffort(item.Effort)) reasons.Add("xhigh effort");
+                string reasonText = reasons.Count > 0 ? string.Join(" + ", reasons) : "unknown";
+                var reasonBadge = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x20, 0x1A)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1.5, 5, 1.5),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    ToolTip = $"Capped because: {reasonText}"
+                };
+                reasonBadge.Child = new TextBlock
+                {
+                    Text = $"⚠ {reasonText}",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87))
+                };
+                topRow.Children.Add(reasonBadge);
+            }
+
             if (_downstreamBlockCounts.TryGetValue(item.Id, out var blockCount) && blockCount > 0)
             {
                 bool isTopBottleneck = blockCount == _maxDownstreamBlockCount && _maxDownstreamBlockCount > 1;
@@ -3243,6 +3308,32 @@ namespace BuildConsole.Controls
 
         private static string CapitalizeFirst(string s) =>
             string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
+
+        /// <summary>Git #1998 — short display name for a model id ("claude-sonnet-5" → "Sonnet"),
+        /// used on the compact queue card badge. Reuses AccountCapPolicy's own Opus/Fable
+        /// detection rather than re-deriving it. Null in, null out — a missing model renders as
+        /// nothing on the card, never an invented default. An id this doesn't recognize is
+        /// returned as-is rather than guessed at.</summary>
+        private static string? ShortModelName(string? model)
+        {
+            if (string.IsNullOrWhiteSpace(model)) return null;
+            if (Services.AccountCapPolicy.IsOpusModel(model)) return "Opus";
+            if (Services.AccountCapPolicy.IsFableModel(model)) return "Fable";
+            if (model.Contains("sonnet", StringComparison.OrdinalIgnoreCase)) return "Sonnet";
+            if (model.Contains("haiku", StringComparison.OrdinalIgnoreCase)) return "Haiku";
+            return model;
+        }
+
+        /// <summary>Git #1998 — short display form for an effort value. "xhigh" stays lowercase
+        /// (matches Shane's own "Opus · xhigh" example on #1998); everything else is
+        /// capitalized ("high" → "High"). Null in, null out.</summary>
+        private static string? ShortEffortName(string? effort)
+        {
+            if (string.IsNullOrWhiteSpace(effort)) return null;
+            return effort.Equals("xhigh", StringComparison.OrdinalIgnoreCase)
+                ? "xhigh"
+                : char.ToUpperInvariant(effort[0]) + effort.Substring(1).ToLowerInvariant();
+        }
 
         /// <summary>
         /// Shane, 2026-08-30 — mirrors a local Park/Un-park onto the real GitHub Project
