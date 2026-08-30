@@ -79,6 +79,8 @@ namespace BuildConsole.Services
         public const string KeyQueue      = "queue";
         public const string KeyDeploy     = "deploy";
         public const string KeyUsage      = "usage";
+        /// <summary>#1882 — the real "the whole app shell has finished initializing" signal, beyond the network probes. Non-terminal until MainWindow calls <see cref="MarkShellReady"/> at the end of its deferred startup, so AllSettled (and thus the overlay dismiss) genuinely means "ready to use", not just "the connection probes finished".</summary>
+        public const string KeyShell      = "shell";
 
         /// <summary>Per-HTTP-probe timeout. Below the client's own 20s so a single dead endpoint settles this row (as TimedOut) well before the global cap.</summary>
         private static readonly TimeSpan HttpProbeTimeout = TimeSpan.FromSeconds(15);
@@ -86,13 +88,18 @@ namespace BuildConsole.Services
         /// <summary>Absolute ceiling from Start(): any connection still Pending/Connecting after this is force-settled to TimedOut so the splash always dismisses. Covers the observed usage meter, which has no timeout of its own we control here.</summary>
         private static readonly TimeSpan GlobalCap = TimeSpan.FromSeconds(20);
 
-        private readonly BuildTrackerApiClient? _api;
-        private readonly ReplitWatcherService? _replitWatcher;
-        private readonly BuildQueuePostgresClient? _queueDb;
+        // #1882 — no longer readonly / no longer ctor-injected: the service is created
+        // the instant the window paints (so the overlay's rows appear first), and these
+        // are handed in later via Start(), once MainWindow has actually constructed them.
+        private BuildTrackerApiClient? _api;
+        private ReplitWatcherService? _replitWatcher;
+        private BuildQueuePostgresClient? _queueDb;
         private readonly List<StartupConnectionStatus> _ordered;
         private readonly Dictionary<string, StartupConnectionStatus> _byKey;
         private readonly object _gate = new();
         private bool _allSettledRaised;
+        private bool _started;
+        private Stopwatch? _shellSw;
 
         /// <summary>Ordered connection list — the view builds one row per entry, preserving this order.</summary>
         public IReadOnlyList<StartupConnectionStatus> Connections => _ordered;
@@ -103,11 +110,8 @@ namespace BuildConsole.Services
         /// <summary>Raised exactly once, when every connection has reached a terminal state (or the global cap fired). May fire on a background thread.</summary>
         public event Action? AllSettled;
 
-        public StartupConnectivityService(BuildTrackerApiClient? api, ReplitWatcherService? replitWatcher = null, BuildQueuePostgresClient? queueDb = null)
+        public StartupConnectivityService()
         {
-            _api = api;
-            _replitWatcher = replitWatcher;
-            _queueDb = queueDb;
             _ordered = new List<StartupConnectionStatus>
             {
                 new StartupConnectionStatus(KeySettings,   "Settings & credentials"),
@@ -120,16 +124,35 @@ namespace BuildConsole.Services
                 new StartupConnectionStatus(KeyQueue,      "Build queue"),
                 new StartupConnectionStatus(KeyDeploy,     "Deploy status"),
                 new StartupConnectionStatus(KeyUsage,      "Claude usage"),
+                // #1882 — the umbrella "app shell is actually ready" row, last in the
+                // list. Stays non-terminal (Connecting) until MarkShellReady() so the
+                // overlay never dismisses while real init is still running underneath.
+                new StartupConnectionStatus(KeyShell,      "Application shell"),
             };
             _byKey = _ordered.ToDictionary(c => c.Key);
         }
 
         /// <summary>
-        /// Kicks off all subsystem probes. Returns immediately — progress arrives via events.
+        /// Kicks off all subsystem probes with the (now-constructed) services they need.
+        /// Returns immediately — progress arrives via events. Idempotent.
         /// </summary>
-        public void Start()
+        public void Start(BuildTrackerApiClient? api, ReplitWatcherService? replitWatcher = null, BuildQueuePostgresClient? queueDb = null)
         {
+            lock (_gate)
+            {
+                if (_started) return;
+                _started = true;
+                _api = api;
+                _replitWatcher = replitWatcher;
+                _queueDb = queueDb;
+                _shellSw = Stopwatch.StartNew();
+            }
+
             ActivityLog.Log(Channel, "startup connectivity: probing real launch connections & subsystems…");
+
+            // #1882 — the shell is now genuinely initializing; mark its row so the overlay
+            // shows honest "starting subsystems…" until MarkShellReady() lands.
+            Transition(KeyShell, StartupConnectionState.Connecting, "starting subsystems…");
 
             // 1. Settings & credentials
             _ = Task.Run(() =>
@@ -423,6 +446,25 @@ namespace BuildConsole.Services
                     Transition(KeyUsage, StartupConnectionState.Failed, "navigation failed");
                     break;
             }
+        }
+
+        /// <summary>
+        /// #1882 — MainWindow calls this once its full deferred startup (core services,
+        /// panels, Home tab, background timers) has actually finished. It settles the
+        /// umbrella <see cref="KeyShell"/> row, which is what lets <see cref="AllSettled"/>
+        /// fire — so the overlay dismisses only when the app is genuinely ready to use,
+        /// not merely when the network probes returned. Idempotent; safe from any thread.
+        /// </summary>
+        public void MarkShellReady()
+        {
+            TimeSpan? elapsed;
+            lock (_gate)
+            {
+                if (_byKey.TryGetValue(KeyShell, out var cur) && IsTerminal(cur.State))
+                    return; // already settled (e.g. the global cap forced it) — don't churn
+                elapsed = _shellSw?.Elapsed;
+            }
+            Transition(KeyShell, StartupConnectionState.Success, "ready", elapsed);
         }
 
         // ── probe machinery ─────────────────────────────────────────────────────
