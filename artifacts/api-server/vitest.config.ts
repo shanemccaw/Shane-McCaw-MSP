@@ -71,6 +71,7 @@ export default defineConfig({
       // matching (weekly/monthly/quarterly/annually cadence, global/tenant/
       // workload scoping) — pure, no database.
       "src/lib/portal-change-freeze.test.ts",
+      "src/lib/portal-cab.test.ts",
       "src/lib/portal-hold-windows.test.ts",
       "src/lib/workflow-node-output-samples.test.ts",
       "src/routes/consent.test.ts",
