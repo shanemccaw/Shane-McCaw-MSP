@@ -24,8 +24,14 @@
  * requires no signature (that is what makes it a second object, not a register
  * entry). The #1550 approval binding — a policy IS a standard change catalog
  * item — is recorded as an optional `catalogItemId` reference and is built out
- * by #1550, not here. Enactment (#1548) and continuous evaluation (#1549) are
- * separate builds; this route ends at the wire contract.
+ * by #1550, not here. Continuous evaluation (#1549) is a separate build.
+ *
+ * #1548 (enactment): "Policy defines a target state and names the procedure
+ * that achieves it." That naming — an optional `sopId` referencing this MSP's
+ * own `msp_sops.sop_id` — is authored here. Actually firing the SOP still goes
+ * through the EXISTING `POST /api/msp/sops/:sopId/run` (`runSopForCustomer`,
+ * #1559), passing this policy's id so the run traces back to it — no new
+ * execution path is created, per that issue's own constraint.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -34,6 +40,7 @@ import {
   standingPoliciesTable,
   activeDirectoryOusTable,
   changeCatalogItemsTable,
+  mspSopsTable,
   STANDING_POLICY_TARGET_KIND,
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
@@ -97,6 +104,9 @@ const createSchema = z.object({
   targetState: z.record(z.string(), z.unknown()).optional(),
   // #1550: bind to a pre-approved catalog item. Optional; scoped to this MSP below.
   catalogItemId: z.number().int().positive().optional(),
+  // #1548: names the procedure that enacts this policy's target state.
+  // `msp_sops.sop_id` — optional; scoped to this MSP below.
+  sopId: z.string().trim().min(1).max(200).optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -143,6 +153,21 @@ router.post(
         }
       }
 
+      // #1548: if a procedure is named, it must be this MSP's own real SOP —
+      // "names the procedure that achieves it" only means something if the
+      // name resolves to a real msp_sops row this MSP actually owns.
+      if (parsed.data.sopId !== undefined) {
+        const [sop] = await db
+          .select({ sopId: mspSopsTable.sopId })
+          .from(mspSopsTable)
+          .where(and(eq(mspSopsTable.mspId, mspId), eq(mspSopsTable.sopId, parsed.data.sopId)))
+          .limit(1);
+        if (!sop) {
+          apiError(res, 400, ApiErrorCode.VALIDATION, `SOP '${parsed.data.sopId}' does not exist for this MSP`);
+          return;
+        }
+      }
+
       const actor = actorIdentity(req);
       const [inserted] = await db
         .insert(standingPoliciesTable)
@@ -154,13 +179,17 @@ router.post(
           targetKind: parsed.data.targetKind,
           targetState: parsed.data.targetState ?? {},
           catalogItemId: parsed.data.catalogItemId ?? null,
+          sopId: parsed.data.sopId ?? null,
           isActive: parsed.data.isActive ?? false,
           createdByPersonId: actor.personId,
           createdByName: actor.name,
         })
         .returning();
 
-      log.info({ mspId, standingPolicyId: inserted.id, ouId: inserted.ouId, targetKind: inserted.targetKind }, "standing policy authored");
+      log.info(
+        { mspId, standingPolicyId: inserted.id, ouId: inserted.ouId, targetKind: inserted.targetKind, sopId: inserted.sopId },
+        "standing policy authored",
+      );
       res.status(201).json(toWireStandingPolicy(inserted));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/standing-policies failed");

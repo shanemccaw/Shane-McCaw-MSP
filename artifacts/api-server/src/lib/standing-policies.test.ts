@@ -19,6 +19,7 @@ function row(overrides: Partial<StandingPolicy> = {}): StandingPolicy {
     targetKind: "group_membership",
     targetState: { groups: ["VIP-DL", "VIP-Protected"] },
     catalogItemId: null,
+    sopId: null,
     isActive: false,
     createdByPersonId: "person-1",
     createdByName: "op@example.com",
@@ -39,6 +40,7 @@ describe("toWireStandingPolicy", () => {
       targetKind: "group_membership",
       targetState: { groups: ["VIP-DL", "VIP-Protected"] },
       catalogItemId: null,
+      sopId: null,
       isActive: false,
       createdByName: "op@example.com",
       createdAt: "2026-08-30T10:00:00.000Z",
@@ -56,6 +58,11 @@ describe("toWireStandingPolicy", () => {
     const wire = toWireStandingPolicy(row({ catalogItemId: 99, isActive: true }));
     expect(wire.catalogItemId).toBe(99);
     expect(wire.isActive).toBe(true);
+  });
+
+  it("carries the #1548 named-procedure binding through when set", () => {
+    const wire = toWireStandingPolicy(row({ sopId: "sop-vip-group-membership" }));
+    expect(wire.sopId).toBe("sop-vip-group-membership");
   });
 
   it("never exposes a money or signature field — the object carries neither", () => {
