@@ -440,6 +440,36 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #1989 — Conservation Cap park. Called from LaunchItem when the toggle is on
+        /// and the item's model/effort exceeds Sonnet High: marks the DB row
+        /// AccountCapPolicy.CappedStatus (never re-claimed by GetNextAsync's
+        /// WHERE status='queued'; still visible in the Build Queue panel's "Capped"
+        /// filter) instead of launching it. Direct-DB only, same constraint as the
+        /// removed #1418 hold path — HTTP-fallback mode has no way to write a status
+        /// other than what the API server's own endpoints support, so a capped build in
+        /// that mode is marked launch-failed instead of silently vanishing (never picked
+        /// up again, never explained).
+        /// </summary>
+        private async Task ParkForConservationAsync(QueueItem item)
+        {
+            ActivityLog.Log("build-queue", $"Conservation Cap: queue #{item.Id} ({item.Title}) requests {item.Model ?? "default"}/{item.Effort ?? "default"} — above Sonnet High, parked instead of launched.");
+            if (_db == null)
+            {
+                ActivityLog.Log("build-queue", $"No direct DB connection — cannot park queue #{item.Id} for Conservation Cap (HTTP-fallback mode doesn't support the capped status). Marking launch-failed instead so it's not silently skipped forever.");
+                await MarkLaunchFailedAsync(item.Id, "Conservation Cap is on but there is no direct DB connection to park it");
+                return;
+            }
+            try
+            {
+                await _db.MarkCappedAsync(item.Id);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("build-queue", $"Couldn't mark queue #{item.Id} capped for Conservation: {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Git #1479 — one-shot startup reclaim of any row still parked at the retired
         /// 'held' status (the secondary-account Sonnet+ Overflow cap's park). The cap and
         /// every code path that could set 'held' are deleted; a row parked before the
@@ -1111,6 +1141,20 @@ namespace BuildConsole.Services
         {
             var settings = BuildConsoleSettings.Load();
             bool interactive = settings.InteractiveBuilds;
+
+            // Git #1989 — Conservation Cap: Shane's manual toggle for a tight usage window.
+            // Checked FIRST, before any worktree provisioning or process spawn, so a capped
+            // build never eats a worktree/slot it isn't going to use — it's simply parked
+            // 'capped' instead of launched. isForced (Run Now / the per-item "Run at Full
+            // Model" override) always bypasses this — a forced launch is a deliberate
+            // one-shot decision to spend headroom on this one build, same as every other
+            // manual override in this queue.
+            if (!isForced && settings.ConservationModeEnabled &&
+                AccountCapPolicy.ExceedsSonnetHigh(item.Model, item.Effort))
+            {
+                await ParkForConservationAsync(item);
+                return;
+            }
 
             // Git #1203 — the launched session must be TOLD its own buildId. The
             // `--title N` header a build was queued with (and any GitHub number it

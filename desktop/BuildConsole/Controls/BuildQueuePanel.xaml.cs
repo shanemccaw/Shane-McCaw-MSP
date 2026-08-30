@@ -76,6 +76,11 @@ namespace BuildConsole.Controls
         public event EventHandler<bool>? PinToggled;
         /// <summary>Git #815 — mirrors LeftSidebar's SyncError: null on a successful poll, a message on a failed one.</summary>
         public event EventHandler<string?>? SyncError;
+        /// <summary>Git #1989 — fires on every RefreshAsync with the current count of rows at
+        /// AccountCapPolicy.CappedStatus, so MainWindow's title-bar Drain button count stays live
+        /// without a second DB poll — same "own panel refresh feeds a title-bar badge" idiom
+        /// BatterUpPanel/AiBatterUpPanel's CountChanged already established (Git #1872).</summary>
+        public event EventHandler<int>? CappedCountChanged;
         /// <summary>Git #851 — Opens the chat associated to an in-flight issue.</summary>
         public event EventHandler<int>? IssueChatRequested;
         /// <summary>Opens or focuses the Claude chat that created this Build Queue item.</summary>
@@ -768,6 +773,7 @@ namespace BuildConsole.Controls
                 if (_filter == "Tests") RenderTestsTree();
                 UpdateQueueStatusCounts();
                 UpdateOrphanRecoveryBanner();
+                CappedCountChanged?.Invoke(this, _lastItems.Count(i => i.Status == Services.AccountCapPolicy.CappedStatus));
                 SyncError?.Invoke(this, _queueIsStale
                     ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
                     : null);
@@ -1236,6 +1242,10 @@ namespace BuildConsole.Controls
                 // Running/Queued above (the watcher's claim query never picks it up either — that's
                 // the whole point of a staging spot), so it needs its own filter to be findable at all.
                 "Parked"   => items.Where(i => i.Status == "parked" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+                // Git #1989 — Conservation Cap: parked because it exceeded Sonnet High while the
+                // toggle was on. Its own filter, distinct from "Parked" above (a different, unrelated
+                // staging concept) — must stay findable, not buried.
+                "Capped"   => items.Where(i => i.Status == Services.AccountCapPolicy.CappedStatus && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 // Git #1638 — "Send to Builder" tracking rows: never claimable, never in the 8-slot
                 // grid, but still real rows that should be findable rather than lost.
                 "External" => items.Where(i => i.Status == "external" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
@@ -1298,6 +1308,7 @@ namespace BuildConsole.Controls
                 "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus               => "Queued",
                 "failed" when item.ExitCode == -2                                                    => "Crashed",
                 "parked"              => "Parked",
+                Services.AccountCapPolicy.CappedStatus => "Capped",
                 "external"            => "External",
                 "done"                => "Done",
                 "canceled"            => "Canceled",
@@ -2734,8 +2745,13 @@ namespace BuildConsole.Controls
                 // Git #1638 — "parked" and "external" get their own neutral/informational
                 // border so they read as distinct from the plain "up next" default below.
                 (item.Status == "parked" ? Color.FromRgb(0x6C, 0x70, 0x86) :
+                // Git #1989 — Conservation Cap: peach, the same "flagged, needs a look"
+                // accent isPaused already uses above — distinct from the neutral gray
+                // "parked" (#1638) gets, since being capped is a decision Shane may want
+                // to revisit (override/drain), not just a passive staging spot.
+                (item.Status == Services.AccountCapPolicy.CappedStatus ? Color.FromRgb(0xFA, 0xB3, 0x87) :
                 (item.Status == "external" ? Color.FromRgb(0x89, 0xB4, 0xFA) :
-                Color.FromRgb(0x31, 0x32, 0x44))))))))));
+                Color.FromRgb(0x31, 0x32, 0x44)))))))))));
 
             Color cardBgColor = isSelected ? Color.FromRgb(0x1B, 0x22, 0x34) :
                 (isWaitingForInput ? Color.FromRgb(0x23, 0x1E, 0x18) :
@@ -2745,8 +2761,9 @@ namespace BuildConsole.Controls
                 (item.Status == BuildQueuePostgresClient.VerifyingStatus ? Color.FromRgb(0x14, 0x22, 0x28) :
                 (item.Status == "done" ? Color.FromRgb(0x14, 0x20, 0x1A) :
                 (item.Status == "parked" ? Color.FromRgb(0x1E, 0x1F, 0x2A) :
+                (item.Status == Services.AccountCapPolicy.CappedStatus ? Color.FromRgb(0x2A, 0x20, 0x1A) :
                 (item.Status == "external" ? Color.FromRgb(0x15, 0x19, 0x26) :
-                Color.FromRgb(0x18, 0x18, 0x25)))))))));
+                Color.FromRgb(0x18, 0x18, 0x25))))))))));
 
             var card = new Border
             {
@@ -2933,6 +2950,32 @@ namespace BuildConsole.Controls
                     Foreground = new SolidColorBrush(Color.FromRgb(0xBA, 0xB4, 0xCD)),
                     VerticalAlignment = VerticalAlignment.Center,
                     ToolTip = "Staged, not queued — use Un-park to send it into the real build queue."
+                };
+            }
+            else if (item.Status == Services.AccountCapPolicy.CappedStatus)
+            {
+                // Git #1989 — Conservation Cap: the toggle was on and this build's
+                // model/effort exceeded Sonnet High, so it was parked instead of
+                // launched. Peach, not the neutral gray "parked" (#1638) above — a
+                // deliberately different, more attention-getting color, since this is
+                // real headroom Shane may want to spend via Run at Full Model or Drain,
+                // not a passive staging spot he chose himself.
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x2A, 0x20, 0x1A)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = "CAPPED — ABOVE SONNET HIGH",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Conservation Cap is on and this build's model/effort exceeds Sonnet High — right-click for Run at Full Model, or Drain from the title bar to release everything capped."
                 };
             }
             else if (item.Status == "external")
@@ -3705,6 +3748,74 @@ namespace BuildConsole.Controls
                     await RefreshAsync();
                 };
                 cm.Items.Add(miCancelParked);
+            }
+            else if (item.Status == Services.AccountCapPolicy.CappedStatus)
+            {
+                // Git #1989 — the override that makes parking acceptable: launches this
+                // ONE build at its originally specified model/effort (never substituted —
+                // the BUILD: header was never touched by parking). One-shot: the
+                // Conservation toggle itself is left exactly as it was, same idiom as the
+                // existing right-click overrides (#1805 Start Now, #1641 Build Now).
+                var miRunFullModel = new MenuItem { Header = "Run at Full Model" };
+                miRunFullModel.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Run at Full Model", "No direct DB connection — can't override.");
+                        return;
+                    }
+                    try
+                    {
+                        if (!await _db.UncapAsync(item.Id))
+                        {
+                            ToastEngine.Warning("Run at Full Model", $"No longer capped: {item.Title}");
+                            await RefreshAsync();
+                            return;
+                        }
+                        if (_watcher == null)
+                        {
+                            ToastEngine.Info("Run at Full Model", "The in-app watcher isn't active, so it's back in the queue but won't launch locally. The background service will pick it up.");
+                            await RefreshAsync();
+                            return;
+                        }
+                        var claimed = await _db.ForceClaimAsync(item.Id);
+                        _watcher.ForceLaunch(claimed);
+                        ToastEngine.Success("Run at Full Model", $"Launched at {item.Model ?? "default"}/{item.Effort ?? "default"}: {item.Title}");
+                        ActivityLog.Log("build-queue", $"Conservation Cap override: queue #{item.Id} ({item.Title}) launched at its full original model/effort ({item.Model ?? "default"}/{item.Effort ?? "default"}) — one-shot, toggle left unchanged.");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Run at Full Model Failed", $"Couldn't launch: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miRunFullModel);
+
+                var miCancelCapped = new MenuItem { Header = "Cancel" };
+                miCancelCapped.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Cancel", "No direct DB connection — can't cancel.");
+                        return;
+                    }
+                    try
+                    {
+                        if (await _db.CancelAsync(item.Id))
+                        {
+                            ToastEngine.Success("Canceled", $"Canceled: {item.Title}");
+                            ActivityLog.Log("build-queue", $"Canceled capped queue item #{item.Id} ({item.Title}) without ever launching it.");
+                        }
+                        else
+                            ToastEngine.Warning("Cancel", $"Couldn't cancel: {item.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Cancel Failed", $"Couldn't cancel: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miCancelCapped);
             }
             else if (item.Status == "external")
             {

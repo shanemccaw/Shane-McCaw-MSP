@@ -305,6 +305,11 @@ namespace BuildConsole
             // global default on launch.
             RefreshTopAccountToggleUi();
 
+            // Git #1989 — title-bar Conservation Cap toggle: reflect the persisted state on
+            // launch. A pre-existing settings.json with no ConservationModeEnabled key
+            // deserializes that field to its C# default (false) — loads OFF, per spec.
+            RefreshTopConservationToggleUi();
+
             // Git #934 — Shane: "add a - [DEBUG] if I have the app open in
             // the Debug folder." Checked by the running exe's OWN path
             // (bin\Debug\... vs bin\Release\...), not a `#if DEBUG`
@@ -699,6 +704,10 @@ namespace BuildConsole
             // notices, PLUS every poll's outcome goes to the Output log too.
             LeftSidebar.SyncError += (s, err) => ReportSyncStatus(err);
             BuildQueuePanel.SyncError += (s, err) => ReportSyncStatus(err);
+            // Git #1989 — Conservation Cap: the title-bar Drain button's count stays live off
+            // BuildQueuePanel's own refresh cycle, same idiom as BtnBatterUp/BtnAiBatterUp's
+            // CountChanged (Git #1872) — no second DB poll.
+            BuildQueuePanel.CappedCountChanged += (s, count) => TopDrainCappedCount.Text = count.ToString();
 
             // Git #851 — Shane: "When clicking on an In-Flight Still Open
             // issue, it should open the chat that is associated to that
@@ -3752,6 +3761,11 @@ namespace BuildConsole
                         // (terminal=false) so the label updates the moment it's un-parked, but
                         // don't show the "In Progress..." label the default case below would.
                         case "parked":   label = "📥 Parked";      mode = "parked";   terminal = false; break;
+                        // Git #1989 — a capped row is parked by the Conservation Cap, not
+                        // running; same terminal=false shape as "parked" above so the label
+                        // updates the moment it's overridden/drained, without showing the
+                        // misleading "In Progress..." default.
+                        case BuildConsole.Services.AccountCapPolicy.CappedStatus: label = "Capped";        mode = "capped";   terminal = false; break;
                         case "queued":
                         case "running":
                         default:         label = "In Progress..."; mode = "progress"; terminal = false; break;
@@ -4088,6 +4102,19 @@ namespace BuildConsole
             SecondaryWeeklyUsageDot.Fill = secondaryDotBrush;
             SecondaryWeeklyUsageStatusText.Text = status.SecondaryWeeklyDisplayText;
             SecondaryWeeklyUsageStatusText.ToolTip = status.SecondaryWeeklyToolTip;
+
+            // Git #1989 — the Conservation Cap toggle's own adjacent usage readout: the
+            // primary account's real weekly percent + reset countdown (the same numbers
+            // already polled above for the status bar, matching the real scenario the
+            // toggle exists for — "90% consumed hours before the primary account's 9pm
+            // reset"). "Do surface those numbers beside the toggle so the decision is
+            // informed" — that adjacency is the point.
+            TopConservationUsageText.Text = status.WeeklyPercent.HasValue
+                ? $"{status.WeeklyPercent.Value}% used" + (status.WeeklyResetTarget.HasValue
+                    ? $" · resets {BuildConsole.Services.ClaudeUsageMeterService.FormatCountdown(status.WeeklyResetTarget.Value - DateTime.Now)}"
+                    : "")
+                : "";
+            TopConservationUsageText.ToolTip = status.WeeklyToolTip;
 
             // Feed the SAME real meter reading into the startup splash's "Claude usage"
             // row (no-op once that row has already settled — the meter keeps polling for
@@ -5724,6 +5751,124 @@ namespace BuildConsole
                 ? "secondary"
                 : null;
 
+        // ── Title bar: Conservation Cap toggle (Git #1989) ──────────────────────
+        // Shane: "anything Sonnet High+ needs to be detected and parked. I still have the
+        // ability to override and execute them if I want." When ON, QueueWatcherService
+        // parks (never launches) any build above Sonnet High instead of running it — see
+        // AccountCapPolicy.ExceedsSonnetHigh and QueueWatcherService.ParkForConservationAsync.
+        // Clicking OFF also releases every currently-capped build back to 'queued' at its
+        // original model/effort (per Shane's own requirement) — no confirm dialog, since a
+        // direct toggle click is already the deliberate act; the Drain button below is the
+        // separate, confirm-first bulk lever for the "release everything" moment.
+        private void TopConservationToggle_Click(object sender, MouseButtonEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            bool turningOff = settings.ConservationModeEnabled;
+            settings.ConservationModeEnabled = !turningOff;
+            settings.Save();
+            RefreshTopConservationToggleUi();
+            BuildConsole.Services.ActivityLog.Log("build-queue", $"Conservation Cap toggled {(turningOff ? "OFF" : "ON")}.");
+            if (turningOff) _ = ReleaseAllCappedAsync("toggle turned off");
+        }
+
+        /// <summary>Repaints the title-bar Conservation Cap toggle from the persisted setting.</summary>
+        private void RefreshTopConservationToggleUi()
+        {
+            bool on = BuildConsole.Services.BuildConsoleSettings.Load().ConservationModeEnabled;
+
+            // Git #1989 — same de-brightened treatment as RefreshTopAccountToggleUi's own
+            // comment describes: a dark surface with a peach border/text accent when ON,
+            // never a solid bright fill. Peach (not Blue, which the account toggle already
+            // uses) so the two title-bar toggles read as visually distinct at a glance.
+            TopConservationToggleText.Text = on ? "On" : "Off";
+            TopConservationToggleBorder.Background = on
+                ? (System.Windows.Media.Brush)FindResource("Surface1Brush")
+                : (System.Windows.Media.Brush)FindResource("Surface0Brush");
+            TopConservationToggleBorder.BorderBrush = on
+                ? (System.Windows.Media.Brush)FindResource("PeachBrush")
+                : (System.Windows.Media.Brush)FindResource("Surface1Brush");
+            TopConservationToggleText.Foreground = on
+                ? (System.Windows.Media.Brush)FindResource("PeachBrush")
+                : (System.Windows.Media.Brush)FindResource("TextBrush");
+            TopConservationToggleBorder.ToolTip = on
+                ? "Conservation Cap: ON — no build above Sonnet High launches; it's parked instead (right-click a parked build for Run at Full Model, or use Drain). Click to turn off (releases every parked build back to the queue)."
+                : "Conservation Cap: OFF — builds launch normally. Click to turn on when a usage window is tight: nothing above Sonnet High will launch until you turn this off or Drain.";
+        }
+
+        /// <summary>Git #1989 — the shared release used by both the toggle's OFF click and
+        /// Drain: flips every currently-capped row back to 'queued' at its real original
+        /// model/effort (never substituted) and logs each one on the same channel as the
+        /// park/override actions, so a release is auditable afterward either way. Returns the
+        /// released count.</summary>
+        private async System.Threading.Tasks.Task<int> ReleaseAllCappedAsync(string reason)
+        {
+            if (_queueDb == null) return 0;
+            try
+            {
+                var released = await _queueDb.DrainCappedAsync();
+                foreach (var item in released)
+                    BuildConsole.Services.ActivityLog.Log("build-queue", $"Conservation Cap release ({reason}): queue #{item.Id} ({item.Title}) back to queued at {item.Model ?? "default"}/{item.Effort ?? "default"}.");
+                if (released.Count > 0)
+                    BuildConsole.Services.ActivityLog.Log("build-queue", $"Conservation Cap release ({reason}): {released.Count} build(s) released back to the queue.");
+                try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
+                return released.Count;
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("build-queue", $"Conservation Cap release ({reason}) failed: {ex.Message}");
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Drain (Git #1989) — Shane: "I also need a quick button to drain the parked
+        /// queue with its full model... especially if it's 9pm+ ET on a Sunday." Confirms
+        /// with the real count first (this is the one action here that can spend a lot of
+        /// headroom at once), then turns the toggle off BEFORE releasing the rows — so by
+        /// the time they're claimable again, LaunchItem's cap check reads OFF and can never
+        /// re-park them out from under the drain — then releases every capped row back to
+        /// 'queued' at its original model/effort.
+        /// </summary>
+        private async void BtnDrainCapped_Click(object sender, RoutedEventArgs e)
+        {
+            if (_queueDb == null)
+            {
+                ToastEngine.Warning("Drain", "No direct DB connection — can't drain.");
+                return;
+            }
+            List<BuildConsole.Services.QueueItem> capped;
+            try
+            {
+                capped = await _queueDb.GetCappedAsync();
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Drain Failed", $"Couldn't read capped builds: {ex.Message}");
+                return;
+            }
+            if (capped.Count == 0)
+            {
+                ToastEngine.Info("Drain", "Nothing is currently capped.");
+                return;
+            }
+
+            var confirmResult = System.Windows.MessageBox.Show(this,
+                $"Release {capped.Count} parked build{(capped.Count == 1 ? "" : "s")} at full model?",
+                "Drain Conservation Cap", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirmResult != MessageBoxResult.Yes) return;
+
+            // Turn the toggle off FIRST — the deliberate exception to the one-shot override
+            // rule (the per-item "Run at Full Model" override does NOT touch the toggle;
+            // Drain does, because draining means the tight window is over).
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            settings.ConservationModeEnabled = false;
+            settings.Save();
+            RefreshTopConservationToggleUi();
+
+            int released = await ReleaseAllCappedAsync("Drain");
+            ToastEngine.Success("Drained", $"{released} build{(released == 1 ? "" : "s")} released back to the queue at full model. Conservation Cap turned off.");
+        }
+
         // ── Menu: View ────────────────────────────────────────────────────────
         private void ToggleSidebar_Click(object sender, RoutedEventArgs e)
         {
@@ -6703,6 +6848,7 @@ namespace BuildConsole
                             string dupLabel = dedupMatch.Status switch
                             {
                                 "parked" => "📥 Already Parked",
+                                BuildConsole.Services.AccountCapPolicy.CappedStatus => "Already Capped",
                                 "running" => "▶ Already Running",
                                 "external" => "🚀 Already Sent",
                                 BuildConsole.Services.SessionLimitAutoRestartService.LimitPausedStatus => "⏸ Already Paused",

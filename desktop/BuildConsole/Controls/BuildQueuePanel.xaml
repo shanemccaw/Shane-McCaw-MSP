@@ -387,6 +387,13 @@
                                      ExitCode==-2), just as a findable filtered view. -->
                                 <ComboBoxItem Content="Crashed"              Tag="Crashed"/>
                                 <ComboBoxItem Content="Parked"               Tag="Parked"/>
+                                <!-- Git #1989 — Conservation Cap: a build parked because it
+                                     exceeded Sonnet High while the toggle was on. Deliberately
+                                     its OWN filter, distinct from the #1638 "Parked" staging
+                                     area above (a different concept — see AccountCapPolicy's
+                                     CappedStatus doc comment) — must stay visible/findable, not
+                                     buried, per Shane's own requirement on #1989. -->
+                                <ComboBoxItem Content="Capped"               Tag="Capped"/>
                                 <!-- Git #1638 — "Send to Builder" launches tracked purely
                                      for dedup/visibility/log-capture; never claimable by the
                                      watcher, never in the 8-slot Build Watch grid. -->

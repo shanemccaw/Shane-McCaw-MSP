@@ -451,6 +451,21 @@ namespace BuildConsole.Services
         public bool QueuePaused { get; set; } = false;
 
         /// <summary>
+        /// Git #1989 — Conservation Cap toggle, title bar. OFF by default (and for any
+        /// pre-existing settings.json written before this field existed — missing JSON
+        /// keys deserialize to the C# default here, which is false/off) — a session that
+        /// upgrades BuildConsole never silently starts capping builds it wasn't asked to.
+        /// When ON, QueueWatcherService.LaunchItem parks (never launches) any queue item
+        /// whose model/effort exceeds Sonnet High (AccountCapPolicy.ExceedsSonnetHigh) —
+        /// status AccountCapPolicy.CappedStatus — instead of running it. A forced launch
+        /// (Run Now / the per-item "Run at Full Model" override) always bypasses this,
+        /// same as every other manual override in the queue. Turning this off, or
+        /// draining, releases every currently-capped row back to 'queued' at its
+        /// original model/effort — nothing is ever substituted.
+        /// </summary>
+        public bool ConservationModeEnabled { get; set; } = false;
+
+        /// <summary>
         /// Git #1870 — Batter Up "Free flow" gate. This is a DIFFERENT gate from
         /// <see cref="QueuePaused"/>: QueuePaused stops rows LAUNCHING out of bt_build_queue;
         /// this stops board rows ENTERING it. When ON, BatterUpPanel auto-queues every eligible

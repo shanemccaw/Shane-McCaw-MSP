@@ -469,8 +469,11 @@ namespace BuildConsole.Services
         /// duplicate Queue/Park click on top of one of these must never insert a second row — it should
         /// surface the existing item instead. Includes "external" (Send to Builder rows, Git #1638): not
         /// claimable by the watcher, but a second click while one is still running outside the cap is the
-        /// same kind of accidental duplicate the rest of this bucket exists to catch.</summary>
+        /// same kind of accidental duplicate the rest of this bucket exists to catch. Includes
+        /// AccountCapPolicy.CappedStatus (Git #1989) — a build parked by the Conservation Cap is a real,
+        /// still-pending row, same reasoning as "parked".</summary>
         public static bool IsActiveStatus(string? status) => status is "queued" or "parked" or "running"
+            or AccountCapPolicy.CappedStatus
             or VerifyingStatus or Services.SessionLimitAutoRestartService.LimitPausedStatus or "external";
 
         /// <summary>Git #1638 — terminal states: the row already ran to a real conclusion. A duplicate
@@ -936,8 +939,9 @@ namespace BuildConsole.Services
                    SET status     = 'canceled',
                        updated_at = NOW()
                  WHERE id     = @id
-                   AND status IN ('queued', 'limit-paused', 'parked')", conn);
+                   AND status IN ('queued', 'limit-paused', 'parked', @cappedStatus)", conn);
             cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@cappedStatus", AccountCapPolicy.CappedStatus);
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
             return rowsAffected > 0;
         }
@@ -1091,6 +1095,115 @@ namespace BuildConsole.Services
             cmd.Parameters.AddWithValue("@sessionId", (object?)sessionId ?? DBNull.Value);
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
             return rowsAffected > 0;
+        }
+
+        // ── Conservation Cap (Git #1989) ─────────────────────────────────────────
+        /// <summary>
+        /// Parks a claimed-but-never-launched row (already 'running' — GetNextAsync
+        /// claims before QueueWatcherService.LaunchItem ever runs the cap check) as
+        /// <see cref="AccountCapPolicy.CappedStatus"/> instead of letting it launch.
+        /// No status guard, same as the original Git #1418 MarkHeldForOverflowAsync
+        /// this mirrors — the caller already knows the row was mid-claim. Deliberately
+        /// a DISTINCT status from the unrelated #1638 "parked" staging status (see
+        /// AccountCapPolicy.CappedStatus's own doc comment for why reusing it would be
+        /// wrong) and from the legacy "held" status (whose own one-shot startup reclaim,
+        /// ReclaimLegacyHeldRowsAsync, must keep running untouched and can never collide
+        /// with this — it only ever looks for literal 'held' rows).
+        /// </summary>
+        public async Task MarkCappedAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = @status,
+                       claimed_at = NULL,
+                       updated_at = NOW()
+                 WHERE id = @id", conn);
+            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.CappedStatus);
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        /// <summary>All rows currently parked at <see cref="AccountCapPolicy.CappedStatus"/> —
+        /// drives the BuildQueuePanel "Capped" filter/count and MainWindow's Drain-button count.</summary>
+        public async Task<List<QueueItem>> GetCappedAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, title, prompt, model, effort, cwd,
+                       github_number, blocked_by_number, blocked_by_numbers,
+                       status, exit_code, session_id, resume_session_id,
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
+                FROM bt_build_queue
+                WHERE status = @status
+                ORDER BY created_at ASC", conn);
+            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.CappedStatus);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items;
+        }
+
+        /// <summary>
+        /// The per-item "Run at Full Model" override (Git #1989): flips ONE capped row
+        /// back to 'queued', preserving its real model/effort untouched (nothing was ever
+        /// substituted — the BUILD: header was never modified by parking). The caller then
+        /// force-claims and force-launches it immediately (same two-step shape the removed
+        /// Git #1418 Sonnet-downgrade "Run Now" used), which is what makes this a genuine
+        /// one-shot: the Conservation toggle itself is never touched here. Returns false
+        /// (no row updated) on a stale double-click for an item no longer capped.
+        /// </summary>
+        public async Task<bool> UncapAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'queued',
+                       updated_at = NOW()
+                 WHERE id     = @id
+                   AND status = @status", conn);
+            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.CappedStatus);
+            cmd.Parameters.AddWithValue("@id", id);
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+            return rowsAffected > 0;
+        }
+
+        /// <summary>
+        /// Drain (Git #1989) — Shane's own words: "a quick button to drain the parked
+        /// queue with its full model... especially if it's 9pm+ ET on a Sunday." Releases
+        /// EVERY currently-capped row back to 'queued' in one statement, at its real
+        /// original model/effort (never substituted — see UncapAsync's own doc). Unlike
+        /// UncapAsync this does NOT force-claim/launch each row — it just re-opens them to
+        /// the normal auto-run pipeline (GetNextAsync picks them up on the very next tick,
+        /// respecting the normal concurrency-slot limit rather than blasting every process
+        /// at once). Returns the released rows so the caller can log/toast the real count
+        /// and each item's model/effort.
+        /// </summary>
+        public async Task<List<QueueItem>> DrainCappedAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'queued',
+                       updated_at = NOW()
+                 WHERE status = @status
+                RETURNING id, title, prompt, model, effort, cwd,
+                          github_number, blocked_by_number, blocked_by_numbers,
+                          status, exit_code, session_id, resume_session_id,
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
+            cmd.Parameters.AddWithValue("@status", AccountCapPolicy.CappedStatus);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items;
         }
 
         // ── QueueExternalAsync (Git #1638) ────────────────────────────────────────

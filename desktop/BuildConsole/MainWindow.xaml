@@ -378,6 +378,52 @@
                                 <TextBlock x:Name="TopAccountToggleText" Text="Primary" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
+                        <!-- Git #1989 — Conservation Cap toggle. When ON, no build above Sonnet
+                             High launches — it's detected and PARKED (never silently
+                             downgraded) until Shane overrides it per-item or turns this off (or
+                             Drains). Same visual idiom as TopAccountToggleBorder above:
+                             de-brightened accent border/text, never a solid bright fill. The
+                             adjacent text carries the primary account's real weekly usage
+                             percent + reset countdown (fed from UsageMeter_StatusChanged, the
+                             same numbers already polled for the status bar) so the decision to
+                             flip this on is informed, not a guess. No emoji, per #1989. -->
+                        <Border x:Name="TopConservationToggleBorder"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource Surface1Brush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="7,2"
+                                Margin="0,0,6,0"
+                                Cursor="Hand"
+                                MouseLeftButtonUp="TopConservationToggle_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Conservation:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock x:Name="TopConservationToggleText" Text="Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TopConservationUsageText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                            </StackPanel>
+                        </Border>
+                        <!-- Git #1989 — Drain: releases EVERY currently-capped build back to the
+                             queue at its original model/effort in one action, and turns the
+                             Conservation toggle off (the deliberate exception to the one-shot
+                             override rule above — draining means the tight window is over).
+                             Placed beside the toggle it's paired with, same "always-visible real
+                             count, calm at 0" idiom as BtnBatterUp/BtnAiBatterUp. Confirms with
+                             the real count before acting (BtnDrainCapped_Click) — this is the one
+                             action here that can spend a lot of headroom at once. -->
+                        <Button x:Name="BtnDrainCapped"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Drain: release every capped build back to the queue at its full original model, and turn Conservation off"
+                                Click="BtnDrainCapped_Click"
+                                Padding="6,4"
+                                Margin="0,0,6,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Drain" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Subtext0Brush}"/>
+                                <TextBlock x:Name="TopDrainCappedCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                           Margin="4,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
+                        </Button>
                         <!-- Git #1866 - thin vertical separator ("|") between the account toggle
                              and the right-hand icon group, per Shane's request. -->
                         <Border Width="1" Height="18"
