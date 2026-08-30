@@ -97,6 +97,18 @@ $script:SurveyUnboundedDenyList = @(
     @{ Pattern = "^Get-MailDetail";              Reason = "tenant-wide reporting cmdlet: unbounded per-message detail" }
     @{ Pattern = "^Get-MailTraffic";             Reason = "tenant-wide reporting cmdlet: unbounded aggregation over live tenant history" }
     @{ Pattern = "^Get-StaleDevice";             Reason = "tenant-wide device enumeration: unbounded" }
+    # Not a guess. Measured: on the `compliance` session this never returns, and
+    # the child is killed at PS_EXECUTION_CHILD_TIMEOUT_SECONDS. Worse, the
+    # parent listener was then observed to stop answering entirely, wedging the
+    # container for every caller until a manual `az containerapp revision
+    # restart` — see Git #1852 for the full evidence. Its real outcome IS
+    # recorded (survey run #2, `error`, verbatim "Request timed out after
+    # 200s."), so excluding it here loses nothing: it stops the survey taking a
+    # shared container down on every subsequent run. It runs fine on the
+    # `exchange` session, but the deny list is matched on NAME so the exclusion
+    # applies to both — deliberately, because the survey cannot know in advance
+    # which session it will wedge.
+    @{ Pattern = "^Get-ScopeEntities$";          Reason = "measured to hang past the container's child timeout AND wedge the parent listener until a manual revision restart (Git #1852); its real timed-out result is recorded in survey run #2" }
 )
 
 function Get-SurveySessionModules {
