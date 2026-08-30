@@ -34,6 +34,45 @@ Standalone Docker image for the containerized PowerShell execution service
 Not part of the pnpm workspace — this is a plain Docker image, built and
 run independently of the Node/pnpm toolchain.
 
+## The app-only capability survey (#1793) — `survey.ps1`
+
+Six catalog entries (`survey-list-commands-{compliance,exchange,teams}` and
+`survey-probe-{compliance,exchange,teams}`) answer a question nothing else in
+this platform has ever measured: **of the several hundred cmdlets these modules
+actually export, which ones work under app-only certificate auth?** Microsoft's
+documentation describes delegated behaviour and app-only support differs cmdlet
+by cmdlet, so the only source of truth is a live run.
+
+`survey.ps1` holds the implementation and is dot-sourced by `child-worker.ps1`
+only (the parent never evaluates a `Script` body). Read that file's header for
+the full rationale; the two things worth knowing here:
+
+- **The survey is code-owned, not request-driven.** The request supplies only
+  `Skip` / `Take` / `BudgetSeconds` — three integers. It cannot name a cmdlet,
+  add a parameter to a probed cmdlet, or widen the eligible set. #209's
+  what-code-runs-stays-code-owned boundary is fully intact.
+- **Read-safety fails closed, from the command's own metadata.** `Get-*` only;
+  no `SupportsShouldProcess`; at least one parameter set with zero mandatory
+  parameters; not on the unbounded/expensive deny list. `Test-*` is
+  deliberately excluded (`Test-Mailflow` sends real mail). Everything rejected
+  is recorded `not_attempted` with the literal gate that rejected it — never
+  silently dropped, and never reported as "doesn't work".
+
+The results land in `ps_capability_survey_runs` / `ps_capability_survey_results`
+(migration `lib/db/migrations/manual/2026-08-30-ps-capability-survey-1793.sql`).
+Driver, doc generator, and read route:
+
+```
+pnpm --filter @workspace/scripts run ps-capability-survey        # run it
+pnpm --filter @workspace/scripts run ps-capability-survey-doc    # regenerate the markdown
+GET /api/simulator/ps-execution/capability-survey                # query it
+```
+
+`docs/powershell-capability-survey.md` is generated from those tables, never
+hand-edited. Nothing in the survey wires a `monitor_checks` row — cataloguing
+what works and deciding what to check are separate decisions (#1793's own
+non-goal), and the second waits for the resource model in #1795.
+
 ## Deploy targets — Dev vs Production (#1385)
 
 There are **two** Container Apps running this image, deliberately isolated so a
