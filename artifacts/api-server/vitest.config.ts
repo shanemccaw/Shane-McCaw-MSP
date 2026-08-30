@@ -66,6 +66,7 @@ export default defineConfig({
       "src/lib/msp.test.ts",
       "src/lib/portal-workflow-engine.test.ts",
       "src/lib/portal-change-control.test.ts",
+      "src/lib/portal-change-approvals.test.ts",
       "src/lib/portal-hold-windows.test.ts",
       "src/lib/workflow-node-output-samples.test.ts",
       "src/routes/consent.test.ts",

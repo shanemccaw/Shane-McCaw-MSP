@@ -741,23 +741,12 @@ router.post(
 // authority (see this file's header and the flag's note in the users schema).
 // Separation of duties and stage ordering are enforced in the store, not here.
 
-/** The CR essentials both decision routes load, scoped to the caller's tenant. */
-async function loadScopedChange(
-  crId: number,
-  mspId: number,
-  tenantId: string,
-): Promise<{
-  id: number;
-  mspId: number;
-  tenantId: string;
-  changeClass: string;
-  riskLevel: string;
-  status: string;
-  approvedBy: string | null;
-  requestedBy: string;
-  createdAt: Date;
-  sourceKind: string | null;
-} | null> {
+/**
+ * The CR essentials both decision routes load, scoped to the caller's tenant. The
+ * return type is INFERRED from the select so `changeClass`/`riskLevel`/`status`
+ * keep their real enum types (what `CrEssentials` expects), not a widened string.
+ */
+async function loadScopedChange(crId: number, mspId: number, tenantId: string) {
   const [cr] = await db
     .select({
       id: mspChangeRequestsTable.id,
