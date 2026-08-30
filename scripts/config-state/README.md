@@ -14,6 +14,7 @@ out of scope — see the issue.
 node scripts/config-state/fetch-sources.mjs          # cache the 3 published sources
 node scripts/config-state/build-resource-model.mjs   # build + reconcile + map checks
 node scripts/config-state/verify-sample.mjs          # live READ-ONLY sample (testbed only)
+node scripts/config-state/build-snapshot-registry.mjs # #1795 — populate the snapshot registry
 ```
 
 Steps 1–2 need no tenant credentials. Step 3 uses `MT_APP_CLIENT_ID` /
@@ -23,8 +24,16 @@ also calls `detect-property-divergence.mjs` (Git #1846) itself, so the
 `node scripts/config-state/render-property-divergence-doc.mjs` afterwards to regenerate the
 doc section from it.
 
-All three are safely re-runnable. `build-resource-model.mjs` replaces the model wholesale
+All four are safely re-runnable. `build-resource-model.mjs` replaces the model wholesale
 each run and records a new `config_model_extractions` row for provenance.
+
+`build-snapshot-registry.mjs` (Git #1795) is the exception to "replaces wholesale" and
+deliberately so: it **UPSERTs and never deletes**. It feeds the snapshot store, whose rows are
+immutable evidence keyed by the stable text `resource_key`, so a resource that leaves
+`config_resources` is *retired* in the registry rather than removed — deleting it would strip
+the meaning from snapshot objects that already reference that key. Re-run it after
+`build-resource-model.mjs` so the registry's cached availability and shape provenance track the
+rebuilt model.
 
 ## Files
 
@@ -40,6 +49,7 @@ each run and records a new `config_model_extractions` row for provenance.
 | `verify-sample.mjs` | Live read-only sample against the testbed. `GET` only, no templated paths, no bound Functions, `$top=1`, serialised. Stores **shape only** — property names and JSON types, never values. Calls `detect-property-divergence.mjs` at the end of every run |
 | `detect-property-divergence.mjs` | Git #1846 — recomputes `config_resource_property_divergence` from whatever is currently in `config_resource_samples`: properties Graph returned live with no matching `graph-metadata` property row, classified `version_gap` (declared in the other Graph version) vs `undeclared_anywhere` (declared in neither). Keyed on the stable `resource_key`, not the volatile `config_resources.id`, so a model rebuild can't cascade-delete it (see #1895) |
 | `render-property-divergence-doc.mjs` | Git #1846 — regenerates the generated section of `docs/graph-resource-model.md` from `config_resource_property_divergence` |
+| `build-snapshot-registry.mjs` | Git #1795 — populates `config_snapshot_resource_types`, the snapshot store's registry of what the collector may collect. Derives the **identity strategy** no published source states (Graph CSDL `<Key>` resolved through `BaseType` inheritance; DSC `Identity`/MOF Key parameters), marks a type non-collectable when identity is `unresolved` or its transport has no executor, and labels shape provenance `observed_live` vs `derived_from_dsc` per #1853. UPSERT only, never DELETE |
 | `db.mjs` | Direct local Postgres connection via `DATABASE_URL`, plus chunked multi-row insert |
 
 ## Things worth knowing before changing any of this
