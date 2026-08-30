@@ -4925,6 +4925,21 @@ export type InsertMspSop = typeof mspSopsTable.$inferInsert;
 //
 // Records of execution runs and state tracking (step index, logs, status) for
 // a given SOP on a customer tenant.
+//
+// UNIFICATION (#1556): this run record is THE run record for a procedure, whatever
+// invoked it. A policy-invoked enactment (#1548), an on-demand lifecycle operation
+// (#1552), a remediation fix (#1539) and a hand-started run are the same object with
+// different provenance — provenance is `origin`, a property of the run, not a
+// different table. `portal_runbooks`/`portal_runbook_steps` is a DIFFERENT object
+// (the customer's own active runbook checklists) that happens to share the word.
+
+/**
+ * What invoked a run. Plain text with an `enum` union for the type, no DB CHECK —
+ * the same widen-in-code convention `status` follows, so a new origin can be added
+ * without a migration. `manual` is the historical default (a hand-started run).
+ */
+export const MSP_SOP_RUN_ORIGIN = ["policy", "lifecycle", "remediation", "manual"] as const;
+export type MspSopRunOrigin = typeof MSP_SOP_RUN_ORIGIN[number];
 
 export const mspSopRunsTable = pgTable("msp_sop_runs", {
   id: serial("id").primaryKey(),
@@ -4936,6 +4951,12 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
   tenantName: text("tenant_name").notNull(),
   targetEntity: text("target_entity").notNull(),
   operator: text("operator").notNull(),
+  /**
+   * What invoked this run — see MSP_SOP_RUN_ORIGIN. Defaults to `manual` so every
+   * pre-existing row (and any writer that does not yet set it) reads as a
+   * hand-started run rather than a null.
+   */
+  origin: text("origin", { enum: MSP_SOP_RUN_ORIGIN }).notNull().default("manual"),
   startedAt: text("started_at").notNull(),
   completedAt: text("completed_at"),
   status: text("status").notNull(),

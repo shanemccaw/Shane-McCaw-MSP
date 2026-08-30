@@ -62,7 +62,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { z } from "zod";
 import { randomUUID } from "crypto";
-import { db, mspSopRunsTable, mspSopsTable, usersTable } from "@workspace/db";
+import { db, mspSopRunsTable, mspSopsTable, usersTable, type MspSopRunOrigin } from "@workspace/db";
 import { and, asc, eq } from "drizzle-orm";
 
 import { requireRole } from "../middlewares/requireAuth";
@@ -117,6 +117,8 @@ interface WireSopRunSummary {
   readonly who: string;
   readonly outcome: string;
   readonly state: string;
+  /** What invoked this run (#1556). The raw enum value — the page owns any label. */
+  readonly origin: MspSopRunOrigin;
 }
 
 interface WireSopLibraryItem {
@@ -181,6 +183,8 @@ interface WireSopQueueItem {
   readonly owner: WireOwner;
   readonly cr: string;
   readonly svc: string;
+  /** What invoked this run (#1556). The raw enum value — the page owns any label. */
+  readonly origin: MspSopRunOrigin;
   readonly steps: readonly WireQueueStep[];
 }
 
@@ -350,6 +354,7 @@ router.get(
                 ? `${r.passedStepsCount} of ${r.totalSteps} steps against ${r.targetEntity}.`
                 : `${r.passedStepsCount} of ${r.totalSteps} steps completed.`,
             state: runStateLabel(r.status, r.passedStepsCount, r.totalSteps),
+            origin: r.origin,
           })),
           owner: toOwner(author, names.get(author.toLowerCase())),
         });
@@ -491,6 +496,7 @@ router.get(
           // `/^CR-/` test then decides whether it renders as a CR link.
           cr: r.psaTicketId.trim() || "Not recorded",
           svc: workloads[0] ?? "—",
+          origin: r.origin,
           steps: steps.map((s, i) => ({
             t: (s.title ?? "").trim() || stepText(s),
             s: states[i] ?? "todo",

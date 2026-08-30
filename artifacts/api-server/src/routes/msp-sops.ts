@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspSopsTable, mspSopRunsTable } from "@workspace/db";
+import { db, mspSopsTable, mspSopRunsTable, MSP_SOP_RUN_ORIGIN } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
@@ -48,6 +48,9 @@ const createSopRunSchema = z.object({
   tenantName: z.string(),
   targetEntity: z.string(),
   operator: z.string(),
+  // What invoked this run (#1556). Optional so existing callers keep working; a
+  // run without a stated origin is a hand-started one.
+  origin: z.enum(MSP_SOP_RUN_ORIGIN).default("manual"),
   startedAt: z.string(),
   status: z.enum(["In Progress", "Completed", "Blocked", "Failed"]),
   currentStepIndex: z.number().int().nonnegative(),
@@ -211,6 +214,7 @@ router.post(
           tenantName: parsedBody.data.tenantName,
           targetEntity: parsedBody.data.targetEntity,
           operator: parsedBody.data.operator,
+          origin: parsedBody.data.origin,
           startedAt: parsedBody.data.startedAt,
           status: parsedBody.data.status,
           currentStepIndex: parsedBody.data.currentStepIndex,
