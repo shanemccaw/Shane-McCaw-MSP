@@ -23,6 +23,29 @@
 -- as the historical record of when/why each table was added, but neither
 -- needs to be run separately any more -- this file supersedes running them.
 --
+-- EXTENDED 2026-08-30 (Git #1573): the projects cleanup above is keyed on
+-- `client_user_id = ANY(v_user_ids)` -- the reset TARGET tenant's own users.
+-- That leaves a real gap: a project whose `client_user_id` is NULL matches no
+-- tenant's user array (`NULL = ANY(...)` is NULL, never TRUE), so an orphan
+-- project belongs to nobody and is invisible to every reset run regardless of
+-- which tenant is being reset. #1573's live-DB finding confirmed exactly this
+-- -- 6 rows (ids 2-7), one per service, `client_user_id IS NULL`, created in a
+-- 3-day window (21-23 Jul 2026) during purchase-flow testing, 48 orphaned
+-- workflow_steps and 6 orphaned documents rows hanging off them. These are
+-- confirmed test artifacts, not intentional service templates: the only live
+-- path that creates a real customer project --
+-- artifacts/api-server/src/lib/project-sow-fulfillment.ts's
+-- fulfillAcceptedProjectOffer() -- explicitly REFUSES to insert a project row
+-- when no owner user can be resolved (status "no_owner", returned BEFORE the
+-- insert). So a customer-less project is never legitimate output of the real
+-- product; it can currently only be produced by a caller of
+-- POST /api/admin/projects that omits clientUserId (admin-projects.ts:130
+-- defaults it to null with no validation -- filed as its own finding, not
+-- fixed here). The new block below sweeps every orphan project (and its same
+-- FK-dependent children as the tenant-scoped block) on every reset run, not
+-- just this tenant's own -- an orphan project should never survive a reset,
+-- because it belongs to no tenant for a reset to even target.
+--
 -- Every DELETE is now guarded with `to_regclass(...) IS NOT NULL` -- a live
 -- audit for #1471 found the Replit staging DB's schema genuinely lags local
 -- dev for 13 tables (customer_alert_*, drift_*, license_assignment_snapshots,
@@ -172,6 +195,35 @@ BEGIN
       total := total + n;
       IF n > 0 THEN RAISE NOTICE '  projects : deleted % row(s)', n; END IF;
     END IF;
+  END IF;
+
+  -- ── orphan projects (client_user_id IS NULL) + FK dependents (#1573) ───
+  -- Belongs to no tenant, so run unconditionally on every reset -- not
+  -- gated behind v_tenant_id/v_user_ids like the block above. Same child
+  -- table list and same children-first, projects-last ordering.
+  IF to_regclass('public.projects') IS NOT NULL THEN
+    FOREACH t IN ARRAY ARRAY[
+      'workflow_steps','kanban_tasks','documents','reports','invoices','project_updates',
+      'contracts','status_reports','project_closures','audit_logs','opportunities',
+      'client_callback_tokens','quick_win_presentations'
+    ] LOOP
+      IF to_regclass('public.' || t) IS NOT NULL THEN
+        EXECUTE format(
+          'DELETE FROM %I WHERE project_id IN (SELECT id FROM projects WHERE client_user_id IS NULL)',
+          t
+        );
+        GET DIAGNOSTICS n = ROW_COUNT;
+        total := total + n;
+        IF n > 0 THEN RAISE NOTICE '  % (orphan) : deleted % row(s)', t, n; END IF;
+      ELSE
+        RAISE NOTICE '  % : table does not exist on this environment, skipped', t;
+      END IF;
+    END LOOP;
+
+    DELETE FROM projects WHERE client_user_id IS NULL;
+    GET DIAGNOSTICS n = ROW_COUNT;
+    total := total + n;
+    IF n > 0 THEN RAISE NOTICE '  projects (orphan, client_user_id IS NULL) : deleted % row(s)', n; END IF;
   END IF;
 
   RAISE NOTICE 'Comprehensive testbed reset complete for tenant id=%, guid=%. Total rows deleted: %', v_tenant_id, v_tenant_guid, total;
