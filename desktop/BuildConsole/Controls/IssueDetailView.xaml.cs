@@ -329,7 +329,42 @@ namespace BuildConsole.Controls
             };
 
             if (myRequest != _requestId) return; // superseded while we were resolving
-            ChatColumnHost.Child = wv;
+            ChatColumnHost.Child = BuildAddressBarWrappedWebView(wv, chat.ClaudeUrl);
+        }
+
+        /// <summary>
+        /// Shane, 2026-08-30 — "In the documents that have a WebView2 dont ever hide the
+        /// browser address bar... Always show it to me." This chat column embeds a raw
+        /// WebView2 with no chrome of its own (unlike a real tab, which at least has the
+        /// shared bottom status-bar URL readout while it's the active tab) — so on its own
+        /// there was no way to see what's actually loaded. Docks a permanent, read-only
+        /// address strip above the WebView2 that tracks SourceChanged; it is never
+        /// collapsed/toggled — showing it is the whole point.
+        /// </summary>
+        private static FrameworkElement BuildAddressBarWrappedWebView(ChatSafeWebView2 wv, string initialUrl)
+        {
+            var addressBar = new TextBox
+            {
+                Text = initialUrl,
+                IsReadOnly = true,
+                FontSize = 10.5,
+                Padding = new Thickness(6, 3, 6, 3),
+                Background = (Brush)Application.Current.FindResource("MantleBrush"),
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                BorderThickness = new Thickness(0, 0, 0, 1),
+                BorderBrush = (Brush)Application.Current.FindResource("Surface0Brush"),
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            wv.SourceChanged += (s, e) =>
+            {
+                try { addressBar.Text = wv.Source?.ToString() ?? initialUrl; } catch { }
+            };
+
+            var wrapper = new DockPanel();
+            DockPanel.SetDock(addressBar, Dock.Top);
+            wrapper.Children.Add(addressBar);
+            wrapper.Children.Add(wv);
+            return wrapper;
         }
 
         private Border CreateCommentCard(GitHubIssueComment comment, System.Collections.Generic.HashSet<string>? executedMigrations = null, System.Collections.Generic.Dictionary<int, BuildConsole.Services.TestHistoryEntry>? latestTestRuns = null)
