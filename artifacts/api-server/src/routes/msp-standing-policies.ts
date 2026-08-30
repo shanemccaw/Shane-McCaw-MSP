@@ -52,6 +52,7 @@ import { personIdForUser } from "../lib/portal-ownership";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
 import { toWireStandingPolicy } from "../lib/standing-policies";
+import { evaluateStandingPolicyForCustomer } from "../lib/policy-compliance-evaluator";
 
 const log = logger.child({ channel: "workflow.change-control" });
 
@@ -193,6 +194,62 @@ router.post(
       res.status(201).json(toWireStandingPolicy(inserted));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/standing-policies failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// ── Evaluate (#1553) ───────────────────────────────────────────────────────
+// On-demand compliance pass for one customer against one policy — real Graph
+// reads, real `msp_diagnostic_findings` rows for real non-compliance, never a
+// fabricated verdict. #1549's continuous-evaluation loop is the future
+// automatic trigger for this same evaluator; this route is the pointed,
+// on-demand path (the same "on-demand targeted check" shape #1540 already
+// established for the Remediation Tracker) until that loop lands.
+const evaluateSchema = z.object({
+  customerId: z.number().int().positive(),
+});
+
+router.post(
+  "/msp/standing-policies/:id/evaluate",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+        return;
+      }
+
+      const policyId = Number(req.params.id);
+      if (!Number.isInteger(policyId) || policyId <= 0) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid standing policy id");
+        return;
+      }
+
+      const parsed = evaluateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid evaluate request", parsed.error.flatten());
+        return;
+      }
+
+      // The policy must be this MSP's own — never evaluate across an MSP boundary.
+      const [policy] = await db
+        .select({ id: standingPoliciesTable.id })
+        .from(standingPoliciesTable)
+        .where(and(eq(standingPoliciesTable.id, policyId), eq(standingPoliciesTable.mspId, mspId)))
+        .limit(1);
+      if (!policy) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, `Standing policy '${policyId}' does not exist for this MSP`);
+        return;
+      }
+
+      const summary = await evaluateStandingPolicyForCustomer(policyId, parsed.data.customerId);
+      log.info({ mspId, policyId, customerId: parsed.data.customerId, summary }, "standing policy compliance evaluated on demand");
+      res.json(summary);
+    } catch (err: unknown) {
+      log.error({ err }, "POST /api/msp/standing-policies/:id/evaluate failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

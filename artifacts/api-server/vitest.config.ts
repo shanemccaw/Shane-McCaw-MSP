@@ -267,6 +267,9 @@ export default defineConfig({
       // #1547 — the Policy Engine's declarative object: the standing-policy wire
       // contract and the target-kind vocabulary (pure, no database).
       "src/lib/standing-policies.test.ts",
+      // #1553 — Policy Engine finding source: the mailbox_attribute compliance
+      // comparison logic (pure, no database, no Graph).
+      "src/lib/policy-compliance.test.ts",
       "src/lib/zoho-foundation.test.ts",
       "src/lib/zoho-crm.test.ts",
       "src/lib/zoho-projects.test.ts",

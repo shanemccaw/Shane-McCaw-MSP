@@ -3169,6 +3169,14 @@ export type InsertMspDiagnosticRun = typeof mspDiagnosticRunsTable.$inferInsert;
 export const MSP_DIAGNOSTIC_FINDING_SEVERITY = ["ok", "info", "warning", "critical"] as const;
 export type MspDiagnosticFindingSeverity = typeof MSP_DIAGNOSTIC_FINDING_SEVERITY[number];
 
+// #1553: a finding's provenance. Every finding until now derived from a check
+// against a Microsoft-defined or best-practice baseline. A policy-sourced
+// finding derives from what the customer themselves declared they wanted
+// (`standing_policies.target_state`) — there is no Microsoft rule behind it,
+// only the customer's own stated policy, and the UI must be able to say so.
+export const MSP_DIAGNOSTIC_FINDING_SOURCES = ["baseline", "policy"] as const;
+export type MspDiagnosticFindingSource = typeof MSP_DIAGNOSTIC_FINDING_SOURCES[number];
+
 export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
   id: serial("id").primaryKey(),
   findingId: uuid("finding_id").notNull().unique().defaultRandom(),
@@ -3189,11 +3197,19 @@ export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
   }>(),
   extractedProperties: jsonb("extracted_properties").$type<Record<string, unknown>>(),
   checkStatus: text("check_status"),
+  // #1553: "baseline" for every pre-existing finding (the default — this column
+  // is additive and every prior row is a Microsoft-baseline check). "policy"
+  // marks a finding raised from standing-policy non-compliance instead.
+  findingSource: text("finding_source", { enum: MSP_DIAGNOSTIC_FINDING_SOURCES }).notNull().default("baseline"),
+  // #1553: which standing policy this finding was raised from, when findingSource
+  // is "policy". Null for every baseline finding — there is no policy behind those.
+  standingPolicyId: integer("standing_policy_id").references(() => standingPoliciesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_diagnostic_findings_run_id_idx").on(t.runId),
   index("msp_diagnostic_findings_customer_id_idx").on(t.customerId),
   index("msp_diagnostic_findings_severity_idx").on(t.severity),
+  index("msp_diagnostic_findings_standing_policy_id_idx").on(t.standingPolicyId),
 ]);
 
 export type MspDiagnosticFinding = typeof mspDiagnosticFindingsTable.$inferSelect;
