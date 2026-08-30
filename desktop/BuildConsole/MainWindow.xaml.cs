@@ -310,6 +310,12 @@ namespace BuildConsole
             // deserializes that field to its C# default (false) — loads OFF, per spec.
             RefreshTopConservationToggleUi();
 
+            // Git #1986 — title-bar Home/Rental location toggle: reflect the persisted
+            // LocationMode on launch. A pre-existing settings.json with no LocationMode key
+            // deserializes that field to its C# default ("Home") — loads Home/unmetered, per
+            // spec (never silently start throttling). No override is ever live at launch.
+            RefreshTopLocationToggleUi();
+
             // Git #934 — Shane: "add a - [DEBUG] if I have the app open in
             // the Debug folder." Checked by the running exe's OWN path
             // (bin\Debug\... vs bin\Release\...), not a `#if DEBUG`
@@ -5752,6 +5758,120 @@ namespace BuildConsole
             string.Equals(BuildConsole.Services.BuildConsoleSettings.Load().DefaultAccount, "secondary", StringComparison.OrdinalIgnoreCase)
                 ? "secondary"
                 : null;
+
+        // ── Title bar: Home/Rental location toggle (Git #1986) ──────────────────
+        // Shane splits time between a fibre "Home" line and a capped Verizon "Rental"
+        // line. This manual, persisted switch tells BuildConsole which one it's on so
+        // metered network work can be gated. NEVER auto-detected — a wrong guess that
+        // silently enabled heavy downloads on the capped line is exactly the failure
+        // being prevented. Flips BuildConsoleSettings.LocationMode, which drives:
+        //   • BUILD_NETWORK=metered|unmetered injected into every launched build,
+        //   • the --network header flag default,
+        //   • the repo-root .pnpmfile.cjs metered-install refusal,
+        //   • the version-update deploy's one-shot metered override.
+        //
+        // The one-shot override below is a SEPARATE, in-memory, per-operation exception
+        // for an app-initiated network action (the version-update deploy). It authorises
+        // a single operation and expires the moment that operation finishes. It NEVER
+        // flips LocationMode — the switch stays on Rental throughout; the toggle just
+        // shows a distinct "Rental — override active" state for the override's duration.
+        // There is deliberately no flag/env/settings key an agent can set to obtain it —
+        // BeginMeteredOverride is only ever reached from a Shane-driven UI action.
+
+        /// <summary>Git #1986 — true while a Shane-authorised one-shot metered override is live for
+        /// a single app-initiated operation. NEVER changes LocationMode; reverts on completion.</summary>
+        private bool _meteredOverrideActive;
+
+        /// <summary>The operation a live one-shot override was granted for (shown in the toggle tooltip + logged), or null.</summary>
+        private string? _meteredOverrideOperation;
+
+        private void TopLocationToggle_Click(object sender, MouseButtonEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            bool nowRental = !string.Equals(settings.LocationMode, "Rental", StringComparison.OrdinalIgnoreCase);
+            settings.LocationMode = nowRental ? "Rental" : "Home";
+            settings.Save();
+            // Flipping the mode by hand is a fresh, deliberate decision — clear any stale
+            // one-shot override so it can't linger across a manual switch.
+            _meteredOverrideActive = false;
+            _meteredOverrideOperation = null;
+            RefreshTopLocationToggleUi();
+            BuildConsole.Services.ActivityLog.Log("system.core",
+                $"Location switched to {(nowRental ? "RENTAL (metered — network-heavy operations gated)" : "HOME (unmetered)")}.");
+        }
+
+        /// <summary>Repaints the title-bar Home/Rental toggle from the persisted LocationMode,
+        /// surfacing a distinct "Rental — override active" state while a one-shot override is live.</summary>
+        private void RefreshTopLocationToggleUi()
+        {
+            bool metered = BuildConsole.Services.BuildConsoleSettings.CurrentNetworkIsMetered();
+
+            // Same de-brightened idiom as the account (Blue) and Conservation (Peach) toggles:
+            // a dark surface with an accent border/text when Rental, never a solid bright fill.
+            // Red is used for the metered state so it reads as the one worth noticing, and a
+            // live override shows the SAME Red accent (never Home's neutral treatment) — the
+            // switch stays visibly on Rental for the override's whole duration, per #1986.
+            if (metered && _meteredOverrideActive)
+            {
+                TopLocationToggleText.Text = "Rental — override active";
+                TopLocationToggleBorder.Background = (System.Windows.Media.Brush)FindResource("Surface1Brush");
+                TopLocationToggleBorder.BorderBrush = (System.Windows.Media.Brush)FindResource("RedBrush");
+                TopLocationToggleText.Foreground = (System.Windows.Media.Brush)FindResource("RedBrush");
+                TopLocationToggleBorder.ToolTip =
+                    $"Location: RENTAL (metered) — a one-shot override is ACTIVE for: {_meteredOverrideOperation ?? "an operation"}. It authorises that single operation only and reverts on completion; it does NOT un-gate anything else. Click to switch back to Home.";
+                return;
+            }
+
+            TopLocationToggleText.Text = metered ? "Rental" : "Home";
+            TopLocationToggleBorder.Background = metered
+                ? (System.Windows.Media.Brush)FindResource("Surface1Brush")
+                : (System.Windows.Media.Brush)FindResource("Surface0Brush");
+            TopLocationToggleBorder.BorderBrush = metered
+                ? (System.Windows.Media.Brush)FindResource("RedBrush")
+                : (System.Windows.Media.Brush)FindResource("Surface1Brush");
+            TopLocationToggleText.Foreground = metered
+                ? (System.Windows.Media.Brush)FindResource("RedBrush")
+                : (System.Windows.Media.Brush)FindResource("TextBrush");
+            TopLocationToggleBorder.ToolTip = metered
+                ? "Location: RENTAL (capped Verizon — metered). Network-heavy operations are gated: launched builds carry BUILD_NETWORK=metered, `pnpm install` at the repo root is refused (.pnpmfile.cjs), and the version-update deploy requires a one-shot right-click override. Click to switch to Home when you're back on fibre."
+                : "Location: HOME (fibre — unmetered). Network-heavy operations run at full weight. Click to switch to Rental when you're on the capped connection, to gate metered work.";
+        }
+
+        /// <summary>Git #1986 — the `network` value a newly queued build should carry when it has
+        /// no explicit `--network` flag of its own: "metered" when the location toggle is Rental,
+        /// else null (unmetered). Mirrors <see cref="ResolveDefaultAccountFlag"/>.</summary>
+        private static string? ResolveDefaultNetworkFlag() =>
+            BuildConsole.Services.BuildConsoleSettings.CurrentNetworkIsMetered() ? "metered" : null;
+
+        /// <summary>Git #1986 — begin a one-shot metered override for a single app-initiated
+        /// operation. Records it, repaints the toggle to "Rental — override active", and logs it on
+        /// the same channel as the gate's refusals so Shane can answer "what did I let through on the
+        /// capped line" from the log alone. NEVER flips LocationMode. Only ever called from a
+        /// Shane-driven UI action — there is no flag/env/settings path an agent can reach this by.</summary>
+        private void BeginMeteredOverride(string operation)
+        {
+            _meteredOverrideActive = true;
+            _meteredOverrideOperation = operation;
+            RefreshTopLocationToggleUi();
+            BuildConsole.Services.ActivityLog.Log("system.core",
+                $"Metered override GRANTED (one-shot) for: {operation}. LocationMode stays Rental; this authorises only this operation and reverts on completion.");
+        }
+
+        /// <summary>Git #1986 — public wrapper so the Settings tab's Location combo can refresh the
+        /// title-bar toggle live after saving, keeping both controls in agreement.</summary>
+        public void RefreshLocationToggle() => RefreshTopLocationToggleUi();
+
+        /// <summary>Ends the live one-shot override (operation finished) and reverts the toggle to the plain Rental state.</summary>
+        private void EndMeteredOverride()
+        {
+            if (!_meteredOverrideActive) return;
+            string op = _meteredOverrideOperation ?? "an operation";
+            _meteredOverrideActive = false;
+            _meteredOverrideOperation = null;
+            RefreshTopLocationToggleUi();
+            BuildConsole.Services.ActivityLog.Log("system.core",
+                $"Metered override for '{op}' expired (operation finished). Gate is back in force.");
+        }
 
         // ── Title bar: Conservation Cap toggle (Git #1989) ──────────────────────
         // Shane: "anything Sonnet High+ needs to be detected and parked. I still have the

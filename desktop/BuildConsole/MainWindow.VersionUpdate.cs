@@ -120,7 +120,20 @@ namespace BuildConsole
 
             if (behind > 0)
             {
-                BtnUpdate.Content = "⬆ Update";
+                // Git #1986 — on the Rental (capped) connection the deploy is held behind the
+                // one-shot right-click override. Surface that as a visible "waiting" label rather
+                // than silently doing nothing (a silently skipped update is the worse failure).
+                bool metered = BuildConsole.Services.BuildConsoleSettings.CurrentNetworkIsMetered();
+                if (metered && !_meteredOverrideActive)
+                {
+                    BtnUpdate.Content = "Update — held (metered)";
+                    BtnUpdate.ToolTip = "A newer BuildConsole build is committed locally, but Location is Rental (capped). The deploy (git fetch + local Release rebuild) is held. Right-click -> \"Run anyway (metered)\" to run this one deploy; the Location stays Rental.";
+                }
+                else
+                {
+                    BtnUpdate.Content = "⬆ Update";
+                    BtnUpdate.ToolTip = "A newer BuildConsole build is committed locally — build & deploy it to bin\\ShanesBuild via deploy-shanesbuild.cmd.";
+                }
                 BtnUpdate.IsEnabled = true;
                 BtnUpdate.Visibility = Visibility.Visible;
             }
@@ -143,8 +156,44 @@ namespace BuildConsole
             await TriggerUpdateAsync(forceDeploy: false);
         }
 
-        private async Task TriggerUpdateAsync(bool forceDeploy = false)
+        /// <summary>Git #1986 — the right-click "Run anyway (metered)" one-shot override. Grants a
+        /// single, expiring metered authorisation for THIS deploy only (never flips the Location
+        /// switch, never un-gates anything else) and then runs it. Only reachable from this
+        /// Shane-driven context-menu click — there is no flag/env/settings path an agent can hit it
+        /// by, per #1986's "agents must never self-override".</summary>
+        private async void RunUpdateAnywayMetered_Click(object sender, RoutedEventArgs e)
         {
+            if (_deployInvoked) return;
+            BeginMeteredOverride("BuildConsole version-update deploy (git fetch origin main + local Release rebuild)");
+            await TriggerUpdateAsync(forceDeploy: true, viaMeteredOverride: true);
+        }
+
+        private async Task TriggerUpdateAsync(bool forceDeploy = false, bool viaMeteredOverride = false)
+        {
+            if (_deployInvoked) return;
+
+            // Git #1986 — metered gate. On the Rental (capped) connection the version-update
+            // deploy is HELD rather than run automatically: it does a `git fetch origin main`
+            // plus a local Release rebuild (which can trigger a NuGet restore). A silently
+            // skipped update is a worse failure than a deferred one, so instead of running it we
+            // surface a visible "waiting for unmetered connection" state and require the explicit,
+            // one-shot right-click "Run anyway (metered)" override. That override sets
+            // viaMeteredOverride=true here; it never flips the Location switch and expires when
+            // this deploy finishes. The audit for #1986 found this is BuildConsole's only
+            // locally-network-touching user action, and its footprint is modest (an incremental
+            // git fetch, not a full dependency refetch) — but it is the honest home for the
+            // override idiom and is gated for consistency.
+            if (BuildConsole.Services.BuildConsoleSettings.CurrentNetworkIsMetered() && !viaMeteredOverride)
+            {
+                BtnUpdate.IsEnabled = true;
+                ApplyVersionUiState();
+                ActivityLog.Log(VersionChannel,
+                    "Update HELD — Location is Rental (metered). The deploy does a git fetch origin main + local Release rebuild (NuGet restore possible). Right-click Update -> \"Run anyway (metered)\" to authorise this one deploy; the gate stays in force for everything else.");
+                ToastEngine.Warning("Update held (metered connection)",
+                    "You're on the Rental (capped) connection. Right-click the Update button -> \"Run anyway (metered)\" to run this one deploy anyway.");
+                return;
+            }
+
             if (_deployInvoked) return;
 
             BtnUpdate.IsEnabled = false; // no double-trigger while the deploy spins up
@@ -161,6 +210,10 @@ namespace BuildConsole
             // builds. Just deploy.
             ActivityLog.Log(VersionChannel, "Rebuilding & deploying now (in-flight builds survive the restart via #1804).");
             RunDeployScript();
+            // Git #1986 — the one-shot metered authorisation covered exactly this deploy; it's now
+            // launched, so expire the override immediately. The gate is back in force for anything
+            // else, and the title-bar toggle reverts from "Rental — override active" to plain Rental.
+            if (viaMeteredOverride) EndMeteredOverride();
             await Task.CompletedTask;
         }
 

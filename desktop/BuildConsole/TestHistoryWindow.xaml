@@ -104,6 +104,7 @@
                     <!-- Search Input -->
                     <Grid Grid.Column="2" MaxWidth="360" HorizontalAlignment="Left">
                         <TextBox x:Name="TxtSearch"
+                                 Style="{StaticResource SearchTextBox}"
                                  Background="{StaticResource CrustBrush}"
                                  Foreground="{StaticResource TextBrush}"
                                  BorderBrush="{StaticResource Surface0Brush}"
@@ -130,23 +131,6 @@
                                 </Style>
                             </TextBlock.Style>
                         </TextBlock>
-                        <Button x:Name="BtnClearSearch" Content="✕"
-                                HorizontalAlignment="Right" VerticalAlignment="Center"
-                                Margin="0,0,6,0" Padding="4,1"
-                                Background="Transparent" BorderThickness="0"
-                                Foreground="{StaticResource Subtext0Brush}"
-                                Cursor="Hand" Click="BtnClearSearch_Click">
-                            <Button.Style>
-                                <Style TargetType="Button">
-                                    <Setter Property="Visibility" Value="Visible"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding Text, ElementName=TxtSearch}" Value="">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
                     </Grid>
 
                     <!-- Right View Actions -->

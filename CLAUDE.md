@@ -317,6 +317,30 @@ If it's still genuinely blocked (the dependency is still open and not `complete`
 
 Shane's BuildConsole desktop app (`desktop/BuildConsole/`) reads both the label and the real dependency to show a blocked build nested under whatever it's waiting on, in a red box — and flags it a different color the moment that dependency clears, so he knows to go start it again without having to remember himself.
 
+### A blocking conclusion must become a `blocked_by` edge, not just a comment (Git #1987)
+
+**An agent that concludes work cannot proceed must make that machine-readable in the
+same action.** A comment saying an issue is blocked, impossible, or waiting on a
+decision is not sufficient — BuildConsole reads `blocked_by` edges, not prose. In one
+pass:
+
+1. File the real blocker as its own issue if it is not already one.
+2. Wire the `blocked_by` edge from the blocked issue to it (the same
+   `dependencies/blocked_by` POST used above).
+3. **Remove any stale `blocked_by` edge that no longer reflects reality**, particularly
+   one pointing at an issue that is closed or about to close — a closing blocker
+   silently releases everything downstream.
+4. Apply the `blocked` label and move the board status, but treat those as reporting,
+   not the gate. Only the edge gates.
+
+This is not hypothetical: on #1867, the only `blocked_by` edge pointed at #1847. A
+comment titled "Blocked — the premise is false" landed on #1867 one second before
+#1847 closed. Closing #1847 released the only edge, and #1867 dispatched anyway — the
+blocking conclusion existed only as prose, the edge read clear, and the queue did
+exactly what it was told. **A comment that says "blocked" while the edge says "clear"
+is worse than saying nothing** — it creates a false record that the issue was handled
+while the queue keeps treating it as ready.
+
 ## Mandatory worktree isolation (Git #1371 / #1372)
 
 **Every build session works in its own isolated git worktree — never directly in the
@@ -641,9 +665,51 @@ Shane does **not** use Resend, ever, for any reason. All outgoing platform email
 
 ## Workspace / monorepo
 
-- This is a pnpm workspace monorepo (`pnpm-workspace.yaml` at repo root, packages under `artifacts/*`, `lib/*`, `lib/integrations/*`, `scripts`). Run `pnpm install` **once at the repo root** after adding or changing any workspace package dependency — not scoped/filtered installs inside individual package directories, which can fail to properly link new `workspace:*` references.
+- This is a pnpm workspace monorepo (`pnpm-workspace.yaml` at repo root, packages under `artifacts/*`, `lib/*`, `lib/integrations/*`, `scripts`). Run `pnpm install` **once at the repo root** after adding or changing any workspace package dependency — not scoped/filtered installs inside individual package directories, which can fail to properly link new `workspace:*` references. This is the one legitimate reason to run it; see the rule below for the illegitimate one.
 - Cross-app shared code belongs in a `lib/*` workspace package (e.g. `@workspace/db`, `@workspace/dashboard-registry`, `@workspace/dashboard-canvas`), not duplicated per-app. `artifacts/*` apps (api-server, admin-panel, msp-portal, etc.) are independent Vite/Node apps with no direct shared-component mechanism between them other than `lib/*` packages.
 - Single executor (one Claude Code session) at a time on any given set of files, to avoid merge conflicts when multiple sessions/tools are active concurrently.
+
+## `pnpm install` is not a remedy, and bandwidth is a real constraint (Git #1987)
+
+Agents have repeatedly told Shane to run `pnpm install` when module resolution breaks.
+He has run it hundreds of times. It has never fixed that class of failure, and it
+structurally cannot: on an unchanged lockfile, pnpm compares `pnpm-lock.yaml` against
+`node_modules/.modules.yaml` and exits without walking a single symlink — observed
+output `Already up to date. Done in 2.6s`. It has no integrity check for "this link
+points at a directory that no longer exists," so a link dangling into a deleted
+worktree survives every run. The real failures being chased in this class (#1951,
+#1955, #1964, #1967, #1974) are dangling and cross-worktree symlinks — a worktree
+dependency-isolation bug (#1988), not lockfile drift. Same failure shape as the
+corrected rules elsewhere in this file: a standing instruction producing a useless
+action on repeat, with everyone suspecting the tooling instead of the instruction.
+
+1. **`pnpm install` is not a remedy for broken module resolution, and is never handed
+   to Shane as an instruction** — not in a commit message, not in a code comment, not
+   in a log line, not in a chat reply. When a resolve fails, diagnose the actual link:
+   read where the symlink points (`dir` on Windows, `fsutil reparsepoint query` for
+   junctions) and file what you find. A dangling link into `C:\wt\...` is a
+   worktree-isolation bug, not a dependency problem.
+2. **`pnpm install --force` is prohibited.** It refetches the full dependency graph —
+   1,120 packages on this lockfile — which is a metered cost on Shane's capped Verizon
+   connection, for a command that does not repair dangling links.
+3. **Never run `pnpm install` from inside a worktree.** `scripts/dev-server/link-deps.mjs`
+   exists precisely so worktrees do not each run one — its own header says so: junction
+   the real dependency dirs from the main repo into the worktree instead of a full
+   install per worktree. An install from a worktree both downloads and writes
+   worktree-absolute paths into shared state, which is the poisoning mechanism behind
+   this whole failure cluster.
+4. **Bandwidth is a real constraint an agent cannot infer.** Treat any large download
+   as a cost that needs justifying, not a free action.
+
+**The other half of rule 4 — an agent does not grant itself the exception.** On hitting
+a blocked or metered operation, stop and report what was needed and why. Do not retry
+it, do not look for an alternate command that achieves the same download, and do not
+write to settings to clear the block yourself. The override belongs to Shane, taken in
+BuildConsole, and is one-shot. Failing closed here is correct behavior, not a stalled
+build — report it as a finding (file it if it is a real gap) and continue with whatever
+else the task allows. A constraint an agent can route around is a constraint that does
+nothing — the old `*Data.ts` fixture rule failed exactly this way, by leaving an escape
+hatch that every agent took.
 
 ## General
 

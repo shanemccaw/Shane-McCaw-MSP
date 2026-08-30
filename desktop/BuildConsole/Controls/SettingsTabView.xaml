@@ -80,16 +80,14 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="🔍" FontSize="11" Foreground="{StaticResource Subtext0Brush}"
                                        VerticalAlignment="Center" Margin="2,0,6,0"/>
-                            <TextBox x:Name="SettingsSearchBox" Grid.Column="1" Background="Transparent"
-                                     BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="12"
+                            <TextBox x:Name="SettingsSearchBox" Grid.Column="1"
+                                     Style="{StaticResource SearchTextBox}"
+                                     Background="Transparent" BorderThickness="0" Padding="0,0,20,0"
+                                     Foreground="{StaticResource TextBrush}" FontSize="12"
                                      TextChanged="SettingsSearchBox_TextChanged"/>
-                            <Button x:Name="BtnClearSearch" Grid.Column="2" Content="✕" FontSize="10"
-                                    Style="{StaticResource IconButton}" Padding="4,0" Visibility="Collapsed"
-                                    Click="BtnClearSearch_Click"/>
                         </Grid>
                     </Border>
                 </StackPanel>
@@ -314,19 +312,17 @@
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Grid.Column="0" Text="🔍" FontSize="13" Foreground="{StaticResource Subtext0Brush}"
                                                    VerticalAlignment="Center" Margin="2,0,8,0"/>
-                                        <TextBox x:Name="TestEnvSearchBox" Grid.Column="1" Background="Transparent"
-                                                 BorderThickness="0" Foreground="{StaticResource TextBrush}" FontSize="12.5"
+                                        <TextBox x:Name="TestEnvSearchBox" Grid.Column="1"
+                                                 Style="{StaticResource SearchTextBox}"
+                                                 Background="Transparent" BorderThickness="0" Padding="0,0,20,0"
+                                                 Foreground="{StaticResource TextBrush}" FontSize="12.5"
                                                  VerticalAlignment="Center" TextChanged="TestEnvSearchBox_TextChanged"/>
                                         <TextBlock Grid.Column="1" x:Name="TestEnvSearchPlaceholder" Text="Search variables by name, value, manifest file, or area..."
                                                    FontSize="12" Foreground="{StaticResource Subtext0Brush}" IsHitTestVisible="False"
                                                    VerticalAlignment="Center" Margin="2,0,0,0" Visibility="Visible"/>
-                                        <Button x:Name="BtnClearTestEnvSearch" Grid.Column="2" Content="✕ Clear" FontSize="11"
-                                                Style="{StaticResource IconButton}" Padding="8,2" Visibility="Collapsed"
-                                                Click="BtnClearTestEnvSearch_Click"/>
                                     </Grid>
                                 </Border>
 
@@ -507,6 +503,23 @@
                                         <Button x:Name="BtnSaveSecondaryClaudeConfigDir" Content="Save Secondary Account Path" Style="{StaticResource PrimaryButton}"
                                                 HorizontalAlignment="Left" Padding="16,5" Click="BtnSaveSecondaryClaudeConfigDir_Click"/>
                                         <TextBlock x:Name="SecondaryClaudeConfigDirSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,6,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Git #1986 — Home/Rental location switch (gate metered network ops) -->
+                                <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Location / Metered Connection Gate" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
+                                        <TextBlock Text="Which connection this machine is on. Home = fibre (unmetered); Rental = capped Verizon (metered). This is manual and never auto-detected — a wrong guess that silently downloaded on the capped line is exactly what this prevents. When Rental, network-heavy work is gated: every launched build carries BUILD_NETWORK=metered, a `pnpm install` at the repo root is refused (.pnpmfile.cjs), and the version-update deploy needs a one-shot right-click override. Defaults to Home in every ambiguous case (missing or corrupt settings). Also switchable from the title-bar Location toggle."
+                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Location" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <ComboBox x:Name="LocationModeCombo" Width="200" HorizontalAlignment="Left" FontSize="12" Margin="0,0,0,10"
+                                                  SelectionChanged="LocationModeCombo_Changed">
+                                            <ComboBoxItem Content="Home (fibre — unmetered)"/>
+                                            <ComboBoxItem Content="Rental (capped Verizon — metered)"/>
+                                        </ComboBox>
+                                        <TextBlock x:Name="LocationModeSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,0,0,0"/>
                                     </StackPanel>
                                 </Border>
 
