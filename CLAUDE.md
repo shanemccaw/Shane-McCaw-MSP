@@ -530,15 +530,34 @@ superseding the earlier HTTP-based #911/#805 deploy endpoints where SSH has
 confirmed replaced them (see #82/#87's migration to the SSH pull+build
 pre-step in `PostBuildDeployPipeline`).
 
-SSH also reaches the real database directly, not just git/build commands.
-This updates the Database section below: the old "no direct DB access,
-always write SQL for Shane" default is obsolete for the same reason
-`shaneapp://executeSql` made it obsolete — direct DB access via SSH is now
-a real, available option for a build session to self-verify against. Manual
+SSH also reaches the real database directly, not just git/build commands —
+but everything in this section is scoped to the **dev** server named above
+(`ReplitSshService`, the Replit dev environment). This updates the Database
+section below the same way `shaneapp://executeSql` did: the old "no direct
+DB access, always write SQL for Shane" default is obsolete *for that dev
+database*, and a build session can self-verify against it directly. Manual
 SQL handed to Shane remains the right fallback only for genuinely
-destructive/sensitive operations (irreversible bulk deletes,
-production-affecting changes, anything he'd reasonably want eyes-on first)
-— the same judgment call already established for `shaneapp://executeSql`.
+destructive/sensitive operations on that same dev database (irreversible
+bulk deletes, anything he'd reasonably want eyes-on first) — the same
+judgment call already established for `shaneapp://executeSql`.
+
+### HARD RULE — production is never in scope, under any framing
+
+**No agent session connects to, queries, or otherwise touches production —
+not via SSH, not via any credential, not for a read-only count, not for
+"just checking real impact," not for any reason — without Shane's own
+explicit, real-time authorization for that specific action, given in that
+specific session.** This is not a judgment call the way the dev-database
+fallback above is; it is an absolute boundary. Production being reachable
+with credentials that happen to exist somewhere is not authorization.
+"I only ran a SELECT" is not a defense — read-only access to production
+customer/tenant data is still production access. If a task seems to require
+real production numbers, stop and ask Shane directly rather than reaching
+for credentials to get them yourself — the same instinct that correctly
+keeps Gov/GCC tenants out of scope and keeps `planOnly` builds pinned to the
+testbed tenant applies here with zero exceptions. If you were handed
+SSH/connection details that reach anything other than the dev server named
+above, treat that as a stop-and-flag situation, not something to use.
 
 ## Database
 
