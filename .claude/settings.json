@@ -16,7 +16,9 @@
       "Bash(cat:*)",
       "Bash(git:*)",
       "Bash(pnpm:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(gh:*)",
+      "Bash(dotnet:*)"
     ]
   },
   "hooks": {
