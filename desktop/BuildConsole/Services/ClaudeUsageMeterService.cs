@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Threading;
-using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.Wpf;
 
 namespace BuildConsole.Services
@@ -16,9 +16,9 @@ namespace BuildConsole.Services
     {
         /// <summary>Between polls with a good last reading — the number shown is real.</summary>
         Ok,
-        /// <summary>Actively polling claude CLI / usage page right now.</summary>
+        /// <summary>Actively polling Anthropic OAuth usage API right now.</summary>
         Polling,
-        /// <summary>Usage could not be read (not logged in, or CLI unavailable) — show a muted "Claude: --" rather than a stale/guessed number.</summary>
+        /// <summary>Usage could not be read (not logged in, or token expired) — show a muted "Claude: --" rather than a stale/guessed number.</summary>
         Unavailable,
         /// <summary>Check threw or failed.</summary>
         Error,
@@ -30,12 +30,12 @@ namespace BuildConsole.Services
         public ClaudeUsageMeterState State { get; set; } = ClaudeUsageMeterState.Unavailable;
         /// <summary>Whole-number usage percentage (0–100), or null when it couldn't be read.</summary>
         public int? Percent { get; set; }
-        /// <summary>The next reset moment as a LOCAL datetime, parsed from the "Resets …" label, or null when it couldn't be parsed.</summary>
+        /// <summary>The next reset moment as a LOCAL datetime, parsed from the API resets_at timestamp, or null when unavailable.</summary>
         public DateTime? ResetTarget { get; set; }
         /// <summary>Fully-formed status-bar text, e.g. "Claude: 87% used — resets in 1d 4h 12m", "Claude: 45% used", or "Claude: --".</summary>
         public string DisplayText { get; set; } = "Claude: --";
         public string ToolTip { get; set; } = string.Empty;
-        
+
         // Weekly (All Models) status fields — Primary account
         public int? WeeklyPercent { get; set; }
         public DateTime? WeeklyResetTarget { get; set; }
@@ -44,11 +44,7 @@ namespace BuildConsole.Services
 
         public DateTime? LastPoll { get; set; }
 
-        // Git #1437 — Weekly (All Models) status fields for the Secondary account, polled and
-        // rendered fully independently of the toggle-followed Primary fields above so both
-        // accounts' headroom are visible at the same time.
-        /// <summary>False when BuildConsoleSettings.SecondaryClaudeConfigDir is unset/blank — the
-        /// secondary meter shows an explicit "not configured" state rather than reusing Primary's numbers.</summary>
+        // Weekly (All Models) status fields — Secondary account
         public bool SecondaryConfigured { get; set; }
         public ClaudeUsageMeterState SecondaryState { get; set; } = ClaudeUsageMeterState.Unavailable;
         public int? SecondaryWeeklyPercent { get; set; }
@@ -59,37 +55,21 @@ namespace BuildConsole.Services
     }
 
     /// <summary>
-    /// Background watcher that keeps a live Claude usage percentage in the status bar.
+    /// Background watcher that polls Anthropic's OAuth usage API endpoint directly using
+    /// the bearer token from ~/.claude/.credentials.json (and SecondaryClaudeConfigDir/.credentials.json).
     ///
-    /// Fast &amp; reliable CLI-first architecture:
-    /// Spawns `claude.exe -p --no-session-persistence "/usage"` with redirected standard input
-    /// (closed immediately), returning direct usage statistics in ~2 seconds without web scraping.
+    /// Endpoint: GET https://api.anthropic.com/api/oauth/usage
+    /// Headers: Authorization: Bearer &lt;accessToken&gt;, anthropic-beta: oauth-2025-04-20
     ///
-    /// Specifically extracts the "All Models" progress percentage (ignoring "Current session"
-    /// and "Fable" progress bars), parses the reset target timestamp into local time, and
-    /// feeds live countdown and rate-of-growth projection models.
-    ///
-    /// If the CLI is unavailable or fails, falls back gracefully to the WebView2 session probe.
-    ///
-    /// Logging channel: "usage-meter" via ActivityLog.Log — every poll attempt, success, and failure.
+    /// Logging channel: "usage-meter" via ActivityLog.Log.
     /// </summary>
     public class ClaudeUsageMeterService
     {
         public const string Channel = "usage-meter";
-
-        public const string UsageUrl = "https://claude.ai/new#settings/usage";
+        public const string UsageApiEndpoint = "https://api.anthropic.com/api/oauth/usage";
 
         /// <summary>Poll cadence for automatic background usage checks.</summary>
         private static readonly TimeSpan PollInterval = TimeSpan.FromMinutes(10);
-
-        /// <summary>
-        /// Timeout for a single `claude.exe -p /usage` CLI call inside <see cref="RunClaudeCliUsageAsync"/>.
-        /// Was hardcoded at 20s (Git #1449) which Shane confirmed the CLI sometimes exceeds under real
-        /// load, killing the process mid-poll and surfacing as a flat "error" state on the usage meter
-        /// with no indication it was just slow rather than genuinely broken. Raised to 45s and pulled out
-        /// to a named constant so it can be retuned again without hunting for a magic number.
-        /// </summary>
-        private static readonly TimeSpan CliUsagePollTimeout = TimeSpan.FromSeconds(45);
 
         /// <summary>How often the visible countdown re-renders between polls. Only the text ticks; the percentage is untouched until the next real poll.</summary>
         private static readonly TimeSpan DisplayTickInterval = TimeSpan.FromSeconds(30);
@@ -97,13 +77,14 @@ namespace BuildConsole.Services
         /// <summary>At/above this usage the countdown is shown alongside the percentage; below it, just the plain percentage.</summary>
         private const int CountdownThresholdPercent = 85;
 
-        private const int NavigationTimeoutMs = 20000;
-        private const int HydrationMaxWaitMs = 15000;
-        private const int HydrationPollIntervalMs = 400;
-        private const int PostMeterSettleMs = 400;
+        private static readonly HttpClient _httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(15)
+        };
 
-        private readonly WebView2? _webView;
-        private readonly Func<WebView2, Task<bool>>? _ensureInitialized;
+        private static bool _primaryLoggedRawJson = false;
+        private static bool _secondaryLoggedRawJson = false;
+
         private readonly DispatcherTimer _pollTimer;
         private readonly DispatcherTimer _displayTimer;
 
@@ -122,10 +103,7 @@ namespace BuildConsole.Services
         private DateTime? _projectedFullTarget;
         private double _projectedRatePerHour;
 
-        // ── Git #1437 — Secondary account weekly (All Models) poll state, entirely independent
-        // of the Primary fields above. Polled via its own CLI call with CLAUDE_CONFIG_DIR pointed
-        // at BuildConsoleSettings.SecondaryClaudeConfigDir (same env-stripping fix pattern as
-        // QueueWatcherService, Git #1420) so it reads the Secondary account's own session.
+        // Secondary account weekly status fields
         private bool _secondaryConfigured;
         private ClaudeUsageMeterState _secondaryLastState = ClaudeUsageMeterState.Unavailable;
         private string? _secondaryLastReason;
@@ -137,11 +115,11 @@ namespace BuildConsole.Services
 
         public event Action<ClaudeUsageStatus>? StatusChanged;
 
+        /// <summary>
+        /// Constructor parameters maintained for backwards compatibility with callers passing WebView2 probe hooks.
+        /// </summary>
         public ClaudeUsageMeterService(WebView2? webView = null, Func<WebView2, Task<bool>>? ensureInitialized = null)
         {
-            _webView = webView;
-            _ensureInitialized = ensureInitialized;
-
             _pollTimer = new DispatcherTimer { Interval = PollInterval };
             _pollTimer.Tick += async (_, _) => await TickAsync();
 
@@ -155,7 +133,7 @@ namespace BuildConsole.Services
             _pollTimer.Start();
             _displayTimer.Start();
             Emit(ClaudeUsageMeterState.Polling);
-            ActivityLog.Log(Channel, $"Started — polling Claude usage (CLI-first, All Models tier) every {PollInterval.TotalMinutes:0} min; countdown shown at ≥{CountdownThresholdPercent}%.");
+            ActivityLog.Log(Channel, $"Started — polling Claude OAuth usage API every {PollInterval.TotalMinutes:0} min; countdown shown at ≥{CountdownThresholdPercent}%.");
             _ = TickAsync();
         }
 
@@ -177,7 +155,7 @@ namespace BuildConsole.Services
             await TickAsync();
         }
 
-        /// <summary>One real poll: first tries the CLI `claude -p /usage` (fast, 2s, exact All Models tier), then falls back to WebView2 if needed.</summary>
+        /// <summary>One real poll: calls Anthropic OAuth usage API for both Primary and Secondary accounts.</summary>
         private async Task TickAsync()
         {
             if (_busy) return;
@@ -186,124 +164,37 @@ namespace BuildConsole.Services
             {
                 Emit(ClaudeUsageMeterState.Polling);
 
-                // Git #1437 — Secondary account poll runs independently of Primary's CLI-then-
-                // WebView2 flow below; it never falls back to Primary's numbers on failure.
+                // Poll Secondary account independently
                 await PollSecondaryAsync();
 
-                // ── Phase 1: Fast CLI Execution ─────────────────────────────
-                var (cliSuccess, cliOutput, cliError) = await RunClaudeCliUsageAsync();
-                if (cliSuccess && !string.IsNullOrWhiteSpace(cliOutput))
+                // Poll Primary account
+                string primaryDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
+                var res = await PollAccountViaApiAsync(primaryDir, isSecondary: false);
+
+                if (res.success)
                 {
-                    var (parsedSessionPercent, parsedSessionReset, parsedWeeklyPercent, parsedWeeklyReset) = ParseCliUsageOutput(cliOutput);
-                    if (parsedSessionPercent.HasValue || parsedWeeklyPercent.HasValue)
-                    {
-                        _percent = parsedSessionPercent;
-                        _resetTarget = ParseResetTarget(parsedSessionReset);
-                        if (!string.IsNullOrEmpty(parsedSessionReset) && !_resetTarget.HasValue)
-                        {
-                            ActivityLog.Log(Channel, $"Unparseable session reset label emitted: \"{parsedSessionReset}\"");
-                        }
-                        _weeklyPercent = parsedWeeklyPercent;
-                        _weeklyResetTarget = ParseResetTarget(parsedWeeklyReset);
-                        if (!string.IsNullOrEmpty(parsedWeeklyReset) && !_weeklyResetTarget.HasValue)
-                        {
-                            ActivityLog.Log(Channel, $"Unparseable weekly reset label emitted: \"{parsedWeeklyReset}\"");
-                        }
-                        _lastPoll = DateTime.Now;
+                    _percent = res.sessionPercent;
+                    _resetTarget = res.sessionReset;
+                    _weeklyPercent = res.weeklyPercent;
+                    _weeklyResetTarget = res.weeklyReset;
+                    _lastPoll = DateTime.Now;
 
-                        ActivityLog.Log(Channel,
-                            $"OK[cli] — Session: {_percent}% used (reset target={(_resetTarget.HasValue ? _resetTarget.Value.ToString("ddd HH:mm") : "unparsed")}), " +
-                            $"Weekly: {_weeklyPercent}% used (reset target={(_weeklyResetTarget.HasValue ? _weeklyResetTarget.Value.ToString("ddd HH:mm") : "unparsed")}).");
+                    ActivityLog.Log(Channel,
+                        $"OK[api] — Session: {(_percent.HasValue ? _percent.Value + "%" : "--")} (reset target={(_resetTarget.HasValue ? _resetTarget.Value.ToString("ddd HH:mm") : "none")}), " +
+                        $"Weekly: {(_weeklyPercent.HasValue ? _weeklyPercent.Value + "%" : "--")} (reset target={(_weeklyResetTarget.HasValue ? _weeklyResetTarget.Value.ToString("ddd HH:mm") : "none")}).");
 
-                        if (_percent.HasValue)
-                            UpdateProjection(_percent.Value, _resetTarget, _lastPoll.Value);
-                        if (_weeklyPercent.HasValue)
-                            UpdateWeeklyProjection(_weeklyPercent.Value, _weeklyResetTarget, _lastPoll.Value);
+                    if (_percent.HasValue)
+                        UpdateProjection(_percent.Value, _resetTarget, _lastPoll.Value);
+                    if (_weeklyPercent.HasValue)
+                        UpdateWeeklyProjection(_weeklyPercent.Value, _weeklyResetTarget, _lastPoll.Value);
 
-                        Emit(ClaudeUsageMeterState.Ok);
-                        return;
-                    }
-                    else
-                    {
-                        ActivityLog.Log(Channel, $"CLI returned output but no usage meters could be parsed. Output: {Trim(cliOutput)}");
-                    }
+                    Emit(ClaudeUsageMeterState.Ok);
                 }
                 else
                 {
-                    ActivityLog.Log(Channel, $"CLI poll not available or returned error: {cliError}. Falling back to WebView2 if available.");
+                    var state = res.notSignedIn ? ClaudeUsageMeterState.Unavailable : ClaudeUsageMeterState.Error;
+                    SetUnavailable(res.error ?? "poll failed", state);
                 }
-
-                // ── Phase 2: Fallback WebView2 Probe ─────────────────────────
-                if (_webView == null || _ensureInitialized == null)
-                {
-                    SetUnavailable(string.IsNullOrWhiteSpace(cliError) ? "Claude CLI unavailable" : cliError);
-                    return;
-                }
-
-                if (!await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
-                {
-                    ActivityLog.Log(Channel, "WebView2 fallback skipped — background WebView2 failed to initialise.");
-                    SetUnavailable("WebView2 not ready");
-                    return;
-                }
-
-                ActivityLog.Log(Channel, $"Polling fallback {UsageUrl} via WebView2 …");
-
-                if (!await NavigateAsync(UsageUrl))
-                {
-                    ActivityLog.Log(Channel, "FAIL[navigation] — the usage page never reported NavigationCompleted.");
-                    SetUnavailable("usage page did not load");
-                    return;
-                }
-
-                var probe = await WaitForHydrationAsync();
-                _lastPoll = DateTime.Now;
-
-                if (probe == null)
-                {
-                    ActivityLog.Log(Channel, "FAIL[probe] — in-page script evaluation failed.");
-                    SetUnavailable("page not readable");
-                    return;
-                }
-
-                if (probe.AuthWall)
-                {
-                    ActivityLog.Log(Channel,
-                        $"FAIL[auth-wall] — page looks like a login wall. url=\"{Trim(probe.Url)}\", meters={probe.MeterCount}. Sign in to claude.ai in a normal tab.");
-                    SetUnavailable("hit a login/auth wall — sign in to claude.ai");
-                    return;
-                }
-
-                if (probe.MeterCount == 0)
-                {
-                    ActivityLog.Log(Channel, $"FAIL[meter-not-found] — [role=\"meter\"] never appeared after {HydrationMaxWaitMs}ms.");
-                    SetUnavailable("meter not found on usage page");
-                    return;
-                }
-
-                var reading = ExtractReading(probe);
-                if (reading.SessionPercent == null && reading.WeeklyPercent == null)
-                {
-                    ActivityLog.Log(Channel, $"FAIL[meter-malformed] — found {probe.MeterCount} meter(s) but none had parseable values: {DescribeMeters(probe)}");
-                    SetUnavailable("meter present but value unreadable");
-                    return;
-                }
-
-                _percent = reading.SessionPercent;
-                _resetTarget = ParseResetTarget(reading.SessionResetLabel);
-                _weeklyPercent = reading.WeeklyPercent;
-                _weeklyResetTarget = ParseResetTarget(reading.WeeklyResetLabel);
-
-                ActivityLog.Log(Channel,
-                    $"OK[read] — Session: {_percent}% (valuetext=\"{reading.SessionValueText}\"), " +
-                    $"Weekly: {_weeklyPercent}% (valuetext=\"{reading.WeeklyValueText}\").");
-
-                if (_percent.HasValue)
-                    UpdateProjection(_percent.Value, _resetTarget, _lastPoll.Value);
-                if (_weeklyPercent.HasValue)
-                    UpdateWeeklyProjection(_weeklyPercent.Value, _weeklyResetTarget, _lastPoll.Value);
-
-                Emit(ClaudeUsageMeterState.Ok);
             }
             catch (Exception ex)
             {
@@ -324,8 +215,6 @@ namespace BuildConsole.Services
                   (_weeklyPercent.HasValue && _weeklyPercent.Value >= CountdownThresholdPercent && _weeklyResetTarget.HasValue)) ||
                  _projectedFullTarget.HasValue || _weeklyProjectedFullTarget.HasValue);
 
-            // Git #1437 — Secondary's countdown/projection ticks independently: it must keep
-            // re-rendering even when Primary is Unavailable/Error (and vice versa).
             bool secondaryTickNeeded = _secondaryLastState == ClaudeUsageMeterState.Ok &&
                 ((_secondaryWeeklyPercent.HasValue && _secondaryWeeklyPercent.Value >= CountdownThresholdPercent && _secondaryWeeklyResetTarget.HasValue) ||
                  _secondaryWeeklyProjectedFullTarget.HasValue);
@@ -347,224 +236,254 @@ namespace BuildConsole.Services
             Emit(state, reason);
         }
 
-        // ── CLI Execution & Parsing ─────────────────────────────────────────
+        // ── OAuth API Execution & Parsing ────────────────────────────────────
 
-        /// <summary>Resolves path to the installed `claude.exe` CLI.</summary>
-        internal static string ResolveClaudeExe()
+        /// <summary>Expand a leading `~` in a configured path to the user's profile directory.</summary>
+        private static string ExpandUserPath(string? path)
         {
-            string userProfileExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
-            if (File.Exists(userProfileExe)) return userProfileExe;
-
-            string? pathVar = Environment.GetEnvironmentVariable("PATH");
-            if (!string.IsNullOrEmpty(pathVar))
+            if (string.IsNullOrWhiteSpace(path)) return "";
+            path = path.Trim();
+            if (path == "~" || path.StartsWith("~/") || path.StartsWith("~\\"))
             {
-                foreach (var part in pathVar.Split(Path.PathSeparator))
-                {
-                    if (string.IsNullOrWhiteSpace(part)) continue;
-                    string candidate = Path.Combine(part.Trim(), "claude.exe");
-                    if (File.Exists(candidate)) return candidate;
-                }
+                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                string rest = path.Length <= 1 ? "" : path.Substring(2);
+                return string.IsNullOrEmpty(rest) ? home : Path.Combine(home, rest);
             }
-            return userProfileExe;
+            return path;
         }
 
-        /// <summary>Spawns `claude.exe -p --no-session-persistence "/usage"` with immediate stdin close and 20s timeout.
-        /// When <paramref name="secondaryConfigDirOverride"/> is set (Git #1437), the spawned process's
-        /// CLAUDE_CONFIG_DIR is pointed at it and the inherited CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY
-        /// are stripped so the call genuinely authenticates as that config dir's own session instead of
-        /// silently falling through to whatever account the inherited token/env selects — the exact
-        /// env-stripping fix pattern already proven in QueueWatcherService.cs (Git #1420).</summary>
-        private async Task<(bool success, string output, string error)> RunClaudeCliUsageAsync(string? secondaryConfigDirOverride = null)
+        internal static string? ReadAccessToken(string configDir)
         {
-            string exe = ResolveClaudeExe();
-            if (!File.Exists(exe))
-            {
-                return (false, string.Empty, $"claude.exe not found at {exe}");
-            }
-
-            var psi = new ProcessStartInfo
-            {
-                FileName = exe,
-                Arguments = "--safe-mode -p --no-session-persistence \"/usage\"",
-                // Git #1985 — genuinely tolerable: this only runs `claude -p "/usage"`, a
-                // standalone account-usage query that reads no repo state, so the cwd it runs
-                // in doesn't change the result. Falls back to the exe's own directory (a real
-                // path on this machine, not a hardcoded one) rather than repo root when unresolved.
-                WorkingDirectory = BuildTrackerConfig.FindRepoRoot() ?? Path.GetDirectoryName(exe),
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                StandardOutputEncoding = Encoding.UTF8,
-                StandardErrorEncoding = Encoding.UTF8,
-            };
-            psi.Environment.Remove("ELECTRON_RUN_AS_NODE");
-
-            if (!string.IsNullOrWhiteSpace(secondaryConfigDirOverride))
-            {
-                psi.Environment["CLAUDE_CONFIG_DIR"] = secondaryConfigDirOverride;
-                bool hadOAuthToken = psi.Environment.Remove("CLAUDE_CODE_OAUTH_TOKEN");
-                bool hadApiKey = psi.Environment.Remove("ANTHROPIC_API_KEY");
-                ActivityLog.Log(Channel, $"[secondary] usage poll routed to CLAUDE_CONFIG_DIR={secondaryConfigDirOverride}" +
-                    (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")})" : "") + ".");
-            }
-            else
-            {
-                // Primary poll MUST unconditionally target the default (~/.claude) account.
-                // Strip CLAUDE_CONFIG_DIR (if process or system env set it to secondary/custom)
-                // and any inherited secondary tokens so Primary always polls the default ~/.claude session.
-                psi.Environment.Remove("CLAUDE_CONFIG_DIR");
-                psi.Environment.Remove("CLAUDE_CODE_OAUTH_TOKEN");
-                psi.Environment.Remove("ANTHROPIC_API_KEY");
-            }
-
-            using var process = new Process { StartInfo = psi };
             try
             {
-                process.Start();
-                // Close standard input immediately so claude CLI proceeds without waiting
-                process.StandardInput.Close();
+                string credentialsPath = Path.Combine(configDir, ".credentials.json");
+                if (!File.Exists(credentialsPath)) return null;
 
-                var outputTask = process.StandardOutput.ReadToEndAsync();
-                var errorTask = process.StandardError.ReadToEndAsync();
+                string json = File.ReadAllText(credentialsPath);
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
 
-                var completedTask = await Task.WhenAny(
-                    Task.WhenAll(outputTask, errorTask),
-                    Task.Delay(CliUsagePollTimeout)
-                );
-
-                if (completedTask != Task.WhenAll(outputTask, errorTask))
+                if (root.TryGetProperty("claudeAiOauth", out var oauthEl) ||
+                    root.TryGetProperty("claude_ai_oauth", out oauthEl))
                 {
-                    try { process.Kill(entireProcessTree: true); } catch { }
-                    string timeoutReason = $"timed out after {(int)CliUsagePollTimeout.TotalSeconds}s";
-                    ActivityLog.Log(Channel, $"claude CLI usage poll {timeoutReason} (claude.exe -p /usage); killing process.");
-                    return (false, string.Empty, timeoutReason);
+                    if (oauthEl.TryGetProperty("accessToken", out var tokenEl) ||
+                        oauthEl.TryGetProperty("access_token", out tokenEl))
+                    {
+                        string? token = tokenEl.GetString();
+                        if (!string.IsNullOrWhiteSpace(token)) return token.Trim();
+                    }
                 }
-
-                await process.WaitForExitAsync();
-                string output = await outputTask;
-                string error = await errorTask;
-
-                if (process.ExitCode != 0 && string.IsNullOrWhiteSpace(output))
-                {
-                    return (false, output, $"Exit code {process.ExitCode}: {error}");
-                }
-
-                return (true, output, error);
             }
             catch (Exception ex)
             {
-                return (false, string.Empty, ex.Message);
+                ActivityLog.Log(Channel, $"Failed to read credentials from {configDir}: {ex.Message}");
+            }
+            return null;
+        }
+
+        private struct ApiPollResult
+        {
+            public bool success;
+            public bool notSignedIn;
+            public string? rawJson;
+            public int? sessionPercent;
+            public DateTime? sessionReset;
+            public int? weeklyPercent;
+            public DateTime? weeklyReset;
+            public string? error;
+        }
+
+        private async Task<ApiPollResult> PollAccountViaApiAsync(string configDir, bool isSecondary)
+        {
+            string accountLabel = isSecondary ? "[secondary] " : "";
+            string? token = ReadAccessToken(configDir);
+
+            if (string.IsNullOrEmpty(token))
+            {
+                ActivityLog.Log(Channel, $"{accountLabel}Credentials file missing or lacks accessToken at {configDir}");
+                return new ApiPollResult { success = false, notSignedIn = true, error = "not signed in" };
+            }
+
+            var (status, jsonText, error, retryAfter) = await ExecuteApiRequestAsync(token);
+
+            // 401 / 403 handling: re-read credentials file once; if token changed, retry once.
+            if (status == HttpStatusCode.Unauthorized || status == HttpStatusCode.Forbidden)
+            {
+                ActivityLog.Log(Channel, $"{accountLabel}Received {status} from usage API; checking if token was refreshed...");
+                string? newToken = ReadAccessToken(configDir);
+                if (!string.IsNullOrEmpty(newToken) && newToken != token)
+                {
+                    ActivityLog.Log(Channel, $"{accountLabel}Token changed on disk; retrying API call with refreshed token.");
+                    (status, jsonText, error, retryAfter) = await ExecuteApiRequestAsync(newToken);
+                }
+            }
+
+            if (status == HttpStatusCode.TooManyRequests)
+            {
+                ActivityLog.Log(Channel, $"{accountLabel}Usage API rate limited (429). Retry-After: {retryAfter?.ToString() ?? "unspecified"}.");
+                return new ApiPollResult { success = false, notSignedIn = false, error = "rate limited (429)" };
+            }
+
+            if (status == HttpStatusCode.Unauthorized || status == HttpStatusCode.Forbidden)
+            {
+                ActivityLog.Log(Channel, $"{accountLabel}Usage API authentication failed ({status}).");
+                return new ApiPollResult { success = false, notSignedIn = true, error = "session expired / sign in to Claude Code" };
+            }
+
+            if (status != HttpStatusCode.OK || string.IsNullOrWhiteSpace(jsonText))
+            {
+                ActivityLog.Log(Channel, $"{accountLabel}Usage API returned error: {error ?? status.ToString()}");
+                return new ApiPollResult { success = false, notSignedIn = false, error = error ?? $"HTTP {(int)status}" };
+            }
+
+            // Log full raw JSON payload once on first successful poll
+            if (!isSecondary && !_primaryLoggedRawJson)
+            {
+                _primaryLoggedRawJson = true;
+                ActivityLog.Log(Channel, $"Primary raw JSON response: {jsonText}");
+            }
+            else if (isSecondary && !_secondaryLoggedRawJson)
+            {
+                _secondaryLoggedRawJson = true;
+                ActivityLog.Log(Channel, $"[secondary] Secondary raw JSON response: {jsonText}");
+            }
+
+            var (sessionPercent, sessionReset, weeklyPercent, weeklyReset) = ParseOAuthUsageJson(jsonText);
+            return new ApiPollResult
+            {
+                success = true,
+                rawJson = jsonText,
+                sessionPercent = sessionPercent,
+                sessionReset = sessionReset,
+                weeklyPercent = weeklyPercent,
+                weeklyReset = weeklyReset
+            };
+        }
+
+        private static async Task<(HttpStatusCode status, string? body, string? error, TimeSpan? retryAfter)> ExecuteApiRequestAsync(string accessToken)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, UsageApiEndpoint);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
+                request.Headers.Add("anthropic-beta", "oauth-2025-04-20");
+                request.Headers.UserAgent.ParseAdd("BuildConsole/1.0");
+
+                using var response = await _httpClient.SendAsync(request);
+                string body = await response.Content.ReadAsStringAsync();
+
+                TimeSpan? retryAfter = null;
+                if (response.Headers.RetryAfter != null)
+                {
+                    retryAfter = response.Headers.RetryAfter.Delta ?? (response.Headers.RetryAfter.Date.HasValue ? response.Headers.RetryAfter.Date.Value - DateTimeOffset.Now : null);
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return (response.StatusCode, body, null, retryAfter);
+                }
+                return (response.StatusCode, null, $"HTTP {(int)response.StatusCode}: {Trim(body)}", retryAfter);
+            }
+            catch (Exception ex)
+            {
+                return (HttpStatusCode.InternalServerError, null, ex.Message, null);
             }
         }
 
-        /// <summary>
-        /// Parses the output of `claude -p /usage`, extracting both the **Current session**
-        /// and the **All Models** tiers.
-        ///
-        /// Output example:
-        /// "Current session: 7% used · resets Aug 23, 7:50pm (America/New_York)
-        ///  Current week (all models): 99% used · resets Aug 23, 9pm (America/New_York)
-        ///  Current week (Fable): 15% used · resets Aug 23, 9pm (America/New_York)"
-        /// </summary>
-        internal static (int? sessionPercent, string sessionReset, int? weeklyPercent, string weeklyReset) ParseCliUsageOutput(string output)
+        internal static (int? sessionPercent, DateTime? sessionReset, int? weeklyPercent, DateTime? weeklyReset) ParseOAuthUsageJson(string json)
         {
-            if (string.IsNullOrWhiteSpace(output)) return (null, string.Empty, null, string.Empty);
+            if (string.IsNullOrWhiteSpace(json)) return (null, null, null, null);
 
             int? sessionPercent = null;
-            string sessionReset = string.Empty;
+            DateTime? sessionReset = null;
             int? weeklyPercent = null;
-            string weeklyReset = string.Empty;
+            DateTime? weeklyReset = null;
 
-            var lines = output.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-            foreach (var line in lines)
+            try
             {
-                // 1. Current Session
-                if (Regex.IsMatch(line, @"current\s+session", RegexOptions.IgnoreCase))
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                // 1. Top-level object keys: "five_hour" (Session) and "seven_day" (Weekly)
+                if (root.TryGetProperty("five_hour", out var fiveHour) && fiveHour.ValueKind == JsonValueKind.Object)
                 {
-                    var match = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
-                    if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
+                    if (fiveHour.TryGetProperty("utilization", out var util) && util.ValueKind == JsonValueKind.Number)
                     {
-                        sessionPercent = Clamp(p);
-                        sessionReset = match.Groups[2].Success ? match.Groups[2].Value.Trim() : string.Empty;
+                        sessionPercent = Clamp(util.GetDouble());
+                    }
+                    if (fiveHour.TryGetProperty("resets_at", out var resetsAt) && resetsAt.ValueKind == JsonValueKind.String)
+                    {
+                        sessionReset = ParseIsoTimestamp(resetsAt.GetString());
                     }
                 }
-                // 2. All Models (Weekly)
-                else if (Regex.IsMatch(line, @"all\s+models?", RegexOptions.IgnoreCase))
+
+                if (root.TryGetProperty("seven_day", out var sevenDay) && sevenDay.ValueKind == JsonValueKind.Object)
                 {
-                    var match = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
-                    if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
+                    if (sevenDay.TryGetProperty("utilization", out var util) && util.ValueKind == JsonValueKind.Number)
                     {
-                        weeklyPercent = Clamp(p);
-                        weeklyReset = match.Groups[2].Success ? match.Groups[2].Value.Trim() : string.Empty;
+                        weeklyPercent = Clamp(util.GetDouble());
+                    }
+                    if (sevenDay.TryGetProperty("resets_at", out var resetsAt) && resetsAt.ValueKind == JsonValueKind.String)
+                    {
+                        weeklyReset = ParseIsoTimestamp(resetsAt.GetString());
+                    }
+                }
+
+                // 2. Fallback / supplementary check via "limits" array if top-level fields were missing
+                if (root.TryGetProperty("limits", out var limits) && limits.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in limits.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.Object) continue;
+
+                        string kind = item.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String ? (k.GetString() ?? "") : "";
+                        string group = item.TryGetProperty("group", out var g) && g.ValueKind == JsonValueKind.String ? (g.GetString() ?? "") : "";
+
+                        int? pct = null;
+                        if (item.TryGetProperty("percent", out var pVal) && pVal.ValueKind == JsonValueKind.Number)
+                        {
+                            pct = Clamp(pVal.GetDouble());
+                        }
+                        else if (item.TryGetProperty("utilization", out var uVal) && uVal.ValueKind == JsonValueKind.Number)
+                        {
+                            pct = Clamp(uVal.GetDouble());
+                        }
+
+                        DateTime? reset = null;
+                        if (item.TryGetProperty("resets_at", out var rVal) && rVal.ValueKind == JsonValueKind.String)
+                        {
+                            reset = ParseIsoTimestamp(rVal.GetString());
+                        }
+
+                        if ((kind.Equals("session", StringComparison.OrdinalIgnoreCase) || group.Equals("session", StringComparison.OrdinalIgnoreCase)) && pct.HasValue)
+                        {
+                            sessionPercent ??= pct;
+                            sessionReset ??= reset;
+                        }
+                        else if ((kind.Equals("weekly_all", StringComparison.OrdinalIgnoreCase) || group.Equals("weekly", StringComparison.OrdinalIgnoreCase)) && pct.HasValue)
+                        {
+                            weeklyPercent ??= pct;
+                            weeklyReset ??= reset;
+                        }
                     }
                 }
             }
-
-            // Fallbacks: if we didn't find specific labels, let's look through all matches
-            if (sessionPercent == null)
+            catch (Exception ex)
             {
-                // First line if any
-                foreach (var line in lines)
-                {
-                    if (Regex.IsMatch(line, @"session", RegexOptions.IgnoreCase))
-                    {
-                        var match = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
-                        if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
-                        {
-                            sessionPercent = Clamp(p);
-                            sessionReset = match.Groups[2].Success ? match.Groups[2].Value.Trim() : string.Empty;
-                            break;
-                        }
-                    }
-                }
-            }
-            if (weeklyPercent == null)
-            {
-                foreach (var line in lines)
-                {
-                    if (Regex.IsMatch(line, @"all\s+models|week", RegexOptions.IgnoreCase))
-                    {
-                        var match = Regex.Match(line, @":\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n]+))?", RegexOptions.IgnoreCase);
-                        if (match.Success && double.TryParse(match.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
-                        {
-                            weeklyPercent = Clamp(p);
-                            weeklyReset = match.Groups[2].Success ? match.Groups[2].Value.Trim() : string.Empty;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Absolute general fallback
-            if (sessionPercent == null || weeklyPercent == null)
-            {
-                var matches = Regex.Matches(output, @"(?:([a-zA-Z\s()]+):)?\s*(\d+(?:\.\d+)?)\s*%\s*used(?:[^\r\n·]*·\s*resets?\s+([^\r\n·]+))?", RegexOptions.IgnoreCase);
-                int foundCount = 0;
-                foreach (Match m in matches)
-                {
-                    if (!m.Success) continue;
-                    if (double.TryParse(m.Groups[2].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p))
-                    {
-                        int val = Clamp(p);
-                        string reset = m.Groups[3].Value.Trim();
-                        if (foundCount == 0 && sessionPercent == null)
-                        {
-                            sessionPercent = val;
-                            sessionReset = reset;
-                        }
-                        else if (weeklyPercent == null)
-                        {
-                            weeklyPercent = val;
-                            weeklyReset = reset;
-                        }
-                        foundCount++;
-                    }
-                }
+                ActivityLog.Log(Channel, $"Failed to parse OAuth usage JSON: {ex.Message}");
             }
 
             return (sessionPercent, sessionReset, weeklyPercent, weeklyReset);
+        }
+
+        internal static DateTime? ParseIsoTimestamp(string? isoString)
+        {
+            if (string.IsNullOrWhiteSpace(isoString)) return null;
+            if (DateTimeOffset.TryParse(isoString, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var dto))
+            {
+                return dto.LocalDateTime;
+            }
+            return null;
         }
 
         // ── time-until-100% projection ──────────────────────────────────────
@@ -577,7 +496,7 @@ namespace BuildConsole.Services
                 bool stored = UsageHistoryStore.Append(sample);
                 ActivityLog.Log(Channel,
                     $"data-point {(stored ? "stored" : "NOT stored")}: {percent}% at {pollMoment:yyyy-MM-dd HH:mm:ss}"
-                    + (resetTarget.HasValue ? $" (reset target {resetTarget.Value:ddd HH:mm})" : " (reset target unparsed)") + ".");
+                    + (resetTarget.HasValue ? $" (reset target {resetTarget.Value:ddd HH:mm})" : " (reset target none)") + ".");
 
                 var projection = UsageProjection.Compute(UsageHistoryStore.ReadAll(), pollMoment);
                 if (projection.HasProjection && projection.TimeTo100.HasValue)
@@ -612,7 +531,7 @@ namespace BuildConsole.Services
                 bool stored = WeeklyUsageHistoryStore.Append(sample);
                 ActivityLog.Log(Channel,
                     $"weekly data-point {(stored ? "stored" : "NOT stored")}: {percent}% at {pollMoment:yyyy-MM-dd HH:mm:ss}"
-                    + (resetTarget.HasValue ? $" (weekly reset target {resetTarget.Value:ddd HH:mm})" : " (weekly reset target unparsed)") + ".");
+                    + (resetTarget.HasValue ? $" (weekly reset target {resetTarget.Value:ddd HH:mm})" : " (weekly reset target none)") + ".");
 
                 var projection = UsageProjection.Compute(WeeklyUsageHistoryStore.ReadAll(), pollMoment);
                 if (projection.HasProjection && projection.TimeTo100.HasValue)
@@ -639,27 +558,8 @@ namespace BuildConsole.Services
             }
         }
 
-        // ── Git #1437 — Secondary account poll ──────────────────────────────
+        // ── Secondary account poll ──────────────────────────────────────────
 
-        /// <summary>Expand a leading `~` in a configured path to the current user's profile
-        /// directory (mirrors QueueWatcherService's ExpandUserPath, Git #1416).</summary>
-        private static string ExpandUserPath(string? path)
-        {
-            if (string.IsNullOrWhiteSpace(path)) return "";
-            path = path.Trim();
-            if (path == "~" || path.StartsWith("~/") || path.StartsWith("~\\"))
-            {
-                string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-                string rest = path.Length <= 1 ? "" : path.Substring(2);
-                return string.IsNullOrEmpty(rest) ? home : Path.Combine(home, rest);
-            }
-            return path;
-        }
-
-        /// <summary>One independent poll of the Secondary account's weekly (All Models) usage —
-        /// CLI-only (no WebView2 fallback), run every cycle alongside the Primary poll above. Per
-        /// the issue's standing rule: on any failure this shows an honest Unavailable/Error state,
-        /// it never silently falls back to displaying Primary's numbers under the Secondary label.</summary>
         private async Task PollSecondaryAsync()
         {
             try
@@ -670,7 +570,7 @@ namespace BuildConsole.Services
 
                 if (!_secondaryConfigured)
                 {
-                    ActivityLog.Log(Channel, "[secondary] SecondaryClaudeConfigDir is unset/blank — showing 'not configured', not Primary's numbers.");
+                    ActivityLog.Log(Channel, "[secondary] SecondaryClaudeConfigDir is unset/blank — showing 'not configured'.");
                     SetSecondaryUnavailable("not configured");
                     return;
                 }
@@ -682,39 +582,26 @@ namespace BuildConsole.Services
                     return;
                 }
 
-                var (cliSuccess, cliOutput, cliError) = await RunClaudeCliUsageAsync(secondaryDir);
-                if (!cliSuccess || string.IsNullOrWhiteSpace(cliOutput))
+                var res = await PollAccountViaApiAsync(secondaryDir, isSecondary: true);
+                if (res.success)
                 {
-                    ActivityLog.Log(Channel, $"[secondary] CLI poll failed: {cliError}.");
-                    SetSecondaryUnavailable(string.IsNullOrWhiteSpace(cliError) ? "secondary poll failed" : cliError, ClaudeUsageMeterState.Error);
-                    return;
+                    _secondaryWeeklyPercent = res.weeklyPercent;
+                    _secondaryWeeklyResetTarget = res.weeklyReset;
+                    _secondaryLastPoll = DateTime.Now;
+                    _secondaryLastState = ClaudeUsageMeterState.Ok;
+                    _secondaryLastReason = null;
+
+                    ActivityLog.Log(Channel,
+                        $"[secondary] OK[api] — Weekly: {(_secondaryWeeklyPercent.HasValue ? _secondaryWeeklyPercent.Value + "%" : "--")} (reset target={(_secondaryWeeklyResetTarget.HasValue ? _secondaryWeeklyResetTarget.Value.ToString("ddd HH:mm") : "none")}).");
+
+                    if (_secondaryWeeklyPercent.HasValue)
+                        UpdateSecondaryWeeklyProjection(_secondaryWeeklyPercent.Value, _secondaryWeeklyResetTarget, _secondaryLastPoll.Value);
                 }
-
-                var (parsedSessionPercent, parsedSessionReset, parsedWeeklyPercent, parsedWeeklyReset) = ParseCliUsageOutput(cliOutput);
-                int? effectiveWeeklyPercent = parsedWeeklyPercent ?? parsedSessionPercent;
-                string effectiveWeeklyReset = !string.IsNullOrEmpty(parsedWeeklyReset) ? parsedWeeklyReset : parsedSessionReset;
-
-                if (!effectiveWeeklyPercent.HasValue)
+                else
                 {
-                    ActivityLog.Log(Channel, $"[secondary] CLI returned output but weekly usage could not be parsed. Output: {Trim(cliOutput)}");
-                    SetSecondaryUnavailable("secondary usage unreadable");
-                    return;
+                    var state = res.notSignedIn ? ClaudeUsageMeterState.Unavailable : ClaudeUsageMeterState.Error;
+                    SetSecondaryUnavailable(res.error ?? "secondary poll failed", state);
                 }
-
-                _secondaryWeeklyPercent = effectiveWeeklyPercent;
-                _secondaryWeeklyResetTarget = ParseResetTarget(effectiveWeeklyReset);
-                if (!string.IsNullOrEmpty(effectiveWeeklyReset) && !_secondaryWeeklyResetTarget.HasValue)
-                {
-                    ActivityLog.Log(Channel, $"[secondary] Unparseable weekly reset label emitted: \"{effectiveWeeklyReset}\"");
-                }
-                _secondaryLastPoll = DateTime.Now;
-                _secondaryLastState = ClaudeUsageMeterState.Ok;
-                _secondaryLastReason = null;
-
-                ActivityLog.Log(Channel,
-                    $"[secondary] OK[cli] — Weekly: {_secondaryWeeklyPercent}% used (reset target={(_secondaryWeeklyResetTarget.HasValue ? _secondaryWeeklyResetTarget.Value.ToString("ddd HH:mm") : "unparsed")}).");
-
-                UpdateSecondaryWeeklyProjection(_secondaryWeeklyPercent.Value, _secondaryWeeklyResetTarget, _secondaryLastPoll.Value);
             }
             catch (Exception ex)
             {
@@ -741,7 +628,7 @@ namespace BuildConsole.Services
                 bool stored = SecondaryWeeklyUsageHistoryStore.Append(sample);
                 ActivityLog.Log(Channel,
                     $"[secondary] weekly data-point {(stored ? "stored" : "NOT stored")}: {percent}% at {pollMoment:yyyy-MM-dd HH:mm:ss}"
-                    + (resetTarget.HasValue ? $" (weekly reset target {resetTarget.Value:ddd HH:mm})" : " (weekly reset target unparsed)") + ".");
+                    + (resetTarget.HasValue ? $" (weekly reset target {resetTarget.Value:ddd HH:mm})" : " (weekly reset target none)") + ".");
 
                 var projection = UsageProjection.Compute(SecondaryWeeklyUsageHistoryStore.ReadAll(), pollMoment);
                 if (projection.HasProjection && projection.TimeTo100.HasValue)
@@ -768,7 +655,7 @@ namespace BuildConsole.Services
             }
         }
 
-        // ── reset-label parsing ─────────────────────────────────────────────
+        // ── reset-label parsing helper (for external callers) ─────────────────
 
         private static readonly Dictionary<string, int> MonthNames = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -794,33 +681,7 @@ namespace BuildConsole.Services
         };
 
         /// <summary>
-        /// <summary>
-        /// Returns the upcoming Sunday 9:00 PM Eastern Time (America/New_York) reset moment,
-        /// expressed in the user's LOCAL timezone.
-        /// </summary>
-        internal static DateTime GetNextWeeklyResetTarget(DateTime? nowOverride = null)
-        {
-            var now = nowOverride ?? DateTime.Now;
-            var eastern = ResolveTimeZone("America/New_York");
-            var nowEt = TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local, eastern);
-
-            int daysUntilSunday = ((int)DayOfWeek.Sunday - (int)nowEt.DayOfWeek + 7) % 7;
-            if (daysUntilSunday == 0 && (nowEt.Hour > 21 || (nowEt.Hour == 21 && nowEt.Minute > 0)))
-            {
-                daysUntilSunday = 7;
-            }
-
-            var nextSundayEt = new DateTime(nowEt.Year, nowEt.Month, nowEt.Day, 21, 0, 0, DateTimeKind.Unspecified).AddDays(daysUntilSunday);
-            var nextSundayUtc = TimeZoneInfo.ConvertTimeToUtc(nextSundayEt, eastern);
-            return TimeZoneInfo.ConvertTimeFromUtc(nextSundayUtc, TimeZoneInfo.Local);
-        }
-
-        /// <summary>
-        /// Parses a reset string into a LOCAL datetime.
-        /// Handles:
-        /// - Date + Time + TimeZone: "Aug 23, 9pm (America/New_York)", "Aug 23, 7:50pm (America/New_York)", "Aug 23 21:00 (UTC)"
-        /// - Weekday + Time: "Resets Sun 9:00 PM", "Sunday 9pm ET"
-        /// - Bare Time: "9:00 PM", "21:00", "1:00 AM" (UTC reset time)
+        /// Parses a text reset label into a LOCAL datetime. Returns null if unparseable (no guessed fallback).
         /// </summary>
         internal static DateTime? ParseResetTarget(string? label, DateTime? nowOverride = null)
         {
@@ -828,7 +689,6 @@ namespace BuildConsole.Services
             var now = nowOverride ?? DateTime.Now;
             string lower = label.ToLowerInvariant();
 
-            // 0. Relative time: "Resets in 1 hr 27 min", "in 45 min", "in 2 hours", "Resets in 1h 27m"
             var relativeMatch = Regex.Match(lower, @"(?:resets?\s+)?in\s+(?:(\d+)\s*(?:hrs?|hours?|h))?\s*(?:(\d+)\s*(?:mins?|minutes?|m))?", RegexOptions.IgnoreCase);
             if (relativeMatch.Success && (relativeMatch.Groups[1].Success || relativeMatch.Groups[2].Success))
             {
@@ -842,7 +702,6 @@ namespace BuildConsole.Services
                 }
             }
 
-            // 1. Month Date + Time: "Aug 23, 9pm (America/New_York)" / "Aug 23, 7:50pm" / "August 23 21:00 (UTC)"
             var fullDateMatch = Regex.Match(lower, @"([a-z]{3,9})\s+(\d{1,2}),?\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s*\(([^)]+)\))?");
             if (fullDateMatch.Success && MonthNames.TryGetValue(fullDateMatch.Groups[1].Value, out int month))
             {
@@ -854,8 +713,6 @@ namespace BuildConsole.Services
                 else if (mer == "am" && hour == 12) hour = 0;
 
                 string tzName = fullDateMatch.Groups[6].Success ? fullDateMatch.Groups[6].Value.Trim() : string.Empty;
-                
-                // If tzName was not in parens, check if the string contains a trailing timezone indicator
                 if (string.IsNullOrWhiteSpace(tzName))
                 {
                     if (lower.Contains("utc") || lower.Contains("gmt")) tzName = "utc";
@@ -864,16 +721,9 @@ namespace BuildConsole.Services
                     else if (lower.Contains("ct") || lower.Contains("cst") || lower.Contains("cdt") || lower.Contains("central")) tzName = "America/Chicago";
                 }
 
-                // If no timezone is specified and hour is 1am / 01:00 (standard UTC reset time for 9pm ET), treat as UTC
-                TimeZoneInfo sourceTz;
-                if (string.IsNullOrWhiteSpace(tzName))
-                {
-                    sourceTz = (hour == 1 && minute == 0) ? TimeZoneInfo.Utc : ResolveTimeZone("America/New_York");
-                }
-                else
-                {
-                    sourceTz = ResolveTimeZone(tzName);
-                }
+                TimeZoneInfo sourceTz = string.IsNullOrWhiteSpace(tzName)
+                    ? ((hour == 1 && minute == 0) ? TimeZoneInfo.Utc : ResolveTimeZone("America/New_York"))
+                    : ResolveTimeZone(tzName);
 
                 int year = now.Year;
                 try
@@ -882,7 +732,6 @@ namespace BuildConsole.Services
                     var sourceUtc = TimeZoneInfo.ConvertTimeToUtc(sourceDt, sourceTz);
                     var localTarget = TimeZoneInfo.ConvertTimeFromUtc(sourceUtc, TimeZoneInfo.Local);
 
-                    // If candidate was in the past by more than 180 days (e.g. year turnover), advance year
                     if (localTarget < now.AddDays(-180))
                     {
                         sourceDt = new DateTime(year + 1, month, day, hour, minute, 0, DateTimeKind.Unspecified);
@@ -894,7 +743,6 @@ namespace BuildConsole.Services
                 catch { }
             }
 
-            // 2. Weekday + Time: "Resets Sun 9:00 PM", "Sunday 9pm ET"
             var tm = Regex.Match(lower, @"(\d{1,2})(?::(\d{2}))?\s*(am|pm)?");
             if (tm.Success)
             {
@@ -906,14 +754,7 @@ namespace BuildConsole.Services
 
                 if (thour <= 23 && tminute <= 59)
                 {
-                    // Check if it's the standard Sunday 9pm reset
-                    bool isSunday = lower.Contains("sun");
                     bool isEastern = lower.Contains("et") || lower.Contains("eastern") || lower.Contains("new_york");
-                    if (isSunday && (thour == 21 || (thour == 9 && tmer == "pm")))
-                    {
-                        return GetNextWeeklyResetTarget(now);
-                    }
-
                     TimeZoneInfo sourceTz = isEastern ? ResolveTimeZone("America/New_York") : (thour == 1 && tminute == 0 ? TimeZoneInfo.Utc : TimeZoneInfo.Local);
                     var nowInSource = TimeZoneInfo.ConvertTime(now, TimeZoneInfo.Local, sourceTz);
 
@@ -950,40 +791,30 @@ namespace BuildConsole.Services
         internal static TimeZoneInfo ResolveTimeZone(string tzName)
         {
             if (string.IsNullOrWhiteSpace(tzName)) return TimeZoneInfo.Local;
-
-            // 1. Exact system match (Windows or IANA on .NET 6+)
             if (TimeZoneInfo.TryFindSystemTimeZoneById(tzName, out var tz)) return tz;
 
             string lower = tzName.ToLowerInvariant().Trim();
-
-            // 2. UTC / GMT
             if (lower == "utc" || lower == "gmt" || lower == "z" || lower.Contains("universal") || lower.Contains("etc/utc") || lower.Contains("etc/gmt"))
-            {
                 return TimeZoneInfo.Utc;
-            }
 
-            // 3. Eastern (ET / EDT / EST / America/New_York / US/Eastern)
             if (lower.Contains("new_york") || lower.Contains("eastern") || lower.Contains("detroit") || lower.Contains("toronto") || lower == "et" || lower == "est" || lower == "edt" || lower.Contains("us/eastern"))
             {
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("Eastern Standard Time", out var est)) return est;
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("America/New_York", out var any)) return any;
             }
 
-            // 4. Central (CT / CDT / CST / America/Chicago / US/Central)
             if (lower.Contains("chicago") || lower.Contains("central") || lower == "ct" || lower == "cst" || lower == "cdt" || lower.Contains("us/central"))
             {
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("Central Standard Time", out var cst)) return cst;
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("America/Chicago", out var ach)) return ach;
             }
 
-            // 5. Mountain (MT / MDT / MST / America/Denver / US/Mountain)
             if (lower.Contains("denver") || lower.Contains("mountain") || lower == "mt" || lower == "mst" || lower == "mdt" || lower.Contains("us/mountain"))
             {
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("Mountain Standard Time", out var mst)) return mst;
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("America/Denver", out var ade)) return ade;
             }
 
-            // 6. Pacific (PT / PDT / PST / America/Los_Angeles / US/Pacific)
             if (lower.Contains("los_angeles") || lower.Contains("pacific") || lower == "pt" || lower == "pst" || lower == "pdt" || lower.Contains("us/pacific"))
             {
                 if (TimeZoneInfo.TryFindSystemTimeZoneById("Pacific Standard Time", out var pst)) return pst;
@@ -1063,7 +894,7 @@ namespace BuildConsole.Services
             tip.Append("Claude usage meter (Current Session)");
             tip.Append(state switch
             {
-                ClaudeUsageMeterState.Polling => "\nChecking Claude usage via CLI (claude -p /usage)…",
+                ClaudeUsageMeterState.Polling => "\nChecking Claude usage via Anthropic OAuth API…",
                 ClaudeUsageMeterState.Unavailable => $"\nUnavailable{(string.IsNullOrEmpty(reason) ? "" : $" ({reason})")} — is claude CLI logged in?",
                 ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(reason) ? "" : $": {reason}")}",
                 _ => _percent.HasValue ? $"\n{_percent.Value}% of the Current Session window used" : "",
@@ -1106,7 +937,7 @@ namespace BuildConsole.Services
             tip.Append("Claude usage meter (All Models tier)");
             tip.Append(state switch
             {
-                ClaudeUsageMeterState.Polling => "\nChecking Claude usage via CLI (claude -p /usage)…",
+                ClaudeUsageMeterState.Polling => "\nChecking Claude usage via Anthropic OAuth API…",
                 ClaudeUsageMeterState.Unavailable => $"\nUnavailable{(string.IsNullOrEmpty(reason) ? "" : $" ({reason})")} — is claude CLI logged in?",
                 ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(reason) ? "" : $": {reason}")}",
                 _ => _weeklyPercent.HasValue ? $"\n{_weeklyPercent.Value}% of the All Models window used" : "",
@@ -1158,7 +989,7 @@ namespace BuildConsole.Services
 
             tip.Append(_secondaryLastState switch
             {
-                ClaudeUsageMeterState.Polling => "\nChecking secondary account's Claude usage via CLI (claude -p /usage)…",
+                ClaudeUsageMeterState.Polling => "\nChecking secondary account's Claude usage via Anthropic OAuth API…",
                 ClaudeUsageMeterState.Unavailable => $"\nUnavailable{(string.IsNullOrEmpty(_secondaryLastReason) ? "" : $" ({_secondaryLastReason})")} — is the secondary account's claude CLI session logged in?",
                 ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(_secondaryLastReason) ? "" : $": {_secondaryLastReason}")}",
                 _ => _secondaryWeeklyPercent.HasValue ? $"\n{_secondaryWeeklyPercent.Value}% of the All Models window used" : "",
@@ -1173,339 +1004,7 @@ namespace BuildConsole.Services
             return tip.ToString();
         }
 
-        // ── WebView2 fallback plumbing ──────────────────────────────────────
-
-        private class PageUsageReading
-        {
-            public int? SessionPercent { get; set; }
-            public string SessionValueText { get; set; } = string.Empty;
-            public string SessionResetLabel { get; set; } = string.Empty;
-
-            public int? WeeklyPercent { get; set; }
-            public string WeeklyValueText { get; set; } = string.Empty;
-            public string WeeklyResetLabel { get; set; } = string.Empty;
-        }
-
-        private class PageProbe
-        {
-            public string Url { get; set; } = string.Empty;
-            public string ReadyState { get; set; } = string.Empty;
-            public int MeterCount { get; set; }
-            public bool HasPasswordField { get; set; }
-            public bool HasLoginText { get; set; }
-            public int BodyTextLength { get; set; }
-            public string ResetLabel { get; set; } = string.Empty;
-            public (string now, string max, string text, string label, string resetText)[] Meters { get; set; } = Array.Empty<(string, string, string, string, string)>();
-            public int WaitedMs { get; set; }
-
-            public bool AuthWall => HasPasswordField || (HasLoginText && MeterCount == 0);
-        }
-
-        private async Task<PageProbe?> WaitForHydrationAsync()
-        {
-            int waited = 0;
-            PageProbe? last = null;
-
-            while (true)
-            {
-                var probe = await ProbePageAsync();
-                if (probe != null)
-                {
-                    probe.WaitedMs = waited;
-                    last = probe;
-
-                    if (probe.MeterCount > 0)
-                    {
-                        if (PostMeterSettleMs > 0) await Task.Delay(PostMeterSettleMs);
-                        return await ProbePageAsync() is { } settled
-                            ? Also(settled, waited + PostMeterSettleMs)
-                            : probe;
-                    }
-                    if (probe.AuthWall)
-                        return probe;
-                }
-
-                if (waited >= HydrationMaxWaitMs)
-                    return last;
-
-                await Task.Delay(HydrationPollIntervalMs);
-                waited += HydrationPollIntervalMs;
-            }
-        }
-
-        private static PageProbe Also(PageProbe p, int waitedMs) { p.WaitedMs = waitedMs; return p; }
-
-        private async Task<PageProbe?> ProbePageAsync()
-        {
-            if (_webView?.CoreWebView2 == null) return null;
-
-            const string script = @"
-(function() {
-    try {
-        var meters = [];
-        var els = document.querySelectorAll('[role=""meter""], [role=""progressbar""], div[class*=""progress""]');
-        for (var i = 0; i < els.length; i++) {
-            var el = els[i];
-            var container = el.closest('div, section, li') || el;
-            var heading = (container.innerText || container.textContent || '').trim();
-            var resetText = '';
-            var resetNode = Array.from(container.querySelectorAll('p, span, div, time, li'))
-                .find(n => /reset/i.test(n.innerText || n.textContent || ''));
-            if (resetNode) {
-                resetText = (resetNode.innerText || resetNode.textContent || '').trim();
-            }
-            meters.push({
-                valuenow: el.getAttribute('aria-valuenow') || '',
-                valuemax: el.getAttribute('aria-valuemax') || '',
-                valuetext: el.getAttribute('aria-valuetext') || '',
-                label: heading.substring(0, 100),
-                resetText: resetText
-            });
-        }
-        var resetLabel = '';
-        var nodes = document.querySelectorAll('p, span, div, time, li');
-        for (var j = 0; j < nodes.length; j++) {
-            var txt = (nodes[j].innerText || nodes[j].textContent || '').trim();
-            if (txt && txt.length < 120 && /reset/i.test(txt)) { resetLabel = txt; break; }
-        }
-        var bodyText = (document.body && (document.body.innerText || document.body.textContent) || '');
-        var hasPassword = !!document.querySelector('input[type=password]');
-        var hasLoginText = /log in to claude|sign in|continue with google|welcome back/i.test(bodyText);
-        return JSON.stringify({
-            url: location.href,
-            readyState: document.readyState,
-            meters: meters,
-            resetLabel: resetLabel,
-            hasPassword: hasPassword,
-            hasLoginText: hasLoginText,
-            bodyLen: bodyText.length
-        });
-    } catch (ex) {
-        return JSON.stringify({ meters: [], resetLabel: '', error: ex.message });
-    }
-})();";
-
-            var root = await EvalAsync(script);
-            if (root == null) return null;
-
-            var probe = new PageProbe
-            {
-                Url = GetStr(root.Value, "url"),
-                ReadyState = GetStr(root.Value, "readyState"),
-                ResetLabel = GetStr(root.Value, "resetLabel"),
-                HasPasswordField = GetBool(root.Value, "hasPassword"),
-                HasLoginText = GetBool(root.Value, "hasLoginText"),
-                BodyTextLength = GetInt(root.Value, "bodyLen"),
-            };
-
-            if (root.Value.TryGetProperty("meters", out var meters) && meters.ValueKind == JsonValueKind.Array)
-            {
-                var list = new List<(string, string, string, string, string)>();
-                foreach (var m in meters.EnumerateArray())
-                {
-                    list.Add((
-                        m.TryGetProperty("valuenow", out var vn) ? (vn.GetString() ?? string.Empty) : string.Empty,
-                        m.TryGetProperty("valuemax", out var vm) ? (vm.GetString() ?? string.Empty) : string.Empty,
-                        m.TryGetProperty("valuetext", out var vt) ? (vt.GetString() ?? string.Empty) : string.Empty,
-                        m.TryGetProperty("label", out var vl) ? (vl.GetString() ?? string.Empty) : string.Empty,
-                        m.TryGetProperty("resetText", out var rt) ? (rt.GetString() ?? string.Empty) : string.Empty));
-                }
-                probe.Meters = list.ToArray();
-                probe.MeterCount = list.Count;
-            }
-
-            return probe;
-        }
-
-        private static PageUsageReading ExtractReading(PageProbe probe)
-        {
-            int? sessionPercent = null;
-            string sessionValueText = string.Empty;
-            string sessionResetLabel = string.Empty;
-
-            int? weeklyPercent = null;
-            string weeklyValueText = string.Empty;
-            string weeklyResetLabel = string.Empty;
-
-            // 1. First attempt exact match on label
-            foreach (var (now, max, text, label, resetText) in probe.Meters)
-            {
-                int? pct = ComputePercent(now, max, text);
-                if (pct == null) continue;
-
-                string resolvedReset = string.IsNullOrWhiteSpace(resetText) ? probe.ResetLabel : resetText;
-
-                if (Regex.IsMatch(label, @"current\s+session", RegexOptions.IgnoreCase))
-                {
-                    sessionPercent = pct;
-                    sessionValueText = text;
-                    sessionResetLabel = resolvedReset;
-                }
-                else if (Regex.IsMatch(label, @"all\s+models?", RegexOptions.IgnoreCase))
-                {
-                    weeklyPercent = pct;
-                    weeklyValueText = text;
-                    weeklyResetLabel = resolvedReset;
-                }
-            }
-
-            // 2. Fallbacks
-            if (sessionPercent == null || weeklyPercent == null)
-            {
-                int idx = 0;
-                foreach (var (now, max, text, label, resetText) in probe.Meters)
-                {
-                    int? pct = ComputePercent(now, max, text);
-                    if (pct == null) continue;
-
-                    string resolvedReset = string.IsNullOrWhiteSpace(resetText) ? probe.ResetLabel : resetText;
-
-                    if (idx == 0 && sessionPercent == null)
-                    {
-                        sessionPercent = pct;
-                        sessionValueText = text;
-                        sessionResetLabel = resolvedReset;
-                    }
-                    else if (weeklyPercent == null)
-                    {
-                        weeklyPercent = pct;
-                        weeklyValueText = text;
-                        weeklyResetLabel = resolvedReset;
-                    }
-                    idx++;
-                }
-            }
-
-            return new PageUsageReading
-            {
-                SessionPercent = sessionPercent,
-                SessionValueText = sessionValueText,
-                SessionResetLabel = sessionResetLabel,
-                WeeklyPercent = weeklyPercent,
-                WeeklyValueText = weeklyValueText,
-                WeeklyResetLabel = weeklyResetLabel
-            };
-        }
-
-        private static string DescribeMeters(PageProbe probe)
-        {
-            var sb = new StringBuilder();
-            for (int i = 0; i < probe.Meters.Length; i++)
-            {
-                var (now, max, text, label, resetText) = probe.Meters[i];
-                if (i > 0) sb.Append("; ");
-                sb.Append($"[{i}] valuenow=\"{now}\" valuemax=\"{max}\" valuetext=\"{Trim(text)}\" label=\"{Trim(label)}\" resetText=\"{Trim(resetText)}\"");
-            }
-            return sb.Length == 0 ? "(none)" : sb.ToString();
-        }
-
-        private static string GetStr(JsonElement e, string name) =>
-            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? string.Empty) : string.Empty;
-        private static bool GetBool(JsonElement e, string name) =>
-            e.TryGetProperty(name, out var v) && (v.ValueKind == JsonValueKind.True || v.ValueKind == JsonValueKind.False) && v.GetBoolean();
-        private static int GetInt(JsonElement e, string name) =>
-            e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : 0;
-
-        internal static int? ComputePercent(string valuenow, string valuemax, string valuetext)
-        {
-            var pctMatch = Regex.Match(valuetext ?? string.Empty, @"(\d+(?:\.\d+)?)\s*%");
-            if (pctMatch.Success && double.TryParse(pctMatch.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var pv))
-                return Clamp(pv);
-
-            if (!double.TryParse(valuenow, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var now))
-                return null;
-
-            double max = 100;
-            if (double.TryParse(valuemax, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var m) && m > 0)
-                max = m;
-
-            double percent = (Math.Abs(max - 100) > 0.001) ? (now / max * 100.0) : now;
-            return Clamp(percent);
-        }
-
         private static int Clamp(double p) => (int)Math.Round(Math.Max(0, Math.Min(100, p)));
-
-        private async Task<bool> NavigateAsync(string url)
-        {
-            if (_webView?.CoreWebView2 == null) return false;
-
-            // Navigating to the same hash-route on the same page does not fire NavigationCompleted in WebView2.
-            // By navigating to about:blank first, we guarantee a transition that triggers NavigationCompleted,
-            // resetting the document state and ensuring the subsequent navigate to claude.ai fully reloads.
-            var tcsBlank = new TaskCompletionSource<bool>();
-            void NavHandlerBlank(object? sender, CoreWebView2NavigationCompletedEventArgs args)
-            {
-                _webView.NavigationCompleted -= NavHandlerBlank;
-                tcsBlank.TrySetResult(args.IsSuccess);
-            }
-
-            _webView.NavigationCompleted += NavHandlerBlank;
-            try
-            {
-                _webView.CoreWebView2.Navigate("about:blank");
-            }
-            catch (Exception ex)
-            {
-                _webView.NavigationCompleted -= NavHandlerBlank;
-                ActivityLog.Log(Channel, $"Navigate(about:blank) threw: {ex.Message}");
-                return false;
-            }
-
-            var completedBlank = await Task.WhenAny(tcsBlank.Task, Task.Delay(5000));
-            if (completedBlank != tcsBlank.Task || !await tcsBlank.Task)
-            {
-                _webView.NavigationCompleted -= NavHandlerBlank;
-                ActivityLog.Log(Channel, "Navigate(about:blank) failed or timed out.");
-                return false;
-            }
-
-            var tcs = new TaskCompletionSource<bool>();
-            void NavHandler(object? sender, CoreWebView2NavigationCompletedEventArgs args)
-            {
-                _webView.NavigationCompleted -= NavHandler;
-                tcs.TrySetResult(args.IsSuccess);
-            }
-
-            _webView.NavigationCompleted += NavHandler;
-            try
-            {
-                _webView.CoreWebView2.Navigate(url);
-            }
-            catch (Exception ex)
-            {
-                _webView.NavigationCompleted -= NavHandler;
-                ActivityLog.Log(Channel, $"Navigate({url}) threw: {ex.Message}");
-                return false;
-            }
-
-            var completed = await Task.WhenAny(tcs.Task, Task.Delay(NavigationTimeoutMs));
-            if (completed != tcs.Task)
-            {
-                _webView.NavigationCompleted -= NavHandler;
-                ActivityLog.Log(Channel, $"Navigate({url}) timed out after {NavigationTimeoutMs}ms.");
-                return false;
-            }
-
-            return await tcs.Task;
-        }
-
-        private async Task<JsonElement?> EvalAsync(string script)
-        {
-            if (_webView?.CoreWebView2 == null) return null;
-            try
-            {
-                string resJson = await _webView.ExecuteScriptAsync(script) ?? string.Empty;
-                using var outerDoc = JsonDocument.Parse(resJson);
-                string inner = outerDoc.RootElement.GetString() ?? "{}";
-                using var innerDoc = JsonDocument.Parse(inner);
-                return innerDoc.RootElement.Clone();
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log(Channel, $"Script evaluation failed: {ex.Message}");
-                return null;
-            }
-        }
 
         private static string Trim(string? s) =>
             string.IsNullOrEmpty(s) ? "" : (s!.Length > 80 ? s.Substring(0, 80) + "…" : s);
