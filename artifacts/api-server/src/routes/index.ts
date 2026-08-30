@@ -249,6 +249,7 @@ import mspSopsRouter from "./msp-sops";
 import mspDlqRouter from "./msp-dlq";
 import mspRbdRouter from "./msp-rbd";
 import adminDriftRouter from "./admin-drift";
+import adminConfigResourcesRouter from "./admin-config-resources";
 import adminNavPinsRouter from "./admin-nav-pins";
 import adminBuildTrackerRouter from "./admin-build-tracker";
 
@@ -489,6 +490,7 @@ router.use(mspSopsRouter);
 router.use(mspDlqRouter);
 router.use(mspRbdRouter);
 router.use(adminDriftRouter);
+router.use(adminConfigResourcesRouter);
 router.use(mspExecutiveRouter);
 router.use(mspCustomerTimelineRouter);
 router.use(mspLaunchControlRouter);

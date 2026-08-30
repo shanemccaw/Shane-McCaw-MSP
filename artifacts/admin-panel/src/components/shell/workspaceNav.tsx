@@ -379,6 +379,10 @@ export const WORKSPACES: WorkspaceDef[] = [
         items: [
           { id: "del-monitor-checks", label: "Monitor Checks", path: "/delivery/monitor-checks", icon: Gauge },
           { id: "del-monitoring-packages", label: "Monitoring Packages", path: "/delivery/monitoring-packages", icon: Package },
+          // #1794 — the measured counterpart to Monitor Checks: what tenant
+          // configuration the platform can read at all, and how much of it the
+          // check catalog already covers.
+          { id: "del-config-resources", label: "Config Resource Model", path: "/delivery/config-resources", icon: Boxes },
         ],
       },
       {
