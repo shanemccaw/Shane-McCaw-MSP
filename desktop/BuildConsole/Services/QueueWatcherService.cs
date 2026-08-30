@@ -93,7 +93,11 @@ namespace BuildConsole.Services
     {
         private class RunningEntry
         {
-            public Process Process = null!;
+            /// <summary>Git #1804 — a raw-handle stand-in for System.Diagnostics.Process (same member
+            /// surface: HasExited/ExitCode/Id/Kill). The build is launched via CreateProcess with its
+            /// stdout/stderr redirected to durable FILES it owns, not a BuildConsole-owned pipe, so it
+            /// survives this app closing. See <see cref="RedirectedProcessLauncher"/>.</summary>
+            public BuildProcessHandle Process = null!;
             public string Title = "";
             /// <summary>Git #826 — filled in as soon as the run's stream-json output reveals it (usually the very first line); reported at completion so a later Reply can resume this exact conversation.</summary>
             public string? SessionId;
@@ -120,6 +124,14 @@ namespace BuildConsole.Services
             /// <summary>True when this build was launched in the interactive redirected-stdin mode (owned by this app instance). Legacy/foreign builds are false and behave exactly as before.</summary>
             public bool Interactive;
             public string LogPath = "";
+            /// <summary>Git #1804 — the DURABLE file claude.exe's raw stdout is redirected into (child-owned
+            /// handle → survives app close). The internal tailer reads this and feeds <see cref="HandleOutput"/>,
+            /// which in turn writes the human-readable summary to <see cref="LogPath"/> exactly as before.</summary>
+            public string RawStdoutPath = "";
+            /// <summary>Git #1804 — the durable file claude.exe's raw stderr is redirected into; tailed into <see cref="HandleStderr"/>.</summary>
+            public string RawStderrPath = "";
+            /// <summary>Git #1804 — cancels the background raw-file tailers when this build is stopped/finalized.</summary>
+            public CancellationTokenSource? TailCts;
             /// <summary>The owned stdin writer — null for legacy builds. Guarded by <see cref="InputLock"/> for writes.</summary>
             public StreamWriter? Stdin;
             public readonly object InputLock = new();
@@ -332,6 +344,7 @@ namespace BuildConsole.Services
             }
             finally
             {
+                entry.TailCts?.Cancel(); // Git #1804 — stop the durable-file tailer for this build.
                 _running.Remove(queueItemId);
             }
             ActivityLog.Log("watcher", $"Stopped: {entry.Title} (queue #{queueItemId})");
@@ -958,24 +971,17 @@ namespace BuildConsole.Services
                 return;
             }
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = exeToRun,
-                WorkingDirectory = workDir,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            if (interactive)
-            {
-                psi.RedirectStandardInput = true;
-                // stream-json is UTF-8; be explicit so non-ASCII prompt/@path
-                // content round-trips exactly rather than via the console codepage.
-                psi.StandardInputEncoding = new UTF8Encoding(false);
-                psi.StandardOutputEncoding = new UTF8Encoding(false);
-                psi.StandardErrorEncoding = new UTF8Encoding(false);
-            }
+            // Git #1804 — build the launch args + env overrides here, then hand them to
+            // RedirectedProcessLauncher, which launches via CreateProcess with stdout/stderr
+            // redirected to DURABLE FILES the child owns (not a BuildConsole-owned pipe). That is
+            // the whole fix: a file handle doesn't die when this app exits, so the build survives a
+            // close instead of crashing on a broken-pipe EPIPE. BuildConsole gets live output by
+            // TAILING those files below (StartRawTailers), feeding the exact same HandleOutput/
+            // HandleStderr pipeline the old OutputDataReceived wiring did.
+            var args = new List<string>();
+            // value null => REMOVE the key from the child's environment (see the secondary-account
+            // token stripping below); non-null => set/override it.
+            var envOverrides = new Dictionary<string, string?>();
 
             // Git #1416 — multi-account routing. A build queued against the "secondary"
             // account launches claude.exe with CLAUDE_CONFIG_DIR pointed at the configured
@@ -1006,9 +1012,12 @@ namespace BuildConsole.Services
                 }
                 else
                 {
-                    psi.Environment["CLAUDE_CONFIG_DIR"] = secondaryDir;
-                    bool hadOAuthToken = psi.Environment.Remove("CLAUDE_CODE_OAUTH_TOKEN");
-                    bool hadApiKey = psi.Environment.Remove("ANTHROPIC_API_KEY");
+                    envOverrides["CLAUDE_CONFIG_DIR"] = secondaryDir;
+                    // null value => RedirectedProcessLauncher removes the key from the child's env.
+                    bool hadOAuthToken = Environment.GetEnvironmentVariable("CLAUDE_CODE_OAUTH_TOKEN") != null;
+                    bool hadApiKey = Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") != null;
+                    envOverrides["CLAUDE_CODE_OAUTH_TOKEN"] = null;
+                    envOverrides["ANTHROPIC_API_KEY"] = null;
                     ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) routed to the SECONDARY Claude account — CLAUDE_CONFIG_DIR={secondaryDir}" +
                         (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")} so the secondary config dir's own session is actually used)" : "") + ".");
                 }
@@ -1021,14 +1030,14 @@ namespace BuildConsole.Services
             // and let the resumed session's own settings apply.
             if (!string.IsNullOrWhiteSpace(item.ResumeSessionId))
             {
-                psi.ArgumentList.Add("--resume");
-                psi.ArgumentList.Add(item.ResumeSessionId);
+                args.Add("--resume");
+                args.Add(item.ResumeSessionId);
             }
             else
             {
-                if (!string.IsNullOrWhiteSpace(item.Title)) { psi.ArgumentList.Add("--name"); psi.ArgumentList.Add(item.Title); }
-                if (!string.IsNullOrWhiteSpace(item.Model)) { psi.ArgumentList.Add("--model"); psi.ArgumentList.Add(item.Model); }
-                if (!string.IsNullOrWhiteSpace(item.Effort)) { psi.ArgumentList.Add("--effort"); psi.ArgumentList.Add(item.Effort); }
+                if (!string.IsNullOrWhiteSpace(item.Title)) { args.Add("--name"); args.Add(item.Title); }
+                if (!string.IsNullOrWhiteSpace(item.Model)) { args.Add("--model"); args.Add(item.Model); }
+                if (!string.IsNullOrWhiteSpace(item.Effort)) { args.Add("--effort"); args.Add(item.Effort); }
             }
 
             // Build Sets — hand the dev-server coordinator everything it needs (via env)
@@ -1040,16 +1049,16 @@ namespace BuildConsole.Services
             if (!string.IsNullOrWhiteSpace(item.BuildSet))
             {
                 string memberKey = item.GithubNumber?.ToString() ?? item.Id.ToString();
-                psi.Environment["DEV_BUILD_SET"] = item.BuildSet;
-                psi.Environment["DEV_BUILD_SET_MEMBER"] = memberKey;
+                envOverrides["DEV_BUILD_SET"] = item.BuildSet;
+                envOverrides["DEV_BUILD_SET_MEMBER"] = memberKey;
                 if (buildSetExpected.HasValue && buildSetExpected.Value > 0)
-                    psi.Environment["DEV_BUILD_SET_EXPECTED"] = buildSetExpected.Value.ToString();
+                    envOverrides["DEV_BUILD_SET_EXPECTED"] = buildSetExpected.Value.ToString();
                 ActivityLog.Log("watcher", $"Build set '{item.BuildSet}': launching member {memberKey} (expected {(buildSetExpected?.ToString() ?? "?")}) — dev-server restart deferred until the whole set completes.");
             }
 
-            psi.ArgumentList.Add("--permission-mode");
-            psi.ArgumentList.Add("auto");
-            psi.ArgumentList.Add("--print");
+            args.Add("--permission-mode");
+            args.Add("auto");
+            args.Add("--print");
             // Git #825 — --output-format stream-json emits one real JSON event
             // per line AS work happens (system init, assistant text/tool_use,
             // final result). SummarizeStreamJsonLine turns those into readable
@@ -1060,12 +1069,12 @@ namespace BuildConsole.Services
                 // ... 'stream-json' (realtime streaming input) (only works with
                 // --print)". The prompt (and every later chat message) is fed as
                 // a stream-json user message on stdin below.
-                psi.ArgumentList.Add("--input-format");
-                psi.ArgumentList.Add("stream-json");
+                args.Add("--input-format");
+                args.Add("stream-json");
             }
-            psi.ArgumentList.Add("--output-format");
-            psi.ArgumentList.Add("stream-json");
-            psi.ArgumentList.Add("--verbose");
+            args.Add("--output-format");
+            args.Add("stream-json");
+            args.Add("--verbose");
 
             if (!interactive)
             {
@@ -1075,24 +1084,33 @@ namespace BuildConsole.Services
                 // like. (Interactive builds don't pass the prompt positionally
                 // at all — it goes over stdin as JSON — so this whole class of
                 // arg-mangling bug can't apply to them.)
-                psi.ArgumentList.Add("--");
-                psi.ArgumentList.Add(launchPrompt);
+                args.Add("--");
+                args.Add(launchPrompt);
             }
 
+            // Human-readable per-item SUMMARY log (#802 BuildLogView / MainWindow.TailBuildLog tail
+            // THIS file). It stays the flattened "[tool: X]" summary AppendToLogFile writes — NOT the
+            // raw stream-json — so those views render unchanged. Clear any stale content up front.
             var logPath = BuildLogPaths.ForQueueItem(item.Id);
             Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
             File.WriteAllText(logPath, "");
 
-            var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            // Git #826 — created (and about to be registered in _running)
-            // BEFORE Start(), so the very first output line - which is
-            // where the real session_id shows up - has somewhere to land.
+            // Git #1804 — the durable raw redirect targets the child owns. Kept separate from the
+            // summary logPath above so claude's raw stream-json never clobbers the human-readable
+            // view; the internal tailer reads these and feeds HandleOutput/HandleStderr.
+            var rawStdoutPath = logPath + ".raw";
+            var rawStderrPath = logPath + ".err";
+
+            // Git #826 — created (and registered in _running) BEFORE the tailers start, so the very
+            // first output line — where the real session_id shows up — has somewhere to land.
             var entry = new RunningEntry
             {
-                Process = proc,
                 Title = item.Title,
                 Interactive = interactive,
                 LogPath = logPath,
+                RawStdoutPath = rawStdoutPath,
+                RawStderrPath = rawStderrPath,
+                TailCts = new CancellationTokenSource(),
                 LastActivityUtc = DateTime.UtcNow,
                 State = InteractiveInputState.Working,
                 IdleFinalizeMs = Math.Max(0, settings.InteractiveIdleFinalizeSeconds) * 1000,
@@ -1101,24 +1119,38 @@ namespace BuildConsole.Services
                 WorktreePath = worktreePath,
                 WorktreeName = worktreeName,
             };
-            proc.OutputDataReceived += (_, e) => HandleOutput(entry, item.Id, e.Data);
-            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) HandleStderr(entry, item.Id, e.Data); };
-            proc.Start();
-            proc.BeginOutputReadLine();
-            proc.BeginErrorReadLine();
+
+            RedirectedProcessLauncher.LaunchedProcess launched;
+            try
+            {
+                launched = RedirectedProcessLauncher.Launch(
+                    exeToRun, args, workDir, envOverrides, rawStdoutPath, rawStderrPath, redirectStdin: interactive);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Launch failed for queue #{item.Id} ({item.Title}): {ex.Message}");
+                entry.TailCts.Dispose();
+                await MarkLaunchFailedAsync(item.Id, $"process launch failed: {ex.Message}");
+                return;
+            }
+            entry.Process = launched.Process;
+            entry.Stdin = launched.StdIn;
+
+            // Tail the durable raw files into the same output pipeline the old in-process pipe fed.
+            StartRawTailers(entry, item.Id);
 
             // Git #1371 — re-point the worktree's owner pid from the launcher (BuildConsole) to
             // the freshly-started build process, so the cleanup sweep retains the worktree exactly
             // while THIS build runs and can reclaim it (after a grace period) once the build exits.
             if (worktreeName != null)
             {
-                int buildPid = proc.Id;
+                int buildPid = launched.Process.Id;
                 _ = WorktreeProvisionService.StampOwnerAsync(worktreeName, buildPid);
             }
 
             if (interactive)
             {
-                entry.Stdin = proc.StandardInput;
+                // entry.Stdin was set from launched.StdIn above (the owned pipe write end).
                 // Deliver the initial prompt as the first stream-json user
                 // message. If this throws (rare), the process is still up and
                 // the build will simply idle-finalize; log it either way.
@@ -1129,8 +1161,117 @@ namespace BuildConsole.Services
             _running[item.Id] = entry;
 
             if (interactive)
-                ActivityLog.Log("interactive-build", $"launched (BuildConsole-owned redirected stdin/stdout, --input-format stream-json): {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
+                ActivityLog.Log("interactive-build", $"launched (durable-file stdout/stderr redirect + owned stdin, --input-format stream-json): {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
             ActivityLog.Log("watcher", $"Started: {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
+        }
+
+        // ── Durable-file raw tailers (Git #1804) ────────────────────────────
+
+        /// <summary>
+        /// Git #1804 — starts a background task that tails the build's durable raw stdout/stderr
+        /// files (which the child process itself owns) and feeds each complete line into the exact
+        /// same <see cref="HandleOutput"/>/<see cref="HandleStderr"/> pipeline the retired in-process
+        /// <c>OutputDataReceived</c> pipe used to. This is what keeps Build Watch live-streaming while
+        /// BuildConsole is open — WITHOUT the build's survival depending on it: if the app closes, the
+        /// tailer thread simply dies, but claude.exe keeps writing to its own file handle and runs on.
+        /// The loop drains once more after the process exits so the final <c>result</c> line (session
+        /// id / usage / cost) is never missed.
+        /// </summary>
+        private void StartRawTailers(RunningEntry entry, int id)
+        {
+            var ct = entry.TailCts?.Token ?? CancellationToken.None;
+            var stdoutTail = new LineTailer(entry.RawStdoutPath, line => HandleOutput(entry, id, line));
+            var stderrTail = new LineTailer(entry.RawStderrPath, line => HandleStderr(entry, id, line));
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (!ct.IsCancellationRequested)
+                    {
+                        stdoutTail.Pump();
+                        stderrTail.Pump();
+
+                        bool exited;
+                        try { exited = entry.Process.HasExited; } catch { exited = true; }
+                        if (exited)
+                        {
+                            // Final drain — catch lines that landed between the last pump and exit.
+                            stdoutTail.Pump(); stdoutTail.FlushRemainder();
+                            stderrTail.Pump(); stderrTail.FlushRemainder();
+                            break;
+                        }
+                        try { await Task.Delay(200, ct); }
+                        catch (OperationCanceledException) { break; }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("watcher", $"Raw log tailer for queue #{id} stopped: {ex.Message}");
+                }
+                finally
+                {
+                    stdoutTail.Dispose();
+                    stderrTail.Dispose();
+                }
+            });
+        }
+
+        /// <summary>Incrementally tails one durable log file, emitting each complete '\n'-terminated
+        /// line (trailing '\r' trimmed) via the callback. UTF-8 decoding is stateful across reads so a
+        /// multi-byte char split across a write boundary is never corrupted. Opens the file lazily
+        /// (the child may not have created it yet) with FileShare.ReadWrite so it reads while the child
+        /// writes — the same tolerant tail ExternalLogWindow uses.</summary>
+        private sealed class LineTailer : IDisposable
+        {
+            private readonly string _path;
+            private readonly Action<string> _onLine;
+            private FileStream? _fs;
+            private readonly Decoder _decoder = new UTF8Encoding(false).GetDecoder();
+            private readonly StringBuilder _line = new();
+            private readonly byte[] _buf = new byte[8192];
+            private char[] _chars = new char[8192];
+
+            public LineTailer(string path, Action<string> onLine) { _path = path; _onLine = onLine; }
+
+            public void Pump()
+            {
+                try
+                {
+                    if (_fs == null)
+                    {
+                        if (!File.Exists(_path)) return;
+                        _fs = new FileStream(_path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                    }
+                    int read;
+                    while ((read = _fs.Read(_buf, 0, _buf.Length)) > 0)
+                    {
+                        int n = _decoder.GetChars(_buf, 0, read, _chars, 0);
+                        for (int i = 0; i < n; i++)
+                        {
+                            char c = _chars[i];
+                            if (c == '\n') { EmitLine(); }
+                            else _line.Append(c);
+                        }
+                    }
+                }
+                catch (IOException) { /* file locked mid-write — retry next pump */ }
+            }
+
+            /// <summary>Emit any buffered trailing content that never got a closing newline (defensive — stream-json lines are newline-terminated).</summary>
+            public void FlushRemainder()
+            {
+                if (_line.Length > 0) EmitLine();
+            }
+
+            private void EmitLine()
+            {
+                var s = _line.ToString();
+                _line.Clear();
+                if (s.EndsWith("\r", StringComparison.Ordinal)) s = s.Substring(0, s.Length - 1);
+                _onLine(s);
+            }
+
+            public void Dispose() { try { _fs?.Dispose(); } catch { } }
         }
 
         // ── Output handling ─────────────────────────────────────────────────
@@ -1711,7 +1852,11 @@ namespace BuildConsole.Services
         }
 
         /// <summary>The Build Watch window is done with a retained (exited) interactive build's buffer — drop it.</summary>
-        public void ReleaseInteractive(int id) => _retained.Remove(id);
+        public void ReleaseInteractive(int id)
+        {
+            if (_retained.TryGetValue(id, out var entry)) entry.TailCts?.Cancel(); // Git #1804 — its process has exited; stop the tailer.
+            _retained.Remove(id);
+        }
 
         private void HardKill(RunningEntry entry, int id, string reason)
         {
