@@ -69,7 +69,13 @@ namespace BuildConsole.Services
             if (!string.IsNullOrWhiteSpace(config.DatabaseUrl))
                 return BuildQueuePostgresClient.ParseConnectionString(config.DatabaseUrl);
 
-            var repoRoot = BuildTrackerConfig.FindRepoRoot() ?? "";
+            // Git #1985 — was `?? ""`, same bug as LocalSqlExecutor/BuildQueuePostgresClient:
+            // resolves .env.local against the process cwd instead of the repo root, which could
+            // silently pick up an unrelated .env.local and connect to the wrong database. Fail
+            // closed — null repo root means "no DATABASE_URL resolvable," same as any other
+            // unset-config case here.
+            var repoRoot = BuildTrackerConfig.FindRepoRoot();
+            if (string.IsNullOrWhiteSpace(repoRoot)) return null;
             var envLocal = Path.Combine(repoRoot, ".env.local");
             if (!File.Exists(envLocal)) return null;
 

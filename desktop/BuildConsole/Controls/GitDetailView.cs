@@ -2070,7 +2070,20 @@ namespace BuildConsole.Controls
             {
                 string model = _associatedBuild?.Model ?? "claude-sonnet-5";
                 string effort = _associatedBuild?.Effort ?? "normal";
-                string cwd = _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot() ?? "";
+                string? cwd = _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot();
+                if (string.IsNullOrEmpty(cwd))
+                {
+                    // Git #1985 — an empty cwd here is not "run in the current directory",
+                    // it's "queue a resumed build against an unresolved working directory."
+                    // Fail closed rather than silently launching against cwd="". FindRepoRoot()
+                    // already logged + toasted the underlying resolution failure (BuildTrackerConfig
+                    // SurfaceRepoRootFailure) — this just refuses to proceed on top of it rather than
+                    // adding a second competing warning path for the same condition.
+                    ActivityLog.Log(Channel, "Continuation aborted: repo root could not be resolved (cwd would be empty).");
+                    if (_buildPane != null)
+                        _buildPane.ViewModel.PlaceholderText = "Could not resume — repo root unresolved. See toast.";
+                    return;
+                }
                 List<int>? blockedBy = _associatedBuild?.BlockedByNumbers;
 
                 int newQueueId = 0;

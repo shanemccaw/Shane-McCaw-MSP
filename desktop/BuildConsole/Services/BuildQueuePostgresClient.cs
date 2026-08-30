@@ -1974,12 +1974,24 @@ namespace BuildConsole.Services
         /// </summary>
         public static BuildQueuePostgresClient? TryCreate(
             BuildTrackerConfig config,
-            string repoRoot,
+            string? repoRoot,
             Action<string> onMissing)
         {
             // 1. Explicit override in the config JSON
             if (!string.IsNullOrWhiteSpace(config.DatabaseUrl))
                 return new BuildQueuePostgresClient(config.DatabaseUrl);
+
+            // Git #1985 — was `repoRoot` typed as non-nullable `string` at the call site with the
+            // caller coalescing a null FindRepoRoot() to "". That resolves .env.local against the
+            // PROCESS CWD instead of the repo root, silently — either missing the real file (falls
+            // through to the generic "no DATABASE_URL" message below, which doesn't reveal the real
+            // cause) or, worse, picking up an unrelated .env.local. Fail closed instead: a null repo
+            // root here is treated the same as "no DATABASE_URL", but the message says why.
+            if (string.IsNullOrWhiteSpace(repoRoot))
+            {
+                onMissing("Repo root could not be resolved — cannot look for .env.local. Direct-Postgres queue DB access is unavailable this run; falling back to HTTP (API server).");
+                return null;
+            }
 
             // 2. .env.local at the repo root
             var envLocal = System.IO.Path.Combine(repoRoot, ".env.local");

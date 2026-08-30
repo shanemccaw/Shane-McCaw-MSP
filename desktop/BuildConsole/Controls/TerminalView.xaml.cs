@@ -27,7 +27,14 @@ namespace BuildConsole.Controls
         public TerminalView()
         {
             InitializeComponent();
-            string repoRoot = Services.BuildTrackerConfig.FindRepoRoot() ?? @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
+            // Git #1985 — was `?? @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP"`, a
+            // hardcoded machine path that breaks on any other checkout. This is an
+            // interactive shell the operator watches directly and can `cd` out of, and the
+            // resolved directory is printed to the output pane below on every (re)start, so
+            // a wrong-root fallback here is visible and recoverable rather than silent —
+            // genuinely tolerable, unlike the DB/queue-op call sites. Fall back to the
+            // process's own cwd instead of a path that only exists on one machine.
+            string repoRoot = Services.BuildTrackerConfig.FindRepoRoot() ?? Environment.CurrentDirectory;
             OutputBox.Text = $"BuildConsole Terminal — PowerShell in {repoRoot}\r\n";
             _pausableLog = new Services.PausableTextBoxLog(OutputBox);
             StartShell(repoRoot);
@@ -145,7 +152,10 @@ namespace BuildConsole.Controls
             if (_shell == null || _shell.HasExited)
             {
                 AppendLine("[shell not running — restarting shell]");
-                string repoRoot = Services.BuildTrackerConfig.FindRepoRoot() ?? @"C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP";
+                // Git #1985 — same reasoning as the constructor: tolerable fallback, printed to
+                // the visible output pane, no hardcoded machine path.
+                string repoRoot = Services.BuildTrackerConfig.FindRepoRoot() ?? Environment.CurrentDirectory;
+                AppendLine($"[restarting in {repoRoot}]");
                 StartShell(repoRoot);
                 if (_shell == null || _shell.HasExited)
                 {

@@ -52,11 +52,22 @@ namespace BuildConsole.Services
         /// still works as an explicit override for anyone who genuinely wants the
         /// <c>C:\dev-server</c> mirror's state instead.
         /// </summary>
-        public static string ResolveServerWorktree()
+        /// <summary>
+        /// Git #1985 — was `?? @"C:\dev-server"`. This class's own doc comment above already
+        /// explains why that fallback is dangerous, not just machine-specific: `C:\dev-server`
+        /// is a real, existing secondary mirror on Shane's machine whose merge is documented to
+        /// lag/fail independently of the main checkout. If the real repo root can't be resolved,
+        /// silently falling back to it would read git state from that stale mirror and report it
+        /// as the deployed commit — exactly the "reads the wrong checkout, reports a stale commit"
+        /// bug class #1395 fixed for /api/version. Returns null instead so the caller reports
+        /// honestly (this file's own contract: "never fabricate a placeholder value") rather than
+        /// silently substituting a real-but-wrong checkout.
+        /// </summary>
+        public static string? ResolveServerWorktree()
         {
             var env = Environment.GetEnvironmentVariable("DEV_SERVER_WORKTREE");
             if (!string.IsNullOrWhiteSpace(env)) return env;
-            return VersionInfo.FindRepoRoot() ?? @"C:\dev-server";
+            return VersionInfo.FindRepoRoot();
         }
 
         /// <summary>Mirrors config.mjs's <c>stateDir</c>: <c>DEV_SERVER_STATE_DIR</c> env override,
@@ -65,6 +76,11 @@ namespace BuildConsole.Services
         {
             var env = Environment.GetEnvironmentVariable("DEV_SERVER_STATE_DIR");
             if (!string.IsNullOrWhiteSpace(env)) return env;
+            // Git #1985 — genuinely tolerable: this only locates server.json for the process-start
+            // TIMESTAMP. The caller (GetLocalDeployStatus) already wraps the read in try/catch and
+            // falls through to `git log -1` on the checkout HEAD if server.json is missing/unreadable
+            // — a wrong dir here just means that fallback fires a step earlier than usual; it never
+            // fabricates a value, so a cwd-relative guess is an acceptable last resort here.
             var mainRepoRoot = VersionInfo.FindRepoRoot() ?? Directory.GetCurrentDirectory();
             return Path.Combine(mainRepoRoot, ".logs", "dev-server");
         }
@@ -102,7 +118,7 @@ namespace BuildConsole.Services
         public static DeployStatus? GetLocalDeployStatus()
         {
             var worktree = ResolveServerWorktree();
-            if (!Directory.Exists(worktree)) return null;
+            if (string.IsNullOrWhiteSpace(worktree) || !Directory.Exists(worktree)) return null;
 
             var commitHash = RunGit(worktree, "rev-parse --short HEAD");
             if (string.IsNullOrEmpty(commitHash)) return null;

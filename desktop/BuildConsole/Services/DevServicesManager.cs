@@ -59,6 +59,10 @@ namespace BuildConsole.Services
             var result = new Dictionary<string, (string Title, int Port, string RelPath, string Icon)>();
             try
             {
+                // Git #1985 — audited, genuinely tolerable: `?? "."` falls back to the process
+                // cwd, but the very next line's File.Exists check already catches a wrong/missing
+                // path and logs it honestly (never fabricates a service list from a guess) —
+                // KnownServices just stays empty, same as any other "config not found" case.
                 string? repoRoot = BuildTrackerConfig.FindRepoRoot();
                 string configPath = Path.Combine(repoRoot ?? ".", "scripts", "dev-server", "services.json");
                 if (!File.Exists(configPath))
@@ -94,6 +98,10 @@ namespace BuildConsole.Services
             return result;
         }
 
+        // Git #1985 — audited, genuinely tolerable: `?? "."` here only relocates where THIS
+        // process reads/writes its own dev-service log files. GetServiceLogPath (below) is the
+        // only consumer, so writer and reader always agree on the same (possibly cwd-relative)
+        // location — self-consistent, no risk of reading/writing against different directories.
         public static string GetLogDir()
         {
             string? repoRoot = BuildTrackerConfig.FindRepoRoot();

@@ -233,6 +233,12 @@ namespace BuildConsole.Services
             var m = new MutexHealth();
             try
             {
+                // Git #1985 — audited, genuinely tolerable: on Windows (this app's only real
+                // target — same convention DevServerRollbackService.cs uses) the state dir is the
+                // documented C:\dev-server-state default and never touches repoRoot at all; the
+                // `repoRoot ?? "."` branch only matters on a hypothetical non-Windows build, and
+                // even there a wrong dir just makes File.Exists(ownerFile) false below, reporting
+                // "Idle" honestly rather than fabricating lock-holder data.
                 string? repoRoot = BuildTrackerConfig.FindRepoRoot();
                 string stateDir = Environment.GetEnvironmentVariable("DEV_SERVER_STATE_DIR")
                     ?? (OperatingSystem.IsWindows() ? @"C:\dev-server-state" : Path.Combine(repoRoot ?? ".", ".dev-server-state"));

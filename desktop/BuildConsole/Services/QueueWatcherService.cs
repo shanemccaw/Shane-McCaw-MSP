@@ -184,7 +184,15 @@ namespace BuildConsole.Services
         /// <summary>Direct Postgres client for all queue DB mutations (claim, complete, orphan-sweep). Non-null when DATABASE_URL was resolved at startup; falls back to _api HTTP calls when null (e.g. .env.local not found).</summary>
         private readonly BuildQueuePostgresClient? _db;
         private readonly int _maxConcurrent;
-        private readonly string _repoRoot;
+        /// <summary>
+        /// Git #1985 — nullable on purpose. The constructor used to coalesce a null
+        /// FindRepoRoot() to AppDomain.CurrentDomain.BaseDirectory (the app's own install/exe
+        /// folder), which would have launched a build's shared-checkout process against the
+        /// wrong directory entirely, silently. Kept nullable so the one place that reads it
+        /// (the legacy shared-checkout launch path below) can fail loud instead, matching the
+        /// FAIL-LOUD contract already established for worktree-provisioning failure just above it.
+        /// </summary>
+        private readonly string? _repoRoot;
         private readonly string _claudeExe;
         private readonly string _geminiExe;
         private readonly Dictionary<int, RunningEntry> _running = new();
@@ -229,7 +237,7 @@ namespace BuildConsole.Services
             _api = api;
             _db = db;
             _maxConcurrent = maxConcurrent;
-            _repoRoot = repoRoot ?? AppDomain.CurrentDomain.BaseDirectory;
+            _repoRoot = repoRoot;
             _claudeExe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin", "claude.exe");
             _geminiExe = ResolveGeminiExe();
             _paused = BuildConsoleSettings.Load().QueuePaused;
@@ -790,6 +798,13 @@ namespace BuildConsole.Services
         {
             try
             {
+                // Git #1985 — fail closed rather than Path.Combine(null, ...) throwing an
+                // unhelpful ArgumentNullException, or worse, resolving relative to cwd.
+                if (string.IsNullOrWhiteSpace(_repoRoot))
+                {
+                    ActivityLog.Log("watcher", $"Repo root unresolved — cannot close build set '{buildSet}' (buildset.mjs needs a real repo root to run from).");
+                    return;
+                }
                 string script = Path.Combine(_repoRoot, "scripts", "dev-server", "buildset.mjs");
                 if (!File.Exists(script))
                 {
@@ -1142,6 +1157,16 @@ namespace BuildConsole.Services
             }
             else
             {
+                // Git #1985 — was `workDir = _repoRoot` where _repoRoot silently defaulted to
+                // AppDomain.CurrentDomain.BaseDirectory when unresolved, i.e. this would have
+                // launched the build against the app's own exe folder instead of the shared
+                // checkout. Fail loud instead, same contract as worktree-provisioning failure above.
+                if (string.IsNullOrWhiteSpace(_repoRoot))
+                {
+                    ActivityLog.Log("watcher", $"Repo root unresolved — build NOT launched for queue #{item.Id} ({item.Title}). Worktree isolation is off (EnforceWorktreeIsolation=false), so this build needs the shared checkout root and there isn't one to use. Check the repo-root-resolution toast/log.");
+                    await MarkLaunchFailedAsync(item.Id, "repo root unresolved — cannot launch in shared checkout");
+                    return;
+                }
                 workDir = _repoRoot;
             }
 

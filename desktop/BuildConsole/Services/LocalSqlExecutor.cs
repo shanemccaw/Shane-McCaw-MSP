@@ -47,9 +47,15 @@ namespace BuildConsole.Services
                 raw = config.DatabaseUrl;
             else
             {
-                var repoRoot = BuildTrackerConfig.FindRepoRoot() ?? "";
-                var envLocal = Path.Combine(repoRoot, ".env.local");
-                if (File.Exists(envLocal))
+                // Git #1985 — was `?? ""`, which resolves .env.local against the process cwd
+                // instead of the repo root. That's not just "misses the file" — it could pick up
+                // an UNRELATED .env.local sitting in whatever directory this process happened to
+                // start in and execute SQL against the wrong database's connection string. Fail
+                // closed: a null repo root means "we don't know the connection string" here, same
+                // as any other unresolved-config case below (returns null, caller reports it).
+                var repoRoot = BuildTrackerConfig.FindRepoRoot();
+                var envLocal = string.IsNullOrWhiteSpace(repoRoot) ? null : Path.Combine(repoRoot, ".env.local");
+                if (envLocal != null && File.Exists(envLocal))
                 {
                     foreach (var line in File.ReadAllLines(envLocal))
                     {

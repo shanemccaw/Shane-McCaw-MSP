@@ -451,7 +451,10 @@ namespace BuildConsole
                 // force-claim, orphan-sweep) — bypasses the API server entirely so queue
                 // state is always correct even when Replit is napping. Reads DATABASE_URL
                 // from .env.local at the repo root (already set up for local dev).
-                var repoRootForDb = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot() ?? "";
+                // Git #1985 — no longer coalesced to "" here; TryCreate fails closed on a null
+                // repo root itself (see its own doc comment) instead of silently resolving
+                // .env.local against the process cwd.
+                var repoRootForDb = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
                 _queueDb = BuildConsole.Services.BuildQueuePostgresClient.TryCreate(
                     btConfig,
                     repoRootForDb,
@@ -500,12 +503,27 @@ namespace BuildConsole
                     // off QueueWatcherService.BuildFinished (see QueueWatcher_BuildFinished) instead
                     // of requiring the .ps1 + a manual test run. Injected-delegate shape mirrors
                     // RegressionScheduleService above.
-                    _postBuildDeploy = new BuildConsole.Services.PostBuildDeployPipeline(
-                        BuildConsole.Services.BuildTrackerConfig.FindRepoRoot() ?? "",
-                        () => _buildTrackerApi.PostBuildCompleteAsync(),
-                        () => _buildTrackerApi.GetDeployStatusAsync(),
-                        RunScopedManifestsAsync,
-                        SurfacePostBuildDeployOutcome);
+                    // Git #1985 — was `?? ""`. An empty root would run every `git rev-parse` /
+                    // ancestor-check TryGit call in this pipeline against the process cwd instead
+                    // of the repo, which can silently produce a WRONG commit hash to verify the
+                    // deploy against — a false pass/fail on "did the deploy actually advance."
+                    // Fail loud instead: skip auto deploy+verify+test entirely rather than run it
+                    // against an unresolved root.
+                    string? postBuildRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                    if (string.IsNullOrWhiteSpace(postBuildRepoRoot))
+                    {
+                        BuildConsole.Services.ActivityLog.Log("testing.post-build-deploy",
+                            "Repo root unresolved — auto deploy+verify+test pipeline NOT armed this run (would otherwise verify commit hashes against the wrong directory). Check the repo-root-resolution toast/log.");
+                    }
+                    else
+                    {
+                        _postBuildDeploy = new BuildConsole.Services.PostBuildDeployPipeline(
+                            postBuildRepoRoot,
+                            () => _buildTrackerApi.PostBuildCompleteAsync(),
+                            () => _buildTrackerApi.GetDeployStatusAsync(),
+                            RunScopedManifestsAsync,
+                            SurfacePostBuildDeployOutcome);
+                    }
                 }
 
                 BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher, _queueDb, _sessionLimitAutoRestart);
@@ -6966,7 +6984,13 @@ namespace BuildConsole
         private async System.Threading.Tasks.Task OpenSqlFileInInlineRunnerAsync(object? sender, string fileParam)
         {
             string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
-            if (string.IsNullOrEmpty(repoRoot)) return;
+            if (string.IsNullOrEmpty(repoRoot))
+            {
+                // Git #1985 — was a bare `return`: the user clicked "open in SQL Runner" and
+                // nothing happened, with no feedback at all. Log it so it's at least traceable.
+                BuildConsole.Services.ActivityLog.Log("system.core", $"Cannot open '{fileParam}' in the inline SQL Runner: repo root not found.");
+                return;
+            }
 
             string fileName = Path.GetFileName(fileParam);
             string? targetPath = null;
@@ -7123,6 +7147,9 @@ namespace BuildConsole
                 return;
             }
 
+            // Git #1985 — audited, genuinely tolerable: the fallback is derived from this app's
+            // own known build-output layout (not an arbitrary hardcoded machine path), and the
+            // resolved projectDir is logged right below either way, so a wrong guess is visible.
             string? repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
             string projectDir = repoRoot != null
                 ? Path.Combine(repoRoot, "desktop", "BuildConsole")
@@ -8035,6 +8062,15 @@ namespace BuildConsole
                         BuildConsole.Services.ActivityLog.Log("testing.manifest-runner", $"Couldn't write test results: {ex.Message}");
                     }
                 }
+                else
+                {
+                    // Git #1985 — audited: was a silent skip. The run itself already completed and
+                    // its pass/fail is surfaced elsewhere (SetStatus/toast); this only means the
+                    // durable test-results/*.json for this run won't be written. Log it so a missing
+                    // results file is traceable back to an unresolved repo root, not a mystery.
+                    BuildConsole.Services.ActivityLog.Log("testing.manifest-runner",
+                        $"Repo root not found — test results for issue #{manifest.Issue} were NOT written to disk.");
+                }
             }
 
             // Epic #803 — screenshot baseline review: diff this run's captured screenshots (#966)
@@ -8047,6 +8083,9 @@ namespace BuildConsole
             BuildConsole.Services.ScreenshotReviewResult? reviewResult = null;
             if (capturedShots.Count > 0)
             {
+                // Git #1985 — audited, genuinely tolerable: screenshot baseline review is optional
+                // polish on top of an already-completed, already-surfaced run; skipping it silently
+                // when the repo root is unresolved doesn't hide anything the operator needed to see.
                 string? reviewRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
                 if (reviewRepoRoot != null)
                 {

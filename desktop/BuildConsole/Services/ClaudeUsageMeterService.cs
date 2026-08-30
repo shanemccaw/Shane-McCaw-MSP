@@ -378,6 +378,10 @@ namespace BuildConsole.Services
             {
                 FileName = exe,
                 Arguments = "--safe-mode -p --no-session-persistence \"/usage\"",
+                // Git #1985 — genuinely tolerable: this only runs `claude -p "/usage"`, a
+                // standalone account-usage query that reads no repo state, so the cwd it runs
+                // in doesn't change the result. Falls back to the exe's own directory (a real
+                // path on this machine, not a hardcoded one) rather than repo root when unresolved.
                 WorkingDirectory = BuildTrackerConfig.FindRepoRoot() ?? Path.GetDirectoryName(exe),
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
