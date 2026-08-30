@@ -84,6 +84,8 @@ namespace BuildConsole.Controls
         public string? BlockedByTitle { get; set; }
         /// <summary>Git #1368 — real "in-flight" label straight off the board's own GraphQL labels fetch (see <see cref="GitBoardIssue.HasInFlightLabel"/>), no separate REST call needed unlike <see cref="IsBlocked"/>.</summary>
         public bool IsInFlight { get; set; }
+        /// <summary>Git #1930 — the issue's real, current GitHub labels, carried through from whichever source (<see cref="GitBoardIssue.Labels"/>, <see cref="GitHubIssueResult.Labels"/>, <see cref="GitHubIssueDetail.Labels"/>) constructed this <see cref="GitIssue"/>, so the detail tab can render them without a second fetch.</summary>
+        public List<GitHubLabel> Labels { get; set; } = new();
         /// <summary>Shane, 2026-08-28: "If a parent has children in flight or working, there should be an indicator all the way down the chain... I have to expand everything to try and find it." True when this issue is NOT itself in-flight but has some descendant (sub-issue, sub-sub-issue, etc., however deep) that is — so every ancestor on the path down to the real in-flight item shows something without expanding the tree. Computed fresh in RenderIssuesTree from the live IsInFlight flags via the same ParentNumber chain PopulateIssueTreeHierarchy nests on.</summary>
         public bool HasInFlightDescendant { get; set; }
         public bool HasParentEpic { get; set; }
@@ -2277,6 +2279,7 @@ namespace BuildConsole.Controls
                 IsInFlight = it.HasInFlightLabel,
                 BlockedByNumber = issueInTree?.BlockedByNumber,
                 BlockedByTitle = issueInTree?.BlockedByTitle,
+                Labels = it.Labels,
             };
         }
 
@@ -2319,6 +2322,7 @@ namespace BuildConsole.Controls
                         BlockedByNumber = cachedBlocked ? cachedBlk.Number : (int?)null,
                         BlockedByTitle = cachedBlocked ? cachedBlk.Title : null,
                         IsInFlight = it.HasInFlightLabel,
+                        Labels = it.Labels,
                         SqlPath = DeriveSqlPath(it.Body),
                         Body = it.Body,
                         DatabaseId = it.DatabaseId,
@@ -3901,6 +3905,7 @@ namespace BuildConsole.Controls
                     Status = searchResult.IsClosed ? "CLOSED" : "OPEN",
                     IsComplete = searchResult.Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase)),
                     IsInFlight = searchResult.HasInFlightLabel,
+                    Labels = searchResult.Labels,
                 };
                 IssueSelected?.Invoke(this, searchIssue);
                 GitDetailTabRequested?.Invoke(this, searchIssue);
@@ -3919,6 +3924,7 @@ namespace BuildConsole.Controls
                     IsComplete = boardIssue.IsComplete,
                     HasParentEpic = boardIssue.ParentNumber.HasValue,
                     IsInFlight = boardIssue.HasInFlightLabel,
+                    Labels = boardIssue.Labels,
                 };
                 IssueSelected?.Invoke(this, bi);
                 GitDetailTabRequested?.Invoke(this, bi);
@@ -5426,6 +5432,7 @@ namespace BuildConsole.Controls
                 IsBlocked = blocked,
                 IsComplete = result.Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase)),
                 IsInFlight = result.HasInFlightLabel,
+                Labels = result.Labels,
             };
 
             var tvi = new TreeViewItem { Header = p, Tag = gitIssue };

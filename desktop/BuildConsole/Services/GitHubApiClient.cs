@@ -1093,6 +1093,75 @@ namespace BuildConsole.Services
         private class ProjectItemLookupNode { public string? Id { get; set; } public ProjectItemLookupProject? Project { get; set; } }
         private class ProjectItemLookupProject { public string? Id { get; set; } }
 
+        /// <summary>Git #1930 — a single issue's real current Status field value on THIS
+        /// project (the same board <see cref="BatterUpProjectId"/> everything else here
+        /// reads/writes), plus its ProjectV2Item node id so the caller can move it without
+        /// a second lookup. Null when the issue isn't on this project at all.</summary>
+        public class IssueBoardStatus
+        {
+            public string ItemId { get; set; } = "";
+            public string? OptionId { get; set; }
+            /// <summary>The Status option's real display name (e.g. "Batter Up", "Backlog", "In Progress", "Done") straight off GraphQL's <c>fieldValueByName</c> — never derived from a label.</summary>
+            public string? StatusName { get; set; }
+        }
+
+        /// <summary>
+        /// Git #1930 — the detail-tab equivalent of <see cref="GetProjectItemIdForIssueAsync"/>:
+        /// same one-issue `issue(number:).projectItems` shape, but additionally requests the
+        /// Status field's option id AND display name so the detail view can show real board
+        /// status text without a separate options-lookup call.
+        /// </summary>
+        public async Task<IssueBoardStatus?> GetIssueBoardStatusAsync(int issueNumber)
+        {
+            string query = $@"query {{
+  repository(owner: ""{Owner}"", name: ""{Repo}"") {{
+    issue(number: {issueNumber}) {{
+      projectItems(first: 20) {{
+        nodes {{
+          id
+          project {{ id }}
+          fieldValueByName(name: ""Status"") {{
+            ... on ProjectV2ItemFieldSingleSelectValue {{ optionId name }}
+          }}
+        }}
+      }}
+    }}
+  }}
+}}";
+            using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
+            {
+                Content = JsonContent.Create(new { query }),
+            };
+            var res = await _http.SendAsync(req);
+            res.EnsureSuccessStatusCode();
+            var body = await res.Content.ReadFromJsonAsync<IssueBoardStatusResponse>(JsonOpts);
+            if (body?.Errors is { Count: > 0 } errs)
+                throw new Exception("GitHub GraphQL: " + string.Join("; ", errs.Select(e => e.Message)));
+
+            var nodes = body?.Data?.Repository?.Issue?.ProjectItems?.Nodes;
+            var node = nodes?.FirstOrDefault(n => string.Equals(n.Project?.Id, BatterUpProjectId, StringComparison.OrdinalIgnoreCase));
+            if (node == null || string.IsNullOrEmpty(node.Id)) return null;
+
+            return new IssueBoardStatus
+            {
+                ItemId = node.Id!,
+                OptionId = node.FieldValueByName?.OptionId,
+                StatusName = node.FieldValueByName?.Name,
+            };
+        }
+
+        private class IssueBoardStatusResponse
+        {
+            public IssueBoardStatusData? Data { get; set; }
+            public List<GraphQLError>? Errors { get; set; }
+        }
+        private class IssueBoardStatusData { public IssueBoardStatusRepo? Repository { get; set; } }
+        private class IssueBoardStatusRepo { public IssueBoardStatusIssue? Issue { get; set; } }
+        private class IssueBoardStatusIssue { public IssueBoardStatusConnection? ProjectItems { get; set; } }
+        private class IssueBoardStatusConnection { public List<IssueBoardStatusNode> Nodes { get; set; } = new(); }
+        private class IssueBoardStatusNode { public string? Id { get; set; } public IssueBoardStatusProject? Project { get; set; } public FieldValueData? FieldValueByName { get; set; } }
+        private class IssueBoardStatusProject { public string? Id { get; set; } }
+
         private async Task<ProjectItemConnection?> PostProjectItemsQueryAsync(string query)
         {
             using var req = new HttpRequestMessage(HttpMethod.Post, "graphql")
@@ -1127,7 +1196,7 @@ namespace BuildConsole.Services
             public FieldValueData? FieldValueByName { get; set; }
             public ProjectItemIssueData? Content { get; set; }
         }
-        private class FieldValueData { public string? OptionId { get; set; } }
+        private class FieldValueData { public string? OptionId { get; set; } public string? Name { get; set; } }
         private class ProjectItemIssueData
         {
             public int Number { get; set; }
