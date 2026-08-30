@@ -2957,6 +2957,34 @@ namespace BuildConsole.Controls
                 };
                 cm.Items.Add(miRunNow);
 
+                // Git #1832 — the reverse of Un-park: pulls a still-queued item out of
+                // the active queue into the parked staging area, only from 'queued'.
+                var miPark = new MenuItem { Header = "🅿️ Park" };
+                miPark.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Park", "No direct DB connection — can't park.");
+                        return;
+                    }
+                    try
+                    {
+                        if (await _db.ParkAsync(item.Id))
+                        {
+                            ToastEngine.Success("Parked", $"Staged, not queued: {item.Title}");
+                            ActivityLog.Log("build-queue", $"Parked queue item #{item.Id} ({item.Title}) — no longer queued.");
+                        }
+                        else
+                            ToastEngine.Warning("Park", $"No longer queued: {item.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Park Failed", $"Couldn't park: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miPark);
+
                 var miCancel = new MenuItem { Header = "✕ Cancel" };
                 miCancel.Click += async (_, _) =>
                 {
@@ -3020,6 +3048,36 @@ namespace BuildConsole.Controls
                     await RefreshAsync();
                 };
                 cm.Items.Add(miResumeNow);
+
+                // Git #1832 — a limit-paused build is genuinely not running either;
+                // parking it instead of waiting out the session-limit timer is a
+                // reasonable thing to want. See ParkAsync's own doc for the full
+                // judgment call.
+                var miParkLp = new MenuItem { Header = "🅿️ Park" };
+                miParkLp.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Park", "No direct DB connection — can't park.");
+                        return;
+                    }
+                    try
+                    {
+                        if (await _db.ParkAsync(item.Id))
+                        {
+                            ToastEngine.Success("Parked", $"Staged, not queued: {item.Title}");
+                            ActivityLog.Log("session-limit", $"Parked limit-paused queue item #{item.Id} ({item.Title}) — will NOT auto-restart.");
+                        }
+                        else
+                            ToastEngine.Warning("Park", $"No longer limit-paused: {item.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Park Failed", $"Couldn't park: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miParkLp);
 
                 var miCancelLp = new MenuItem { Header = "✕ Cancel Build" };
                 miCancelLp.Click += async (_, _) =>
