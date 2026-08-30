@@ -8122,6 +8122,12 @@ namespace BuildConsole
         private async System.Threading.Tasks.Task HandleShaneAppUriAsync(string uri)
         {
             const string ch = BuildConsole.Services.ShaneAppProtocol.LogChannel;
+            // Git #1828 — mark the ENTIRE shaneapp:// dispatch (every action handler, and anything they
+            // await or spawn within this scope) as agent/protocol origin. This is the single choke point
+            // through which all shaneapp:// invocations flow, so setting the ambient marker here makes SSH
+            // structurally unreachable from any agent-originated path — ReplitSshService refuses on
+            // IsAgentOrigin FIRST, regardless of what Shane has the Target Environment selector set to.
+            using var _agentOriginScope = BuildConsole.Services.ShaneAppExecutionContext.Enter();
             try
             {
                 // Stage: URI physically received (off the named pipe, or drained as a

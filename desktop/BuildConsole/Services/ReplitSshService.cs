@@ -28,6 +28,22 @@ namespace BuildConsole.Services
 
         private string? _cachedSshPath;
 
+        // ── Git #1828: Dev-only SSH lock ─────────────────────────────────────────
+        // ReplitSshService reaches the Staging (Replit) server. Real remote access was
+        // previously gated only by a UseSshForDeploy bool + IsConfigured, with NO check
+        // against the app's currently-selected Target Environment — contradicting
+        // TargetEnvironment.cs's own doc comment ("Agent/protocol executions (shaneapp://)
+        // are hard-locked to Dev. Staging and Production are only reachable via explicit
+        // manual UI actions by Shane."). The gate below (CheckRemoteAccessBlockReason,
+        // enforced at the single choke point ExecuteCommandAsync) makes that real:
+        //   1. Agent/protocol (shaneapp://) origin  → refused ALWAYS (structural; no UI
+        //      state can unlock it). Checked first.
+        //   2. Explicit manual Staging operation     → allowed (the deliberate Shane-only
+        //      "Deploy to Staging" action — see AuthorizeManualStagingOperation).
+        //   3. Otherwise                              → allowed only when the live Target
+        //      Environment selector reads Staging (the single source of truth), else refused.
+        private static readonly System.Threading.AsyncLocal<bool> _manualStagingAuthorized = new();
+
         public bool IsConfigured
         {
             get
@@ -37,6 +53,127 @@ namespace BuildConsole.Services
                        !string.IsNullOrWhiteSpace(s.SshKeyPath) &&
                        File.Exists(s.SshKeyPath);
             }
+        }
+
+        /// <summary>
+        /// Opens an EXPLICIT, human-initiated Staging-operation authorization for the duration of the
+        /// returned scope (Git #1828). Used ONLY by the deliberate, Shane-only "Deploy to Staging"
+        /// action (<see cref="StagingDeployService"/> and <see cref="StagingDeployDialog"/>'s pending-
+        /// migration read) — an operation whose target is unambiguously Staging, independent of the
+        /// Target Environment selector's current value. That button is deliberately a distinct action
+        /// from the selector (see <c>LeftSidebar.DeployToStagingRequested</c>), so without this the
+        /// selector-based gate would fail-close the legitimate deploy whenever the selector sat on Dev.
+        ///
+        /// This is NOT a duplicate of the selector: it's a transient, in-memory, per-flow authorization
+        /// tied to one specific human action, and it can NEVER unlock an agent-originated call — the
+        /// agent hard-lock (<see cref="ShaneAppExecutionContext.IsAgentOrigin"/>) is checked first and
+        /// takes precedence, and this method refuses to open at all from an agent context.
+        /// Flows across awaits (<see cref="System.Threading.AsyncLocal{T}"/>) so it covers every SSH
+        /// call the deploy awaits.
+        /// </summary>
+        public static IDisposable AuthorizeManualStagingOperation()
+        {
+            if (ShaneAppExecutionContext.IsAgentOrigin)
+            {
+                throw new InvalidOperationException(
+                    "Refusing to authorize a manual Staging SSH operation from an agent/protocol (shaneapp://) context. " +
+                    "Agents are hard-locked to Dev (Git #1828).");
+            }
+            bool prev = _manualStagingAuthorized.Value;
+            _manualStagingAuthorized.Value = true;
+            return new ManualStagingAuthScope(prev);
+        }
+
+        private sealed class ManualStagingAuthScope : IDisposable
+        {
+            private readonly bool _prev;
+            private bool _disposed;
+            public ManualStagingAuthScope(bool prev) => _prev = prev;
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _manualStagingAuthorized.Value = _prev;
+            }
+        }
+
+        /// <summary>
+        /// Reads the app's currently-selected <see cref="TargetEnvironment"/> — the SINGLE source of
+        /// truth, the live <c>ComboTargetEnvironment</c> selector surfaced by
+        /// <c>LeftSidebar.GetSelectedTargetEnvironment()</c> — via the same UI-thread dispatch pattern
+        /// <see cref="LocalSqlExecutor"/> uses. Falls back to the safest tier (Dev) if the UI can't be
+        /// reached, so an unknown state never accidentally permits remote access.
+        /// </summary>
+        private static TargetEnvironment GetCurrentTargetEnvironment()
+        {
+            TargetEnvironment env = TargetEnvironment.Dev;
+            if (System.Windows.Application.Current != null)
+            {
+                try
+                {
+                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        if (System.Windows.Application.Current.MainWindow is MainWindow mw && mw.LeftSidebar != null)
+                        {
+                            env = mw.LeftSidebar.GetSelectedTargetEnvironment();
+                        }
+                    });
+                }
+                catch
+                {
+                    // Fall back to Dev if UI-thread dispatch fails — never fail OPEN.
+                }
+            }
+            return env;
+        }
+
+        /// <summary>
+        /// The Git #1828 gate. Returns a human-readable reason string when real SSH access is
+        /// currently NOT permitted, or <c>null</c> when it is allowed. Fails CLOSED — see the field
+        /// comment above for the three-way decision. Public so read-only callers (e.g.
+        /// <see cref="SystemHealthService"/>'s Staging-SSH health probe) can render an honest
+        /// "disabled under Dev" status instead of firing a doomed connection, using the exact same
+        /// gate as the executor rather than a duplicate check.
+        /// </summary>
+        public string? GetRemoteAccessBlockReason() =>
+            EvaluateRemoteAccess(
+                ShaneAppExecutionContext.IsAgentOrigin,
+                _manualStagingAuthorized.Value,
+                GetCurrentTargetEnvironment());
+
+        /// <summary>
+        /// The pure Git #1828 access-policy decision, separated from the ambient reads
+        /// (<see cref="ShaneAppExecutionContext.IsAgentOrigin"/>, the manual-Staging authorization scope,
+        /// and the live Target Environment selector) so it can be exercised deterministically for every
+        /// combination — including the Staging-allowed branch that otherwise needs a real WPF selector.
+        /// Returns a human-readable reason when remote SSH access is NOT permitted, or <c>null</c> when it
+        /// is. Fails CLOSED.
+        /// </summary>
+        public static string? EvaluateRemoteAccess(bool isAgentOrigin, bool manualStagingAuthorized, TargetEnvironment env)
+        {
+            // (1) Structural agent hard-lock — highest priority, no UI state or manual scope can unlock it.
+            if (isAgentOrigin)
+            {
+                return "SSH/Replit access is hard-locked away from agent/protocol (shaneapp://) executions — " +
+                       "agents are confined to Dev, and Staging/Production remote access is reachable only through " +
+                       "Shane's explicit manual UI actions (Git #1828). Refusing.";
+            }
+
+            // (2) Explicit, human-initiated manual Staging operation (the "Deploy to Staging" action).
+            if (manualStagingAuthorized)
+            {
+                return null; // allowed — the operation's target is unambiguously Staging.
+            }
+
+            // (3) Default gate: the live Target Environment selector is the single source of truth.
+            if (env != TargetEnvironment.Staging)
+            {
+                return $"SSH/Replit access is disabled while the Target Environment is '{env}'. SSH reaches the " +
+                       "Staging (Replit) server; set the Target Environment selector to Staging — or use the manual " +
+                       $"\"Deploy to Staging\" action — to enable it (Git #1828). Refusing to run over SSH under '{env}'.";
+            }
+
+            return null; // Staging selected — allowed.
         }
 
         private string FindSshExe()
@@ -65,6 +202,20 @@ namespace BuildConsole.Services
         {
             var s = BuildConsoleSettings.Load();
             var result = new SshCommandResult();
+
+            // ── Git #1828: enforce the Dev-only SSH lock at the single choke point. Every
+            // ReplitSshService method that reaches a remote host routes through here, so gating
+            // ExecuteCommandAsync gates them all. Fail CLOSED with a clear message — never a silent
+            // no-op, never a connection — when access isn't permitted for the current context/env.
+            var blockReason = GetRemoteAccessBlockReason();
+            if (blockReason != null)
+            {
+                ActivityLog.Log(LogChannel, $"[SSH BLOCKED] {blockReason} (command: {command})");
+                ShaneAppStreamService.Instance.AppendLine($"[SSH BLOCKED] {blockReason}", ShaneAppLogLevel.Error);
+                result.ExitCode = -1;
+                result.Error = blockReason;
+                return result;
+            }
 
             if (!IsConfigured)
             {

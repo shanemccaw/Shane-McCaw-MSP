@@ -127,6 +127,12 @@ namespace BuildConsole.Services
 
             _busy = true;
             var sw = Stopwatch.StartNew();
+            // Git #1828 — this IS the deliberate, Shane-only "Deploy to Staging" action, whose target is
+            // unambiguously Staging regardless of the Target Environment selector. Authorize its SSH calls
+            // explicitly for the duration of the deploy so the Dev-only lock on ReplitSshService (which
+            // otherwise fail-closes SSH unless the selector reads Staging) doesn't neuter the legitimate
+            // deploy. The authorization can never be opened from an agent context (it throws there).
+            using var _stagingAuth = ReplitSshService.AuthorizeManualStagingOperation();
             try
             {
                 schemaSql = string.IsNullOrWhiteSpace(schemaSql) ? null : schemaSql.Trim();

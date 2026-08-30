@@ -311,7 +311,14 @@ namespace BuildConsole.Services
         /// <summary>Wakes Replit via direct SSH if configured, falling back to driving the Replit dashboard in WebView2.</summary>
         private async Task WakeAsync(BuildConsoleSettings s)
         {
-            // 1. Prefer direct SSH wake if configured (instantaneous, headless, no fragile browser DOM selectors)
+            // 1. Prefer direct SSH wake if configured (instantaneous, headless, no fragile browser DOM selectors).
+            //    Git #1828 decision — this automated SSH restart is INTENTIONALLY subject to the Dev-only
+            //    lock (NOT exempted): it fires on a background timer with no human action, exactly the
+            //    ambient-automation class the gate covers, and under normal local-first Dev work SSH-waking
+            //    the Staging Replit is not wanted. When the selector isn't Staging, RestartServerAsync
+            //    fail-closes and we degrade gracefully to the WebView2 UI wake below — the watcher keeps
+            //    working, just without the SSH accelerator. (SSH resumes automatically when Shane selects
+            //    Staging.)
             if (ReplitSshService.Instance.IsConfigured)
             {
                 Emit(ReplitWatcherState.Waking, "waking Replit via direct SSH…");

@@ -198,6 +198,14 @@ namespace BuildConsole.Services
             ActivityLog.Log(Channel, $"[1/5] Build completed: #{queueItemId} '{title}' (exit 0). Local HEAD = {Short(expectedShort)}. ");
             
             // Read the CURRENT live commit BEFORE triggering (via SSH if enabled, else HTTP deploy-status).
+            // Git #1828 decision — this automated post-build pipeline is INTENTIONALLY subject to the
+            // Dev-only SSH lock (NOT exempted): it fires off BuildFinished with no human click, so its SSH
+            // calls are gated on the Target Environment selector like any other ambient caller. Under Dev
+            // (the normal state) SSH fail-closes and the pipeline degrades to its existing HTTP #911/#805
+            // deploy path (which every SSH branch here already falls back to), so nothing breaks; when Shane
+            // has explicitly selected Staging, the SSH accelerator works as before. (Note: per
+            // StagingDeployService's own comment this automatic path is being retired in favour of the
+            // manual "Deploy to Staging" action — gating it is aligned with that local-first direction.)
             var settings = BuildConsoleSettings.Load();
             bool useSsh = settings.UseSshForDeploy && ReplitSshService.Instance.IsConfigured;
 

@@ -412,6 +412,20 @@ namespace BuildConsole.Services
                 return h;
             }
 
+            // Git #1828 — this probe runs on a background 30s health timer. When the Dev-only SSH lock
+            // has real remote access gated (the normal Dev state), don't fire a doomed connection every
+            // tick and don't flag it red as "unhealthy": SSH being disabled under Dev is the CORRECT,
+            // expected state, not a fault. Report it honestly using the SAME gate as the executor.
+            var blockReason = ReplitSshService.Instance.GetRemoteAccessBlockReason();
+            if (blockReason != null)
+            {
+                h.Status = HealthStatus.NotConfigured;
+                h.IsConfigured = true;
+                h.Summary = "⚪ Disabled (Target Environment not Staging)";
+                h.Details = blockReason;
+                return h;
+            }
+
             var sw = Stopwatch.StartNew();
             try
             {

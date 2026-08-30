@@ -57,6 +57,10 @@ namespace BuildConsole
 
             try
             {
+                // Git #1828 — the pending-migration read is part of the deliberate, Shane-only "Deploy to
+                // Staging" flow (this modal only opens from that button). Authorize the SSH read explicitly
+                // so the Dev-only lock doesn't fail-close it regardless of the Target Environment selector.
+                using var _stagingAuth = ReplitSshService.AuthorizeManualStagingOperation();
                 var result = await ReplitSshService.Instance.GetPendingManualMigrationsAsync();
                 if (!result.Success || string.IsNullOrWhiteSpace(result.Output))
                 {
