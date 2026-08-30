@@ -213,6 +213,16 @@ export const tenantsTable = pgTable("tenants", {
   // throughout consent.ts / portal routes, which everywhere else in this
   // codebase means `tenants.id`, a local row id.
   stripeCustomerId: text("stripe_customer_id"),
+  /**
+   * Policy Engine opt-in (#1549) — a per-customer onboarding checkbox, default
+   * OFF. Distinct from `standing_policies.is_active` (whether one specific
+   * policy has been switched on): this is the tenant-wide kill switch #1549's
+   * SETTLED section requires — "the platform does not evaluate or act against
+   * tenants that have not opted in." The continuous-evaluation reconciliation
+   * loop checks BOTH: a policy only actually evaluates when its own is_active
+   * is true AND its OU's tenant has opted in here.
+   */
+  policyEngineOptIn: boolean("policy_engine_opt_in").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -4708,6 +4718,65 @@ export const insertStandingPolicySchema = createInsertSchema(standingPoliciesTab
 export type StandingPolicy = typeof standingPoliciesTable.$inferSelect;
 export type InsertStandingPolicy = typeof standingPoliciesTable.$inferInsert;
 export type StandingPolicyTargetKind = (typeof STANDING_POLICY_TARGET_KIND)[number];
+
+// ── Policy Evaluation Runs (#1549) — the continuous-evaluation reconciliation loop ──
+//
+// #1549 SETTLED: "the policy engine evaluates continuously," on two triggers —
+// EVENT (something changed for one tenant right now, e.g. a standing policy
+// was just switched on) and DIVERGENCE (a periodic sweep that re-checks every
+// active policy so drift introduced by hand is eventually caught, not only
+// provisioning-time state). This table is the durable, queryable register that
+// loop produces: one row per policy actually considered on a pass. It is the
+// visible proof the reconciliation loop ran, and the hand-off point #1548
+// (SOP enactment) and #1553 (non-compliance -> finding) attach to next — this
+// issue does not execute an SOP and does not write a finding itself.
+//
+// `outcome` is honest about what could actually be checked at this point in
+// the build-out. `not_evaluable` is the real, current answer for every target
+// kind today: `standing_policies` has no OU-membership model yet (deliberately
+// reserved — see active-directory.ts's own OU comment), so there is no
+// "who belongs to this OU" to read live Graph state for and compare against
+// `target_state`. Recording that honestly, per-policy, per-pass, is real work
+// — it is NOT a fabricated compliant/divergent verdict, which would be worse
+// than no answer. `skipped_not_opted_in` is equally honest: the pass reached a
+// policy whose OU resolves to a real tenant, but that tenant has not flipped
+// the opt-in checkbox, so nothing was read or acted on for it.
+export const POLICY_EVALUATION_TRIGGER_KIND = ["event", "schedule"] as const;
+export type PolicyEvaluationTriggerKind = (typeof POLICY_EVALUATION_TRIGGER_KIND)[number];
+
+export const POLICY_EVALUATION_OUTCOME = [
+  "compliant",
+  "divergent",
+  "not_evaluable",
+  "skipped_not_opted_in",
+  "error",
+] as const;
+export type PolicyEvaluationOutcome = (typeof POLICY_EVALUATION_OUTCOME)[number];
+
+export const policyEvaluationRunsTable = pgTable("policy_evaluation_runs", {
+  id: serial("id").primaryKey(),
+  standingPolicyId: integer("standing_policy_id").notNull().references(() => standingPoliciesTable.id, { onDelete: "cascade" }),
+  /** Denormalized from the policy at evaluation time, for querying without a join. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The tenant this pass resolved via the policy's OU. Null when the OU carries no tenant. */
+  tenantId: integer("tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
+  triggerKind: text("trigger_kind", { enum: POLICY_EVALUATION_TRIGGER_KIND }).notNull(),
+  /** The canonical event name that fired this pass, e.g. "policy.standing_policy.activated". Null for a scheduled sweep. */
+  triggerEventType: text("trigger_event_type"),
+  outcome: text("outcome", { enum: POLICY_EVALUATION_OUTCOME }).notNull(),
+  /** Structured, honest detail — e.g. { reason: "..." }. Never fabricated data. */
+  detail: jsonb("detail").notNull().default({}),
+  evaluatedAt: timestamp("evaluated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("policy_evaluation_runs_standing_policy_id_idx").on(t.standingPolicyId),
+  index("policy_evaluation_runs_msp_evaluated_idx").on(t.mspId, t.evaluatedAt),
+  index("policy_evaluation_runs_tenant_evaluated_idx").on(t.tenantId, t.evaluatedAt),
+]);
+
+export const insertPolicyEvaluationRunSchema = createInsertSchema(policyEvaluationRunsTable).omit({ id: true, createdAt: true });
+export type PolicyEvaluationRun = typeof policyEvaluationRunsTable.$inferSelect;
+export type InsertPolicyEvaluationRun = typeof policyEvaluationRunsTable.$inferInsert;
 
 // ── Change Advisory Board — membership, meetings, agenda, ECAB (#1501) ───────
 //
