@@ -86,6 +86,31 @@ const EVIDENCE_BODY_CHARS = 600;
 const INTUNE_GRAPH_ROOTS = ["/deviceManagement", "/deviceAppManagement"] as const;
 
 /**
+ * Reduce any form of Graph endpoint this codebase passes around to the version-less
+ * path the root matching below expects: `/deviceManagement/...`.
+ *
+ * Three forms genuinely occur, and before Git #1796 only the first was handled:
+ *   - `/deviceManagement/managedDevices`                          (monitor_checks)
+ *   - `https://graph.microsoft.com/v1.0/deviceManagement/...`     (an @odata.nextLink)
+ *   - `https://graph.microsoft.com/beta/deviceManagement/...`     (the #1796 collector)
+ *
+ * The absolute forms used to fall straight through, because the old check was a bare
+ * `startsWith("/deviceManagement")` and an absolute URL starts with `https:`. The
+ * consequence was not cosmetic: an Intune 401/503 arriving on an absolute URL was
+ * NOT recognised as the never-configured signature, so it was reported as a
+ * permission denial or a transport error — the precise "confidently wrong about
+ * someone's tenant" conflation this module exists to prevent, reintroduced through
+ * a different spelling of the same endpoint. Reproduced live against the testbed on
+ * 2026-08-30 while wiring #1796's collector, which reads beta paths as absolute URLs.
+ */
+function normalizeGraphEndpointPath(endpoint: string): string {
+  let p = endpoint.trim();
+  const hostMatch = /^https?:\/\/graph\.microsoft\.com\/(v1\.0|beta)(\/.*)?$/i.exec(p);
+  if (hostMatch) p = hostMatch[2] ?? "/";
+  return p.startsWith("/") ? p : `/${p}`;
+}
+
+/**
  * Which Microsoft service has to be stood up for a Graph path to answer, or null
  * when the path's backing service has no distinguishable service-level signature.
  *
@@ -94,7 +119,7 @@ const INTUNE_GRAPH_ROOTS = ["/deviceManagement", "/deviceAppManagement"] as cons
  */
 export function serviceKeyForGraphPath(graphPath: string | null | undefined): TenantServiceKey | null {
   if (!graphPath) return null;
-  const path = graphPath.startsWith("/") ? graphPath : `/${graphPath}`;
+  const path = normalizeGraphEndpointPath(graphPath);
   for (const root of INTUNE_GRAPH_ROOTS) {
     if (path === root || path.startsWith(`${root}/`) || path.startsWith(`${root}?`)) return "intune";
   }
