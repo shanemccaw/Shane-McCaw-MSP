@@ -87,3 +87,6 @@ scripts/_tmp_*
 *.stackdump
 # Captured shaneapp:// tool-result envelope dumps (ephemeral, per-invocation).
 desktop/BuildConsole/shaneapp-*.result.json
+
+# Git #1812 — local-only running log from check-dev-app-registration-drift.mjs.
+scripts/azure/app-registration-drift.log
