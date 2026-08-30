@@ -559,6 +559,54 @@ testbed tenant applies here with zero exceptions. If you were handed
 SSH/connection details that reach anything other than the dev server named
 above, treat that as a stop-and-flag situation, not something to use.
 
+## Production-change gate — the app registration is the boundary, not the tenant (Git #1913)
+
+`mccawsoft2.onmicrosoft.com` is simultaneously the testbed tenant and Shane's real
+production Microsoft 365 tenant. Because of that, "testbed only" in a build prompt is
+a real constraint for **reads** and no constraint at all for the **write plane** — a
+directory role assignment, an app-registration credential, or an admin-consent grant
+against that tenant can be a production change even while the prompt says "testbed
+only" in the same breath. The boundary that actually holds is the **app
+registration**, not the tenant name:
+
+- **DEV app registration `9f6f4772-b5be-421f-815e-b392336c373a`** — agent-modifiable,
+  no gate. Same tier: `ca-ps-execution-dev`, reads against the testbed tenant, and the
+  local PostgreSQL database with its manual migrations (see Database below).
+- **PROD app registration `3308b280-e41e-42ba-9f73-73aac2ad3dee`** — an agent may read
+  its current state, but writes only the plan for a change (a migration file, a
+  documented step list, a PR) — it never applies that plan itself. Admin consent or
+  permission grants on this registration, directory role assignments, and
+  app-registration credentials against it are all out of agent reach.
+- Also wrapped, same reason: production Key Vault (`ShaneMcCawConsulting`) secrets,
+  `ca-ps-execution` (the non-`-dev` container), Staging/Replit deploys and their
+  migrations, and tenant licensing purchases or service enablement.
+
+Everything wrapped above goes into **#1281** (GATE: v1.1 release) as a documented
+plan, not something executed in-session. This section is additive to, and does not
+weaken, the "HARD RULE — production is never in scope" immediately above — that rule
+already forbids direct production access outright; this section names the specific
+in-between resources (the two app registrations, the Key Vault, the two
+`ca-ps-execution*` containers, Staging/Replit) so "testbed only" cannot be misread as
+authorizing a write against one of them.
+
+**This is a different boundary than the "never invent data, BUILD IT" rule below, and
+the two must never be conflated.** That rule says: when the backend genuinely lacks a
+column, table, endpoint or enum value the surface needs, add it yourself in the same
+session — a missing column is agent work, not a product decision, and rendering an
+empty state and stopping there is an unfinished build. This rule covers a different
+kind of gap and says the opposite: a production credential, an admin-consent grant, a
+directory role assignment, or a Staging/Production deploy is not something an agent
+completes in-session no matter how small the change looks — it is not "missing work,"
+it is a boundary that Shane alone crosses. **Stopping at a correctly-identified
+production boundary, having written the plan for #1281 to carry, is a successful,
+finished build — not an unfinished one, and not the over-cautious "sorry, I cannot
+work" failure this project has already had to correct once before.** Do not let this
+rule talk you into rendering an empty state for a feature that is genuinely missing
+(that is still a build-it case, unchanged); do not let the "BUILD IT" instinct talk
+you into applying a change against the PROD app registration, production Key Vault,
+`ca-ps-execution`, or a Staging/Production deploy (that is always a #1281 plan, never
+a same-session apply).
+
 ## Database
 
 - **Why this section no longer points at hosted Neon:** the hosted Neon Postgres instance previously used for local dev hit its free-plan monthly data-transfer quota and went unreachable (compute suspended, real, confirmed) — a real operational lesson about relying on a shared/limited hosted resource for high-frequency local dev traffic (Git #1209). Shane has since installed PostgreSQL 18 locally, and local dev now reads/writes that instance instead. The underlying philosophy is unchanged: agents connect directly for routine local dev/query verification rather than deferring everything to Shane — only the connection target changed.
