@@ -452,6 +452,19 @@
                                        TextWrapping="Wrap"
                                        VerticalAlignment="Top"
                                        Visibility="Collapsed"/>
+                            <!-- Git #1833 — "All" (the broad, unfiltered view) with an empty search
+                                 box no longer eagerly renders every non-hidden item as a full DAG +
+                                 card pass; this placeholder stands in its place until a real query is
+                                 typed. Narrow filters (Running/Queued/Parked/etc.) are unaffected and
+                                 keep rendering their own contents normally with empty search. -->
+                            <TextBlock x:Name="QueueBroadFilterPlaceholderText"
+                                       Text="Type a build number to search."
+                                       FontSize="11"
+                                       Foreground="{StaticResource Subtext1Brush}"
+                                       Margin="12,10"
+                                       TextWrapping="Wrap"
+                                       VerticalAlignment="Top"
+                                       Visibility="Collapsed"/>
                         </StackPanel>
                     </Border>
 

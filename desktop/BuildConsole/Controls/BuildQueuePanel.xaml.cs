@@ -1038,11 +1038,29 @@ namespace BuildConsole.Controls
 
         private string _queueSearch = "";
 
+        // Git #1833 — Shane: with hundreds of builds, "All" + search fired the full
+        // ApplyFilter+RenderQueue pipeline (swimlane/DAG lane assignment, full WPF cards)
+        // on every single keystroke. Debounce so only the settled query actually renders.
+        private DispatcherTimer? _queueSearchDebounceTimer;
+        private static readonly TimeSpan QueueSearchDebounceInterval = TimeSpan.FromMilliseconds(250);
+
         private void QueueSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             _queueSearch = QueueSearchBox.Text ?? "";
             if (QueueGraphContainer == null || _filter == "Tests") return;
-            RenderQueue(ApplyFilter(_lastItems));
+
+            if (_queueSearchDebounceTimer == null)
+            {
+                _queueSearchDebounceTimer = new DispatcherTimer { Interval = QueueSearchDebounceInterval };
+                _queueSearchDebounceTimer.Tick += (_, _) =>
+                {
+                    _queueSearchDebounceTimer!.Stop();
+                    RenderQueue(ApplyFilter(_lastItems));
+                };
+            }
+            // Reset on every keystroke — only a settled pause actually triggers a render.
+            _queueSearchDebounceTimer.Stop();
+            _queueSearchDebounceTimer.Start();
         }
 
         private static List<QueueItem> SortForDisplay(IEnumerable<QueueItem> items) =>
@@ -1112,6 +1130,27 @@ namespace BuildConsole.Controls
         {
             var search = _queueSearch.Trim();
             bool searching = search.Length > 0;
+
+            // Git #1833 — the broad "All" view (default ApplyFilter case) with an empty
+            // search box matches hundreds of items nobody scrolls through; Shane always
+            // searches by number directly instead. Skip the whole swimlane/DAG + card
+            // build for that specific case and show a placeholder instead. The already-
+            // narrow filters (Running/Queued/Parked/etc.) are untouched — they keep
+            // rendering their own (small) contents normally with empty search.
+            bool isBroadUnsearchedView = !searching && _filter == "All" && _buildSetFilter == null;
+            if (isBroadUnsearchedView)
+            {
+                QueueGraphContainer.Visibility = Visibility.Collapsed;
+                QueueCardsHost.Children.Clear();
+                QueueGraphCanvas.Children.Clear();
+                _currentGraphNodes.Clear();
+                QueueEmptyText.Visibility = Visibility.Collapsed;
+                QueueBroadFilterPlaceholderText.Visibility = Visibility.Visible;
+                UpdateCritterLoungeVisibility();
+                return;
+            }
+            QueueBroadFilterPlaceholderText.Visibility = Visibility.Collapsed;
+
             if (searching)
             {
                 items = items
