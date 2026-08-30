@@ -199,8 +199,16 @@ namespace BuildConsole.Services
                     {
                         _percent = parsedSessionPercent;
                         _resetTarget = ParseResetTarget(parsedSessionReset);
+                        if (!string.IsNullOrEmpty(parsedSessionReset) && !_resetTarget.HasValue)
+                        {
+                            ActivityLog.Log(Channel, $"Unparseable session reset label emitted: \"{parsedSessionReset}\"");
+                        }
                         _weeklyPercent = parsedWeeklyPercent;
                         _weeklyResetTarget = ParseResetTarget(parsedWeeklyReset);
+                        if (!string.IsNullOrEmpty(parsedWeeklyReset) && !_weeklyResetTarget.HasValue)
+                        {
+                            ActivityLog.Log(Channel, $"Unparseable weekly reset label emitted: \"{parsedWeeklyReset}\"");
+                        }
                         _lastPoll = DateTime.Now;
 
                         ActivityLog.Log(Channel,
@@ -400,6 +408,15 @@ namespace BuildConsole.Services
                 bool hadApiKey = psi.Environment.Remove("ANTHROPIC_API_KEY");
                 ActivityLog.Log(Channel, $"[secondary] usage poll routed to CLAUDE_CONFIG_DIR={secondaryConfigDirOverride}" +
                     (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")})" : "") + ".");
+            }
+            else
+            {
+                // Primary poll MUST unconditionally target the default (~/.claude) account.
+                // Strip CLAUDE_CONFIG_DIR (if process or system env set it to secondary/custom)
+                // and any inherited secondary tokens so Primary always polls the default ~/.claude session.
+                psi.Environment.Remove("CLAUDE_CONFIG_DIR");
+                psi.Environment.Remove("CLAUDE_CODE_OAUTH_TOKEN");
+                psi.Environment.Remove("ANTHROPIC_API_KEY");
             }
 
             using var process = new Process { StartInfo = psi };
@@ -658,6 +675,13 @@ namespace BuildConsole.Services
                     return;
                 }
 
+                if (!Directory.Exists(secondaryDir))
+                {
+                    ActivityLog.Log(Channel, $"[secondary] Config dir does not exist: {secondaryDir}");
+                    SetSecondaryUnavailable("config dir not found");
+                    return;
+                }
+
                 var (cliSuccess, cliOutput, cliError) = await RunClaudeCliUsageAsync(secondaryDir);
                 if (!cliSuccess || string.IsNullOrWhiteSpace(cliOutput))
                 {
@@ -666,16 +690,23 @@ namespace BuildConsole.Services
                     return;
                 }
 
-                var (_, _, parsedWeeklyPercent, parsedWeeklyReset) = ParseCliUsageOutput(cliOutput);
-                if (!parsedWeeklyPercent.HasValue)
+                var (parsedSessionPercent, parsedSessionReset, parsedWeeklyPercent, parsedWeeklyReset) = ParseCliUsageOutput(cliOutput);
+                int? effectiveWeeklyPercent = parsedWeeklyPercent ?? parsedSessionPercent;
+                string effectiveWeeklyReset = !string.IsNullOrEmpty(parsedWeeklyReset) ? parsedWeeklyReset : parsedSessionReset;
+
+                if (!effectiveWeeklyPercent.HasValue)
                 {
                     ActivityLog.Log(Channel, $"[secondary] CLI returned output but weekly usage could not be parsed. Output: {Trim(cliOutput)}");
                     SetSecondaryUnavailable("secondary usage unreadable");
                     return;
                 }
 
-                _secondaryWeeklyPercent = parsedWeeklyPercent;
-                _secondaryWeeklyResetTarget = ParseResetTarget(parsedWeeklyReset);
+                _secondaryWeeklyPercent = effectiveWeeklyPercent;
+                _secondaryWeeklyResetTarget = ParseResetTarget(effectiveWeeklyReset);
+                if (!string.IsNullOrEmpty(effectiveWeeklyReset) && !_secondaryWeeklyResetTarget.HasValue)
+                {
+                    ActivityLog.Log(Channel, $"[secondary] Unparseable weekly reset label emitted: \"{effectiveWeeklyReset}\"");
+                }
                 _secondaryLastPoll = DateTime.Now;
                 _secondaryLastState = ClaudeUsageMeterState.Ok;
                 _secondaryLastReason = null;
@@ -793,8 +824,8 @@ namespace BuildConsole.Services
         /// </summary>
         internal static DateTime? ParseResetTarget(string? label, DateTime? nowOverride = null)
         {
+            if (string.IsNullOrWhiteSpace(label)) return null;
             var now = nowOverride ?? DateTime.Now;
-            if (string.IsNullOrWhiteSpace(label)) return GetNextWeeklyResetTarget(now);
             string lower = label.ToLowerInvariant();
 
             // 0. Relative time: "Resets in 1 hr 27 min", "in 45 min", "in 2 hours", "Resets in 1h 27m"
@@ -913,7 +944,7 @@ namespace BuildConsole.Services
                 }
             }
 
-            return GetNextWeeklyResetTarget(now);
+            return null;
         }
 
         internal static TimeZoneInfo ResolveTimeZone(string tzName)
@@ -1009,10 +1040,9 @@ namespace BuildConsole.Services
             if (!_percent.HasValue) return "Claude: --";
 
             string text = $"Claude: {_percent.Value}% used";
-            if (_percent.Value >= CountdownThresholdPercent)
+            if (_percent.Value >= CountdownThresholdPercent && _resetTarget.HasValue)
             {
-                var target = _resetTarget ?? GetNextWeeklyResetTarget();
-                var remaining = target - DateTime.Now;
+                var remaining = _resetTarget.Value - DateTime.Now;
                 if (remaining > TimeSpan.Zero)
                     text += $" — resets in {FormatCountdown(remaining)}";
             }
@@ -1038,8 +1068,10 @@ namespace BuildConsole.Services
                 ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(reason) ? "" : $": {reason}")}",
                 _ => _percent.HasValue ? $"\n{_percent.Value}% of the Current Session window used" : "",
             });
-            var target = _resetTarget ?? GetNextWeeklyResetTarget();
-            tip.Append($"\nResets: {target:ddd MMM d, h:mm tt}");
+            if (_resetTarget.HasValue)
+                tip.Append($"\nResets: {_resetTarget.Value:ddd MMM d, h:mm tt}");
+            else
+                tip.Append("\nResets: unknown");
             if (_projectedFullTarget.HasValue)
                 tip.Append($"\nProjected 100%: {_projectedFullTarget.Value:ddd MMM d, h:mm tt} (~{_projectedRatePerHour:0.0}%/hr at the current rate)");
             tip.Append(_lastPoll.HasValue ? $"\nLast checked: {_lastPoll:HH:mm:ss}" : "\nLast checked: —");
@@ -1051,10 +1083,9 @@ namespace BuildConsole.Services
             if (!_weeklyPercent.HasValue) return "Claude Weekly (Primary): --";
 
             string text = $"Claude Weekly (Primary): {_weeklyPercent.Value}% used";
-            if (_weeklyPercent.Value >= CountdownThresholdPercent)
+            if (_weeklyPercent.Value >= CountdownThresholdPercent && _weeklyResetTarget.HasValue)
             {
-                var target = _weeklyResetTarget ?? GetNextWeeklyResetTarget();
-                var remaining = target - DateTime.Now;
+                var remaining = _weeklyResetTarget.Value - DateTime.Now;
                 if (remaining > TimeSpan.Zero)
                     text += $" — resets in {FormatCountdown(remaining)}";
             }
@@ -1080,8 +1111,10 @@ namespace BuildConsole.Services
                 ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(reason) ? "" : $": {reason}")}",
                 _ => _weeklyPercent.HasValue ? $"\n{_weeklyPercent.Value}% of the All Models window used" : "",
             });
-            var target = _weeklyResetTarget ?? GetNextWeeklyResetTarget();
-            tip.Append($"\nResets: {target:ddd MMM d, h:mm tt}");
+            if (_weeklyResetTarget.HasValue)
+                tip.Append($"\nResets: {_weeklyResetTarget.Value:ddd MMM d, h:mm tt}");
+            else
+                tip.Append("\nResets: unknown");
             if (_weeklyProjectedFullTarget.HasValue)
                 tip.Append($"\nProjected 100%: {_weeklyProjectedFullTarget.Value:ddd MMM d, h:mm tt} (~{_weeklyProjectedRatePerHour:0.0}%/hr at the current rate)");
             tip.Append(_lastPoll.HasValue ? $"\nLast checked: {_lastPoll:HH:mm:ss}" : "\nLast checked: —");
@@ -1095,10 +1128,9 @@ namespace BuildConsole.Services
             if (!_secondaryWeeklyPercent.HasValue) return "Claude Weekly (Secondary): --";
 
             string text = $"Claude Weekly (Secondary): {_secondaryWeeklyPercent.Value}% used";
-            if (_secondaryWeeklyPercent.Value >= CountdownThresholdPercent)
+            if (_secondaryWeeklyPercent.Value >= CountdownThresholdPercent && _secondaryWeeklyResetTarget.HasValue)
             {
-                var target = _secondaryWeeklyResetTarget ?? GetNextWeeklyResetTarget();
-                var remaining = target - DateTime.Now;
+                var remaining = _secondaryWeeklyResetTarget.Value - DateTime.Now;
                 if (remaining > TimeSpan.Zero)
                     text += $" — resets in {FormatCountdown(remaining)}";
             }
@@ -1131,8 +1163,10 @@ namespace BuildConsole.Services
                 ClaudeUsageMeterState.Error => $"\nError{(string.IsNullOrEmpty(_secondaryLastReason) ? "" : $": {_secondaryLastReason}")}",
                 _ => _secondaryWeeklyPercent.HasValue ? $"\n{_secondaryWeeklyPercent.Value}% of the All Models window used" : "",
             });
-            var target = _secondaryWeeklyResetTarget ?? GetNextWeeklyResetTarget();
-            tip.Append($"\nResets: {target:ddd MMM d, h:mm tt}");
+            if (_secondaryWeeklyResetTarget.HasValue)
+                tip.Append($"\nResets: {_secondaryWeeklyResetTarget.Value:ddd MMM d, h:mm tt}");
+            else
+                tip.Append("\nResets: unknown");
             if (_secondaryWeeklyProjectedFullTarget.HasValue)
                 tip.Append($"\nProjected 100%: {_secondaryWeeklyProjectedFullTarget.Value:ddd MMM d, h:mm tt} (~{_secondaryWeeklyProjectedRatePerHour:0.0}%/hr at the current rate)");
             tip.Append(_secondaryLastPoll.HasValue ? $"\nLast checked: {_secondaryLastPoll:HH:mm:ss}" : "\nLast checked: —");
