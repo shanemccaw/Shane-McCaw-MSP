@@ -24,7 +24,43 @@
         column (same 1*/Auto-splitter/2* recipe GraphApiDocumentView already uses) hosting a
         real IssueDetailView, wired in code-behind (SelectCard) to whichever row was last
         clicked, auto-selecting the top row on refresh so the pane is never blank.
+
+        Git #1996 - BtnFreeFlow was a bare ToggleButton with no Style, so WPF's default
+        checked-state chrome painted the system highlight over the Surface0Brush background
+        UpdateFreeFlowVisual (code-behind) actually wants, rendering a bright solid-blue block
+        with the label unreadable. Applied the existing QuietTile ToggleButton style (same one
+        BuildQueuePanel.xaml/HomeView.xaml already use for their own quiet toggle tiles) - its
+        template has no IsChecked trigger of its own, so Background/BorderBrush/Foreground stay
+        exactly whatever UpdateFreeFlowVisual sets per #1870's border-and-text convention
+        (green/open vs peach/closed), never a solid fill.
     -->
+    <UserControl.Resources>
+        <Style x:Key="QuietTile" TargetType="{x:Type ToggleButton}">
+            <Setter Property="Background" Value="{StaticResource Surface0Brush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="{StaticResource Subtext0Brush}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToggleButton}">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Surface1Brush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="1*" MinWidth="240"/>
@@ -66,12 +102,9 @@
                                VerticalAlignment="Center" Text=""/>
 
                     <ToggleButton x:Name="BtnFreeFlow" Grid.Column="2"
+                                  Style="{StaticResource QuietTile}"
                                   Margin="6,0,0,0" Padding="7,1,7,1"
                                   FontSize="10.5" FontWeight="SemiBold"
-                                  Background="{StaticResource Surface0Brush}"
-                                  BorderBrush="{StaticResource Surface1Brush}"
-                                  BorderThickness="1"
-                                  Cursor="Hand"
                                   VerticalAlignment="Center"
                                   Content="⏸ Gated"
                                   Click="BtnFreeFlow_Click"/>
