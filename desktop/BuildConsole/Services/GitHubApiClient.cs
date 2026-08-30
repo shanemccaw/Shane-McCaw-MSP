@@ -255,7 +255,21 @@ namespace BuildConsole.Services
         /// </summary>
         private async Task<T?> GetConditionalAsync<T>(string path, bool bypassCache = false) where T : class
         {
-            _conditionalCache.TryGetValue(path, out var cached);
+            // Shane, 2026-08-30 — real bug hit live: "Unable to cast object of type
+            // 'GitHubIssueResult' to 'GitHubIssueDetail'." _conditionalCache is a single
+            // STATIC dictionary keyed only by `path`, but two different callers hit the
+            // exact same path with two different T's — SearchIssuesAsync's number-lookup
+            // shortcut and GetIssueAsync both GET `repos/{owner}/{repo}/issues/{n}`, one
+            // deserializing to GitHubIssueResult, the other to GitHubIssueDetail. Whichever
+            // called first cached its typed object under that path; the second call's
+            // conditional GET came back 304 and this method handed back the FIRST call's
+            // object cast to the SECOND call's type — an InvalidCastException on any shape
+            // mismatch. Keying the cache by (type, path) instead of path alone gives each
+            // caller its own ETag/value slot per path, so two different T's hitting the
+            // same URL can never collide — each still gets its own real conditional-GET
+            // benefit, just never at the other's expense.
+            string cacheKey = typeof(T).FullName + "::" + path;
+            _conditionalCache.TryGetValue(cacheKey, out var cached);
             using var req = new HttpRequestMessage(HttpMethod.Get, path);
             if (!bypassCache && cached != null)
                 req.Headers.IfNoneMatch.Add(cached.ETag);
@@ -272,7 +286,7 @@ namespace BuildConsole.Services
             res.EnsureSuccessStatusCode();
             var value = await res.Content.ReadFromJsonAsync<T>(JsonOpts);
             if (res.Headers.ETag is { } etag)
-                _conditionalCache[path] = new CachedGet { ETag = etag, Value = value };
+                _conditionalCache[cacheKey] = new CachedGet { ETag = etag, Value = value };
             return value;
         }
 
