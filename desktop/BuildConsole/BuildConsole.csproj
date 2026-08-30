@@ -5,6 +5,13 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
+    <!-- Git #1866 — the desktop screen-clipping tool needs System.Drawing
+         (Graphics.CopyFromScreen / Bitmap) and the OLE clipboard's multi-format
+         DataObject path. UseWindowsForms pulls both from the in-box Windows
+         Desktop framework (no NuGet). This does NOT change the app's DPI
+         awareness or WPF behaviour — it only makes those in-box assemblies
+         referenceable. -->
+    <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 

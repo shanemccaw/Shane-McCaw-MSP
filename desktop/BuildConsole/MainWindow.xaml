@@ -344,6 +344,23 @@
                                 <TextBlock x:Name="TopAccountToggleText" Text="Primary" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
+                        <!-- Git #1866 - thin vertical separator ("|") between the account toggle
+                             and the right-hand icon group, per Shane's request. -->
+                        <Border Width="1" Height="18"
+                                Background="{StaticResource Surface1Brush}"
+                                Margin="2,0,6,0"
+                                VerticalAlignment="Center"/>
+                        <!-- Git #1866 - desktop screen-clipping tool. Draw a region anywhere on the
+                             desktop; the clip goes to the clipboard AND to disk. Also fires on PrintScreen
+                             (BtnScreenClip.ToolTip is updated from code-behind to say whether the global
+                             hotkey was claimed by Windows' Snipping Tool). Crop glyph from Segoe MDL2. -->
+                        <Button x:Name="BtnScreenClip"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Screen clip (PrintScreen) - drag a region to the clipboard and disk"
+                                Click="ScreenClip_Click"
+                                Padding="6,4">
+                            <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
+                        </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"

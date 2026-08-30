@@ -1,3 +1,5 @@
+using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -14,21 +16,64 @@ namespace BuildConsole
     /// pixels, relative to this window's own top-left — i.e. relative to the
     /// WebView2's top-left, which is what the caller needs). Esc cancels
     /// (DialogResult=false, SelectedRect untouched).
+    ///
+    /// Git #1866 — additively also serves the desktop screen-clipping tool. Call
+    /// <see cref="ConfigureForVirtualScreen"/> BEFORE ShowDialog() to make the
+    /// overlay cover the entire virtual screen (all monitors). In that mode the
+    /// authoritative selection comes back as <see cref="SelectedPhysicalRect"/> —
+    /// an <see cref="Int32Rect"/> in physical screen pixels taken directly from the
+    /// Win32 cursor position, NOT from WPF's per-visual-root DIP mapping. That
+    /// sidesteps the per-monitor-DPI trap entirely: <c>GetCursorPos</c> and
+    /// <c>Graphics.CopyFromScreen</c> share the same GDI/process coordinate space,
+    /// so a selection that spans two monitors at different scale factors is captured
+    /// at the right offset and size regardless of DPI. The DIP-based
+    /// <see cref="SelectedRect"/> and the existing WebView2 caller are untouched.
     /// </summary>
     public partial class RegionSelectOverlayWindow : Window
     {
         /// <summary>The drawn region in DIPs relative to this window's (the WebView2's) top-left. Only
-        /// meaningful when DialogResult == true.</summary>
+        /// meaningful when DialogResult == true (and the caller used the WebView2 path, not desktop mode).</summary>
         public Rect SelectedRect { get; private set; } = Rect.Empty;
+
+        /// <summary>Git #1866 — the drawn region in PHYSICAL screen pixels (absolute, virtual-screen origin),
+        /// taken from the Win32 cursor position rather than WPF DIPs. Only meaningful when DialogResult == true
+        /// AND <see cref="ConfigureForVirtualScreen"/> was called first (desktop screen-clip mode).</summary>
+        public Int32Rect SelectedPhysicalRect { get; private set; } = Int32Rect.Empty;
 
         private Point _dragStart;
         private bool _dragging;
 
+        // ── Git #1866 — desktop (full virtual screen) mode ────────────────────────
+        private bool _desktopMode;
+        private POINT _dragStartPhysical;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT { public int X; public int Y; }
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetCursorPos(out POINT lpPoint);
+
         public RegionSelectOverlayWindow() => InitializeComponent();
+
+        /// <summary>Git #1866 — switch this overlay into desktop screen-clip mode: cover the whole virtual
+        /// screen (spanning every monitor) and report the selection via <see cref="SelectedPhysicalRect"/> in
+        /// physical pixels. Call once, before ShowDialog(). The window bounds use WPF's virtual-screen metrics
+        /// (DIPs) purely so the dimming layer covers everything; the captured geometry does NOT depend on them.</summary>
+        public void ConfigureForVirtualScreen()
+        {
+            _desktopMode = true;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = SystemParameters.VirtualScreenLeft;
+            Top = SystemParameters.VirtualScreenTop;
+            Width = SystemParameters.VirtualScreenWidth;
+            Height = SystemParameters.VirtualScreenHeight;
+        }
 
         private void RootCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
         {
             _dragStart = e.GetPosition(RootCanvas);
+            if (_desktopMode) GetCursorPos(out _dragStartPhysical);
             _dragging = true;
             SelectionRect.Visibility = Visibility.Visible;
             Canvas.SetLeft(SelectionRect, _dragStart.X);
@@ -57,6 +102,28 @@ namespace BuildConsole
             if (!_dragging) return;
             _dragging = false;
             Mouse.Capture(null);
+
+            if (_desktopMode)
+            {
+                // Git #1866 — authoritative geometry from the Win32 cursor position (physical pixels,
+                // same coordinate space Graphics.CopyFromScreen reads), NOT from WPF DIPs. This is what
+                // makes a selection spanning two monitors at different DPI capture correctly.
+                GetCursorPos(out var endPhysical);
+                int x = Math.Min(_dragStartPhysical.X, endPhysical.X);
+                int y = Math.Min(_dragStartPhysical.Y, endPhysical.Y);
+                int w = Math.Abs(endPhysical.X - _dragStartPhysical.X);
+                int h = Math.Abs(endPhysical.Y - _dragStartPhysical.Y);
+
+                if (w < 4 || h < 4)
+                {
+                    DialogResult = false; // too small to be intentional
+                    return;
+                }
+
+                SelectedPhysicalRect = new Int32Rect(x, y, w, h);
+                DialogResult = true;
+                return;
+            }
 
             double left = Canvas.GetLeft(SelectionRect);
             double top = Canvas.GetTop(SelectionRect);

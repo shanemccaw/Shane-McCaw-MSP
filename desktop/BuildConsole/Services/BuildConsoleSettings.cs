@@ -535,6 +535,26 @@ namespace BuildConsole.Services
         /// <summary>Interval (ms) between DOM re-checks inside the uiStep poll loop. Default 250 — responsive enough to pass within a poll of the condition becoming true without hammering ExecuteScriptAsync. Non-positive falls back to the default in UiTestExecutor.</summary>
         public int UiStepPollIntervalMs { get; set; } = 250;
 
+        // ── Git #1866 — desktop screen-clipping tool ──────────────────────────────
+        // Shane: "a screenshot clipping tool ... auto put it in my system clipboard,
+        // as well as save in C:\Users\Ronnie\Pictures\Screenshots\BuildConsole." The
+        // default directory is DERIVED (MyPictures\Screenshots\BuildConsole) — never a
+        // hardcoded username/path — so it resolves per-machine yet stays overridable
+        // here without a rebuild. Same %AppData%\BuildConsole\settings.json store /
+        // field-initializer-as-default convention as every field above; a pre-#1866
+        // settings.json (no "screenClip*" keys) deserializes with these intact.
+
+        /// <summary>Directory screen clips (PNG) are saved to. Defaults to the derived
+        /// <c>MyPictures\Screenshots\BuildConsole</c> — no literal user path is baked into source.</summary>
+        public string ScreenClipSaveDirectory { get; set; } =
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Screenshots", "BuildConsole");
+
+        /// <summary>On by default: register the global PrintScreen (VK_SNAPSHOT) hotkey so a clip fires even
+        /// when BuildConsole isn't focused. Windows 11's "Use the Print screen key to open Snipping Tool" can
+        /// claim the key first, in which case registration fails gracefully (logged + toast + button tooltip)
+        /// and only the in-app KeyUp path works. Flip off to hand the key back to Snipping Tool without a rebuild.</summary>
+        public bool ScreenClipGlobalHotkeyEnabled { get; set; } = true;
+
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");
 

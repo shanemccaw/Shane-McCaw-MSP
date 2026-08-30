@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Windows;
+using System.Windows.Interop;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
@@ -834,6 +836,90 @@ namespace BuildConsole
         {
             base.OnSourceInitialized(e);
             Services.WindowChromeHelper.Setup(this);
+            RegisterScreenClipHotkey();
+        }
+
+        // ── Git #1866 — desktop screen-clipping tool ──────────────────────────────
+        // Title-bar icon + PrintScreen. Two key paths, both needed:
+        //   Global: RegisterHotKey(VK_SNAPSHOT) via an HwndSource hook, so PrtScn fires even
+        //           when BuildConsole isn't focused. Windows 11's "Use the Print screen key
+        //           to open Snipping Tool" claims the key first — RegisterHotKey then returns
+        //           false; we log it, toast once, and put the reason in the button tooltip.
+        //   In-app: WPF doesn't reliably raise KeyDown for PrtScn (only key-up), so
+        //           Window_PreviewKeyUp also handles Key.Snapshot — this covers the focused
+        //           case even when the global registration was refused.
+        private const int WM_HOTKEY = 0x0312;
+        private const int VK_SNAPSHOT = 0x2C;
+        private const int SCREEN_CLIP_HOTKEY_ID = 0xB1A6; // arbitrary, app-unique
+        private bool _screenClipHotkeyRegistered;
+        private HwndSource? _screenClipHwndSource;
+
+        [DllImport("user32.dll")]
+        private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+        [DllImport("user32.dll")]
+        private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+        private void RegisterScreenClipHotkey()
+        {
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.ScreenClipGlobalHotkeyEnabled)
+            {
+                ActivityLog.Log(DesktopScreenClipService.Channel,
+                    "Screen clip global PrintScreen hotkey disabled in settings — using in-app key-up only.");
+                BtnScreenClip.ToolTip = "Screen clip — drag a region to the clipboard and disk. Global PrintScreen is disabled in settings; PrtScn works only when BuildConsole is focused.";
+                return;
+            }
+
+            var helper = new WindowInteropHelper(this);
+            _screenClipHwndSource = HwndSource.FromHwnd(helper.Handle);
+            _screenClipHwndSource?.AddHook(ScreenClipWndProc);
+
+            // fsModifiers=0: bare PrintScreen, no modifier.
+            _screenClipHotkeyRegistered = RegisterHotKey(helper.Handle, SCREEN_CLIP_HOTKEY_ID, 0, VK_SNAPSHOT);
+            if (_screenClipHotkeyRegistered)
+            {
+                ActivityLog.Log(DesktopScreenClipService.Channel, "Screen clip global PrintScreen hotkey registered.");
+                BtnScreenClip.ToolTip = "Screen clip (PrintScreen) — drag a region to the clipboard and disk";
+            }
+            else
+            {
+                // Almost always: Windows 11 Snipping Tool already owns PrtScn.
+                ActivityLog.Log(DesktopScreenClipService.Channel,
+                    "Screen clip global PrintScreen hotkey registration REFUSED (RegisterHotKey returned false) — likely Windows Snipping Tool owns the key. In-app key-up still works when BuildConsole is focused.");
+                ToastEngine.Warning("PrintScreen already claimed",
+                    "Windows (Snipping Tool) already owns the Print Screen key, so BuildConsole couldn't register it globally. PrtScn still works when BuildConsole is focused; the title-bar icon always works. Turn off \"Use the Print screen key to open Snipping Tool\" in Windows Settings to free it.");
+                BtnScreenClip.ToolTip = "Screen clip — drag a region to the clipboard and disk. Global PrintScreen is claimed by Windows Snipping Tool; PrtScn works only when BuildConsole is focused (or free the key in Windows Settings).";
+            }
+        }
+
+        private IntPtr ScreenClipWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg == WM_HOTKEY && wParam.ToInt32() == SCREEN_CLIP_HOTKEY_ID)
+            {
+                handled = true;
+                DesktopScreenClipService.Capture();
+            }
+            return IntPtr.Zero;
+        }
+
+        private void ScreenClip_Click(object sender, RoutedEventArgs e) => DesktopScreenClipService.Capture();
+
+        protected override void OnClosed(EventArgs e)
+        {
+            // Git #1866 — release the global PrintScreen hotkey and detach the message hook.
+            try
+            {
+                if (_screenClipHotkeyRegistered)
+                {
+                    UnregisterHotKey(new WindowInteropHelper(this).Handle, SCREEN_CLIP_HOTKEY_ID);
+                    _screenClipHotkeyRegistered = false;
+                }
+                _screenClipHwndSource?.RemoveHook(ScreenClipWndProc);
+            }
+            catch { /* best-effort teardown on shutdown */ }
+
+            base.OnClosed(e);
         }
 
         // ── Git #894: custom title bar caption buttons ──────────────────────────
@@ -926,6 +1012,17 @@ namespace BuildConsole
                 {
                     HideTabSwitcher(confirmSelection: true);
                 }
+            }
+
+            // Git #1866 — PrtScn while BuildConsole is focused. WPF only surfaces PrintScreen on
+            // key-up, so we handle it here (not KeyDown). Guard against double-firing: when the
+            // GLOBAL hotkey is registered it consumes the key before it reaches this window, so we
+            // only act on the in-app path when the global registration was refused. (The service's
+            // own _overlayOpen guard is a second backstop.)
+            if (e.Key == Key.Snapshot && !_screenClipHotkeyRegistered)
+            {
+                e.Handled = true;
+                DesktopScreenClipService.Capture();
             }
         }
 
