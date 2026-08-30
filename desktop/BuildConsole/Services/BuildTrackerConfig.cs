@@ -81,12 +81,156 @@ namespace BuildConsole.Services
             return null;
         }
 
-        /// <summary>Git #817 — QueueWatcherService needs the repo root as claude.exe's default working directory (same as build-queue-watcher.ps1's `$repoRoot = Split-Path $PSScriptRoot -Parent`); derived from the same config file's location rather than a second hardcoded path.</summary>
+        // ── Git #1978 — cached, robust repo-root resolution ─────────────────────
+        // FindRepoRoot() used to re-derive the repo root on EVERY call by walking up
+        // from the exe looking for scripts/build-queue-watcher.config.json and testing
+        // File.Exists at each level. That config file is gitignored/untracked and
+        // local-only; during heavy concurrent IO on the MAIN checkout (dev-server
+        // merge-backs + pnpm churn during a restart cycle — the "Too many changes at
+        // once" watcher floods) the File.Exists check on that file (or a directory
+        // along the walk) transiently returned false, so FindRepoRoot returned null
+        // and the worktree cleanup sweep silently no-opped for that cycle — and after
+        // #1971, the pre-removal work-preservation inside removeWorktreeSafe did NOT
+        // run, i.e. a suppressed data-loss protection. Observed 96+ times in a single
+        // day, in ~30s bursts (the HomeView health timer) that recovered on their own:
+        // the config file was never actually deleted — its mtime was stable — the
+        // filesystem check just transiently missed under IO contention.
+        //
+        // Fix: resolve the repo root ONCE (at startup, while the tree is quiet — see
+        // InitializeRepoRoot, called from App.OnStartup) and hold it for the process
+        // lifetime. A value that was valid at startup is strictly better than a fresh
+        // derivation that can transiently miss. Resolution also now tries a .git-directory
+        // walk (a stable directory, not a gitignored file) and an explicit configured
+        // override (BuildConsoleSettings.RepoRootOverride) before giving up, and a
+        // genuinely unresolvable root is SURFACED (rate-limited toast) instead of only
+        // writing a log line nobody watches.
+        private static string? _cachedRepoRoot;
+        private static readonly object _repoRootLock = new object();
+        private static DateTime _lastRepoRootSurfaceUtc = DateTime.MinValue;
+
+        /// <summary>
+        /// Git #1978 — resolve and cache the repo root once, ideally at startup while the
+        /// working tree is quiet (called from <c>App.OnStartup</c>). Idempotent and safe
+        /// to call more than once. After this runs, every later <see cref="FindRepoRoot"/>
+        /// returns the cached value and can never transiently miss.
+        /// </summary>
+        public static string? InitializeRepoRoot()
+        {
+            lock (_repoRootLock)
+            {
+                if (!string.IsNullOrEmpty(_cachedRepoRoot) && Directory.Exists(_cachedRepoRoot))
+                    return _cachedRepoRoot;
+
+                var resolved = ResolveRepoRoot();
+                if (!string.IsNullOrEmpty(resolved))
+                {
+                    _cachedRepoRoot = resolved;
+                    ActivityLog.Log("system.core", $"Repo root resolved and cached at startup: {resolved}");
+                }
+                else
+                {
+                    ActivityLog.Log("system.core",
+                        "Repo root could not be resolved at startup (config walk, .git walk, and RepoRootOverride all missed).");
+                }
+                return _cachedRepoRoot;
+            }
+        }
+
+        /// <summary>Git #817 — QueueWatcherService needs the repo root as claude.exe's default working directory (same as build-queue-watcher.ps1's `$repoRoot = Split-Path $PSScriptRoot -Parent`); derived from the same config file's location rather than a second hardcoded path. Git #1978 — now returns a value resolved ONCE and cached for the process lifetime, immune to the transient File.Exists misses that silently no-opped the worktree cleanup sweep.</summary>
         public static string? FindRepoRoot()
         {
+            // Fast path: the value resolved once at startup, held for the process lifetime.
+            var cached = _cachedRepoRoot;
+            if (!string.IsNullOrEmpty(cached) && Directory.Exists(cached))
+                return cached;
+
+            lock (_repoRootLock)
+            {
+                if (!string.IsNullOrEmpty(_cachedRepoRoot) && Directory.Exists(_cachedRepoRoot))
+                    return _cachedRepoRoot;
+
+                var resolved = ResolveRepoRoot();
+                if (!string.IsNullOrEmpty(resolved))
+                {
+                    _cachedRepoRoot = resolved;
+                    return _cachedRepoRoot;
+                }
+
+                // Genuinely unresolvable — surface it (rate-limited) instead of failing
+                // silently. Inside the worktree cleanup sweep this is a suppressed
+                // data-loss protection (#1971), so it must be visible.
+                SurfaceRepoRootFailure();
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Git #1978 — the actual multi-strategy resolution, tried in order:
+        /// (1) the build-queue-watcher.config.json walk (anchors on the MAIN checkout, the
+        /// same root build-queue-watcher.ps1 uses); (2) a .git walk up from the exe (a stable
+        /// directory, not a gitignored untracked file — robust to the transient File.Exists
+        /// miss that caused #1978); (3) an explicit <see cref="BuildConsoleSettings.RepoRootOverride"/>
+        /// (last-resort manual pin). Returns null only if all three miss.
+        /// </summary>
+        private static string? ResolveRepoRoot()
+        {
+            // 1. config-file walk (primary — anchors on the MAIN checkout)
             var configPath = FindConfigPath();
-            if (configPath == null) return null;
-            return Directory.GetParent(Path.GetDirectoryName(configPath)!)?.FullName;
+            if (configPath != null)
+            {
+                var root = Directory.GetParent(Path.GetDirectoryName(configPath)!)?.FullName;
+                if (!string.IsNullOrEmpty(root) && Directory.Exists(root))
+                    return root;
+            }
+
+            // 2. .git walk (robust: a directory that exists, not a gitignored file)
+            try
+            {
+                var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+                while (dir != null)
+                {
+                    if (Directory.Exists(Path.Combine(dir.FullName, ".git")) ||
+                        File.Exists(Path.Combine(dir.FullName, ".git")))
+                        return dir.FullName;
+                    dir = dir.Parent;
+                }
+            }
+            catch { /* fall through to the configured override */ }
+
+            // 3. explicit configured override (BuildConsoleSettings.RepoRootOverride)
+            try
+            {
+                var overridePath = BuildConsoleSettings.Load().RepoRootOverride;
+                if (!string.IsNullOrWhiteSpace(overridePath) && Directory.Exists(overridePath))
+                    return overridePath;
+            }
+            catch { /* settings unreadable — nothing more to try */ }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Git #1978 — a genuinely unresolvable repo root is surfaced, not swallowed. Logs
+        /// every time; shows a non-modal toast at most once per 10 minutes (a permanent
+        /// failure would otherwise be hit every 30s health tick and spam the toast stack).
+        /// Never throws into the caller.
+        /// </summary>
+        private static void SurfaceRepoRootFailure()
+        {
+            try
+            {
+                ActivityLog.Log("system.core",
+                    "Repo root not found (config walk, .git walk, and RepoRootOverride all missed) — worktree cleanup / work-preservation cannot run this cycle. Set RepoRootOverride in %AppData%\\BuildConsole\\settings.json to pin it.");
+
+                var now = DateTime.UtcNow;
+                if ((now - _lastRepoRootSurfaceUtc).TotalMinutes < 10) return;
+                _lastRepoRootSurfaceUtc = now;
+
+                BuildConsole.ToastEngine.Warning(
+                    "Repo root not found",
+                    "Worktree cleanup and work-preservation can't run — the repo root couldn't be located. Set RepoRootOverride in settings.json to pin it.");
+            }
+            catch { /* surfacing must never take down the operation that raised it */ }
         }
 
         public static BuildTrackerConfig Load()

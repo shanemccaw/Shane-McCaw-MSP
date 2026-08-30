@@ -66,6 +66,14 @@ namespace BuildConsole
 
             base.OnStartup(e);
 
+            // Git #1978 — resolve and cache the repo root ONCE here, at cold start while the
+            // working tree is quiet, before MainWindow's ctor uses it for the queue DB / worktree
+            // services. Holding a startup-valid value for the process lifetime makes FindRepoRoot()
+            // immune to the transient File.Exists misses (during dev-server merge-back / pnpm churn)
+            // that used to silently no-op the worktree cleanup sweep and, after #1971, its
+            // pre-removal work-preservation.
+            try { Services.BuildTrackerConfig.InitializeRepoRoot(); } catch { }
+
             try { SetCurrentProcessExplicitAppUserModelID("ShaneMcCaw.BuildConsole"); } catch { }
 
             // Catch UI thread unhandled exceptions

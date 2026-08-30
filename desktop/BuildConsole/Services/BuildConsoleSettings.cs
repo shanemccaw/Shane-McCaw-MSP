@@ -558,6 +558,21 @@ namespace BuildConsole.Services
         /// and only the in-app KeyUp path works. Flip off to hand the key back to Snipping Tool without a rebuild.</summary>
         public bool ScreenClipGlobalHotkeyEnabled { get; set; } = true;
 
+        // ── Git #1978 — explicit repo-root override ───────────────────────────────
+        /// <summary>
+        /// Git #1978 — explicit override for the repo root (the MAIN checkout BuildConsole
+        /// manages worktrees from). Normally left EMPTY: <see cref="BuildTrackerConfig.FindRepoRoot"/>
+        /// resolves the root automatically (config-file walk, then a stable .git walk) and
+        /// caches it once at startup, immune to the transient File.Exists misses that used to
+        /// silently no-op the worktree cleanup sweep. This is the last-resort manual pin for the
+        /// case where neither walk can find it (e.g. a BuildConsole.exe launched from outside the
+        /// repo tree). Empty (the default) means "resolve automatically". Same
+        /// %AppData%\BuildConsole\settings.json store / field-initializer-as-default convention as
+        /// every field above; a pre-#1978 settings.json (no "repoRootOverride" key) deserializes
+        /// with this empty default intact.
+        /// </summary>
+        public string RepoRootOverride { get; set; } = "";
+
         private static string SettingsDir =>
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "BuildConsole");
 
