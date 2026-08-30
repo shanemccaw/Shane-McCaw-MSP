@@ -945,6 +945,11 @@ namespace BuildConsole.Controls
                 // limit-paused (Git #1600 — same practical meaning as queued even though the DB
                 // status string differs, waiting to resume later rather than in flight).
                 "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus)).ToList(),
+                // Git #1877 — the orphaned-by-crash set: the exact same criteria
+                // UpdateOrphanRecoveryBanner/BtnRecoverOrphans_Click already use
+                // (status=="failed" && ExitCode==-2), just as a findable filtered view
+                // rather than only a banner. Doesn't replace the banner/bulk-recover.
+                "Crashed"  => items.Where(i => i.Status == "failed" && i.ExitCode == -2 && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 // Git #1638 — the Park staging area: a "parked" row is deliberately excluded from
                 // Running/Queued above (the watcher's claim query never picks it up either — that's
                 // the whole point of a staging spot), so it needs its own filter to be findable at all.
@@ -990,6 +995,7 @@ namespace BuildConsole.Controls
             {
                 "running" or BuildQueuePostgresClient.VerifyingStatus                              => "Running",
                 "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus               => "Queued",
+                "failed" when item.ExitCode == -2                                                    => "Crashed",
                 "parked"              => "Parked",
                 "external"            => "External",
                 "done"                => "Done",
@@ -1252,6 +1258,7 @@ namespace BuildConsole.Controls
                 {
                     "Running"  => "Nothing running.",
                     "Queued"   => "Nothing queued.",
+                    "Crashed"  => "Nothing crashed.",
                     "Done"     => "Nothing done yet.",
                     "Canceled" => "Nothing canceled.",
                     _          => "Queue is empty.",
