@@ -10,6 +10,7 @@ export default defineConfig({
       "src/lib/remediation-fix-route.test.ts",
       "src/lib/remediation-checklist.test.ts",
       "src/lib/remediation-reveal-gate.test.ts",
+      "src/lib/remediation-bypass-resolutions.test.ts",
       "src/lib/graph-write-permissions.test.ts",
       "src/lib/portal-message-center.test.ts",
       "src/lib/portal-pii-governance.test.ts",
