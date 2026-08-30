@@ -186,7 +186,12 @@ export async function recordApproval(cr: CrEssentials, approver: ApproverIdentit
   }
 
   const rows = await db
-    .select({ id: crApprovalsTable.id, stage: crApprovalsTable.stage, decision: crApprovalsTable.decision })
+    .select({
+      id: crApprovalsTable.id,
+      stage: crApprovalsTable.stage,
+      decision: crApprovalsTable.decision,
+      freezeWindowId: crApprovalsTable.freezeWindowId,
+    })
     .from(crApprovalsTable)
     .where(eq(crApprovalsTable.changeRequestId, cr.id))
     .orderBy(asc(crApprovalsTable.stage), asc(crApprovalsTable.id));
@@ -197,6 +202,17 @@ export async function recordApproval(cr: CrEssentials, approver: ApproverIdentit
   }
   const stage = Math.min(...pending.map((r) => r.stage));
   const slot = pending.find((r) => r.stage === stage)!;
+
+  // #1500 — the higher approval bar a freeze exception promises: this specific
+  // slot exists ONLY because the change was raised inside an active freeze
+  // window, and clearing it is not a customer's ordinary approval authority.
+  if (slot.freezeWindowId !== null && approver.role !== "msp") {
+    return {
+      ok: false,
+      code: 403,
+      error: "This change was raised inside an active freeze window — its exception requires MSP sign-off.",
+    };
+  }
 
   const onBehalfOf = await resolveDelegatedAuthority(approver.customerId, approver.personId);
   const now = new Date();

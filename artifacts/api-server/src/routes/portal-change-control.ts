@@ -111,8 +111,8 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, crApprovalsTable, mspChangeRequestsTable, usersTable, type CrApproval } from "@workspace/db";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { db, changeFreezeWindowsTable, crApprovalsTable, mspChangeRequestsTable, portalChangeControlPolicyTable, usersTable, type CrApproval } from "@workspace/db";
+import { and, asc, desc, eq, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
@@ -132,6 +132,7 @@ import {
   recordApproval,
 } from "../lib/portal-change-approvals-store";
 import { recordRejection } from "../lib/portal-change-rejection";
+import { activeFreezeForSubmit, recordFreezeException } from "../lib/portal-change-freeze-store";
 import { logger } from "../lib/logger";
 import {
   CHANGE_CLASSES,
@@ -514,6 +515,10 @@ const createSchema = z.object({
   changeClass: z.enum(CHANGE_CLASSES),
   impactedUsersCount: z.number().int().min(0).max(10_000_000),
   window: z.string().trim().min(1).max(200),
+  // #1500 — the ONLY way through an active freeze window: a written
+  // justification, submitted with the change itself. Absent/blank means "no
+  // exception requested", which is what a submission during a freeze needs.
+  freezeException: z.object({ justification: z.string().trim().min(1).max(2_000) }).optional(),
 });
 
 /**
@@ -572,6 +577,28 @@ router.post(
       const requestedBy = req.user?.email ?? "unknown";
       const requestedAt = new Date().toISOString();
 
+      // #1500 — enforcement at submit, server-side. A client-side freeze is
+      // decoration; this is the actual gate. Only checked when this tenant's
+      // own policy has opted the freeze calendar in — the master switch and
+      // the sub-toggle are the same pair `portal-settings-change-control.ts`
+      // reads/writes.
+      const [policyRow] = await db
+        .select({ enabled: portalChangeControlPolicyTable.enabled, enforceFreezeCalendar: portalChangeControlPolicyTable.enforceFreezeCalendar })
+        .from(portalChangeControlPolicyTable)
+        .where(eq(portalChangeControlPolicyTable.customerId, scope.customerId))
+        .limit(1);
+      const freezeEnforced = policyRow?.enabled === true && policyRow?.enforceFreezeCalendar === true;
+      const activeFreeze = freezeEnforced
+        ? await activeFreezeForSubmit({ mspId: scope.mspId, tenantId: scope.tenantId, workload }, new Date())
+        : null;
+      if (activeFreeze && !body.freezeException) {
+        res.status(409).json({
+          error: `"${activeFreeze.name}" is an active change freeze. Raising a change now requires a written exception.`,
+          freeze: { id: activeFreeze.id, name: activeFreeze.name, scope: activeFreeze.scope },
+        });
+        return;
+      }
+
       const [inserted] = await db
         .insert(mspChangeRequestsTable)
         .values({
@@ -626,16 +653,118 @@ router.post(
         log.error({ err, crId: inserted.id }, "change request created but approval materialisation failed");
       }
 
+      // #1500 — the change was allowed through an active freeze ONLY because a
+      // justification was given; that becomes its own higher-bar approval
+      // stage (MSP sign-off required), additional to whatever ordinary
+      // stages the change already needed. Non-fatal, same discipline as the
+      // materialisation above: the CR already exists and the register renders.
+      if (activeFreeze && body.freezeException) {
+        try {
+          await recordFreezeException({
+            changeRequestId: inserted.id,
+            mspId: scope.mspId,
+            tenantId: scope.tenantId,
+            freezeWindowId: activeFreeze.id,
+            justification: body.freezeException.justification,
+            requestedBy,
+          });
+        } catch (err) {
+          log.error({ err, crId: inserted.id }, "change request created but freeze-exception stage failed to record");
+        }
+      }
+
       const code = formatChangeRequestCode(inserted.id);
       log.info(
-        { customerId, mspId: scope.mspId, code, risk, workload, changeClass: body.changeClass },
+        { customerId, mspId: scope.mspId, code, risk, workload, changeClass: body.changeClass, freezeException: activeFreeze !== null },
         "change request raised from the customer portal",
       );
 
-      res.status(201).json({ code, risk, workload });
+      res.status(201).json({ code, risk, workload, freezeException: activeFreeze !== null });
     } catch (err) {
       log.error({ err, customerId }, "POST /portal/change-control failed");
       res.status(500).json({ error: "Failed to raise the change request" });
+    }
+  },
+);
+
+// ── Freeze calendar, read-only (#1500) ───────────────────────────────────────
+//
+// This tenant's own active freeze windows — global, their own tenant, or any
+// workload — so a future page can show "here is what is frozen right now" the
+// same way the wizard is blocked from submitting into it. Gated identically to
+// the register read: CustomerUser + the change_control entitlement, since
+// seeing the freeze calendar is part of the same approval experience.
+interface WireFreezeWindow {
+  readonly id: number;
+  readonly scope: string;
+  readonly workload: string | null;
+  readonly name: string;
+  readonly reason: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly recurrence: string;
+  readonly recurrenceUntil: string | null;
+}
+
+function toWireFreezeWindow(row: {
+  id: number;
+  scope: string;
+  workload: string | null;
+  name: string;
+  reason: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  recurrence: string;
+  recurrenceUntil: Date | null;
+}): WireFreezeWindow {
+  return {
+    id: row.id,
+    scope: row.scope,
+    workload: row.workload,
+    name: row.name,
+    reason: row.reason,
+    startsAt: row.startsAt.toISOString(),
+    endsAt: row.endsAt.toISOString(),
+    recurrence: row.recurrence,
+    recurrenceUntil: row.recurrenceUntil ? row.recurrenceUntil.toISOString() : null,
+  };
+}
+
+router.get(
+  "/portal/change-control/freeze-windows",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    try {
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.json({ windows: [] });
+        return;
+      }
+      const rows = await db
+        .select()
+        .from(changeFreezeWindowsTable)
+        .where(
+          and(
+            eq(changeFreezeWindowsTable.mspId, scope.mspId),
+            eq(changeFreezeWindowsTable.active, true),
+            or(
+              eq(changeFreezeWindowsTable.scope, "global"),
+              and(eq(changeFreezeWindowsTable.scope, "tenant"), eq(changeFreezeWindowsTable.tenantId, scope.tenantId)),
+              eq(changeFreezeWindowsTable.scope, "workload"),
+            ),
+          ),
+        )
+        .orderBy(asc(changeFreezeWindowsTable.startsAt));
+      res.json({ windows: rows.map(toWireFreezeWindow) });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/change-control/freeze-windows failed");
+      res.status(500).json({ error: "Failed to load the freeze calendar" });
     }
   },
 );

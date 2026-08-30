@@ -4016,6 +4016,62 @@ export const insertMspChangeRequestSchema = createInsertSchema(mspChangeRequests
 export type MspChangeRequest = typeof mspChangeRequestsTable.$inferSelect;
 export type InsertMspChangeRequest = typeof mspChangeRequestsTable.$inferInsert;
 
+// ── Change freeze / blackout windows (#1500) ─────────────────────────────────
+//
+// No freeze-window table existed at all: the retired page's `freezeException`,
+// `freezeOpen` and `freezesOv` were client-side stubs hardcoded to false/null —
+// the UI already pretended this feature was real. This is that backend.
+//
+// Scoped `global` (every tenant of this MSP), `tenant` (one M365 tenant — the
+// same free-text `tenant_id` shape `msp_change_requests` uses, since this is
+// the MSP-era table family, not the portal's `customer_id` one) or `workload`
+// (one Change Control workload, e.g. "Exchange / mail" — the same
+// `CHANGE_REQUEST_WORKLOADS` vocabulary `api-server/src/lib/portal-change-
+// control.ts` already defines), so a quarter-close freeze and a "no Exchange
+// changes during migration" freeze are both one row, not two mechanisms.
+//
+// A window either fires once (`recurrence: 'none'`, the literal [startsAt,
+// endsAt) span) or repeats on a fixed cadence anchored at `startsAt` —
+// `recurrenceUntil` bounds how far the repeat runs (null = no bound).
+// Enforcement (`api-server/src/lib/portal-change-freeze.ts`) walks the cadence
+// forward from the anchor rather than storing one row per occurrence, so a
+// standing "always frozen the last week of every quarter" rule is one row for
+// its entire lifetime.
+export const CHANGE_FREEZE_SCOPES = ["global", "tenant", "workload"] as const;
+export type ChangeFreezeScope = (typeof CHANGE_FREEZE_SCOPES)[number];
+
+export const CHANGE_FREEZE_RECURRENCES = ["none", "weekly", "monthly", "quarterly", "annually"] as const;
+export type ChangeFreezeRecurrence = (typeof CHANGE_FREEZE_RECURRENCES)[number];
+
+export const changeFreezeWindowsTable = pgTable("change_freeze_windows", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  scope: text("scope", { enum: CHANGE_FREEZE_SCOPES }).notNull(),
+  /** Required when scope = 'tenant': the free-text M365 tenant identifier. NULL otherwise. */
+  tenantId: text("tenant_id"),
+  /** Required when scope = 'workload': one of `CHANGE_REQUEST_WORKLOADS`. NULL otherwise. */
+  workload: text("workload"),
+  name: text("name").notNull(),
+  reason: text("reason"),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  recurrence: text("recurrence", { enum: CHANGE_FREEZE_RECURRENCES }).notNull().default("none"),
+  /** Only meaningful when recurrence <> 'none'. NULL = repeats indefinitely. */
+  recurrenceUntil: timestamp("recurrence_until", { withTimezone: true }),
+  active: boolean("active").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("change_freeze_windows_msp_id_idx").on(t.mspId),
+  index("change_freeze_windows_scope_idx").on(t.mspId, t.scope),
+  index("change_freeze_windows_active_idx").on(t.active),
+]);
+
+export const insertChangeFreezeWindowSchema = createInsertSchema(changeFreezeWindowsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type ChangeFreezeWindow = typeof changeFreezeWindowsTable.$inferSelect;
+export type InsertChangeFreezeWindow = typeof changeFreezeWindowsTable.$inferInsert;
+
 // ── Change Control approval ledger (#1496) ───────────────────────────────────
 //
 // `msp_change_requests.approvedBy` is a single free-text string: it can record
@@ -4096,6 +4152,25 @@ export const crApprovalsTable = pgTable("cr_approvals", {
   dueAt: timestamp("due_at", { withTimezone: true }),
   /** Stamped once by the breach sweep when a pending slot passes `dueAt`, so it escalates exactly once. */
   escalatedAt: timestamp("escalated_at", { withTimezone: true }),
+  /**
+   * Set ONLY on the stage created because a change was submitted inside an
+   * active freeze window with a written exception (#1500). Non-null is what
+   * MARKS a row as a freeze-exception stage: `recordApproval`/`recordRejection`
+   * require the deciding party to hold `approver.role === 'msp'` on this
+   * stage — the "higher approval bar" the freeze policy promises, on top of
+   * (not instead of) whatever ordinary stages the change already needed. The
+   * window stays resolvable from the decision for audit ("which freeze did
+   * this override"). ON DELETE SET NULL rather than cascade: the decision
+   * record must survive a freeze window being edited away later.
+   */
+  freezeWindowId: integer("freeze_window_id").references(() => changeFreezeWindowsTable.id, { onDelete: "set null" }),
+  /**
+   * The mandatory written justification the requester gave for the exception.
+   * NULL on every ordinary stage; set once at creation and never touched by
+   * the decision itself (which writes its own note into `reason` instead, so
+   * the original ask is never overwritten by the approver's remark).
+   */
+  justification: text("justification"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -4103,6 +4178,7 @@ export const crApprovalsTable = pgTable("cr_approvals", {
   index("cr_approvals_msp_tenant_idx").on(t.mspId, t.tenantId),
   // The breach sweep scans pending, dated, not-yet-escalated slots.
   index("cr_approvals_pending_due_idx").on(t.decision, t.dueAt),
+  index("cr_approvals_freeze_window_id_idx").on(t.freezeWindowId),
 ]);
 
 export const insertCrApprovalSchema = createInsertSchema(crApprovalsTable).omit({ id: true, createdAt: true, updatedAt: true });
