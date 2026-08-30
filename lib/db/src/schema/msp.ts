@@ -5089,13 +5089,38 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
   passedStepsCount: integer("passed_steps_count").notNull().default(0),
   psaTicketId: text("psa_ticket_id").notNull(),
   logs: jsonb("logs").notNull().default([]),
+  /**
+   * The real Workflow Engine run executing this run's automated steps (#1559 —
+   * the execution hook). Null for a hand-entered/legacy row that never actually
+   * fired anything. Plain nullable integer, no FK — same no-DB-CHECK convention
+   * `msp_change_requests.executor_run_id` already follows for the identical
+   * "cites a wf_runs.id" relationship.
+   */
+  wfRunId: integer("wf_run_id"),
+  /**
+   * The materialized node-id → step-index map for this run's automated steps, in
+   * step order, snapshotted at fire time (#1559). The reconciliation sweep reads
+   * THIS, not the SOP's live `steps` (which may be edited after the run fires),
+   * so progress tracking can never drift onto a step that has since moved or
+   * been removed. Empty for a run with no automated steps or one entered by hand.
+   */
+  automatedStepMap: jsonb("automated_step_map").notNull().default([]),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_sop_runs_msp_id_idx").on(t.mspId),
   index("msp_sop_runs_tenant_id_idx").on(t.tenantId),
+  index("msp_sop_runs_wf_run_id_idx").on(t.wfRunId),
   unique("msp_sop_runs_msp_id_run_id_uidx").on(t.mspId, t.runId),
 ]);
+
+/** One materialized automated step, as snapshotted onto `msp_sop_runs.automated_step_map`. */
+export interface SopRunAutomatedStep {
+  /** The `WfNode.id` in the fired run's graph (`sop-step-<stepNumber>`). */
+  readonly nodeId: string;
+  /** The step's index into the SOP's `steps` array at fire time. */
+  readonly stepIndex: number;
+}
 
 export const insertMspSopRunSchema = createInsertSchema(mspSopRunsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type MspSopRun = typeof mspSopRunsTable.$inferSelect;

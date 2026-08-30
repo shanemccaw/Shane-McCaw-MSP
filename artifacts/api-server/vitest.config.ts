@@ -189,6 +189,9 @@ export default defineConfig({
       "src/routes/pcc.test.ts",
       "src/lib/config-pack-graph.test.ts",
       "src/lib/config-pack-orchestrator.test.ts",
+      // #1559 — SOPs/Runbooks execution hook: the pure materializer that turns
+      // an SOP's automated steps into a graph_write_operation workflow chain.
+      "src/lib/sop-workflow-graph.test.ts",
       // #1497 — Change Control as the fail-closed authorization gate on the
       // tenant write path: the pure CR-authorization rule.
       "src/lib/change-control-write-gate.test.ts",

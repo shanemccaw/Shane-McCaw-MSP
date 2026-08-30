@@ -111,18 +111,26 @@ export async function loadConfigPack(packKey: string): Promise<{
 // ── Definition / version persistence ───────────────────────────────────────────
 
 /**
- * Upsert the pack's Workflow Definition and ensure a published version whose
+ * Upsert a Workflow Definition (by NAME) and ensure a published version whose
  * graph matches the current materialization. Reuses the existing published
  * version when the graph is unchanged; otherwise archives it and publishes a
  * new version (the one-published-per-definition unique index requires the
  * archive step). Old runs keep pointing at their original version rows.
+ *
+ * Generic over WHO is materializing — a config pack (`persistConfigPackWorkflow`
+ * below) or an SOP's automated steps (#1559, `sop-execution.ts`'s
+ * `persistSopWorkflow`) both call straight through this, so there is exactly one
+ * definition/version-persistence implementation for anything that fires through
+ * the Workflow Engine this way, matching #1559's "never a second execution
+ * path" instruction.
  */
-export async function persistConfigPackWorkflow(
-  packKey: string,
-  packLabel: string,
+export async function persistMaterializedWorkflow(
+  definitionName: string,
+  description: string,
+  metadata: Record<string, unknown>,
   graph: WfGraph,
 ): Promise<{ definitionId: number; versionId: number; reusedVersion: boolean }> {
-  const name = configPackDefinitionName(packKey);
+  const name = definitionName;
 
   let [definition] = await db
     .select()
@@ -133,13 +141,7 @@ export async function persistConfigPackWorkflow(
   if (!definition) {
     [definition] = await db
       .insert(wfDefinitionsTable)
-      .values({
-        name,
-        description:
-          `Materialized from config pack '${packKey}' (${packLabel}). ` +
-          "Regenerated automatically on each run request when the pack contents change — edit the pack, not this definition.",
-        metadata: { configPack: packKey, orchestrated: true },
-      })
+      .values({ name, description, metadata })
       .returning();
   }
   if (!definition) throw new Error(`Failed to upsert workflow definition '${name}'`);
@@ -175,7 +177,7 @@ export async function persistConfigPackWorkflow(
       .values({
         definitionId: definition.id,
         versionNumber: nextVersionNumber,
-        label: `v${nextVersionNumber} — materialized from pack`,
+        label: `v${nextVersionNumber} — materialized`,
         status: "published",
         graph,
       })
@@ -185,10 +187,25 @@ export async function persistConfigPackWorkflow(
   });
 
   log.info(
-    { packKey, definitionId: definition.id, versionId, versionNumber: nextVersionNumber },
-    "config-pack-orchestrator: published materialized workflow version",
+    { definitionName: name, definitionId: definition.id, versionId, versionNumber: nextVersionNumber },
+    "persistMaterializedWorkflow: published materialized workflow version",
   );
   return { definitionId: definition.id, versionId, reusedVersion: false };
+}
+
+/** Config-pack-specific wrapper over `persistMaterializedWorkflow` — unchanged behavior/signature. */
+export async function persistConfigPackWorkflow(
+  packKey: string,
+  packLabel: string,
+  graph: WfGraph,
+): Promise<{ definitionId: number; versionId: number; reusedVersion: boolean }> {
+  return persistMaterializedWorkflow(
+    configPackDefinitionName(packKey),
+    `Materialized from config pack '${packKey}' (${packLabel}). ` +
+      "Regenerated automatically on each run request when the pack contents change — edit the pack, not this definition.",
+    { configPack: packKey, orchestrated: true },
+    graph,
+  );
 }
 
 // ── Variable resolution ────────────────────────────────────────────────────────

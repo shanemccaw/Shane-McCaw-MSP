@@ -248,6 +248,21 @@ app.listen(port, (err) => {
     logger.warn({ err }, "change-control: could not start CR authorization reconciliation");
   });
 
+  // ── SOPs/Runbooks: 60-second run reconciliation (#1559) ────────────────────
+  // Advances every msp_sop_runs row still "In Progress" with a bound wf_run_id
+  // to match its real Workflow Engine run — currentStepIndex/passedStepsCount
+  // from wf_run_node_outputs, status from wf_runs.status. Idempotent and
+  // non-fatal; nothing to do when no SOP run is mid-flight.
+  import("./lib/sop-execution").then(({ settleSopRuns }) => {
+    setInterval(() => {
+      settleSopRuns().catch((err: unknown) => {
+        logger.warn({ err }, "sop-execution: run reconciliation failed (non-fatal)");
+      });
+    }, 60_000);
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "sop-execution: could not start run reconciliation");
+  });
+
   // ── Notification Center: daily retention prune ─────────────────────────────
   // Removes personal notifications older than 30 days.
   // all_activity rows are retained indefinitely.

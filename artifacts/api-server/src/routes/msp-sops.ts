@@ -6,6 +6,7 @@ import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
+import { runSopForCustomer, SopExecutionError, type SopExecutionErrorCode } from "../lib/sop-execution.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -38,6 +39,20 @@ const createSopSchema = z.object({
   workloadTags: z.array(z.string()),
   steps: z.array(sopStepSchema),
   versionStatus: z.string(),
+});
+
+const runSopSchema = z.object({
+  customerId: z.number().int().positive(),
+  // Substituted for {id}/{upn} placeholders in the SOP's automated steps — the
+  // run's one target entity (a user's id/UPN in every seeded SOP today).
+  targetEntity: z.string().trim().max(500).optional(),
+  // Any other named placeholder a step references (e.g. {messageId}).
+  variables: z.record(z.string(), z.string()).optional(),
+  operator: z.string().trim().max(200).optional(),
+  origin: z.enum(MSP_SOP_RUN_ORIGIN).optional(),
+  // #1497 — an approved Change Request authorizes this write against a live
+  // tenant. Optional only for a testbed customer.
+  changeRequestId: z.number().int().positive().optional(),
 });
 
 const createSopRunSchema = z.object({
@@ -148,6 +163,85 @@ router.post(
       });
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/sops failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  }
+);
+
+// POST /api/msp/sops/:sopId/run
+//
+// The execution hook (#1559): fire an SOP's automated steps for real against a
+// customer's tenant. Routed through the SAME machinery a config-pack run uses
+// (see sop-execution.ts's header) — the #1497 Change Control gate and the
+// Workflow Engine's own graph_write_operation node — never a second,
+// direct-Graph-write path. Writes the msp_sop_runs row nothing wrote before
+// this issue.
+const SOP_RUN_ERROR_STATUS: Record<SopExecutionErrorCode, number> = {
+  sop_not_found: 404,
+  customer_not_found: 404,
+  customer_wrong_msp: 403,
+  sop_not_runnable: 422,
+  customer_not_connected: 422,
+  missing_variables: 400,
+  customer_not_testbed: 422,
+  // #1497 — reached the write path without an approved, unconsumed CR.
+  change_request_not_authorized: 403,
+  concurrency_limit: 409,
+};
+
+router.post(
+  "/msp/sops/:sopId/run",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const sopId = String(req.params.sopId);
+      const parsedBody = runSopSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid run request", parsedBody.error.flatten());
+        return;
+      }
+
+      const result = await runSopForCustomer({
+        mspId,
+        sopId,
+        customerId: parsedBody.data.customerId,
+        targetEntity: parsedBody.data.targetEntity,
+        variables: parsedBody.data.variables,
+        operator: parsedBody.data.operator ?? req.user?.email ?? "unknown",
+        origin: parsedBody.data.origin,
+        triggeredBy: `sop:${sopId}:customer:${parsedBody.data.customerId}:operator:${req.user?.id ?? "unknown"}`,
+        ...(parsedBody.data.changeRequestId != null
+          ? { changeRequestAuthorization: { changeRequestId: parsedBody.data.changeRequestId } }
+          : {}),
+      });
+
+      res.status(202).json({
+        id: result.runId,
+        runId: result.runIdentifier,
+        wfRunId: result.wfRunId,
+        definitionId: result.definitionId,
+        versionId: result.versionId,
+        reusedVersion: result.reusedVersion,
+        sopId,
+        customerId: parsedBody.data.customerId,
+        automatedStepCount: result.automatedStepCount,
+        totalSteps: result.totalSteps,
+        authorizingChangeRequestId: result.authorizingChangeRequestId,
+      });
+    } catch (err: unknown) {
+      if (err instanceof SopExecutionError) {
+        res.status(SOP_RUN_ERROR_STATUS[err.code] ?? 422).json({ error: err.message, code: err.code, ...(err.details ?? {}) });
+        return;
+      }
+      log.error({ err }, "POST /api/msp/sops/:sopId/run failed");
       const msg = err instanceof Error ? err.message : String(err);
       apiError(res, 500, ApiErrorCode.INTERNAL, msg);
     }
