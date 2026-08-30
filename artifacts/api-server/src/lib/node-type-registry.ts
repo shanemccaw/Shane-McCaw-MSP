@@ -326,6 +326,12 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Executes a monitoring package's checks — no AI",
   },
+  {
+    nodeType: "config_snapshot_collect",
+    isAIDependent: false,
+    description:
+      "Captures a full tenant configuration snapshot from Graph and PowerShell (#1796) — deterministic reads, no AI",
+  },
   // NOTE: fetch_news_headlines is NOT in this section despite the name — it
   // makes two real Anthropic calls (headline selection + campaign brief) and is
   // classified as AI-dependent below. It was misclassified as non-AI here until

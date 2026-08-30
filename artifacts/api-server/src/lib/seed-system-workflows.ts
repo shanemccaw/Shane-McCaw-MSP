@@ -3036,6 +3036,86 @@ WHERE created_at > NOW() - INTERVAL '6 minutes'
     },
   },
   {
+    // Git #1796. Manual trigger ONLY, and that is the decision the issue made:
+    // the collector must be a visible Workflow Engine node rather than a bare
+    // scheduler, but the cadence at which snapshots should be taken is a separate
+    // question with its own issue. So this seeds with triggerType "manual" — no
+    // trigger row is created, nothing fires it on its own, and an operator runs
+    // it from the Workflow list when a snapshot is wanted.
+    //
+    // Read-only against the customer tenant. The `ask_for_input` step exists so
+    // the tenant is named deliberately at run time rather than defaulted to
+    // anything — a snapshot silently taken against the wrong tenant would be
+    // evidence attributed to the wrong customer.
+    name: "__system__: Tenant Configuration Snapshot",
+    description:
+      "Captures a full, point-in-time configuration snapshot of one customer tenant into the " +
+      "tenant_config_snapshots store (#1795/#1796). Iterates every collectable resource type in " +
+      "config_snapshot_resource_types — never a hardcoded list — reading each one whole over " +
+      "Microsoft Graph (v1.0 and beta) or the ps-execution container, and stores the real objects " +
+      "verbatim. STRICTLY READ-ONLY: every call is a GET or a Get-* cmdlet, and nothing in this " +
+      "workflow writes to a tenant. Partial success is a real outcome — a resource that could not " +
+      "be read is recorded with its honest reason (permission, licence, service not configured, no " +
+      "executor, throttle) and never silently omitted, and the snapshot's isComplete flag says " +
+      "plainly whether the picture is whole. Prompts for the tenants.id to snapshot and an optional " +
+      "resource cap. Manual trigger only: collection cadence is a separate decision, not made here.",
+    triggerType: "manual",
+    graph: {
+      nodes: [
+        { id: "start", type: "start", position: { x: 300, y: 60 }, data: { nodeType: "start", label: "Snapshot Requested" } },
+        {
+          id: "ask_tenant",
+          type: "ask_for_input",
+          position: { x: 300, y: 200 },
+          data: {
+            nodeType: "ask_for_input",
+            label: "Which Tenant",
+            // `variableName` (not `name`) is the key both the executor's
+            // `ask_for_input` case and the operator run dialog read. A `number`
+            // field is deliberate over the `customer` entity picker: this needs a
+            // `tenants.id`, and the picker's option ids come from a different
+            // endpoint — naming the column in the label leaves no room to supply
+            // the wrong identifier.
+            fields: [
+              {
+                id: "csc-tenant-id",
+                variableName: "tenantId",
+                label: "Customer tenants.id (NOT the Entra tenant GUID — the collector resolves that itself)",
+                type: "number",
+                required: true,
+              },
+              {
+                id: "csc-max-resources",
+                variableName: "maxResources",
+                label: "Max resource types to target (leave blank for every collectable type)",
+                type: "number",
+                required: false,
+              },
+            ],
+          },
+        },
+        {
+          id: "collect",
+          type: "config_snapshot_collect",
+          position: { x: 300, y: 360 },
+          data: {
+            nodeType: "config_snapshot_collect",
+            label: "Collect Configuration Snapshot",
+            tenantId: "{{tenantId}}",
+            maxResources: "{{maxResources}}",
+            triggerRef: "manual operator run",
+          },
+        },
+        { id: "end", type: "end", position: { x: 300, y: 520 }, data: { nodeType: "end", label: "Snapshot Sealed" } },
+      ],
+      edges: [
+        { id: "e1", source: "start",      target: "ask_tenant" },
+        { id: "e2", source: "ask_tenant", target: "collect"    },
+        { id: "e3", source: "collect",    target: "end"        },
+      ],
+    },
+  },
+  {
     name: "__system__: Engagement Offer Delayed Follow-Up",
     description:
       "Per-lead run, spawned by '__system__: Engagement Offer Delayed Follow-Up " +

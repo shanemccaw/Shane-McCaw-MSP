@@ -21,6 +21,7 @@ async function buildAll() {
       path.resolve(artifactDir, "src/scripts/backfill-tenant-domain.ts"),
       path.resolve(artifactDir, "src/scripts/diagnose-542-pillar-breakdown.ts"),
       path.resolve(artifactDir, "src/scripts/verify-1847-service-availability.ts"),
+      path.resolve(artifactDir, "src/scripts/collect-config-snapshot.ts"),
     ],
     platform: "node",
     bundle: true,

@@ -8454,6 +8454,136 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      // ── config_snapshot_collect (Git #1796) ────────────────────────────────
+      // Captures a whole tenant configuration snapshot into the #1795 store.
+      //
+      // This node is the ONLY producer of a snapshot. That is the point: the
+      // standing architecture rule is that every automated process is a visible
+      // Workflow Engine node, never a bare scheduler, so there is no cron path
+      // that could produce snapshots invisibly. The trigger recorded on the
+      // snapshot header is `workflow` whenever it comes through here, with this
+      // run's id on it. Cadence is deliberately NOT decided here — #1796 leaves
+      // scheduling to its own issue, so the node exists and is manually
+      // triggerable and nothing schedules it yet.
+      //
+      // NEVER sets nodeError for a partial snapshot. Partial success is a real,
+      // recordable outcome (#1795's whole premise): a tenant that could not read
+      // one resource still gets a snapshot, with that resource's skip and its
+      // real reason recorded. `isComplete` on the output says, honestly, whether
+      // the picture is whole. nodeError is reserved for the run genuinely not
+      // producing a snapshot at all — a precondition failure, or consent revoked
+      // mid-run, which is a tenant-wide fact rather than one resource's problem.
+      case "config_snapshot_collect": {
+        const cscTenantIdRaw = interp(node.data.tenantId as string | undefined, payload)
+          ?? (payload.tenantId != null ? String(payload.tenantId) : undefined);
+        const cscTenantId = Number(cscTenantIdRaw);
+        if (!cscTenantIdRaw || !Number.isInteger(cscTenantId) || cscTenantId <= 0) {
+          nodeError = true;
+          output = {
+            error: "config_snapshot_collect: tenantId is required and must be a tenants.id integer",
+            tenantId: cscTenantIdRaw ?? null,
+          };
+          break;
+        }
+
+        // dry-run must not touch a customer tenant. Reporting a plausible-looking
+        // snapshot would be fabricated data, so it reports that it did nothing.
+        if (dryRun) {
+          output = {
+            dryRun: true,
+            skipped: true,
+            reason: "config_snapshot_collect does not run in dry-run mode — it reads a real customer tenant",
+            tenantId: cscTenantId,
+          };
+          break;
+        }
+
+        const cscCsvList = (v: unknown): string[] | undefined => {
+          const s = typeof v === "string" ? interp(v, payload) : undefined;
+          if (!s) return undefined;
+          const parts = s.split(",").map((p) => p.trim()).filter(Boolean);
+          return parts.length > 0 ? parts : undefined;
+        };
+        const cscNum = (v: unknown): number | undefined => {
+          const s = typeof v === "string" ? interp(v, payload) : typeof v === "number" ? String(v) : undefined;
+          if (!s) return undefined;
+          const n = Number(s);
+          return Number.isFinite(n) && n > 0 ? n : undefined;
+        };
+
+        const { collectTenantConfigSnapshot, SnapshotPreconditionError } =
+          await import("./config-snapshot-collector");
+
+        try {
+          const cscResult = await collectTenantConfigSnapshot({
+            tenantId: cscTenantId,
+            trigger: "workflow",
+            triggerRef: interp(node.data.triggerRef as string | undefined, payload)
+              ?? `wf-run-${runId}-node-${node.id}`,
+            wfRunId: runId,
+            resourceKeys: cscCsvList(node.data.resourceKeys),
+            transports: cscCsvList(node.data.transports),
+            surfaces: cscCsvList(node.data.surfaces),
+            maxResources: cscNum(node.data.maxResources),
+            timeBudgetMs: cscNum(node.data.timeBudgetMs),
+            maxPagesPerResource: cscNum(node.data.maxPagesPerResource),
+            concurrency: cscNum(node.data.concurrency),
+            onProgress: (evt) => {
+              // Only the outcomes worth a line. A 1,300-resource run emitting one
+              // event per resource would bury the run log in `empty` rows.
+              if (evt.status === "collected" || evt.status === "failed" || evt.status === "partial") {
+                broadcastAdminWorkflowEvent({
+                  type: "node_progress",
+                  runId,
+                  nodeId: node.id,
+                  level: "progress",
+                  message: `Config snapshot ${evt.index + 1}/${evt.total}: ${evt.resourceKey} → ${evt.status}`
+                    + (evt.objectCount ? ` (${evt.objectCount} objects)` : ""),
+                  metadata: {
+                    resourceKey: evt.resourceKey,
+                    status: evt.status,
+                    objectCount: evt.objectCount,
+                    skipReason: evt.skipReason,
+                    index: evt.index,
+                    total: evt.total,
+                  },
+                });
+              }
+            },
+          });
+
+          nodeError = cscResult.status === "failed";
+          output = {
+            snapshotId: cscResult.snapshotId,
+            snapshotRowId: cscResult.snapshotRowId,
+            tenantId: cscResult.tenantId,
+            entraTenantId: cscResult.entraTenantId,
+            status: cscResult.status,
+            isComplete: cscResult.isComplete,
+            resourceTypesTargeted: cscResult.resourceTypesTargeted,
+            resourceTypesCollected: cscResult.resourceTypesCollected,
+            resourceTypesEmpty: cscResult.resourceTypesEmpty,
+            resourceTypesPartial: cscResult.resourceTypesPartial,
+            resourceTypesSkipped: cscResult.resourceTypesSkipped,
+            resourceTypesFailed: cscResult.resourceTypesFailed,
+            objectCount: cscResult.objectCount,
+            durationMs: cscResult.durationMs,
+            error: cscResult.error,
+          };
+        } catch (cscErr) {
+          // A precondition failure writes NOTHING — no header, no orphan run — so
+          // there is no snapshot id to report and nodeError is correct here.
+          nodeError = true;
+          output = {
+            error: cscErr instanceof SnapshotPreconditionError
+              ? `config_snapshot_collect precondition failed: ${cscErr.message}`
+              : `config_snapshot_collect failed: ${cscErr instanceof Error ? cscErr.message : String(cscErr)}`,
+            tenantId: cscTenantId,
+          };
+        }
+        break;
+      }
+
       // ── monitor_subscription_ensure ────────────────────────────────────────
       // Starts (or re-confirms) an O365 Management Activity API subscription
       // for a single tenant+contentType combination. Upserts the DB row and

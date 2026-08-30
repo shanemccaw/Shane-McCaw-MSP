@@ -145,6 +145,7 @@ export const NODE_STYLES: Record<string, { bg: string; border: string; icon: str
   monitor_execute_package:     { bg: "#0F2A2A", border: "#00B4D8", icon: "📡", label: "Execute Monitor Package"    },
   monitor_poll_activity:       { bg: "#0A2020", border: "#06B6D4", icon: "📶", label: "Poll Activity"              },
   monitor_subscription_ensure: { bg: "#0A2020", border: "#06B6D4", icon: "🔗", label: "Ensure Subscription"       },
+  config_snapshot_collect:     { bg: "#0F2A2A", border: "#00B4D8", icon: "🗄", label: "Collect Config Snapshot"   },
   // ── Utilities ──
   comment:  { bg: "#1A1600", border: "#CA8A04", icon: "📝", label: "Comment"            },
 };
@@ -365,6 +366,7 @@ export const LIBRARY_CATEGORIES: Array<{ name: string; nodes: Array<{ type: stri
       { type: "monitor_execute_package",     label: "Execute Monitor Package", description: "Run all checks in a monitoring package against a tenant via the Microsoft Graph API. Emits per-check progress and outputs runStatus, checksOk/Error, and checkResults.", tags: ["monitoring", "execute", "package", "checks", "msp", "graph", "tenant", "consent"] },
       { type: "monitor_poll_activity",       label: "Poll Activity",           description: "Poll the O365 Management Activity API for new audit events since the stored watermark. Records critical events and advances the watermark on success.", tags: ["monitoring", "activity", "audit", "poll", "o365", "tenant", "msp"] },
       { type: "monitor_subscription_ensure", label: "Ensure Subscription",     description: "Start or re-confirm an O365 Management Activity API subscription for a tenant and content type. Safe to call repeatedly — idempotent upsert.", tags: ["monitoring", "subscription", "o365", "activity", "tenant", "msp"] },
+      { type: "config_snapshot_collect",     label: "Collect Config Snapshot",  description: "Capture a full, point-in-time tenant configuration snapshot. Iterates every collectable resource type in the registry, reads each one whole over Microsoft Graph or the ps-execution container, and stores the real objects. Read-only. Records a per-resource outcome for every type it targeted — including skips, with the real reason — so the snapshot states its own completeness. Optional tenantId, resourceKeys, transports, surfaces, maxResources, timeBudgetMs, maxPagesPerResource, concurrency.", tags: ["config", "snapshot", "configuration", "state", "graph", "powershell", "tenant", "msp", "drift", "baseline", "promotion"] },
     ],
   },
   {

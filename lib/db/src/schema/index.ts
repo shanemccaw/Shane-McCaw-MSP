@@ -2912,6 +2912,10 @@ export interface WfNode {
     | "monitor_get_package" | "monitor_execute_package"
     // Live Monitor Engine (Mode B — O365 Management Activity API)
     | "monitor_subscription_ensure" | "monitor_poll_activity"
+    // Tenant configuration snapshot collector (#1796). Every automated process is
+    // a visible node — this is the ONLY way a snapshot is produced, so there is no
+    // bare scheduler behind it. Manual trigger for now; cadence is a later decision.
+    | "config_snapshot_collect"
     // Sales Offer Engine
     | "sales_offer_generate" | "sales_offer_score" | "sales_offer_violation"
     | "sales_offer_escalate" | "sales_offer_resolve"
