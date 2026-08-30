@@ -9,6 +9,7 @@ import { and, asc, eq, or } from "drizzle-orm";
 
 import {
   findActiveFreeze,
+  findFreezeForBookedWindow,
   toFreezeCandidate,
   type FreezeMatchContext,
   type FreezeWindowCandidate,
@@ -50,6 +51,22 @@ export async function activeFreezeForSubmit(
 ): Promise<FreezeWindowCandidate | null> {
   const candidates = await candidateFreezeWindows(ctx);
   return findActiveFreeze(candidates, ctx, now);
+}
+
+/**
+ * #1762 — the freeze a change's own BOOKED window overlaps, or null. `spanEnd`
+ * may be null for a start-only booked window (the Microsoft-routing path), in
+ * which case the freeze is evaluated at the `spanStart` instant. Callers gate
+ * this on a non-null `scheduled_start` — a change with no real instant is not
+ * evaluated here at all.
+ */
+export async function freezeForBookedWindow(
+  ctx: FreezeMatchContext,
+  spanStart: Date,
+  spanEnd: Date | null,
+): Promise<FreezeWindowCandidate | null> {
+  const candidates = await candidateFreezeWindows(ctx);
+  return findFreezeForBookedWindow(candidates, ctx, spanStart, spanEnd);
 }
 
 /**

@@ -3918,6 +3918,28 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   requestedBy: text("requested_by").notNull(),
   requestedAt: text("requested_at").notNull(),
   scheduledFor: text("scheduled_for").notNull(),
+  /**
+   * #1762 — the change's booked execution window as a REAL instant, additive
+   * alongside `scheduled_for` above. `scheduled_for` stays exactly as it is: a
+   * free-text human label ("Thu 27 Aug · 07:00–09:00 BST", "Awaiting records
+   * sign-off — no window booked", "Microsoft rollout — by 15 September"). The
+   * label and the instant are different things and BOTH are real — the label is
+   * what a human wrote, this pair is what a freeze check, a date-ordering, or an
+   * SLA-vs-execution check can actually evaluate.
+   *
+   * BOTH NULLABLE ON PURPOSE, and NOTHING is back-filled by parsing prose. An
+   * existing row's `scheduled_for` may carry no instant at all ("no window
+   * booked") or no year ("Thu 27 Aug"), and a guessed timestamp that a freeze
+   * check then enforces against is worse than no timestamp. NULL means "no
+   * window booked as a real instant"; every consumer treats NULL as unavailable
+   * — never as zero, never as now(), never as a default. Populated only where a
+   * real instant is genuinely known: the wizard/MSP-console create paths when
+   * the caller supplies one, and the Microsoft-routing path from the
+   * announcement's own structured date. See
+   * `lib/db/migrations/manual/2026-08-29-cr-scheduled-instant-1762.sql`.
+   */
+  scheduledStart: timestamp("scheduled_start", { withTimezone: true }),
+  scheduledEnd: timestamp("scheduled_end", { withTimezone: true }),
   impactedUsersCount: integer("impacted_users_count").notNull().default(0),
   status: text("status", { enum: ["pending_approval", "scheduled", "in_progress", "completed", "rolled_back", "rejected"] }).notNull().default("pending_approval"),
   backupVerified: boolean("backup_verified").notNull().default(true),

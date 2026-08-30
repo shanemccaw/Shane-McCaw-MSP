@@ -8,7 +8,7 @@ import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { logRetainerWorkFromTracker, pillarHintForCategory } from "../lib/retainer-work-logger.ts";
 import { workloadForCategory } from "../lib/portal-change-control.ts";
-import { activeFreezeForSubmit, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
+import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import {
   addAttachment,
@@ -36,6 +36,11 @@ const createChangeRequestSchema = z.object({
   targetResource: z.string(),
   psaTicketId: z.string(),
   scheduledFor: z.string(),
+  // #1762 — the booked window as a REAL instant, additive alongside the required
+  // free-text `scheduledFor` label. Optional ISO-8601; when both are given, end
+  // must be after start.
+  scheduledStart: z.string().datetime({ offset: true }).optional(),
+  scheduledEnd: z.string().datetime({ offset: true }).optional(),
   impactedUsersCount: z.number().int().nonnegative(),
   preChangeSnapshot: z.record(z.any()),
   proposedPayload: z.record(z.any()),
@@ -43,7 +48,10 @@ const createChangeRequestSchema = z.object({
   // #1500 — the ONLY way through an active freeze window: a written
   // justification, submitted with the change itself.
   freezeException: z.object({ justification: z.string().trim().min(1).max(2_000) }).optional(),
-});
+}).refine(
+  (d) => !(d.scheduledStart && d.scheduledEnd) || new Date(d.scheduledEnd).getTime() > new Date(d.scheduledStart).getTime(),
+  { message: "Scheduled end must be after scheduled start", path: ["scheduledEnd"] },
+);
 
 const patchChangeRequestSchema = z.object({
   status: z.enum(["pending_approval", "scheduled", "in_progress", "completed", "rolled_back", "rejected"]).optional(),
@@ -144,15 +152,30 @@ router.post(
       }
       const freezeEnforced = policyRow?.enabled === true && policyRow?.enforceFreezeCalendar === true;
       const workload = workloadForCategory(parsedBody.data.category);
-      const activeFreeze = freezeEnforced
-        ? await activeFreezeForSubmit({ mspId, tenantId: parsedBody.data.tenantId, workload }, new Date())
-        : null;
-      if (activeFreeze && !parsedBody.data.freezeException) {
+      const freezeCtx = { mspId, tenantId: parsedBody.data.tenantId, workload };
+      const submitFreeze = freezeEnforced ? await activeFreezeForSubmit(freezeCtx, new Date()) : null;
+
+      // #1762 — the MSP console is a second door into the same table and must
+      // enforce the same booked-window check the customer wizard does, gated on
+      // the same policy pair. Only fires when a real `scheduledStart` was given.
+      const bookedFreeze =
+        freezeEnforced && parsedBody.data.scheduledStart
+          ? await freezeForBookedWindow(
+              freezeCtx,
+              new Date(parsedBody.data.scheduledStart),
+              parsedBody.data.scheduledEnd ? new Date(parsedBody.data.scheduledEnd) : null,
+            )
+          : null;
+
+      const blockingFreeze = submitFreeze ?? bookedFreeze;
+      if (blockingFreeze && !parsedBody.data.freezeException) {
         apiError(
           res,
           409,
           ApiErrorCode.CONFLICT,
-          `"${activeFreeze.name}" is an active change freeze. Raising a change now requires a written exception.`,
+          submitFreeze
+            ? `"${blockingFreeze.name}" is an active change freeze. Raising a change now requires a written exception.`
+            : `The booked window overlaps the "${blockingFreeze.name}" change freeze. Scheduling into it requires a written exception.`,
         );
         return;
       }
@@ -174,6 +197,10 @@ router.post(
           requestedBy: userEmail,
           requestedAt: nowUtc,
           scheduledFor: parsedBody.data.scheduledFor,
+          // #1762 — the real booked instant when supplied; NULL otherwise (never
+          // a guess). `scheduledFor` (the label) is always kept.
+          scheduledStart: parsedBody.data.scheduledStart ? new Date(parsedBody.data.scheduledStart) : null,
+          scheduledEnd: parsedBody.data.scheduledEnd ? new Date(parsedBody.data.scheduledEnd) : null,
           impactedUsersCount: parsedBody.data.impactedUsersCount,
           status: "pending_approval",
           backupVerified: true,
@@ -201,13 +228,13 @@ router.post(
       // #1500 — allowed through an active freeze ONLY because a justification
       // was given; that becomes its own higher-bar approval stage (MSP
       // sign-off required). Non-fatal: the CR already exists either way.
-      if (activeFreeze && parsedBody.data.freezeException) {
+      if (blockingFreeze && parsedBody.data.freezeException) {
         try {
           await recordFreezeException({
             changeRequestId: inserted.id,
             mspId,
             tenantId: parsedBody.data.tenantId,
-            freezeWindowId: activeFreeze.id,
+            freezeWindowId: blockingFreeze.id,
             justification: parsedBody.data.freezeException.justification,
             requestedBy: userEmail,
           });
@@ -221,7 +248,7 @@ router.post(
       res.status(201).json({
         id: newIdFormatted,
         message: "Change request submitted successfully",
-        freezeException: activeFreeze !== null,
+        freezeException: blockingFreeze !== null,
       });
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/change-requests failed");

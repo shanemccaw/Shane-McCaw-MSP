@@ -11,6 +11,8 @@ import { describe, it, expect } from "vitest";
 
 import {
   findActiveFreeze,
+  findFreezeForBookedWindow,
+  freezeOverlapsSpan,
   isWindowActiveAt,
   matchesFreezeScope,
   type FreezeWindowCandidate,
@@ -141,5 +143,75 @@ describe("findActiveFreeze", () => {
   it("skips a matching-scope window whose date range does not cover now", () => {
     const expired = windowFixture({ startsAt: new Date("2026-07-01T00:00:00Z"), endsAt: new Date("2026-08-01T00:00:00Z") });
     expect(findActiveFreeze([expired], ctx, now)).toBeNull();
+  });
+});
+
+// #1762 — the booked-window half of freeze enforcement: does a change's own
+// scheduled span overlap a freeze, not just "is a freeze active now".
+describe("freezeOverlapsSpan", () => {
+  it("a 'none' window overlaps a span that intersects its literal range", () => {
+    const w = windowFixture(); // 2026-09-01 .. 2026-09-03
+    // span fully inside
+    expect(freezeOverlapsSpan(w, new Date("2026-09-01T06:00:00Z"), new Date("2026-09-01T08:00:00Z"))).toBe(true);
+    // span straddling the start edge
+    expect(freezeOverlapsSpan(w, new Date("2026-08-31T20:00:00Z"), new Date("2026-09-01T02:00:00Z"))).toBe(true);
+    // span entirely before the freeze
+    expect(freezeOverlapsSpan(w, new Date("2026-08-20T00:00:00Z"), new Date("2026-08-21T00:00:00Z"))).toBe(false);
+    // span entirely after the freeze
+    expect(freezeOverlapsSpan(w, new Date("2026-09-04T00:00:00Z"), new Date("2026-09-05T00:00:00Z"))).toBe(false);
+  });
+
+  it("edges are half-open — a span that only touches the freeze end does not overlap", () => {
+    const w = windowFixture();
+    expect(freezeOverlapsSpan(w, new Date("2026-09-03T00:00:00Z"), new Date("2026-09-04T00:00:00Z"))).toBe(false);
+    // touching only the start edge from the left likewise does not overlap
+    expect(freezeOverlapsSpan(w, new Date("2026-08-30T00:00:00Z"), new Date("2026-09-01T00:00:00Z"))).toBe(false);
+  });
+
+  it("a null end evaluates as a point at the span start", () => {
+    const w = windowFixture();
+    expect(freezeOverlapsSpan(w, new Date("2026-09-02T00:00:00Z"), null)).toBe(true);
+    expect(freezeOverlapsSpan(w, new Date("2026-09-10T00:00:00Z"), null)).toBe(false);
+  });
+
+  it("an inactive window never overlaps", () => {
+    const w = windowFixture({ active: false });
+    expect(freezeOverlapsSpan(w, new Date("2026-09-02T00:00:00Z"), new Date("2026-09-02T06:00:00Z"))).toBe(false);
+  });
+
+  it("a recurring window overlaps a span that hits a later occurrence", () => {
+    const w = windowFixture({
+      startsAt: new Date("2026-08-03T00:00:00Z"), // Monday
+      endsAt: new Date("2026-08-04T00:00:00Z"),
+      recurrence: "weekly",
+    });
+    // span inside the occurrence three weeks on
+    expect(freezeOverlapsSpan(w, new Date("2026-08-24T06:00:00Z"), new Date("2026-08-24T08:00:00Z"))).toBe(true);
+    // span in an off-cadence gap
+    expect(freezeOverlapsSpan(w, new Date("2026-08-26T06:00:00Z"), new Date("2026-08-26T08:00:00Z"))).toBe(false);
+    // a long span that swallows a whole occurrence overlaps it
+    expect(freezeOverlapsSpan(w, new Date("2026-08-23T00:00:00Z"), new Date("2026-08-25T00:00:00Z"))).toBe(true);
+  });
+});
+
+describe("findFreezeForBookedWindow", () => {
+  const ctx = { mspId: 10, tenantId: "t-contoso", workload: "Exchange / mail" };
+
+  it("returns the first matching+overlapping candidate in the order given", () => {
+    const tenantWindow = windowFixture({ id: 2, scope: "tenant", tenantId: "t-contoso", name: "Tenant freeze" });
+    const globalWindow = windowFixture({ id: 3, scope: "global", name: "Global freeze" });
+    const start = new Date("2026-09-02T00:00:00Z");
+    const end = new Date("2026-09-02T06:00:00Z");
+    expect(findFreezeForBookedWindow([tenantWindow, globalWindow], ctx, start, end)?.name).toBe("Tenant freeze");
+  });
+
+  it("returns null when the booked span clears every freeze", () => {
+    const w = windowFixture();
+    expect(findFreezeForBookedWindow([w], ctx, new Date("2026-10-01T00:00:00Z"), new Date("2026-10-01T06:00:00Z"))).toBeNull();
+  });
+
+  it("does not match a freeze whose scope names a different tenant", () => {
+    const other = windowFixture({ scope: "tenant", tenantId: "t-other" });
+    expect(findFreezeForBookedWindow([other], ctx, new Date("2026-09-02T00:00:00Z"), null)).toBeNull();
   });
 });

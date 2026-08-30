@@ -295,6 +295,13 @@ export async function createRoutedChangeRequest(input: {
         requestedBy: "Microsoft 365 change routing",
         requestedAt: new Date().toISOString(),
         scheduledFor,
+        // #1762 — the ONE path where a real instant IS honestly known: it comes
+        // from Microsoft's OWN structured `actionRequiredBy`/`endDateTime`, not
+        // from parsing prose. Populate `scheduled_start` from it so the freeze
+        // calendar can evaluate this routed change's booked window. No end is
+        // published, so `scheduled_end` stays null; where `dueDate` is null this
+        // stays null too — nothing is invented.
+        scheduledStart: dueDate,
         impactedUsersCount: affected,
         status: "pending_approval",
         approvedBy,

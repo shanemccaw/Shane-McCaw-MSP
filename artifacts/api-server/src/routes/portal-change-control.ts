@@ -133,7 +133,7 @@ import {
   recordApproval,
 } from "../lib/portal-change-approvals-store";
 import { recordRejection } from "../lib/portal-change-rejection";
-import { activeFreezeForSubmit, recordFreezeException } from "../lib/portal-change-freeze-store";
+import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store";
 import {
   addAttachment,
   addComment,
@@ -190,6 +190,15 @@ interface WireChangeRequest {
   readonly ticket: string;
   readonly requester: string;
   readonly window: string;
+  /**
+   * #1762 — the booked execution window as a REAL instant, additive alongside
+   * `window` (the free-text human label). BOTH null when no real instant was
+   * booked; `window` still carries whatever the human typed. These are what a
+   * freeze check, a date-ordering, or an SLA-vs-execution check can evaluate;
+   * `window` is not, and stays the display label. ISO-8601 UTC strings.
+   */
+  readonly scheduledStart: string | null;
+  readonly scheduledEnd: string | null;
   readonly risk: string;
   readonly impactedUsersCount: number;
   readonly rationale: string;
@@ -256,6 +265,8 @@ interface ChangeRequestRow {
   psaTicketId: string;
   requestedBy: string;
   scheduledFor: string;
+  scheduledStart: Date | null;
+  scheduledEnd: Date | null;
   impactedUsersCount: number;
   status: string;
   backupVerified: boolean;
@@ -314,6 +325,8 @@ function toWire(
     ticket: row.psaTicketId,
     requester: row.requestedBy,
     window: row.scheduledFor,
+    scheduledStart: row.scheduledStart ? row.scheduledStart.toISOString() : null,
+    scheduledEnd: row.scheduledEnd ? row.scheduledEnd.toISOString() : null,
     risk: displayRiskLevel(row.riskLevel),
     impactedUsersCount: row.impactedUsersCount,
     rationale: row.description,
@@ -344,32 +357,52 @@ function toWire(
  * layer" makes literals unshippable, so all four are computed here — with one
  * honest limitation, stated rather than papered over:
  *
- * "In the next window" cannot be date-ordered. `scheduled_for` is free `text`
- * ("Thu 27 Aug · 07:00–09:00 BST", "Awaiting records sign-off — no window
- * booked", "2026-07-27 02:00 UTC (Next Maint Window)"), so there is no sound
- * way to sort it chronologically. What IS sound is grouping open changes by the
- * exact window string they were booked into and reporting the largest such
- * group, labelled with that group's real text. That answers the question the
- * card is asking — how many changes land together in one slot — without
- * pretending to parse a date out of prose. Flagged as a schema gap:
- * `scheduled_for` wants to be a timestamp.
+ * "In the next window": #1762 added a REAL booked-window instant
+ * (`scheduled_start`), so where changes carry one this card is now genuinely
+ * date-ordered — the earliest UPCOMING start wins, and the count is how many
+ * changes share that same instant. Where no open change carries a real instant,
+ * it falls back to the pre-#1762 behaviour: grouping by the exact free-text
+ * `window` string and reporting the largest such group, labelled with that
+ * group's real text. `scheduled_for` was ("Thu 27 Aug · 07:00–09:00 BST",
+ * "Awaiting records sign-off — no window booked") — prose that cannot be
+ * sorted, so the fallback does not pretend to be date-ordered: `stats` carries
+ * `nextWindowDateOrdered` telling the caller which path produced the number.
  */
 function buildStats(wire: readonly WireChangeRequest[], now: Date) {
   const open = wire.filter((c) => isOpenStatus(c.status));
   const awaitingApproval = wire.filter((c) => c.status === "Pending approval").length;
 
-  const byWindow = new Map<string, number>();
-  for (const c of open) {
-    const key = c.window.trim();
-    if (!key) continue;
-    byWindow.set(key, (byWindow.get(key) ?? 0) + 1);
-  }
+  // #1762 — date-order when real instants exist. The earliest UPCOMING
+  // `scheduled_start` is the next window; changes sharing that exact instant are
+  // the ones landing in it. Only fires when at least one open change carries a
+  // real, still-future instant.
+  const upcoming = open
+    .filter((c) => c.scheduledStart !== null && new Date(c.scheduledStart).getTime() >= now.getTime())
+    .sort((a, b) => new Date(a.scheduledStart!).getTime() - new Date(b.scheduledStart!).getTime());
+
   let nextWindowLabel = "No window booked";
   let nextWindowCount = 0;
-  for (const [label, count] of byWindow) {
-    if (count > nextWindowCount) {
-      nextWindowCount = count;
-      nextWindowLabel = label;
+  let nextWindowDateOrdered = false;
+  if (upcoming.length > 0) {
+    const earliest = upcoming[0].scheduledStart!;
+    const group = upcoming.filter((c) => c.scheduledStart === earliest);
+    nextWindowCount = group.length;
+    nextWindowLabel = group[0].window.trim() || "No window booked";
+    nextWindowDateOrdered = true;
+  } else {
+    // Fallback: no real instants — group by the exact free-text window string
+    // and report the largest group. NOT date-ordered, and flagged as such.
+    const byWindow = new Map<string, number>();
+    for (const c of open) {
+      const key = c.window.trim();
+      if (!key) continue;
+      byWindow.set(key, (byWindow.get(key) ?? 0) + 1);
+    }
+    for (const [label, count] of byWindow) {
+      if (count > nextWindowCount) {
+        nextWindowCount = count;
+        nextWindowLabel = label;
+      }
     }
   }
 
@@ -393,6 +426,9 @@ function buildStats(wire: readonly WireChangeRequest[], now: Date) {
     awaitingApproval,
     nextWindowCount,
     nextWindowLabel,
+    // #1762 — true when the number above came from real `scheduled_start`
+    // instants (chronological), false when it fell back to string grouping.
+    nextWindowDateOrdered,
     emergencyCount,
     emergencyLookbackDays: EMERGENCY_LOOKBACK_DAYS,
     snapshotsHeld,
@@ -459,6 +495,8 @@ router.get(
           psaTicketId: mspChangeRequestsTable.psaTicketId,
           requestedBy: mspChangeRequestsTable.requestedBy,
           scheduledFor: mspChangeRequestsTable.scheduledFor,
+          scheduledStart: mspChangeRequestsTable.scheduledStart,
+          scheduledEnd: mspChangeRequestsTable.scheduledEnd,
           impactedUsersCount: mspChangeRequestsTable.impactedUsersCount,
           status: mspChangeRequestsTable.status,
           backupVerified: mspChangeRequestsTable.backupVerified,
@@ -543,11 +581,20 @@ const createSchema = z.object({
   changeClass: z.enum(CHANGE_CLASSES),
   impactedUsersCount: z.number().int().min(0).max(10_000_000),
   window: z.string().trim().min(1).max(200),
+  // #1762 — the booked window as a REAL instant, additive alongside `window`
+  // (the required free-text label). Optional ISO-8601; when a start is given the
+  // freeze calendar can evaluate the change's own booked window, not just submit
+  // time. When both are given, end must be after start.
+  scheduledStart: z.string().datetime({ offset: true }).optional(),
+  scheduledEnd: z.string().datetime({ offset: true }).optional(),
   // #1500 — the ONLY way through an active freeze window: a written
   // justification, submitted with the change itself. Absent/blank means "no
   // exception requested", which is what a submission during a freeze needs.
   freezeException: z.object({ justification: z.string().trim().min(1).max(2_000) }).optional(),
-});
+}).refine(
+  (d) => !(d.scheduledStart && d.scheduledEnd) || new Date(d.scheduledEnd).getTime() > new Date(d.scheduledStart).getTime(),
+  { message: "Scheduled end must be after scheduled start", path: ["scheduledEnd"] },
+);
 
 /**
  * The wizard's two JSON fields are free-text textareas, so what arrives may not
@@ -616,13 +663,38 @@ router.post(
         .where(eq(portalChangeControlPolicyTable.customerId, scope.customerId))
         .limit(1);
       const freezeEnforced = policyRow?.enabled === true && policyRow?.enforceFreezeCalendar === true;
-      const activeFreeze = freezeEnforced
-        ? await activeFreezeForSubmit({ mspId: scope.mspId, tenantId: scope.tenantId, workload }, new Date())
+      const freezeCtx = { mspId: scope.mspId, tenantId: scope.tenantId, workload };
+      const submitFreeze = freezeEnforced ? await activeFreezeForSubmit(freezeCtx, new Date()) : null;
+
+      // #1762 — the second half of freeze enforcement: does the change's OWN
+      // booked window overlap a freeze, not just "is a freeze active right now".
+      // Gated on the same policy pair. Only fires when a real `scheduled_start`
+      // was supplied — a change with no real instant cannot be evaluated this
+      // way, and the 409 below says so rather than implying it passed.
+      const bookedWindowEvaluated = freezeEnforced && !!body.scheduledStart;
+      const bookedFreeze = bookedWindowEvaluated
+        ? await freezeForBookedWindow(
+            freezeCtx,
+            new Date(body.scheduledStart!),
+            body.scheduledEnd ? new Date(body.scheduledEnd) : null,
+          )
         : null;
-      if (activeFreeze && !body.freezeException) {
+
+      // The freeze that blocks this submission, if any — the active-now one
+      // takes precedence for the message, else the booked-window overlap. A
+      // written exception (#1500) is the one way through either.
+      const blockingFreeze = submitFreeze ?? bookedFreeze;
+      if (blockingFreeze && !body.freezeException) {
+        const reason = submitFreeze
+          ? `"${blockingFreeze.name}" is an active change freeze. Raising a change now requires a written exception.`
+          : `The booked window overlaps the "${blockingFreeze.name}" change freeze. Scheduling into it requires a written exception.`;
         res.status(409).json({
-          error: `"${activeFreeze.name}" is an active change freeze. Raising a change now requires a written exception.`,
-          freeze: { id: activeFreeze.id, name: activeFreeze.name, scope: activeFreeze.scope },
+          error: reason,
+          freeze: { id: blockingFreeze.id, name: blockingFreeze.name, scope: blockingFreeze.scope },
+          // #1762 — false means no real scheduled_start was supplied, so only
+          // the submit-time check ran; the booked window was NOT evaluated. The
+          // caller must not read a pass here as "the window is clear".
+          bookedWindowEvaluated,
         });
         return;
       }
@@ -649,6 +721,11 @@ router.post(
           requestedBy,
           requestedAt,
           scheduledFor: body.window,
+          // #1762 — the real booked instant, when the caller supplied one. NULL
+          // otherwise: `scheduled_for` (the label) is always kept; this pair is
+          // only ever a real instant or nothing, never a guess.
+          scheduledStart: body.scheduledStart ? new Date(body.scheduledStart) : null,
+          scheduledEnd: body.scheduledEnd ? new Date(body.scheduledEnd) : null,
           impactedUsersCount: body.impactedUsersCount,
           status: "pending_approval",
           // NOT the MSP route's fabricated hash — see the header. Nothing has
@@ -701,18 +778,19 @@ router.post(
         log.error({ err, crId: inserted.id }, "change request created but approval materialisation failed");
       }
 
-      // #1500 — the change was allowed through an active freeze ONLY because a
-      // justification was given; that becomes its own higher-bar approval
-      // stage (MSP sign-off required), additional to whatever ordinary
-      // stages the change already needed. Non-fatal, same discipline as the
-      // materialisation above: the CR already exists and the register renders.
-      if (activeFreeze && body.freezeException) {
+      // #1500 / #1762 — the change was allowed through a freeze (active-now OR a
+      // booked window overlapping one) ONLY because a justification was given;
+      // that becomes its own higher-bar approval stage (MSP sign-off required),
+      // additional to whatever ordinary stages the change already needed.
+      // Non-fatal, same discipline as the materialisation above: the CR already
+      // exists and the register renders.
+      if (blockingFreeze && body.freezeException) {
         try {
           await recordFreezeException({
             changeRequestId: inserted.id,
             mspId: scope.mspId,
             tenantId: scope.tenantId,
-            freezeWindowId: activeFreeze.id,
+            freezeWindowId: blockingFreeze.id,
             justification: body.freezeException.justification,
             requestedBy,
           });
@@ -723,11 +801,11 @@ router.post(
 
       const code = formatChangeRequestCode(inserted.id);
       log.info(
-        { customerId, mspId: scope.mspId, code, risk, workload, changeClass: body.changeClass, freezeException: activeFreeze !== null },
+        { customerId, mspId: scope.mspId, code, risk, workload, changeClass: body.changeClass, freezeException: blockingFreeze !== null },
         "change request raised from the customer portal",
       );
 
-      res.status(201).json({ code, risk, workload, freezeException: activeFreeze !== null });
+      res.status(201).json({ code, risk, workload, freezeException: blockingFreeze !== null });
     } catch (err) {
       log.error({ err, customerId }, "POST /portal/change-control failed");
       res.status(500).json({ error: "Failed to raise the change request" });

@@ -99,6 +99,40 @@ export function isWindowActiveAt(window: FreezeWindowSpan, now: Date): boolean {
   return now.getTime() < occEnd.getTime();
 }
 
+/**
+ * #1762 — the SECOND half of freeze enforcement: does a change's own booked
+ * execution window overlap this freeze, rather than "is a freeze active right
+ * now" (`isWindowActiveAt`). Two spans overlap when each starts before the
+ * other ends. A `none` window is its single literal span; a recurring window is
+ * tested occurrence by occurrence, walking forward from the anchor and stopping
+ * at the first occurrence that starts at or after the booked window ends (no
+ * later occurrence can reach back into it).
+ *
+ * `spanEnd` may be null — a booked window known only by its start instant (the
+ * Microsoft-routing path populates a start, never an end). A null end is
+ * evaluated as a point: does the freeze cover the instant `spanStart`.
+ */
+export function freezeOverlapsSpan(window: FreezeWindowSpan, spanStart: Date, spanEnd: Date | null): boolean {
+  if (spanEnd === null) return isWindowActiveAt(window, spanStart);
+  if (!window.active) return false;
+  const durationMs = window.endsAt.getTime() - window.startsAt.getTime();
+  if (durationMs <= 0) return false;
+  if (spanEnd.getTime() <= spanStart.getTime()) return false;
+
+  if (window.recurrence === "none") {
+    return spanStart.getTime() < window.endsAt.getTime() && spanEnd.getTime() > window.startsAt.getTime();
+  }
+
+  for (let i = 0; i < MAX_OCCURRENCES; i++) {
+    const occStart = addPeriod(window.startsAt, window.recurrence, i);
+    if (window.recurrenceUntil && occStart.getTime() > window.recurrenceUntil.getTime()) break;
+    if (occStart.getTime() >= spanEnd.getTime()) break;
+    const occEnd = occStart.getTime() + durationMs;
+    if (occEnd > spanStart.getTime()) return true;
+  }
+  return false;
+}
+
 /** The (mspId, tenantId, workload) a submitted change is evaluated against. */
 export interface FreezeMatchContext {
   readonly mspId: number;
@@ -161,6 +195,26 @@ export function findActiveFreeze(
 ): FreezeWindowCandidate | null {
   for (const w of candidates) {
     if (matchesFreezeScope(w, ctx) && isWindowActiveAt(w, now)) return w;
+  }
+  return null;
+}
+
+/**
+ * #1762 — the freeze a change's own BOOKED window collides with, or null.
+ * Candidates are checked in the same most-specific-first order as
+ * `findActiveFreeze`. `spanEnd` may be null (a start-only booked window, as the
+ * Microsoft-routing path produces), in which case the freeze is evaluated at
+ * the `spanStart` instant. Callers gate this on a non-null `scheduled_start`:
+ * when the change carries no real instant, this check does not fire at all.
+ */
+export function findFreezeForBookedWindow(
+  candidates: readonly FreezeWindowCandidate[],
+  ctx: FreezeMatchContext,
+  spanStart: Date,
+  spanEnd: Date | null,
+): FreezeWindowCandidate | null {
+  for (const w of candidates) {
+    if (matchesFreezeScope(w, ctx) && freezeOverlapsSpan(w, spanStart, spanEnd)) return w;
   }
   return null;
 }
