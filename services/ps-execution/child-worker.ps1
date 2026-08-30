@@ -61,6 +61,11 @@ $script:StrayStdout = New-Object System.IO.StringWriter
 
 . (Join-Path $PSScriptRoot "common.ps1")
 . (Join-Path $PSScriptRoot "cmdlet-catalog.ps1")
+# #1793: the app-only capability survey's code-owned implementation. Dot-sourced
+# HERE and not in entrypoint.ps1 because only the child ever executes a catalog
+# entry — the parent needs the catalog solely to reject an unknown cmdletKey
+# before spawning a child, and never evaluates a Script body.
+. (Join-Path $PSScriptRoot "survey.ps1")
 
 function Send-ChildResult {
     param([hashtable]$Payload)
@@ -192,11 +197,14 @@ $failurePayload = $null
 
 try {
     # #491: Script entries (get-mailbox-quota-utilization) run their
-    # composed scriptblock directly — no cmdlet name to splat params onto,
-    # and IsScript entries always carry empty Params (see
-    # Resolve-CmdletInvocation).
+    # composed scriptblock directly — no cmdlet name to splat params onto.
+    # #1793: the AllowedParams-filtered hashtable is handed to the scriptblock
+    # as its single argument (see Resolve-CmdletInvocation). #491's block
+    # declares no `param()` so the argument lands harmlessly in its $args and
+    # its behavior is unchanged; the survey blocks declare `param($SurveyParams)`
+    # and read their integer window/budget out of it.
     if ($invocation.IsScript) {
-        $result = & $catalogEntry.Script
+        $result = & $catalogEntry.Script $invocation.Params
     }
     else {
         $cmdletParams = $invocation.Params

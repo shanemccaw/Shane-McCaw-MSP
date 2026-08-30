@@ -44,8 +44,12 @@ RUN pwsh -NoLogo -NonInteractive -Command " \
 # child-worker.ps1 as a fresh process per request (the real fix for
 # #1389's MSAL assembly-load conflict). common.ps1 (shared logging) and
 # cmdlet-catalog.ps1 (the allowlist) are dot-sourced by both.
+#
+# #1793: survey.ps1 holds the code-owned app-only capability survey the
+# `survey-*` catalog entries resolve to. Dot-sourced by child-worker.ps1 only.
 COPY common.ps1 /app/common.ps1
 COPY cmdlet-catalog.ps1 /app/cmdlet-catalog.ps1
+COPY survey.ps1 /app/survey.ps1
 COPY child-worker.ps1 /app/child-worker.ps1
 COPY entrypoint.ps1 /app/entrypoint.ps1
 

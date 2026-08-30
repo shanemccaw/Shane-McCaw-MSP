@@ -506,6 +506,54 @@ $script:CmdletCatalog = @{
         AllowedParams = @()
         Session       = "teams"
     }
+
+    # ── #1793: the app-only capability survey ────────────────────────────────
+    # Six Script entries — one inventory + one probe per session type — whose
+    # bodies live in survey.ps1 (dot-sourced by child-worker.ps1; see that
+    # file's header for the read-safety gates and why the survey is code-owned
+    # rather than driven by a cmdlet name in the request).
+    #
+    # These are the ONLY catalog entries whose AllowedParams are consumed by a
+    # Script rather than splatted onto a cmdlet, and every one of those params
+    # is an INTEGER window/budget control (Skip / Take / BudgetSeconds). They
+    # cannot name a command, add a parameter to a probed command, or widen the
+    # eligible set — #209's what-code-runs-stays-code-owned boundary is intact:
+    # a caller can only ask "survey commands 40..64 of the list YOU computed."
+    #
+    # Session is explicit on all six (never the "compliance" default) because
+    # which session a command is reachable through is precisely the thing the
+    # survey measures; leaving it implicit would make the exchange and
+    # compliance results indistinguishable.
+    "survey-list-commands-compliance" = @{
+        Script        = { param($SurveyParams) Invoke-SurveyInventory -SessionType "compliance" -RequestParams $SurveyParams }
+        AllowedParams = @()
+        Session       = "compliance"
+    }
+    "survey-list-commands-exchange" = @{
+        Script        = { param($SurveyParams) Invoke-SurveyInventory -SessionType "exchange" -RequestParams $SurveyParams }
+        AllowedParams = @()
+        Session       = "exchange"
+    }
+    "survey-list-commands-teams" = @{
+        Script        = { param($SurveyParams) Invoke-SurveyInventory -SessionType "teams" -RequestParams $SurveyParams }
+        AllowedParams = @()
+        Session       = "teams"
+    }
+    "survey-probe-compliance" = @{
+        Script        = { param($SurveyParams) Invoke-SurveyProbe -SessionType "compliance" -RequestParams $SurveyParams }
+        AllowedParams = @("Skip", "Take", "BudgetSeconds")
+        Session       = "compliance"
+    }
+    "survey-probe-exchange" = @{
+        Script        = { param($SurveyParams) Invoke-SurveyProbe -SessionType "exchange" -RequestParams $SurveyParams }
+        AllowedParams = @("Skip", "Take", "BudgetSeconds")
+        Session       = "exchange"
+    }
+    "survey-probe-teams" = @{
+        Script        = { param($SurveyParams) Invoke-SurveyProbe -SessionType "teams" -RequestParams $SurveyParams }
+        AllowedParams = @("Skip", "Take", "BudgetSeconds")
+        Session       = "teams"
+    }
 }
 
 # Resolves cmdletKey against the allowlist and merges request params into
@@ -526,12 +574,26 @@ function Resolve-CmdletInvocation {
     # #491: get-mailbox-quota-utilization's Script entry — a composed,
     # code-owned scriptblock (no single EXO cmdlet answers that check; see
     # its catalog comment) rather than one splatted cmdlet. Never
-    # request-driven, same as every other field on a catalog entry — Params
-    # stays empty because the script takes none.
+    # request-driven, same as every other field on a catalog entry.
+    #
+    # #1793: Script entries now receive the SAME AllowedParams-filtered
+    # hashtable a cmdlet entry gets, handed to the scriptblock as its single
+    # argument (child-worker.ps1 calls `& $Script $invocation.Params`). The
+    # filtering is unchanged and still absolute — a name absent from this
+    # entry's own AllowedParams never reaches the script — so this widens
+    # nothing: #491's entry declares no AllowedParams and therefore still
+    # receives an empty hashtable, exactly as before. The survey entries use
+    # it to carry their integer Skip/Take/BudgetSeconds window.
     if ($catalogEntry.Script) {
+        $scriptParams = @{}
+        foreach ($allowedName in $catalogEntry.AllowedParams) {
+            if ($RequestParams.ContainsKey($allowedName)) {
+                $scriptParams[$allowedName] = $RequestParams[$allowedName]
+            }
+        }
         return @{
             Cmdlet   = "<script:$CmdletKey>"
-            Params   = @{}
+            Params   = $scriptParams
             IsScript = $true
         }
     }
