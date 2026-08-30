@@ -25,7 +25,6 @@ namespace BuildConsole.Controls
     public partial class AiBatterUpPanel : UserControl
     {
         private Services.GitHubApiClient? _gh;
-        private System.Windows.Threading.DispatcherTimer? _timer;
         private bool _refreshing;
 
         // Git #1816 — TxtEmpty is now reserved for the rarer no-PAT/error messages only
@@ -44,17 +43,16 @@ namespace BuildConsole.Controls
             InitializeComponent();
         }
 
-        /// <summary>Called once from MainWindow right after BatterUpPanel.Initialize.</summary>
+        /// <summary>
+        /// Called once from MainWindow right after BatterUpPanel.Initialize.
+        /// Git #1890 — no automatic timer and no auto-refresh here anymore, for consistency
+        /// with #1709's BatterUpPanel (Shane named that one explicitly, but items awaiting his
+        /// Yes/No review benefit from the same "only when I ask" philosophy). The panel shows
+        /// whatever it last had until Shane's own manual refresh click, or Git Board's #1813
+        /// manual-refresh cross-trigger, populates it.
+        /// </summary>
         public void Initialize()
         {
-            _timer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromSeconds(90),
-            };
-            _timer.Tick += async (_, _) => await RefreshAsync();
-            _timer.Start();
-
-            _ = RefreshAsync();
         }
 
         private void BtnCollapse_Click(object sender, RoutedEventArgs e)

@@ -28,7 +28,6 @@ namespace BuildConsole.Controls
     public partial class BatterUpPanel : UserControl
     {
         private Services.BuildQueuePostgresClient? _db;
-        private System.Windows.Threading.DispatcherTimer? _timer;
         private bool _refreshing;
 
         // Git #1816 — TxtEmpty is now reserved for the rarer no-PAT/error messages only
@@ -47,19 +46,15 @@ namespace BuildConsole.Controls
             InitializeComponent();
         }
 
-        /// <summary>Mirrors BuildQueuePanel.Initialize's shape — called once from MainWindow right after BuildQueuePanel.Initialize.</summary>
+        /// <summary>
+        /// Mirrors BuildQueuePanel.Initialize's shape — called once from MainWindow right after BuildQueuePanel.Initialize.
+        /// Git #1890 — no automatic timer and no auto-refresh here anymore; the panel shows
+        /// whatever it last had (or empty, on first-ever launch) until Shane's own manual
+        /// refresh click, or Git Board's #1813 manual-refresh cross-trigger, populates it.
+        /// </summary>
         public void Initialize(Services.BuildQueuePostgresClient? db)
         {
             _db = db;
-
-            _timer = new System.Windows.Threading.DispatcherTimer
-            {
-                Interval = TimeSpan.FromSeconds(90),
-            };
-            _timer.Tick += async (_, _) => await RefreshAsync();
-            _timer.Start();
-
-            _ = RefreshAsync();
         }
 
         private void BtnCollapse_Click(object sender, RoutedEventArgs e)
