@@ -497,11 +497,18 @@
 
                         <!-- Git #1635 — critter-crossing loading strip: shown for the real
                              duration of a manual Git Board refresh (IssueChompAnimation.
-                             StartRefreshLoadingStrip / StopRefreshLoadingStrip in
-                             BtnRefreshGitBoard_Click), dismissed the moment it genuinely
-                             completes rather than on a fixed timer. Collapsed otherwise. -->
+                             StartRefreshLoadingStrip / StopRefreshLoadingStrip, now shared via
+                             LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync — see Git #1836),
+                             dismissed the moment it genuinely completes rather than on a fixed
+                             timer. Collapsed otherwise.
+                             Git #1836 — Height was 22, but StartRefreshLoadingStrip scales the
+                             critter (native canvas up to 60x56) by 0.34 about its own center,
+                             which lands its visible band roughly 16-36px down from this Border's
+                             top — a 22px strip clipped everything below the critter's head. 56px
+                             (matching the largest native critter height) comfortably fits the
+                             full critter with breathing room above and below. -->
                         <Border x:Name="GitRefreshLoadingStrip"
-                                Height="22"
+                                Height="56"
                                 Background="{StaticResource Surface0Brush}"
                                 CornerRadius="4"
                                 ClipToBounds="True"

@@ -557,17 +557,32 @@ namespace BuildConsole
             BuildQueuePanel.QueueItemChatRequested += (s, item) => OpenChatForQueueItem(item);
             BuildQueuePanel.BuildSetPriorityCompleted += (s, e) => OnBuildSetPriorityCompleted(e);
             BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
-            BuildQueuePanel.FullGitRefreshRequested += (s, e) =>
+            // Git #1836 — this used to call LeftSidebar.PopulateGitTrackerBoard(forceFresh:
+            // true) directly, bypassing the disable-button + critter-strip feedback that
+            // Git Board's own refresh button (BtnRefreshGitBoard_Click) shows for the exact
+            // same fetch. Both trigger paths now go through the one real implementation,
+            // LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync — awaited here so the
+            // strip has genuinely finished before the rest of this cascade runs, and
+            // BuildQueuePanel's own button is disabled for that same real span.
+            BuildQueuePanel.FullGitRefreshRequested += async (s, e) =>
             {
-                LeftSidebar.PopulateGitTrackerBoard(forceFresh: true);
-                LeftSidebar.PopulateChatsTree();
-                LeftSidebar.RefreshGitStatus();
-                LeftSidebar.PopulateManifestsList();
-                if (_homeView != null)
+                BuildQueuePanel.SetGitHubTilesRefreshInProgress(true);
+                try
                 {
-                    _homeView.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
+                    await LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync();
+                    LeftSidebar.PopulateChatsTree();
+                    LeftSidebar.RefreshGitStatus();
+                    LeftSidebar.PopulateManifestsList();
+                    if (_homeView != null)
+                    {
+                        _homeView.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
+                    }
+                    RefreshOpenGitDetailTabs();
                 }
-                RefreshOpenGitDetailTabs();
+                finally
+                {
+                    BuildQueuePanel.SetGitHubTilesRefreshInProgress(false);
+                }
             };
 
             // Shane, 2026-08-28: "when a build is in Verifying state and then

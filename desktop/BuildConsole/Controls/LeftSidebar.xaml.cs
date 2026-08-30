@@ -324,6 +324,25 @@ namespace BuildConsole.Controls
             // GitHub call this app makes is attributable to a real click.
             ActivityLog.Log("github.manual-refresh",
                 "Git Board [manual Refresh click]: forcing a fresh GitHub fetch (GraphQL issues + REST milestones + blocked_by).");
+            await RefreshGitBoardWithLoadingFeedbackAsync();
+        }
+
+        /// <summary>
+        /// Git #1635's disable-button + critter-strip feedback for a manual Git Board
+        /// refresh (board fetch + first render + the blocked-by sweep that follows it),
+        /// dismissed the moment it genuinely completes rather than on a fixed timer.
+        /// Git #1836 — Shane: the Build Queue panel's own refresh button
+        /// (BuildQueuePanel.BtnRefreshGitHubTiles, cascaded via FullGitRefreshRequested)
+        /// triggers this exact same GitHub fetch but showed none of this feedback,
+        /// because MainWindow's FullGitRefreshRequested handler called
+        /// PopulateGitTrackerBoard(forceFresh: true) directly instead of going through
+        /// this method. Extracted out of BtnRefreshGitBoard_Click so both trigger paths
+        /// call the one real implementation — MainWindow's FullGitRefreshRequested
+        /// handler now awaits this too — rather than duplicating the animation/disable
+        /// logic a second time.
+        /// </summary>
+        public async System.Threading.Tasks.Task RefreshGitBoardWithLoadingFeedbackAsync()
+        {
             // Git #923 — a deliberate click should always mean a real, uncached
             // fetch and a guaranteed repaint. A manual refresh also re-runs the
             // blocked_by sweep immediately (bypass its 3-min throttle), since the
@@ -334,11 +353,11 @@ namespace BuildConsole.Controls
             // duration (board fetch + first render + the blocked-by sweep that follows
             // it) and show a critter-crossing loading strip tied to that same real
             // span, dismissed the moment it genuinely completes rather than on a fixed
-            // timer. BtnRefreshGitBoard is the only button that actually triggers this
-            // GitHub fetch — BtnRefreshChats hits the local dev server's own board
-            // endpoint, not GitHub, and Build Watch's "Recheck closures" makes its own
-            // separate, much lighter open-issue-numbers call — so neither needs to be
-            // disabled here (confirmed by reading both before assuming otherwise).
+            // timer. BtnRefreshGitBoard / this method is the only path that actually
+            // triggers this GitHub fetch — BtnRefreshChats hits the local dev server's
+            // own board endpoint, not GitHub, and Build Watch's "Recheck closures" makes
+            // its own separate, much lighter open-issue-numbers call — so neither needs
+            // to be disabled here (confirmed by reading both before assuming otherwise).
             BtnRefreshGitBoard.IsEnabled = false;
             GitRefreshLoadingStrip.Visibility = Visibility.Visible;
             IssueChompAnimation.StartRefreshLoadingStrip(GitRefreshStripCanvas);

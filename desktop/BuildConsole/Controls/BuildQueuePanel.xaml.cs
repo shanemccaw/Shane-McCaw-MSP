@@ -4502,6 +4502,17 @@ namespace BuildConsole.Controls
             ToastEngine.Success("Git Sync", "Refreshed Git Board, Batter Up, AI Batter Up, epic issues, and queue!");
         }
 
+        /// <summary>
+        /// Git #1836 — Shane: this button triggers the exact same GitHub fetch as Git
+        /// Board's own refresh button, but showed no disabled-state feedback of its own
+        /// while that fetch (and its critter loading strip, on the Git Board panel) was
+        /// in flight. MainWindow — which already owns both this panel and LeftSidebar —
+        /// calls this around its awaited LeftSidebar.RefreshGitBoardWithLoadingFeedbackAsync()
+        /// so BtnRefreshGitHubTiles is disabled for the same real span Git Board's own
+        /// button is.
+        /// </summary>
+        public void SetGitHubTilesRefreshInProgress(bool inProgress) => BtnRefreshGitHubTiles.IsEnabled = !inProgress;
+
         private void TileInFlight_Click(object sender, RoutedEventArgs e)
         {
             bool expand = TileInFlight.IsChecked == true;
