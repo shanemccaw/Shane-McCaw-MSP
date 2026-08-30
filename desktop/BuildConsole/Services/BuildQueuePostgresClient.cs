@@ -1062,6 +1062,37 @@ namespace BuildConsole.Services
             return rowsAffected > 0;
         }
 
+        /// <summary>
+        /// Shane: "All builds no matter their status should be able to be parked" —
+        /// generalizes <see cref="ParkAsync"/>/<see cref="ParkRunningAsync"/> to every
+        /// remaining status (verifying, done, failed, canceled, external — anything
+        /// that isn't already 'queued'/'limit-paused'/'running', which keep their own
+        /// dedicated methods above since queued/limit-paused rows need no session-id
+        /// backfill and running needs the caller to stop the process first). Same
+        /// shape as ParkRunningAsync otherwise: preserves/backfills resume_session_id
+        /// so Un-park resumes rather than restarts, and is a no-op (false) on a row
+        /// already parked — a stale double-click is safe.
+        /// </summary>
+        public async Task<bool> ParkAnyAsync(int id, string? sessionId = null)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status            = 'parked',
+                       claimed_at        = NULL,
+                       session_id        = COALESCE(@sessionId, session_id),
+                       resume_session_id = COALESCE(resume_session_id, @sessionId, session_id),
+                       updated_at        = NOW(),
+                       build_pid            = NULL,
+                       build_pid_started_at = NULL
+                 WHERE id     = @id
+                   AND status <> 'parked'", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@sessionId", (object?)sessionId ?? DBNull.Value);
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+            return rowsAffected > 0;
+        }
+
         // ── QueueExternalAsync (Git #1638) ────────────────────────────────────────
         /// <summary>
         /// "Send to Builder" tracking row — per #1638's locked decision, this is a

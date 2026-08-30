@@ -3227,6 +3227,46 @@ namespace BuildConsole.Controls
             });
         }
 
+        /// <summary>
+        /// Shane: "All builds no matter their status should be able to be parked" —
+        /// the Park item offered on every status that isn't 'running' (which stops a
+        /// live process first, see the dedicated running-branch Park above),
+        /// 'queued'/'limit-paused' (which have their own Park with slightly different
+        /// wording) or 'parked' itself (Un-park is the inverse there). Covers
+        /// 'verifying', 'done', 'failed', 'canceled', and 'external' — a build in any
+        /// of those states can still be genuinely blocked on something else and worth
+        /// staging out of sight until that clears, via <see cref="BuildQueuePostgresClient.ParkAnyAsync"/>.
+        /// </summary>
+        private MenuItem BuildParkAnyMenuItem(QueueItem item)
+        {
+            var mi = new MenuItem { Header = "🅿️ Park" };
+            mi.Click += async (_, _) =>
+            {
+                if (_db == null)
+                {
+                    ToastEngine.Warning("Park", "No direct DB connection — can't park.");
+                    return;
+                }
+                try
+                {
+                    if (await _db.ParkAnyAsync(item.Id, item.SessionId))
+                    {
+                        ToastEngine.Success("Parked", $"Staged, not queued: {item.Title}");
+                        ActivityLog.Log("build-queue", $"Parked queue item #{item.Id} ({item.Title}), was {item.Status}.");
+                        SyncGitHubParkStatus(item.GithubNumber, GitHubApiClient.ParkOptionId, "Park");
+                    }
+                    else
+                        ToastEngine.Warning("Park", $"Already parked: {item.Title}");
+                }
+                catch (Exception ex)
+                {
+                    ToastEngine.Error("Park Failed", $"Couldn't park: {ex.Message}");
+                }
+                await RefreshAsync();
+            };
+            return mi;
+        }
+
         private ContextMenu BuildCardContextMenu(QueueItem item)
         {
             var cm = new ContextMenu();
@@ -3672,6 +3712,8 @@ namespace BuildConsole.Controls
                 var miTailLog = new MenuItem { Header = "📜 Tail Log" };
                 miTailLog.Click += (_, _) => ExternalLogWindow.ShowFor(item.Id, item.Title);
                 cm.Items.Add(miTailLog);
+
+                cm.Items.Add(BuildParkAnyMenuItem(item));
             }
             else
             {
@@ -3720,6 +3762,8 @@ namespace BuildConsole.Controls
                     }
                 };
                 cm.Items.Add(miRetry);
+
+                cm.Items.Add(BuildParkAnyMenuItem(item));
             }
 
             // Always-available: the local (--notGit) build-id registry — every letter id
