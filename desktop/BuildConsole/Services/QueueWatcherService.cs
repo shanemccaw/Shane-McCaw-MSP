@@ -1807,6 +1807,20 @@ namespace BuildConsole.Services
             return false;
         }
 
+        /// <summary>Checks whether a running or retained build has hit the session limit.</summary>
+        public bool IsSessionLimitHit(int id)
+        {
+            if (_retained.TryGetValue(id, out var r))
+            {
+                lock (_gate) return r.SessionLimitHit;
+            }
+            if (_running.TryGetValue(id, out var rn))
+            {
+                lock (_gate) return rn.SessionLimitHit;
+            }
+            return false;
+        }
+
         /// <summary>The current three-state indicator value for a LIVE interactive build, or null if it isn't one we own and is still running (terminal/retained/legacy/foreign → the caller uses the queue-derived state instead).</summary>
         public InteractiveInputState? GetInteractiveState(int id)
         {
