@@ -616,6 +616,34 @@
                                    Text="Streaming output — read-only (not launched by this app instance)" Foreground="{StaticResource ChatPane.Muted6}"
                                    FontStyle="Italic" FontSize="12.5" Margin="2,4"/>
 
+                        <!-- Git #1839 — Adopted after a console restart: streaming + Stop stay, but stdin is gone. -->
+                        <Grid Visibility="{Binding Mode, Converter={StaticResource ModeVis}, ConverterParameter=AdoptedReadOnly}" Margin="2,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center"
+                                       Foreground="{StaticResource ChatPane.Muted6}" FontStyle="Italic" FontSize="12.5"
+                                       Text="Adopted after a console restart — its live input channel is gone. Streaming and Stop still work; use Resume Session to talk to it again."/>
+                            <Button Grid.Column="1" Click="StopButton_Click" IsEnabled="{Binding CanStop}"
+                                    Visibility="{Binding CanStop, Converter={StaticResource BoolVis}}"
+                                    Height="36" Padding="14,0" Margin="10,0,0,0" VerticalAlignment="Center"
+                                    Background="{StaticResource ChatPane.DangerFill}" BorderBrush="{StaticResource ChatPane.DangerBorder}" BorderThickness="1"
+                                    Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <StackPanel Orientation="Horizontal">
+                                    <Path Data="{StaticResource Icon.Square}" Fill="{StaticResource ChatPane.Danger}" Width="11" Height="11" Stretch="Uniform" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Stop" Foreground="{StaticResource ChatPane.Danger}" FontWeight="SemiBold" FontSize="13" Margin="6,0,0,0"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
                         <!-- Status footer -->
                         <Grid Margin="2,8,2,0">
                             <Grid.ColumnDefinitions>

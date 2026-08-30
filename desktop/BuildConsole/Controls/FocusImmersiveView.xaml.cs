@@ -790,7 +790,10 @@ namespace BuildConsole.Controls
         {
             if (!_active || _selectedBuildId == null || _watcher == null) return;
 
-            if (!_watcher.OwnsInteractive(_selectedBuildId.Value))
+            // Git #1839 — render the transcript for any renderable interactive build, including one
+            // ADOPTED after a console restart (OwnsInteractive is false for those, but the structured
+            // stream still flows). The send box separately keys on OwnsInteractive (UpdateSendEnabled).
+            if (!_watcher.IsInteractiveRenderable(_selectedBuildId.Value))
             {
                 if (TranscriptPanel.Children.Count == 0)
                     AppendForeignNote();

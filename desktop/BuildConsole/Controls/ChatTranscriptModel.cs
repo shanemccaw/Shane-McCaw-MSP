@@ -166,6 +166,11 @@ namespace BuildConsole.Controls
         Interactive,
         /// <summary>Still running but this app doesn't own its stdin (a foreign/legacy build) — read-only, no input possible.</summary>
         ReadOnlyRunning,
+        /// <summary>Git #1839 — still running and LIVE-streaming, but ADOPTED by pid after a BuildConsole
+        /// restart: its stdin pipe died with the previous app and can't be re-attached, so input is
+        /// read-only (a plain "use Resume Session" note replaces the composer) — but Stop/Kill stay
+        /// available (they act on the process handle, not stdin).</summary>
+        AdoptedReadOnly,
         /// <summary>Done / Failed / Stale — input shell replaced by a Dismiss row.</summary>
         Terminal,
     }

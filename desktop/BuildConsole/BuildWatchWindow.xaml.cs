@@ -869,7 +869,10 @@ namespace BuildConsole
                 // 1) Update every occupied slot from this snapshot.
                 foreach (var slot in _slots.Where(s => s.Occupied))
                 {
-                    bool owned = _watcher?.OwnsInteractive(slot.QueueItemId) ?? false;
+                    // Git #1839 — render/context/state key on "renderable" (true for adopted builds
+                    // too), not stdin-ownership. Stdin-ownership (OwnsInteractive) only gates the
+                    // chat box, handled in ApplyInteractiveState via the adopted flag below.
+                    bool owned = _watcher?.IsInteractiveRenderable(slot.QueueItemId) ?? false;
                     if (owned) slot.InteractiveBound = true;
 
                     // Sync captured session ID from local watcher in-memory state if available
@@ -967,7 +970,7 @@ namespace BuildConsole
                     // waiting-for-input sub-state and the chat input row.
                     if (ist.HasValue && slot.State == SlotState.Running)
                     {
-                        ApplyInteractiveState(slot, ist.Value);
+                        ApplyInteractiveState(slot, ist.Value, adopted: _watcher?.IsAdopted(slot.QueueItemId) ?? false);
                     }
                     else
                     {
@@ -1056,7 +1059,13 @@ namespace BuildConsole
             {
                 case SlotState.Running:
                     slot.Verifying = verifying;
-                    vm.Mode = slot.InteractiveBound ? ComposerMode.Interactive : ComposerMode.ReadOnlyRunning;
+                    // Git #1839 — an adopted build is renderable (InteractiveBound) but stdin-less:
+                    // read-only composer, but still stoppable. ApplyInteractiveState re-affirms this
+                    // each poll; setting it here avoids a one-tick editable-box flash on first mount.
+                    bool slotAdopted = slot.InteractiveBound && (_watcher?.IsAdopted(slot.QueueItemId) ?? false);
+                    vm.Mode = slot.InteractiveBound
+                        ? (slotAdopted ? ComposerMode.AdoptedReadOnly : ComposerMode.Interactive)
+                        : ComposerMode.ReadOnlyRunning;
                     vm.CanStop = slot.InteractiveBound;
                     vm.PlaceholderText = "Type to guide Claude mid-task — Shift+Enter for new line";
                     slot.CompletedAtUtc = null;
@@ -1264,7 +1273,9 @@ namespace BuildConsole
             slot.PendingRender.Clear();
             slot.RenderPumpScheduled = false;
             slot.LastInteractiveState = null;
-            slot.InteractiveBound = _watcher?.OwnsInteractive(item.Id) ?? false;
+            // Git #1839 — render binding follows "renderable" (true for adopted builds), not
+            // stdin-ownership; the read-only chat box for adopted builds is applied in ApplyInteractiveState.
+            slot.InteractiveBound = _watcher?.IsInteractiveRenderable(item.Id) ?? false;
 
             SetSlotState(slot, SlotState.Running, null);
             // Render from the owned in-memory stream for interactive builds
@@ -1583,10 +1594,15 @@ namespace BuildConsole
         /// INPUT"), Stopped/paused (idle tone, muted). Idempotent and gated on a real
         /// sub-state change so it never restarts animations per poll.
         /// </summary>
-        private void ApplyInteractiveState(BuildWatchSlot slot, InteractiveInputState state)
+        private void ApplyInteractiveState(BuildWatchSlot slot, InteractiveInputState state, bool adopted = false)
         {
-            slot.Pane.ViewModel.Mode = ComposerMode.Interactive;
-            slot.Pane.ViewModel.CanStop = state == InteractiveInputState.Working;
+            // Git #1839 — an ADOPTED build (re-attached by pid after a console restart) renders and
+            // streams like any interactive build, but its stdin pipe died with the old app and cannot
+            // be re-attached. So its composer is READ-ONLY (AdoptedReadOnly — the input shell is
+            // replaced by a plain "input channel gone, use Resume Session" note), while Stop/Kill stay
+            // available (they act on the process handle, not stdin — always available while alive).
+            slot.Pane.ViewModel.Mode = adopted ? ComposerMode.AdoptedReadOnly : ComposerMode.Interactive;
+            slot.Pane.ViewModel.CanStop = adopted || state == InteractiveInputState.Working;
             EnsureStatusLine(slot);
 
             if (slot.LastInteractiveState == state) return; // no visual churn on an unchanged state
@@ -1706,7 +1722,7 @@ namespace BuildConsole
                         {
                             var claimed = await _db.ForceClaimAsync(newQueueId);
                             _watcher.LaunchItemExplicit(claimed);
-                            slot.InteractiveBound = _watcher.OwnsInteractive(newQueueId);
+                            slot.InteractiveBound = _watcher.IsInteractiveRenderable(newQueueId);
                         }
                         catch (Exception ex)
                         {

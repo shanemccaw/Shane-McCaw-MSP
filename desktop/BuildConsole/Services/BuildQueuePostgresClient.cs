@@ -201,7 +201,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set, cli, account
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
                 FROM bt_build_queue
                 ORDER BY created_at ASC";
 
@@ -254,7 +254,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set, cli, account
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
                 FROM bt_build_queue
                 WHERE status = 'queued'
                 ORDER BY created_at ASC";
@@ -333,7 +333,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set, cli, account";
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at";
 
             var claimed = new List<QueueItem>();
             await using (var reader = await claimCmd.ExecuteReaderAsync())
@@ -383,7 +383,7 @@ namespace BuildConsole.Services
                     SELECT id, title, prompt, model, effort, cwd,
                            github_number, blocked_by_number, blocked_by_numbers,
                            status, exit_code, session_id, resume_session_id,
-                           originating_chat_id, chat_url, updated_at, build_set, cli, account
+                           originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
                     FROM bt_build_queue
                     WHERE github_number = @num
                     ORDER BY created_at DESC
@@ -398,7 +398,7 @@ namespace BuildConsole.Services
                     SELECT id, title, prompt, model, effort, cwd,
                            github_number, blocked_by_number, blocked_by_numbers,
                            status, exit_code, session_id, resume_session_id,
-                           originating_chat_id, chat_url, updated_at, build_set, cli, account
+                           originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
                     FROM bt_build_queue
                     WHERE github_number IS NULL
                       AND created_at > @since
@@ -495,7 +495,7 @@ namespace BuildConsole.Services
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
-                              originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+                              originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
                 updateCmd.Parameters.AddWithValue("@title", titleTrimmed);
                 updateCmd.Parameters.AddWithValue("@prompt", prompt);
                 updateCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
@@ -530,7 +530,7 @@ namespace BuildConsole.Services
                     RETURNING id, title, prompt, model, effort, cwd,
                               github_number, blocked_by_number, blocked_by_numbers,
                               status, exit_code, session_id, resume_session_id,
-                              originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+                              originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
                 insertCmd.Parameters.AddWithValue("@title", titleTrimmed);
                 insertCmd.Parameters.AddWithValue("@prompt", prompt);
                 insertCmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
@@ -604,6 +604,9 @@ namespace BuildConsole.Services
                        completed_at  = NOW(),
                        updated_at    = NOW()
                      , session_id    = COALESCE(@sessionId, session_id)
+                       -- Git #1839 — clear the adoption pid so a stale pid never outlives its build.
+                     , build_pid            = NULL
+                     , build_pid_started_at = NULL
                  WHERE id = @id
                 RETURNING status, github_number", conn);
             cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
@@ -622,6 +625,30 @@ namespace BuildConsole.Services
                         $"Queue #{id} session exited successfully → Verifying (GH #{num}, exit {exitCode}) — held visible in the active queue until that issue actually closes.");
                 }
             }
+        }
+
+        // ── StampBuildPidAsync ────────────────────────────────────────────────────
+        /// <summary>
+        /// Git #1839 — records the launched build process's pid and its process-creation time on
+        /// the queue row, right after launch. A restarted BuildConsole reads these back
+        /// (RecoverOrphanedRunningItemsAsync) to safely re-attach a build still running from the
+        /// previous instance instead of falsely marking it failed -2. The creation time is the
+        /// fingerprint that makes the pid match safe against Windows pid reuse. Cleared on
+        /// completion (MarkCompleteAsync / MarkLimitPausedAsync).
+        /// </summary>
+        public async Task StampBuildPidAsync(int id, int pid, DateTimeOffset startedAtUtc)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET build_pid            = @pid,
+                       build_pid_started_at = @startedAt,
+                       updated_at           = NOW()
+                 WHERE id = @id", conn);
+            cmd.Parameters.AddWithValue("@pid", pid);
+            cmd.Parameters.AddWithValue("@startedAt", startedAtUtc);
+            cmd.Parameters.AddWithValue("@id", id);
+            await cmd.ExecuteNonQueryAsync();
         }
 
         // ── PromoteVerifyingToDoneAsync ──────────────────────────────────────────
@@ -749,7 +776,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
             cmd.Parameters.AddWithValue("@id", id);
 
             QueueItem row;
@@ -870,7 +897,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
             cmd.Parameters.AddWithValue("@title", titleTrimmed);
             cmd.Parameters.AddWithValue("@prompt", prompt);
             cmd.Parameters.AddWithValue("@model", (object?)modelTrimmed ?? DBNull.Value);
@@ -913,7 +940,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
             var items = new List<QueueItem>();
             await using (var reader = await cmd.ExecuteReaderAsync())
             {
@@ -941,7 +968,10 @@ namespace BuildConsole.Services
                        claimed_at        = NULL,
                        session_id        = COALESCE(@sessionId, session_id),
                        resume_session_id = COALESCE(resume_session_id, @sessionId, session_id),
-                       updated_at        = NOW()
+                       updated_at        = NOW(),
+                       -- Git #1839 — the process exited; clear the adoption pid.
+                       build_pid            = NULL,
+                       build_pid_started_at = NULL
                  WHERE id = @id", conn);
             cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
             cmd.Parameters.AddWithValue("@sessionId", (object?)sessionId ?? DBNull.Value);
@@ -957,7 +987,7 @@ namespace BuildConsole.Services
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set, cli, account
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
                 FROM bt_build_queue
                 WHERE status = @status
                 ORDER BY created_at ASC", conn);
@@ -989,7 +1019,7 @@ namespace BuildConsole.Services
                 RETURNING id, title, prompt, model, effort, cwd,
                           github_number, blocked_by_number, blocked_by_numbers,
                           status, exit_code, session_id, resume_session_id,
-                          originating_chat_id, chat_url, updated_at, build_set, cli, account", conn);
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
             cmd.Parameters.AddWithValue("@status", SessionLimitAutoRestartService.LimitPausedStatus);
             var items = new List<QueueItem>();
             await using (var reader = await cmd.ExecuteReaderAsync())
@@ -1079,7 +1109,7 @@ namespace BuildConsole.Services
             // id, title, prompt, model, effort, cwd,
             // github_number, blocked_by_number, blocked_by_numbers,
             // status, exit_code, session_id, resume_session_id,
-            // originating_chat_id, chat_url, updated_at, build_set, cli, account
+            // originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
             var blockedByNumbersRaw = r.IsDBNull(8) ? null : r.GetValue(8) as int[];
             return new QueueItem
             {
@@ -1104,6 +1134,8 @@ namespace BuildConsole.Services
                 BuildSet          = r.IsDBNull(16) ? null : r.GetString(16),
                 Cli               = r.IsDBNull(17) ? null : r.GetString(17),
                 Account           = r.IsDBNull(18) ? null : r.GetString(18),
+                BuildPid          = r.IsDBNull(19) ? null : r.GetInt32(19),
+                BuildPidStartedAt = r.IsDBNull(20) ? null : r.GetFieldValue<DateTimeOffset>(20),
             };
         }
 

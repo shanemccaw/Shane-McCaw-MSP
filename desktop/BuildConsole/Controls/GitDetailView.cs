@@ -2140,7 +2140,9 @@ namespace BuildConsole.Controls
 
             if (Application.Current.MainWindow is MainWindow mw && mw.QueueWatcher is QueueWatcherService w)
             {
-                if (w.OwnsInteractive(_buildPaneItemId))
+                // Git #1839 — render the structured stream for any renderable interactive build,
+                // including one ADOPTED after a console restart (its stdin is gone, but output flows).
+                if (w.IsInteractiveRenderable(_buildPaneItemId))
                 {
                     DrainInteractiveBuild(w);
                     return;
@@ -2208,6 +2210,30 @@ namespace BuildConsole.Controls
                 w = mw.QueueWatcher;
 
             if (w == null) return;
+
+            // Git #1839 — a build ADOPTED after a console restart is still running and streaming, but
+            // its stdin is gone. Show it as running + read-only (Stop/Kill still act on the process
+            // handle) rather than falling into the "finished" else-branch or offering a dead input box.
+            if (w.IsAdopted(_buildPaneItemId))
+            {
+                var astate = w.GetInteractiveState(_buildPaneItemId) ?? InteractiveInputState.Working;
+                vm.Mode = ComposerMode.AdoptedReadOnly;
+                vm.CanStop = true;
+                EnsureStatusLine();
+                if (astate == InteractiveInputState.WaitingForInput)
+                {
+                    ApplyPillTone("Warning", "NEEDS INPUT", "Adopted after a console restart — waiting for input, but its stdin is gone. Use Resume Session to answer.", pulsing: true);
+                    _buildStatusLine!.ActivityText = "waiting for input (adopted — use Resume Session)…";
+                    _buildStatusLine!.Spinning = false;
+                }
+                else
+                {
+                    ApplyPillTone("Running", "RUNNING", "Adopted after a console restart — streaming and Stop work; use Resume Session to talk to it.", pulsing: false);
+                    _buildStatusLine!.ActivityText = "working (adopted after restart)…";
+                    _buildStatusLine!.Spinning = true;
+                }
+                return;
+            }
 
             bool isLive = w.OwnsInteractive(_buildPaneItemId) && !w.HasExited(_buildPaneItemId, out _);
             if (isLive)

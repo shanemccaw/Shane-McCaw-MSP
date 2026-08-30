@@ -45,6 +45,16 @@ namespace BuildConsole.Services
         /// (Shane's overflow Pro account); null/empty/"primary" (the default) uses the default config
         /// dir. Sequential overflow only — no concurrency change, no automatic failover.</summary>
         public string? Account { get; set; }
+        /// <summary>Git #1839 — the OS process id of the launched build (claude.exe/gemini.exe),
+        /// stamped at launch and cleared on completion. Lets a restarted BuildConsole find the
+        /// still-running process and adopt it instead of falsely marking the row failed -2. Null
+        /// for a row that never launched, already completed, or predates this change.</summary>
+        public int? BuildPid { get; set; }
+        /// <summary>Git #1839 — the launched build process's CREATION time (from GetProcessTimes),
+        /// the fingerprint that makes a <see cref="BuildPid"/> match safe: Windows reuses pids, so a
+        /// stored pid alone would eventually match an unrelated process. On restart the stored pid is
+        /// only adopted when the live process's creation time matches this. Null when no pid is stored.</summary>
+        public DateTimeOffset? BuildPidStartedAt { get; set; }
     }
 
     /// <summary>Matches POST /admin/simulator/deploy/console's real `{ ok, command, output }` response shape.</summary>

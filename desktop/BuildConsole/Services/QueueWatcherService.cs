@@ -123,6 +123,20 @@ namespace BuildConsole.Services
             // ── Interactive (BuildConsole owns stdin/stdout) fields ──────────
             /// <summary>True when this build was launched in the interactive redirected-stdin mode (owned by this app instance). Legacy/foreign builds are false and behave exactly as before.</summary>
             public bool Interactive;
+            /// <summary>Git #1839 — true when this entry was ADOPTED (re-attached by pid) after a BuildConsole
+            /// restart rather than launched by this instance. It still renders/streams/context-meters like any
+            /// interactive build (<see cref="Interactive"/> stays true), but its stdin pipe died with the old
+            /// app and cannot be re-attached (<see cref="Stdin"/> is null) — so OwnsInteractive is false and the
+            /// chat box is read-only. Stop/Kill still work off the process handle.</summary>
+            public bool Adopted;
+            /// <summary>Git #1839 — set true for an adopted build while its raw files are being REPLAYED from
+            /// offset 0 to rebuild the in-memory transcript/session-id/context state. During this window the
+            /// non-idempotent, escaping side-effects (durable usage-cost accounting + session-limit parking) are
+            /// suppressed so the replay doesn't double-count what the previous instance already recorded. Cleared
+            /// by the tailer once it catches up to the pre-adoption end of the files. Always false for a normally
+            /// launched build. Only read/cleared on the tailer thread (set on the UI thread before the tailer
+            /// starts, establishing a happens-before).</summary>
+            public bool Replaying;
             public string LogPath = "";
             /// <summary>Git #1804 — the DURABLE file claude.exe's raw stdout is redirected into (child-owned
             /// handle → survives app close). The internal tailer reads this and feeds <see cref="HandleOutput"/>,
@@ -499,47 +513,49 @@ namespace BuildConsole.Services
         /// Git #822 — Shane: "#805 seems to have ran but there was zero
         /// indication at all that it was going... The build log was
         /// empty... there are also 4 #805 entries." `_running` is a pure
-        /// in-memory dictionary - it dies with the app. Every time
-        /// BuildConsole restarts (routine during today's dev cycle for
-        /// recompiles), any DB row still `running` from the OLD instance has
-        /// nothing tracking it anymore: no log ever grows again, nothing
-        /// reaps it, it just sits in silent limbo forever unless someone
-        /// manually Stops/Marks Done it. That's the "zero indication" and
-        /// "empty log" both explained by the same root cause. This sweep
-        /// runs once at startup: anything already `running` when THIS
-        /// instance starts is, by definition, orphaned from a previous one
-        /// (a fresh `_running` is always empty at this point) - mark it
-        /// failed with a distinct sentinel exit code so it's visibly
-        /// explained rather than silent, and Retry is right there to
-        /// re-queue it for real.
+        /// in-memory dictionary - it dies with the app. When BuildConsole
+        /// restarts, any DB row still `running` from the OLD instance has
+        /// nothing in THIS instance tracking it anymore. #822's original fix
+        /// assumed that meant the process itself was gone too — "anything
+        /// already `running` when this instance starts is, by definition,
+        /// orphaned from a previous one" — and marked every such row failed
+        /// -2 so it was visibly explained rather than sitting in silent limbo.
+        ///
+        /// Git #1804 / #1839 — that assumption is NO LONGER TRUE. #1804 moved
+        /// launched builds off the in-process stdout pipe onto durable files
+        /// the CHILD owns, so a build now KEEPS RUNNING after BuildConsole
+        /// closes (its claude.exe keeps writing `queue-{id}.log.raw`). Marking
+        /// it failed -2 throws away live work and, worse, the "Recover All"
+        /// banner then re-queues a SECOND agent onto the same still-live
+        /// worktree/branch. So this sweep no longer guesses from status alone:
+        /// for each `running` row it checks whether the real process is still
+        /// alive (#1839 — stored `build_pid` + its process-creation-time
+        /// fingerprint, so a reused pid is never mistaken for our build) and,
+        /// if so, ADOPTS it — rebuilds the RunningEntry, re-arms the raw-file
+        /// tailers replaying the transcript, and leaves the row `running` so
+        /// Build Watch remounts the slot on its own next poll. Only a row whose
+        /// process is genuinely gone (no pid stored, pid not openable, or the
+        /// creation time doesn't match) still gets marked failed -2 exactly as
+        /// #822 did — real crash recovery is unchanged.
         ///
         /// Git #943 — Shane: "I'm losing builds... 939 is still running but
         /// it's not showing in the queue." #939's real claude.exe process was
         /// legitimately claimed and launched by one BuildConsole instance,
         /// but this sweep ran from a SECOND, concurrently-open instance whose
         /// own fresh `_running` dict was empty - from its perspective #939
-        /// looked orphaned, so it force-marked it failed (exitCode -2) only
-        /// ~2 minutes after being claimed, while the real process (confirmed
-        /// still alive in Task Manager) kept running, completely unaware its
-        /// own DB row had just been killed out from under it. #822's
-        /// original assumption - "still 'running' when I start must be
-        /// orphaned from a dead previous instance" - only holds for exactly
-        /// one BuildConsole instance at a time; it breaks the moment a
-        /// second is open, which happens routinely (Shane keeping an old
-        /// window up while a new one launches, or - as happened here -
-        /// Claude Code itself relaunching the app repeatedly mid-session to
-        /// verify a rebuild). A false "still orphaned" is recoverable (Retry
-        /// is right there); a false "failed" on a real running job silently
-        /// discards live work instead. So: if any OTHER BuildConsole.exe
-        /// process is already alive, this can't safely tell "orphaned" from
-        /// "legitimately owned elsewhere" and skips the sweep entirely
-        /// rather than guess wrong.
+        /// looked orphaned, so it force-marked it failed. The multi-instance
+        /// guard below stays even now that liveness is real: with a second
+        /// console open, adoption would let BOTH consoles re-attach the same
+        /// live process and RACE to write its completion. Adoption is only safe
+        /// when this is the ONLY console running, so if any OTHER
+        /// BuildConsole.exe is alive this skips the sweep entirely — neither
+        /// adopting nor failing anything — rather than guess wrong.
         /// </summary>
         private async Task RecoverOrphanedRunningItemsAsync()
         {
             if (Process.GetProcessesByName("BuildConsole").Length > 1)
             {
-                ActivityLog.Log("watcher", "Skipping orphaned-running sweep - another BuildConsole instance is already open, can't safely tell orphaned from legitimately in-progress elsewhere.");
+                ActivityLog.Log("watcher", "Skipping orphaned-running sweep - another BuildConsole instance is already open, can't safely tell orphaned from legitimately in-progress elsewhere (and adoption would race two consoles over the same live process).");
                 return;
             }
 
@@ -552,21 +568,176 @@ namespace BuildConsole.Services
             }
             catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't check for orphaned running items: {ex.Message}"); return; }
 
-            var orphaned = items.Where(i => i.Status == "running").ToList();
-            if (orphaned.Count == 0) return;
+            var running = items.Where(i => i.Status == "running").ToList();
+            if (running.Count == 0) return;
 
-            ActivityLog.Log("watcher", $"Found {orphaned.Count} queue item(s) stuck 'running' from a previous app instance/crash (nothing was tracking them) - marking failed so they're visible. Resume Session (if a session id was captured) or Retry to re-queue - the Build Queue panel's 'Recover All' banner does this for every orphaned item at once.");
-            foreach (var item in orphaned)
+            int adopted = 0, orphaned = 0;
+            foreach (var item in running)
             {
+                // Git #1839 — liveness check first. If the real process is still alive and
+                // matches its stored pid+creation-time fingerprint, ADOPT it (leaves the row
+                // `running`, remounts its Build Watch slot). Otherwise it's a genuine #822 orphan.
+                if (TryAdoptRunningItem(item))
+                {
+                    adopted++;
+                    continue;
+                }
+
                 try
                 {
                     if (_db != null)
                         await _db.MarkOrphanedFailedAsync(item.Id);
                     else
                         await _api.MarkQueueItemCompleteAsync(item.Id, -2);
+                    orphaned++;
+                    ActivityLog.Log("watcher", $"Orphaned queue #{item.Id} ({item.Title}) marked failed -2 — its process is gone (pid {(item.BuildPid?.ToString() ?? "none stored")}). Resume Session (if a session id was captured) or Retry to re-queue; the Build Queue panel's 'Recover All' banner does every orphan at once.");
                 }
                 catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't mark orphaned queue item {item.Id} failed: {ex.Message}"); }
             }
+
+            if (adopted > 0)
+                ActivityLog.Log("watcher", $"Adopted {adopted} still-running build(s) after restart — remounting into Build Watch, streaming continues.");
+            if (orphaned > 0)
+                ActivityLog.Log("watcher", $"Marked {orphaned} genuinely-orphaned running row(s) failed -2 (process gone).");
+        }
+
+        /// <summary>
+        /// Git #1839 — attempts to ADOPT a `running` row whose real build process survived a
+        /// BuildConsole restart, so it stays `running` and remounts into Build Watch instead of
+        /// being falsely marked failed -2. Returns true only when the process was verified alive
+        /// AND matched its stored pid+creation-time fingerprint and the entry is now registered in
+        /// <see cref="_running"/>; false means "not ours / gone" and the caller orphans the row.
+        ///
+        /// Safety gates, in order (any failure → false, treat as orphan):
+        ///   1. No <c>build_pid</c> stored (a row from before this change, or HTTP-fallback) — don't guess.
+        ///   2. <c>OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION)</c> fails → process is gone.
+        ///   3. The opened handle reports already-exited → gone.
+        ///   4. Its <c>GetProcessTimes</c> creation time doesn't match the stored one → the pid was
+        ///      REUSED by an unrelated process; close the handle, do NOT adopt (never Stop a stranger).
+        /// </summary>
+        private bool TryAdoptRunningItem(QueueItem item)
+        {
+            if (_db == null || !item.BuildPid.HasValue) return false; // (1)
+
+            var handle = BuildProcessHandle.TryOpenExisting(item.BuildPid.Value); // (2)
+            if (handle == null) return false;
+
+            bool keep = false;
+            try
+            {
+                if (handle.HasExited) return false; // (3)
+
+                // (4) — pid-reuse fingerprint. Compare the live process's creation time against the
+                // one stamped at launch. The stored and live values come from GetProcessTimes on the
+                // SAME underlying process, so on a genuine match they are FILETIME-identical apart
+                // from timestamptz's microsecond truncation on the DB round-trip (< 1µs); a verified
+                // 0.000000s same-process delta in the #1839 harness confirms this. A REUSED pid, in
+                // contrast, belongs to a process that started at a genuinely different wall-clock time
+                // — the original had to exit before its pid could be reused, so the gap is at least
+                // the original build's runtime (realistically minutes, and here at least the app-down
+                // duration). A 1-second tolerance sits comfortably above the truncation error and far
+                // below any real reuse gap. Erring tight is deliberate: a false reject just orphans a
+                // recoverable row (Retry is right there), while a false accept could adopt — and on
+                // Stop, KILL — an unrelated process.
+                var liveCreation = handle.CreationTimeUtc;
+                if (!liveCreation.HasValue || !item.BuildPidStartedAt.HasValue) return false;
+                double deltaSec = Math.Abs((item.BuildPidStartedAt.Value.UtcDateTime - liveCreation.Value).TotalSeconds);
+                if (deltaSec > 1.0)
+                {
+                    ActivityLog.Log("watcher", $"NOT adopting queue #{item.Id}: pid {item.BuildPid} is alive but its creation time differs by {deltaSec:F1}s from the stored fingerprint — the pid was reused by another process. Marking orphaned instead.");
+                    return false;
+                }
+
+                AdoptRunningItem(item, handle);
+                keep = true;
+                return true;
+            }
+            finally
+            {
+                if (!keep) handle.Close(); // release the handle we opened but won't keep
+            }
+        }
+
+        /// <summary>
+        /// Git #1839 — reconstructs the in-memory state of an adopted build so the existing reap
+        /// loop + Build Watch treat it exactly like a build THIS instance launched: a
+        /// <see cref="RunningEntry"/> pointing at the surviving <c>.raw</c>/<c>.err</c> files, the raw
+        /// tailers re-armed to REPLAY the transcript from offset 0 (which is also how the session id
+        /// is recovered — it's parsed out of the replayed stream-json), and the entry registered in
+        /// <see cref="_running"/> so TickAsync completes it normally (real exit code, session id,
+        /// completion write, BuildFinished → post-build deploy pipeline).
+        ///
+        /// The interactive stdin pipe died with the old app and cannot be re-attached, so
+        /// <see cref="RunningEntry.Stdin"/> stays null (→ OwnsInteractive false → the chat box is
+        /// read-only) and <see cref="RunningEntry.Adopted"/> is set. Live output, progress, context
+        /// meter, Stop and Kill all still work (the latter two off the process handle).
+        /// </summary>
+        private void AdoptRunningItem(QueueItem item, BuildProcessHandle handle)
+        {
+            var logPath = BuildLogPaths.ForQueueItem(item.Id);
+            var rawStdoutPath = logPath + ".raw";
+            var rawStderrPath = logPath + ".err";
+
+            // Truncate the human-readable SUMMARY log so the replay rebuilds it from the raw file
+            // cleanly instead of duplicating what the previous instance already wrote to it. The
+            // raw .raw/.err files (the child owns and keeps appending to) are NOT touched.
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+                File.WriteAllText(logPath, "");
+            }
+            catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't reset summary log for adopted queue #{item.Id}: {ex.Message}"); }
+
+            // Reconstruct the worktree identity (deterministic) so the reap loop's completion
+            // merge-back / stale-marking still runs for an adopted build. The path is guarded by
+            // Directory.Exists so a non-standard layout (or an already-cleaned worktree) simply
+            // leaves it null (merge-back skipped) rather than passing a bad path.
+            string? worktreeName = null, worktreePath = null;
+            if (string.IsNullOrWhiteSpace(item.Cwd) && BuildConsoleSettings.Load().EnforceWorktreeIsolation)
+            {
+                worktreeName = ComposeWorktreeName(item);
+                var candidate = Path.Combine("C:\\wt", worktreeName);
+                if (Directory.Exists(candidate)) worktreePath = candidate;
+            }
+
+            var entry = new RunningEntry
+            {
+                Process = handle,
+                Title = item.Title,
+                // Adopted builds render/stream/context-meter like an interactive build (structured
+                // event stream + context tokens), but have no owned stdin.
+                Interactive = true,
+                Adopted = true,
+                Replaying = true,
+                LogPath = logPath,
+                RawStdoutPath = rawStdoutPath,
+                RawStderrPath = rawStderrPath,
+                TailCts = new CancellationTokenSource(),
+                LastActivityUtc = DateTime.UtcNow,
+                State = InteractiveInputState.Working,
+                // No stdin to close → never idle-auto-finalize; an adopted build completes when its
+                // own process exits or when the user Stops it.
+                IdleFinalizeMs = 0,
+                BuildSet = string.IsNullOrWhiteSpace(item.BuildSet) ? null : item.BuildSet,
+                BuildSetMember = string.IsNullOrWhiteSpace(item.BuildSet) ? null : (item.GithubNumber?.ToString() ?? item.Id.ToString()),
+                WorktreePath = worktreePath,
+                WorktreeName = worktreeName,
+                // Seed from the DB's already-persisted early session id (#826); the replay confirms
+                // or overwrites it from the real stream-json.
+                SessionId = string.IsNullOrWhiteSpace(item.SessionId) ? null : item.SessionId,
+                // Stdin deliberately left null — the interactive pipe died with the old app.
+            };
+
+            // Replay from offset 0: the LineTailer opens each file at position 0 and reads to end,
+            // so simply starting the tailers re-feeds the ENTIRE accumulated transcript through
+            // HandleOutput/HandleStderr (rebuilding Events, context tokens, session id, state) and
+            // then continues live. Replaying is bounded by the files' current lengths so the
+            // non-idempotent escaping side-effects (durable usage-cost accounting + session-limit
+            // parking) are suppressed for the already-processed region — see StartRawTailers.
+            StartRawTailers(entry, item.Id, adopt: true);
+            _running[item.Id] = entry;
+
+            ActivityLog.Log("watcher", $"ADOPTED queue #{item.Id} ({item.Title}) — pid {item.BuildPid} still alive after restart; remounting into Build Watch and replaying its transcript. Interactive stdin is gone (read-only chat; use Resume Session to talk to it).");
         }
 
         /// <summary>Retries reporting completion for any build whose DB write failed (only relevant in HTTP-fallback mode since Postgres never sleeps). No-op when direct DB is active since MarkCompleteAsync is synchronous and reliable.</summary>
@@ -1144,10 +1315,33 @@ namespace BuildConsole.Services
             // Git #1371 — re-point the worktree's owner pid from the launcher (BuildConsole) to
             // the freshly-started build process, so the cleanup sweep retains the worktree exactly
             // while THIS build runs and can reclaim it (after a grace period) once the build exits.
+            int launchedPid = launched.Process.Id;
             if (worktreeName != null)
             {
-                int buildPid = launched.Process.Id;
-                _ = WorktreeProvisionService.StampOwnerAsync(worktreeName, buildPid);
+                _ = WorktreeProvisionService.StampOwnerAsync(worktreeName, launchedPid);
+            }
+
+            // Git #1839 — stamp the build's pid + its process-creation time on the queue row so a
+            // restarted BuildConsole can find this still-running process and ADOPT it (remount its
+            // Build Watch slot) instead of falsely marking the row failed -2. The creation time is
+            // the pid-reuse fingerprint that makes the later match safe. Direct-DB only (the pid
+            // columns are a local-DB adoption mechanism; HTTP-fallback mode can't adopt anyway).
+            if (_db != null)
+            {
+                var startedAt = launched.Process.CreationTimeUtc;
+                if (startedAt.HasValue)
+                {
+                    var startedAtUtc = new DateTimeOffset(DateTime.SpecifyKind(startedAt.Value, DateTimeKind.Utc));
+                    _ = Task.Run(async () =>
+                    {
+                        try { await _db.StampBuildPidAsync(item.Id, launchedPid, startedAtUtc); }
+                        catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't stamp build pid {launchedPid} for queue #{item.Id}: {ex.Message}"); }
+                    });
+                }
+                else
+                {
+                    ActivityLog.Log("watcher", $"Couldn't read creation time for build pid {launchedPid} (queue #{item.Id}) — adoption after restart won't be possible for this build.");
+                }
             }
 
             if (interactive)
@@ -1179,11 +1373,45 @@ namespace BuildConsole.Services
         /// The loop drains once more after the process exits so the final <c>result</c> line (session
         /// id / usage / cost) is never missed.
         /// </summary>
-        private void StartRawTailers(RunningEntry entry, int id)
+        private void StartRawTailers(RunningEntry entry, int id, bool adopt = false)
         {
             var ct = entry.TailCts?.Token ?? CancellationToken.None;
-            var stdoutTail = new LineTailer(entry.RawStdoutPath, line => HandleOutput(entry, id, line));
-            var stderrTail = new LineTailer(entry.RawStderrPath, line => HandleStderr(entry, id, line));
+
+            // Git #1839 — for an ADOPTED build the tailers replay the pre-restart transcript from
+            // offset 0 (the LineTailer always opens at position 0). Bound that replay by each file's
+            // CURRENT length so HandleOutput/HandleStderr can suppress the non-idempotent escaping
+            // side-effects (durable usage-cost accounting + session-limit parking) for the
+            // already-processed region, then re-enable them once the tailer catches up to live.
+            // entry.Replaying was set true by AdoptRunningItem; it's cleared here once BOTH streams
+            // (that actually exist) have caught up.
+            long soBoundary = 0, seBoundary = 0;
+            Action? onStdoutReplayDone = null, onStderrReplayDone = null;
+            if (adopt)
+            {
+                bool soExists = TryFileLength(entry.RawStdoutPath, out soBoundary);
+                bool seExists = TryFileLength(entry.RawStderrPath, out seBoundary);
+                int pending = (soExists ? 1 : 0) + (seExists ? 1 : 0);
+                if (pending == 0)
+                {
+                    entry.Replaying = false; // nothing on disk to replay — go live immediately
+                }
+                else
+                {
+                    Action done = () =>
+                    {
+                        if (Interlocked.Decrement(ref pending) == 0)
+                        {
+                            entry.Replaying = false;
+                            ActivityLog.Log("watcher", $"Adopted queue #{id}: transcript replay complete — live tailing resumed, usage/limit accounting re-enabled.");
+                        }
+                    };
+                    if (soExists) onStdoutReplayDone = done;
+                    if (seExists) onStderrReplayDone = done;
+                }
+            }
+
+            var stdoutTail = new LineTailer(entry.RawStdoutPath, line => HandleOutput(entry, id, line), adopt ? soBoundary : -1, onStdoutReplayDone);
+            var stderrTail = new LineTailer(entry.RawStderrPath, line => HandleStderr(entry, id, line), adopt ? seBoundary : -1, onStderrReplayDone);
             _ = Task.Run(async () =>
             {
                 try
@@ -1218,6 +1446,16 @@ namespace BuildConsole.Services
             });
         }
 
+        /// <summary>Git #1839 — the current byte length of a file, or false when it doesn't exist /
+        /// can't be stat'd. Used to bound an adopted build's transcript replay window.</summary>
+        private static bool TryFileLength(string path, out long len)
+        {
+            len = 0;
+            try { if (File.Exists(path)) { len = new FileInfo(path).Length; return true; } }
+            catch { /* transient stat failure — treat as absent */ }
+            return false;
+        }
+
         /// <summary>Incrementally tails one durable log file, emitting each complete '\n'-terminated
         /// line (trailing '\r' trimmed) via the callback. UTF-8 decoding is stateful across reads so a
         /// multi-byte char split across a write boundary is never corrupted. Opens the file lazily
@@ -1233,7 +1471,21 @@ namespace BuildConsole.Services
             private readonly byte[] _buf = new byte[8192];
             private char[] _chars = new char[8192];
 
-            public LineTailer(string path, Action<string> onLine) { _path = path; _onLine = onLine; }
+            // Git #1839 — replay-window bound for an adopted build. _replayBoundary is the file's
+            // byte length captured at adoption; once the read position reaches it, _onReplayComplete
+            // fires once (flipping the entry out of its side-effect-suppressed replay window). A
+            // boundary of -1 (the normal-launch case) means "no replay concept" — never signals.
+            private readonly long _replayBoundary;
+            private readonly Action? _onReplayComplete;
+            private bool _replaySignaled;
+
+            public LineTailer(string path, Action<string> onLine, long replayBoundary = -1, Action? onReplayComplete = null)
+            {
+                _path = path;
+                _onLine = onLine;
+                _replayBoundary = replayBoundary;
+                _onReplayComplete = onReplayComplete;
+            }
 
             public void Pump()
             {
@@ -1254,6 +1506,15 @@ namespace BuildConsole.Services
                             if (c == '\n') { EmitLine(); }
                             else _line.Append(c);
                         }
+                    }
+
+                    // Git #1839 — we've drained to the current end of file. If that reaches the
+                    // captured replay boundary, the pre-restart transcript has been fully re-fed;
+                    // signal so live side-effects resume for anything appended after this point.
+                    if (!_replaySignaled && _onReplayComplete != null && _fs.Position >= _replayBoundary)
+                    {
+                        _replaySignaled = true;
+                        _onReplayComplete();
                     }
                 }
                 catch (IOException) { /* file locked mid-write — retry next pump */ }
@@ -1311,11 +1572,15 @@ namespace BuildConsole.Services
 
             // Session-limit auto-restart: the CLI's limit message can land on stdout
             // (inside a stream-json string) or stderr — match the raw line either way.
-            DetectSessionLimit(entry, id, data, fromStderr: false);
+            // Git #1839 — suppressed during an adopted build's replay window: parking a still-live
+            // build limit-paused off a HISTORICAL limit line would be wrong (a real, current limit
+            // message is caught by the live tailer after replay completes).
+            if (!entry.Replaying) DetectSessionLimit(entry, id, data, fromStderr: false);
 
             // (1) Human-readable per-item log FILE — for BOTH interactive and legacy builds
             //     (#802 BuildLogView + the foreign/legacy file-tail render path). Unchanged:
-            //     the same flattened "[tool: X]" summary as before.
+            //     the same flattened "[tool: X]" summary as before. (During an adopted build's
+            //     replay this rebuilds the summary file the app truncated on adoption — desired.)
             var summary = SummarizeStreamJsonLine(data, out bool isResult);
             if (summary != null) AppendToLogFile(entry, summary);
 
@@ -1325,7 +1590,11 @@ namespace BuildConsole.Services
             // for that completed turn, real numbers (not the $5/1M estimate the "active"
             // badge above uses for still-in-progress work). An interactive build sends one
             // of these per turn, each a distinct real turn, so each gets recorded.
-            if (isResult && TryExtractResultUsageAndCost(data, out long resultTokens, out double resultCost))
+            // Git #1839 — suppressed during an adopted build's replay window: this accumulator is
+            // DURABLE and INCREMENTAL (persists to disk, adds each turn), so re-feeding the
+            // pre-restart transcript would DOUBLE-COUNT every turn the previous instance already
+            // recorded. Turns completed AFTER adoption (live) still count.
+            if (!entry.Replaying && isResult && TryExtractResultUsageAndCost(data, out long resultTokens, out double resultCost))
             {
                 UsageTrackingService.RecordCompletion(resultTokens, resultCost);
             }
@@ -1463,7 +1732,8 @@ namespace BuildConsole.Services
         private void HandleStderr(RunningEntry entry, int id, string data)
         {
             AppendToLogFile(entry, data);
-            DetectSessionLimit(entry, id, data, fromStderr: true);
+            // Git #1839 — suppressed during an adopted build's replay window (see HandleOutput).
+            if (!entry.Replaying) DetectSessionLimit(entry, id, data, fromStderr: true);
             if (entry.Interactive) AppendEvent(entry, new InteractiveEvent { Kind = InteractiveEventKind.AssistantText, Text = data, IsError = true });
         }
 
@@ -1492,9 +1762,33 @@ namespace BuildConsole.Services
 
         // ── Interactive input / stop / finalize (public: called by BuildWatchWindow) ──
 
-        /// <summary>Owns/knows this queue id as an interactive build (still running OR retained after exit for a Build Watch slot to keep rendering from its buffer).</summary>
+        /// <summary>
+        /// Git #1839 — whether this app instance owns a LIVE, WRITABLE stdin for this build. This is
+        /// the true meaning of "owns interactive": it drives the chat box / stdin-send path only.
+        /// FALSE for an ADOPTED build (its stdin pipe died with the previous app and cannot be
+        /// re-attached — <see cref="RunningEntry.Stdin"/> is null) and FALSE for a retained (exited)
+        /// build. For "should this slot RENDER the interactive transcript / context meter / state"
+        /// use <see cref="IsInteractiveRenderable"/> instead — that stays true for adopted and
+        /// retained builds so their output keeps streaming.
+        /// </summary>
         public bool OwnsInteractive(int id) =>
+            _running.TryGetValue(id, out var e) && e.Interactive && e.Stdin != null;
+
+        /// <summary>
+        /// Git #1839 — whether this queue id can render from the interactive structured stream
+        /// (live output, context meter, working/waiting state): true for any interactive build we
+        /// track — launched OR adopted — still running, and for a retained (exited) build whose
+        /// Build Watch slot is still draining its buffer. This is the OLD <see cref="OwnsInteractive"/>
+        /// semantics, split out so adoption can keep rendering while its stdin is honestly gone.
+        /// </summary>
+        public bool IsInteractiveRenderable(int id) =>
             (_running.TryGetValue(id, out var e) && e.Interactive) || _retained.ContainsKey(id);
+
+        /// <summary>Git #1839 — true while this is a LIVE build that was ADOPTED by pid after a
+        /// BuildConsole restart: it renders/streams like an interactive build but has no owned stdin,
+        /// so the Build Watch composer is read-only (Stop/Kill still work). False once it exits.</summary>
+        public bool IsAdopted(int id) =>
+            _running.TryGetValue(id, out var e) && e.Adopted && !e.Process.HasExited;
 
         /// <summary>Checks whether this queue id's process has exited locally (either currently retained or completed in _running).</summary>
         public bool HasExited(int id, out int exitCode)

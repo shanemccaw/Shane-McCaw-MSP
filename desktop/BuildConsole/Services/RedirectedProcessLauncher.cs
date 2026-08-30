@@ -392,6 +392,38 @@ namespace BuildConsole.Services
             Id = id;
         }
 
+        /// <summary>
+        /// Git #1839 — re-opens an EXISTING process by pid for adoption after a BuildConsole restart.
+        /// Opens with SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION — exactly the rights this class's
+        /// <see cref="HasExited"/> (WaitForSingleObject), <see cref="ExitCode"/> (GetExitCodeProcess) and
+        /// <see cref="CreationTimeUtc"/> (GetProcessTimes) need. Returns null when the process is already
+        /// gone (OpenProcess fails). The caller MUST verify <see cref="CreationTimeUtc"/> against the
+        /// stored creation time before trusting the match — Windows reuses pids.
+        /// </summary>
+        public static BuildProcessHandle? TryOpenExisting(int pid)
+        {
+            IntPtr h = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (h == IntPtr.Zero) return null;
+            return new BuildProcessHandle(new SafeProcessHandle(h, ownsHandle: true), pid);
+        }
+
+        /// <summary>The process's creation time in UTC (from GetProcessTimes), or null if it can't be
+        /// read. This is the pid-reuse fingerprint used to make adoption safe (Git #1839).</summary>
+        public DateTime? CreationTimeUtc
+        {
+            get
+            {
+                if (GetProcessTimes(_handle, out long creation, out _, out _, out _))
+                    return DateTime.FromFileTimeUtc(creation);
+                return null;
+            }
+        }
+
+        /// <summary>Git #1839 — releases the underlying process handle. Used on the adoption REJECT
+        /// path (pid was reused, or the process already exited) to promptly close a handle we opened
+        /// via <see cref="TryOpenExisting"/> but decided not to keep.</summary>
+        public void Close() => _handle.Dispose();
+
         /// <summary>True once the process has terminated (authoritative — waits on the handle, 0 timeout).</summary>
         public bool HasExited => WaitForSingleObject(_handle, 0) == WAIT_OBJECT_0;
 
@@ -424,9 +456,18 @@ namespace BuildConsole.Services
         }
 
         private const uint WAIT_OBJECT_0 = 0x00000000;
+        private const uint SYNCHRONIZE = 0x00100000;
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000;
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern uint WaitForSingleObject(SafeProcessHandle hHandle, uint dwMilliseconds);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint dwDesiredAccess, [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle, int dwProcessId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetProcessTimes(SafeProcessHandle hProcess, out long lpCreationTime, out long lpExitTime, out long lpKernelTime, out long lpUserTime);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
