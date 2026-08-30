@@ -8,6 +8,7 @@ export default defineConfig({
       "src/lib/retainer-hours.test.ts",
       "src/lib/remediation-catalog.test.ts",
       "src/lib/remediation-fix-route.test.ts",
+      "src/lib/remediation-bypass-resolutions.test.ts",
       "src/lib/graph-write-permissions.test.ts",
       "src/lib/portal-message-center.test.ts",
       "src/lib/portal-pii-governance.test.ts",
