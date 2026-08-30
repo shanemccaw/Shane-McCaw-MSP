@@ -1,9 +1,9 @@
 # #j — In Progress chats bar: filter by account on load
 
-- **Status:** ⏳ IN FLIGHT
+- **Status:** ✅ DONE
 - **Scope:** buildconsole
 - **Started:** 2026-08-30
-- **Commit(s):** (fill at DONE)
+- **Commit(s):** d52a52ee3
 
 ## Log
 - 2026-08-30 ⏳ IN FLIGHT — Shane: "The top bar where the In Progress chats are
@@ -24,3 +24,20 @@
   landed; it stayed on that unfiltered first paint until an unrelated action
   (the account toggle, marking a chat in progress) happened to fire
   `InProgressChatsChanged`.
+- 2026-08-30 ✅ DONE — d52a52ee3. Added `InProgressChatsChanged?.Invoke();` to
+  the end of `FocusModeService.UpdateChatSnapshot` — the moment real
+  per-conversation account data actually becomes known now immediately
+  triggers `FocusModeBar.RefreshInProgressChats` (and
+  `FocusImmersiveView`'s equivalent), which already filters correctly via
+  `InProgressChatsForAccount(BuildConsoleSettings.CurrentAccountLabel())` —
+  that filtering logic itself needed no change, only the missing "tell it to
+  re-render" signal. Left the fail-open behavior for a genuinely-empty
+  snapshot untouched (still correct for the brief window before any board
+  fetch has ever completed).
+  **Verification:** `dotnet build -c Debug` — 0 warnings, 0 errors. Not
+  live-verified against an actual cold app launch with both Primary/Secondary
+  in-progress chats this session (no interactive BuildConsole instance
+  available); the fix is a single added event-raise at the one call site that
+  populates the snapshot the existing, already-correct filter reads from.
+  `git status --porcelain` clean; `verify-branch-merged.mjs` confirms `main`
+  merged into `origin/main` (d52a52ee3).
