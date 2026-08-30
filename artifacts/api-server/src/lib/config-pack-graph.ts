@@ -83,7 +83,10 @@ export class ConfigPackError extends Error {
       | "customer_write_consent_missing"
       | "tenant_domain_unresolved"
       | "missing_variables"
-      | "concurrency_limit",
+      | "concurrency_limit"
+      // #1497 — Change Control gate: the write path was reached without an
+      // approved, unconsumed CR that authorizes writing to the target tenant.
+      | "change_request_not_authorized",
     message: string,
     public readonly details?: Record<string, unknown>,
   ) {

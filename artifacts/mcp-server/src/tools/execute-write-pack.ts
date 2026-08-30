@@ -68,6 +68,10 @@ interface PackRunResponse {
   gated: boolean;
   reusedVersion: boolean;
   templateOrder: string[];
+  /** #1497 — the approved CR that authorized this write (echoed back from the
+   *  route). Always the changeRequestId this tool supplied, since the tool
+   *  refuses to execute without one. */
+  authorizingChangeRequestId: number | null;
 }
 
 const inputSchema = {
@@ -90,6 +94,18 @@ const inputSchema = {
         "e.g. tenantPrefix). Missing ones come back as a 400 listing missingVariables. " +
         "customerId and the generated break-glass password cannot be overridden.",
     ),
+  changeRequestId: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe(
+      "msp_change_requests.id of the APPROVED Change Request that authorizes this write (#1497). " +
+        "REQUIRED for execution: an approved CR IS the permission to write to the tenant, and this tool is " +
+        "fail-closed — a real (non-planOnly) execution with no changeRequestId is refused before anything runs. " +
+        "The CR must be fully approved, unconsumed, and scoped to the target customer's tenant, or the run is " +
+        "rejected with 403 change_request_not_authorized. Not needed for planOnly (nothing executes).",
+    ),
   planOnly: z
     .boolean()
     .optional()
@@ -103,23 +119,30 @@ export const executeWritePackTool: ToolDef = {
   name: "execute_write_pack",
   description:
     "EXECUTE A FULL CONFIG PACK — REAL Microsoft Graph writes against the customer's real connected M365 tenant; " +
-    "there is no simulation mode. Wraps the real POST /admin/config-packs/:packKey/run: the config-pack " +
-    "orchestrator materializes the pack into a real Workflow Definition and fires a run through the standard " +
-    "Workflow Engine (visible on the Workflow Runs page as 'Config Pack: <packKey>'). Returns { runId, gated, " +
-    "templateOrder, … }; the run's steps execute asynchronously AFTER this returns — check the run for real " +
-    "step outcomes. gated=true means the run pauses mid-run at its break-glass verification gate and waits for " +
-    "verification before the remaining steps fire. The engine currently refuses non-testbed customers " +
+    "there is no simulation mode. AUTHORIZATION IS FAIL-CLOSED (#1497): an APPROVED change request IS the " +
+    "permission to write, so execution REQUIRES changeRequestId (the id of a fully-approved, unconsumed CR " +
+    "scoped to this tenant). No approved CR, no tenant write — a real execution with no changeRequestId is " +
+    "refused before anything runs, and an unauthorized/consumed CR comes back 403 change_request_not_authorized. " +
+    "Wraps the real POST /admin/config-packs/:packKey/run: the config-pack orchestrator claims the CR, " +
+    "materializes the pack into a real Workflow Definition and fires a run through the standard Workflow Engine " +
+    "(visible on the Workflow Runs page as 'Config Pack: <packKey>'). The authorizing CR is closed to " +
+    "'completed' once the run finishes. Returns { runId, gated, templateOrder, authorizingChangeRequestId, … }; " +
+    "the run's steps execute asynchronously AFTER this returns — check the run for real step outcomes. " +
+    "gated=true means the run pauses mid-run at its break-glass verification gate and waits for verification " +
+    "before the remaining steps fire. The engine still refuses non-testbed customers without an authorizing CR " +
     "(422 customer_not_testbed); note the testbed customer's tenant is itself a REAL production M365 tenant. " +
-    "Call with planOnly=true FIRST to preview the real execution plan and learn which variables you must pass. " +
-    "Failures surface the route's real refusal: 400 missing variables (listed), 404 unknown pack/customer, " +
-    "409 concurrency limit (a run of this pack is already in flight), 422 not runnable.",
+    "Call with planOnly=true FIRST (no CR needed) to preview the real execution plan and learn which variables " +
+    "you must pass. Failures surface the route's real refusal: 400 missing variables (listed), " +
+    "403 change_request_not_authorized, 404 unknown pack/customer, 409 concurrency limit (a run of this pack is " +
+    "already in flight), 422 not runnable.",
   inputSchema,
   audit: { access: "write", tenantArg: "customerId", entityType: "config_pack", entityIdArg: "packKey" },
   handler: async (raw) => {
-    const { packKey, customerId, variables, planOnly } = raw as {
+    const { packKey, customerId, variables, changeRequestId, planOnly } = raw as {
       packKey: string;
       customerId: number;
       variables?: Record<string, string>;
+      changeRequestId?: number;
       planOnly?: boolean;
     };
 
@@ -134,9 +157,20 @@ export const executeWritePackTool: ToolDef = {
       return { executed: false, planOnly: true, plan };
     }
 
+    // FAIL-CLOSED (#1497): an approved Change Request IS the permission to write.
+    // No changeRequestId, no tenant write — refuse before the POST is even made,
+    // so the operator/AI write path can never reach a real tenant unauthorized.
+    if (changeRequestId === undefined) {
+      throw new Error(
+        "execute_write_pack requires changeRequestId — an APPROVED change request authorizes the write (#1497). " +
+          "Raise/approve a CR for this tenant first (get_change_controls), then pass its id. " +
+          "Use planOnly=true to preview the plan without a CR.",
+      );
+    }
+
     const run = await apiFetch<PackRunResponse>(`/admin/config-packs/${encodeURIComponent(packKey)}/run`, {
       method: "POST",
-      body: { customerId, ...(variables ? { variables } : {}) },
+      body: { customerId, changeRequestId, ...(variables ? { variables } : {}) },
     });
 
     log.info(
@@ -148,8 +182,9 @@ export const executeWritePackTool: ToolDef = {
         versionId: run.versionId,
         gated: run.gated,
         reusedVersion: run.reusedVersion,
+        authorizingChangeRequestId: run.authorizingChangeRequestId,
       },
-      "config pack run fired against the customer's real tenant",
+      "config pack run fired against the customer's real tenant under an approved change request",
     );
 
     return { executed: true, ...run };

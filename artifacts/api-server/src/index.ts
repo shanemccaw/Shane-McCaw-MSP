@@ -225,6 +225,21 @@ app.listen(port, (err) => {
     });
   }, 60_000);
 
+  // ── Change Control: 60-second CR authorization reconciliation (#1497) ──────
+  // Closes a claimed CR to `completed` once its authorizing config-pack run has
+  // completed (which makes the CR-<id> reference available to drift attribution),
+  // and releases a CR whose run failed so it can authorize a retry. Idempotent
+  // and non-fatal; nothing to do when no CR is mid-flight.
+  import("./lib/change-control-write-gate").then(({ settleAuthorizedChangeRequests }) => {
+    setInterval(() => {
+      settleAuthorizedChangeRequests().catch((err: unknown) => {
+        logger.warn({ err }, "change-control: CR authorization reconciliation failed (non-fatal)");
+      });
+    }, 60_000);
+  }).catch((err: unknown) => {
+    logger.warn({ err }, "change-control: could not start CR authorization reconciliation");
+  });
+
   // ── Notification Center: daily retention prune ─────────────────────────────
   // Removes personal notifications older than 30 days.
   // all_activity rows are retained indefinitely.

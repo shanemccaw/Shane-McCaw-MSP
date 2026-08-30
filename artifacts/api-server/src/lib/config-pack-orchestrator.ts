@@ -28,6 +28,11 @@ import { and, desc, eq } from "drizzle-orm";
 import { generateStrongPassword } from "../routes/break-glass-verification";
 import { fireWorkflowForDefinition } from "./workflow-executor";
 import { graphFetchForTenant } from "./graph";
+import {
+  bindChangeRequestToRun,
+  claimChangeRequestForWrite,
+  releaseChangeRequestClaim,
+} from "./change-control-write-gate";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.config-pack" });
 import {
@@ -215,6 +220,9 @@ export interface RunConfigPackResult {
   reusedVersion: boolean;
   gated: boolean;
   templateOrder: string[];
+  /** #1497 — the approved CR that authorized this write, when the run was fired
+   *  through the Change Control gate; null for a testbed/purchase-authorized run. */
+  authorizingChangeRequestId: number | null;
 }
 
 /** Everything a pack run (or a real dry-run preview of one) derives before
@@ -371,30 +379,77 @@ export async function runConfigPackForCustomer(opts: {
    *  verified paid + read consent + write consent + the self-executable
    *  allowlist, and the write-back consent is re-verified here fail-closed. */
   purchaseAuthorization?: { checkoutSessionId: string };
+  /** Present when an APPROVED Change Request authorizes this run (#1497) — the
+   *  operator/AI write path (execute_write_pack). The CR is the permission to
+   *  write: it is verified (approved, unconsumed, scoped to this tenant) and
+   *  atomically claimed here BEFORE anything fires, then bound to the run it
+   *  authorizes. An approved CR authorizes even a live (non-testbed) tenant,
+   *  the same way `purchaseAuthorization` does. Fail-closed: an unauthorized or
+   *  already-consumed CR throws `change_request_not_authorized` and nothing
+   *  fires. */
+  changeRequestAuthorization?: { changeRequestId: number };
 }): Promise<RunConfigPackResult> {
   const { packKey, customerId } = opts;
 
   const ctx = await prepareConfigPackRun({ packKey, customerId, variables: opts.variables });
   const { pack, graph, ordered, gatedTemplateId, customer } = ctx;
 
-  // Guard, mirroring POST /admin/baseline-templates/:templateId/test: pack
-  // runs perform REAL Graph writes. Two lawful paths only:
-  //   1. testbed customers (manual admin validation, the original v1 surface);
-  //   2. a purchase-authorized run for a customer whose tenant has GRANTED
-  //      write-back consent (Git #1316's purchase/consent-triggered
-  //      automation) — re-checked here even though the route already gates it,
-  //      so no future caller can reach a real tenant without both.
+  // Non-authorizing validation first — it writes nothing, so it is safe to run
+  // before the CR gate claims anything (a claim followed by a validation throw
+  // would strand the CR mid-flight).
+  if (ctx.missingVariables.length > 0) {
+    throw new ConfigPackError(
+      "missing_variables",
+      `Missing required variables for pack '${packKey}': ${ctx.missingVariables.join(", ")}. Pass them in the request body under "variables".`,
+      { missingVariables: ctx.missingVariables },
+    );
+  }
+
+  // ── Authorization to fire a REAL tenant write — fail-closed ─────────────────
+  // Pack runs perform REAL Graph writes. Exactly one lawful path must hold, or
+  // nothing fires:
+  //   A) changeRequestAuthorization — an APPROVED Change Request IS the
+  //      permission to write (#1497). Verified + atomically CLAIMED here before
+  //      anything fires; authorizes even a live (non-testbed) tenant, which is
+  //      the whole point of the control-flow inversion.
+  //   B) purchaseAuthorization — a paid, write-consented checkout (Git #1316),
+  //      re-verified here fail-closed even though the route already gates it.
+  //   C) testbed customer — manual admin validation, the original v1 surface.
   //
-  // Reads tenants.is_testbed (NOT NULL DEFAULT false, restored by Phase 2a and
-  // deliberately independent of msps.is_testbed — an MSP-level testbed flag
-  // must never authorize a write against a production tenant). Because the
-  // column is NOT NULL with a false default, a tenant created by any path that
-  // doesn't set it explicitly fails CLOSED into the stricter branch here.
-  if (!customer.isTestbed) {
+  // tenants.is_testbed is NOT NULL DEFAULT false (deliberately independent of
+  // msps.is_testbed — an MSP-level testbed flag must never authorize a write
+  // against a production tenant), so a tenant created by any path that doesn't
+  // set it explicitly fails CLOSED into the stricter branches here.
+  let claimedChangeRequestId: number | null = null;
+  if (opts.changeRequestAuthorization) {
+    // The CR is scoped on (mspId, tenantId), the same pair every Change Control
+    // read uses. Resolve the customer's mspId to scope the lookup.
+    const [tenantRow] = await db
+      .select({ mspId: tenantsTable.mspId })
+      .from(tenantsTable)
+      .where(eq(tenantsTable.id, customerId))
+      .limit(1);
+    if (!tenantRow) {
+      throw new ConfigPackError("customer_not_found", `Customer ${customerId} not found`);
+    }
+    const claim = await claimChangeRequestForWrite({
+      changeRequestId: opts.changeRequestAuthorization.changeRequestId,
+      mspId: tenantRow.mspId,
+      tenantId: customer.tenantId,
+    });
+    if (!claim.ok) {
+      throw new ConfigPackError(
+        "change_request_not_authorized",
+        `Change request ${opts.changeRequestAuthorization.changeRequestId} does not authorize this write: ${claim.reason}`,
+        { changeRequestId: opts.changeRequestAuthorization.changeRequestId, reason: claim.reason },
+      );
+    }
+    claimedChangeRequestId = claim.changeRequestId;
+  } else if (!customer.isTestbed) {
     if (!opts.purchaseAuthorization) {
       throw new ConfigPackError(
         "customer_not_testbed",
-        `Customer ${customerId} is not a testbed customer — config pack runs write to the live tenant and require either a testbed customer or an authorizing purchase session`,
+        `Customer ${customerId} is not a testbed customer — config pack runs write to the live tenant and require a testbed customer, an approved change request, or an authorizing purchase session`,
       );
     }
     if (customer.consent?.writeBack?.status !== "granted") {
@@ -405,44 +460,66 @@ export async function runConfigPackForCustomer(opts: {
     }
   }
 
-  if (ctx.missingVariables.length > 0) {
-    throw new ConfigPackError(
-      "missing_variables",
-      `Missing required variables for pack '${packKey}': ${ctx.missingVariables.join(", ")}. Pass them in the request body under "variables".`,
-      { missingVariables: ctx.missingVariables },
+  // From here a CR may already be CLAIMED (in_progress). Any failure before the
+  // run is bound must RELEASE it so the approved CR can authorize a retry rather
+  // than being stranded in_progress forever.
+  try {
+    const payload = ctx.payload;
+
+    const { definitionId, versionId, reusedVersion } = await persistConfigPackWorkflow(packKey, pack.label, graph);
+
+    const runId = await fireWorkflowForDefinition(
+      definitionId,
+      "manual",
+      opts.triggeredBy ?? `config-pack:${packKey}:customer:${customerId}`,
+      payload,
+      { versionId },
     );
-  }
 
-  const payload = ctx.payload;
+    if (!runId) {
+      throw new ConfigPackError(
+        "concurrency_limit",
+        `Run not started — the definition's concurrency limit is reached (another '${packKey}' run is in flight)`,
+      );
+    }
 
-  const { definitionId, versionId, reusedVersion } = await persistConfigPackWorkflow(packKey, pack.label, graph);
+    // Cite the authorizing CR on the run it authorized. Its completion is what
+    // later closes the CR (settleAuthorizedChangeRequests).
+    if (claimedChangeRequestId !== null) {
+      await bindChangeRequestToRun(claimedChangeRequestId, runId);
+    }
 
-  const runId = await fireWorkflowForDefinition(
-    definitionId,
-    "manual",
-    opts.triggeredBy ?? `config-pack:${packKey}:customer:${customerId}`,
-    payload,
-    { versionId },
-  );
-
-  if (!runId) {
-    throw new ConfigPackError(
-      "concurrency_limit",
-      `Run not started — the definition's concurrency limit is reached (another '${packKey}' run is in flight)`,
+    log.info(
+      {
+        packKey,
+        customerId,
+        runId,
+        definitionId,
+        versionId,
+        gated: gatedTemplateId !== null,
+        authorizingChangeRequestId: claimedChangeRequestId,
+      },
+      "config-pack-orchestrator: run fired",
     );
+
+    return {
+      runId,
+      definitionId,
+      versionId,
+      reusedVersion,
+      gated: gatedTemplateId !== null,
+      templateOrder: ordered.map((t) => getStepId(t)),
+      authorizingChangeRequestId: claimedChangeRequestId,
+    };
+  } catch (err) {
+    if (claimedChangeRequestId !== null) {
+      await releaseChangeRequestClaim(claimedChangeRequestId).catch((releaseErr: unknown) => {
+        log.error(
+          { err: releaseErr, changeRequestId: claimedChangeRequestId },
+          "config-pack-orchestrator: failed to release CR claim after a run error",
+        );
+      });
+    }
+    throw err;
   }
-
-  log.info(
-    { packKey, customerId, runId, definitionId, versionId, gated: gatedTemplateId !== null },
-    "config-pack-orchestrator: run fired",
-  );
-
-  return {
-    runId,
-    definitionId,
-    versionId,
-    reusedVersion,
-    gated: gatedTemplateId !== null,
-    templateOrder: ordered.map((t) => getStepId(t)),
-  };
 }

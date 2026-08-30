@@ -3928,6 +3928,25 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   executedAt: text("executed_at"),
   approvedBy: text("approved_by"),
   /**
+   * #1497 — Change Control as the AUTHORIZATION GATE on the tenant write path.
+   *
+   * An approved CR *is* the permission to write: the config-pack write path
+   * (`runConfigPackForCustomer` → the Workflow Engine) refuses to fire unless an
+   * approved, unconsumed CR for the target tenant is claimed here. Claiming
+   * atomically moves the CR `pending_approval`/`scheduled` → `in_progress` and
+   * stamps the wf_run that executes it into this column; the CR is then closed to
+   * `completed` when that run finishes (the reconciliation sweep), which is what
+   * finally lets `monitor-executor` attribute the resulting drift to `CR-<id>` and
+   * read it as `approved` instead of unauthorized drift.
+   *
+   * NULL on every CR that has never authorized a write (the overwhelming
+   * majority). A SOFT link — no foreign key, the same discipline `tenant_id`
+   * follows — so a pruned wf_run never cascades a CR away and the sweep simply
+   * tolerates a run row that no longer exists. Additive nullable column; see
+   * `lib/db/migrations/manual/2026-08-29-cr-authorization-gate-1497.sql`.
+   */
+  executorRunId: integer("executor_run_id"),
+  /**
    * "Raised from" — the finding this change request came out of, e.g.
    * "Governance · External Sharing Drift" (the design's `linked` field).
    *
@@ -3983,6 +4002,9 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   index("msp_change_requests_msp_id_idx").on(t.mspId),
   index("msp_change_requests_tenant_id_idx").on(t.tenantId),
   index("msp_change_requests_catalog_item_id_idx").on(t.catalogItemId),
+  // #1497 — the reconciliation sweep joins in-flight CRs to their executor
+  // wf_run by this column, so index it for the (small, frequent) settle query.
+  index("msp_change_requests_executor_run_id_idx").on(t.executorRunId),
   // One auto-routed CR per (interpretation × tenant): the routing sweep's
   // idempotency guard so a nightly re-run never creates a second CR for the
   // same Microsoft change on the same tenant. Partial — only routed rows carry

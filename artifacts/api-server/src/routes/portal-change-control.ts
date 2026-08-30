@@ -210,6 +210,14 @@ interface WireChangeRequest {
   readonly sourceGraphMessageId: string | null;
   readonly createdAt: string;
   /**
+   * #1497 — the wf_run executing this change, when an approved CR authorized a
+   * write through the Change Control gate. NULL until the change is executed;
+   * once its run completes the CR moves to `Implemented`. This is the link that
+   * makes an authorized change traceable from the register to the execution that
+   * carried it out (and, downstream, to the drift the execution attributes).
+   */
+  readonly executorRunId: number | null;
+  /**
    * #1496 — the real approval RECORD behind this change, one entry per approver
    * decision, plus the folded state (how many stages it needs, how many have
    * cleared, whether an SLA has breached, whether it is complete or terminally
@@ -249,6 +257,7 @@ interface ChangeRequestRow {
   intake: string | null;
   implementer: string | null;
   sourceGraphMessageId: string | null;
+  executorRunId: number | null;
   createdAt: Date;
 }
 
@@ -300,6 +309,7 @@ function toWire(
     intake: displayIntake(row.intake),
     implementer: displayImplementer(row.implementer),
     sourceGraphMessageId: row.sourceGraphMessageId,
+    executorRunId: row.executorRunId,
     createdAt: row.createdAt.toISOString(),
     approvalRecords,
     approvalState,
@@ -441,6 +451,7 @@ router.get(
           intake: mspChangeRequestsTable.intake,
           implementer: mspChangeRequestsTable.implementer,
           sourceGraphMessageId: mspChangeRequestsTable.sourceGraphMessageId,
+          executorRunId: mspChangeRequestsTable.executorRunId,
           createdAt: mspChangeRequestsTable.createdAt,
         })
         .from(mspChangeRequestsTable)

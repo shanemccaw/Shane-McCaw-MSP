@@ -38,6 +38,11 @@ const router: IRouter = Router();
 const runBodySchema = z.object({
   customerId: z.number().int().positive(),
   variables: z.record(z.string(), z.string()).optional(),
+  // #1497 — an approved Change Request authorizes this write. Optional on this
+  // route so the testbed manual-validation surface still runs without one; the
+  // execute_write_pack MCP tool (the operator/AI write path) REQUIRES it, which
+  // is where the fail-closed posture is enforced for that path.
+  changeRequestId: z.number().int().positive().optional(),
 });
 
 const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
@@ -53,6 +58,9 @@ const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   customer_not_testbed: 422,
   customer_write_consent_missing: 422,
   tenant_domain_unresolved: 422,
+  // #1497 — the write path was reached without an approved, unconsumed CR that
+  // authorizes writing to the target tenant. Forbidden, not "bad request".
+  change_request_not_authorized: 403,
 };
 
 /**
@@ -130,6 +138,9 @@ router.post(
         customerId: body.data.customerId,
         variables: body.data.variables,
         triggeredBy: `config-pack:${packKey}:customer:${body.data.customerId}:admin:${req.user?.id ?? "unknown"}`,
+        ...(body.data.changeRequestId != null
+          ? { changeRequestAuthorization: { changeRequestId: body.data.changeRequestId } }
+          : {}),
       });
 
       res.status(202).json({
@@ -141,6 +152,7 @@ router.post(
         gated: result.gated,
         reusedVersion: result.reusedVersion,
         templateOrder: result.templateOrder,
+        authorizingChangeRequestId: result.authorizingChangeRequestId,
       });
     } catch (err) {
       if (err instanceof ConfigPackError) {
