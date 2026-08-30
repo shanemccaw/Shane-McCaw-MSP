@@ -305,7 +305,7 @@ export function generateStrongPassword(): string {
  * was already emptied on delivery) — the caller must surface that, not an empty
  * reveal box.
  */
-async function resolvePendingSecretPlaintext(
+export async function resolvePendingSecretPlaintext(
   secret: { id: number; encryptedValue: string; secretRef: unknown },
 ): Promise<string | null> {
   if (secret.secretRef != null) {
