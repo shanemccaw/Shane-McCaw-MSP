@@ -5805,6 +5805,128 @@ namespace BuildConsole.Controls
             // trigger so both sections stay in sync (view-switch, manual
             // refresh, own commit/push/pull, and #859's FileSystemWatcher).
             PopulateGitGraph();
+
+            // Git #1898 — the real branch list refreshes off the same trigger too.
+            PopulateGitBranches();
+        }
+
+        /// <summary>Git #1898 — collapses/expands the rendered commit graph. Shane: "I never use
+        /// the commit graph, I want it out of the way" — collapsed by default (see XAML
+        /// IsChecked="True"). The graph itself is still built by PopulateGitGraph on every
+        /// refresh regardless of this toggle; only GitGraphHost's visibility is gated, so
+        /// expanding shows the latest data immediately with no extra fetch.</summary>
+        private void BtnGitGraphToggle_Click(object sender, RoutedEventArgs e)
+        {
+            bool collapsed = BtnGitGraphToggle.IsChecked == true;
+            GitGraphHost.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        /// <summary>Git #1898 — collapses/expands the real branch list. Collapsed by default,
+        /// same convention as BtnGitGraphToggle above.</summary>
+        private void BtnGitBranchesToggle_Click(object sender, RoutedEventArgs e)
+        {
+            bool collapsed = BtnGitBranchesToggle.IsChecked == true;
+            GitBranchListHost.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Git #1898 — fetches the repo's real local + remote-tracking branches (`git branch -a`)
+        /// and renders them into GitBranchListHost. Runs the (blocking) git call on a worker
+        /// thread, same pattern as PopulateGitGraph. The current branch is marked with a filled
+        /// dot; a local (non-current) branch checks out on click via the existing RunGitCommand
+        /// pipeline, which already re-refreshes the whole panel afterward.
+        /// </summary>
+        public void PopulateGitBranches()
+        {
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var branches = new List<(string Name, bool IsCurrent, bool IsRemote)>();
+                try
+                {
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "git",
+                        Arguments = "branch -a --no-color",
+                        WorkingDirectory = RootWorkspacePath,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+
+                    using var proc = System.Diagnostics.Process.Start(psi);
+                    if (proc != null)
+                    {
+                        string output = proc.StandardOutput.ReadToEnd();
+                        proc.WaitForExit();
+
+                        foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                        {
+                            string line = raw.TrimEnd('\r');
+                            bool isCurrent = line.StartsWith("*");
+                            string name = line.TrimStart('*', ' ').Trim();
+                            if (name.Length == 0 || name.Contains("->")) continue; // skip "origin/HEAD -> origin/main" alias rows
+                            bool isRemote = name.StartsWith("remotes/");
+                            if (isRemote) name = name.Substring("remotes/".Length);
+                            branches.Add((name, isCurrent, isRemote));
+                        }
+                    }
+                }
+                catch { }
+
+                return branches;
+            }).ContinueWith(t =>
+            {
+                var branches = t.Result;
+                Dispatcher.Invoke(() =>
+                {
+                    GitBranchListHost.Children.Clear();
+
+                    if (branches.Count == 0)
+                    {
+                        GitBranchListHost.Children.Add(new TextBlock
+                        {
+                            Text = "No branches found.",
+                            FontSize = 11,
+                            Foreground = GetBrush("Subtext0Brush")
+                        });
+                        return;
+                    }
+
+                    foreach (var b in branches)
+                    {
+                        var row = new DockPanel { LastChildFill = false, Margin = new Thickness(0, 2, 0, 2) };
+                        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+                        sp.Children.Add(new TextBlock
+                        {
+                            Text = b.IsCurrent ? "● " : "○ ",
+                            FontSize = 10,
+                            Foreground = b.IsCurrent ? GetBrush("GreenBrush") : GetBrush("Subtext0Brush"),
+                            VerticalAlignment = VerticalAlignment.Center
+                        });
+                        sp.Children.Add(new TextBlock
+                        {
+                            Text = b.Name,
+                            FontSize = 11,
+                            FontWeight = b.IsCurrent ? FontWeights.Bold : FontWeights.Normal,
+                            Foreground = b.IsRemote ? GetBrush("Subtext1Brush") : GetBrush("TextBrush"),
+                            VerticalAlignment = VerticalAlignment.Center,
+                            ToolTip = b.IsRemote ? "Remote-tracking branch" : (b.IsCurrent ? "Current branch" : "Local branch — double-click to check out")
+                        });
+                        DockPanel.SetDock(sp, Dock.Left);
+                        row.Children.Add(sp);
+
+                        if (!b.IsCurrent && !b.IsRemote)
+                        {
+                            row.Cursor = Cursors.Hand;
+                            string branchName = b.Name;
+                            row.MouseLeftButtonUp += (s, e) => RunGitCommand($"checkout \"{branchName}\"");
+                        }
+
+                        GitBranchListHost.Children.Add(row);
+                    }
+                });
+            });
         }
 
         private UIElement CreateGitCategoryHeader(string title, int count, string hexColor)
@@ -5874,8 +5996,58 @@ namespace BuildConsole.Controls
             miOpen.Click += (s, e) => FileSelected?.Invoke(this, item.FilePath);
             cm.Items.Add(miOpen);
 
+            cm.Items.Add(new Separator());
+
+            // Git #1898 — right-click "Add to .gitignore" on any Changes entry.
+            var miGitignore = new MenuItem { Header = "Add to .gitignore" };
+            miGitignore.Click += (s, e) => AddToGitignore(item);
+            cm.Items.Add(miGitignore);
+
             tvi.ContextMenu = cm;
             return tvi;
+        }
+
+        /// <summary>
+        /// Git #1898 — appends <paramref name="item"/>'s real repo-relative path to the repo's
+        /// .gitignore (creating the file if it doesn't exist yet). A file git already tracks
+        /// (staged, or a working-tree change to a tracked file — i.e. anything whose
+        /// StatusLetter isn't the untracked "U") won't actually disappear from `git status` just
+        /// because it's now in .gitignore, per the issue's required distinction — so that case
+        /// warns explicitly instead of silently claiming the file is now ignored.
+        /// </summary>
+        private void AddToGitignore(GitItem item)
+        {
+            try
+            {
+                string gitignorePath = System.IO.Path.Combine(RootWorkspacePath, ".gitignore");
+                string relPath = item.RelativePath.Replace('\\', '/');
+
+                string[] existingLines = System.IO.File.Exists(gitignorePath)
+                    ? System.IO.File.ReadAllLines(gitignorePath)
+                    : Array.Empty<string>();
+
+                if (existingLines.Any(l => l.Trim() == relPath))
+                {
+                    GitStatusSummaryText.Text = $"{relPath} is already in .gitignore";
+                    return;
+                }
+
+                bool needsLeadingNewline = existingLines.Length > 0 && !string.IsNullOrEmpty(existingLines[^1]);
+                string toAppend = (needsLeadingNewline ? Environment.NewLine : "") + relPath + Environment.NewLine;
+                System.IO.File.AppendAllText(gitignorePath, toAppend);
+
+                bool isTracked = item.IsStaged || item.StatusLetter != "U";
+                GitStatusSummaryText.Text = isTracked
+                    ? $"Added {relPath} to .gitignore — it's already tracked by git, so it'll keep showing as changed until you 'git rm --cached' it"
+                    : $"Added {relPath} to .gitignore";
+
+                ActivityLog.Log("git-panel.gitignore", $"added '{relPath}' to .gitignore (already tracked: {isTracked})");
+                RefreshGitStatus();
+            }
+            catch (Exception ex)
+            {
+                GitStatusSummaryText.Text = $"Failed to update .gitignore: {ex.Message}";
+            }
         }
 
         private async void RunGitCommand(string args)
