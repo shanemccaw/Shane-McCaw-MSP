@@ -51,32 +51,10 @@
             <ScrollViewer x:Name="RowsScroller" DockPanel.Dock="Top"
                           VerticalScrollBarVisibility="Auto"
                           MaxHeight="220">
-                <ItemsControl x:Name="RowsList" Margin="4,0,4,6">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,0,0,1"
-                                    Padding="6,5">
-                                <StackPanel>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding HeaderText}"
-                                                   FontSize="12" TextWrapping="Wrap"
-                                                   Foreground="{StaticResource TextBrush}"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding StatusBadgeText}"
-                                                   FontSize="10" Margin="6,0,0,0"
-                                                   Foreground="{Binding StatusBadgeBrush}"/>
-                                    </Grid>
-                                    <TextBlock Text="{Binding DetailText}" FontSize="10.5"
-                                               Foreground="{StaticResource Subtext0Brush}"
-                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
-                                </StackPanel>
-                            </Border>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <!-- Git #1803 — cards are built in code-behind (BuildBatterUpCard), the same way
+                     BuildQueuePanel builds BuildQueueCard, so this row can carry the exact same
+                     critter-avatar/card-border language instead of a DataTemplate text row. -->
+                <StackPanel x:Name="RowsList" Margin="4,0,4,6"/>
             </ScrollViewer>
 
             <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"

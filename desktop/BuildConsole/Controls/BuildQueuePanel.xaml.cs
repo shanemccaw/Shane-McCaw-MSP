@@ -3842,6 +3842,160 @@ namespace BuildConsole.Controls
             return container;
         }
 
+        /// <summary>
+        /// Git #1803 — a lighter-weight sibling of <see cref="CreateQueueCardMascot"/> for
+        /// surfaces that don't have a real <see cref="QueueItem"/> to key off (Batter Up /
+        /// AI Batter Up read straight off the GitHub project board, not the build queue).
+        /// Reuses the exact same critter-vector pool + stable per-item variant selection +
+        /// float/glow treatment so those cards carry the identical mascot language as a real
+        /// queue card, just driven by a caller-supplied seed (e.g. the issue number) and mood
+        /// instead of item.Status/interactiveState.
+        /// </summary>
+        internal static UIElement CreateGenericCardMascot(int seed, CritterMood mood, bool isBlocked = false)
+        {
+            var container = new Canvas
+            {
+                Width = 42,
+                Height = 36,
+                Margin = new Thickness(4, 0, 2, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                ClipToBounds = false
+            };
+
+            var floatTrans = new TranslateTransform();
+            container.RenderTransform = floatTrans;
+
+            var floatAnim = new DoubleAnimation(0, isBlocked ? -0.8 : -1.2, TimeSpan.FromSeconds(isBlocked ? 3.2 : 2.8))
+            {
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever,
+                EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+            };
+            floatTrans.BeginAnimation(TranslateTransform.YProperty, floatAnim);
+
+            int variant = Math.Abs(seed % 15);
+            FrameworkElement critter = isBlocked
+                ? IssueChompAnimation.BuildRandomBlockedElement(scale: 0.5)
+                : (FrameworkElement)(variant switch
+                {
+                    0 => CreateCuteFoxVector(mood),
+                    1 => CreateCuteBearVector(mood),
+                    2 => CreateCuteCatVector(mood),
+                    3 => CreateCuteDuckVector(mood),
+                    4 => CreateCuteBirdVector(mood),
+                    5 => CreateCutePandaVector(mood),
+                    6 => CreateCuteOtterVector(mood),
+                    7 => CreateCuteHedgehogVector(mood),
+                    8 => CreateCuteOwlVector(mood),
+                    9 => CreateCuteSealVector(mood),
+                    10 => CreateCuteRaccoonVector(mood),
+                    11 => CreateCuteHamsterVector(mood),
+                    12 => CreateCuteFrogVector(mood),
+                    13 => CreateCuteKoalaVector(mood),
+                    _ => CreateCuteChickVector(mood)
+                });
+
+            Canvas.SetLeft(critter, 3);
+            Canvas.SetTop(critter, 3);
+            container.Children.Add(critter);
+
+            Color glowColor = mood switch
+            {
+                CritterMood.Blocked => Color.FromRgb(0xF3, 0x8B, 0xA8),
+                CritterMood.WaitingForInput => Color.FromRgb(0xF9, 0xE2, 0xAF),
+                CritterMood.Running => Color.FromRgb(0x89, 0xB4, 0xFA),
+                CritterMood.Verifying => Color.FromRgb(0x74, 0xC7, 0xEC),
+                CritterMood.Done => Color.FromRgb(0xA6, 0xE3, 0xA1),
+                CritterMood.Failed => Color.FromRgb(0xEB, 0xA0, 0xAC),
+                _ => Color.FromRgb(0xCB, 0xA6, 0xF7)
+            };
+
+            var glow = new DropShadowEffect
+            {
+                Color = glowColor,
+                BlurRadius = isBlocked ? 7 : 6,
+                ShadowDepth = 0,
+                Opacity = 0.38
+            };
+            critter.Effect = glow;
+
+            if (isBlocked)
+            {
+                var shimmer = new DoubleAnimation(0.30, 0.65, TimeSpan.FromSeconds(2.8))
+                {
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                    EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+                };
+                glow.BeginAnimation(DropShadowEffect.OpacityProperty, shimmer);
+
+                var lockBadge = new Border
+                {
+                    Background = HexBrush("#F38BA8"),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(3, 1, 3, 1),
+                    Effect = new DropShadowEffect { Color = Color.FromRgb(0xF3, 0x8B, 0xA8), BlurRadius = 4, ShadowDepth = 0 }
+                };
+                lockBadge.Child = new TextBlock { Text = "🔒", FontSize = 9 };
+                Canvas.SetLeft(lockBadge, 22);
+                Canvas.SetTop(lockBadge, -3);
+                container.Children.Add(lockBadge);
+            }
+
+            return container;
+        }
+
+        /// <summary>
+        /// Git #1803 — the same status-pill visual (colored border/background badge,
+        /// bold 9.5pt text) <see cref="BuildQueueCard"/> uses for its RUNNING/DONE/BLOCKED/etc.
+        /// pills, factored out so Batter Up / AI Batter Up can build pills in the identical
+        /// shape for their own statuses without duplicating the Border/TextBlock boilerplate.
+        /// </summary>
+        internal static Border BuildStatusPill(string text, Color bg, Color border, Color fg, string? tooltip = null)
+        {
+            var pill = new Border
+            {
+                Background = new SolidColorBrush(bg),
+                BorderBrush = new SolidColorBrush(border),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 1.5, 6, 1.5)
+            };
+            pill.Child = new TextBlock
+            {
+                Text = text,
+                FontSize = 9.5,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(fg),
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = tooltip
+            };
+            return pill;
+        }
+
+        /// <summary>
+        /// Git #1803 — the same card shell (border/background treatment, corner radius,
+        /// padding, spacing) <see cref="BuildQueueCard"/> uses for its default/blocked
+        /// states, factored out so Batter Up / AI Batter Up render the identical card
+        /// shape instead of a bare text row.
+        /// </summary>
+        internal static Border BuildGenericCardShell(bool isBlocked)
+        {
+            Color borderColor = isBlocked ? Color.FromRgb(0x5A, 0x2A, 0x34) : Color.FromRgb(0x31, 0x32, 0x44);
+            Color bgColor = isBlocked ? Color.FromRgb(0x1E, 0x18, 0x22) : Color.FromRgb(0x18, 0x18, 0x25);
+            return new Border
+            {
+                Background = new SolidColorBrush(bgColor),
+                BorderBrush = new SolidColorBrush(borderColor),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 6, 8, 6),
+                Margin = new Thickness(0, 2, 0, 3),
+                HorizontalAlignment = HorizontalAlignment.Stretch
+            };
+        }
+
         private void InFlightIssuesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (InFlightIssuesList.SelectedItem is ListBoxItem { Tag: int githubNumber })

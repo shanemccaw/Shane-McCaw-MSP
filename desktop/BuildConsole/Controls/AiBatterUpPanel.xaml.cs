@@ -3,19 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace BuildConsole.Controls
 {
-    /// <summary>Git #1710 — one AI Batter Up row bound into <see cref="AiBatterUpPanel"/>'s list.</summary>
-    public class AiBatterUpRowVm
-    {
-        public int Number { get; set; }
-        public string ItemId { get; set; } = "";
-        public string HeaderText { get; set; } = "";
-        public string DetailText { get; set; } = "";
-        public string StatusText { get; set; } = "";
-    }
-
     /// <summary>
     /// Git #1710 — additive "AI Batter Up" review panel, polled independently from
     /// #1709's Batter Up panel. Shows every open issue currently sitting in the real
@@ -25,6 +16,11 @@ namespace BuildConsole.Controls
     /// anything; #1709's BatterUpPanel picks the promoted item up on its own next
     /// refresh. No demotes to "Backlog". Never touches BuildQueuePanel, BatterUpPanel,
     /// or BuildQueuePostgresClient.
+    ///
+    /// Git #1803 — rows render via <see cref="BuildAiBatterUpCard"/>, the same card
+    /// shell/critter-mascot/status-pill pattern BuildQueuePanel's BuildQueueCard uses,
+    /// with Yes/No as real footer actions inside the card instead of a plain-text
+    /// ItemsControl row with bare buttons.
     /// </summary>
     public partial class AiBatterUpPanel : UserControl
     {
@@ -57,7 +53,7 @@ namespace BuildConsole.Controls
             bool collapsed = BtnCollapse.IsChecked == true;
             RowsScroller.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
             TxtEmpty.Visibility = collapsed ? Visibility.Collapsed :
-                (RowsList.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed);
+                (RowsList.Children.Count == 0 ? Visibility.Visible : Visibility.Collapsed);
             BtnCollapse.Content = collapsed ? "▸" : "▾";
         }
 
@@ -78,7 +74,7 @@ namespace BuildConsole.Controls
                 if (gh == null)
                 {
                     TxtCount.Text = "";
-                    RowsList.ItemsSource = null;
+                    RowsList.Children.Clear();
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
                     return;
@@ -93,14 +89,15 @@ namespace BuildConsole.Controls
                 {
                     Services.ActivityLog.Log("ai-batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
-                    RowsList.ItemsSource = null;
+                    RowsList.Children.Clear();
                     TxtEmpty.Text = $"Couldn't read AI Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
                     return;
                 }
 
-                var vms = rows.Select(ToVm).ToList();
-                RowsList.ItemsSource = vms;
+                RowsList.Children.Clear();
+                foreach (var row in rows)
+                    RowsList.Children.Add(BuildAiBatterUpCard(row));
                 TxtCount.Text = rows.Count == 0 ? "" : $"({rows.Count})";
 
                 bool anyVisible = BtnCollapse.IsChecked != true;
@@ -113,55 +110,86 @@ namespace BuildConsole.Controls
             }
         }
 
-        private async void BtnYes_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is not Button btn || btn.Tag is not AiBatterUpRowVm vm) return;
-            await ApplyDecisionAsync(btn, vm, promote: true);
-        }
-
-        private async void BtnNo_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is not Button btn || btn.Tag is not AiBatterUpRowVm vm) return;
-            await ApplyDecisionAsync(btn, vm, promote: false);
-        }
-
         /// <summary>
         /// Applies Shane's real decision: Yes flips Status → "Batter Up" (never launches
         /// anything itself — see class docs), No flips it → "Backlog". Either way this
         /// item leaves the AI Batter Up queue, so a refresh removes its row.
         /// </summary>
-        private async System.Threading.Tasks.Task ApplyDecisionAsync(Button source, AiBatterUpRowVm vm, bool promote)
+        private async System.Threading.Tasks.Task ApplyDecisionAsync(StackPanel footer, Services.AiBatterUpRow r, bool promote)
         {
             var gh = GetClient();
             if (gh == null) return;
 
-            var parent = source.Parent as Panel;
-            if (parent != null) foreach (var child in parent.Children) if (child is Button b) b.IsEnabled = false;
+            foreach (var child in footer.Children) if (child is Button b) b.IsEnabled = false;
 
             try
             {
                 if (promote)
-                    await Services.AiBatterUpQueueService.PromoteToBatterUpAsync(gh, vm.ItemId);
+                    await Services.AiBatterUpQueueService.PromoteToBatterUpAsync(gh, r.ItemId);
                 else
-                    await Services.AiBatterUpQueueService.DemoteToBacklogAsync(gh, vm.ItemId);
+                    await Services.AiBatterUpQueueService.DemoteToBacklogAsync(gh, r.ItemId);
 
                 Services.ActivityLog.Log("ai-batter-up",
-                    $"#{vm.Number} — {(promote ? "YES: promoted to Batter Up" : "NO: demoted to Backlog")}.");
+                    $"#{r.Number} — {(promote ? "YES: promoted to Batter Up" : "NO: demoted to Backlog")}.");
             }
             catch (Exception ex)
             {
-                Services.ActivityLog.Log("ai-batter-up", $"#{vm.Number} — decision FAILED: {ex.Message}");
-                MessageBox.Show($"Couldn't update #{vm.Number} on GitHub: {ex.Message}", "AI Batter Up",
+                Services.ActivityLog.Log("ai-batter-up", $"#{r.Number} — decision FAILED: {ex.Message}");
+                MessageBox.Show($"Couldn't update #{r.Number} on GitHub: {ex.Message}", "AI Batter Up",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
-                if (parent != null) foreach (var child in parent.Children) if (child is Button b) b.IsEnabled = true;
+                foreach (var child in footer.Children) if (child is Button b) b.IsEnabled = true;
                 return;
             }
 
             await RefreshAsync();
         }
 
-        private static AiBatterUpRowVm ToVm(Services.AiBatterUpRow r)
+        /// <summary>
+        /// Git #1803 — one AI Batter Up row, built in the same card shape as
+        /// BuildQueuePanel.BuildQueueCard: status pill + issue-number badge on top, title,
+        /// model/effort/buildSet detail line, the same critter mascot on the right (mood
+        /// WaitingForInput — this is the one human-gate review queue in the app), and a
+        /// real footer action row (Yes/No) styled as card-level buttons instead of bare
+        /// buttons floating next to text.
+        /// </summary>
+        private Border BuildAiBatterUpCard(Services.AiBatterUpRow r)
         {
+            var card = BuildQueuePanel.BuildGenericCardShell(isBlocked: false);
+
+            var mainStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+
+            var topRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
+            topRow.Children.Add(BuildQueuePanel.BuildStatusPill("❓ AWAITING REVIEW",
+                Color.FromRgb(0x3E, 0x2C, 0x1A), Color.FromRgb(0xF9, 0xE2, 0xAF), Color.FromRgb(0xF9, 0xE2, 0xAF)));
+
+            var numBadge = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x28, 0x29, 0x3D)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x47, 0x5A)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(5, 1.5, 5, 1.5),
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            numBadge.Child = new TextBlock
+            {
+                Text = Services.LocalBuildId.FormatRef(r.Number),
+                FontSize = 9.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.FindResource("PeachBrush")
+            };
+            topRow.Children.Add(numBadge);
+            mainStack.Children.Add(topRow);
+
+            mainStack.Children.Add(new TextBlock
+            {
+                Text = r.Title,
+                FontSize = 11.5,
+                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(1, 2, 1, 0)
+            });
+
             var detailParts = new List<string>();
             if (r.HasBuildComment)
             {
@@ -172,14 +200,58 @@ namespace BuildConsole.Controls
             {
                 detailParts.Add("no BUILD: comment yet");
             }
-
-            return new AiBatterUpRowVm
+            mainStack.Children.Add(new TextBlock
             {
-                Number = r.Number,
-                ItemId = r.ItemId,
-                HeaderText = $"#{r.Number} {r.Title}",
-                DetailText = string.Join("  ·  ", detailParts),
+                Text = string.Join("  ·  ", detailParts),
+                FontSize = 10,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(1, 2, 0, 4)
+            });
+
+            // ── Footer action row: Yes/No as real in-card actions ──
+            var footer = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(1, 0, 0, 0) };
+            var btnYes = new Button
+            {
+                Content = "Yes",
+                Padding = new Thickness(10, 2, 10, 2),
+                Margin = new Thickness(0, 0, 6, 0),
+                Background = (Brush)Application.Current.FindResource("GreenBrush"),
+                Foreground = Brushes.White,
+                BorderThickness = new Thickness(0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                ToolTip = "Promote to Batter Up"
             };
+            btnYes.Click += async (_, _) => await ApplyDecisionAsync(footer, r, promote: true);
+            footer.Children.Add(btnYes);
+
+            var btnNo = new Button
+            {
+                Content = "No",
+                Padding = new Thickness(10, 2, 10, 2),
+                Background = (Brush)Application.Current.FindResource("Surface0Brush"),
+                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+                BorderThickness = new Thickness(0),
+                Cursor = System.Windows.Input.Cursors.Hand,
+                ToolTip = "Decline to Backlog"
+            };
+            btnNo.Click += async (_, _) => await ApplyDecisionAsync(footer, r, promote: false);
+            footer.Children.Add(btnNo);
+            mainStack.Children.Add(footer);
+
+            var cardGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
+            cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            Grid.SetColumn(mainStack, 0);
+            cardGrid.Children.Add(mainStack);
+
+            var mascot = BuildQueuePanel.CreateGenericCardMascot(r.Number, BuildQueuePanel.CritterMood.WaitingForInput);
+            Grid.SetColumn(mascot, 1);
+            cardGrid.Children.Add(mascot);
+
+            card.Child = cardGrid;
+            return card;
         }
     }
 }
