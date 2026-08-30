@@ -4034,6 +4034,13 @@ namespace BuildConsole.Controls
         private const double IssueInFlightBadgeWidth = 88; // "🟠 In Flight" bordered pill + its 6px right margin
         private const double IssueInFlightDescendantBadgeWidth = 88; // "🟠 In Flight ↓" bordered pill + its 6px right margin
 
+        // Git #1768 — issue-row titles now wrap instead of hard-truncating to a
+        // single line (see CreateIssueHeader), so a badge-heavy row still reads a
+        // real title instead of "EP...". Capped at 2 lines via this MaxHeight;
+        // FontSize 11 * ~1.4 line-height factor * 2 lines, rounded up a hair for
+        // safety. Anything beyond 2 lines still falls back to CharacterEllipsis.
+        private const double IssueTitleTwoLineMaxHeight = 32;
+
         private readonly List<(TextBlock block, double reserve)> _issueTitleBlocks = new();
 
         // Git #938 — mirrors ApplyChatTitleMaxWidths: MaxWidth = max(MinTitleWidth,
@@ -4729,17 +4736,34 @@ namespace BuildConsole.Controls
 
             var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
 
-            var prioBlock = new TextBlock { Text = (issue.IsEpic ? "⚡" : issue.PriorityBadge) + " ", FontSize = 11 };
+            // Git #1768 — every badge below gets an explicit VerticalAlignment=Top.
+            // They previously relied on the default Stretch, which was invisible
+            // while every row was a single text line (the badges' own natural
+            // height already matched the row height). Now that the title can wrap
+            // to 2 lines and grow the row, Stretch would inflate each badge's
+            // Border to the new, taller row height, changing their apparent size —
+            // Top keeps every badge pinned to its original, unchanged dimensions
+            // while only the title flows into the extra vertical room.
+            var prioBlock = new TextBlock { Text = (issue.IsEpic ? "⚡" : issue.PriorityBadge) + " ", FontSize = 11, VerticalAlignment = VerticalAlignment.Top };
 
             var numBlock = new Border
             {
                 Background = GetBrush("Surface0Brush"),
                 CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(4, 1, 4, 1),
-                Margin = new Thickness(0, 0, 6, 0)
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Top
             };
             numBlock.Child = new TextBlock { Text = issue.NumberStr, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = issue.IsEpic ? GetBrush("MauveBrush") : GetBrush("PeachBrush") };
 
+            // Git #1768 — was single-line CharacterEllipsis, which crushed the
+            // title to 2-3 visible characters whenever enough badges stacked on a
+            // row to eat most of the reserved width. Now wraps up to 2 lines
+            // (IssueTitleTwoLineMaxHeight caps it there) and only falls back to
+            // CharacterEllipsis as a last resort if the title still overflows
+            // beyond that second line. MaxWidth is still applied per-row by
+            // ApplyIssueTitleMaxWidths below, unchanged — only the wrap behavior
+            // within that width is new.
             var titleBlock = new TextBlock
             {
                 Text = issue.Title,
@@ -4747,7 +4771,10 @@ namespace BuildConsole.Controls
                 Foreground = isActiveEpic ? GetBrush("GreenBrush") : issue.Status == "CLOSED" ? GetBrush("Subtext0Brush") : GetBrush("TextBrush"),
                 FontWeight = (issue.IsEpic || isActiveEpic) ? FontWeights.Bold : FontWeights.Normal,
                 TextDecorations = issue.Status == "CLOSED" ? TextDecorations.Strikethrough : null,
-                TextTrimming = TextTrimming.CharacterEllipsis
+                TextWrapping = TextWrapping.Wrap,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                MaxHeight = IssueTitleTwoLineMaxHeight,
+                VerticalAlignment = VerticalAlignment.Top
             };
 
             p.Children.Add(prioBlock);
@@ -4766,6 +4793,7 @@ namespace BuildConsole.Controls
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(4, 1, 4, 1),
                     Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
                     ToolTip = "This is the epic tied to your currently active chat"
                 };
                 workingBadge.Child = new TextBlock { Text = "🎯 WORKING", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
@@ -4781,6 +4809,7 @@ namespace BuildConsole.Controls
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(4, 1, 4, 1),
                     Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
                     ToolTip = "No parent Epic"
                 };
                 noParentBadge.Child = new TextBlock { Text = "NO EPIC", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
@@ -4802,6 +4831,7 @@ namespace BuildConsole.Controls
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(4, 1, 4, 1),
                     Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
                     ToolTip = "A build session is actively working this issue right now"
                 };
                 inFlightBadge.Child = new TextBlock { Text = "🟠 In Flight", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
@@ -4823,6 +4853,7 @@ namespace BuildConsole.Controls
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(4, 1, 4, 1),
                     Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
                     ToolTip = "A sub-issue further down the chain is in flight right now"
                 };
                 belowBadge.Child = new TextBlock { Text = "🟠 In Flight ↓", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
@@ -4840,6 +4871,7 @@ namespace BuildConsole.Controls
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(4, 1, 4, 1),
                     Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
                     ToolTip = issue.BlockedByNumber.HasValue ? $"Blocked by #{issue.BlockedByNumber}: {issue.BlockedByTitle}" : "Blocked"
                 };
                 blockedBadge.Child = new TextBlock { Text = "🔴 Blocked", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
