@@ -352,6 +352,13 @@
                                      (genuinely not executing right now, waiting to resume). -->
                                 <ComboBoxItem Content="Running" Tag="Running"/>
                                 <ComboBoxItem Content="Queued"  Tag="Queued"/>
+                                <!-- Git #1894 — Shane found himself switching back and forth
+                                     between Running/Queued after #1829 split them; with #1834's
+                                     per-buildSet filtering now available a combined view isn't
+                                     as noisy as it was before #1829, so it's added back as a
+                                     third choice alongside (not replacing) the two split ones.
+                                     Reuses the exact pre-#1829 combined "Active" criteria. -->
+                                <ComboBoxItem Content="Running &amp; Queued" Tag="RunningAndQueued"/>
                                 <!-- Git #1638 — the Park staging area: never shown under
                                      Running/Queued (that's the whole point of a
                                      staging spot the watcher can't pick up), only here. -->

@@ -1163,6 +1163,10 @@ namespace BuildConsole.Controls
                 // limit-paused (Git #1600 — same practical meaning as queued even though the DB
                 // status string differs, waiting to resume later rather than in flight).
                 "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus)).ToList(),
+                // Git #1894 — combined view added back as a third option alongside the split
+                // Running/Queued (Git #1829), reusing that pre-#1829 combined "Active" criteria
+                // verbatim: queued + running + LimitPausedStatus + VerifyingStatus.
+                "RunningAndQueued" => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
                 // Git #1877 — the orphaned-by-crash set: the exact same criteria
                 // UpdateOrphanRecoveryBanner/BtnRecoverOrphans_Click already use
                 // (status=="failed" && ExitCode==-2), just as a findable filtered view
