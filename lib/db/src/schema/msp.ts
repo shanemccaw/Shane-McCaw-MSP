@@ -6012,10 +6012,18 @@ export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignm
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("portal_ownership_assignments_customer_id_idx").on(t.customerId),
-  uniqueIndex("portal_ownership_assignments_customer_object_role_idx").on(
+  // A RACI cell holds MANY holders, not one (#1515). The textbook singular-A rule
+  // does not survive practice — NASA runs three A's on M365 — so R, A, C and I are
+  // all potentially many. The unique key therefore carries `ownerPersonId`: it still
+  // forbids the SAME holder appearing twice in one cell, but permits distinct holders
+  // to co-exist. Ordering of A holders (primary/second/third — informational only,
+  // #1517) is preserved by insertion order via the `id` serial, which the read orders
+  // by. The `""` gap value is itself a valid distinct holder under this key.
+  uniqueIndex("portal_ownership_assignments_customer_object_role_owner_idx").on(
     t.customerId,
     t.objectId,
     t.roleKey,
+    t.ownerPersonId,
   ),
 ]);
 

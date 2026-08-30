@@ -436,11 +436,14 @@ function actingName(req: Request): string {
 }
 
 /**
- * Assign (or clear) a matrix cell. An `ownerPersonId` of "" is a real value —
+ * Assign a holder to a matrix cell. An `ownerPersonId` of "" is a real value —
  * "cleared to a gap" — so it is not rejected; only a bad `roleKey` is. Upserts on
- * the (customer, object, role) unique key so re-assigning the same cell
- * overwrites rather than accumulating, and provenance/acceptance follow the
- * client's own rules (`initialAcceptance`).
+ * the (customer, object, role, owner) unique key (#1515): a cell holds MANY
+ * holders, so naming a NEW person adds a holder rather than replacing the cell,
+ * while re-asserting the SAME person's cell overwrites that one row's
+ * provenance/acceptance. Acceptance follows the client's own rules
+ * (`initialAcceptance`). The conflict target must match that four-column unique
+ * index exactly, or Postgres rejects the ON CONFLICT clause.
  */
 router.post(
   "/portal/ownership/assign",
@@ -470,8 +473,9 @@ router.post(
             portalOwnershipAssignmentsTable.customerId,
             portalOwnershipAssignmentsTable.objectId,
             portalOwnershipAssignmentsTable.roleKey,
+            portalOwnershipAssignmentsTable.ownerPersonId,
           ],
-          set: { ownerPersonId, acceptance, setBy, setAt, setWhy: WRITE_WHY, updatedAt: new Date() },
+          set: { acceptance, setBy, setAt, setWhy: WRITE_WHY, updatedAt: new Date() },
         });
 
       log.info({ customerId, objectId, roleKey, hasOwner: !!ownerPersonId }, "portal ownership cell assigned");
