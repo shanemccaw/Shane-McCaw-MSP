@@ -4624,6 +4624,12 @@ export type InsertChangeCatalogItem = typeof changeCatalogItemsTable.$inferInser
 // pre-approved catalog item. Nullable here on purpose: #1547 establishes the
 // object and the relationship; #1550 builds the enactment/approval flow that
 // makes the binding load-bearing.
+//
+// `sopId` records the #1548 relationship — the named procedure that enacts the
+// target state. `msp_sop_runs.standing_policy_id` (see that table below) is the
+// other half: the enactment record a policy-invoked run is traced back through.
+// The engine names the procedure and, later, traces its own runs; it never
+// executes anything itself — that stays the SOP module's job.
 export const STANDING_POLICY_TARGET_KIND = [
   // e.g. "mailbox size 150MB" — a directory/mailbox attribute target.
   "mailbox_attribute",
@@ -4656,6 +4662,16 @@ export const standingPoliciesTable = pgTable("standing_policies", {
    */
   catalogItemId: integer("catalog_item_id").references(() => changeCatalogItemsTable.id, { onDelete: "set null" }),
   /**
+   * #1548: "Policy defines a target state and names the procedure that
+   * achieves it." — the `msp_sops.sop_id` (text, the same join key
+   * `msp_sop_runs.sop_id` already uses, not the numeric `msp_sops.id`) whose
+   * run enacts this policy's target state. The engine itself never executes;
+   * this column is only the naming half of that sentence. Nullable for the
+   * same reason `catalogItemId` above is: a policy's target state can be
+   * declared before the SOP that will enact it exists.
+   */
+  sopId: text("sop_id"),
+  /**
    * Opt-in, default-off (#1549's continuous-evaluation default): a policy can
    * be authored and inspected before it is switched on to drive provisioning
    * or raise findings.
@@ -4669,6 +4685,7 @@ export const standingPoliciesTable = pgTable("standing_policies", {
   index("standing_policies_msp_id_idx").on(t.mspId),
   index("standing_policies_ou_id_idx").on(t.ouId),
   index("standing_policies_msp_active_idx").on(t.mspId, t.isActive),
+  index("standing_policies_sop_id_idx").on(t.sopId),
 ]);
 
 export const insertStandingPolicySchema = createInsertSchema(standingPoliciesTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -5071,6 +5088,15 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
    */
   origin: text("origin", { enum: MSP_SOP_RUN_ORIGIN }).notNull().default("manual"),
   /**
+   * #1548 — the `standing_policies.id` this run enacts, when `origin` is
+   * `"policy"`. This is what makes `msp_sops`/`msp_sop_runs` the actual
+   * enactment record for a policy: a policy-invoked run is the same row shape
+   * as a hand-started one, but this column is how it is traced back to the
+   * specific policy that caused it. Null for every other origin, and for any
+   * `"policy"`-origin row a writer inserted before this column existed.
+   */
+  standingPolicyId: integer("standing_policy_id").references(() => standingPoliciesTable.id, { onDelete: "set null" }),
+  /**
    * `msp_sops.version` captured at the moment this run started (#1558). This is
    * the run's own half of the version-ambiguity requirement the per-tenant
    * custom-step overlay below has to satisfy: the base definition's `version`
@@ -5111,6 +5137,7 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
   index("msp_sop_runs_msp_id_idx").on(t.mspId),
   index("msp_sop_runs_tenant_id_idx").on(t.tenantId),
   index("msp_sop_runs_wf_run_id_idx").on(t.wfRunId),
+  index("msp_sop_runs_standing_policy_id_idx").on(t.standingPolicyId),
   unique("msp_sop_runs_msp_id_run_id_uidx").on(t.mspId, t.runId),
 ]);
 
