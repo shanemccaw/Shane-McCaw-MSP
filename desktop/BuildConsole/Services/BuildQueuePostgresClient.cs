@@ -1229,6 +1229,43 @@ namespace BuildConsole.Services
             return await cmd.ExecuteNonQueryAsync() > 0;
         }
 
+        /// <summary>
+        /// Manual "Recover Session-Limit Builds" — the BuildQueuePanel button that scans
+        /// recent stdout logs for a session-limit hit (see
+        /// <see cref="SessionLimitAutoRestartService.ManualRecoverFromLogsAsync"/>) and
+        /// requeues whatever row it finds, no matter what status the row landed in
+        /// (limit-paused via the normal live-detection path, or failed/canceled/held —
+        /// e.g. the process died before that path could mark it). Only touches a row
+        /// that is genuinely stalled: queued/running/verifying/done rows are left alone.
+        /// resume_session_id is preserved/backfilled so the requeue resumes the
+        /// conversation rather than starting over. Returns the updated row, or null if
+        /// this id wasn't in an eligible status (already handled by something else).
+        /// </summary>
+        public async Task<QueueItem?> RecoverStalledSessionLimitRowAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status            = 'queued',
+                       claimed_at        = NULL,
+                       resume_session_id = COALESCE(resume_session_id, session_id),
+                       updated_at        = NOW(),
+                       build_pid            = NULL,
+                       build_pid_started_at = NULL
+                 WHERE id = @id
+                   AND status IN ('failed', 'canceled', 'held', @limitPaused)
+                RETURNING id, title, prompt, model, effort, cwd,
+                          github_number, blocked_by_number, blocked_by_numbers,
+                          status, exit_code, session_id, resume_session_id,
+                          originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@limitPaused", SessionLimitAutoRestartService.LimitPausedStatus);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            if (!await reader.ReadAsync()) return null;
+            var item = MapRow(reader);
+            return item;
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────────
 
         private async Task<NpgsqlConnection> OpenAsync()

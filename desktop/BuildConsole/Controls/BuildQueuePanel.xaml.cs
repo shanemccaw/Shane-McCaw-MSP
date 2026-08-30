@@ -95,6 +95,7 @@ namespace BuildConsole.Controls
         private BuildTrackerApiClient? _api;
         private Services.QueueWatcherService? _watcher;
         private Services.BuildQueuePostgresClient? _db;
+        private Services.SessionLimitAutoRestartService? _sessionLimitAutoRestart;
         private DispatcherTimer? _pollTimer;
         private List<QueueItem> _lastItems = new();
         /// <summary>Git #1862 — the live open-issue set from the last Git Board refresh,
@@ -213,11 +214,12 @@ namespace BuildConsole.Controls
         public BuildQueuePanel() => InitializeComponent();
 
         /// <summary>Called once from MainWindow with the shared API client and optional direct-DB client.</summary>
-        public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null, Services.BuildQueuePostgresClient? db = null)
+        public void Initialize(BuildTrackerApiClient api, Services.QueueWatcherService? watcher = null, Services.BuildQueuePostgresClient? db = null, Services.SessionLimitAutoRestartService? sessionLimitAutoRestart = null)
         {
             _api = api;
             _watcher = watcher;
             _db = db;
+            _sessionLimitAutoRestart = sessionLimitAutoRestart;
 
             if (_watcher != null)
             {
@@ -878,6 +880,50 @@ namespace BuildConsole.Controls
             if (failed > 0) ToastEngine.Warning("Recovered Builds", summary);
             else ToastEngine.Success("Recovered Builds", summary);
             ActivityLog.Log("build-queue", $"Recover All: {summary} (of {orphaned.Count} orphaned).");
+            await RefreshAsync();
+        }
+
+        /// <summary>
+        /// Header button — "Recover Session-Limit Builds". Scans every build's raw
+        /// stdout log touched in the last hour for the CLI's "hit your session limit ·
+        /// resets …" line (or a variation of it) and requeues (resumes, not
+        /// restart-from-scratch) whatever it finds, no matter what status the row
+        /// actually landed in — the manual counterpart to SessionLimitAutoRestartService's
+        /// own reset-timer restart, for a build that died some other way and never got
+        /// flagged/parked by the live watcher path.
+        /// </summary>
+        private async void BtnRecoverSessionLimit_Click(object sender, RoutedEventArgs e)
+        {
+            if (_sessionLimitAutoRestart == null)
+            {
+                ToastEngine.Warning("Recover Session-Limit Builds", "Not available (no direct DB connection in this session).");
+                return;
+            }
+
+            BtnRecoverSessionLimit.IsEnabled = false;
+            (List<Services.QueueItem> Resumed, int Scanned) result;
+            try
+            {
+                result = await _sessionLimitAutoRestart.ManualRecoverFromLogsAsync(TimeSpan.FromHours(1));
+            }
+            catch (Exception ex)
+            {
+                BtnRecoverSessionLimit.IsEnabled = true;
+                ToastEngine.Error("Recover Session-Limit Builds", $"Scan failed: {ex.Message}");
+                return;
+            }
+            BtnRecoverSessionLimit.IsEnabled = true;
+
+            if (result.Resumed.Count == 0)
+            {
+                ToastEngine.Info("Recover Session-Limit Builds", $"Scanned {result.Scanned} recent build log(s) — none hit the session limit.");
+                return;
+            }
+
+            var titles = string.Join(", ", result.Resumed.Take(4).Select(i => $"#{i.Id} {i.Title}"));
+            if (result.Resumed.Count > 4) titles += $", +{result.Resumed.Count - 4} more";
+            ToastEngine.Success("Recover Session-Limit Builds", $"Re-queued {result.Resumed.Count} build{(result.Resumed.Count == 1 ? "" : "s")} for resume: {titles}");
+            ActivityLog.Log("build-queue", $"Recover Session-Limit Builds: re-queued {result.Resumed.Count} of {result.Scanned} scanned — {titles}.");
             await RefreshAsync();
         }
 

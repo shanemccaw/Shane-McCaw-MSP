@@ -461,7 +461,7 @@ namespace BuildConsole
                         SurfacePostBuildDeployOutcome);
                 }
 
-                BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher, _queueDb);
+                BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher, _queueDb, _sessionLimitAutoRestart);
             }
             else
             {

@@ -66,6 +66,26 @@
                                    Foreground="{StaticResource Subtext1Brush}"/>
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <!-- Recover Session-Limit Builds — scans every build's raw stdout log
+                             touched in the last hour for the CLI's "hit your session limit ·
+                             resets …" message (SessionLimitAutoRestartService.TryDetectLimitMessage)
+                             and requeues (resumes, doesn't restart from scratch) whatever it finds,
+                             regardless of what status the row landed in. Manual counterpart to the
+                             automatic reset-timer restart — for when a build died some other way
+                             and never got flagged/parked by the live watcher path. See
+                             BtnRecoverSessionLimit_Click / SessionLimitAutoRestartService.ManualRecoverFromLogsAsync. -->
+                        <Button x:Name="BtnRecoverSessionLimit"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Recover session-limit builds — scan the last hour of build logs for 'hit your session limit' and resume any that hit it"
+                                Padding="6,4"
+                                Margin="0,0,3,0"
+                                Click="BtnRecoverSessionLimit_Click">
+                            <TextBlock Text="&#xE777;"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="11"
+                                       Foreground="{StaticResource BlueBrush}"
+                                       VerticalAlignment="Center"/>
+                        </Button>
                         <!-- Git #1480 — paste a full build prompt (headers + body) straight into
                              the queue without going through a chat tab first. Opens the same
                              EditBuildPromptDialog the chat-injected "Edit Build" button uses, so
