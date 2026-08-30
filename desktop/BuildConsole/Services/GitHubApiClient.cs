@@ -665,14 +665,6 @@ namespace BuildConsole.Services
         // without being truly unbounded; if the cap is ever actually hit, the paginated scans
         // log a loud warning rather than truncating silently (never fail silently again).
         private const int MaxPages = 100; // runaway guard (up to 10,000 items per walk)
-        // Git #1784 — reverse-pagination early-stop margin. Batter Up / AI Batter Up are
-        // early-lifecycle transient states, so their items reliably sit among the most-recently
-        // -added project items (the tail of forward order == the head of a backward last/before
-        // walk). Confirmed live: all 27 current matches landed in the last ~175 of 1,781 items.
-        // Once the backward walk has passed the cluster and seen this many consecutive
-        // all-miss pages (== a 300-item gap), we are safely past every candidate and stop —
-        // finding all matches in ~2 pages instead of re-scanning the whole backlog each poll.
-        private const int EmptyPageStopThreshold = 3;
 
         /// <summary>
         /// Git #839 (Git Board Phase 1) — lists the repo's real issues for the
@@ -877,32 +869,41 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
-        /// Git #1784 — shared, backward-paginated scan of the project board's items for a
-        /// single Status option, used by both <see cref="GetBatterUpIssuesAsync"/> and
-        /// <see cref="GetAiBatterUpIssuesAsync"/> (they share this exact pagination shape).
+        /// Git #1784 (pagination shape) / Git #1995 (removed the early-stop) — shared,
+        /// backward-paginated scan of the project board's items for a single Status option,
+        /// used by both <see cref="GetBatterUpIssuesAsync"/> and <see cref="GetAiBatterUpIssuesAsync"/>
+        /// (they share this exact pagination shape).
         ///
         /// Walks the ProjectV2 <c>items</c> connection with <c>last</c>/<c>before</c> (backward
-        /// from the end) rather than <c>first</c>/<c>after</c>. Confirmed live against the real
-        /// project: all Batter Up / AI Batter Up items cluster in the last ~175 of 1,781 items,
-        /// because both are early-lifecycle transient states and project items appear roughly in
-        /// added order. Walking backward therefore reaches every real candidate within the first
-        /// ~2 pages instead of re-scanning the entire 1,781-item (and rising) backlog on every
-        /// 90-second poll — the fix that actually scales as the project grows. The old forward
-        /// walk was doubly broken here: matches sat at forward page 17-18 while <c>MaxPages</c>
-        /// was 10, so they were structurally unreachable regardless of timeout.
+        /// from the end) rather than <c>first</c>/<c>after</c>. This direction is still worth
+        /// keeping — Batter Up / AI Batter Up matches skew toward the recently-added tail of the
+        /// board, so a backward walk tends to surface most real matches in its first few pages —
+        /// but it is a scheduling optimization only, not a stopping rule.
         ///
-        /// Correctness is preserved by only early-stopping <see cref="EmptyPageStopThreshold"/>
-        /// consecutive all-miss pages AFTER the cluster has been seen; and by the hard
-        /// <see cref="MaxPages"/> ceiling, which logs a loud warning if ever hit rather than
-        /// truncating silently. Individual pages retry with backoff so one slow page can't kill
-        /// the walk.
+        /// Git #1995 removed the empty-page early-stop that used to live here (previously
+        /// governed by an <c>EmptyPageStopThreshold</c> constant): <c>ProjectV2.items</c> is
+        /// ordered by when an item was *added* to the project, and an item's position never
+        /// moves when its Status field changes. Board position therefore carries no information
+        /// about Status, so no number of consecutive empty pages ever proves the rest of the
+        /// board is clear — an issue created long ago and only promoted to Batter Up / AI Batter
+        /// Up today stays at its original deep position and would be silently skipped the moment
+        /// the walk gave up early. Confirmed live against the real ~1,995-item board: with
+        /// #1995's fix in place removed, promoting issue #741 (added at forward position ~729,
+        /// forward page 8 of 20) to AI Batter Up and re-running the OLD early-stop logic missed
+        /// it every time — the walk stopped at backward page 6 after 3 consecutive empty pages,
+        /// 72 matches found, #741 never reached. The full walk below reaches it every time.
+        ///
+        /// The board is a few thousand items and refresh is manual-only since #1890, so a
+        /// complete walk to the start of the connection is a small, bounded number of requests
+        /// on an explicit user action (confirmed live: ~20 pages / ~2,000 items), not a hot path.
+        /// The hard <see cref="MaxPages"/> ceiling remains as a runaway guard and still logs a
+        /// loud warning if it is ever actually hit, rather than truncating silently. Individual
+        /// pages retry with backoff so one slow page can't kill the walk.
         /// </summary>
         private async Task<List<ProjectItemNodeData>> ScanProjectItemsForStatusAsync(string targetOptionId, bool includeItemId, string label)
         {
             var matches = new List<ProjectItemNodeData>();
             string? before = null;
-            bool foundAny = false;
-            int consecutiveEmptyPages = 0;
             int pagesWalked = 0;
 
             for (int page = 0; page < MaxPages; page++)
@@ -934,7 +935,6 @@ namespace BuildConsole.Services
 
                 var conn = await PostProjectItemsQueryWithRetryAsync(query, label);
 
-                int pageMatches = 0;
                 if (conn?.Nodes != null)
                 {
                     foreach (var n in conn.Nodes)
@@ -946,20 +946,22 @@ namespace BuildConsole.Services
                         if (!string.Equals(n.FieldValueByName?.OptionId, targetOptionId, StringComparison.OrdinalIgnoreCase)) continue;
 
                         matches.Add(n);
-                        pageMatches++;
                     }
                 }
 
-                if (pageMatches > 0) { foundAny = true; consecutiveEmptyPages = 0; }
-                else if (foundAny) { consecutiveEmptyPages++; }
-
-                // Early stop: we've passed the recent cluster (see EmptyPageStopThreshold).
-                if (foundAny && consecutiveEmptyPages >= EmptyPageStopThreshold)
-                    return matches;
-
                 bool more = conn?.PageInfo?.HasPreviousPage == true && !string.IsNullOrEmpty(conn.PageInfo.StartCursor);
                 if (!more)
+                {
+                    // Git #1995 — reached the start of the board. No early-stop before this:
+                    // board position carries no information about Status (an item's position
+                    // never moves when its Status changes), so a walk that gives up on empty
+                    // pages can silently miss an item promoted into this status long after it
+                    // was added to the project. Log the real page count every time, not only on
+                    // the MaxPages-exhausted path below (Git #1784's "never truncate quietly").
+                    ActivityLog.Log("git-board.data",
+                        $"{label} project scan reached the start of the board after {pagesWalked} page(s) ({matches.Count} match(es)) — full walk, no early-stop.");
                     return matches;
+                }
 
                 before = conn!.PageInfo!.StartCursor;
             }
