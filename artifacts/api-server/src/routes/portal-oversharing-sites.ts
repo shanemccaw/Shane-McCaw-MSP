@@ -14,16 +14,21 @@
  * ── Runbook state rides the EXISTING SOP/Runbook subsystem ───────────────────
  * Per #1286's own scoping ("defer to the SOP/Runbook subsystem... don't build
  * a new table") and #1262's original recommendation, a site-fix runbook's
- * checklist state is NOT a new table. It is a `portal_runbooks` +
- * `portal_runbook_steps` row — the same tables and the same
- * `PUT /portal/runbooks/:runbookId/steps/:position` toggle route
- * `portal-runbooks.ts` already built and already tests. The three catalogue
- * keys below are GLOBAL per customer, not per-site — matching the drill-down
- * page's own documented design (`portal-v2-gov-oversharing.tsx`'s header:
- * "the runbook open/checked state is per-KIND and global... not per-site").
- * `POST /portal/oversharing/runbooks/:sopKind` seeds the row (and its steps)
- * exactly once per customer, idempotently, then returns it; toggling a step
- * afterward is the existing generic route — no new toggle endpoint here.
+ * checklist state is NOT a new table. It is a `portal_runbooks` schedule row
+ * with one `portal_runbook_runs` cycle and that cycle's `portal_runbook_steps`
+ * — the same tables and the same `PUT /portal/runbooks/:runbookId/steps/:position`
+ * toggle route `portal-runbooks.ts` already built and already tests (that route
+ * resolves `:runbookId` to its current cycle internally, per #1557 — this file
+ * still only ever hands it the schedule's own id). The three catalogue keys
+ * below are GLOBAL per customer, not per-site — matching the drill-down page's
+ * own documented design (`portal-v2-gov-oversharing.tsx`'s header: "the runbook
+ * open/checked state is per-KIND and global... not per-site"). These runbooks
+ * are one-shot, not recurring (`recurring: false`) — a site-fix procedure does
+ * not repeat on a cycle the way a periodic review does.
+ * `POST /portal/oversharing/runbooks/:sopKind` seeds the schedule, its first
+ * (only) cycle, and that cycle's steps exactly once per customer, idempotently,
+ * then returns it; toggling a step afterward is the existing generic route —
+ * no new toggle endpoint here.
  *
  * ── Role floor ─────────────────────────────────────────────────────────────
  * `Assessment` — same floor as the sibling `portal-oversharing-items.ts` and
@@ -34,6 +39,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import {
   db,
   oversharedItemsTable,
+  portalRunbookRunsTable,
   portalRunbooksTable,
   portalRunbookStepsTable,
 } from "@workspace/db";
@@ -183,11 +189,23 @@ interface WireOversharingRunbook {
 }
 
 async function loadRunbookWire(runbookId: number, sopKind: SopKind): Promise<WireOversharingRunbook> {
-  const stepRows = await db
-    .select()
-    .from(portalRunbookStepsTable)
-    .where(eq(portalRunbookStepsTable.runbookId, runbookId))
-    .orderBy(asc(portalRunbookStepsTable.position));
+  // This runbook never recurs (see the file header), so its steps always live
+  // on cycle 1 — but resolve the current run rather than assume the id,
+  // matching the pattern `portal-runbooks.ts` itself uses (#1557).
+  const [run] = await db
+    .select({ id: portalRunbookRunsTable.id })
+    .from(portalRunbookRunsTable)
+    .where(eq(portalRunbookRunsTable.runbookId, runbookId))
+    .orderBy(desc(portalRunbookRunsTable.cycleNumber))
+    .limit(1);
+
+  const stepRows = run
+    ? await db
+        .select()
+        .from(portalRunbookStepsTable)
+        .where(eq(portalRunbookStepsTable.runId, run.id))
+        .orderBy(asc(portalRunbookStepsTable.position))
+    : [];
 
   return {
     id: runbookId,
@@ -243,18 +261,33 @@ router.post(
           // NOT NULL column without implying a real cycle deadline.
           cycleDays: 30,
           status: "active",
+          // One-shot: a site-fix procedure does not repeat on a cycle (#1557).
+          recurring: false,
         })
         .returning({ id: portalRunbooksTable.id });
 
+      // This schedule's one and only cycle (#1557) — nothing spawns a second
+      // one, since `recurring` is false.
+      const [run] = await db
+        .insert(portalRunbookRunsTable)
+        .values({
+          runbookId: inserted.id,
+          customerId,
+          cycleNumber: 1,
+          startedOn: today,
+          status: "active",
+        })
+        .returning({ id: portalRunbookRunsTable.id });
+
       const stepRows = catalogue.steps.map((text, i) => ({
-        runbookId: inserted.id,
+        runId: run.id,
         position: i + 1,
         text,
         checked: false,
         isCustom: false,
       }));
       stepRows.push({
-        runbookId: inserted.id,
+        runId: run.id,
         position: catalogue.steps.length + 1,
         text: VERIFY_STEP_TEXT,
         checked: false,

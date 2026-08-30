@@ -42,6 +42,19 @@
  * approval — collapsing the two would be the portal quietly making a tenant
  * change on a button press, which is the exact thing the CR gate exists to
  * prevent.
+ *
+ * ── A runbook is a SCHEDULE; a cycle is a RUN (#1557) ───────────────────────
+ * `:runbookId` in the URLs above always addresses the SCHEDULE
+ * (`portal_runbooks`), never a specific cycle. Every route that touches steps
+ * resolves the schedule's CURRENT cycle (`portal_runbook_runs`, highest
+ * `cycleNumber`) internally via `currentRunFor`, so a caller never needs to
+ * know a run id exists. Ticking every step in the current cycle marks that
+ * cycle `complete` (who, when) via `maybeAdvanceCycle`, and — only if the
+ * schedule is `recurring` — spawns the next cycle immediately with a cloned,
+ * all-unchecked step list. A finished cycle is never mutated or deleted after
+ * that: it stays as history (`runHistory` on the GET response), which is the
+ * whole point — a reset used to silently overwrite the last cycle's
+ * completion; now it can't.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -50,6 +63,7 @@ import {
   mspChangeRequestsTable,
   portalHoldWindowEventsTable,
   portalHoldWindowsTable,
+  portalRunbookRunsTable,
   portalRunbookStepsTable,
   portalRunbooksTable,
 } from "@workspace/db";
@@ -79,6 +93,7 @@ import {
   holdTMinus,
   runbookStatusFromHold,
 } from "../lib/portal-hold-windows";
+import { cloneStepsForNextCycle, cycleProgress, isCycleComplete } from "../lib/portal-runbook-cycles";
 import { personIdForUser } from "../lib/portal-ownership";
 import { recordCrEvent } from "../lib/portal-change-timeline-store";
 
@@ -142,13 +157,30 @@ interface WireHoldWindow {
   readonly notificationsDue: readonly string[];
 }
 
+/** A past cycle's own record — history only, no step detail. */
+interface WireRunbookRunSummary {
+  readonly id: number;
+  readonly cycleNumber: number;
+  readonly startedOn: string;
+  readonly status: string;
+  readonly completedAt: string | null;
+  readonly checkedSteps: number;
+  readonly totalSteps: number;
+}
+
 interface WireRunbook {
   readonly id: number;
   readonly runbookKey: string;
   readonly title: string;
   readonly context: string;
   readonly pillar: string;
-  readonly startedOn: string;
+  /** Whether finishing the current cycle spawns the next one automatically (#1557). */
+  readonly recurring: boolean;
+  /** The id of the cycle whose steps are below — null if this schedule somehow has no run yet. */
+  readonly currentRunId: number | null;
+  readonly cycleNumber: number;
+  /** The CURRENT cycle's start — moved off the schedule itself in #1557. */
+  readonly startedOn: string | null;
   readonly cycleDays: number;
   readonly daysElapsed: number;
   readonly daysLeft: number;
@@ -156,25 +188,16 @@ interface WireRunbook {
   readonly totalSteps: number;
   readonly pct: number;
   readonly statusLabel: string;
+  /** The current cycle's steps. */
   readonly steps: readonly WireStep[];
   readonly hold: WireHoldWindow | null;
+  /** Past cycles, newest first — the run history #1557 exists to stop erasing. */
+  readonly runHistory: readonly WireRunbookRunSummary[];
 }
 
 function isoOrNull(v: Date | string | null | undefined): string | null {
   if (!v) return null;
   return v instanceof Date ? v.toISOString() : String(v);
-}
-
-/**
- * `startedOn` is a DATE column, so whole-day arithmetic is done in UTC against
- * midnight rather than against `now` — otherwise "Day 7 of 14" would tick over
- * at a different moment depending on when the page happened to be opened.
- */
-function wholeDaysSince(startedOn: string, now: Date): number {
-  const start = Date.parse(`${startedOn}T00:00:00Z`);
-  if (Number.isNaN(start)) return 0;
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return Math.max(0, Math.round((today - start) / 86_400_000));
 }
 
 function toWireHold(
@@ -260,19 +283,34 @@ router.get(
 
       const runbookIds = runbookRows.map((r) => r.id);
 
-      // Two queries rather than N+1: all steps and all holds for these runbooks,
-      // grouped in memory. A tenant's whole Operate page is one round trip's
-      // worth of data.
-      const stepRows = await db
+      // Three queries rather than N+1: every cycle, every step (across every
+      // cycle) and every hold for these runbooks, grouped in memory. A tenant's
+      // whole Operate page is still one round trip's worth of data — #1557
+      // added a query, not an N+1.
+      const runRows = await db
         .select()
-        .from(portalRunbookStepsTable)
+        .from(portalRunbookRunsTable)
         .where(
-          sql`${portalRunbookStepsTable.runbookId} IN (${sql.join(
+          sql`${portalRunbookRunsTable.runbookId} IN (${sql.join(
             runbookIds.map((id) => sql`${id}`),
             sql`, `,
           )})`,
         )
-        .orderBy(asc(portalRunbookStepsTable.runbookId), asc(portalRunbookStepsTable.position));
+        .orderBy(asc(portalRunbookRunsTable.runbookId), asc(portalRunbookRunsTable.cycleNumber));
+
+      const runIds = runRows.map((r) => r.id);
+      const stepRows = runIds.length
+        ? await db
+            .select()
+            .from(portalRunbookStepsTable)
+            .where(
+              sql`${portalRunbookStepsTable.runId} IN (${sql.join(
+                runIds.map((id) => sql`${id}`),
+                sql`, `,
+              )})`,
+            )
+            .orderBy(asc(portalRunbookStepsTable.runId), asc(portalRunbookStepsTable.position))
+        : [];
 
       // Holds are read by CUSTOMER, not by runbook id, so a window whose runbook
       // link is null still belongs to its tenant and still appears.
@@ -282,9 +320,9 @@ router.get(
         .where(eq(portalHoldWindowsTable.customerId, customerId))
         .orderBy(asc(portalHoldWindowsTable.id));
 
-      const stepsByRunbook = new Map<number, WireStep[]>();
+      const stepsByRun = new Map<number, WireStep[]>();
       for (const s of stepRows) {
-        const list = stepsByRunbook.get(s.runbookId) ?? [];
+        const list = stepsByRun.get(s.runId) ?? [];
         list.push({
           position: s.position,
           text: s.text,
@@ -292,7 +330,17 @@ router.get(
           isCustom: s.isCustom,
           checkedAt: isoOrNull(s.checkedAt),
         });
-        stepsByRunbook.set(s.runbookId, list);
+        stepsByRun.set(s.runId, list);
+      }
+
+      // Runs arrived ordered by (runbookId, cycleNumber) ascending, so the last
+      // entry per runbook is the current cycle and everything before it is
+      // history — no extra sort needed.
+      const runsByRunbook = new Map<number, (typeof runRows)[number][]>();
+      for (const run of runRows) {
+        const list = runsByRunbook.get(run.runbookId) ?? [];
+        list.push(run);
+        runsByRunbook.set(run.runbookId, list);
       }
 
       const holdByRunbook = new Map<number, WireHoldWindow>();
@@ -307,14 +355,18 @@ router.get(
       }
 
       const runbooks: WireRunbook[] = runbookRows.map((r) => {
-        const steps = stepsByRunbook.get(r.id) ?? [];
+        const runs = runsByRunbook.get(r.id) ?? [];
+        const currentRun = runs.length ? runs[runs.length - 1] : null;
+        const historyRuns = runs.slice(0, -1).reverse();
+
+        const steps = currentRun ? stepsByRun.get(currentRun.id) ?? [] : [];
         const totalSteps = steps.length;
         const checkedSteps = steps.filter((s) => s.checked).length;
         const pct = totalSteps ? Math.round((checkedSteps / totalSteps) * 100) : 0;
-        const daysElapsed = wholeDaysSince(r.startedOn, now);
-        const daysLeftRaw = r.cycleDays - daysElapsed;
-        const complete = totalSteps > 0 && checkedSteps === totalSteps;
-        const overdue = daysLeftRaw < 0 && !complete;
+        const complete = currentRun?.status === "complete" || isCycleComplete(steps);
+        const progress = currentRun
+          ? cycleProgress(currentRun.startedOn, r.cycleDays, now, complete)
+          : { daysElapsed: 0, daysLeft: r.cycleDays, overdue: false };
         const hold = holdByRunbook.get(r.id) ?? null;
 
         // The design's precedence (proto 16866): complete wins, then an open
@@ -324,9 +376,22 @@ router.get(
           ? "Complete"
           : hold
             ? runbookStatusFromHold(hold.state as "running" | "closing" | "due" | "early")
-            : overdue
+            : progress.overdue
               ? "Overdue"
               : "On track";
+
+        const runHistory: WireRunbookRunSummary[] = historyRuns.map((run) => {
+          const runSteps = stepsByRun.get(run.id) ?? [];
+          return {
+            id: run.id,
+            cycleNumber: run.cycleNumber,
+            startedOn: run.startedOn,
+            status: run.status,
+            completedAt: isoOrNull(run.completedAt),
+            checkedSteps: runSteps.filter((s) => s.checked).length,
+            totalSteps: runSteps.length,
+          };
+        });
 
         return {
           id: r.id,
@@ -334,16 +399,20 @@ router.get(
           title: r.title,
           context: r.context,
           pillar: r.pillar,
-          startedOn: r.startedOn,
+          recurring: r.recurring,
+          currentRunId: currentRun?.id ?? null,
+          cycleNumber: currentRun?.cycleNumber ?? 1,
+          startedOn: currentRun?.startedOn ?? null,
           cycleDays: r.cycleDays,
-          daysElapsed,
-          daysLeft: Math.max(0, daysLeftRaw),
+          daysElapsed: progress.daysElapsed,
+          daysLeft: progress.daysLeft,
           checkedSteps,
           totalSteps,
           pct,
           statusLabel,
           steps,
           hold,
+          runHistory,
         };
       });
 
@@ -408,6 +477,72 @@ async function ownedHold(customerId: number, holdId: number) {
   return row ?? null;
 }
 
+/**
+ * The CURRENT cycle of a schedule the caller already owns — the highest
+ * `cycleNumber` row, whatever its status. Every write in this file (tick a
+ * step, add a step) acts on this cycle, never on history (#1557).
+ */
+async function currentRunFor(runbookId: number) {
+  const [row] = await db
+    .select()
+    .from(portalRunbookRunsTable)
+    .where(eq(portalRunbookRunsTable.runbookId, runbookId))
+    .orderBy(desc(portalRunbookRunsTable.cycleNumber))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * Runs the completion side-effects of a step check (#1557): once every step in
+ * the current cycle is checked, that cycle is marked complete (who, when), and
+ * — only if the schedule is `recurring` — the NEXT cycle is spawned immediately
+ * with a cloned, all-unchecked step list. A non-recurring schedule (e.g. the
+ * Overshared SharePoint site-fix runbooks) just stays complete; nothing spawns.
+ */
+async function maybeAdvanceCycle(opts: {
+  runbook: typeof portalRunbooksTable.$inferSelect;
+  run: typeof portalRunbookRunsTable.$inferSelect;
+  userId: number | null;
+  now: Date;
+}): Promise<void> {
+  const { runbook, run, userId, now } = opts;
+  if (run.status === "complete") return;
+
+  const steps = await db
+    .select()
+    .from(portalRunbookStepsTable)
+    .where(eq(portalRunbookStepsTable.runId, run.id))
+    .orderBy(asc(portalRunbookStepsTable.position));
+
+  if (!isCycleComplete(steps)) return;
+
+  await db
+    .update(portalRunbookRunsTable)
+    .set({ status: "complete", completedAt: now, completedByUserId: userId, updatedAt: now })
+    .where(eq(portalRunbookRunsTable.id, run.id));
+
+  if (!runbook.recurring) return;
+
+  const [nextRun] = await db
+    .insert(portalRunbookRunsTable)
+    .values({
+      runbookId: runbook.id,
+      customerId: runbook.customerId,
+      cycleNumber: run.cycleNumber + 1,
+      startedOn: now.toISOString().slice(0, 10),
+      status: "active",
+    })
+    .returning({ id: portalRunbookRunsTable.id });
+
+  const nextSteps = cloneStepsForNextCycle(steps).map((s) => ({ ...s, runId: nextRun.id }));
+  await db.insert(portalRunbookStepsTable).values(nextSteps);
+
+  log.info(
+    { runbookId: runbook.id, completedRunId: run.id, nextRunId: nextRun.id, cycleNumber: run.cycleNumber + 1 },
+    "runbook cycle completed — recurring schedule spawned its next cycle",
+  );
+}
+
 // ── Tick / untick a step ──────────────────────────────────────────────────────
 const putStepSchema = z.object({ checked: z.boolean() });
 
@@ -443,13 +578,20 @@ router.put(
         return;
       }
 
+      const run = await currentRunFor(runbookId);
+      if (!run) {
+        res.status(404).json({ error: "This runbook has no active cycle" });
+        return;
+      }
+
       const { checked } = parsed.data;
       const now = new Date();
       const userId = typeof req.user?.id === "number" ? req.user.id : null;
 
       // Un-ticking clears the timestamp rather than leaving a stale one claiming
       // a completion that was withdrawn — the rule portal-remediation-tracker.ts
-      // established for the same kind of customer-asserted tick.
+      // established for the same kind of customer-asserted tick. Scoped to the
+      // CURRENT cycle's steps (#1557) — a step position is only unique per run.
       const result = await db
         .update(portalRunbookStepsTable)
         .set({
@@ -460,7 +602,7 @@ router.put(
         })
         .where(
           and(
-            eq(portalRunbookStepsTable.runbookId, runbookId),
+            eq(portalRunbookStepsTable.runId, run.id),
             eq(portalRunbookStepsTable.position, position),
           ),
         )
@@ -471,7 +613,11 @@ router.put(
         return;
       }
 
-      log.info({ customerId, runbookId, position, checked, userId }, "runbook step toggled");
+      if (checked) {
+        await maybeAdvanceCycle({ runbook, run, userId, now });
+      }
+
+      log.info({ customerId, runbookId, runId: run.id, position, checked, userId }, "runbook step toggled");
       res.json({ ok: true, position, checked });
     } catch (err) {
       log.error({ err, customerId, runbookId, position }, "PUT /portal/runbooks step failed");
@@ -512,13 +658,19 @@ router.post(
         return;
       }
 
+      const run = await currentRunFor(runbookId);
+      if (!run) {
+        res.status(404).json({ error: "This runbook has no active cycle" });
+        return;
+      }
+
       const [{ maxPosition, stepCount }] = await db
         .select({
           maxPosition: sql<number>`coalesce(max(${portalRunbookStepsTable.position}), 0)`,
           stepCount: sql<number>`count(*)`,
         })
         .from(portalRunbookStepsTable)
-        .where(eq(portalRunbookStepsTable.runbookId, runbookId));
+        .where(eq(portalRunbookStepsTable.runId, run.id));
 
       if (Number(stepCount) >= MAX_STEPS_PER_RUNBOOK) {
         res.status(409).json({ error: "This runbook already has the maximum number of steps" });
@@ -527,15 +679,16 @@ router.post(
 
       const position = Number(maxPosition) + 1;
       await db.insert(portalRunbookStepsTable).values({
-        runbookId,
+        runId: run.id,
         position,
         text: parsed.data.text,
         checked: false,
-        // The customer's own note, not part of the agreed procedure.
+        // The customer's own note, not part of the agreed procedure. Carries
+        // forward into every future cycle once this one completes (#1557).
         isCustom: true,
       });
 
-      log.info({ customerId, runbookId, position }, "custom runbook step added");
+      log.info({ customerId, runbookId, runId: run.id, position }, "custom runbook step added");
       res.status(201).json({ position, text: parsed.data.text });
     } catch (err) {
       log.error({ err, customerId, runbookId }, "POST /portal/runbooks steps failed");

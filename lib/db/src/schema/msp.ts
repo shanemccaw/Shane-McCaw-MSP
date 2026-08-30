@@ -4624,6 +4624,12 @@ export type InsertChangeCatalogItem = typeof changeCatalogItemsTable.$inferInser
 // pre-approved catalog item. Nullable here on purpose: #1547 establishes the
 // object and the relationship; #1550 builds the enactment/approval flow that
 // makes the binding load-bearing.
+//
+// `sopId` records the #1548 relationship — the named procedure that enacts the
+// target state. `msp_sop_runs.standing_policy_id` (see that table below) is the
+// other half: the enactment record a policy-invoked run is traced back through.
+// The engine names the procedure and, later, traces its own runs; it never
+// executes anything itself — that stays the SOP module's job.
 export const STANDING_POLICY_TARGET_KIND = [
   // e.g. "mailbox size 150MB" — a directory/mailbox attribute target.
   "mailbox_attribute",
@@ -4656,6 +4662,16 @@ export const standingPoliciesTable = pgTable("standing_policies", {
    */
   catalogItemId: integer("catalog_item_id").references(() => changeCatalogItemsTable.id, { onDelete: "set null" }),
   /**
+   * #1548: "Policy defines a target state and names the procedure that
+   * achieves it." — the `msp_sops.sop_id` (text, the same join key
+   * `msp_sop_runs.sop_id` already uses, not the numeric `msp_sops.id`) whose
+   * run enacts this policy's target state. The engine itself never executes;
+   * this column is only the naming half of that sentence. Nullable for the
+   * same reason `catalogItemId` above is: a policy's target state can be
+   * declared before the SOP that will enact it exists.
+   */
+  sopId: text("sop_id"),
+  /**
    * Opt-in, default-off (#1549's continuous-evaluation default): a policy can
    * be authored and inspected before it is switched on to drive provisioning
    * or raise findings.
@@ -4669,6 +4685,7 @@ export const standingPoliciesTable = pgTable("standing_policies", {
   index("standing_policies_msp_id_idx").on(t.mspId),
   index("standing_policies_ou_id_idx").on(t.ouId),
   index("standing_policies_msp_active_idx").on(t.mspId, t.isActive),
+  index("standing_policies_sop_id_idx").on(t.sopId),
 ]);
 
 export const insertStandingPolicySchema = createInsertSchema(standingPoliciesTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -5071,6 +5088,15 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
    */
   origin: text("origin", { enum: MSP_SOP_RUN_ORIGIN }).notNull().default("manual"),
   /**
+   * #1548 — the `standing_policies.id` this run enacts, when `origin` is
+   * `"policy"`. This is what makes `msp_sops`/`msp_sop_runs` the actual
+   * enactment record for a policy: a policy-invoked run is the same row shape
+   * as a hand-started one, but this column is how it is traced back to the
+   * specific policy that caused it. Null for every other origin, and for any
+   * `"policy"`-origin row a writer inserted before this column existed.
+   */
+  standingPolicyId: integer("standing_policy_id").references(() => standingPoliciesTable.id, { onDelete: "set null" }),
+  /**
    * `msp_sops.version` captured at the moment this run started (#1558). This is
    * the run's own half of the version-ambiguity requirement the per-tenant
    * custom-step overlay below has to satisfy: the base definition's `version`
@@ -5111,6 +5137,7 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
   index("msp_sop_runs_msp_id_idx").on(t.mspId),
   index("msp_sop_runs_tenant_id_idx").on(t.tenantId),
   index("msp_sop_runs_wf_run_id_idx").on(t.wfRunId),
+  index("msp_sop_runs_standing_policy_id_idx").on(t.standingPolicyId),
   unique("msp_sop_runs_msp_id_run_id_uidx").on(t.mspId, t.runId),
 ]);
 
@@ -5768,10 +5795,20 @@ export type InsertRemediationTrackerStep = typeof remediationTrackerStepsTable.$
 // msp_change_requests.status follow, so a vocabulary can be widened in code
 // without a migration.
 
-/** A runbook's lifecycle. Plain text, no CHECK — see the section note. */
+/** A runbook (schedule) or a single cycle's lifecycle. Plain text, no CHECK — see the section note. */
 export const PORTAL_RUNBOOK_STATUS = ["active", "complete", "abandoned"] as const;
 export type PortalRunbookStatus = typeof PORTAL_RUNBOOK_STATUS[number];
 
+/**
+ * A runbook is the SCHEDULE, not a cycle (#1557). It used to also carry
+ * `started_on` + `cycle_days` as if there were exactly one run, which meant
+ * resetting a recurring procedure for its next cycle silently wiped the last
+ * cycle's completion — there was nowhere else for it to live. Recurrence is now
+ * a property of the schedule (`recurring`); each cycle is its own row in
+ * `portal_runbook_runs`, so a reset never destroys history, and "did we do the
+ * guest access review last quarter, and who signed it off" is a query, not a
+ * gap.
+ */
 export const portalRunbooksTable = pgTable("portal_runbooks", {
   id: serial("id").primaryKey(),
   /** tenants.id — the JWT's customerId claim. No FK, matching remediation_tracker_steps. */
@@ -5784,13 +5821,22 @@ export const portalRunbooksTable = pgTable("portal_runbooks", {
   /** One of journeyTokens' six PILLAR_KEYS. Text, not an enum, for the reason above. */
   pillar: text("pillar").notNull(),
   /**
-   * The day the runbook started. A DATE, not a timestamp: the page renders
-   * "Day 7 of 14", which is a whole-day count, and storing a time would invite
-   * an off-by-one at the boundary depending on the reader's zone.
+   * The day this schedule was first put into service. A DATE, not a timestamp,
+   * matching `portal_runbook_runs.started_on` below. NOT the current cycle's
+   * start any more — that moved to the run — kept here only as "when this
+   * procedure began" bookkeeping for the schedule itself.
    */
   startedOn: date("started_on").notNull(),
-  /** The runbook's expected duration in days — the "of 14" in "Day 7 of 14". */
+  /** One cycle's expected duration in days — the "of 14" in "Day 7 of 14". */
   cycleDays: integer("cycle_days").notNull(),
+  /**
+   * Whether finishing a cycle spawns the next one automatically. false for a
+   * one-shot procedure (e.g. the Overshared SharePoint site-fix runbooks —
+   * `portal-oversharing-sites.ts` — which never recur); true for a genuinely
+   * recurring review (e.g. a quarterly guest access review).
+   */
+  recurring: boolean("recurring").notNull().default(false),
+  /** The SCHEDULE's own lifecycle — retired ("abandoned") stops future cycles even if recurring. */
   status: text("status", { enum: PORTAL_RUNBOOK_STATUS }).notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -5802,10 +5848,53 @@ export const portalRunbooksTable = pgTable("portal_runbooks", {
 export type PortalRunbook = typeof portalRunbooksTable.$inferSelect;
 export type InsertPortalRunbook = typeof portalRunbooksTable.$inferInsert;
 
-export const portalRunbookStepsTable = pgTable("portal_runbook_steps", {
+/**
+ * One row per CYCLE of a runbook schedule (#1557). `cycleNumber` is 1-based and
+ * sequential per runbook. Completing a cycle (or being marked abandoned) never
+ * mutates or deletes this row — the next cycle, if the schedule is `recurring`,
+ * is a NEW row with `cycleNumber + 1`. That is what makes run history, "who
+ * completed which cycle and when", and a missed cycle all readable later
+ * instead of silently overwritten.
+ */
+export const portalRunbookRunsTable = pgTable("portal_runbook_runs", {
   id: serial("id").primaryKey(),
   runbookId: integer("runbook_id").notNull().references(() => portalRunbooksTable.id, { onDelete: "cascade" }),
-  /** 1-based render order. Unique per runbook so a step cannot silently duplicate a slot. */
+  /** tenants.id — denormalised for direct customer-scoped queries, matching portal_hold_windows. */
+  customerId: integer("customer_id").notNull(),
+  /** 1-based, sequential per runbook. Cycle 1 is created alongside the runbook itself. */
+  cycleNumber: integer("cycle_number").notNull(),
+  /** The day THIS cycle started. Was `portal_runbooks.started_on` before #1557. */
+  startedOn: date("started_on").notNull(),
+  /** This cycle's own lifecycle — independent of the schedule's `status` above. */
+  status: text("status", { enum: PORTAL_RUNBOOK_STATUS }).notNull().default("active"),
+  /** Set once every step in this cycle is checked, or the cycle is otherwise closed out. NULL while open. */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  /** users.id of whoever completed the cycle — the last step-check that finished it. Nullable: not always a person. */
+  completedByUserId: integer("completed_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_runbook_runs_customer_id_idx").on(t.customerId),
+  index("portal_runbook_runs_runbook_id_idx").on(t.runbookId),
+  uniqueIndex("portal_runbook_runs_runbook_cycle_idx").on(t.runbookId, t.cycleNumber),
+]);
+
+export type PortalRunbookRun = typeof portalRunbookRunsTable.$inferSelect;
+export type InsertPortalRunbookRun = typeof portalRunbookRunsTable.$inferInsert;
+
+export const portalRunbookStepsTable = pgTable("portal_runbook_steps", {
+  id: serial("id").primaryKey(),
+  /** The cycle this step's check-off state belongs to (#1557) — see runId below. */
+  runId: integer("run_id").notNull().references(() => portalRunbookRunsTable.id, { onDelete: "cascade" }),
+  /**
+   * DEPRECATED — pre-#1557, this was the (required) parent. Steps are now owned
+   * by a cycle (`runId`), not the schedule directly, so a reset never wipes the
+   * last cycle's completion. Left in place and NULLable rather than dropped
+   * (dropping a column is a destructive migration and none of this is needed
+   * for correctness); no code writes or reads it any more.
+   */
+  runbookId: integer("runbook_id").references(() => portalRunbooksTable.id, { onDelete: "cascade" }),
+  /** 1-based render order. Unique per cycle so a step cannot silently duplicate a slot. */
   position: integer("position").notNull(),
   text: text("text").notNull(),
   checked: boolean("checked").notNull().default(false),
@@ -5824,8 +5913,8 @@ export const portalRunbookStepsTable = pgTable("portal_runbook_steps", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
-  index("portal_runbook_steps_runbook_id_idx").on(t.runbookId),
-  uniqueIndex("portal_runbook_steps_runbook_position_idx").on(t.runbookId, t.position),
+  index("portal_runbook_steps_run_id_idx").on(t.runId),
+  uniqueIndex("portal_runbook_steps_run_position_idx").on(t.runId, t.position),
 ]);
 
 export type PortalRunbookStep = typeof portalRunbookStepsTable.$inferSelect;

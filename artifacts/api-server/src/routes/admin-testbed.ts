@@ -62,6 +62,7 @@ import {
   usersTable,
   signupExchangeTokensTable,
   portalRunbooksTable,
+  portalRunbookRunsTable,
   portalRunbookStepsTable,
   portalHoldWindowsTable,
   mspSopsTable,
@@ -943,9 +944,22 @@ router.post(
           .returning({ id: portalRunbooksTable.id });
         runbooksSeeded += 1;
 
+        // Cycle 1 (#1557) — every seeded runbook has exactly one cycle, since
+        // none of this fixture data is marked `recurring`.
+        const [run] = await db
+          .insert(portalRunbookRunsTable)
+          .values({
+            runbookId: inserted.id,
+            customerId,
+            cycleNumber: 1,
+            startedOn: dayString(rb.startedDaysAgo),
+            status: "active",
+          })
+          .returning({ id: portalRunbookRunsTable.id });
+
         await db.insert(portalRunbookStepsTable).values(
           rb.steps.map((text, i) => ({
-            runbookId: inserted.id,
+            runId: run.id,
             position: i + 1,
             text,
             checked: i < rb.checkedThrough,
