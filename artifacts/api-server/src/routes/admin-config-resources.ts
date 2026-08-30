@@ -40,6 +40,9 @@ import {
   CONFIG_READ_TRANSPORTS,
   CONFIG_AVAILABILITY,
   CONFIG_VERIFICATION_STATUS,
+  CONFIG_COVERAGE_STATES,
+  EXECUTOR_BACKED_TRANSPORTS,
+  coverageStateFor,
 } from "@workspace/db";
 import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
@@ -52,6 +55,17 @@ const router: IRouter = Router();
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
+
+/**
+ * The transports this platform has an executor for, as a SQL `in (...)` list.
+ * Built from EXECUTOR_BACKED_TRANSPORTS (which is itself derived from
+ * MONITOR_CHECK_EXECUTOR_TYPES) so the measurement follows the monitor catalog
+ * automatically — adding a sixth executor moves these numbers with no edit here.
+ */
+const EXECUTOR_BACKED_SQL = sql`(${sql.join(
+  EXECUTOR_BACKED_TRANSPORTS.map((t) => sql`${t}`),
+  sql`, `,
+)})`;
 
 /** Shared roll-up so the list and the summary endpoints cannot drift apart. */
 async function loadSummary() {
@@ -66,8 +80,14 @@ async function loadSummary() {
       .from(configResourcesTable).groupBy(configResourcesTable.verificationStatus),
     db.select({
       totalResources: sql<number>`count(*)::int`,
-      covered: sql<number>`count(*) filter (where ${configResourcesTable.checkCoverageCount} > 0)::int`,
-      uncovered: sql<number>`count(*) filter (where ${configResourcesTable.checkCoverageCount} = 0)::int`,
+      // Three states, not two (#1849 point 3, built in #1869). `no_executor`
+      // is evaluated first and wins: a resource whose transport this platform
+      // has no executor for is UNREACHABLE by any code path, not merely
+      // "uncovered", and reporting it as an ordinary gap a check author could
+      // close is the exact conflation #1849 asked to end.
+      covered: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.checkCoverageCount} > 0)::int`,
+      uncovered: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.checkCoverageCount} = 0)::int`,
+      noExecutor: sql<number>`count(*) filter (where ${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL})::int`,
       totalProperties: sql<number>`coalesce(sum(${configResourcesTable.propertyCount}), 0)::int`,
     }).from(configResourcesTable),
     db.select().from(configModelExtractionsTable)
@@ -78,7 +98,7 @@ async function loadSummary() {
     Object.fromEntries(rows.filter((r) => r.key).map((r) => [r.key as string, r.n]));
 
   const latest = extraction[0] ?? null;
-  const c = coverage[0] ?? { totalResources: 0, covered: 0, uncovered: 0, totalProperties: 0 };
+  const c = coverage[0] ?? { totalResources: 0, covered: 0, uncovered: 0, noExecutor: 0, totalProperties: 0 };
 
   return {
     totals: {
@@ -86,7 +106,21 @@ async function loadSummary() {
       properties: c.totalProperties,
       // The coverage measurement this issue exists to replace a guess with.
       resourcesCoveredByAtLeastOneCheck: c.covered,
+      // NOTE: as of #1869 this counts only resources on a transport that HAS an
+      // executor — i.e. gaps a check author could actually close. Resources on a
+      // transport with no executor are counted separately below, not folded in
+      // here, so the two are never conflated again.
       resourcesEntirelyUncovered: c.uncovered,
+      /**
+       * Resources unreachable by ANY code path because this platform has no
+       * executor for their transport (#1849 point 3). Writing a check for one
+       * of these would not make it readable — the transport itself is missing.
+       */
+      resourcesWithNoExecutor: c.noExecutor,
+      /** Which transports those resources are on, so the number is actionable rather than just alarming. */
+      transportsWithNoExecutor: (CONFIG_READ_TRANSPORTS as readonly string[]).filter(
+        (t) => !(EXECUTOR_BACKED_TRANSPORTS as readonly string[]).includes(t),
+      ),
       checksMapped: latest?.checksMapped ?? 0,
       checksUnmatched: latest?.checksUnmatched ?? 0,
     },
@@ -152,10 +186,20 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
     const workload = String(q["workload"] ?? "").trim();
     if (workload) conditions.push(eq(configResourcesTable.workload, workload));
 
-    // coverage=covered | uncovered — the two halves of the measurement.
+    // coverage=covered | uncovered | no_executor — the three states of the
+    // measurement (#1849 point 3, built in #1869). `uncovered` now excludes
+    // resources whose transport has no executor: those are a separate,
+    // separately-filterable state, not an ordinary check-authoring gap.
     const coverage = String(q["coverage"] ?? "").trim();
-    if (coverage === "covered") conditions.push(sql`${configResourcesTable.checkCoverageCount} > 0`);
-    if (coverage === "uncovered") conditions.push(sql`${configResourcesTable.checkCoverageCount} = 0`);
+    if ((CONFIG_COVERAGE_STATES as readonly string[]).includes(coverage)) {
+      if (coverage === "covered") {
+        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.checkCoverageCount} > 0`);
+      } else if (coverage === "uncovered") {
+        conditions.push(sql`${configResourcesTable.readTransport} in ${EXECUTOR_BACKED_SQL} and ${configResourcesTable.checkCoverageCount} = 0`);
+      } else {
+        conditions.push(sql`${configResourcesTable.readTransport} not in ${EXECUTOR_BACKED_SQL}`);
+      }
+    }
 
     const search = String(q["q"] ?? "").trim();
     if (search) {
@@ -217,6 +261,13 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
         verificationStatus: r.verificationStatus,
         propertyCount: r.propertyCount,
         checkCoverageCount: r.checkCoverageCount,
+        /**
+         * covered | uncovered | no_executor (#1849 point 3, built in #1869).
+         * Computed rather than stored: it is a function of the row's transport
+         * and the executors that exist right now, so it cannot go stale the way
+         * a persisted copy would when a new executor ships.
+         */
+        coverageState: coverageStateFor(r.readTransport, r.checkCoverageCount),
         sourceRef: r.sourceRef,
         notes: r.notes,
       })),
@@ -258,6 +309,9 @@ router.get("/admin/config-resources/:id", requireAdmin, async (req: Request, res
     res.json({
       resource: {
         ...resource,
+        // Same computed three-state coverage the list endpoint returns, so the
+        // detail view cannot disagree with the row the operator clicked (#1869).
+        coverageState: coverageStateFor(resource.readTransport, resource.checkCoverageCount),
         createdAt: resource.createdAt instanceof Date ? resource.createdAt.toISOString() : resource.createdAt,
         updatedAt: resource.updatedAt instanceof Date ? resource.updatedAt.toISOString() : resource.updatedAt,
       },

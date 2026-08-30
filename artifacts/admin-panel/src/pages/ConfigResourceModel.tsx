@@ -54,6 +54,8 @@ interface ConfigResource {
   verificationStatus: string;
   propertyCount: number;
   checkCoverageCount: number;
+  /** covered | uncovered | no_executor — computed server-side from the row's transport (#1869). */
+  coverageState: "covered" | "uncovered" | "no_executor";
   sourceRef: string | null;
   notes: string | null;
 }
@@ -99,6 +101,9 @@ interface ModelSummary {
     properties: number;
     resourcesCoveredByAtLeastOneCheck: number;
     resourcesEntirelyUncovered: number;
+    /** Resources no code path could read at all — their transport has no executor (#1869). */
+    resourcesWithNoExecutor: number;
+    transportsWithNoExecutor: string[];
     checksMapped: number;
     checksUnmatched: number;
   };
@@ -211,8 +216,15 @@ export default function ConfigResourceModel() {
   const transports = useMemo(() => Object.keys(summary?.byTransport ?? {}).sort(), [summary]);
   const availabilities = useMemo(() => Object.keys(summary?.byAvailability ?? {}).sort(), [summary]);
 
-  const coveragePct = summary && summary.totals.resources > 0
-    ? Math.round((summary.totals.resourcesCoveredByAtLeastOneCheck / summary.totals.resources) * 1000) / 10
+  // Coverage is measured against the REACHABLE model, not the whole model
+  // (#1869). Resources whose transport has no executor cannot be covered by any
+  // check, so counting them in the denominator would permanently understate
+  // coverage and blame check authors for a transport gap.
+  const reachableResources = summary
+    ? summary.totals.resources - summary.totals.resourcesWithNoExecutor
+    : 0;
+  const coveragePct = reachableResources > 0
+    ? Math.round((summary!.totals.resourcesCoveredByAtLeastOneCheck / reachableResources) * 1000) / 10
     : 0;
 
   return (
@@ -240,18 +252,27 @@ export default function ConfigResourceModel() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4" data-testid="config-model-totals">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5" data-testid="config-model-totals">
             <StatTile label="Resources modelled" value={summary.totals.resources} />
             <StatTile label="Properties modelled" value={summary.totals.properties} />
             <StatTile
               label="Covered by a check"
               value={summary.totals.resourcesCoveredByAtLeastOneCheck}
-              sub={`${coveragePct}% of the model`}
+              sub={`${coveragePct}% of the ${reachableResources} reachable`}
             />
             <StatTile
               label="Entirely uncovered"
               value={summary.totals.resourcesEntirelyUncovered}
               sub={`${summary.totals.checksMapped} checks mapped, ${summary.totals.checksUnmatched} unmatched`}
+            />
+            <StatTile
+              label="No executor exists"
+              value={summary.totals.resourcesWithNoExecutor}
+              sub={
+                summary.totals.transportsWithNoExecutor.length > 0
+                  ? `unreachable transport: ${summary.totals.transportsWithNoExecutor.join(", ")}`
+                  : "every modelled transport has an executor"
+              }
             />
           </div>
 
@@ -291,7 +312,7 @@ export default function ConfigResourceModel() {
             <FilterSelect label="Surface" value={surface} onChange={setSurface} options={surfaces} testId="config-model-surface" />
             <FilterSelect label="Transport" value={transport} onChange={setTransport} options={transports} testId="config-model-transport" />
             <FilterSelect label="Availability" value={availability} onChange={setAvailability} options={availabilities} testId="config-model-availability" />
-            <FilterSelect label="Coverage" value={coverage} onChange={setCoverage} options={["covered", "uncovered"]} testId="config-model-coverage" />
+            <FilterSelect label="Coverage" value={coverage} onChange={setCoverage} options={["covered", "uncovered", "no_executor"]} testId="config-model-coverage" />
             <Button variant="outline" onClick={() => { void loadResources(); void loadSummary(); }}>Refresh</Button>
           </div>
 
@@ -318,9 +339,14 @@ export default function ConfigResourceModel() {
                       <Badge variant="outline" className={VERIFICATION_TONE[r.verificationStatus] ?? ""}>{r.verificationStatus}</Badge>
                       <Badge variant="outline">{r.readTransport}</Badge>
                       <Badge variant="outline">{r.surface}</Badge>
-                      {r.checkCoverageCount > 0
-                        ? <Badge variant="outline">{r.checkCoverageCount} check{r.checkCoverageCount === 1 ? "" : "s"}</Badge>
-                        : <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">uncovered</Badge>}
+                      {/* Three states, not two (#1869): "no executor" is a red
+                          transport gap no check author can close, distinct from
+                          the orange "nobody has written this check yet". */}
+                      {r.coverageState === "no_executor"
+                        ? <Badge variant="outline" className="bg-red-50 text-red-800 border-red-200" title={`No executor exists for the "${r.readTransport}" transport — this resource is unreachable by any code path.`}>no executor</Badge>
+                        : r.checkCoverageCount > 0
+                          ? <Badge variant="outline">{r.checkCoverageCount} check{r.checkCoverageCount === 1 ? "" : "s"}</Badge>
+                          : <Badge variant="outline" className="bg-orange-50 text-orange-800 border-orange-200">uncovered</Badge>}
                     </div>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {r.workload} · {r.propertyCount} propert{r.propertyCount === 1 ? "y" : "ies"}

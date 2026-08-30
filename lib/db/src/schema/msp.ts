@@ -1775,7 +1775,7 @@ export type MonitorCheckStatus = typeof MONITOR_CHECK_STATUS[number];
 // executor-specific column at all (the tenant's own `domain` is enough);
 // endpoint/method/fanOut*/ps*/spOperation are unused, the same way ps*/spOperation
 // are unused for the other non-Graph transports.
-export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell", "sharepoint-admin", "dns"] as const;
+export const MONITOR_CHECK_EXECUTOR_TYPES = ["graph", "powershell", "sharepoint-admin", "dns", "power-platform"] as const;
 export type MonitorCheckExecutorType = typeof MONITOR_CHECK_EXECUTOR_TYPES[number];
 
 export const monitorChecksTable = pgTable("monitor_checks", {
@@ -1854,6 +1854,17 @@ export const monitorChecksTable = pgTable("monitor_checks", {
    * NULL unless executorType = 'sharepoint-admin'.
    */
   spOperation: text("sp_operation"),
+  // ── Power-Platform-backed execution (additive, NULL for every other check) ──
+  /**
+   * Identifier resolved server-side against a code-owned operation registry
+   * (POWER_PLATFORM_OPERATIONS in monitor-executor.ts) — an identifier only,
+   * never a URL and never a script, the same contract ps_cmdlet_key and
+   * sp_operation already follow. The operation decides which
+   * power-platform-admin.ts function runs; the tenant it runs against is
+   * resolved from the tenant's own identity at dispatch time, never stored here.
+   * NULL unless executorType = 'power-platform'. (#1869)
+   */
+  ppOperation: text("pp_operation"),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
   createdByAdminId: integer("created_by_admin_id"),

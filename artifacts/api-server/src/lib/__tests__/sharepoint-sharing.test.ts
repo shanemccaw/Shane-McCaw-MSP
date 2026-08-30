@@ -574,6 +574,7 @@ describe("compliance:eeeu-site-sharing — end to end through the fan-out execut
     psCmdletKey: null,
     psParams: null,
     spOperation: null,
+    ppOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,

@@ -35,6 +35,13 @@ import {
   SharingCapability,
   type SharePointTenantRef,
 } from "./sharepoint-admin";
+import {
+  listDlpPolicies,
+  listEnvironments,
+  getTenantSettings,
+  powerPlatformCredentialsPresent,
+  type PowerPlatformDlpPolicy,
+} from "./power-platform-admin";
 import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
 import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing";
 import { logger } from "./logger";
@@ -2105,6 +2112,213 @@ async function runSharePointAdminCheck(opts: {
   };
 }
 
+// ── Power-Platform-backed check executor (#1869) ──────────────────────────────
+//
+// Runs a check whose data lives on the Power Platform TENANT administration
+// surface — DLP ("data") policies, environments and tenant settings — which
+// Microsoft Graph does not expose at all. These are read from the Business
+// Application Platform (BAP) admin API with an app-only token on the
+// `https://service.powerapps.com/` resource, all of which
+// power-platform-admin.ts already implements and this branch only calls.
+//
+// Modeled on runSharePointAdminCheck exactly: a distinct execution path that
+// shares everything downstream of `items` (mapping -> schema -> severity ->
+// persistence) and deliberately never touches graphFetchForTenant, so it is
+// structurally unable to throw ConsentRevokedError. That matters here for the
+// same reason it does for SharePoint, and more sharply: Power Platform access is
+// granted by a one-time management-app REGISTRATION that is entirely separate
+// from Graph admin consent, so a Power Platform 403 must never be allowed to
+// flip a tenant's Graph consent state. power-platform-admin.ts's
+// PowerPlatformAuthError / PowerPlatformNotRegisteredError are non-DB-mutating
+// by design and reach the generic "error" branch below.
+//
+// READ-ONLY: every operation in the registry below is a GET. #1869 is explicitly
+// scoped to making the surface visible, not to changing anything on it.
+
+/**
+ * A code-owned Power Platform operation: receives the tenant's AAD tenant GUID
+ * and returns items in the same shape the Graph path produces, so applyMapping
+ * and everything after it runs unmodified.
+ *
+ * Note this takes the bare tenant id rather than a resolved ref: unlike
+ * SharePoint (which needs the `{prefix}.sharepoint.com` host derived from the
+ * initial domain) the BAP admin API is a single global host and the AAD tenant
+ * GUID is the only tenant identifier involved. There is nothing to resolve, so
+ * there is no resolver.
+ */
+export type PowerPlatformOperation = (aadTenantId: string) => Promise<Record<string, unknown>[]>;
+
+/**
+ * The code-owned operation registry. `monitor_checks.pp_operation` stores a KEY
+ * into this table and nothing else — never a URL, never a script — the same
+ * contract `ps_cmdlet_key` and `sp_operation` follow. An unknown key is a hard
+ * error at execution time, not a silent no-op.
+ */
+export const POWER_PLATFORM_OPERATIONS: Record<string, PowerPlatformOperation> = {
+  /**
+   * Every DLP policy in the tenant, one item per policy.
+   *
+   * An EMPTY result is a real answer, not a failure: a tenant with no Power
+   * Platform DLP policy at all is precisely the governance finding this surface
+   * exists to make visible. It is returned as a zero-length item list and
+   * recorded with status "ok", exactly as an empty Graph collection would be —
+   * never substituted with a placeholder row.
+   */
+  "dlp-policies": async (aadTenantId) => {
+    const policies = await listDlpPolicies(aadTenantId);
+    return policies.map((p: PowerPlatformDlpPolicy) => {
+      const envFilter = p.properties?.definition?.constraints?.environmentFilter1?.parameters;
+      const environments = envFilter?.environments ?? p.properties?.environments ?? [];
+      return {
+        policyName: p.name,
+        displayName: p.properties?.displayName ?? null,
+        createdTime: p.properties?.createdTime ?? null,
+        lastModifiedTime: p.properties?.lastModifiedTime ?? null,
+        // "AllEnvironments" | "ExcludeEnvironments" | "IncludeEnvironments" — the
+        // wire vocabulary, passed through rather than remapped to a display one.
+        environmentFilterType: envFilter?.filterType ?? null,
+        environmentCount: Array.isArray(environments) ? environments.length : 0,
+        environmentNames: Array.isArray(environments)
+          ? environments.map((e) => e?.name ?? e?.id).filter(Boolean)
+          : [],
+        defaultApiGroup: p.properties?.definition?.defaultApiGroup ?? null,
+      };
+    });
+  },
+
+  /** Every Power Platform environment in the tenant, one item per environment. */
+  "environments": async (aadTenantId) => {
+    const environments = await listEnvironments(aadTenantId);
+    return environments.map((e) => ({
+      environmentName: e.name,
+      displayName: e.properties?.displayName ?? null,
+      environmentSku: e.properties?.environmentSku ?? null,
+      isDefault: e.properties?.isDefault ?? null,
+      location: e.location ?? null,
+      createdTime: e.properties?.createdTime ?? null,
+    }));
+  },
+
+  /**
+   * Tenant-wide Power Platform settings. Returns a ONE-item array rather than a
+   * bare value, for the same reason the SharePoint operations do: a tenant-wide
+   * setting IS a single fact, and applyMapping/properties are written against an
+   * item list.
+   */
+  "tenant-settings": async (aadTenantId) => {
+    const settings = await getTenantSettings(aadTenantId);
+    return [settings];
+  },
+};
+
+function resolvePowerPlatformOperation(key: string | null | undefined): PowerPlatformOperation {
+  const operation = key ? POWER_PLATFORM_OPERATIONS[key] : undefined;
+  if (!operation) {
+    throw new Error(
+      `monitor check declares pp_operation "${key ?? "(null)"}", which is not in the code-owned registry ` +
+      `(${Object.keys(POWER_PLATFORM_OPERATIONS).join(", ") || "empty"})`,
+    );
+  }
+  return operation;
+}
+
+async function runPowerPlatformCheck(opts: {
+  check: MonitorCheck;
+  tenantId: string;
+  triggerId: string;
+  idempotencyKey: string;
+  includeItems?: boolean;
+  persistProfile: boolean;
+}): Promise<CheckResult> {
+  const { check, tenantId, triggerId, idempotencyKey } = opts;
+
+  const operation = resolvePowerPlatformOperation(check.ppOperation);
+
+  // Platform-wide credential guard, checked before any tenant work. Unlike the
+  // SharePoint path this needs only the client SECRET — the Power Platform
+  // resource accepts secret-based app-only tokens (see power-platform-admin.ts's
+  // header), so demanding the certificate here would gate the surface on a
+  // credential it does not use. Named explicitly so the persisted errorMessage
+  // says which env vars are absent instead of surfacing an opaque 401 later.
+  if (!powerPlatformCredentialsPresent()) {
+    throw new Error(
+      `monitor check ${check.key} needs Power Platform app-only credentials — set MT_APP_CLIENT_ID ` +
+      `and MT_APP_CLIENT_SECRET (the same multi-tenant app registration Graph uses)`,
+    );
+  }
+
+  const items = await operation(tenantId);
+
+  // Same downstream contract as the Graph path: mapping/properties -> schema
+  // validation -> severity classification -> persistence, all unmodified.
+  const mapping = (check.mapping ?? []) as MappingRule[];
+  const properties = (check.properties ?? []) as string[];
+  const extracted = applyMapping(items, mapping, properties);
+
+  if (check.outputSchema) {
+    const { valid, errors } = validateOutputShape(extracted, check.outputSchema as Record<string, unknown>);
+    extracted._schemaValid = valid;
+    if (!valid) {
+      log.warn({ checkKey: check.key, errors }, "monitor-executor: Power Platform check output schema validation failed");
+      extracted._schemaErrors = errors;
+    }
+  }
+
+  const severityRules = (check.severityRules ?? []) as SeverityRule[];
+  const severityMatch = classifySeverity(severityRules, extracted);
+
+  // Configuration Drift (#1287) — opt-in per check via drift-check-specs.ts, so
+  // this is an intended no-op until a Power Platform check is registered there.
+  await collectDriftForCompletedCheck(check, tenantId, items, extracted, "ok");
+
+  // One BAP round trip, one answer — the admin endpoints used here return a
+  // whole collection in a single response, so there is no paging concept and
+  // pageCount is always 1 (same reasoning as the PowerShell/SharePoint paths).
+  const pageCount = 1;
+
+  // rawResponse is the operation's own returned items, NOT the BAP envelope:
+  // power-platform-admin.ts unwraps `value` internally and returns the typed
+  // list, so the items ARE the rawest thing this layer legitimately has.
+  // Recording the operation alongside them keeps the profile row self-describing
+  // rather than implying a wire capture it doesn't hold.
+  const rawResponse: Record<string, unknown> = {
+    ppOperation: check.ppOperation,
+    items,
+  };
+
+  const profileId = await persistCheckProfile(opts.persistProfile, {
+    tenantId,
+    checkKey: check.key,
+    checkSchemaVersion: check.schemaVersion,
+    triggerId,
+    idempotencyKey,
+    status: "ok",
+    rawResponse,
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
+    itemCount: items.length,
+    pageCount,
+  });
+
+  log.info(
+    { checkKey: check.key, tenantId, ppOperation: check.ppOperation, itemCount: items.length },
+    "monitor-executor: Power-Platform-backed check completed",
+  );
+
+  return {
+    checkKey: check.key,
+    status: "ok",
+    extractedProperties: extracted,
+    severityMatched: severityMatch?.severity ?? null,
+    severityLabel: severityMatch?.label ?? null,
+    itemCount: items.length,
+    pageCount,
+    profileId,
+    ...(opts.includeItems ? { items } : {}),
+  };
+}
+
 // ── DNS-backed check executor (#496) ───────────────────────────────────────────
 //
 // Runs a check whose data is entirely PUBLIC DNS — SPF and DMARC are TXT
@@ -2680,6 +2894,18 @@ export async function executeMonitorCheck(opts: {
     // 'powershell' check falls through exactly as before.
     if (check.executorType === "sharepoint-admin") {
       return await runSharePointAdminCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
+    }
+
+    // Power-Platform-backed checks (executorType = 'power-platform', #1869)
+    // take the same kind of separate, Graph-free path, for the same reason: DLP
+    // policies, environments and Power Platform tenant settings have no Graph
+    // equivalent — they live on the BAP admin API under a different resource
+    // audience. Only a check whose row explicitly carries this executorType can
+    // reach it — every 'graph' (the column default, i.e. every pre-existing
+    // check) and 'powershell'/'sharepoint-admin'/'dns' check falls through
+    // exactly as before.
+    if (check.executorType === "power-platform") {
+      return await runPowerPlatformCheck({ check, tenantId, triggerId, idempotencyKey, includeItems: opts.includeItems, persistProfile });
     }
 
     // DNS-backed checks (executorType = 'dns', #496) take the same kind of

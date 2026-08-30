@@ -37,7 +37,7 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
-import { monitorChecksTable, tenantsTable } from "./msp";
+import { monitorChecksTable, tenantsTable, MONITOR_CHECK_EXECUTOR_TYPES } from "./msp";
 
 // ── Vocabularies ─────────────────────────────────────────────────────────────
 // Real enums only: each value below is a state something in this model is actually
@@ -52,7 +52,7 @@ export const GRAPH_VERSIONS = ["v1.0", "beta"] as const;
 export type GraphVersion = typeof GRAPH_VERSIONS[number];
 
 /**
- * How a resource is READ. The first four mirror `MONITOR_CHECK_EXECUTOR_TYPES` so the
+ * How a resource is READ. The first five mirror `MONITOR_CHECK_EXECUTOR_TYPES` so the
  * model and the existing monitor catalog stay on one vocabulary; the rest are real
  * transports Microsoft365DSC uses that this platform has no executor for yet — which
  * is itself part of the measured answer to "what can we not collect".
@@ -67,6 +67,56 @@ export const CONFIG_READ_TRANSPORTS = [
   "unknown",
 ] as const;
 export type ConfigReadTransport = typeof CONFIG_READ_TRANSPORTS[number];
+
+/**
+ * The transports this platform actually has an executor for, derived from
+ * `MONITOR_CHECK_EXECUTOR_TYPES` itself rather than restated — so adding a fifth
+ * transport to the monitor catalog (as #1869 did with `power-platform`) moves the
+ * measurement automatically and the two lists structurally cannot drift apart.
+ */
+export const EXECUTOR_BACKED_TRANSPORTS: readonly ConfigReadTransport[] =
+  MONITOR_CHECK_EXECUTOR_TYPES as readonly ConfigReadTransport[];
+
+/**
+ * Whether any code path in this platform could read a resource on this transport
+ * at all — regardless of whether anyone has written a check for it yet.
+ */
+export function transportHasExecutor(transport: string | null | undefined): boolean {
+  return Boolean(transport) && (EXECUTOR_BACKED_TRANSPORTS as readonly string[]).includes(transport as string);
+}
+
+/**
+ * Coverage measurement states (Git #1849 point 3, built in #1869).
+ *
+ * Before this, the measurement had two states and "no check written yet" was
+ * indistinguishable from "no code path could ever read this". That understated
+ * the problem: 22 `azure-rm` resources looked like ordinary gaps a check author
+ * could close, when in fact no executor exists to dispatch the read at all.
+ *
+ *  - covered      at least one monitor check reads this resource
+ *  - uncovered    an executor exists for its transport, but no check reads it yet
+ *                 — a genuine, closeable gap
+ *  - no_executor  this platform has NO executor for the resource's transport, so
+ *                 the resource is unreachable by any code path and writing a
+ *                 check could not change that. Not a check-authoring gap; a
+ *                 transport gap.
+ */
+export const CONFIG_COVERAGE_STATES = ["covered", "uncovered", "no_executor"] as const;
+export type ConfigCoverageState = typeof CONFIG_COVERAGE_STATES[number];
+
+/**
+ * Classify one resource's coverage. `no_executor` is evaluated FIRST and wins:
+ * a resource whose transport has no executor is unreachable whatever its check
+ * count says, and reporting it as merely "uncovered" is the exact conflation
+ * #1849 asked to end.
+ */
+export function coverageStateFor(
+  transport: string | null | undefined,
+  checkCoverageCount: number,
+): ConfigCoverageState {
+  if (!transportHasExecutor(transport)) return "no_executor";
+  return checkCoverageCount > 0 ? "covered" : "uncovered";
+}
 
 /** Which part of the tenant's configuration a resource belongs to. */
 export const CONFIG_SURFACES = [

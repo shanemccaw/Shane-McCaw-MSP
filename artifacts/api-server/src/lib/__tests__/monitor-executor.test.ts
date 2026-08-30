@@ -95,6 +95,16 @@ vi.mock("../sharepoint-admin", () => ({
   },
 }));
 
+// Power Platform admin (#1869) — mocked at the module boundary exactly like
+// sharepoint-admin above, so these tests exercise monitor-executor's dispatch,
+// registry and mapping contract without making a real BAP call.
+vi.mock("../power-platform-admin", () => ({
+  listDlpPolicies: vi.fn(),
+  listEnvironments: vi.fn(),
+  getTenantSettings: vi.fn(),
+  powerPlatformCredentialsPresent: vi.fn().mockReturnValue(true),
+}));
+
 vi.mock("../ps-execution-client", () => ({
   callPsExecution: vi.fn(),
   PsExecutionError: class PsExecutionError extends Error {
@@ -129,6 +139,12 @@ import { graphFetchForTenant, getInitialDomainForTenant } from "../graph";
 import { ConsentRevokedError, LicenseGapError } from "../graph";
 import { callPsExecution, PsExecutionError } from "../ps-execution-client";
 import { getTenantSharingCapability, sharePointAdminCredentialsPresent } from "../sharepoint-admin";
+import {
+  listDlpPolicies,
+  listEnvironments,
+  getTenantSettings,
+  powerPlatformCredentialsPresent,
+} from "../power-platform-admin";
 import { promises as dnsPromises } from "node:dns";
 
 // ── evalConditionGrammar ──────────────────────────────────────────────────────
@@ -1548,6 +1564,7 @@ describe("executeMonitorCheck", () => {
     psCmdletKey: null,
     psParams: null,
     spOperation: null,
+    ppOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -1709,6 +1726,7 @@ describe("executeMonitorCheck — cached result label recovery", () => {
     psCmdletKey: null,
     psParams: null,
     spOperation: null,
+    ppOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2066,6 +2084,7 @@ describe("executeMonitorCheck — fan-out (group-scoped)", () => {
     psCmdletKey: null,
     psParams: null,
     spOperation: null,
+    ppOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2303,6 +2322,7 @@ describe("executeMonitorCheck — PowerShell-backed (executorType='powershell')"
     psCmdletKey: "get-connection-info",
     psParams: { Organization: "{organization}" } as Record<string, unknown>,
     spOperation: null,
+    ppOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2480,6 +2500,7 @@ describe("executeMonitorCheck — SharePoint-admin-backed (executorType='sharepo
     psCmdletKey: null,
     psParams: null,
     spOperation: "tenant-sharing-capability",
+    ppOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
@@ -2610,6 +2631,215 @@ describe("executeMonitorCheck — SharePoint-admin-backed (executorType='sharepo
     expect(result.status).toBe("error");
     expect(result.errorMessage).toContain("401");
     expect(markTenantConsentRevoked).not.toHaveBeenCalled();
+  });
+});
+
+describe("executeMonitorCheck — Power-Platform-backed (executorType='power-platform', #1869)", () => {
+  const mockDlpPolicies = listDlpPolicies as Mock;
+  const mockEnvironments = listEnvironments as Mock;
+  const mockTenantSettings = getTenantSettings as Mock;
+  const mockPpCredsPresent = powerPlatformCredentialsPresent as Mock;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockPpCredsPresent.mockReturnValue(true);
+  });
+
+  const ppCheck = {
+    id: 31,
+    checkId: "uuid-pp",
+    key: "powerplatform:dlp-policies",
+    label: "Power Platform DLP policies",
+    description: null,
+    endpoint: "",
+    method: "GET",
+    requestBody: null,
+    selectParams: null,
+    filterParams: null,
+    properties: [] as string[],
+    mapping: [] as Array<{ sourceField: string; targetField: string; transform?: string }>,
+    severityRules: [] as Array<{ expression: string; severity: string; label?: string }>,
+    outputSchema: null,
+    engines: [] as string[],
+    frequency: "daily" as const,
+    requiresCustomerScript: false,
+    scriptPackageId: null,
+    fanOutSource: null,
+    fanOutItemIdField: null,
+    fanOutMaxItems: null,
+    fanOutItemFilter: null,
+    fanOutItemNormalizer: null,
+    executorType: "power-platform" as const,
+    psCmdletKey: null,
+    psParams: null,
+    spOperation: null,
+    ppOperation: "dlp-policies",
+    schemaVersion: 1,
+    status: "active" as const,
+    createdByAdminId: null,
+    updatedByAdminId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  it("dispatches to power-platform-admin.ts (never Graph, never the PS container) with the bare AAD tenant id", async () => {
+    mockDlpPolicies.mockResolvedValueOnce([
+      {
+        name: "policy-guid-1",
+        properties: {
+          displayName: "Block social connectors",
+          createdTime: "2026-01-04T10:00:00Z",
+          definition: {
+            defaultApiGroup: "hbi",
+            constraints: {
+              environmentFilter1: {
+                parameters: {
+                  filterType: "include",
+                  environments: [{ name: "env-guid-a" }, { name: "env-guid-b" }],
+                },
+              },
+            },
+          },
+        },
+      },
+    ]);
+
+    const result = await executeMonitorCheck({
+      check: ppCheck,
+      tenantId: "tenant-guid-pp",
+      triggerId: "trigger-pp-1",
+      skipIdempotency: true,
+      includeItems: true,
+    });
+
+    // The BAP admin API is a single global host — unlike SharePoint there is no
+    // per-tenant host to resolve, so the tenant GUID is passed through as-is.
+    expect(mockDlpPolicies).toHaveBeenCalledWith("tenant-guid-pp");
+    expect(graphFetchForTenant).not.toHaveBeenCalled();
+    expect(callPsExecution).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(1);
+    expect(result.pageCount).toBe(1);
+    expect(result.items?.[0]).toMatchObject({
+      policyName: "policy-guid-1",
+      displayName: "Block social connectors",
+      environmentFilterType: "include",
+      environmentCount: 2,
+      environmentNames: ["env-guid-a", "env-guid-b"],
+      defaultApiGroup: "hbi",
+    });
+  });
+
+  it("a tenant with NO DLP policy at all is status ok with zero items — a real finding, not an error", async () => {
+    mockDlpPolicies.mockResolvedValueOnce([]);
+
+    const result = await executeMonitorCheck({
+      check: ppCheck,
+      tenantId: "tenant-guid-pp",
+      triggerId: "trigger-pp-2",
+      skipIdempotency: true,
+      includeItems: true,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(0);
+    expect(result.items).toEqual([]);
+    expect(result.errorMessage).toBeUndefined();
+  });
+
+  it("the environments operation maps the BAP shape without inventing fields", async () => {
+    mockEnvironments.mockResolvedValueOnce([
+      {
+        name: "env-guid-a",
+        location: "unitedstates",
+        properties: { displayName: "Contoso (default)", environmentSku: "Default", isDefault: true },
+      },
+    ]);
+
+    const result = await executeMonitorCheck({
+      check: { ...ppCheck, ppOperation: "environments" },
+      tenantId: "tenant-guid-pp",
+      triggerId: "trigger-pp-3",
+      skipIdempotency: true,
+      includeItems: true,
+    });
+
+    expect(mockEnvironments).toHaveBeenCalledWith("tenant-guid-pp");
+    expect(result.status).toBe("ok");
+    expect(result.items?.[0]).toMatchObject({
+      environmentName: "env-guid-a",
+      displayName: "Contoso (default)",
+      environmentSku: "Default",
+      isDefault: true,
+      location: "unitedstates",
+    });
+  });
+
+  it("the tenant-settings operation returns exactly one item (a tenant-wide setting IS a single fact)", async () => {
+    mockTenantSettings.mockResolvedValueOnce({ disableEnvironmentCreationByNonAdminUsers: true });
+
+    const result = await executeMonitorCheck({
+      check: { ...ppCheck, ppOperation: "tenant-settings" },
+      tenantId: "tenant-guid-pp",
+      triggerId: "trigger-pp-4",
+      skipIdempotency: true,
+      includeItems: true,
+    });
+
+    expect(result.status).toBe("ok");
+    expect(result.itemCount).toBe(1);
+    expect(result.items?.[0]).toMatchObject({ disableEnvironmentCreationByNonAdminUsers: true });
+  });
+
+  it("a pp_operation outside the code-owned registry is a hard error, not a silent no-op", async () => {
+    const result = await executeMonitorCheck({
+      check: { ...ppCheck, ppOperation: "delete-every-policy" },
+      tenantId: "tenant-guid-pp",
+      triggerId: "trigger-pp-5",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("delete-every-policy");
+    expect(mockDlpPolicies).not.toHaveBeenCalled();
+  });
+
+  it("missing Power Platform credentials fail before any tenant work, naming the real env vars", async () => {
+    mockPpCredsPresent.mockReturnValue(false);
+
+    const result = await executeMonitorCheck({
+      check: ppCheck,
+      tenantId: "tenant-guid-pp",
+      triggerId: "trigger-pp-6",
+      skipIdempotency: true,
+    });
+
+    expect(result.status).toBe("error");
+    expect(result.errorMessage).toContain("MT_APP_CLIENT_ID");
+    expect(result.errorMessage).toContain("MT_APP_CLIENT_SECRET");
+    // Deliberately NOT the certificate vars: Power Platform accepts a secret.
+    expect(result.errorMessage).not.toContain("MT_APP_CERT_PRIVATE_KEY");
+    expect(mockDlpPolicies).not.toHaveBeenCalled();
+  });
+
+  it("a check whose executorType is still 'graph' never reaches this path (existing checks unaffected)", async () => {
+    (graphFetchForTenant as Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ value: [] }),
+      headers: { get: (h: string) => (h === "content-type" ? "application/json" : null) },
+    });
+
+    const result = await executeMonitorCheck({
+      check: { ...ppCheck, executorType: "graph" as const, endpoint: "/organization" },
+      tenantId: "tenant-guid-pp",
+      triggerId: "trigger-pp-7",
+      skipIdempotency: true,
+    });
+
+    expect(graphFetchForTenant).toHaveBeenCalled();
+    expect(mockDlpPolicies).not.toHaveBeenCalled();
+    expect(result.status).toBe("ok");
   });
 });
 
@@ -3099,6 +3329,7 @@ describe("executeMonitorCheck — DNS-backed (executorType='dns', #496)", () => 
     psCmdletKey: null,
     psParams: null,
     spOperation: null,
+    ppOperation: null,
     schemaVersion: 1,
     status: "active" as const,
     createdByAdminId: null,
