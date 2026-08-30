@@ -329,10 +329,22 @@ function Invoke-SurveyProbe {
     if ($skip -lt 0) { $skip = 0 }
     if ($take -lt 1) { $take = 1 }
     if ($take -gt 200) { $take = 200 }
-    # Clamped code-side so a caller can never ask the child to outlive the
-    # parent's own kill timeout (entrypoint.ps1 $childTimeoutSeconds).
+
+    # Clamp the budget against the PARENT's own kill timeout, read from the
+    # same env var entrypoint.ps1 reads. The budget is only checked BETWEEN
+    # cmdlets, so the real worst case is (budget + one whole cmdlet + the
+    # Connect-* handshake). A budget merely *below* the timeout is therefore not
+    # enough — a 150s budget under a 200s timeout was observed live to overrun
+    # and get the child killed, losing an entire 60-command batch including the
+    # results already collected in it.
+    #
+    # Half the timeout leaves a margin as large as the budget itself for that
+    # last cmdlet plus the connect, and it tracks the env var rather than
+    # hard-coding a number that silently becomes wrong if the timeout changes.
+    $childTimeoutSeconds = if ($env:PS_EXECUTION_CHILD_TIMEOUT_SECONDS) { [int]$env:PS_EXECUTION_CHILD_TIMEOUT_SECONDS } else { 60 }
+    $maxBudget = [Math]::Max(10, [Math]::Floor($childTimeoutSeconds / 2))
     if ($budgetSeconds -lt 10) { $budgetSeconds = 10 }
-    if ($budgetSeconds -gt 600) { $budgetSeconds = 600 }
+    if ($budgetSeconds -gt $maxBudget) { $budgetSeconds = $maxBudget }
 
     $inventory = Get-SurveyCommandInventory -SessionType $SessionType
     $total = $inventory.Count

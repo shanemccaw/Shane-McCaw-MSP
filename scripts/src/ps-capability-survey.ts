@@ -88,8 +88,14 @@ type SessionType = (typeof SESSION_TYPES)[number];
  * `not_attempted` (rejected by a read-safety gate at ~0ms) and only the
  * eligible minority actually costs time.
  */
-const INITIAL_TAKE = 60;
-const BUDGET_SECONDS = 150;
+const INITIAL_TAKE = Number(process.env.SURVEY_TAKE ?? 60);
+/**
+ * The ask, not the ceiling — the container clamps this against its OWN child
+ * timeout (`PS_EXECUTION_CHILD_TIMEOUT_SECONDS`), which is the only place that
+ * knows the real limit. Overridable so a session can trade batch size against
+ * how much a killed batch costs, without a redeploy.
+ */
+const BUDGET_SECONDS = Number(process.env.SURVEY_BUDGET_SECONDS ?? 150);
 
 /**
  * The local api-server is restarted out from under this script routinely — the
