@@ -65,6 +65,10 @@ namespace BuildConsole.Controls
         {
             if (_refreshing) return; // a slow GitHub round-trip shouldn't stack on the next timer tick
             _refreshing = true;
+            // Git #1813 — same #1635 pattern Git Board's own manual Refresh button uses:
+            // disable the button for the full in-flight duration, re-enable in a finally
+            // on success or failure so a slow/failed GitHub round-trip can't leave it stuck.
+            BtnRefresh.IsEnabled = false;
             try
             {
                 var settings = Services.BuildConsoleSettings.Load();
@@ -113,6 +117,7 @@ namespace BuildConsole.Controls
             finally
             {
                 _refreshing = false;
+                BtnRefresh.IsEnabled = true;
             }
         }
 

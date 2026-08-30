@@ -581,6 +581,14 @@ namespace BuildConsole
             // title-bar icon, which calls CheckIssueClosuresAsync() directly.
             LeftSidebar.GitBoardOpenIssuesRefreshed += (s, openNumbers) => _buildWatch?.ApplyOpenIssueSet(openNumbers);
 
+            // Git #1813 — same event-piggyback pattern as the two hooks just above:
+            // a Git Board refresh (manual button or startup) just proved GitHub is
+            // reachable and fetched a fresh open-issue set, so ride that same
+            // completion to refresh Batter Up and AI Batter Up too, instead of making
+            // them wait out their own independent 90s timer.
+            LeftSidebar.BoardRefreshCompleted += async (s, e) => await BatterUpPanel.RefreshAsync();
+            LeftSidebar.BoardRefreshCompleted += async (s, e) => await AiBatterUpPanel.RefreshAsync();
+
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
             // build happening right there in that chats tab." Each chat gets
