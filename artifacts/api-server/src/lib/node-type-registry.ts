@@ -748,6 +748,11 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     description: "Evaluates platform alert rules and delivers via Exchange Online / push — no AI",
   },
   {
+    nodeType: "policy_evaluate_due",
+    isAIDependent: false,
+    description: "Policy Engine continuous-evaluation reconciliation pass (#1549) — deterministic Graph reads, no AI",
+  },
+  {
     nodeType: "generate_pdf",
     isAIDependent: false,
     description: "Renders HTML to PDF — no AI",
