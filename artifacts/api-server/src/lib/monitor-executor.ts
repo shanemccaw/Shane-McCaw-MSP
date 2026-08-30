@@ -1514,18 +1514,28 @@ export interface ThrottleRetryOptions {
 //   3. 503, the `deviceAppManagement`/`deviceCompliancePolicies`/
 //      `deviceConfigurations`-backed checks — a raw IIS "Service Unavailable"
 //      HTML page, not a Graph JSON error at all.
-// All three are documented artifacts of a tenant whose MDM authority has
-// never been set — Intune IS licensed (bundled in this test tenant's
-// Microsoft 365 E3) but has never been enrolled/configured, exactly what
-// Shane confirmed by hand for this tenant in the issue. The endpoints
-// themselves are NOT wrong — all three match docs/endpoints.json's existing
-// v1.0 paths — and a genuine missing-permission-scope error looks nothing
-// like any of these (contrast devices:bitlocker-key-escrow's clean 403
-// `authorization_error` / "token doesn't have the required permissions" in
-// the same sample pull, an unrelated real permission bug left untouched
-// here). So this is scenario (2) from the issue for all 8 checks: reachable,
-// simply never configured — not (1) license_gap and not (3) an
-// endpoint/request bug.
+// All three mean the Intune backend will not answer. The endpoints themselves
+// are NOT wrong — all three match docs/endpoints.json's existing v1.0 paths —
+// and a genuine missing-permission-scope error looks nothing like any of them
+// (contrast devices:bitlocker-key-escrow's clean 403 `authorization_error` /
+// "token doesn't have the required permissions" in the same sample pull, an
+// unrelated real permission bug left untouched here).
+//
+// CORRECTED BY #1847 — this block used to assert "Intune IS licensed (bundled
+// in this test tenant's Microsoft 365 E3) but has never been enrolled". That is
+// wrong on its facts, and the error is instructive enough to leave recorded
+// rather than quietly delete: the testbed does NOT have Microsoft 365 E3. Its
+// only user SKU is ENTERPRISEPACK — Office 365 E3 — whose sole Intune-family
+// service plan is INTUNE_O365 (Mobile Device Management for Office 365, a basic
+// MDM capability that is not Intune), and that plan is the ONLY one of the
+// SKU's 46 service plans not provisioned Success. There is no INTUNE_A. Read
+// live from the tenant's own /subscribedSkus on 2026-08-30.
+//
+// So the wire signature alone could never have settled the cause: a tenant that
+// never licensed Intune and a tenant that licensed it and never enrolled fail
+// identically here. `service-availability.ts` combines the signature with the
+// tenant's real service-plan entitlement and reports whichever it actually is,
+// rather than this file asserting one for every tenant.
 //
 // Deliberately gated on Intune's own endpoint prefixes: the 503 IIS page in
 // particular has no Intune-specific text of its own, and firing on it
