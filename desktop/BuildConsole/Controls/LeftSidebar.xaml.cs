@@ -216,9 +216,6 @@ namespace BuildConsole.Controls
         /// </summary>
         public event EventHandler<(string Url, string Title, bool InjectPrefill, int? IssueNumber, string IssueType, string DefaultTitle)>? EpicChatRequested;
 
-        /// <summary>Git #922 — the SAME query-param name (<c>EPIC_CHAT_PREFILL_PARAM</c>) the browser extension's openNewEpicChat/tryInsertPrefillFromUrl already use, so a URL BuildConsole opens is one the extension itself would also recognize if Shane ever opens it in real Chrome.</summary>
-        private const string EpicChatPrefillParam = "bt_prefill";
-
         /// <summary>Git #840 (Git Board Phase 2) — fired when Shane clicks an issue node in the Git Board tree, so MainWindow can show its real description/comment thread.</summary>
         public event EventHandler<GitIssue>? IssueSelected;
         /// <summary>Git #921 (Epic #803) — fired when Shane clicks a milestone header in the Git Board tree, so MainWindow opens (or focuses) its native ADHD-friendly milestone detail tab. Additive to the tree; milestones have no side-panel behaviour of their own.</summary>
@@ -4284,9 +4281,7 @@ namespace BuildConsole.Controls
                                 var baseUrl = settings.EpicChatProjectUrl.Trim();
                                 var pat = settings.GitHubPat?.Trim() ?? "";
                                 var label = $"Milestone #{m.GithubNumber.Value}";
-                                var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
-                                var sep = baseUrl.Contains('?') ? "&" : "?";
-                                var fullUrl = $"{baseUrl}{sep}{EpicChatPrefillParam}={Uri.EscapeDataString(prefill)}";
+                                var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, m.GithubNumber.Value, label: label);
                                 EpicChatRequested?.Invoke(this, (fullUrl, $"Milestone #{m.GithubNumber.Value} New Chat", true, m.GithubNumber.Value, "Milestone", $"[Milestone #{m.GithubNumber.Value}] {m.Title}"));
                             };
                             cmMilestone.Items.Add(miNewChat);
@@ -5130,9 +5125,7 @@ namespace BuildConsole.Controls
                         }
                         var pat = settings.GitHubPat?.Trim() ?? "";
                         var label = $"{issueType} #{issue.IssueNumber}";
-                        var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
-                        var sep = baseUrl.Contains('?') ? "&" : "?";
-                        var fullUrl = $"{baseUrl}{sep}{EpicChatPrefillParam}={Uri.EscapeDataString(prefill)}";
+                        var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, issue.IssueNumber, label: label);
                         ActivityLog.Log("git-board.chat", $"new chat for issue #{issue.IssueNumber} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
                         EpicChatRequested?.Invoke(this, (fullUrl, $"#{issue.IssueNumber} New Chat", true, issue.IssueNumber, issueType, $"[#{issue.IssueNumber}] {issue.RawTitle}"));
                     };

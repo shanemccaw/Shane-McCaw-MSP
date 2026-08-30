@@ -277,10 +277,7 @@ namespace BuildConsole
                     return;
                 }
                 var pat = settings.GitHubPat?.Trim() ?? "";
-                var label = $"Epic #{epicNumber}";
-                var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
-                var sep = baseUrl.Contains('?') ? "&" : "?";
-                var fullUrl = $"{baseUrl}{sep}bt_prefill={Uri.EscapeDataString(prefill)}";
+                var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, epicNumber);
                 ActivityLog.Log(GitDetailChannel, $"new chat for epic #{epicNumber} -> {baseUrl} (prefill 'Epic #{epicNumber}')");
                 OpenWebTab(fullUrl, $"Epic #{epicNumber} New Chat", "", injectPrefillPoll: true, associateIssueNumber: epicNumber, associateIssueType: "Epic", associateDefaultTitle: $"[#{epicNumber}] Epic Chat");
             }

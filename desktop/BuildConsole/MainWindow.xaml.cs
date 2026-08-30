@@ -4062,9 +4062,16 @@ namespace BuildConsole
                 await MarkChatTabInProgressAsync(tabItem, tabItem.Tag as BuildConsole.Services.BoardChat);
             var miAssignIssue = new MenuItem { Header = "🔗 Assign to Issue..." };
             miAssignIssue.Click += async (s, e) => await AssignChatTabToIssueAsync(tabItem);
+            // Git #1837 — starts a successor chat on the same epic, handing it a pointer
+            // back to this conversation. Label carries the resolved epic number when one
+            // is known; resolved fresh at cm.Opened (same reasoning as isChatTab above —
+            // a tab's associated epic can become known long after the menu was attached).
+            var miNewSuccessorChat = new MenuItem { Header = "🧵 Start a new chat on an Epic..." };
+            miNewSuccessorChat.Click += (s, e) => StartSuccessorChat(tabItem);
             var chatActionsSeparator = new Separator();
             cm.Items.Add(miInProgress);
             cm.Items.Add(miAssignIssue);
+            cm.Items.Add(miNewSuccessorChat);
             cm.Items.Add(chatActionsSeparator);
             cm.Opened += (s, e) =>
             {
@@ -4074,7 +4081,16 @@ namespace BuildConsole
                 var visibility = isChatTab ? Visibility.Visible : Visibility.Collapsed;
                 miInProgress.Visibility = visibility;
                 miAssignIssue.Visibility = visibility;
+                miNewSuccessorChat.Visibility = visibility;
                 chatActionsSeparator.Visibility = visibility;
+
+                if (isChatTab)
+                {
+                    var resolvedEpic = ResolveEpicNumberForTab(tabItem);
+                    miNewSuccessorChat.Header = resolvedEpic.HasValue
+                        ? $"🧵 Start a new chat on Epic #{resolvedEpic.Value}"
+                        : "🧵 Start a new chat on an Epic...";
+                }
             };
 
             // 0b. Rename Tab
@@ -4439,6 +4455,81 @@ namespace BuildConsole
             string conversationId = convMatch.Groups[1].Value;
             string title = (tabItem.Tag as BuildConsole.Services.BoardChat)?.Title ?? TabTitleOf(tabItem);
             await LeftSidebar.AssignChatToIssueInteractiveAsync(conversationId, title);
+        }
+
+        /// <summary>Git #1837 — resolves a chat tab's epic, in the same order the "Hand Off
+        /// Now" flow already uses (<see cref="TriggerHandoffAsync"/>): the tab's own tracked
+        /// GithubNumber first, then <see cref="LeftSidebar.GetEpicForChat"/> off its BoardChat
+        /// tag, then <see cref="LeftSidebar.GetEpicByGithubNumber"/> off that chat's
+        /// IssueGithubNumber. Null when none of those resolve — the caller falls back to
+        /// asking Shane via <see cref="NewChatEpicDialog"/>.</summary>
+        private int? ResolveEpicNumberForTab(TabItem tabItem)
+        {
+            if (_chatTabs.TryGetValue(tabItem, out var state) && state.GithubNumber.HasValue)
+                return state.GithubNumber;
+
+            if (tabItem.Tag is BuildConsole.Services.BoardChat chat)
+            {
+                var epic = LeftSidebar.GetEpicForChat(chat);
+                if (epic != null) return epic.GithubNumber;
+
+                if (chat.IssueGithubNumber.HasValue)
+                {
+                    var epicByNumber = LeftSidebar.GetEpicByGithubNumber(chat.IssueGithubNumber.Value);
+                    if (epicByNumber != null) return epicByNumber.GithubNumber;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Git #1837 — the chat-tab context menu's "Start a new chat on Epic #N", modelled on
+        /// <see cref="MenuNewChat_Click"/> but starting from an existing tab rather than a
+        /// File &gt; New Chat prompt, and always carrying a handoff pointer back to the tab
+        /// it was started from. Never touches the predecessor tab — that's the Hand Off Now
+        /// button's job (<see cref="TriggerHandoffAsync"/>), not this one's.
+        /// </summary>
+        private void StartSuccessorChat(TabItem tabItem)
+        {
+            var chatUrl = TryGetChatUrlForTab(tabItem);
+            var convMatch = chatUrl != null ? ClaudeChatUrlRegex.Match(chatUrl) : null;
+            if (convMatch is not { Success: true })
+            {
+                ToastEngine.Warning("New Chat",
+                    "This tab isn't showing a claude.ai conversation yet — a brand-new chat has no conversation id until its first message is sent. Open the chat (or send its first message) and try again.");
+                return;
+            }
+
+            int? epicNumber = ResolveEpicNumberForTab(tabItem);
+            if (!epicNumber.HasValue)
+            {
+                var dialog = new NewChatEpicDialog { Owner = this };
+                if (dialog.ShowDialog() != true || !dialog.EpicNumber.HasValue) return;
+                epicNumber = dialog.EpicNumber.Value;
+            }
+            int n = epicNumber.Value;
+
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (settings == null || string.IsNullOrWhiteSpace(settings.EpicChatProjectUrl))
+            {
+                ToastEngine.Warning("New Chat", "New Chat Project URL is not configured in Settings.");
+                return;
+            }
+
+            var baseUrl = settings.EpicChatProjectUrl.Trim();
+            if (!System.Uri.TryCreate(baseUrl, System.UriKind.Absolute, out _))
+            {
+                BuildConsole.Services.ActivityLog.Log("git-board.chat", $"successor chat aborted — invalid New Chat Project URL '{baseUrl}'");
+                ToastEngine.Warning("New Chat", "The configured New Chat Project URL isn't a valid URL.");
+                return;
+            }
+
+            var pat = settings.GitHubPat?.Trim() ?? "";
+            var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, n, handoffFromChatUrl: chatUrl);
+
+            BuildConsole.Services.ActivityLog.Log("git-board.chat", $"successor chat for Epic #{n} -> {baseUrl} (handoff from {chatUrl}, PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
+            OpenWebTab(fullUrl, $"#{n} New Chat", "", injectPrefillPoll: true, associateIssueNumber: n, associateIssueType: "Epic", associateDefaultTitle: $"[#{n}] New Chat");
         }
 
         public void CloseTab(TabItem tabItem, TabControl? ownerTabControl = null)
@@ -5244,10 +5335,8 @@ namespace BuildConsole
 
                 var pat = settings.GitHubPat?.Trim() ?? "";
                 var label = $"Epic #{targetIssue}";
-                var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
-                var sep = baseUrl.Contains('?') ? "&" : "?";
-                var fullUrl = $"{baseUrl}{sep}bt_prefill={System.Uri.EscapeDataString(prefill)}";
-                
+                var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, targetIssue);
+
                 BuildConsole.Services.ActivityLog.Log("git-board.chat", $"new chat for Epic #{targetIssue} -> {baseUrl} (prefill '{label}', PAT {(string.IsNullOrEmpty(pat) ? "absent" : "present")})");
                 OpenWebTab(fullUrl, $"#{targetIssue} New Chat", "", injectPrefillPoll: true, associateIssueNumber: targetIssue, associateIssueType: "Epic", associateDefaultTitle: $"[#{targetIssue}] New Chat");
             }
@@ -6056,10 +6145,22 @@ namespace BuildConsole
                 }
 
                 var pat = settings.GitHubPat?.Trim() ?? "";
-                var label = $"Epic #{targetIssue.Value}";
-                var prefill = string.IsNullOrEmpty(pat) ? label : $"{pat}\r\n{label}";
-                var sep = baseUrl.Contains('?') ? "&" : "?";
-                var fullUrl = $"{baseUrl}{sep}bt_prefill={System.Uri.EscapeDataString(prefill)}";
+
+                // Git #1837 — carry a pointer back to the chat being archived, so the
+                // successor isn't dropped into the epic with no idea a predecessor existed.
+                // A handoff that loses its pointer is still better than one that doesn't fire
+                // at all, so a URL that can't be resolved just logs it and fires without one.
+                string? handoffFromChatUrl = chat?.ClaudeUrl;
+                if (string.IsNullOrEmpty(handoffFromChatUrl))
+                {
+                    handoffFromChatUrl = TryGetChatUrlForTab(oldTab);
+                }
+                if (string.IsNullOrEmpty(handoffFromChatUrl))
+                {
+                    BuildConsole.Services.ActivityLog.Log("system.core.chat-context", $"Handoff for Epic #{targetIssue.Value} firing without a handoff pointer — old chat's conversation URL could not be resolved.");
+                }
+
+                var fullUrl = BuildConsole.Services.EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, targetIssue.Value, handoffFromChatUrl);
 
                 if (chat != null)
                 {
