@@ -33,6 +33,7 @@ import {
   claimChangeRequestForWrite,
   releaseChangeRequestClaim,
 } from "./change-control-write-gate";
+import { recordExecution } from "./msp-change-execution-store";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.config-pack" });
 import {
@@ -421,6 +422,7 @@ export async function runConfigPackForCustomer(opts: {
   // against a production tenant), so a tenant created by any path that doesn't
   // set it explicitly fails CLOSED into the stricter branches here.
   let claimedChangeRequestId: number | null = null;
+  let claimedMspId: number | null = null;
   if (opts.changeRequestAuthorization) {
     // The CR is scoped on (mspId, tenantId), the same pair every Change Control
     // read uses. Resolve the customer's mspId to scope the lookup.
@@ -445,6 +447,7 @@ export async function runConfigPackForCustomer(opts: {
       );
     }
     claimedChangeRequestId = claim.changeRequestId;
+    claimedMspId = tenantRow.mspId;
   } else if (!customer.isTestbed) {
     if (!opts.purchaseAuthorization) {
       throw new ConfigPackError(
@@ -487,6 +490,39 @@ export async function runConfigPackForCustomer(opts: {
     // later closes the CR (settleAuthorizedChangeRequests).
     if (claimedChangeRequestId !== null) {
       await bindChangeRequestToRun(claimedChangeRequestId, runId);
+
+      // Open the EXECUTION record (#1499) that binds this CR to the run that is
+      // executing it, capturing the approved plan (the ordered step set) now so
+      // it can later be diffed against the run's real per-node outcome. The crRef
+      // is written back onto this row when the run completes
+      // (settleChangeExecutions). Non-fatal: recording the execution must never
+      // break the tenant write it is only observing.
+      if (claimedMspId !== null) {
+        const plannedPlan = {
+          packKey,
+          capturedAt: new Date().toISOString(),
+          actions: ordered.map((t) => ({
+            templateId: t.templateId ?? null,
+            checkKey: t.checkKey ?? null,
+            label: t.label,
+            changeKind: t.templateId ? "update" : "check",
+          })),
+        };
+        await recordExecution({
+          changeRequestId: claimedChangeRequestId,
+          mspId: claimedMspId,
+          tenantId: customer.tenantId,
+          executorKind: "runbook_run",
+          wfRunId: runId,
+          packKey,
+          plannedPlan,
+        }).catch((recErr: unknown) => {
+          log.error(
+            { err: recErr, changeRequestId: claimedChangeRequestId, runId },
+            "config-pack-orchestrator: failed to open CR execution record (non-fatal)",
+          );
+        });
+      }
     }
 
     log.info(

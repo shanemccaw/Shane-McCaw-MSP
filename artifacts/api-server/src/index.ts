@@ -230,10 +230,18 @@ app.listen(port, (err) => {
   // completed (which makes the CR-<id> reference available to drift attribution),
   // and releases a CR whose run failed so it can authorize a retry. Idempotent
   // and non-fatal; nothing to do when no CR is mid-flight.
-  import("./lib/change-control-write-gate").then(({ settleAuthorizedChangeRequests }) => {
+  Promise.all([
+    import("./lib/change-control-write-gate"),
+    import("./lib/msp-change-execution-store"),
+  ]).then(([{ settleAuthorizedChangeRequests }, { settleChangeExecutions }]) => {
     setInterval(() => {
       settleAuthorizedChangeRequests().catch((err: unknown) => {
         logger.warn({ err }, "change-control: CR authorization reconciliation failed (non-fatal)");
+      });
+      // #1499 — the crRef writeback: close run-backed execution records once
+      // their run finishes, writing back the authorizing CR-<id> reference.
+      settleChangeExecutions().catch((err: unknown) => {
+        logger.warn({ err }, "change-control: CR execution reconciliation failed (non-fatal)");
       });
     }, 60_000);
   }).catch((err: unknown) => {
