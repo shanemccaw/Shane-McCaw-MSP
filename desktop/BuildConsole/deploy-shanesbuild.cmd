@@ -85,7 +85,7 @@ powershell -NoProfile -Command ^
   "Get-Process -Name BuildConsole -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\ShanesBuild\*' } | Stop-Process -Force"
 
 echo === Deploying to %OUT_DIR% ===
-robocopy "%BUILD_OUT%" "%OUT_DIR%" /E
+robocopy "%BUILD_OUT%" "%OUT_DIR%" /E /W:5
 if %ERRORLEVEL% GEQ 8 (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "ShanesBuild Deploy - Error" -Message "Deploy failed - robocopy exit code %ERRORLEVEL% copying %BUILD_OUT% to %OUT_DIR%."
   exit /b 1
