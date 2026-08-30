@@ -19,9 +19,13 @@ permanent history.
 Backend route: `artifacts/api-server/src/routes/portal-runbooks.ts` (customer-scoped)
 Derivation library: `artifacts/api-server/src/lib/portal-hold-windows.ts`
 Related route (writes the same tables, different file): `artifacts/api-server/src/routes/portal-oversharing-sites.ts`
-Portal wire/hook files: `artifacts/msp-portal/src/components/portal-v2/holds/useRunbooks.ts`,
-`holds/holdState.ts`, `holds/useHoldBadge.ts`, `govOversharingRunbooksLive.ts`
-Page: `artifacts/msp-portal/src/pages/portal-v2-runbooks.tsx`
+Portal wire/hook files (path stale — `artifacts/msp-portal` was retired for `artifacts/portal` in
+`f40438cdc`; see #1921): `artifacts/portal/src/components/holds/useRunbooks.ts` (carried over,
+extended #1619), `holds/useHoldBadge.ts` (carried over); `holds/holdState.ts` was **not** carried
+over and does not exist in `artifacts/portal`; `govOversharingRunbooksLive.ts` (carried over, under
+`components/`, not `components/holds/`).
+Page: none in `artifacts/portal` — `portal-v2-runbooks.tsx` was not carried over; `Design/portal/`
+has no export for Active Runbooks yet.
 Schema: `lib/db/src/schema/msp.ts:4358-4543` (`portalRunbooksTable`, `portalRunbookStepsTable`,
 `portalHoldWindowsTable`, `portalHoldWindowEventsTable`)
 
@@ -38,14 +42,18 @@ Schema: `lib/db/src/schema/msp.ts:4358-4543` (`portalRunbooksTable`, `portalRunb
 | `/api/portal/hold-windows/:holdId/close-early` | POST | `portal-runbooks.ts:844` (`decisionRoute`, `:742-841`) | `useRunbooks.decideHold("close-early")` (`:265-286`) | No |
 | `/api/portal/hold-windows/:holdId/release` | POST | `portal-runbooks.ts:845` | `useRunbooks.decideHold("release")` | No |
 | `/api/portal/hold-windows/:holdId/prepare-cr` | POST | `portal-runbooks.ts:846` | `useRunbooks.decideHold("prepare-cr")` | No |
-| `/api/portal/hold-windows/:holdId/events` | GET | `portal-runbooks.ts:849-892` | **none found** — no reference in `artifacts/msp-portal/src` | **Yes** |
+| `/api/portal/hold-windows/:holdId/events` | GET | `portal-runbooks.ts:849-892` | `useRunbooks.loadHoldEvents` (`useRunbooks.ts`, added #1619) — **no page calls the hook yet** | **Yes (still no page)** |
 
 **One real live endpoint with no page consumer: `GET /portal/hold-windows/:holdId/events`.** It
 returns the per-window audit trail (`kind`, `daysDelta`, `reason`, `changeRequestCode`,
 `createdAt` — `:878-885`), customer-scoped and re-read with the owning predicate, exactly the
-event history the design's own copy promises ("Extending is recorded with a reason"). Nothing on
-`portal-v2-runbooks.tsx` renders it. Per the #1485 standing convention this is filed as a
-sub-issue at pack time — **#1619**, see §6.
+event history the design's own copy promises ("Extending is recorded with a reason"). Filed at
+pack time as **#1619**, see §6. #1619 wired the endpoint into the module's own data seam
+(`useRunbooks.loadHoldEvents`) so it is reachable through the same hook every other hold-window
+action uses — but stopped at the wire contract per the #1485 module order: `Design/portal/`
+carries no export for Active Runbooks yet, so there is still no page anywhere in `artifacts/portal`
+that calls `loadHoldEvents` or renders its result. The endpoint remains orphaned from a page's
+perspective until Design produces that export and a future build wires it in.
 
 **A related, out-of-module endpoint that writes into the same tables:**
 `POST /api/portal/oversharing/runbooks/:sopKind` (`portal-oversharing-sites.ts:199-268`) ensures a
@@ -281,10 +289,13 @@ two "would be the portal quietly making a tenant change on a button press."
 
 ### 1.8 Hold window events (audit trail) — `GET /api/portal/hold-windows/:holdId/events`
 
-**Orphaned — see §0 and §6.** Returns `{ events: [{ kind, daysDelta, reason,
-changeRequestCode, createdAt }] }` (`:878-885`), customer-scoped via `ownedHold`, newest-first
-(`:872-876`). `changeRequestCode` is `formatChangeRequestCode(changeRequestId)` when the event
-raised one, else `null` (`:883`).
+**Orphaned from a page's perspective — see §0 and §6.** Returns `{ events: [{ kind, daysDelta,
+reason, changeRequestCode, createdAt }] }` (`:878-885`), customer-scoped via `ownedHold`,
+newest-first (`:872-876`). `changeRequestCode` is `formatChangeRequestCode(changeRequestId)` when
+the event raised one, else `null` (`:883`) — `null` for every `extended` event, since extending a
+window does not raise a CR (`:604-608`). #1619 wired this into `useRunbooks.loadHoldEvents(holdId)`,
+which returns `readonly HoldWindowEvent[] | null` (`null` on a failed fetch, distinct from an empty
+history). No page calls the hook yet.
 
 ---
 
@@ -394,9 +405,12 @@ page does not call is a sub-issue, filed at pack time — it should never reach 
 still untracked"):
 
 **`GET /api/portal/hold-windows/:holdId/events` is live, customer-scoped, fully built, and has
-zero page consumers.** Filed as **#1619**, sub-issue of #1488: `portal-v2-runbooks.tsx` renders no
-per-window history — a customer told "extending is recorded with a reason" today has no page that
-shows them that record.
+zero page consumers.** Filed as **#1619**, sub-issue of #1488. #1619 wired the endpoint into
+`useRunbooks.loadHoldEvents` (the module's own data seam) and stopped at that wire contract, per
+the #1485 module order — no page exists to call it yet, since `Design/portal/` has no export for
+Active Runbooks. A customer told "extending is recorded with a reason" today still has no page
+that shows them that record; that remains open until Design produces the export and a page wires
+`loadHoldEvents` in.
 
 ---
 

@@ -22,6 +22,16 @@
  * holding it in a dependency array tears down the polling loop mid-flight.
  * Every existing polling hook in this codebase holds it in a ref; this one does
  * too, and that matters more here than usual because the interval is the point.
+ *
+ * ── loadHoldEvents — the audit trail, on demand ──────────────────────────────
+ * `GET /api/portal/hold-windows/:holdId/events` (Git #1619/#1620) is the
+ * per-window decision history — every extend/close-early/release/prepare-cr,
+ * with its reason and the real CR code it raised, newest first. It is not part
+ * of the periodic `/runbooks` payload: a window's history is only worth a
+ * request once someone actually opens it, not on every 10-minute refetch for
+ * every window whether or not it's looked at. `loadHoldEvents` fetches on
+ * demand and returns `null` on failure so a caller can tell "no events" from
+ * "the request failed" without inventing a third state.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -97,6 +107,17 @@ export interface Runbook {
   readonly hold: HoldWindow | null;
 }
 
+/** One decision taken on a hold window — a row of the audit trail. */
+export interface HoldWindowEvent {
+  readonly kind: "extended" | "closed_early" | "released" | "cr_prepared";
+  /** Days added, only for `kind === "extended"`. `null` for every other kind. */
+  readonly daysDelta: number | null;
+  readonly reason: string | null;
+  /** The CR this decision raised, formatted (`formatChangeRequestCode`), or `null` for `extended`. */
+  readonly changeRequestCode: string | null;
+  readonly createdAt: string;
+}
+
 export interface HoldSummary {
   readonly running: number;
   readonly closing: number;
@@ -127,6 +148,8 @@ export interface RunbooksState {
     decision: "close-early" | "release" | "prepare-cr",
     body?: { note?: string; route?: string; window?: string },
   ) => Promise<{ changeRequestCode: string } | null>;
+  /** The audit trail for one hold window, newest first. `null` on failure. */
+  readonly loadHoldEvents: (holdId: number) => Promise<readonly HoldWindowEvent[] | null>;
 }
 
 export function useRunbooks(): RunbooksState {
@@ -285,5 +308,30 @@ export function useRunbooks(): RunbooksState {
     [],
   );
 
-  return { payload, loaded, error, now, reload, setStepChecked, addStep, extendHold, decideHold };
+  const loadHoldEvents = useCallback(
+    async (holdId: number): Promise<readonly HoldWindowEvent[] | null> => {
+      try {
+        const res = await fetchRef.current(`/api/portal/hold-windows/${holdId}/events`, {}, { silent: true });
+        if (!res.ok) return null;
+        const body = (await res.json()) as { events?: HoldWindowEvent[] };
+        return Array.isArray(body.events) ? body.events : [];
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
+  return {
+    payload,
+    loaded,
+    error,
+    now,
+    reload,
+    setStepChecked,
+    addStep,
+    extendHold,
+    decideHold,
+    loadHoldEvents,
+  };
 }
