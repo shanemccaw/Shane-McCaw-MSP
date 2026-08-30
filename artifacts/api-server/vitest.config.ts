@@ -73,6 +73,10 @@ export default defineConfig({
       "src/lib/portal-change-freeze.test.ts",
       "src/lib/portal-cab.test.ts",
       "src/lib/portal-cab-store.test.ts",
+      // #1499 — Change Control execution record: pure plan-diff / outcome /
+      // attestation / rollback-eligibility rules, plus real-DB store lifecycle.
+      "src/lib/msp-change-execution.test.ts",
+      "src/lib/msp-change-execution-store.test.ts",
       "src/lib/portal-hold-windows.test.ts",
       "src/lib/workflow-node-output-samples.test.ts",
       "src/routes/consent.test.ts",
