@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -63,6 +65,10 @@ namespace BuildConsole.Services
         /// <summary>The production app — named ONLY so the guard can refuse it. Never deployed to from here.</summary>
         public const string ProdContainerApp = "ca-ps-execution";
 
+        // #1617 — bounded polling window for confirming which revision is actually serving.
+        public static readonly TimeSpan DefaultServingRevisionTimeout = TimeSpan.FromSeconds(90);
+        public static readonly TimeSpan DefaultServingRevisionPollInterval = TimeSpan.FromSeconds(3);
+
         private readonly Action<string, ShaneAppLogLevel>? _onLine;
 
         /// <param name="onLine">Optional live line sink (e.g. the shaneapp:// stream). Null for a headless call.</param>
@@ -105,12 +111,85 @@ namespace BuildConsole.Services
                 streamLines: false, ct);
         }
 
-        /// <summary>Parsed convenience wrapper over <see cref="GetServingRevisionRawAsync"/>.</summary>
+        /// <summary>
+        /// Parsed convenience wrapper over <see cref="GetServingRevisionRawAsync"/> — a single,
+        /// unconfirmed read. Prefer <see cref="WaitForServingRevisionAsync"/> after a deploy,
+        /// which polls until the answer is actually trustworthy (#1617).
+        /// </summary>
         public async Task<PsExecutionRevisionInfo?> GetServingRevisionAsync(CancellationToken ct = default)
         {
             var r = await GetServingRevisionRawAsync(ct);
             if (!r.Ok) return null;
-            return ParseFirstActiveRevision(r.Stdout);
+            var (selected, _) = SelectServingRevision(ParseActiveRevisions(r.Stdout), expectedSuffix: null);
+            return selected;
+        }
+
+        /// <summary>
+        /// #1617 — polls <see cref="GetServingRevisionRawAsync"/> until the answer can be
+        /// trusted, instead of the old single-shot read that could (and did) report a stale
+        /// revision. During a Container Apps traffic switch, Azure can report MORE THAN ONE
+        /// revision as <c>active: true</c> at once (the old one fading out, the new one ramping
+        /// up) — taking "the first active entry" is not deterministic. This resolves the
+        /// ambiguity by preferring, in order:
+        /// <list type="number">
+        /// <item>an active revision whose name matches <paramref name="expectedSuffix"/> — the
+        /// revision suffix just deployed. Deterministic; doesn't depend on how long Azure takes
+        /// to settle traffic.</item>
+        /// <item>the sole active revision carrying 100% traffic, when no suffix was given (or
+        /// none of the active revisions match it yet).</item>
+        /// </list>
+        /// If neither condition is met, retries until <paramref name="timeout"/> elapses, then
+        /// returns null — the caller must render an honest "could not confirm which revision is
+        /// serving" failure rather than report a stale/ambiguous guess.
+        /// </summary>
+        /// <param name="expectedSuffix">
+        /// The revision suffix just requested via <c>--revision-suffix</c>, if this poll follows
+        /// a deploy. Pass null for a plain read-only "what's serving right now" query.
+        /// </param>
+        public async Task<PsExecutionRevisionInfo?> WaitForServingRevisionAsync(
+            string? expectedSuffix,
+            TimeSpan? timeout = null,
+            TimeSpan? pollInterval = null,
+            CancellationToken ct = default)
+        {
+            var effectiveTimeout = timeout ?? DefaultServingRevisionTimeout;
+            var effectiveInterval = pollInterval ?? DefaultServingRevisionPollInterval;
+            var deadline = DateTime.UtcNow + effectiveTimeout;
+            string reason = "no attempt made yet";
+
+            while (true)
+            {
+                var r = await GetServingRevisionRawAsync(ct);
+                if (r.Ok)
+                {
+                    var candidates = ParseActiveRevisions(r.Stdout);
+                    var (selected, note) = SelectServingRevision(candidates, expectedSuffix);
+                    reason = note;
+                    if (selected != null)
+                    {
+                        Emit($"Serving revision confirmed: {selected.Name} ({note}).", ShaneAppLogLevel.Success);
+                        return selected;
+                    }
+                    Emit($"Serving revision not yet confirmed — {note}. Retrying…", ShaneAppLogLevel.Info);
+                }
+                else
+                {
+                    reason = $"az containerapp revision list failed (exit {r.ExitCode})";
+                    Emit($"{reason} while polling for the serving revision. Retrying…", ShaneAppLogLevel.Warning);
+                }
+
+                if (ct.IsCancellationRequested || DateTime.UtcNow >= deadline)
+                {
+                    Emit(
+                        $"Timed out after {effectiveTimeout.TotalSeconds:0}s waiting to confirm the serving revision " +
+                        $"({reason}) — could not confirm which revision is serving.",
+                        ShaneAppLogLevel.Error);
+                    return null;
+                }
+
+                try { await Task.Delay(effectiveInterval, ct); }
+                catch (OperationCanceledException) { return null; }
+            }
         }
 
         /// <summary>
@@ -163,12 +242,15 @@ namespace BuildConsole.Services
             }
             Emit("[2/3] containerapp update OK — new revision requested.", ShaneAppLogLevel.Success);
 
-            // 3. Read back the now-active revision from Azure (never assume success).
-            Emit("[3/3] Reading back the active serving revision…", ShaneAppLogLevel.Info);
-            var active = await GetServingRevisionAsync(ct);
+            // 3. Confirm which revision is now actually serving (never assume success, and
+            //    never trust the first "active"-flagged entry — #1617: Azure can report more
+            //    than one revision as active mid-switch, and the just-deployed suffix is the
+            //    deterministic way to tell them apart).
+            Emit($"[3/3] Confirming '{suffix}' is the serving revision (polling up to {DefaultServingRevisionTimeout.TotalSeconds:0}s)…", ShaneAppLogLevel.Info);
+            var active = await WaitForServingRevisionAsync(suffix, ct: ct);
             if (active == null)
             {
-                Emit("[3/3] Could not read the active revision back — deploy result UNCONFIRMED.", ShaneAppLogLevel.Error);
+                Emit("[3/3] Could not confirm which revision is serving — deploy result UNCONFIRMED.", ShaneAppLogLevel.Error);
                 return null;
             }
             Emit($"[3/3] Active revision now: {active.Name} (image {active.Image}, traffic {active.TrafficWeight}%).", ShaneAppLogLevel.Success);
@@ -201,29 +283,72 @@ namespace BuildConsole.Services
             return string.IsNullOrEmpty(cleaned) ? $"dev{DateTime.UtcNow:yyyyMMddHHmmss}" : cleaned;
         }
 
-        public static PsExecutionRevisionInfo? ParseFirstActiveRevision(string json)
+        /// <summary>
+        /// Parses every <c>active</c>-flagged revision out of the raw
+        /// <c>az containerapp revision list</c> JSON. #1617: this used to return only the
+        /// first entry, silently assuming the array was ordered new-first and that exactly one
+        /// revision could ever be active at a time — neither holds during a traffic switch.
+        /// </summary>
+        public static List<PsExecutionRevisionInfo> ParseActiveRevisions(string json)
         {
+            var result = new List<PsExecutionRevisionInfo>();
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.ValueKind != JsonValueKind.Array) return null;
+                if (doc.RootElement.ValueKind != JsonValueKind.Array) return result;
                 foreach (var el in doc.RootElement.EnumerateArray())
                 {
-                    return new PsExecutionRevisionInfo
+                    result.Add(new PsExecutionRevisionInfo
                     {
                         Name = el.TryGetProperty("name", out var n) ? (n.GetString() ?? "") : "",
                         Image = el.TryGetProperty("image", out var i) ? (i.GetString() ?? "") : "",
                         Active = el.TryGetProperty("active", out var a) && a.ValueKind == JsonValueKind.True,
                         TrafficWeight = el.TryGetProperty("traffic", out var t) && t.ValueKind == JsonValueKind.Number ? t.GetInt32() : 0,
                         CreatedTime = el.TryGetProperty("created", out var c) ? (c.GetString() ?? "") : "",
-                    };
+                    });
                 }
-                return null;
             }
             catch
             {
-                return null;
+                // Malformed JSON — return whatever was parsed so far (empty on a parse failure
+                // before any element), never throw. The caller treats "no confident match" as
+                // "keep polling / eventually time out", so an empty list here is handled safely.
             }
+            return result;
+        }
+
+        /// <summary>
+        /// #1617 — picks the one revision out of <paramref name="candidates"/> (all
+        /// <c>active: true</c>) that can actually be trusted as "what's serving now", or null
+        /// if the answer is still ambiguous. Order of preference:
+        /// <list type="number">
+        /// <item>a revision whose name matches <paramref name="expectedSuffix"/> (the suffix
+        /// just requested via <c>--revision-suffix</c>) — deterministic, doesn't depend on
+        /// Azure's traffic-settling time.</item>
+        /// <item>the sole candidate carrying 100% traffic, when no suffix was given or none of
+        /// the candidates match it (yet).</item>
+        /// </list>
+        /// </summary>
+        internal static (PsExecutionRevisionInfo? Revision, string Reason) SelectServingRevision(
+            List<PsExecutionRevisionInfo> candidates, string? expectedSuffix)
+        {
+            if (!string.IsNullOrWhiteSpace(expectedSuffix))
+            {
+                var bySuffix = candidates.FirstOrDefault(c =>
+                    c.Name.EndsWith("--" + expectedSuffix, StringComparison.OrdinalIgnoreCase) ||
+                    c.Name.EndsWith(expectedSuffix, StringComparison.OrdinalIgnoreCase));
+                if (bySuffix != null)
+                    return (bySuffix, $"matched deployed suffix '{expectedSuffix}'");
+            }
+
+            var fullTraffic = candidates.Where(c => c.TrafficWeight == 100).ToList();
+            if (fullTraffic.Count == 1)
+                return (fullTraffic[0], "sole active revision carrying 100% traffic");
+
+            string reason = !string.IsNullOrWhiteSpace(expectedSuffix)
+                ? $"no active revision named '*{expectedSuffix}' and no single revision at 100% traffic ({candidates.Count} active, {fullTraffic.Count} at 100%)"
+                : $"no single active revision at 100% traffic ({candidates.Count} active, {fullTraffic.Count} at 100%)";
+            return (null, reason);
         }
 
         // --- az process runner ---------------------------------------------------
