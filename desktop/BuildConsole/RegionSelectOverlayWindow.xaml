@@ -17,7 +17,16 @@
          (DialogResult=false). The caller reads SelectedRect (device-independent,
          relative to this window's own top-left = the WebView2's top-left) and
          converts to device pixels for VisualTestTrackerCapture.CaptureRegionAsync. -->
+    <!-- Background MUST be a non-null brush (Transparent works) or the Canvas is NOT
+         hit-test-visible over its empty area, so MouseLeftButtonDown/Move/Up never fire
+         when you press on the dim overlay — the crosshair shows but a drag draws nothing
+         and only Esc (a Window-level KeyDown) works. That was Git #1888: the Window's
+         #40000000 dim is a hittable brush on the *Window*, but these handlers live on the
+         *Canvas*, an unhittable null-background descendant, so the press never routed
+         through them. Transparent keeps the dim (drawn by the Window behind this Canvas)
+         fully visible while making the whole overlay area catch the drag. -->
     <Canvas x:Name="RootCanvas"
+            Background="Transparent"
             MouseLeftButtonDown="RootCanvas_MouseLeftButtonDown"
             MouseMove="RootCanvas_MouseMove"
             MouseLeftButtonUp="RootCanvas_MouseLeftButtonUp">
