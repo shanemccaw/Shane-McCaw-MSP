@@ -92,6 +92,23 @@ export const REQUIRED_MT_SCOPES = [
   // when this shipped, so there is nothing to force a re-consent on.)
   "Organization.Read.All",
   "Domain.Read.All",
+  // #1811 — found genuinely granted live in Entra (Graph appRoleAssignments,
+  // 2026-08-30T02:58:29Z) with nothing in this array naming it; adoption:planner-
+  // usage was 403ing on all groups until the grant. TRANSCRIPTION NOTE: this
+  // array mirrors the live registration, it did not cause the grant.
+  "Tasks.Read.All",
+  // #1811 part 3 — resolved off the #1812 baseline snapshot
+  // (mtapp-prod-required-resource-access.json) against the live Microsoft
+  // Graph service principal's appRoles; both are genuinely granted on the MT
+  // app and were simply never transcribed into this array. TRANSCRIPTION NOTE
+  // as above: mirrors what's already live, does not grant anything itself.
+  "DeviceManagementApps.Read.All",
+  "TeamworkDevice.Read.All",
+  // #1811 part 3 — same audit, but on the Office 365 Exchange Online resource
+  // (00000002-0000-0ff1-ce00-000000000000), not Graph: the live registration
+  // carries BOTH Exchange.ManageAsApp and its V2 successor. Only the V1 name
+  // was ever transcribed here.
+  "Exchange.ManageAsAppV2",
 ] as const;
 
 export type MtScope = typeof REQUIRED_MT_SCOPES[number];

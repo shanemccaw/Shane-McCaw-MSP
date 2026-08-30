@@ -2,7 +2,7 @@
  * Consent Flow Tests (vitest)
  *
  * Covers:
- *   1. REQUIRED_MT_SCOPES — full union of 16 scopes
+ *   1. REQUIRED_MT_SCOPES — full union of 35 scopes
  *   2. buildAdminConsentUrl — URL structure
  *   3. ConsentRevokedError — instanceof, tenantId, message
  *   4. mtAppCredentialsPresent — env var checks
@@ -227,14 +227,23 @@ import {
 
 describe("graph.ts — multi-tenant helpers", () => {
   describe("REQUIRED_MT_SCOPES", () => {
-    it("contains exactly 31 scopes", () => {
+    it("contains exactly 35 scopes", () => {
       // 28 → 31 when #1130 added the read-app Graph scopes for Global Reader
       // role provisioning (commit 81370dba3) without updating this count —
       // the suite sat red at baseline until repaired here (#1312).
-      expect(REQUIRED_MT_SCOPES).toHaveLength(31);
+      // 31 → 35 (#1811): Tasks.Read.All (found genuinely granted live but never
+      // transcribed) plus DeviceManagementApps.Read.All, TeamworkDevice.Read.All
+      // and Exchange.ManageAsAppV2 (found via #1812's baseline audit — also
+      // genuinely granted live, also never transcribed).
+      expect(REQUIRED_MT_SCOPES).toHaveLength(35);
     });
 
     it("includes all required scopes", () => {
+      // Every member of REQUIRED_MT_SCOPES, kept 1:1 with the length assertion
+      // above so a passing count can never hide an unasserted member (#1312's
+      // original repair, extended by #1811 which found 4 scopes present in the
+      // array but absent from this list: RoleEligibilitySchedule.Read.Directory,
+      // IdentityRiskEvent.Read.All, Organization.Read.All, Domain.Read.All).
       const required = [
         "Directory.Read.All",
         "SecurityEvents.Read.All",
@@ -248,6 +257,8 @@ describe("graph.ts — multi-tenant helpers", () => {
         "AuditLog.Read.All",
         "ActivityFeed.Read",
         "IdentityRiskyUser.Read.All",
+        "IdentityRiskEvent.Read.All",
+        "RoleEligibilitySchedule.Read.Directory",
         "AccessReview.Read.All",
         "TeamSettings.Read.All",
         "ServiceMessage.Read.All",
@@ -263,7 +274,14 @@ describe("graph.ts — multi-tenant helpers", () => {
         "RecordsManagement.Read.All",
         "SharePointTenantSettings.Read.All",
         "Team.ReadBasic.All",
+        "Organization.Read.All",
+        "Domain.Read.All",
+        "Tasks.Read.All",
+        "DeviceManagementApps.Read.All",
+        "TeamworkDevice.Read.All",
+        "Exchange.ManageAsAppV2",
       ];
+      expect(required).toHaveLength(REQUIRED_MT_SCOPES.length);
       for (const scope of required) {
         expect(REQUIRED_MT_SCOPES).toContain(scope);
       }
