@@ -1493,6 +1493,37 @@ export interface ThrottleRetryOptions {
   baseDelayMs: number;
 }
 
+/**
+ * The generic non-2xx failure `graphFetchPaginated` raises, carrying the wire
+ * evidence as FIELDS rather than only inside the message string (Git #1796).
+ *
+ * `message` is byte-for-byte the string this used to throw
+ * (`Graph API error <status>: <body-prefix>`), so every existing catcher —
+ * monitor-executor's own `executeCheck`, monitor-failure-classifier, the
+ * simulator — behaves exactly as before. The only thing that changed is that a
+ * caller which WANTS the status code, the endpoint and the verbatim body no
+ * longer has to regex them back out of a sentence.
+ *
+ * #1796's snapshot collector needs precisely that: each per-resource row in
+ * `tenant_config_snapshot_resource_status` records the real `http_status`,
+ * `error_code` and `error_message`, and a reason parsed out of prose would be a
+ * summary of the evidence rather than the evidence itself.
+ */
+export class GraphPaginatedError extends Error {
+  readonly status: number;
+  readonly endpoint: string;
+  /** Verbatim response body, truncated to the same cap the message uses. */
+  readonly body: string;
+
+  constructor(status: number, endpoint: string, body: string) {
+    super(`Graph API error ${status}: ${body.slice(0, GRAPH_ERROR_BODY_CAPTURE_CHARS)}`);
+    this.name = "GraphPaginatedError";
+    this.status = status;
+    this.endpoint = endpoint;
+    this.body = body.slice(0, GRAPH_ERROR_BODY_CAPTURE_CHARS);
+  }
+}
+
 // ── Intune service-level reachability (#487, re-scoped by #1847) ──────────────
 // The signature matching, the entitlement read and the combined tenant-level
 // verdict all live in service-availability.ts now. What changed in #1847 is what
@@ -1688,7 +1719,7 @@ export async function graphFetchPaginated(
         url = "";
         continue;
       }
-      throw new Error(`Graph API error ${res.status}: ${text.slice(0, GRAPH_ERROR_BODY_CAPTURE_CHARS)}`);
+      throw new GraphPaginatedError(res.status, resolvedEndpoint, text);
     }
 
     // Usage-report endpoints answer with CSV (via a followed 302), not JSON.

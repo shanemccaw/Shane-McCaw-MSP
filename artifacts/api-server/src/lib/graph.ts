@@ -8,6 +8,12 @@ import { annotateCapturedResponse, recordOutgoingGraphRequest } from "./graph-re
 import { DERIVED_WRITE_APP_PERMISSIONS } from "./graph-write-permissions";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
+/**
+ * The only origin a tenant-scoped Graph bearer token may be sent to. Used by
+ * `graphFetchForTenant` to allow an absolute Graph URL (which is how `beta` is
+ * reached — see #1796) while refusing to send the token anywhere else.
+ */
+const GRAPH_HOST_PREFIX = "https://graph.microsoft.com/";
 
 /** Microsoft Graph's own service principal appId — the resource app roles are defined on. */
 const MICROSOFT_GRAPH_RESOURCE_APP_ID = "00000003-0000-0000-c000-000000000000";
@@ -788,7 +794,30 @@ export async function graphFetchForTenant(
   _isRetryWithFreshToken = false,
 ): Promise<Response> {
   const token = await getAccessTokenForTenant(tenantId);
-  const url = `${GRAPH_BASE}${path}`;
+  // `path` is normally relative to the v1.0 root. An ABSOLUTE Graph URL is also
+  // accepted and used verbatim (Git #1796), for two real reasons:
+  //
+  //   1. `beta` was unreachable. GRAPH_BASE is v1.0 only, so nothing in this
+  //      codebase could read a beta endpoint through the tenant-scoped transport
+  //      — and 464 of the 1,359 collectable rows in `config_snapshot_resource_types`
+  //      are beta. The alternative was a second transport with its own auth,
+  //      consent-revocation and licence-gap handling, which is exactly what #1796
+  //      forbids. Widening the URL construction reuses all of it instead.
+  //   2. It fixes a latent bug in `graphFetchPaginated`, which already passes
+  //      `endpoint.startsWith("http")` values straight through: those were being
+  //      concatenated onto GRAPH_BASE, producing
+  //      `https://graph.microsoft.com/v1.0https://…`. No caller supplied one yet
+  //      (0 of 157 `monitor_checks` rows carry an absolute endpoint), so it had
+  //      never fired.
+  //
+  // Gated to the Graph host, so this can never be turned into a general-purpose
+  // fetch that leaks a tenant's Graph bearer token to an arbitrary origin.
+  if (/^https?:\/\//i.test(path) && !path.startsWith(GRAPH_HOST_PREFIX)) {
+    throw new Error(
+      `graphFetchForTenant: absolute URLs must be on ${GRAPH_HOST_PREFIX} — refusing to send a Graph token to ${path.slice(0, 120)}`,
+    );
+  }
+  const url = path.startsWith(GRAPH_HOST_PREFIX) ? path : `${GRAPH_BASE}${path}`;
   const init: RequestInit = {
     ...options,
     headers: {
