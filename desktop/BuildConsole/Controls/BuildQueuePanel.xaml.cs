@@ -3193,6 +3193,40 @@ namespace BuildConsole.Controls
         private static string CapitalizeFirst(string s) =>
             string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
 
+        /// <summary>
+        /// Shane, 2026-08-30 — mirrors a local Park/Un-park onto the real GitHub Project
+        /// board: "Create a new Bucket in Git like the 'Batter Up' called 'Park' and
+        /// move the Git issue there... then it pulls it out of the Batter Up queue,
+        /// puts it in its own queue away from the build." Fire-and-forget by design
+        /// (same shape as UnparkAsync's in-flight/complete label sync) — a slow or
+        /// failed GitHub call should never block the local park/un-park it's paired
+        /// with, since the local 'parked' status is already the source of truth for
+        /// BuildConsole itself. No-op when the item has no linked GitHub issue or no
+        /// PAT is configured.
+        /// </summary>
+        private static void SyncGitHubParkStatus(int? githubNumber, string optionId, string actionLabel)
+        {
+            if (!githubNumber.HasValue) return;
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat) return;
+            var num = githubNumber.Value;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var client = new GitHubApiClient(settings.GitHubPat);
+                    bool moved = await client.SetIssueStatusByNumberAsync(num, optionId);
+                    ActivityLog.Log("build-queue", moved
+                        ? $"{actionLabel}: moved Git #{num}'s board status."
+                        : $"{actionLabel}: Git #{num} isn't on the project board — nothing to move.");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("build-queue", $"{actionLabel}: couldn't move Git #{num}'s board status: {ex.Message}");
+                }
+            });
+        }
+
         private ContextMenu BuildCardContextMenu(QueueItem item)
         {
             var cm = new ContextMenu();
@@ -3346,6 +3380,7 @@ namespace BuildConsole.Controls
                             ToastEngine.Success("Parked", $"Stopped and staged for later: {item.Title}");
                             ActivityLog.Log("build-queue", $"Parked running queue item #{item.Id} ({item.Title}) — stopped and staged" +
                                 (string.IsNullOrWhiteSpace(sid) ? ", no session id captured so Un-park will start it over." : "; Un-park will resume its session."));
+                            SyncGitHubParkStatus(item.GithubNumber, GitHubApiClient.ParkOptionId, "Park");
                         }
                         else
                             ToastEngine.Warning("Park", $"No longer running: {item.Title}");
@@ -3429,6 +3464,7 @@ namespace BuildConsole.Controls
                         {
                             ToastEngine.Success("Parked", $"Staged, not queued: {item.Title}");
                             ActivityLog.Log("build-queue", $"Parked queue item #{item.Id} ({item.Title}) — no longer queued.");
+                            SyncGitHubParkStatus(item.GithubNumber, GitHubApiClient.ParkOptionId, "Park");
                         }
                         else
                             ToastEngine.Warning("Park", $"No longer queued: {item.Title}");
@@ -3523,6 +3559,7 @@ namespace BuildConsole.Controls
                         {
                             ToastEngine.Success("Parked", $"Staged, not queued: {item.Title}");
                             ActivityLog.Log("session-limit", $"Parked limit-paused queue item #{item.Id} ({item.Title}) — will NOT auto-restart.");
+                            SyncGitHubParkStatus(item.GithubNumber, GitHubApiClient.ParkOptionId, "Park");
                         }
                         else
                             ToastEngine.Warning("Park", $"No longer limit-paused: {item.Title}");
@@ -3586,6 +3623,7 @@ namespace BuildConsole.Controls
                         {
                             ToastEngine.Success("Un-parked", $"Back in the queue: {item.Title}");
                             ActivityLog.Log("build-queue", $"Un-parked queue item #{item.Id} ({item.Title}) — now queued.");
+                            SyncGitHubParkStatus(item.GithubNumber, GitHubApiClient.BatterUpPromoteOptionId, "Un-park");
                         }
                         else
                             ToastEngine.Warning("Un-park", $"No longer parked: {item.Title}");
