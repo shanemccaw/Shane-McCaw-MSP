@@ -2363,7 +2363,7 @@ namespace BuildConsole.Controls
         {
             if (BuildSetRollupSection == null || BuildSetRollupList == null) return;
 
-            var buckets = new Dictionary<string, (List<int> upNext, List<int> running, List<int> verifying)>(StringComparer.OrdinalIgnoreCase);
+            var buckets = new Dictionary<string, (List<int> upNext, List<int> running, List<int> verifying, List<QueueItem> members)>(StringComparer.OrdinalIgnoreCase);
             var bucketOrder = new List<string>();
             foreach (var item in items)
             {
@@ -2371,7 +2371,7 @@ namespace BuildConsole.Controls
                 string key = NormalizeBuildSetKey(item.BuildSet);
                 if (!buckets.TryGetValue(key, out var counts))
                 {
-                    counts = (new List<int>(), new List<int>(), new List<int>());
+                    counts = (new List<int>(), new List<int>(), new List<int>(), new List<QueueItem>());
                     buckets[key] = counts;
                     bucketOrder.Add(key);
                 }
@@ -2379,6 +2379,8 @@ namespace BuildConsole.Controls
                 if (item.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus) counts.upNext.Add(refNum);
                 else if (item.Status == "running") counts.running.Add(refNum);
                 else if (item.Status == BuildQueuePostgresClient.VerifyingStatus) counts.verifying.Add(refNum);
+                else continue;
+                counts.members.Add(item);
             }
 
             var orderedKeys = bucketOrder
@@ -2395,7 +2397,7 @@ namespace BuildConsole.Controls
             foreach (var key in orderedKeys)
             {
                 var counts = buckets[key];
-                BuildSetRollupList.Children.Add(BuildRollupRow(key, counts.upNext, counts.running, counts.verifying));
+                BuildSetRollupList.Children.Add(BuildRollupRow(key, counts.upNext, counts.running, counts.verifying, counts.members));
             }
         }
 
@@ -2410,7 +2412,7 @@ namespace BuildConsole.Controls
         /// marks its own MouseLeftButtonUp handled before it bubbles to the row's
         /// MouseLeftButtonDown handler (same nested-click pattern the queue cards below already
         /// rely on for their own context-menu buttons).</summary>
-        private UIElement BuildRollupRow(string buildSetKey, List<int> upNext, List<int> running, List<int> verifying)
+        private UIElement BuildRollupRow(string buildSetKey, List<int> upNext, List<int> running, List<int> verifying, List<QueueItem> members)
         {
             bool isUngrouped = string.Equals(buildSetKey, UngroupedBuildSetKey, StringComparison.OrdinalIgnoreCase);
             var accentBrush = isUngrouped ? (Brush)Application.Current.FindResource("Subtext0Brush") : GetBuildSetBrush(buildSetKey);
@@ -2610,7 +2612,87 @@ namespace BuildConsole.Controls
                 detail.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
             };
 
+            headerBorder.ContextMenu = BuildRollupRowContextMenu(buildSetKey, members, isSelected, isExpanded);
+
             return wrapper;
+        }
+
+        /// <summary>Git #1999 — right-click menu for a BUILD SETS rollup row. Reuses the exact
+        /// same chat-resolution path individual cards use (<see cref="QueueItemChatRequested"/> →
+        /// MainWindow's OpenChatForQueueItem) rather than a second one — a build set just has
+        /// potentially several distinct originating chats among its members instead of one, so
+        /// this only adds the "which chat(s)" step on top, then hands a representative
+        /// <see cref="QueueItem"/> to the same event the card menu already raises.</summary>
+        private ContextMenu BuildRollupRowContextMenu(string buildSetKey, List<QueueItem> members, bool isSelected, bool isExpanded)
+        {
+            var cm = new ContextMenu();
+
+            // Distinct originating chats across this set's current members, deduped on
+            // OriginatingChatId first (falls back to ChatUrl only when no chat id is set) —
+            // same precedence OpenChatForQueueItem itself resolves in. Members with neither
+            // are simply not a chat and don't contribute an entry (no invented "Unknown chat" row).
+            var chatGroups = new List<(string Key, QueueItem Representative, int Count)>();
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var m in members)
+            {
+                string? chatKey = !string.IsNullOrWhiteSpace(m.OriginatingChatId) ? m.OriginatingChatId : m.ChatUrl;
+                if (string.IsNullOrWhiteSpace(chatKey)) continue;
+                if (seen.TryGetValue(chatKey, out var idx))
+                {
+                    var existing = chatGroups[idx];
+                    chatGroups[idx] = (existing.Key, existing.Representative, existing.Count + 1);
+                }
+                else
+                {
+                    seen[chatKey] = chatGroups.Count;
+                    chatGroups.Add((chatKey, m, 1));
+                }
+            }
+
+            if (chatGroups.Count == 1)
+            {
+                var miOpenChat = new MenuItem { Header = "💬 Open Originating Chat" };
+                var rep = chatGroups[0].Representative;
+                miOpenChat.Click += (_, _) => QueueItemChatRequested?.Invoke(this, rep);
+                cm.Items.Add(miOpenChat);
+                cm.Items.Add(new Separator());
+            }
+            else if (chatGroups.Count > 1)
+            {
+                var chatSubmenu = new MenuItem { Header = "💬 Open Originating Chat" };
+                foreach (var (key, rep, count) in chatGroups)
+                {
+                    // No chat title is resolvable from here (BuildQueuePanel has no chat-list
+                    // lookup by conversation id) — label with the real id/url plus how many of
+                    // this set's items came from it, per the issue's fallback wording.
+                    var miChat = new MenuItem { Header = $"{key} ({count} item{(count == 1 ? "" : "s")})" };
+                    var capturedRep = rep;
+                    miChat.Click += (_, _) => QueueItemChatRequested?.Invoke(this, capturedRep);
+                    chatSubmenu.Items.Add(miChat);
+                }
+                cm.Items.Add(chatSubmenu);
+                cm.Items.Add(new Separator());
+            }
+            // chatGroups.Count == 0 → omit the entry entirely, matching the card menu's own
+            // guard at the OriginatingChatId/ChatUrl check.
+
+            var miFilter = new MenuItem
+            {
+                Header = isSelected ? $"✕ Clear filter (\"{buildSetKey}\")" : $"Filter queue to \"{buildSetKey}\""
+            };
+            miFilter.Click += (_, _) => ToggleBuildSetFilter(buildSetKey);
+            cm.Items.Add(miFilter);
+
+            var miExpand = new MenuItem { Header = isExpanded ? "▲ Collapse" : "▼ Expand" };
+            miExpand.Click += (_, _) =>
+            {
+                if (isExpanded) _expandedRollupSets.Remove(buildSetKey);
+                else _expandedRollupSets.Add(buildSetKey);
+                RenderBuildSetRollup(_lastItems);
+            };
+            cm.Items.Add(miExpand);
+
+            return cm;
         }
 
         /// <summary>Git #1834 addendum — click a rollup row to filter the queue graph below
