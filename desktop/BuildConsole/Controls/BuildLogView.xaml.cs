@@ -55,13 +55,15 @@ namespace BuildConsole.Controls
         }
 
         private BuildConsole.Services.BuildTrackerApiClient? _api;
+        private BuildConsole.Services.BuildQueuePostgresClient? _db;
         private DispatcherTimer? _pillsTimer;
         private string? _lastPillsSignature;
 
-        /// <summary>Called once from MainWindow alongside its other panel Initialize calls - needs the shared API client purely to look up id/epic/title for a live session's matching queue row, never to trust its status.</summary>
-        public void Initialize(BuildConsole.Services.BuildTrackerApiClient api)
+        /// <summary>Called once from MainWindow alongside its other panel Initialize calls - needs the shared API client purely to look up id/epic/title for a live session's matching queue row, never to trust its status. `db`, when available, is preferred over the HTTP client for the queue read itself (Git #1969) - same convention as every other queue reader in this app.</summary>
+        public void Initialize(BuildConsole.Services.BuildTrackerApiClient api, BuildConsole.Services.BuildQueuePostgresClient? db = null)
         {
             _api = api;
+            _db = db;
             _pillsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
             _pillsTimer.Tick += async (_, _) => await RefreshRunningBuildPillsAsync();
             _pillsTimer.Start();
@@ -93,7 +95,12 @@ namespace BuildConsole.Controls
             catch { return; } // best-effort - a shell-out hiccup shouldn't blank out what's already shown
 
             List<Services.QueueItem> queueItems;
-            try { queueItems = await _api.GetQueueAsync(); }
+            try
+            {
+                queueItems = _db != null
+                    ? await _db.GetQueueAsync()
+                    : await _api.GetQueueAsync();
+            }
             catch { return; }
 
             var byTitle = queueItems.Where(i => !string.IsNullOrWhiteSpace(i.Title))

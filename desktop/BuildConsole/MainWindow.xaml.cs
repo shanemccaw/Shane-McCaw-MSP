@@ -200,6 +200,10 @@ namespace BuildConsole
         // the build queue watcher (#817) and the deploy-status poll (#805).
         private DispatcherTimer? _testTriggerTimer;
         private bool _testTriggerBusy;
+        // Git #1969 — same transition-only logging discipline as BuildTrackerApiClient's
+        // own TrackAsync: an unreachable API server should log once on the way down and
+        // once on the way back up, not every 5s tick forever.
+        private bool _testTriggerPollReachable = true;
 
         // ── shaneapp://executeSql local protocol listener (SQL trigger) ──────────
         // The counterpart to #898's HTTP test-trigger, but a LOCAL-machine handoff
@@ -579,7 +583,7 @@ namespace BuildConsole
             }
 
             LeftSidebar.Initialize(_buildTrackerApi, _queueDb);
-            BuildLogView.Initialize(_buildTrackerApi);
+            BuildLogView.Initialize(_buildTrackerApi, _queueDb);
             TerminalView.Initialize(_buildTrackerApi);
             MarketingLogView.Initialize("shane-mccaw-consulting", "Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐");
             PortalLogView.Initialize("portal", "Portal", 5175, "artifacts/portal", "💼");
@@ -3638,7 +3642,12 @@ namespace BuildConsole
             if (_chatTabs.Count == 0 && _chatButtonStatus.Count == 0) return;
 
             List<BuildConsole.Services.QueueItem> queue;
-            try { queue = await _buildTrackerApi.GetQueueAsync(); }
+            try
+            {
+                queue = _queueDb != null
+                    ? await _queueDb.GetQueueAsync()
+                    : await _buildTrackerApi.GetQueueAsync();
+            }
             catch { return; }
 
             foreach (var (tab, state) in _chatTabs.ToList())
@@ -8358,12 +8367,25 @@ namespace BuildConsole
             if (_testTriggerBusy || _buildTrackerApi == null) return;
 
             BuildConsole.Services.TestRunRequest? req;
-            try { req = await _buildTrackerApi.GetNextTestRunAsync(); }
+            try
+            {
+                req = await _buildTrackerApi.GetNextTestRunAsync();
+                if (!_testTriggerPollReachable)
+                {
+                    _testTriggerPollReachable = true;
+                    BuildConsole.Services.ActivityLog.Log("testing.remote-trigger", "Poll recovered — API server reachable again.");
+                }
+            }
             catch (Exception ex)
             {
-                // Transient poll failure (server down mid-session, etc.) — note it once
-                // and let the next tick retry; never spam or throw out of a timer tick.
-                BuildConsole.Services.ActivityLog.Log("testing.remote-trigger", $"Poll failed: {ex.Message}");
+                // Transient poll failure (server down mid-session, etc.) — log the
+                // reachable→unreachable transition once, not a line every 5s tick
+                // forever (Git #1969); the next tick still retries either way.
+                if (_testTriggerPollReachable)
+                {
+                    _testTriggerPollReachable = false;
+                    BuildConsole.Services.ActivityLog.Log("testing.remote-trigger", $"Poll failed: {ex.Message} — suppressing repeat lines until it recovers.");
+                }
                 return;
             }
 

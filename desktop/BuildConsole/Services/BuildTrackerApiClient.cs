@@ -238,7 +238,16 @@ namespace BuildConsole.Services
             IsConfigured = config.IsConfigured;
             ConfiguredApiBaseUrl = config.ApiBaseUrl;
             var baseUrl = string.IsNullOrWhiteSpace(config.ApiBaseUrl) ? "http://localhost:8080" : config.ApiBaseUrl.TrimEnd('/') + "/";
-            _http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(20) };
+            // Git #1969 — a genuinely refused connection (nothing listening on
+            // localhost:8080) returns at the socket level almost instantly, but the
+            // BCL's default SocketsHttpHandler.ConnectTimeout is effectively unbounded
+            // (it falls through to the overall HttpClient.Timeout below), and real
+            // logs showed every "server down" call site burning ~4.1s per attempt
+            // regardless. Capping ConnectTimeout short makes the common "nothing's
+            // listening" case fail fast without touching the 20s Timeout below, which
+            // still governs genuinely slow-but-reachable requests.
+            var handler = new SocketsHttpHandler { ConnectTimeout = TimeSpan.FromSeconds(2) };
+            _http = new HttpClient(handler) { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(20) };
             if (!string.IsNullOrWhiteSpace(config.IngestToken))
             {
                 _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.IngestToken);
@@ -292,6 +301,16 @@ namespace BuildConsole.Services
             catch { return false; }
         }
 
+        // Git #1969 — real logs showed an unreachable API server logging an identical
+        // "-> GET queue" / "x GET queue FAILED" pair every ~2s for an entire session
+        // (two callers in parallel, neither branching to a live Postgres client first —
+        // fixed separately). Even with that fixed, anything still going through TrackAsync
+        // while the server is down would spam the same way. Track reachability once per
+        // client instance and log only the transition (reachable → unreachable, and back),
+        // not every attempt — same discipline applied to testing.remote-trigger's poll.
+        private bool _serverReachable = true;
+        private int _consecutiveFailures;
+
         /// <summary>
         /// Git #815 — Shane: "put the startup SSE and api calls in there...
         /// so we can just look and see whats happening as its happening in
@@ -299,20 +318,38 @@ namespace BuildConsole.Services
         /// failure) line into ActivityLog; ActivityLog.Log() itself never
         /// blocks the caller (fire-and-forget onto the UI thread), so this
         /// adds visibility without adding any risk of the app hanging on it.
+        /// Git #1969 — while the server is known-unreachable, suppresses the
+        /// per-attempt "->"/"ok"/"FAILED" lines entirely; only the transition
+        /// back to reachable (or the first failure) gets logged.
         /// </summary>
-        private static async Task<T> TrackAsync<T>(string label, Func<Task<T>> fn)
+        private async Task<T> TrackAsync<T>(string label, Func<Task<T>> fn)
         {
+            bool wasUnreachable = !_serverReachable;
             var sw = System.Diagnostics.Stopwatch.StartNew();
-            ActivityLog.Log("api", $"-> {label}");
+            if (!wasUnreachable) ActivityLog.Log("api", $"-> {label}");
             try
             {
                 var result = await fn();
-                ActivityLog.Log("api", $"<- {label} ok ({sw.ElapsedMilliseconds}ms)");
+                _serverReachable = true;
+                if (wasUnreachable)
+                {
+                    ActivityLog.Log("api", $"<- API server reachable again ({label} ok, {sw.ElapsedMilliseconds}ms) after {_consecutiveFailures} suppressed failed attempt(s).");
+                    _consecutiveFailures = 0;
+                }
+                else
+                {
+                    ActivityLog.Log("api", $"<- {label} ok ({sw.ElapsedMilliseconds}ms)");
+                }
                 return result;
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("api", $"x {label} FAILED ({sw.ElapsedMilliseconds}ms): {ex.Message}");
+                _consecutiveFailures++;
+                if (!wasUnreachable)
+                {
+                    _serverReachable = false;
+                    ActivityLog.Log("api", $"x {label} FAILED ({sw.ElapsedMilliseconds}ms): {ex.Message} — API server now unreachable; suppressing repeat FAILED lines until it recovers.");
+                }
                 throw;
             }
         }
