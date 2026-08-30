@@ -1131,6 +1131,24 @@ namespace BuildConsole
                 $"({snap.TotalBuilds} build{(snap.TotalBuilds == 1 ? "" : "s")})\n" +
                 "Estimate only — notional API-equivalent price from the CLI's own usage, not actual spend " +
                 "(builds run on Claude Max subscriptions).";
+
+            // Git #2001 — the readout is collapsed by default; this only gates visibility,
+            // never the tracking/formatting above. UsageTrackingService keeps recording and this
+            // method keeps refreshing the (possibly hidden) text so it's current the instant
+            // the Settings toggle brings it back — see RefreshUsageReadoutVisibility.
+            RefreshUsageReadoutVisibility();
+        }
+
+        /// <summary>Git #2001 — applies the current <c>ShowUsageReadout</c> setting to the
+        /// title-bar control's visibility (Collapsed, not Hidden, to actually reclaim the width).
+        /// Called after every UpdateUsageReadout refresh, and live from the Settings tab toggle
+        /// so the change takes effect immediately without a restart.</summary>
+        public void RefreshUsageReadoutVisibility()
+        {
+            UsageReadoutBorder.Visibility =
+                BuildConsole.Services.BuildConsoleSettings.Load().ShowUsageReadout
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
         }
 
         protected override void OnSourceInitialized(EventArgs e)

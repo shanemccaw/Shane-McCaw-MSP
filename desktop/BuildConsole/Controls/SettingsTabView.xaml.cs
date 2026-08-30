@@ -69,6 +69,7 @@ namespace BuildConsole.Controls
             UseSshForSqlCheck.IsChecked = savedSettings.UseSshForSql;
 
             EncouragementCrittersEnabledCheck.IsChecked = savedSettings.EncouragementCrittersEnabled;
+            ShowUsageReadoutCheck.IsChecked = savedSettings.ShowUsageReadout;
 
             // Git #1986 — Home/Rental location gate. Only "Rental" (case-insensitive) reads as
             // metered; every other value, including a missing/corrupt setting, seeds Home (index 0),
@@ -106,6 +107,19 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.EncouragementCrittersEnabled = EncouragementCrittersEnabledCheck.IsChecked == true;
             settings.Save();
+        }
+
+        /// <summary>Git #2001 — persists whether the title-bar token/cost readout is shown. Purely
+        /// a display choice: <see cref="Services.UsageTrackingService"/> keeps tracking and the
+        /// title bar keeps refreshing the (possibly hidden) text regardless of this setting.
+        /// Applied live to the running title bar so it takes effect without a restart.</summary>
+        private void ShowUsageReadoutCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_loadingSettings) return;
+            var settings = BuildConsoleSettings.Load();
+            settings.ShowUsageReadout = ShowUsageReadoutCheck.IsChecked == true;
+            settings.Save();
+            try { (Application.Current?.MainWindow as BuildConsole.MainWindow)?.RefreshUsageReadoutVisibility(); } catch { /* best-effort */ }
         }
 
         /// <summary>Git #1986 — persists the Home/Rental location and refreshes the title-bar

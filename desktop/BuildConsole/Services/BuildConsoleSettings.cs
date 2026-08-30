@@ -604,6 +604,14 @@ namespace BuildConsole.Services
         /// and only the in-app KeyUp path works. Flip off to hand the key back to Snipping Tool without a rebuild.</summary>
         public bool ScreenClipGlobalHotkeyEnabled { get; set; } = true;
 
+        /// <summary>Git #2001 — off by default: shows/hides the title-bar token/cost readout
+        /// (<c>UsageReadoutBorder</c>). Shane's judgement is the numbers aren't trustworthy, so the
+        /// readout costs title-bar width without earning it. Purely a display choice — flipping this
+        /// does NOT stop <c>UsageTrackingService</c> from recording; it keeps tracking and updating
+        /// the (hidden) control the whole time, so the figures are current the moment this is
+        /// switched back on. A settings.json with no key present deserializes to false (hidden).</summary>
+        public bool ShowUsageReadout { get; set; } = false;
+
         // ── Git #1978 — explicit repo-root override ───────────────────────────────
         /// <summary>
         /// Git #1978 — explicit override for the repo root (the MAIN checkout BuildConsole
