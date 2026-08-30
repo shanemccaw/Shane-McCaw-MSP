@@ -6233,6 +6233,19 @@ namespace BuildConsole.Controls
         /// is a reliable proxy without spawning `git log` just to find out. Uncommitted
         /// working-tree edits deliberately do NOT move any of these — the commit graph
         /// only ever renders committed history, so that's correct, not a gap.
+        ///
+        /// Git #1984 — the graph itself renders `git log --all`, which also spans
+        /// `refs/remotes/**`. A `git fetch` that advances e.g. `origin/main` writes
+        /// `.git/refs/remotes/origin/main` and `.git/logs/refs/remotes/origin/main`,
+        /// touching neither of the local-only paths above, so the signature stayed
+        /// byte-identical and the graph never re-rendered after a fetch. Now also
+        /// walks `refs/remotes/**` and `logs/refs/remotes/**`, the same per-file
+        /// mtime approach already used for `refs/heads`. Measured against this repo's
+        /// own real `.git` (packed via periodic `git gc`, so only the recently-moved
+        /// remote refs stay loose): 3 loose files under `refs/remotes`, 92 under
+        /// `logs/refs` total — both negligible next to the `git log` subprocess this
+        /// gate exists to avoid. `packed-refs` (already sampled above) covers whichever
+        /// remote refs are packed rather than loose.
         /// </summary>
         private string ComputeGitGraphSignature()
         {
@@ -6250,16 +6263,22 @@ namespace BuildConsole.Controls
                     }
                 }
 
+                void ConsiderAllFilesUnder(string dir)
+                {
+                    if (System.IO.Directory.Exists(dir))
+                    {
+                        foreach (var f in System.IO.Directory.EnumerateFiles(dir, "*", System.IO.SearchOption.AllDirectories))
+                            Consider(f);
+                    }
+                }
+
                 Consider(System.IO.Path.Combine(gitDir, "HEAD"));
                 Consider(System.IO.Path.Combine(gitDir, "packed-refs"));
                 Consider(System.IO.Path.Combine(gitDir, "logs", "HEAD"));
 
-                string headsDir = System.IO.Path.Combine(gitDir, "refs", "heads");
-                if (System.IO.Directory.Exists(headsDir))
-                {
-                    foreach (var f in System.IO.Directory.EnumerateFiles(headsDir, "*", System.IO.SearchOption.AllDirectories))
-                        Consider(f);
-                }
+                ConsiderAllFilesUnder(System.IO.Path.Combine(gitDir, "refs", "heads"));
+                ConsiderAllFilesUnder(System.IO.Path.Combine(gitDir, "refs", "remotes"));
+                ConsiderAllFilesUnder(System.IO.Path.Combine(gitDir, "logs", "refs", "remotes"));
 
                 return newest.Ticks.ToString();
             }
