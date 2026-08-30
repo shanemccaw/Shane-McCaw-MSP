@@ -23,7 +23,14 @@
                  the Build Queue header's single shared icon (BuildQueuePanel.xaml
                  BtnRefreshGitHubTiles), which cascades here via BoardRefreshCompleted
                  (#1813). TxtCount also carries the "no items" empty-state note inline now,
-                 so an empty panel never grows past this one header row. -->
+                 so an empty panel never grows past this one header row.
+
+                 Git #1863 — TxtFilter fits into this same column-1 slot next to TxtCount
+                 (same overlay-placeholder trick as the Build Queue's #950 QueueSearchBox,
+                 shrunk down since there's no row to spare here). It's display-only — see
+                 TxtFilter_TextChanged — and is hidden whenever TxtCount reads "none open"
+                 (RefreshAsync) so an empty panel doesn't reserve space for a box with
+                 nothing to filter. -->
             <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>
@@ -36,9 +43,39 @@
                            Foreground="{StaticResource TextBrush}"
                            VerticalAlignment="Center"/>
 
-                <TextBlock x:Name="TxtCount" Grid.Column="1" Margin="8,0,0,0"
-                           Foreground="{StaticResource Subtext0Brush}" FontSize="11"
-                           VerticalAlignment="Center" Text=""/>
+                <DockPanel Grid.Column="1" Margin="8,0,0,0" LastChildFill="False">
+                    <TextBlock x:Name="TxtCount" DockPanel.Dock="Right"
+                               Foreground="{StaticResource Subtext0Brush}" FontSize="11"
+                               VerticalAlignment="Center" Text=""/>
+
+                    <Grid x:Name="FilterBoxHost" DockPanel.Dock="Left" Margin="0,0,6,0"
+                          Visibility="Collapsed">
+                        <TextBox x:Name="TxtFilter"
+                                 Width="70" Height="18"
+                                 Padding="4,0,4,0" FontSize="10.5"
+                                 VerticalContentAlignment="Center"
+                                 Background="{StaticResource Surface0Brush}"
+                                 TextChanged="TxtFilter_TextChanged"/>
+                        <TextBlock IsHitTestVisible="False"
+                                   Text="Search #"
+                                   FontSize="10.5"
+                                   Margin="5,0,0,0"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Left"
+                                   Foreground="{StaticResource Subtext1Brush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=TxtFilter}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </DockPanel>
 
                 <ToggleButton x:Name="BtnCollapse" Grid.Column="2"
                               Style="{StaticResource ExpandCollapseToggleStyle}"
