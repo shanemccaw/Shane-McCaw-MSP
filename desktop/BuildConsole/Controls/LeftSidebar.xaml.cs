@@ -8,6 +8,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using Ellipse = System.Windows.Shapes.Ellipse;
 using System.Windows.Threading;
 using BuildConsole.Services;
 using System.Text.Json;
@@ -4030,18 +4031,49 @@ namespace BuildConsole.Controls
         private const double EpicCountWidth = 34;          // " (NN)" issue-count suffix
         private const double IssuePriorityBadgeWidth = 22; // priority glyph + trailing space
         private const double IssueNumberBadgeWidth = 48;   // "#NNN" bordered pill + its 6px right margin
-        private const double IssueBlockedBadgeWidth = 78;  // "🔴 Blocked" bordered pill + its 6px right margin
-        private const double IssueInFlightBadgeWidth = 88; // "🟠 In Flight" bordered pill + its 6px right margin
-        private const double IssueInFlightDescendantBadgeWidth = 88; // "🟠 In Flight ↓" bordered pill + its 6px right margin
+        private const double IssueNoParentBadgeWidth = 78; // "NO EPIC" bordered pill + its 6px right margin — unaffected by #1785 (text badge, kept as-is)
 
-        // Git #1768 — issue-row titles now wrap instead of hard-truncating to a
-        // single line (see CreateIssueHeader), so a badge-heavy row still reads a
-        // real title instead of "EP...". Capped at 2 lines via this MaxHeight;
-        // FontSize 11 * ~1.4 line-height factor * 2 lines, rounded up a hair for
-        // safety. Anything beyond 2 lines still falls back to CharacterEllipsis.
-        private const double IssueTitleTwoLineMaxHeight = 32;
+        // Git #1785 — Working / In Flight / In Flight ↓ / Blocked shrank from full
+        // text pills (e.g. the old 88px "🟠 In Flight" IssueInFlightBadgeWidth) down
+        // to a single small dot, so one reserve now covers all of them: dot diameter
+        // (IssueStatusDotDiameter) + its 6px trailing margin.
+        private const double IssueStatusDotDiameter = 9;
+        private const double IssueStatusDotReserve = IssueStatusDotDiameter + 6;
 
         private readonly List<(TextBlock block, double reserve)> _issueTitleBlocks = new();
+
+        /// <summary>Git #1785 — replaces the old full-text status pills ("🟠 In
+        /// Flight", "🔴 Blocked", etc.) with a small colored dot, no text, so a
+        /// badge-heavy row leaves the title enough width to read on one line again
+        /// (see the single-line CharacterEllipsis revert in CreateIssueHeader below).
+        /// <paramref name="hollow"/> gives the In-Flight-↓ "descendant" case a
+        /// visually distinct hollow ring in the same color instead of a filled
+        /// circle, so it's never confused with "this exact issue is in flight" even
+        /// with the text gone — the whole point of #1450/#938's original "indicator
+        /// all the way down the chain" fix. Kept in sync by hand with the legend row
+        /// in LeftSidebar.xaml (no shared source of truth between the two).</summary>
+        private Ellipse CreateStatusDot(Brush colorBrush, bool hollow, string tooltip, Thickness margin)
+        {
+            var dot = new Ellipse
+            {
+                Width = IssueStatusDotDiameter,
+                Height = IssueStatusDotDiameter,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = margin,
+                ToolTip = tooltip
+            };
+            if (hollow)
+            {
+                dot.Fill = Brushes.Transparent;
+                dot.Stroke = colorBrush;
+                dot.StrokeThickness = 1.75;
+            }
+            else
+            {
+                dot.Fill = colorBrush;
+            }
+            return dot;
+        }
 
         // Git #938 — mirrors ApplyChatTitleMaxWidths: MaxWidth = max(MinTitleWidth,
         // IssuesTree.ActualWidth − reserve). IssuesTree.ActualWidth is the viewport
@@ -4577,42 +4609,18 @@ namespace BuildConsole.Controls
                 && m.Epics.Any(ebkt => ebkt.Issues.Any(ii => ii.IssueNumber == _activeEpicGithubNumber.Value));
             if (containsActiveEpic)
             {
-                var workingBadge = new Border
-                {
-                    Background = new SolidColorBrush(Color.FromRgb(0x1F, 0x35, 0x2B)),
-                    BorderBrush = GetBrush("GreenBrush"),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(6, 1, 6, 1),
-                    Margin = new Thickness(8, 0, 0, 0),
-                    ToolTip = "Contains your active WORKING epic"
-                };
-                workingBadge.Child = new TextBlock
-                {
-                    Text = "🎯 WORKING EPIC",
-                    FontSize = 9.5,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = GetBrush("GreenBrush")
-                };
-                p.Children.Add(workingBadge);
+                p.Children.Add(CreateStatusDot(GetBrush("GreenBrush"), hollow: false,
+                    "Contains your active WORKING epic", new Thickness(8, 0, 0, 0)));
             }
 
             // Shane, 2026-08-28 — "an indicator all the way down the chain" so a
             // collapsed milestone still shows something's in flight beneath it
-            // without expanding. Same amber as the issue row's own "In Flight"
-            // badge, distinguished by the down-arrow glyph/wording + tooltip.
+            // without expanding. Same amber dot as the issue row's own "In Flight"
+            // dot, distinguished by the hollow ring (see CreateStatusDot).
             if (m.HasInFlightDescendant)
             {
-                var belowBadge = new Border
-                {
-                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(6, 1, 6, 1),
-                    Margin = new Thickness(8, 0, 0, 0),
-                    ToolTip = "Something inside this milestone is in flight right now"
-                };
-                belowBadge.Child = new TextBlock { Text = "🟠 In Flight ↓", FontSize = 9.5, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
-                p.Children.Add(belowBadge);
+                p.Children.Add(CreateStatusDot(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")), hollow: true,
+                    "Something inside this milestone is in flight right now", new Thickness(8, 0, 0, 0)));
             }
 
             // Git #875 — only a real GitHub milestone has a real completed/
@@ -4643,8 +4651,8 @@ namespace BuildConsole.Controls
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * 1 + IssueTreeChrome + MilestoneEmojiWidth
                 + (m.HasRealCounts ? MilestoneBadgeWidth : 0)
-                + (containsActiveEpic ? 90 : 0)
-                + (m.HasInFlightDescendant ? 90 : 0)));
+                + (containsActiveEpic ? IssueStatusDotReserve : 0)
+                + (m.HasInFlightDescendant ? IssueStatusDotReserve : 0)));
             return p;
         }
 
@@ -4659,42 +4667,24 @@ namespace BuildConsole.Controls
                 && e.Issues.Any(ii => ii.IssueNumber == _activeEpicGithubNumber.Value);
             if (containsActiveEpic)
             {
-                var workingBadge = new Border
-                {
-                    Background = new SolidColorBrush(Color.FromRgb(0x1F, 0x35, 0x2B)),
-                    BorderBrush = GetBrush("GreenBrush"),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1),
-                    Margin = new Thickness(6, 0, 0, 0),
-                    ToolTip = "Contains your active WORKING epic"
-                };
-                workingBadge.Child = new TextBlock { Text = "🎯 WORKING", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = GetBrush("GreenBrush") };
-                p.Children.Add(workingBadge);
+                p.Children.Add(CreateStatusDot(GetBrush("GreenBrush"), hollow: false,
+                    "Contains your active WORKING epic", new Thickness(6, 0, 0, 0)));
             }
 
             // Shane, 2026-08-28 — same collapsed "something's in flight below"
             // indicator as CreateMilestoneHeader, scoped to this bucket.
             if (e.HasInFlightDescendant)
             {
-                var belowBadge = new Border
-                {
-                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1),
-                    Margin = new Thickness(6, 0, 0, 0),
-                    ToolTip = "Something inside this section is in flight right now"
-                };
-                belowBadge.Child = new TextBlock { Text = "🟠 In Flight ↓", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
-                p.Children.Add(belowBadge);
+                p.Children.Add(CreateStatusDot(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")), hollow: true,
+                    "Something inside this section is in flight right now", new Thickness(6, 0, 0, 0)));
             }
 
             // Git #938 — epic rows sit at depth 1 (nested under a milestone): two
             // expander columns of indentation + the " (N)" issue-count suffix.
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * 2 + IssueTreeChrome + EpicCountWidth
-                + (containsActiveEpic ? 70 : 0)
-                + (e.HasInFlightDescendant ? 78 : 0)));
+                + (containsActiveEpic ? IssueStatusDotReserve : 0)
+                + (e.HasInFlightDescendant ? IssueStatusDotReserve : 0)));
             return p;
         }
 
@@ -4756,14 +4746,13 @@ namespace BuildConsole.Controls
             };
             numBlock.Child = new TextBlock { Text = issue.NumberStr, FontSize = 10, FontWeight = FontWeights.Bold, Foreground = issue.IsEpic ? GetBrush("MauveBrush") : GetBrush("PeachBrush") };
 
-            // Git #1768 — was single-line CharacterEllipsis, which crushed the
-            // title to 2-3 visible characters whenever enough badges stacked on a
-            // row to eat most of the reserved width. Now wraps up to 2 lines
-            // (IssueTitleTwoLineMaxHeight caps it there) and only falls back to
-            // CharacterEllipsis as a last resort if the title still overflows
-            // beyond that second line. MaxWidth is still applied per-row by
-            // ApplyIssueTitleMaxWidths below, unchanged — only the wrap behavior
-            // within that width is new.
+            // Git #1785 — reverted #1768's TextWrapping.Wrap/2-line cap back to
+            // single-line CharacterEllipsis. #1768 was the right fix for the
+            // problem it solved (titles crushed to 2-3 characters by stacked text
+            // pills), but #1785 shrinks the badges themselves down to dots instead,
+            // which frees up enough width that wrapping is no longer needed in the
+            // common case — Shane's actual ask was a cleaner single-line tree, not
+            // a taller one.
             var titleBlock = new TextBlock
             {
                 Text = issue.Title,
@@ -4771,10 +4760,7 @@ namespace BuildConsole.Controls
                 Foreground = isActiveEpic ? GetBrush("GreenBrush") : issue.Status == "CLOSED" ? GetBrush("Subtext0Brush") : GetBrush("TextBrush"),
                 FontWeight = (issue.IsEpic || isActiveEpic) ? FontWeights.Bold : FontWeights.Normal,
                 TextDecorations = issue.Status == "CLOSED" ? TextDecorations.Strikethrough : null,
-                TextWrapping = TextWrapping.Wrap,
-                TextTrimming = TextTrimming.CharacterEllipsis,
-                MaxHeight = IssueTitleTwoLineMaxHeight,
-                VerticalAlignment = VerticalAlignment.Top
+                TextTrimming = TextTrimming.CharacterEllipsis
             };
 
             p.Children.Add(prioBlock);
@@ -4782,24 +4768,19 @@ namespace BuildConsole.Controls
 
             // Shane: "I need a way for the Epic I'm working to be more
             // visually ahead... I should be able to look at the Git Board
-            // Tree View and know exactly what Epic I'm working." A badge
-            // matching the existing Blocked/No-Epic badge convention, plus
-            // the accent-green title above and the left-bar wrap below.
+            // Tree View and know exactly what Epic I'm working." Git #1785:
+            // dot instead of a text pill, plus the accent-green title above and
+            // the left-bar wrap below still carry the rest of the signal.
             if (isActiveEpic)
             {
-                var workingBadge = new Border
-                {
-                    Background = GetBrush("GreenBrush"),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1),
-                    Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Top,
-                    ToolTip = "This is the epic tied to your currently active chat"
-                };
-                workingBadge.Child = new TextBlock { Text = "🎯 WORKING", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
-                p.Children.Add(workingBadge);
+                p.Children.Add(CreateStatusDot(GetBrush("GreenBrush"), hollow: false,
+                    "This is the epic tied to your currently active chat", new Thickness(0, 0, 6, 0)));
             }
 
+            // Git #1785: not part of this ask's badge table (only Working/In
+            // Flight/In Flight ↓/Blocked/Waiting-for-input are) — left as the
+            // existing text pill per the issue's own "don't change what's not
+            // asked" instruction.
             bool showsNoParent = false;
             if (!issue.IsEpic && !issue.HasParentEpic && issue.Status != "CLOSED")
             {
@@ -4809,7 +4790,6 @@ namespace BuildConsole.Controls
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(4, 1, 4, 1),
                     Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Top,
                     ToolTip = "No parent Epic"
                 };
                 noParentBadge.Child = new TextBlock { Text = "NO EPIC", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
@@ -4818,75 +4798,55 @@ namespace BuildConsole.Controls
             }
 
             // Git #1368 — real "in-flight" GitHub label (whatever build session
-            // is actively working this issue right now), same amber/orange
-            // #FAB387 the search view's CreateSearchIssueHeader already uses
-            // for "In Flight" — deliberately NOT the Blocked badge's red
-            // #F38BA8, so the two are never confused at a glance even when
-            // both show on the same row.
+            // is actively working this issue right now). Git #1785: solid dot,
+            // same amber/orange #FAB387 as before — deliberately NOT the Blocked
+            // dot's red #F38BA8, so the two are never confused at a glance even
+            // when both show on the same row.
             if (issue.Status != "CLOSED" && issue.IsInFlight)
             {
-                var inFlightBadge = new Border
-                {
-                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1),
-                    Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Top,
-                    ToolTip = "A build session is actively working this issue right now"
-                };
-                inFlightBadge.Child = new TextBlock { Text = "🟠 In Flight", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
-                p.Children.Add(inFlightBadge);
+                p.Children.Add(CreateStatusDot(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")), hollow: false,
+                    "A build session is actively working this issue right now", new Thickness(0, 0, 6, 0)));
             }
 
             // Shane, 2026-08-28: "If a parent has children in flight or working
             // there should be an indicator all the way down the chain... I have
             // to expand everything to try and find it." This issue isn't itself
-            // in flight, but a sub-issue somewhere beneath it (however deep) is —
-            // same amber as the badge above, distinguished by the down-arrow so
-            // the two are never confused for "this exact issue is in flight".
+            // in flight, but a sub-issue somewhere beneath it (however deep) is.
+            // Git #1785: same amber as the dot above, but a HOLLOW ring instead of
+            // solid fill — the chosen distinguishable treatment so "in flight
+            // right here" vs. "in flight somewhere below" stay visually distinct
+            // even with the text/down-arrow gone (the whole point of #1450/#938's
+            // original fix).
             bool showsInFlightDescendant = issue.Status != "CLOSED" && !issue.IsInFlight && issue.HasInFlightDescendant;
             if (showsInFlightDescendant)
             {
-                var belowBadge = new Border
-                {
-                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1),
-                    Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Top,
-                    ToolTip = "A sub-issue further down the chain is in flight right now"
-                };
-                belowBadge.Child = new TextBlock { Text = "🟠 In Flight ↓", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
-                p.Children.Add(belowBadge);
+                p.Children.Add(CreateStatusDot(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")), hollow: true,
+                    "A sub-issue further down the chain is in flight right now", new Thickness(0, 0, 6, 0)));
             }
 
             // Git #845 (Git Board Phase 7) — real still-OPEN blocked_by
-            // dependency (EnrichBlockedStatusAsync), same red "Blocked" badge
-            // styling as the search view's CreateSearchIssueHeader (#F38BA8).
+            // dependency (EnrichBlockedStatusAsync). Git #1785: solid red dot
+            // instead of the old "🔴 Blocked" text pill.
             if (issue.Status != "CLOSED" && issue.IsBlocked)
             {
-                var blockedBadge = new Border
-                {
-                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")),
-                    CornerRadius = new CornerRadius(3),
-                    Padding = new Thickness(4, 1, 4, 1),
-                    Margin = new Thickness(0, 0, 6, 0),
-                    VerticalAlignment = VerticalAlignment.Top,
-                    ToolTip = issue.BlockedByNumber.HasValue ? $"Blocked by #{issue.BlockedByNumber}: {issue.BlockedByTitle}" : "Blocked"
-                };
-                blockedBadge.Child = new TextBlock { Text = "🔴 Blocked", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black };
-                p.Children.Add(blockedBadge);
+                p.Children.Add(CreateStatusDot(new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")), hollow: false,
+                    issue.BlockedByNumber.HasValue ? $"Blocked by #{issue.BlockedByNumber}: {issue.BlockedByTitle}" : "Blocked",
+                    new Thickness(0, 0, 6, 0)));
             }
 
             p.Children.Add(titleBlock);
 
-            // Git #938 — issue rows sit at depth
+            // Git #938 — issue rows sit at depth. Git #1785: every status dot
+            // (working/in-flight/in-flight-descendant/blocked) now reserves the
+            // same small IssueStatusDotReserve instead of its own wide text-pill
+            // width; only the still-text "NO EPIC" badge keeps its old reserve.
             bool showsBlocked = issue.Status != "CLOSED" && issue.IsBlocked;
             bool showsInFlight = issue.Status != "CLOSED" && issue.IsInFlight;
             _issueTitleBlocks.Add((titleBlock,
                 IssueTreeIndentPerLevel * (depth + 1) + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
-                + (showsBlocked ? IssueBlockedBadgeWidth : 0) + (showsInFlight ? IssueInFlightBadgeWidth : 0) + (showsNoParent ? IssueBlockedBadgeWidth : 0)
-                + (showsInFlightDescendant ? IssueInFlightDescendantBadgeWidth : 0)));
+                + (isActiveEpic ? IssueStatusDotReserve : 0)
+                + (showsBlocked ? IssueStatusDotReserve : 0) + (showsInFlight ? IssueStatusDotReserve : 0) + (showsNoParent ? IssueNoParentBadgeWidth : 0)
+                + (showsInFlightDescendant ? IssueStatusDotReserve : 0)));
 
             // Left accent bar + subtle background tint so the active epic
             // reads ahead of every sibling epic even before you read its

@@ -509,6 +509,38 @@
                                 Visibility="Collapsed">
                             <Canvas x:Name="GitRefreshStripCanvas" ClipToBounds="True"/>
                         </Border>
+
+                        <!-- Git #1785 — one-time legend for the Git Board tree's status
+                             dots, rendered once here (not per-row/per-group) now that the
+                             dots below carry no text. Must be kept in sync by hand with
+                             CreateStatusDot's actual colors/hollow-vs-solid treatment in
+                             LeftSidebar.xaml.cs — there is no shared source of truth
+                             between this static legend and the dots it describes.
+                             "Waiting for input" is intentionally NOT listed: it isn't an
+                             actual dot anywhere in this tree today (that indicator exists
+                             only on Build Queue cards, keyed to a live build session, with
+                             no wiring to a GitIssue) — filed as its own finding rather than
+                             a legend entry for a dot that never renders. -->
+                        <Border Margin="0,0,0,8" Padding="6,4" Background="{StaticResource Surface0Brush}" CornerRadius="4">
+                            <WrapPanel Orientation="Horizontal">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,2">
+                                    <Ellipse Width="8" Height="8" Fill="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Working" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,2">
+                                    <Ellipse Width="8" Height="8" Fill="#FAB387" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBlock Text="In Flight" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,12,2">
+                                    <Ellipse Width="8" Height="8" Stroke="#FAB387" StrokeThickness="1.5" Fill="Transparent" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBlock Text="In Flight ↓ (descendant)" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                    <Ellipse Width="8" Height="8" Fill="#F38BA8" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                    <TextBlock Text="Blocked" FontSize="9.5" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </WrapPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- Milestones / Epics / Issues Tree -->
