@@ -40,7 +40,7 @@ import net from "node:net";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { loadConfig } from "./config.mjs";
-import { git, revParse, isAncestor, shortSha } from "./git.mjs";
+import { git, revParse, isAncestor, shortSha, diffNameOnly } from "./git.mjs";
 import { pidAlive } from "./lock.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -281,7 +281,49 @@ export async function refreshMainServer(config, { only, dryRun = false } = {}) {
   };
 }
 
-/** Dry-run preview of the ff decision without mutating the checkout (fetch only). */
+/**
+ * Tracked files with uncommitted modifications (staged or unstaged) right now --
+ * `git status --porcelain`, filtered to drop untracked ("??") entries, since those
+ * can never conflict with a ff-only merge (the merge only ever touches tracked
+ * paths). Rename lines ("R  old -> new") report the new path, matching what
+ * `diff --name-only` names on the incoming side. Read-only; never mutates.
+ */
+function dirtyTrackedFiles(root) {
+  const r = git(root, ["status", "--porcelain"]);
+  if (r.code !== 0) return [];
+  return r.stdout
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .filter((line) => line[0] !== "?" && line[1] !== "?")
+    .map((line) => {
+      const p = line.slice(3).trim();
+      return p.includes(" -> ") ? p.split(" -> ")[1].trim() : p;
+    });
+}
+
+/**
+ * Dry-run preview of the ff decision without mutating the checkout (fetch only).
+ *
+ * Git #1780: this used to stop at `isAncestor` and report `wouldPull: true`
+ * whenever origin/main was a real ff target -- but a ff-only merge also fails
+ * whenever a tracked file the incoming range touches is dirty in the working
+ * tree (`fastForwardMainCheckout`'s real `git merge --ff-only` call aborts with
+ * "local changes ... would be overwritten"). The preview never caught that, so
+ * `--dry-run` could report `wouldPull: true` in exactly the situation the real
+ * merge would refuse.
+ *
+ * Fix: compute the same answer git's own ff-only would, without running it.
+ * Intersect `git status --porcelain`'s dirty tracked files against
+ * `git diff --name-only before..target` (the files the incoming ff would
+ * actually touch) -- both read-only, non-mutating. If any tracked file is both
+ * locally dirty AND changes between `before` and `target`, the real merge would
+ * abort on exactly that file, so the preview reports `wouldPull: false` with an
+ * honest reason instead. (Chose this over actually invoking
+ * `git merge --ff-only --no-commit` as a probe: that mutates the index/working
+ * tree and risks leaving a shared checkout half-merged if the probe itself were
+ * ever interrupted -- status+diff intersection gets the identical answer with
+ * zero risk of that.)
+ */
 export function previewFastForward(config) {
   const root = config.mainRepoRoot;
   const before = revParse(root, "HEAD");
@@ -291,6 +333,23 @@ export function previewFastForward(config) {
   if (before === target) return { wouldPull: false, reason: "already at origin/main", before, target, alreadyCurrent: true, fetchOk: fetch.code === 0 };
   if (!isAncestor(root, before, target))
     return { wouldPull: false, reason: "diverged/ahead -- would SKIP (never reset a shared checkout)", before, target, fetchOk: fetch.code === 0 };
+
+  const dirty = dirtyTrackedFiles(root);
+  if (dirty.length) {
+    const incoming = diffNameOnly(root, before, target);
+    const blocking = dirty.filter((f) => incoming.includes(f));
+    if (blocking.length) {
+      return {
+        wouldPull: false,
+        reason: `dirty tracked file(s) would block the real ff-only merge -- skipped: ${blocking.join(", ")}`,
+        before,
+        target,
+        blockingFiles: blocking,
+        fetchOk: fetch.code === 0,
+      };
+    }
+  }
+
   return { wouldPull: true, reason: "would fast-forward", before, target, behindBy: countBetween(root, before, target), fetchOk: fetch.code === 0 };
 }
 
