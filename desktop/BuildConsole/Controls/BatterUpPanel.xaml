@@ -42,9 +42,9 @@
                         Foreground="{StaticResource Subtext0Brush}" Cursor="Hand"
                         ToolTip="Refresh Batter Up now" Click="BtnRefresh_Click"/>
 
-                <ToggleButton x:Name="BtnCollapse" Grid.Column="3" Content="▸" Padding="6,2"
-                              Background="Transparent" BorderThickness="0"
-                              Foreground="{StaticResource Subtext0Brush}" Cursor="Hand"
+                <ToggleButton x:Name="BtnCollapse" Grid.Column="3"
+                              Style="{StaticResource ExpandCollapseToggleStyle}"
+                              Cursor="Hand"
                               IsChecked="True" Click="BtnCollapse_Click"/>
             </Grid>
 
