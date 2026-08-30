@@ -2,8 +2,9 @@
  * msp-standing-policies.ts — MSP-side authoring of the Policy Engine's
  * declarative object (#1547).
  *
- *   GET  /api/msp/standing-policies            — this MSP's standing policies
- *   POST /api/msp/standing-policies            — author a new standing policy
+ *   GET  /api/msp/standing-policies                       — this MSP's standing policies
+ *   POST /api/msp/standing-policies                       — author a new standing policy
+ *   GET  /api/msp/standing-policies/:id/evaluations       — its continuous-evaluation run history (#1549)
  *
  * ── What a standing policy is ────────────────────────────────────────────────
  * DECLARATIVE and operationally live: it states a target state; it cites no
@@ -59,6 +60,7 @@ import {
   changeCatalogItemsTable,
   tenantsTable,
   mspSopsTable,
+  policyEvaluationRunsTable,
   STANDING_POLICY_TARGET_KIND,
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
@@ -72,6 +74,7 @@ import { logger } from "../lib/logger";
 import { toWireStandingPolicy } from "../lib/standing-policies";
 import { resolvePolicyEnactmentRoute } from "../lib/policy-enactment-route";
 import { evaluateStandingPolicyForCustomer } from "../lib/policy-compliance-evaluator";
+import { fireWorkflowsForEvent } from "../lib/workflow-executor.ts";
 
 const log = logger.child({ channel: "workflow.change-control" });
 
@@ -149,8 +152,12 @@ router.post(
       }
 
       // The OU is the attachment point — it must be a real container.
+      // tenantId (#1549) is read here too, purely to scope the activation
+      // event dispatched below to the right tenant — this route does not
+      // require it (a policy can legitimately attach to a tenant-less OU;
+      // continuous evaluation just records that as not_evaluable).
       const [ou] = await db
-        .select({ id: activeDirectoryOusTable.id })
+        .select({ id: activeDirectoryOusTable.id, tenantId: activeDirectoryOusTable.tenantId })
         .from(activeDirectoryOusTable)
         .where(eq(activeDirectoryOusTable.id, parsed.data.ouId))
         .limit(1);
@@ -210,6 +217,23 @@ router.post(
         { mspId, standingPolicyId: inserted.id, ouId: inserted.ouId, targetKind: inserted.targetKind, sopId: inserted.sopId },
         "standing policy authored",
       );
+
+      // #1549 EVENT trigger: a policy authored active is real, immediate
+      // signal that continuous evaluation shouldn't wait on the next hourly
+      // sweep for. Fire-and-forget — never block or fail the author response
+      // on the Workflow Engine's own dispatch.
+      if (inserted.isActive && ou.tenantId !== null) {
+        void fireWorkflowsForEvent("policy.standing_policy.activated", {
+          customerId: ou.tenantId,
+          standingPolicyId: inserted.id,
+          mspId,
+          ouId: inserted.ouId,
+          targetKind: inserted.targetKind,
+        }).catch((err: unknown) => {
+          log.error({ err, standingPolicyId: inserted.id }, "policy.standing_policy.activated dispatch failed (non-fatal)");
+        });
+      }
+
       res.status(201).json(toWireStandingPolicy(inserted));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/standing-policies failed");
@@ -355,6 +379,63 @@ router.get(
       });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/standing-policies/:id/enactment failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// ── Evaluation history (#1549) ────────────────────────────────────────────────
+// Read-only: the continuous-evaluation reconciliation loop's own durable
+// register for this policy. Ends at the wire contract — no UI here.
+router.get(
+  "/msp/standing-policies/:id/evaluations",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+        return;
+      }
+
+      const standingPolicyId = Number(req.params.id);
+      if (!Number.isInteger(standingPolicyId)) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid standing policy id");
+        return;
+      }
+
+      // Scope to this MSP's own policy — never leak another MSP's evaluation history by id guess.
+      const [policy] = await db
+        .select({ id: standingPoliciesTable.id })
+        .from(standingPoliciesTable)
+        .where(and(eq(standingPoliciesTable.id, standingPolicyId), eq(standingPoliciesTable.mspId, mspId)))
+        .limit(1);
+      if (!policy) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Standing policy not found");
+        return;
+      }
+
+      const rows = await db
+        .select()
+        .from(policyEvaluationRunsTable)
+        .where(eq(policyEvaluationRunsTable.standingPolicyId, standingPolicyId))
+        .orderBy(desc(policyEvaluationRunsTable.id))
+        .limit(200);
+
+      res.json({
+        evaluations: rows.map((r) => ({
+          id: r.id,
+          tenantId: r.tenantId,
+          triggerKind: r.triggerKind,
+          triggerEventType: r.triggerEventType,
+          outcome: r.outcome,
+          detail: r.detail,
+          evaluatedAt: r.evaluatedAt.toISOString(),
+        })),
+      });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/standing-policies/:id/evaluations failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },
