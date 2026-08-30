@@ -17,7 +17,7 @@
  * this page claims anyone signs anything.
  */
 
-import { CC_GATE_KEYS, CC_NOTIF_EVENT_KEYS, type CcApproverBand, type CcGateKey, type CcNotifEventKey } from "@workspace/db";
+import { CC_GATE_KEYS, CC_NOTIF_EVENT_KEYS, type CcGateKey, type CcNotifEventKey } from "@workspace/db";
 
 export interface CcPolicyRow {
   readonly enabled: boolean;
@@ -43,10 +43,6 @@ export const DEFAULT_CC_POLICY: CcPolicyRow = {
 export function normalizeGated(raw: unknown): Record<CcGateKey, boolean> {
   const source = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
   return Object.fromEntries(CC_GATE_KEYS.map((k) => [k, source[k] === true])) as Record<CcGateKey, boolean>;
-}
-
-export function isCcApproverBand(v: unknown): v is CcApproverBand {
-  return v === "normal" || v === "emergency";
 }
 
 export function isCcNotifEventKey(v: unknown): v is CcNotifEventKey {

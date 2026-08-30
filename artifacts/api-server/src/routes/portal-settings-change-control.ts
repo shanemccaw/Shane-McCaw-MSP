@@ -4,7 +4,6 @@
  *
  *   GET /api/portal/settings/change-control
  *   PUT /api/portal/settings/change-control/policy
- *   PUT /api/portal/settings/change-control/approvers
  *   PUT /api/portal/settings/change-control/notifications/:eventKey
  *
  * ── Why this route exists at all ─────────────────────────────────────────────
@@ -13,13 +12,28 @@
  * endpoint of any name persisted it, flagged honestly by #1463's
  * `pv2-set-cc-nodata` badge. This is that backend.
  *
- * ── NOT #1496's approval model ───────────────────────────────────────────────
- * #1496 is the per-CHANGE approval decision trail (`cr_approvals`) that will
- * attach to an individual `msp_change_requests` row and is still open/unbuilt.
- * `portal_change_control_policy` here is the tenant-wide POLICY a change
- * request is evaluated against — what is gated, how many signatures, who is
- * eligible to sign at all. It records no decision of its own. See the schema
- * comment in `lib/db/src/schema/msp.ts` for the full reasoning.
+ * ── #1592 built the policy; #1759 wired it to the approval path ──────────────
+ * #1496 built the per-CHANGE approval decision trail (`cr_approvals`); #1592
+ * built this tenant-wide POLICY. They landed the same day and neither read the
+ * other, so the policy had no consumer. #1759 made the policy authoritative:
+ * `required_signatures` and `require_separate_approver` are now read by
+ * `portal-change-approvals-store.loadApprovalPolicy` on every approve/reject/
+ * materialise. See that module and `portal-change-approvals.requiredStages`.
+ *
+ * ── Approver eligibility derives from `users.can_approve_changes` (#1759) ─────
+ * The eligible-approver list is NOT a stored set any more. It is computed live
+ * from this tenant's active users carrying the `can_approve_changes` flag — the
+ * SAME capability the approve/reject routes enforce (`callerCanApproveChanges`),
+ * so "who the settings page says may sign" and "who the approval route lets
+ * sign" cannot drift. The former `portal_change_control_approvers` table (and
+ * its `normal`/`emergency` bands) was a SECOND, parallel eligibility store that
+ * nothing on the approval path read; #1759 dropped it, resolving #1757 (which
+ * proposed cross-validating the two stores) by deletion rather than by patch.
+ *
+ * ── `enforce_freeze_calendar` is CURRENT-unenforced ──────────────────────────
+ * The policy column persists and round-trips, but nothing reads it: freeze
+ * windows (#1500) are not built, so there is no calendar to enforce against.
+ * It is deliberately not surfaced as a working control until #1500 lands.
  *
  * ── Scoping ───────────────────────────────────────────────────────────────
  * `resolveCustomerId` off the JWT, identical to `portal-ownership.ts` — these
@@ -29,14 +43,15 @@
  * paying tenant's own governance decision, not something a free assessment
  * lead is asked to set.
  *
- * ── Approvers reuse the Ownership matrix's identity, not a second one ───────
- * `personId` is validated against this tenant's own active users
- * (`personIdForUser`, "u{id}") — the same wire-person-id scheme
- * `portal_ownership_assignments.owner_person_id` already uses. The design
- * fixture's `RACI_PEOPLE` was a SEPARATE, inconsistent people list (different
- * ids, different roles for the same person) that the design's own comment
- * flagged as "a real defect for a backend to resolve by having one people
- * table." This route is that resolution: one source of people, not two.
+ * ── People use the Ownership matrix's identity, not a second one ────────────
+ * `personId` (`personIdForUser`, "u{id}") is the same wire-person-id scheme
+ * `portal_ownership_assignments.owner_person_id` already uses, so the `people`
+ * and `eligibleApprovers` lists share one identity scheme with Ownership
+ * routing. The design fixture's `RACI_PEOPLE` was a SEPARATE, inconsistent
+ * people list (different ids, different roles for the same person) that the
+ * design's own comment flagged as "a real defect for a backend to resolve by
+ * having one people table." This route is that resolution: one source of
+ * people, not two.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -44,10 +59,8 @@ import {
   db,
   usersTable,
   portalChangeControlPolicyTable,
-  portalChangeControlApproversTable,
   portalChangeControlNotificationsTable,
   CC_NOTIF_EVENT_KEYS,
-  type CcApproverBand,
 } from "@workspace/db";
 import { and, asc, eq } from "drizzle-orm";
 
@@ -59,7 +72,6 @@ import {
   DEFAULT_CC_POLICY,
   DEFAULT_CC_NOTIFICATIONS,
   defaultNotifFor,
-  isCcApproverBand,
   isCcNotifEventKey,
   normalizeGated,
 } from "../lib/portal-settings-change-control";
@@ -73,9 +85,10 @@ interface WireCcPolicy {
   readonly gated: Record<string, boolean>;
   readonly approvals: number;
   readonly separate: boolean;
+  /** CURRENT-unenforced (#1759): persists and round-trips, but no freeze
+   *  calendar (#1500) exists to enforce it against yet. */
   readonly freeze: boolean;
   readonly emergency: boolean;
-  readonly approvers: { readonly normal: readonly string[]; readonly emergency: readonly string[] };
 }
 
 interface WireCcNotifRule {
@@ -93,6 +106,11 @@ interface WireChangeControlSettings {
    *  chip's name/role from the SAME list Ownership routing reads — not a
    *  second, drifting copy. */
   readonly people: ReadonlyArray<{ id: string; name: string; role: string }>;
+  /** The wire person ids (a subset of `people`) of this tenant's active users
+   *  carrying `can_approve_changes` (#1759). Computed live — the same capability
+   *  the approve/reject routes enforce, so the settings page and the approval
+   *  path cannot disagree about who may sign. */
+  readonly eligibleApprovers: readonly string[];
 }
 
 async function activeTenantUsers(customerId: number): Promise<UserRow[]> {
@@ -121,16 +139,12 @@ router.get(
     }
 
     try {
-      const [policyRows, approverRows, notifRows, userRows] = await Promise.all([
+      const [policyRows, notifRows, userRows] = await Promise.all([
         db
           .select()
           .from(portalChangeControlPolicyTable)
           .where(eq(portalChangeControlPolicyTable.customerId, customerId))
           .limit(1),
-        db
-          .select({ band: portalChangeControlApproversTable.band, personId: portalChangeControlApproversTable.personId })
-          .from(portalChangeControlApproversTable)
-          .where(eq(portalChangeControlApproversTable.customerId, customerId)),
         db
           .select()
           .from(portalChangeControlNotificationsTable)
@@ -139,10 +153,22 @@ router.get(
       ]);
 
       const policyRow = policyRows[0];
-      const approversByBand: Record<CcApproverBand, string[]> = { normal: [], emergency: [] };
-      for (const row of approverRows) {
-        if (isCcApproverBand(row.band)) approversByBand[row.band].push(row.personId);
-      }
+
+      // #1759 — eligible approvers are derived live from the SAME users the
+      // register reads, filtered to those carrying `can_approve_changes`. No
+      // separate stored set to drift from what the approve/reject routes enforce.
+      const eligibleRows = await db
+        .select({ id: usersTable.id })
+        .from(usersTable)
+        .where(
+          and(
+            eq(usersTable.tenantId, customerId),
+            eq(usersTable.isActive, true),
+            eq(usersTable.canApproveChanges, true),
+          ),
+        )
+        .orderBy(asc(usersTable.id));
+      const eligibleApprovers = eligibleRows.map((r) => personIdForUser(r.id));
 
       const notifByEvent = new Map(notifRows.map((r) => [r.eventKey, r]));
       const notifications: WireCcNotifRule[] = CC_NOTIF_EVENT_KEYS.map((eventKey) => {
@@ -167,13 +193,13 @@ router.get(
           separate: policyRow?.requireSeparateApprover ?? DEFAULT_CC_POLICY.requireSeparateApprover,
           freeze: policyRow?.enforceFreezeCalendar ?? DEFAULT_CC_POLICY.enforceFreezeCalendar,
           emergency: policyRow?.allowEmergencyPath ?? DEFAULT_CC_POLICY.allowEmergencyPath,
-          approvers: { normal: approversByBand.normal, emergency: approversByBand.emergency },
         },
         notifications,
         people,
+        eligibleApprovers,
       };
 
-      log.info({ customerId, hasPolicy: !!policyRow, approvers: approverRows.length, notifications: notifRows.length }, "portal change control policy served");
+      log.info({ customerId, hasPolicy: !!policyRow, eligibleApprovers: eligibleApprovers.length, notifications: notifRows.length }, "portal change control policy served");
       res.json(payload);
     } catch (err) {
       log.error({ customerId, err: err instanceof Error ? err.message : String(err) }, "portal change control policy read failed");
@@ -227,58 +253,13 @@ router.put(
   },
 );
 
-/**
- * Replaces the full approver set for one band. The design's UI is a set of
- * toggle chips (every click is "the new complete list for this band"), not an
- * incremental add/remove, so a full-replace PUT matches the actual write
- * shape instead of requiring the client to diff.
- */
-router.put(
-  "/portal/settings/change-control/approvers",
-  requireRole("CustomerUser"),
-  async (req: Request, res: Response): Promise<void> => {
-    const customerId = scopedCustomerId(req, res);
-    if (customerId === null) return;
-
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const band = body.band;
-    const personIds = Array.isArray(body.personIds) ? body.personIds.filter((v): v is string => typeof v === "string") : null;
-    if (!isCcApproverBand(band) || personIds === null) {
-      res.status(400).json({ error: "band ('normal'|'emergency') and personIds (string[]) are required" });
-      return;
-    }
-
-    try {
-      // Fail closed: every personId must name an active user of THIS tenant.
-      // A body value is never trusted to name a customer's own person, exactly
-      // as the ownership route's overlay writes do.
-      const userRows = await activeTenantUsers(customerId);
-      const validIds = new Set(userRows.map((u) => personIdForUser(u.id)));
-      const invalid = personIds.filter((id) => !validIds.has(id));
-      if (invalid.length > 0) {
-        res.status(400).json({ error: `Not an active person on this tenant: ${invalid.join(", ")}` });
-        return;
-      }
-
-      await db.transaction(async (tx) => {
-        await tx
-          .delete(portalChangeControlApproversTable)
-          .where(and(eq(portalChangeControlApproversTable.customerId, customerId), eq(portalChangeControlApproversTable.band, band)));
-        if (personIds.length > 0) {
-          await tx
-            .insert(portalChangeControlApproversTable)
-            .values(personIds.map((personId) => ({ customerId, band, personId })));
-        }
-      });
-
-      log.info({ customerId, band, count: personIds.length }, "portal change control approvers saved");
-      res.json({ ok: true, band, personIds });
-    } catch (err) {
-      log.error({ customerId, band, err: err instanceof Error ? err.message : String(err) }, "portal change control approvers save failed");
-      res.status(500).json({ error: "Approvers could not be saved." });
-    }
-  },
-);
+// NOTE (#1759): there is deliberately NO PUT .../approvers route. Approver
+// eligibility is not a stored set the tenant edits here — it derives live from
+// `users.can_approve_changes` (managed where users are managed), so this page
+// reads eligibility and does not write it. The removed route, its
+// `portal_change_control_approvers` table, and the `normal`/`emergency` band
+// concept were a second eligibility store the approval path never read; #1759
+// dropped all three (resolving #1757 by deletion).
 
 router.put(
   "/portal/settings/change-control/notifications/:eventKey",

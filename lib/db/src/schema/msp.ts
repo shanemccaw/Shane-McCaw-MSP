@@ -5401,13 +5401,18 @@ export type PortalOwnershipRow = typeof portalOwnershipRowsTable.$inferSelect;
 // `stage`, `decision`, `reason`, `decidedAt`. `portalChangeControlPolicyTable`
 // below is the tenant-wide POLICY consulted when a change request is evaluated —
 // what gets gated, how many signatures are required, and who is eligible to sign
-// at all. It records no decision of its own. Since #1496 has not been built yet,
-// there is no existing approval-decision model to extend; this is a genuinely
-// different object (settled per #1592's own instruction to check before
-// building a second approver model), and `portalChangeControlApproversTable`'s
-// `personId` uses the SAME wire-person-id convention (`personIdForUser`,
-// "u{id}") that `portal_ownership_assignments.owner_person_id` already uses, so
-// the two models share one identity scheme rather than inventing a second.
+// at all. It records no decision of its own.
+//
+// ── #1759 made the policy authoritative and dropped the approver table ───────
+// #1496 and #1592 landed the same day and neither read the other: the policy
+// had no consumer on the approval path. #1759 wired `required_signatures` and
+// `require_separate_approver` into `portal-change-approvals-store` so the
+// approve/reject/materialise path acts on them. It also DROPPED the former
+// `portal_change_control_approvers` table (and its `normal`/`emergency` bands):
+// that was a SECOND eligibility store the approval path never read. Approver
+// eligibility now derives live from `users.can_approve_changes` — the same
+// capability the approve/reject routes enforce — so there is nothing to drift.
+// This resolved #1757 (cross-validating the two stores) by deletion, not patch.
 
 /** The design's fixed "what is gated" catalogue (CC_GATES) — a real, closed
  *  vocabulary carried forward from the settings fixture, not invented here. */
@@ -5444,32 +5449,10 @@ export const portalChangeControlPolicyTable = pgTable("portal_change_control_pol
 export type PortalChangeControlPolicy = typeof portalChangeControlPolicyTable.$inferSelect;
 export type InsertPortalChangeControlPolicy = typeof portalChangeControlPolicyTable.$inferInsert;
 
-/** "Who may approve" bands — prototype's `ccApproverBands` iterates exactly
- *  these two; `standard: 'auto'` (a string, not a person list) is dropped, same
- *  as the design fixture drops it, because nothing reads it. */
-export const CC_APPROVER_BANDS = ["normal", "emergency"] as const;
-export type CcApproverBand = (typeof CC_APPROVER_BANDS)[number];
-
-export const portalChangeControlApproversTable = pgTable("portal_change_control_approvers", {
-  id: serial("id").primaryKey(),
-  customerId: integer("customer_id").notNull(),
-  band: text("band", { enum: CC_APPROVER_BANDS }).notNull(),
-  /** A wire person id (`personIdForUser`, "u{id}") naming an active user of
-   *  this tenant — validated against `users` at write time, not by FK, matching
-   *  `portal_ownership_assignments.owner_person_id`'s convention. */
-  personId: text("person_id").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [
-  index("portal_change_control_approvers_customer_id_idx").on(t.customerId),
-  uniqueIndex("portal_change_control_approvers_customer_band_person_idx").on(
-    t.customerId,
-    t.band,
-    t.personId,
-  ),
-]);
-
-export type PortalChangeControlApprover = typeof portalChangeControlApproversTable.$inferSelect;
-export type InsertPortalChangeControlApprover = typeof portalChangeControlApproversTable.$inferInsert;
+// #1759 removed `portal_change_control_approvers` (the `CC_APPROVER_BANDS`
+// `normal`/`emergency` stored approver set). Approver eligibility now derives
+// live from `users.can_approve_changes`; see the block comment above and
+// `routes/portal-settings-change-control.ts`.
 
 /** The notification-rules event catalogue (CC_NOTIF_SEED's seven rows, keyed) —
  *  a fixed, real vocabulary of what the platform can actually notify on. */

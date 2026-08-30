@@ -4,11 +4,14 @@
  *
  *   GET /api/portal/settings/change-control
  *   PUT /api/portal/settings/change-control/policy
- *   PUT /api/portal/settings/change-control/approvers
  *   PUT /api/portal/settings/change-control/notifications/:eventKey
  *
  * served by `artifacts/api-server/src/routes/portal-settings-change-control.ts`,
  * scoped to the calling customer's own account.
+ *
+ * Approver eligibility is READ-ONLY here (#1759): `eligibleApprovers` derives
+ * server-side from `users.can_approve_changes`, so there is no `saveApprovers` —
+ * the page shows who may sign, it does not edit the set.
  *
  * No page imports this yet — there is no `Design/portal/` Settings export to
  * wire it into (see the header of `settingsChangeControlWire.ts`). This file
@@ -19,7 +22,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { useAuth } from "@/lib/auth-context";
-import { toNotifRules, toPeople, toPolicy, type CcApproverBand, type CcNotifRule, type CcPerson, type CcPolicy, type WireChangeControlSettings } from "./settingsChangeControlWire";
+import { toEligibleApprovers, toNotifRules, toPeople, toPolicy, type CcNotifRule, type CcPerson, type CcPolicy, type WireChangeControlSettings } from "./settingsChangeControlWire";
 
 const CHANGE_CONTROL_URL = "/api/portal/settings/change-control";
 
@@ -27,14 +30,15 @@ export interface ChangeControlLiveState {
   readonly policy: CcPolicy;
   readonly notifications: readonly CcNotifRule[];
   readonly people: readonly CcPerson[];
+  /** Wire person ids (a subset of `people`) eligible to approve — derived
+   *  server-side from `users.can_approve_changes` (#1759), read-only here. */
+  readonly eligibleApprovers: readonly string[];
   readonly loading: boolean;
   readonly error: string | null;
   readonly saving: boolean;
   /** Persists a partial policy patch. Resolves to null on success, or the
    *  reason it failed. */
-  readonly savePolicy: (patch: Partial<Omit<CcPolicy, "approvers">>) => Promise<string | null>;
-  /** Replaces the full approver set for one band. */
-  readonly saveApprovers: (band: CcApproverBand, personIds: readonly string[]) => Promise<string | null>;
+  readonly savePolicy: (patch: Partial<CcPolicy>) => Promise<string | null>;
   /** Saves one notification rule by its event key. */
   readonly saveNotifRule: (event: string, patch: Partial<Pick<CcNotifRule, "channel" | "to" | "lead" | "on">>) => Promise<string | null>;
 }
@@ -44,6 +48,7 @@ export function useChangeControlSettingsLive(): ChangeControlLiveState {
   const [policy, setPolicy] = useState<CcPolicy>(toPolicy(undefined));
   const [notifications, setNotifications] = useState<readonly CcNotifRule[]>([]);
   const [people, setPeople] = useState<readonly CcPerson[]>([]);
+  const [eligibleApprovers, setEligibleApprovers] = useState<readonly string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -56,6 +61,7 @@ export function useChangeControlSettingsLive(): ChangeControlLiveState {
       setPolicy(toPolicy(body.policy));
       setNotifications(toNotifRules(body.notifications));
       setPeople(toPeople(body.people));
+      setEligibleApprovers(toEligibleApprovers(body.eligibleApprovers));
       setError(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
@@ -75,7 +81,7 @@ export function useChangeControlSettingsLive(): ChangeControlLiveState {
   }, [reload]);
 
   const savePolicy = useCallback(
-    async (patch: Partial<Omit<CcPolicy, "approvers">>): Promise<string | null> => {
+    async (patch: Partial<CcPolicy>): Promise<string | null> => {
       setSaving(true);
       try {
         const merged = { ...policy, ...patch };
@@ -101,34 +107,6 @@ export function useChangeControlSettingsLive(): ChangeControlLiveState {
       }
     },
     [fetchWithAuth, policy],
-  );
-
-  const saveApprovers = useCallback(
-    async (band: CcApproverBand, personIds: readonly string[]): Promise<string | null> => {
-      setSaving(true);
-      try {
-        const res = await fetchWithAuth(
-          `${CHANGE_CONTROL_URL}/approvers`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ band, personIds }),
-          },
-          { silent: true },
-        );
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as { error?: string } | null;
-          return body?.error ?? `Could not save approvers (${res.status})`;
-        }
-        setPolicy((cur) => ({ ...cur, approvers: { ...cur.approvers, [band]: personIds } }));
-        return null;
-      } catch (err: unknown) {
-        return err instanceof Error ? err.message : String(err);
-      } finally {
-        setSaving(false);
-      }
-    },
-    [fetchWithAuth],
   );
 
   const saveNotifRule = useCallback(
@@ -161,5 +139,5 @@ export function useChangeControlSettingsLive(): ChangeControlLiveState {
     [fetchWithAuth, notifications],
   );
 
-  return { policy, notifications, people, loading, error, saving, savePolicy, saveApprovers, saveNotifRule };
+  return { policy, notifications, people, eligibleApprovers, loading, error, saving, savePolicy, saveNotifRule };
 }

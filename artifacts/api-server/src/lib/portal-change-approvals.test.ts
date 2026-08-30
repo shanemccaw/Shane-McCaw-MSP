@@ -36,6 +36,27 @@ describe("requiredStages", () => {
     expect(requiredStages("normal", "high")).toBe(2);
     expect(requiredStages("normal", "critical")).toBe(2);
   });
+
+  // #1759 — the tenant policy floors the count UP, never below the risk floor.
+  it("no policy row (null) leaves the risk-derived count untouched", () => {
+    expect(requiredStages("normal", "low", null)).toBe(1);
+    expect(requiredStages("normal", "high", null)).toBe(2);
+    expect(requiredStages("emergency", "low", null)).toBe(1);
+  });
+  it("a policy demanding more signatures raises the count", () => {
+    expect(requiredStages("normal", "low", 2)).toBe(2);
+    expect(requiredStages("normal", "low", 3)).toBe(3);
+    expect(requiredStages("emergency", "low", 2)).toBe(2);
+  });
+  it("risk floors the policy — a tenant cannot configure below what risk requires", () => {
+    // policy asks for 1, but high risk requires 2 → 2 wins.
+    expect(requiredStages("normal", "high", 1)).toBe(2);
+    expect(requiredStages("normal", "critical", 1)).toBe(2);
+  });
+  it("a standard change stays pre-approved (0) even under a signature policy", () => {
+    expect(requiredStages("standard", "low", 3)).toBe(0);
+    expect(requiredStages("standard", "critical", 3)).toBe(0);
+  });
 });
 
 describe("slaDaysFor / computeDueAt", () => {

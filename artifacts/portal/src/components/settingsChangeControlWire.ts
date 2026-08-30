@@ -14,16 +14,15 @@
  * names on purpose.
  */
 
-export type CcApproverBand = "normal" | "emergency";
-
 export interface CcPolicy {
   readonly on: boolean;
   readonly gated: Record<string, boolean>;
   readonly approvals: number;
   readonly separate: boolean;
+  /** CURRENT-unenforced (#1759): the toggle persists, but no freeze calendar
+   *  (#1500) exists to enforce it against yet. */
   readonly freeze: boolean;
   readonly emergency: boolean;
-  readonly approvers: { readonly normal: readonly string[]; readonly emergency: readonly string[] };
 }
 
 export interface CcNotifRule {
@@ -44,6 +43,7 @@ export interface WireChangeControlSettings {
   readonly policy?: unknown;
   readonly notifications?: unknown;
   readonly people?: unknown;
+  readonly eligibleApprovers?: unknown;
 }
 
 const DEFAULT_POLICY: CcPolicy = {
@@ -53,7 +53,6 @@ const DEFAULT_POLICY: CcPolicy = {
   separate: true,
   freeze: false,
   emergency: false,
-  approvers: { normal: [], emergency: [] },
 };
 
 function bool(v: unknown, fallback: boolean): boolean {
@@ -69,7 +68,6 @@ export function toPolicy(raw: unknown): CcPolicy {
   const gatedRaw = p.gated && typeof p.gated === "object" ? (p.gated as Record<string, unknown>) : {};
   const gated: Record<string, boolean> = {};
   for (const [k, v] of Object.entries(gatedRaw)) gated[k] = v === true;
-  const approversRaw = p.approvers && typeof p.approvers === "object" ? (p.approvers as Record<string, unknown>) : {};
   return {
     on: bool(p.on, DEFAULT_POLICY.on),
     gated,
@@ -77,11 +75,13 @@ export function toPolicy(raw: unknown): CcPolicy {
     separate: bool(p.separate, DEFAULT_POLICY.separate),
     freeze: bool(p.freeze, DEFAULT_POLICY.freeze),
     emergency: bool(p.emergency, DEFAULT_POLICY.emergency),
-    approvers: {
-      normal: strArray(approversRaw.normal),
-      emergency: strArray(approversRaw.emergency),
-    },
   };
+}
+
+/** The wire person ids of this tenant's users eligible to approve — derived
+ *  server-side from `users.can_approve_changes` (#1759), a subset of `people`. */
+export function toEligibleApprovers(raw: unknown): readonly string[] {
+  return strArray(raw);
 }
 
 function str(v: unknown): string {

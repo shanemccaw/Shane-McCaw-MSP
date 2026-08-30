@@ -34,26 +34,40 @@ export const CR_APPROVER_ROLES = ["customer", "msp", "catalog_inherited", "micro
 
 /**
  * How many HUMAN approval stages a change needs, in order, before it is
- * approved. Risk level decides the count — the same principle the risk
+ * approved. Risk level decides a FLOOR — the same principle the risk
  * recomputation in `portal-change-control.ts` exists to protect ("risk level
  * decides how many approvals a change needs, so a client that can name its own
  * risk can name its way past the gate").
  *
  *   • standard          → 0. Pre-approved; the ledger records one inherited
- *                          approval and nobody is asked to act.
+ *                          approval and nobody is asked to act. A pre-approved
+ *                          change has no human stage for a policy to raise, so
+ *                          the tenant policy does not apply here.
  *   • emergency         → 1. A single retrospective sign-off (a very short SLA).
  *   • normal, low/med   → 1.
  *   • normal, high      → 2 (a second, independent approver).
  *   • normal, critical  → 2.
  *
+ * ── The tenant policy floors it UP, never down (#1759) ──────────────────────
+ * `portal_change_control_policy.required_signatures` is the tenant's own
+ * "signatures required" setting. When a policy row exists, the effective count
+ * is `max(policySignatures, riskDerived)`: a tenant may demand MORE signatures
+ * than its risk requires, but risk is the floor it can never configure below —
+ * that floor is the whole reason this function exists. `policySignatures` of
+ * `null` means the tenant has no policy row, and the result is exactly the
+ * risk-derived count, byte for byte as before this was wired.
+ *
  * Each stage is quorum-1 today; the `cr_approvals` table can hold a quorum
  * (multiple rows sharing a stage) if policy later asks for one.
  */
-export function requiredStages(changeClass: StoredChangeClass, risk: StoredRiskLevel): number {
+export function requiredStages(
+  changeClass: StoredChangeClass,
+  risk: StoredRiskLevel,
+  policySignatures: number | null = null,
+): number {
   if (changeClass === "standard") return 0;
-  if (changeClass === "emergency") return 1;
-  if (risk === "high" || risk === "critical") return 2;
-  return 1;
+  const riskDerived = changeClass === "emergency" ? 1 : risk === "high" || risk === "critical" ? 2 : 1;
+  return policySignatures === null ? riskDerived : Math.max(policySignatures, riskDerived);
 }
 
 /**

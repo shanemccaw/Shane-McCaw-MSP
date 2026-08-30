@@ -128,6 +128,7 @@ import {
   type WireApprovalRecord,
 } from "../lib/portal-change-approvals";
 import {
+  loadApprovalPolicy,
   materializeApprovalsForChange,
   recordApproval,
 } from "../lib/portal-change-approvals-store";
@@ -267,6 +268,13 @@ interface ApprovalViewerContext {
   readonly now: Date;
   readonly callerCanApprove: boolean;
   readonly callerEmail: string;
+  /** This tenant's `portal_change_control_policy.required_signatures` (#1759),
+   *  or null when it has no policy row — floors the stage count. */
+  readonly requiredSignatures: number | null;
+  /** This tenant's `portal_change_control_policy.require_separate_approver`
+   *  (#1759). When false, the requester may approve their own change, so the
+   *  affordance is not hidden from them. */
+  readonly requireSeparateApprover: boolean;
 }
 
 function toWire(
@@ -276,16 +284,18 @@ function toWire(
 ): WireChangeRequest {
   const changeClass = displayChangeClass(row.changeClass);
   const status = displayStatus(row.status, row.approvedBy);
-  const required = requiredStages(row.changeClass as never, row.riskLevel as never);
+  const required = requiredStages(row.changeClass as never, row.riskLevel as never, ctx.requiredSignatures);
   const approvalState = summarizeApprovals(approvals, required, ctx.now);
   const approvalRecords = approvals.map((a) => toWireApproval(a, ctx.now));
   // The caller may act only if they carry the capability, a stage is pending,
-  // and they are not the requester (separation of duties). The store re-checks
-  // all three server-side; this only decides whether to show the affordance.
+  // and — when the tenant's policy requires a separate approver (#1759) — they
+  // are not the requester. The store re-checks all of this server-side; this
+  // only decides whether to show the affordance.
   const requesterEmail = (row.requestedBy ?? "").trim().toLowerCase();
   const isRequester = requesterEmail.length > 0 && requesterEmail === ctx.callerEmail.trim().toLowerCase();
+  const blockedAsRequester = ctx.requireSeparateApprover && isRequester;
   const canApproveNow =
-    ctx.callerCanApprove && approvalState.nextStage !== null && !approvalState.rejectedTerminal && !isRequester;
+    ctx.callerCanApprove && approvalState.nextStage !== null && !approvalState.rejectedTerminal && !blockedAsRequester;
   return {
     code: formatChangeRequestCode(row.id),
     title: row.title,
@@ -484,10 +494,20 @@ router.get(
         list.push(a);
         approvalsByCr.set(a.changeRequestId, list);
       }
+      // #1759 — the tenant's approval policy is authoritative. It floors how many
+      // signatures a change needs and decides whether the requester may sign; the
+      // register read reflects both so the affordance matches what the store will
+      // actually enforce.
+      const [callerCanApprove, policy] = await Promise.all([
+        callerCanApproveChanges(req),
+        loadApprovalPolicy(customerId),
+      ]);
       const ctx: ApprovalViewerContext = {
         now,
-        callerCanApprove: await callerCanApproveChanges(req),
+        callerCanApprove,
         callerEmail: req.user?.email ?? "",
+        requiredSignatures: policy.requiredSignatures,
+        requireSeparateApprover: policy.requireSeparateApprover,
       };
 
       const requests = rows.map((row) => toWire(row, approvalsByCr.get(row.id) ?? [], ctx));
@@ -638,17 +658,23 @@ router.post(
       // required pending stage(s) with their SLA. Non-fatal if it fails: the CR
       // is already created and the register still renders.
       try {
-        await materializeApprovalsForChange({
-          id: inserted.id,
-          mspId: scope.mspId,
-          tenantId: scope.tenantId,
-          changeClass: storedChangeClass(body.changeClass),
-          riskLevel: storedRiskLevel(risk),
-          status: "pending_approval",
-          approvedBy: null,
-          requestedBy,
-          createdAt: inserted.createdAt,
-        });
+        // #1759 — materialise the required pending stage(s) against this tenant's
+        // own policy floor, not just the risk-derived count.
+        const policy = await loadApprovalPolicy(customerId);
+        await materializeApprovalsForChange(
+          {
+            id: inserted.id,
+            mspId: scope.mspId,
+            tenantId: scope.tenantId,
+            changeClass: storedChangeClass(body.changeClass),
+            riskLevel: storedRiskLevel(risk),
+            status: "pending_approval",
+            approvedBy: null,
+            requestedBy,
+            createdAt: inserted.createdAt,
+          },
+          policy,
+        );
       } catch (err) {
         log.error({ err, crId: inserted.id }, "change request created but approval materialisation failed");
       }
@@ -972,7 +998,8 @@ router.post(
         return;
       }
 
-      const result = await recordApproval(cr, approverIdentity(req, customerId), parsed.data.note ?? null);
+      const policy = await loadApprovalPolicy(customerId);
+      const result = await recordApproval(cr, approverIdentity(req, customerId), parsed.data.note ?? null, policy);
       if (!result.ok) {
         res.status(result.code).json({ error: result.error });
         return;
@@ -1023,7 +1050,8 @@ router.post(
         return;
       }
 
-      const result = await recordRejection(cr, approverIdentity(req, customerId), parsed.data.reason);
+      const policy = await loadApprovalPolicy(customerId);
+      const result = await recordRejection(cr, approverIdentity(req, customerId), parsed.data.reason, policy);
       if (!result.ok) {
         res.status(result.code).json({ error: result.error });
         return;

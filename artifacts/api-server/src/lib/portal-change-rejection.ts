@@ -29,7 +29,7 @@ import { createHash } from "node:crypto";
 
 import { declineRoutedChangeToRisk } from "./m365-change-router";
 import { violatesSeparationOfDuties } from "./portal-change-approvals";
-import { resolveDelegatedAuthority, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store";
+import { resolveDelegatedAuthority, NO_POLICY, type ApprovalPolicyConfig, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "workflow.change-control" });
@@ -42,9 +42,10 @@ export async function recordRejection(
   cr: CrEssentials & Pick<MspChangeRequest, "sourceKind">,
   approver: ApproverIdentity,
   reason: string,
+  policy: ApprovalPolicyConfig = NO_POLICY,
 ): Promise<RejectionOutcome> {
   if (cr.status === "rejected") return { ok: false, code: 409, error: "This change has already been rejected." };
-  if (approver.role === "customer" && violatesSeparationOfDuties(cr.requestedBy, approver.email)) {
+  if (approver.role === "customer" && policy.requireSeparateApprover && violatesSeparationOfDuties(cr.requestedBy, approver.email)) {
     return { ok: false, code: 403, error: "Separation of duties: the person who raised a change cannot reject it." };
   }
 

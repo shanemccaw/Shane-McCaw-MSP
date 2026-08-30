@@ -18,6 +18,7 @@ import {
   db,
   crApprovalsTable,
   mspChangeRequestsTable,
+  portalChangeControlPolicyTable,
   portalOwnershipDelegationsTable,
   type CrApproval,
   type MspChangeRequest,
@@ -35,6 +36,49 @@ import type { StoredChangeClass, StoredRiskLevel } from "./portal-change-control
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "workflow.change-control" });
+
+/**
+ * The tenant's Change Control approval policy as the approval path consumes it
+ * (#1759). `portal_change_control_policy` is written by the Settings route
+ * (`portal-settings-change-control.ts`) and, until this build, had no reader on
+ * the approval path at all — a tenant configured a policy, saw it save, and
+ * every decision ignored it. These two fields are the ones the approval path
+ * actually acts on:
+ *
+ *   • `requiredSignatures` floors the human stage count UP (never below what the
+ *     CR's risk level requires — see `requiredStages`). `null` means the tenant
+ *     has no policy row, and the path behaves exactly as before it was wired.
+ *   • `requireSeparateApprover` decides whether the person who RAISED a change
+ *     may also approve/reject it. Defaults `true` (the current hardcoded
+ *     behaviour) when the tenant has no policy row.
+ */
+export interface ApprovalPolicyConfig {
+  readonly requiredSignatures: number | null;
+  readonly requireSeparateApprover: boolean;
+}
+
+/** The policy an approval path applies when the tenant has no `portal_change_control_policy` row. */
+export const NO_POLICY: ApprovalPolicyConfig = { requiredSignatures: null, requireSeparateApprover: true };
+
+/**
+ * Load the tenant's approval policy for the approval path. `customerId` is the
+ * `tenants.id` the Settings route keys `portal_change_control_policy` by — the
+ * SAME `resolveCustomerId(req)` value the change-control routes already resolve
+ * for the caller, whose CRs are scoped to that tenant. No row → `NO_POLICY`
+ * (current behaviour, byte for byte).
+ */
+export async function loadApprovalPolicy(customerId: number): Promise<ApprovalPolicyConfig> {
+  const [row] = await db
+    .select({
+      requiredSignatures: portalChangeControlPolicyTable.requiredSignatures,
+      requireSeparateApprover: portalChangeControlPolicyTable.requireSeparateApprover,
+    })
+    .from(portalChangeControlPolicyTable)
+    .where(eq(portalChangeControlPolicyTable.customerId, customerId))
+    .limit(1);
+  if (!row) return NO_POLICY;
+  return { requiredSignatures: row.requiredSignatures, requireSeparateApprover: row.requireSeparateApprover };
+}
 
 /** The CR fields the ledger writers need. A subset of the full row. */
 export type CrEssentials = Pick<
@@ -64,7 +108,10 @@ export type CrEssentials = Pick<
  *   • Needs a human → the required number of `pending` customer slots, one per
  *     stage, each carrying the SLA `dueAt`.
  */
-export async function materializeApprovalsForChange(cr: CrEssentials): Promise<number> {
+export async function materializeApprovalsForChange(
+  cr: CrEssentials,
+  policy: ApprovalPolicyConfig = NO_POLICY,
+): Promise<number> {
   const existing = await db
     .select({ id: crApprovalsTable.id })
     .from(crApprovalsTable)
@@ -93,7 +140,7 @@ export async function materializeApprovalsForChange(cr: CrEssentials): Promise<n
     return 1;
   }
 
-  const stages = requiredStages(changeClass, risk);
+  const stages = requiredStages(changeClass, risk, policy.requiredSignatures);
   if (stages === 0) {
     // A standard change with no approver named yet: still a real, pre-approved
     // record rather than a pending human ask.
@@ -179,9 +226,14 @@ export type DecisionOutcome =
  * required stage clears, the CR's `approvedBy` cache is set so the register reads
  * "Approved".
  */
-export async function recordApproval(cr: CrEssentials, approver: ApproverIdentity, note: string | null): Promise<DecisionOutcome> {
+export async function recordApproval(
+  cr: CrEssentials,
+  approver: ApproverIdentity,
+  note: string | null,
+  policy: ApprovalPolicyConfig = NO_POLICY,
+): Promise<DecisionOutcome> {
   if (cr.status === "rejected") return { ok: false, code: 409, error: "This change has been rejected and cannot be approved." };
-  if (violatesSeparationOfDuties(cr.requestedBy, approver.email)) {
+  if (policy.requireSeparateApprover && violatesSeparationOfDuties(cr.requestedBy, approver.email)) {
     return { ok: false, code: 403, error: "Separation of duties: the person who raised a change cannot approve it." };
   }
 
@@ -236,7 +288,7 @@ export async function recordApproval(cr: CrEssentials, approver: ApproverIdentit
     .select({ stage: crApprovalsTable.stage, decision: crApprovalsTable.decision, dueAt: crApprovalsTable.dueAt })
     .from(crApprovalsTable)
     .where(eq(crApprovalsTable.changeRequestId, cr.id));
-  const required = requiredStages(cr.changeClass as StoredChangeClass, cr.riskLevel as StoredRiskLevel);
+  const required = requiredStages(cr.changeClass as StoredChangeClass, cr.riskLevel as StoredRiskLevel, policy.requiredSignatures);
   const state = summarizeApprovals(after, required, now);
 
   if (state.complete) {
