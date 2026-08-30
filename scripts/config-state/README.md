@@ -17,7 +17,11 @@ node scripts/config-state/verify-sample.mjs          # live READ-ONLY sample (te
 ```
 
 Steps 1–2 need no tenant credentials. Step 3 uses `MT_APP_CLIENT_ID` /
-`MT_APP_CLIENT_SECRET` and refuses to run against a tenant not flagged `is_testbed`.
+`MT_APP_CLIENT_SECRET` and refuses to run against a tenant not flagged `is_testbed`. Step 3
+also calls `detect-property-divergence.mjs` (Git #1846) itself, so the
+`$metadata`-vs-observed divergence table stays current on every sample; re-run
+`node scripts/config-state/render-property-divergence-doc.mjs` afterwards to regenerate the
+doc section from it.
 
 All three are safely re-runnable. `build-resource-model.mjs` replaces the model wholesale
 each run and records a new `config_model_extractions` row for provenance.
@@ -33,7 +37,9 @@ each run and records a new `config_model_extractions` row for provenance.
 | `parse-m365dsc.mjs` | Reads each DSC resource's `settings.json` (permissions, cmdlets, mode), `.schema.mof` (property model with allowed values) and `.psm1` (literal Graph URIs, invoked read cmdlets) |
 | `map-monitor-checks.mjs` | Maps every `monitor_checks` row onto the model, recording the match basis, confidence and the exact string matched on |
 | `build-resource-model.mjs` | The pipeline: parse → load the reachable Graph entity model → link DSC to Graph → emit `config_resources` + properties → reconcile availability against real grants → map the check catalog |
-| `verify-sample.mjs` | Live read-only sample against the testbed. `GET` only, no templated paths, no bound Functions, `$top=1`, serialised. Stores **shape only** — property names and JSON types, never values |
+| `verify-sample.mjs` | Live read-only sample against the testbed. `GET` only, no templated paths, no bound Functions, `$top=1`, serialised. Stores **shape only** — property names and JSON types, never values. Calls `detect-property-divergence.mjs` at the end of every run |
+| `detect-property-divergence.mjs` | Git #1846 — recomputes `config_resource_property_divergence` from whatever is currently in `config_resource_samples`: properties Graph returned live with no matching `graph-metadata` property row, classified `version_gap` (declared in the other Graph version) vs `undeclared_anywhere` (declared in neither). Keyed on the stable `resource_key`, not the volatile `config_resources.id`, so a model rebuild can't cascade-delete it (see #1895) |
+| `render-property-divergence-doc.mjs` | Git #1846 — regenerates the generated section of `docs/graph-resource-model.md` from `config_resource_property_divergence` |
 | `db.mjs` | Direct local Postgres connection via `DATABASE_URL`, plus chunked multi-row insert |
 
 ## Things worth knowing before changing any of this
