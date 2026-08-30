@@ -174,6 +174,9 @@ namespace BuildConsole
         private DispatcherTimer? _deployStatusTimer;
         private string? _lastSeenDeployCommitHash;
 
+        // ── Git #1886: periodic safety-net save for PersistOpenChatTabs() ────────
+        private DispatcherTimer? _persistTabsTimer;
+
         // ── Git #1417: local PostgreSQL Windows-service status poll ──────────────
         private DispatcherTimer? _postgresStatusTimer;
         private BuildConsole.Services.PostgresServiceStatus? _lastPostgresStatus;
@@ -737,6 +740,23 @@ namespace BuildConsole
             // a Windows service query is cheap, but no need to hammer it every tick.
             _postgresStatusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
             _postgresStatusTimer.Tick += async (_, _) => await RefreshPostgresStatusAsync();
+
+            // Git #1886 — PersistOpenChatTabs() is already called on every KNOWN discrete
+            // tab-state change (open ~2865, rename ~4314, mark-in-progress ~4403, drag
+            // ~7244, dock ~7288), but a crash between one of those events and the next
+            // still loses whatever changed in between (a still-open call site that itself
+            // doesn't persist, e.g. tab reorder, or a future change site that forgets to
+            // call it). Chose a periodic safety-net sweep over a per-change debounce
+            // timer: _chatTabs is mutated from many scattered locations across this file,
+            // and a periodic sweep bounds the crash-loss window to a fixed interval for
+            // ALL of them without requiring every current and future mutation site to
+            // remember to call PersistOpenChatTabs() itself. The method is already cheap
+            // (small in-memory snapshot + JSON save) and already no-ops safely via its own
+            // try/catch, so an unconditional 15s tick is simpler and more robust than
+            // tracking a dirty flag across every mutation path.
+            _persistTabsTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
+            _persistTabsTimer.Tick += (_, _) => PersistOpenChatTabs();
+            _persistTabsTimer.Start();
             _postgresStatusTimer.Start();
             _ = RefreshPostgresStatusAsync();
 
