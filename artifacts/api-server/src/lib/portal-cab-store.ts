@@ -20,12 +20,15 @@ import {
   type CabMember,
   type CabMemberRole,
   type CabMemberSide,
+  type MspChangeRequest,
 } from "@workspace/db";
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
 
 import { nextPendingStage } from "./portal-change-approvals";
 import { recordApproval, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store";
 import { recordRejection } from "./portal-change-rejection";
+
+export type { ApproverIdentity };
 import { formatChangeRequestCode } from "./portal-change-control";
 import { buildMinutes, isMeetingOpen, isRetroactiveForMeetingType, meetingTypeForChangeClass, type MinutesAgendaLine } from "./portal-cab";
 import { logger } from "./logger";
@@ -444,7 +447,7 @@ export async function recordAgendaDecision(
     .limit(1);
   if (!cr) return { ok: false, code: 404, error: "The change this agenda item refers to no longer exists" };
 
-  const crEssentials: CrEssentials = cr;
+  const crEssentials: CrEssentials & Pick<MspChangeRequest, "sourceKind"> = cr;
   const now = new Date();
 
   if (decision === "approve") {
