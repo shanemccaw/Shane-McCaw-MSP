@@ -103,8 +103,16 @@ export const PHASE_PILLARS: Readonly<Record<RemediationTrackerPhaseNumber, reado
  * Step statuses that count as "resolved" for phase re-scan readiness —
  * mirrors the design's `phaseReady()`. See the header for why `deferred` is
  * in this set and `shane_handles` deliberately is not.
+ *
+ * `accepted_risk` (#1542) joins the same bucket as `deferred`/`not_applicable`/
+ * `already_handled`: a formally-declined, signed item is resolved for
+ * phase-gating purposes (it does not keep a phase from going "ready"), but —
+ * exactly like those three — it is NOT `isCompleteAndVerified`, so it still
+ * counts toward the phase's outstanding fee. Accepting a risk is a real,
+ * signed decision about the item, not Shane doing the work; the fee does not
+ * drop just because the customer chose not to have it fixed.
  */
-const READY_STATUSES: ReadonlySet<string> = new Set(["completed", "already_handled", "not_applicable", "deferred"]);
+const READY_STATUSES: ReadonlySet<string> = new Set(["completed", "already_handled", "not_applicable", "deferred", "accepted_risk"]);
 
 /** `"$" + Math.round(n).toLocaleString("en-US")` — the design's own `money()` (line ~3902), byte-for-byte. */
 function money(n: number): string {

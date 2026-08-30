@@ -5504,6 +5504,23 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   spawnedByChangeRequestId: integer("spawned_by_change_request_id"),
   dischargedByChangeRequestId: integer("discharged_by_change_request_id"),
 
+  // ── Remediation ⟷ Risk pointer (#1542, part of #1489) ──────────────────────
+  //
+  // The SAME rejection-to-risk path as #1514, arriving from the Remediation
+  // Tracker rather than Change Control: a customer declining to fix a checklist
+  // item is accepting the residual risk, and the rejection IS the acceptance.
+  // `remediation-tracker-risk-decline.ts` is this side's
+  // `createAcceptedRiskFromDecline()` counterpart.
+  //   • spawnedByRemediationStepId — the remediation_tracker_steps.id whose
+  //     decline created this risk. No FK, matching every other cross-table
+  //     reference on that table (see its own header note).
+  // Discharge reuses `dischargedByChangeRequestId` above rather than a second
+  // column — a remediation-declined risk, like a CR-declined one, is only ever
+  // discharged by a fresh CR that supersedes it (#1514's lifecycle applies
+  // identically regardless of which side spawned the risk).
+  // NULL for every risk decision not spawned by a remediation-item decline.
+  spawnedByRemediationStepId: integer("spawned_by_remediation_step_id"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -5511,6 +5528,7 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   index("msp_risk_decisions_tenant_id_idx").on(t.tenantId),
   unique("msp_risk_decisions_msp_id_rbd_id_uidx").on(t.mspId, t.rbdId),
   index("msp_risk_decisions_tenant_check_status_idx").on(t.tenantId, t.checkKey, t.status),
+  index("msp_risk_decisions_spawned_by_remediation_step_idx").on(t.spawnedByRemediationStepId),
 ]);
 
 export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -5759,6 +5777,17 @@ export type InsertRemediationKnowledgeBaseRow = typeof remediationKnowledgeBaseT
 // about the step — and splitting them across parallel boolean/reason fields
 // bolted onto `completed_at`'s neighbours is exactly what Phase A's own
 // comment on this column warned against.
+// `accepted_risk` (#1542) — the customer explicitly declined this remediation
+// item and it has EXITED the checklist to the register. This is deliberately
+// its OWN value rather than folded into `deferred`/`not_applicable`: those two
+// are claims with no formal record behind them, while `accepted_risk` is ONLY
+// ever set by `remediation-tracker-risk-decline.ts` in the same transaction
+// that creates a SIGNED `msp_risk_decisions` row (the same rejection-to-risk
+// path as #1514, arriving from this side rather than Change Control) — a
+// verifiable fact, not a claim awaiting proof, so it is never reset back to
+// `unverified`-eligible re-verification the way the other five are (see
+// `remediation-tracker-verification.ts`'s explicit allow-list, which this
+// value is deliberately left out of).
 export const REMEDIATION_TRACKER_STEP_STATUS = [
   "not_started",
   "completed",
@@ -5766,6 +5795,7 @@ export const REMEDIATION_TRACKER_STEP_STATUS = [
   "not_applicable",
   "deferred",
   "shane_handles",
+  "accepted_risk",
 ] as const;
 export type RemediationTrackerStepStatus = (typeof REMEDIATION_TRACKER_STEP_STATUS)[number];
 

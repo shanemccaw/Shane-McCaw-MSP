@@ -158,6 +158,25 @@ describe("already_handled / not_applicable / deferred steps stay outstanding for
   });
 });
 
+describe("accepted_risk joins the resolved-but-still-outstanding bucket (#1542)", () => {
+  it("counts toward phase readiness like deferred/not_applicable, but never zeroes the fee", () => {
+    const pricing = computeRemediationTrackerPricing(
+      rows({
+        s1: { status: "accepted_risk" },
+        s2: { status: "already_handled" },
+        s3: { status: "deferred" },
+        s4: { status: "not_applicable" },
+        s5: { status: "accepted_risk" },
+        s6: { status: "already_handled" },
+        ...Object.fromEntries(SECURITY_IDS.map((id) => [id, { status: "already_handled" }])),
+      }),
+    );
+    const phase1 = pricing.phases.find((p) => p.phase === 1)!;
+    expect(phase1.ready).toBe(true); // a signed decline resolves the step for gating purposes...
+    expect(phase1.fee).toBe(9800 + 6400); // ...but accepting a risk is not Shane doing the work, so the fee stays flat.
+  });
+});
+
 describe("deferred vs shane_handles readiness gating (resolved against the design file, not the issue's initial guess)", () => {
   it("deferred DOES count toward phase readiness, matching the design's skip()->\"skipped\" behavior", () => {
     const pricing = computeRemediationTrackerPricing(

@@ -7,6 +7,11 @@
  *     — every stored step state for the calling customer.
  *   PUT /api/portal/remediation-tracker/steps/:stepId
  *     — set one step's state. Idempotent upsert; safe to send twice.
+ *   POST /api/portal/remediation-tracker/steps/:stepId/decline-to-risk
+ *     — #1542: the customer declines to fix this item. The decline IS a risk
+ *     acceptance (the same rejection-to-risk path #1514 built for Change
+ *     Control) — see `remediation-tracker-risk-decline.ts` for the derivation
+ *     and `remediationTerminalState()` below for the three-state read model.
  *
  * WHAT THIS REPLACES
  * ------------------
@@ -67,6 +72,9 @@ import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
 import { stepCheckKeysFor } from "../lib/remediation-tracker-verification";
 import { emitWorkflowEvent } from "../lib/workflow-executor";
 import { fetchPublishedKnowledgeBaseRows } from "../lib/remediation-knowledge-base";
+import { resolveTenantScope } from "../lib/portal-customer-scope";
+import { declineRemediationStepToRisk } from "../lib/remediation-tracker-risk-decline";
+import { apiError, ApiErrorCode } from "../lib/api-helpers";
 
 /**
  * Roles that represent SHANE / the MSP acting, as opposed to the customer
@@ -107,6 +115,27 @@ const putStepSchema = z.object({
   status: z.enum(REMEDIATION_TRACKER_STEP_STATUS),
 });
 
+/**
+ * #1542 — the checklist's three terminal read-states, derived rather than
+ * stored: "done means verified, never claimed" (#1489), so `completed` alone
+ * is not a terminal state here.
+ *
+ *   verified    — the pointed check passed (verificationState === "verified").
+ *   accepted    — exited to the register with a signature (status ===
+ *                 "accepted_risk", which is ONLY ever set by
+ *                 remediation-tracker-risk-decline.ts alongside a real signed
+ *                 msp_risk_decisions row — never a bare claim).
+ *   outstanding — neither. Every other status/verification combination,
+ *                 including a customer's un-re-verified `completed` claim.
+ */
+type RemediationTerminalState = "verified" | "accepted" | "outstanding";
+
+function remediationTerminalState(status: string, verificationState: string): RemediationTerminalState {
+  if (verificationState === "verified") return "verified";
+  if (status === "accepted_risk") return "accepted";
+  return "outstanding";
+}
+
 /** The wire shape of one stored step. */
 interface WireTrackerStep {
   readonly stepId: string;
@@ -116,6 +145,8 @@ interface WireTrackerStep {
   /** "unverified" | "verified" | "drift" — see remediation-tracker-verification.ts. */
   readonly verificationState: string;
   readonly verifiedAt: string | null;
+  /** #1542 — see remediationTerminalState() above. */
+  readonly terminalState: RemediationTerminalState;
 }
 
 /**
@@ -144,6 +175,7 @@ function toWire(row: {
     updatedAt: iso(row.updatedAt),
     verificationState: row.verificationState,
     verifiedAt: iso(row.verifiedAt),
+    terminalState: remediationTerminalState(row.status, row.verificationState),
   };
 }
 
@@ -225,6 +257,16 @@ router.put(
     }
 
     const { status } = parsed.data;
+
+    // #1542 — `accepted_risk` is a signed fact, not a claim: it is ONLY ever
+    // set by POST .../decline-to-risk alongside a real msp_risk_decisions row.
+    // A bare PUT setting it directly would be an unsigned "accepted" state,
+    // exactly the claim-vs-proof collapse this route's own header forbids.
+    if (status === "accepted_risk") {
+      res.status(400).json({ error: "accepted_risk cannot be set directly — use POST .../decline-to-risk" });
+      return;
+    }
+
     const now = new Date();
     const completedAt = status === "completed" ? now : null;
     const userId = typeof req.user?.id === "number" ? req.user.id : null;
@@ -310,6 +352,7 @@ router.put(
               updatedAt: now.toISOString(),
               verificationState,
               verifiedAt: null,
+              terminalState: remediationTerminalState(status, verificationState),
             },
       });
     } catch (err) {
@@ -435,6 +478,149 @@ router.get(
     } catch (err) {
       log.error({ err, customerId, stepId }, "GET /portal/remediation-tracker/steps/:stepId/verification-guide failed");
       res.status(500).json({ error: "Failed to load verification guidance" });
+    }
+  },
+);
+
+// ── Decline to risk (#1542) ─────────────────────────────────────────────────
+//
+// Same typed-name + checkbox acceptance shape as `POST
+// /portal/risk-register/:rbdId/accept` (portal-risk-register.ts) — this IS
+// that same signed acceptance, just arriving with its own risk record rather
+// than accepting a pre-existing one. `fullName` is not checked against the
+// account's own name for the same reason that route documents: the person
+// signing may legitimately be signing in a role, and the account that
+// actually signed is recorded separately (the JWT-derived actor, logged
+// below) as the real identity claim.
+const declineToRiskSchema = z.object({
+  fullName: z.string().trim().min(2, "Type your full name to accept this risk").max(200),
+  confirmed: z.literal(true),
+  statement: z.string().trim().min(1).max(2000),
+});
+
+// Role floor: `CustomerUser`, matching portal-risk-register.ts's own floor for
+// the same reason — this creates a signed liability record, which is a higher
+// bar than the `Assessment` floor the rest of this journey uses.
+router.post(
+  "/portal/remediation-tracker/steps/:stepId/decline-to-risk",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+      return;
+    }
+
+    const stepId = String(req.params.stepId ?? "");
+    if (!STEP_ID_SET.has(stepId)) {
+      apiError(res, 400, ApiErrorCode.VALIDATION, "Unknown remediation step");
+      return;
+    }
+
+    const parsed = declineToRiskSchema.safeParse(req.body);
+    if (!parsed.success) {
+      apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid acceptance", parsed.error.flatten());
+      return;
+    }
+
+    try {
+      const scope = await resolveTenantScope(customerId);
+      if (!scope) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+
+      const now = new Date();
+      const userId = typeof req.user?.id === "number" ? req.user.id : null;
+
+      // Ensure a tracker row exists so there is an id to point the risk
+      // decision's back-pointer at — a customer may decline a step they have
+      // never otherwise touched. Same upsert idiom the PUT handler above uses
+      // (insert .. onConflictDoUpdate), touching only `updatedAt` on an
+      // existing row so this step never clobbers a real status before the
+      // conflict check below gets to look at it.
+      const [row] = await db
+        .insert(remediationTrackerStepsTable)
+        .values({ customerId, stepId, status: "not_started", updatedByUserId: userId, updatedAt: now })
+        .onConflictDoUpdate({
+          target: [remediationTrackerStepsTable.customerId, remediationTrackerStepsTable.stepId],
+          set: { updatedAt: now },
+        })
+        .returning({ id: remediationTrackerStepsTable.id, status: remediationTrackerStepsTable.status });
+
+      if (!row) {
+        apiError(res, 500, ApiErrorCode.INTERNAL, "Failed to resolve remediation step");
+        return;
+      }
+
+      // PERMANENT, same guarantee as the Risk Register's own accept endpoint.
+      if (row.status === "accepted_risk") {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "This item has already been declined to the risk register");
+        return;
+      }
+
+      const result = await declineRemediationStepToRisk({
+        stepId,
+        trackerStepRowId: row.id,
+        scope,
+        approverName: parsed.data.fullName,
+        statement: parsed.data.statement,
+      });
+
+      // Second upsert to flip the now-real state — same idiom as the PUT
+      // handler's own write, including the same verification reset (a changed
+      // claim invalidates whatever the last scan confirmed about the old one).
+      await db
+        .insert(remediationTrackerStepsTable)
+        .values({
+          customerId,
+          stepId,
+          status: "accepted_risk",
+          completedAt: null,
+          updatedByUserId: userId,
+          verificationState: "unverified",
+          verifiedAt: null,
+          verifiedByRunId: null,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [remediationTrackerStepsTable.customerId, remediationTrackerStepsTable.stepId],
+          set: {
+            status: "accepted_risk",
+            completedAt: null,
+            updatedByUserId: userId,
+            verificationState: "unverified",
+            verifiedAt: null,
+            verifiedByRunId: null,
+            updatedAt: now,
+          },
+        });
+
+      log.info(
+        { customerId, stepId, rbdId: result.rbdId, riskDecisionId: result.riskDecisionId, userId },
+        "remediation step declined to risk register",
+      );
+
+      res.status(201).json({
+        step: {
+          stepId,
+          status: "accepted_risk",
+          completedAt: null,
+          updatedAt: now.toISOString(),
+          verificationState: "unverified",
+          verifiedAt: null,
+          terminalState: remediationTerminalState("accepted_risk", "unverified"),
+        },
+        rbdId: result.rbdId,
+        accepted: {
+          by: parsed.data.fullName,
+          on: now.toISOString(),
+          statement: parsed.data.statement,
+        },
+      });
+    } catch (err: unknown) {
+      log.error({ err, customerId, stepId }, "POST /portal/remediation-tracker/steps/:stepId/decline-to-risk failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },
 );

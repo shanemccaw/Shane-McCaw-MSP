@@ -74,6 +74,13 @@ export const REMEDIATION_TRACKER_STEP_STATUS = [
   "not_applicable",
   "deferred",
   "shane_handles",
+  // #1542 — set ONLY by the server alongside a real signed msp_risk_decisions
+  // row (POST .../steps/:stepId/decline-to-risk), never a bare claim. Vocabulary
+  // mirror only: no page consumes this value yet (SCOPE STOP, #1542 ends at the
+  // wire contract). Do not fold this into RT_ACCEPTED_STATUSES in
+  // remediationLive.ts — that bucket is the softer, unsigned Accepted-as-is
+  // (not_applicable/deferred); this is the stronger, signed register exit.
+  "accepted_risk",
 ] as const;
 export type RemediationTrackerStepStatus = (typeof REMEDIATION_TRACKER_STEP_STATUS)[number];
 
