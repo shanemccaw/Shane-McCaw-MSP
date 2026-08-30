@@ -867,6 +867,45 @@ namespace BuildConsole.Services
             return true;
         }
 
+        // ── ParkAsync (Git #1832) ────────────────────────────────────────────────
+        /// <summary>
+        /// Flips ONE queued row to 'parked', pulling it out of the normal auto-run
+        /// pipeline (GetNextAsync's claim query, WHERE status = 'queued', never sees
+        /// it again until Un-park). Mirrors UnparkAsync's shape in reverse. Returns
+        /// true only when the row was actually eligible (a stale double-click on an
+        /// already-parked/canceled/running item is a safe no-op, not a silent
+        /// success).
+        ///
+        /// Git #1832 — also allows 'limit-paused' -> 'parked': a build waiting out a
+        /// session-limit reset is genuinely not running either, and parking it
+        /// instead of waiting out the timer is a reasonable thing to want (same call
+        /// CancelAsync already made by accepting 'limit-paused' alongside 'queued').
+        /// Verifying items are deliberately NOT included — that work is already done
+        /// and only waiting on GitHub to close; parking it would be a confusing
+        /// state. Running items aren't included either — Stop/Cancel is the correct
+        /// action there, not Park.
+        ///
+        /// No label sync here, unlike UnparkAsync — this deliberately mirrors
+        /// QueueBuildAsync's own stance (see its `!park` guard above): a parked item
+        /// isn't in-flight work, but it also isn't "complete", so there's no label
+        /// transition that correctly describes "actively queued -> staged, not
+        /// forgotten." The in-flight label it already carries from being queued
+        /// stays as-is; Un-park is what re-affirms in-flight when real work resumes.
+        /// </summary>
+        public async Task<bool> ParkAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'parked',
+                       updated_at = NOW()
+                 WHERE id     = @id
+                   AND status IN ('queued', 'limit-paused')", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+            return rowsAffected > 0;
+        }
+
         // ── QueueExternalAsync (Git #1638) ────────────────────────────────────────
         /// <summary>
         /// "Send to Builder" tracking row — per #1638's locked decision, this is a
