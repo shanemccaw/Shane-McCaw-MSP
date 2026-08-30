@@ -236,6 +236,13 @@ function Get-SurveyFailureStatus {
     # Same locale-independent signal child-worker.ps1 already relies on (#250).
     if ($ErrorRecord.Exception -is [System.Management.Automation.CommandNotFoundException]) { return "cmdlet_unavailable" }
     if ($message -match "(?i)is not recognized as (a|the) name of a cmdlet, function, script file, or executable program") { return "cmdlet_unavailable" }
+    # Exchange Online's own phrasing for a command that resolves in the session
+    # but has no implementation the service will dispatch — same class as a
+    # CommandNotFoundException from the caller's point of view, and observed
+    # live on Get-RbacDiagnosticInfo. Checked BEFORE the permission branch: the
+    # message names the cmdlet, so a permission regex matching on the cmdlet's
+    # own name would otherwise steal it.
+    if ($message -match "(?i)Cmdlet type is not supported|cmdlet you attempted to run is currently unavailable") { return "cmdlet_unavailable" }
 
     if ($message -match "(?i)micro delay|throttl|too many requests|429|budget is exhausted|Cmdlet execution budget") { return "throttled" }
 
@@ -244,7 +251,12 @@ function Get-SurveyFailureStatus {
     # implementation, as distinct from a permission denial.
     if ($message -match "(?i)app-?only|application context|certificate based authentication is not supported|only supported (in|for) delegated|not supported when using a service principal|unattended") { return "not_supported_app_only" }
 
-    if ($message -match "(?i)access denied|access is denied|insufficient (privileges|permissions)|not authorized|unauthorized|does not have permission|couldn't find object .* Make sure that you've typed it correctly|operation isn't allowed because it's out of the current user's write scope|RBAC") { return "access_denied" }
+    # Permission denial. Deliberately does NOT include a bare "RBAC" token: an
+    # earlier version did, and it mis-bucketed Get-RbacDiagnosticInfo as
+    # access_denied purely because the service echoed the CMDLET'S OWN NAME back
+    # in an unrelated "Cmdlet type is not supported" message. A classifier that
+    # can match on the cmdlet's name rather than the failure is not a classifier.
+    if ($message -match "(?i)access denied|access is denied|insufficient (privileges|permissions)|not authorized|unauthorized|does not have permission|operation isn't allowed because it's out of the current user's write scope|isn't assigned to (any )?management roles") { return "access_denied" }
 
     return "error"
 }
