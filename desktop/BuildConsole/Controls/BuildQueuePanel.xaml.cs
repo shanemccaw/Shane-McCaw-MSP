@@ -74,6 +74,19 @@ namespace BuildConsole.Controls
         private List<QueueItem> _lastItems = new();
         private string _filter = "Running";
         private readonly HashSet<int> _manuallyHiddenQueueIds = new();
+        /// <summary>Git #1834 — set by clicking a row in the build-set rollup summary;
+        /// drills the queue graph below down to just that build set. Composes (AND) with
+        /// <see cref="_filter"/> and the search box rather than overriding either — see
+        /// ApplyFilter. Null = no drill-down active. "Ungrouped" is a valid value here,
+        /// matching <see cref="NormalizeBuildSetKey"/>'s bucket name for a null/blank
+        /// QueueItem.BuildSet.</summary>
+        private string? _buildSetFilter;
+        /// <summary>Git #1834 — which rollup rows are showing their expanded per-category
+        /// detail. RenderBuildSetRollup fully rebuilds BuildSetRollupList.Children every
+        /// call (same reason _knownQueueCardKeys exists for the card list), so this is what
+        /// survives across rebuilds instead of relying on the discarded UI elements.</summary>
+        private readonly HashSet<string> _expandedRollupSets = new(StringComparer.OrdinalIgnoreCase);
+        private const string UngroupedBuildSetKey = "Ungrouped";
         private int? _selectedQueueItemId;
         private static readonly Dictionary<int, string> _issueTitleCache = new();
         private static readonly HashSet<int> _pendingFetches = new();
@@ -700,6 +713,9 @@ namespace BuildConsole.Controls
                 {
                     _lastQueueSignature = signature;
                     if (_filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+                    // Git #1834 — independent of _filter (the rollup summarizes the whole real
+                    // queue, not just whatever status the combo/DAG is currently showing).
+                    RenderBuildSetRollup(_lastItems);
                 }
                 if (_filter == "Tests") RenderTestsTree();
                 UpdateUsageSummary();
@@ -916,28 +932,43 @@ namespace BuildConsole.Controls
             UsageBreakdownPopup.IsOpen = !UsageBreakdownPopup.IsOpen;
         }
 
-        private List<QueueItem> ApplyFilter(List<QueueItem> items) => _filter switch
+        private List<QueueItem> ApplyFilter(List<QueueItem> items)
         {
-            // Git #1829 — split from the old combined "Active" filter. "Running" = a build
-            // that's actively executing or wrapping up: real running work plus "verifying"
-            // (session done, real GitHub issue not yet closed — Git #1469 — stays visible
-            // here, not archived into Done, since it's still visually "in motion" work).
-            "Running"  => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "running" or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
-            // Git #1829 — "Queued" = genuinely not executing right now: real queued rows plus
-            // limit-paused (Git #1600 — same practical meaning as queued even though the DB
-            // status string differs, waiting to resume later rather than in flight).
-            "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus)).ToList(),
-            // Git #1638 — the Park staging area: a "parked" row is deliberately excluded from
-            // Running/Queued above (the watcher's claim query never picks it up either — that's
-            // the whole point of a staging spot), so it needs its own filter to be findable at all.
-            "Parked"   => items.Where(i => i.Status == "parked" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
-            // Git #1638 — "Send to Builder" tracking rows: never claimable, never in the 8-slot
-            // grid, but still real rows that should be findable rather than lost.
-            "External" => items.Where(i => i.Status == "external" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
-            "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
-            "Canceled" => items.Where(i => i.Status == "canceled" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
-            _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
-        };
+            List<QueueItem> statusFiltered = _filter switch
+            {
+                // Git #1829 — split from the old combined "Active" filter. "Running" = a build
+                // that's actively executing or wrapping up: real running work plus "verifying"
+                // (session done, real GitHub issue not yet closed — Git #1469 — stays visible
+                // here, not archived into Done, since it's still visually "in motion" work).
+                "Running"  => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "running" or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
+                // Git #1829 — "Queued" = genuinely not executing right now: real queued rows plus
+                // limit-paused (Git #1600 — same practical meaning as queued even though the DB
+                // status string differs, waiting to resume later rather than in flight).
+                "Queued"   => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus)).ToList(),
+                // Git #1638 — the Park staging area: a "parked" row is deliberately excluded from
+                // Running/Queued above (the watcher's claim query never picks it up either — that's
+                // the whole point of a staging spot), so it needs its own filter to be findable at all.
+                "Parked"   => items.Where(i => i.Status == "parked" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+                // Git #1638 — "Send to Builder" tracking rows: never claimable, never in the 8-slot
+                // grid, but still real rows that should be findable rather than lost.
+                "External" => items.Where(i => i.Status == "external" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+                "Done"     => items.Where(i => i.Status == "done" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+                "Canceled" => items.Where(i => i.Status == "canceled" && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+                _          => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
+            };
+
+            // Git #1834 — build-set drill-down from the rollup summary. Composes with the
+            // status filter above (AND, not override) and with the search box, which
+            // filters this method's own result again inside RenderQueue.
+            if (_buildSetFilter == null) return statusFiltered;
+            return statusFiltered.Where(i => string.Equals(NormalizeBuildSetKey(i.BuildSet), _buildSetFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+
+        /// <summary>Git #1834 — the rollup's bucket key for a QueueItem.BuildSet: a null/blank
+        /// value (ungrouped) buckets under the literal "Ungrouped" name rather than being
+        /// silently dropped from the rollup.</summary>
+        private static string NormalizeBuildSetKey(string? buildSet) =>
+            string.IsNullOrWhiteSpace(buildSet) ? UngroupedBuildSetKey : buildSet.Trim();
 
         public bool HasActiveQueueItems =>
             _lastItems.Any(i => i.Status is "queued" or "running");
@@ -1225,6 +1256,11 @@ namespace BuildConsole.Controls
                     "Canceled" => "Nothing canceled.",
                     _          => "Queue is empty.",
                 };
+            // Git #1834 — the build-set drill-down composes with the filter/search above
+            // rather than replacing their own empty-state text, so name it too when it's
+            // the reason the combined result is empty.
+            if (_buildSetFilter != null && _currentGraphNodes.Count == 0)
+                QueueEmptyText.Text += $" (build set \"{_buildSetFilter}\")";
 
             if (_currentGraphNodes.Count == 0)
             {
@@ -1924,6 +1960,194 @@ namespace BuildConsole.Controls
             });
             header.Child = row;
             return header;
+        }
+
+        /// <summary>Git #1834 — collapsible per-buildSet rollup summary. Rebuilds
+        /// BuildSetRollupList from scratch off the real, current <paramref name="items"/> every
+        /// call (cheap — a handful of build sets, not the whole DAG). Buckets are "up next"
+        /// (queued + limit-paused), "running" (running only) and "verifying"
+        /// (BuildQueuePostgresClient.VerifyingStatus) — a finer split than QueueFilterCombo's
+        /// own Running/Queued (#1829 folds verifying into Running), because Shane's own example
+        /// line names all three separately. A build set whose three counts are all zero is
+        /// dropped entirely — done/canceled/parked/external members don't count as "current
+        /// activity" — so a set with nothing going on right now never clutters this. Real named
+        /// sets sort alphabetically; the null/blank-BuildSet bucket renders last as "Ungrouped",
+        /// and only when it too has real activity. The whole section hides itself
+        /// (BuildSetRollupSection) when there is nothing to show, so an idle queue doesn't grow
+        /// this back into dead space.</summary>
+        private void RenderBuildSetRollup(List<QueueItem> items)
+        {
+            if (BuildSetRollupSection == null || BuildSetRollupList == null) return;
+
+            var buckets = new Dictionary<string, (List<int> upNext, List<int> running, List<int> verifying)>(StringComparer.OrdinalIgnoreCase);
+            var bucketOrder = new List<string>();
+            foreach (var item in items)
+            {
+                if (_manuallyHiddenQueueIds.Contains(item.Id)) continue;
+                string key = NormalizeBuildSetKey(item.BuildSet);
+                if (!buckets.TryGetValue(key, out var counts))
+                {
+                    counts = (new List<int>(), new List<int>(), new List<int>());
+                    buckets[key] = counts;
+                    bucketOrder.Add(key);
+                }
+                int refNum = item.GithubNumber ?? item.Id;
+                if (item.Status is "queued" or Services.SessionLimitAutoRestartService.LimitPausedStatus) counts.upNext.Add(refNum);
+                else if (item.Status == "running") counts.running.Add(refNum);
+                else if (item.Status == BuildQueuePostgresClient.VerifyingStatus) counts.verifying.Add(refNum);
+            }
+
+            var orderedKeys = bucketOrder
+                .Where(k => buckets[k].upNext.Count + buckets[k].running.Count + buckets[k].verifying.Count > 0)
+                .OrderBy(k => string.Equals(k, UngroupedBuildSetKey, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                .ThenBy(k => k, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            BuildSetRollupList.Children.Clear();
+            BuildSetRollupSection.Visibility = orderedKeys.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+            BuildSetRollupClearText.Visibility = _buildSetFilter != null ? Visibility.Visible : Visibility.Collapsed;
+            BuildSetRollupClearText.Text = _buildSetFilter != null ? $"Showing: {_buildSetFilter} ✕" : "";
+
+            foreach (var key in orderedKeys)
+            {
+                var counts = buckets[key];
+                BuildSetRollupList.Children.Add(BuildRollupRow(key, counts.upNext, counts.running, counts.verifying));
+            }
+        }
+
+        /// <summary>One collapsed summary line per build set (Shane's own example format:
+        /// "&lt;set&gt; — N up next, M running, K verifying (#1234, #1235)"), with issue numbers
+        /// shown next to "verifying" specifically — his stated example, and the most actionable
+        /// of the three (session done, waiting on a real GitHub issue close). The chevron on the
+        /// right is a SEPARATE click target from the row body: clicking it only expands/collapses
+        /// this row's own full per-category breakdown (with numbers for all three counts);
+        /// clicking the row body drills the queue graph below down to this build set via
+        /// ToggleBuildSetFilter. The two never fight over one click because WPF's ButtonBase
+        /// marks its own MouseLeftButtonUp handled before it bubbles to the row's
+        /// MouseLeftButtonDown handler (same nested-click pattern the queue cards below already
+        /// rely on for their own context-menu buttons).</summary>
+        private UIElement BuildRollupRow(string buildSetKey, List<int> upNext, List<int> running, List<int> verifying)
+        {
+            bool isUngrouped = string.Equals(buildSetKey, UngroupedBuildSetKey, StringComparison.OrdinalIgnoreCase);
+            var accentBrush = isUngrouped ? (Brush)Application.Current.FindResource("Subtext0Brush") : GetBuildSetBrush(buildSetKey);
+            var accentColor = accentBrush is SolidColorBrush scb ? scb.Color : Color.FromRgb(0x6C, 0x70, 0x86);
+            bool isSelected = string.Equals(_buildSetFilter, buildSetKey, StringComparison.OrdinalIgnoreCase);
+            bool isExpanded = _expandedRollupSets.Contains(buildSetKey);
+
+            var wrapper = new StackPanel { Margin = new Thickness(0, 0, 0, 4) };
+
+            var headerBorder = new Border
+            {
+                Background = isSelected
+                    ? new SolidColorBrush(Color.FromArgb(0x33, accentColor.R, accentColor.G, accentColor.B))
+                    : (Brush)Application.Current.FindResource("Surface0Brush"),
+                BorderBrush = isSelected ? accentBrush : (Brush)Application.Current.FindResource("Surface1Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(8, 5, 6, 5),
+                Cursor = Cursors.Hand,
+                ToolTip = isSelected
+                    ? $"Click to clear the \"{buildSetKey}\" filter on the queue below"
+                    : $"Click to filter the queue below down to \"{buildSetKey}\" (combines with the status filter + search box above)"
+            };
+
+            var headerGrid = new Grid();
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var summaryText = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
+            summaryText.Inlines.Add(new System.Windows.Documents.Run($"{buildSetKey} — ") { FontWeight = FontWeights.SemiBold, Foreground = accentBrush });
+            summaryText.Inlines.Add(new System.Windows.Documents.Run($"{upNext.Count} up next, {running.Count} running, {verifying.Count} verifying")
+            {
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush")
+            });
+            if (verifying.Count > 0)
+            {
+                summaryText.Inlines.Add(new System.Windows.Documents.Run($" ({string.Join(", ", verifying.Select(FormatIssueRef))})")
+                {
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    FontSize = 10.5
+                });
+            }
+            Grid.SetColumn(summaryText, 0);
+            headerGrid.Children.Add(summaryText);
+
+            var chevron = new ToggleButton
+            {
+                Style = (Style)Application.Current.FindResource("ExpandCollapseToggleStyle"),
+                IsChecked = isExpanded,
+                Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(6, 0, 0, 0),
+                ToolTip = "Expand for the full per-category breakdown"
+            };
+            Grid.SetColumn(chevron, 1);
+            headerGrid.Children.Add(chevron);
+
+            headerBorder.Child = headerGrid;
+            wrapper.Children.Add(headerBorder);
+
+            var detail = new StackPanel
+            {
+                Margin = new Thickness(10, 4, 4, 0),
+                Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed
+            };
+            void AddDetailLine(string label, List<int> nums)
+            {
+                if (nums.Count == 0) return;
+                detail.Children.Add(new TextBlock
+                {
+                    FontSize = 10.5,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 2),
+                    Text = $"{label} ({nums.Count}): {string.Join(", ", nums.Select(FormatIssueRef))}"
+                });
+            }
+            AddDetailLine("Up next", upNext);
+            AddDetailLine("Running", running);
+            AddDetailLine("Verifying", verifying);
+            if (detail.Children.Count == 0)
+            {
+                // Nothing here isn't reachable in practice — a row only renders when at least
+                // one bucket is non-empty — but guard anyway rather than show an empty expand.
+                detail.Children.Add(new TextBlock
+                {
+                    FontSize = 10.5,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    Text = "Nothing further to show."
+                });
+            }
+            wrapper.Children.Add(detail);
+
+            headerBorder.MouseLeftButtonDown += (s, e) => ToggleBuildSetFilter(buildSetKey);
+            chevron.Click += (s, e) =>
+            {
+                bool expanded = chevron.IsChecked == true;
+                if (expanded) _expandedRollupSets.Add(buildSetKey);
+                else _expandedRollupSets.Remove(buildSetKey);
+                detail.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
+            };
+
+            return wrapper;
+        }
+
+        /// <summary>Git #1834 addendum — click a rollup row to filter the queue graph below
+        /// down to that build set; click the same row again (or the header's "Showing: X ✕"
+        /// clear affordance) to return to the unfiltered view. Deliberately doesn't touch
+        /// _filter or _queueSearch — see ApplyFilter for how the three compose.</summary>
+        private void ToggleBuildSetFilter(string buildSetKey)
+        {
+            _buildSetFilter = string.Equals(_buildSetFilter, buildSetKey, StringComparison.OrdinalIgnoreCase) ? null : buildSetKey;
+            if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+            RenderBuildSetRollup(_lastItems);
+        }
+
+        private void BuildSetRollupClear_Click(object sender, MouseButtonEventArgs e)
+        {
+            _buildSetFilter = null;
+            if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems));
+            RenderBuildSetRollup(_lastItems);
         }
 
         private Border BuildRestartCard(MainWindow.PersistedQueueDisplayItem p)

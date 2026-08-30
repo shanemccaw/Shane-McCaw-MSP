@@ -151,6 +151,49 @@
                 </DockPanel>
             </Border>
 
+            <!-- ── Build Set Rollup — Git #1834: collapsible per-buildSet status summary,
+                 filling the space #1816 freed up when Batter Up/AI Batter Up collapsed to a
+                 single header row when empty (MainWindow docks AiBatterUpPanel →
+                 BatterUpPanel → BuildQueuePanel top-to-bottom, so this is the next thing on
+                 screen after them). Lives here rather than on a sibling Batter Up panel's
+                 header because the data (bt_build_queue via _lastItems) is already owned by
+                 this panel, and their post-#1816 header only has room for a short count
+                 string, not a rollup list. Docked Top (not inside the ScrollViewer below) so
+                 it stays visible regardless of scroll position. Populated entirely in
+                 code-behind (RenderBuildSetRollup) — hidden outright when no build set has
+                 any real current activity, so an idle queue doesn't grow this back into dead
+                 space either. -->
+            <Border x:Name="BuildSetRollupSection"
+                    DockPanel.Dock="Top"
+                    Background="{StaticResource MantleBrush}"
+                    BorderBrush="{StaticResource Surface0Brush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="10,8,10,10"
+                    Visibility="Collapsed">
+                <StackPanel>
+                    <DockPanel Margin="0,0,0,6">
+                        <TextBlock Text="BUILD SETS"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="{StaticResource Subtext1Brush}"/>
+                        <!-- Git #1834 addendum — clicking a row below drills the queue graph
+                             down to that build set (composes with QueueFilterCombo + the
+                             search box as AND, doesn't override either — see ApplyFilter).
+                             This is the "clear it" affordance; hidden while no drill-down is
+                             active. -->
+                        <TextBlock x:Name="BuildSetRollupClearText"
+                                   DockPanel.Dock="Right"
+                                   FontSize="10.5"
+                                   Foreground="{StaticResource BlueBrush}"
+                                   Cursor="Hand"
+                                   HorizontalAlignment="Right"
+                                   Visibility="Collapsed"
+                                   MouseLeftButtonDown="BuildSetRollupClear_Click"/>
+                    </DockPanel>
+                    <StackPanel x:Name="BuildSetRollupList"/>
+                </StackPanel>
+            </Border>
+
             <!-- ── Critter Lounge & Picnic/Party Ground ── -->
             <local:CritterLoungeControl DockPanel.Dock="Bottom" x:Name="CritterLounge" Margin="0"/>
 
