@@ -248,7 +248,6 @@ namespace BuildConsole
 
             pane.Items.Add(newTab);
             pane.SelectedItem = newTab;
-            ActiveDocTitleText.Text = $" - {title}";
 
             ActivityLog.Log(GitDetailChannel, $"tab opened ({pane.Name}): {dedupKey}");
         }

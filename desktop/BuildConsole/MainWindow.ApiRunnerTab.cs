@@ -95,7 +95,6 @@ namespace BuildConsole
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
-            ActiveDocTitleText.Text = " - API Runner";
 
             ActivityLog.Log("api-runner.tab", "API Runner tab opened");
         }

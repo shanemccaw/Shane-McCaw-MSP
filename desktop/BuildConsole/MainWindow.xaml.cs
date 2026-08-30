@@ -277,6 +277,12 @@ namespace BuildConsole
         {
             InitializeComponent();
 
+            // Git #1864 — Shane: "make the search box not so tall... it fits properly."
+            // Sized against the window's REAL WindowChrome.CaptionHeight (not a guessed
+            // pixel value) so it fits the 36px caption bar cleanly and adapts if that
+            // height is ever tuned. See SizeSearchBoxToCaptionHeight for the full sizing.
+            SizeSearchBoxToCaptionHeight();
+
             // Set dark background on XAML background webviews so they never flash white
             ClaudeWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
             ReplitWatcherWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
@@ -307,6 +313,15 @@ namespace BuildConsole
                 Title += " - [DEBUG]";
                 DebugBuildMarkerText.Visibility = Visibility.Visible;
             }
+
+            // Git #1864 — title-bar usage/cost readout, replacing the old out-of-place
+            // active-document label. Set the initial value from GetSnapshot() now (Changed
+            // won't have fired yet), then subscribe so it refreshes live off the
+            // UsageTrackingService.Changed event (fires off any thread — marshal to the UI
+            // thread) — no polling, no new timer. Same subscription pattern as the Build
+            // Queue panel's own usage badge (Controls/BuildQueuePanel.xaml.cs).
+            UpdateUsageReadout();
+            BuildConsole.Services.UsageTrackingService.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateUsageReadout));
 
             // Git #815 — Shane: "put the startup SSE and api calls in
             // there... so we can just look and see whats happening as its
@@ -830,6 +845,50 @@ namespace BuildConsole
             // fades out to reveal Home once every real launch connection settles (or times
             // out). See InitializeStartupOverlay for the full wiring.
             InitializeStartupOverlay();
+        }
+
+        /// <summary>
+        /// Git #1864 — Shane: "you can make the search box not so tall while you are at
+        /// it... so it fits properly." SearchBorder previously sized itself off the
+        /// TextBox's default height + Padding="8,3", which stood taller than the 36px
+        /// caption bar comfortably holds. Reads the window's REAL
+        /// WindowChrome.CaptionHeight (set in XAML, already resolvable right after
+        /// InitializeComponent — WindowChrome is an attached property applied during
+        /// XAML parse, not layout) rather than guessing a pixel value, so the box always
+        /// fits the caption bar cleanly even if that height is ever retuned. Leaves 8px
+        /// of clearance (4 above, 4 below) inside the bar; XAML's Padding="8,0" plus each
+        /// child's own VerticalAlignment="Center" (glyph, placeholder, TextBox via
+        /// VerticalContentAlignment, Ctrl+K hint) does the rest — nothing clips at any of
+        /// SearchBorder's Width/MinWidth/MaxWidth (240/180/820).
+        /// </summary>
+        private void SizeSearchBoxToCaptionHeight()
+        {
+            double captionHeight = System.Windows.Shell.WindowChrome.GetWindowChrome(this)?.CaptionHeight ?? 36;
+            SearchBorder.Height = Math.Max(24, captionHeight - 8);
+        }
+
+        /// <summary>
+        /// Git #1864 — refreshes the title-bar usage readout from
+        /// UsageTrackingService.GetSnapshot(). Session figures are the headline (compact
+        /// enough for the caption bar); all-time sits in the tooltip. The dollar figure is
+        /// labeled an estimate — builds run against two Claude Max 20x subscriptions, so
+        /// the CLI's own total_cost_usd is a notional API-equivalent price, not money
+        /// actually spent.
+        /// </summary>
+        private void UpdateUsageReadout()
+        {
+            var snap = BuildConsole.Services.UsageTrackingService.GetSnapshot();
+
+            UsageReadoutText.Text =
+                $"{BuildConsole.Services.UsageFormat.FormatTokens(snap.SessionTokens)} · ~${snap.SessionCostUsd:0.00} est.";
+
+            UsageReadoutTooltipText.Text =
+                $"This session: {BuildConsole.Services.UsageFormat.FormatTokens(snap.SessionTokens)} · ~${snap.SessionCostUsd:0.00} est. " +
+                $"({snap.SessionBuilds} build{(snap.SessionBuilds == 1 ? "" : "s")})\n" +
+                $"All-time: {BuildConsole.Services.UsageFormat.FormatTokens(snap.TotalTokens)} · ~${snap.TotalCostUsd:0.00} est. " +
+                $"({snap.TotalBuilds} build{(snap.TotalBuilds == 1 ? "" : "s")})\n" +
+                "Estimate only — notional API-equivalent price from the CLI's own usage, not actual spend " +
+                "(builds run on Claude Max subscriptions).";
         }
 
         protected override void OnSourceInitialized(EventArgs e)
@@ -4255,12 +4314,6 @@ namespace BuildConsole
                     PersistOpenChatTabs();
                 }
 
-                var currentOwner = tabItem.Parent as TabControl;
-                if (currentOwner?.SelectedItem == tabItem)
-                {
-                    ActiveDocTitleText.Text = $" - {newName}";
-                }
-
                 BuildConsole.Services.ActivityLog.Log("tabs", $"Renamed tab to '{newName}'");
             }
         }
@@ -4435,11 +4488,6 @@ namespace BuildConsole
                 tabItem.Content = null;
                 tabItem.Header = null;
 
-                if (EditorTabs.Items.Count == 0 && EditorTabs2.Items.Count == 0 && EditorTabs3.Items.Count == 0 && EditorTabs4.Items.Count == 0)
-                {
-                    ActiveDocTitleText.Text = "";
-                }
-
                 CollapseEmptySplitPanes();
             });
         }
@@ -4530,9 +4578,7 @@ namespace BuildConsole
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
-            
-            ActiveDocTitleText.Text = " - SQL Runner";
-            
+
             return sqlViewer;
         }
 
@@ -4577,8 +4623,6 @@ namespace BuildConsole
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
-            
-            ActiveDocTitleText.Text = " - Chat Mappings";
         }
 
         public void OpenGraphApiTab(Controls.GraphApiSelectionArgs args)
@@ -4643,8 +4687,6 @@ namespace BuildConsole
                 args.RequiredVariables,
                 args.BodyTemplate
             );
-
-            ActiveDocTitleText.Text = " - Graph API: " + args.Key;
         }
 
         public void OpenFileTab(string filePath)
@@ -4782,8 +4824,6 @@ namespace BuildConsole
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
-
-            ActiveDocTitleText.Text = $" - {fileName}";
         }
 
         private static string GenerateViewerHtml(string filePath, string fileText, string ext)

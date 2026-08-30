@@ -131,7 +131,6 @@ namespace BuildConsole
 
             EditorTabs.Items.Add(newTab);
             EditorTabs.SelectedItem = newTab;
-            ActiveDocTitleText.Text = " - Settings";
         }
     }
 }

@@ -876,10 +876,9 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
-        private static string FormatTokens(long tokens) =>
-            tokens >= 1_000_000 ? $"{tokens / 1_000_000.0:0.1}M tokens" :
-            tokens >= 1_000 ? $"{tokens / 1_000.0:0}k tokens" :
-            $"{tokens} tokens";
+        // Git #1864 — formatting moved to the shared Services.UsageFormat.FormatTokens
+        // so this panel and the title bar's usage readout (MainWindow.xaml) read the
+        // same numbers the same way instead of duplicating the logic.
 
         /// <summary>
         /// Refreshes the header badge. Shane: "The Tokens and cost is also not
@@ -902,12 +901,12 @@ namespace BuildConsole.Controls
 
             if (active > 0)
             {
-                QueueTokensText.Text = FormatTokens(activeTokens);
+                QueueTokensText.Text = Services.UsageFormat.FormatTokens(activeTokens);
                 QueueCostText.Text = $" · ~${activeCost:0.00}";
             }
             else
             {
-                QueueTokensText.Text = FormatTokens(snap.SessionTokens);
+                QueueTokensText.Text = Services.UsageFormat.FormatTokens(snap.SessionTokens);
                 QueueCostText.Text = $" · ~${snap.SessionCostUsd:0.00}";
             }
             QueueActiveSlotsText.Text = $" ({active} active)";
@@ -917,11 +916,11 @@ namespace BuildConsole.Controls
 
         private void RenderUsageBreakdown(Services.UsageTrackingService.Snapshot snap)
         {
-            UsageSessionTokensText.Text = FormatTokens(snap.SessionTokens);
+            UsageSessionTokensText.Text = Services.UsageFormat.FormatTokens(snap.SessionTokens);
             UsageSessionCostText.Text = $"${snap.SessionCostUsd:0.00}";
             UsageSessionBuildsText.Text = $"{snap.SessionBuilds} build{(snap.SessionBuilds == 1 ? "" : "s")} this session";
 
-            UsageTotalTokensText.Text = FormatTokens(snap.TotalTokens);
+            UsageTotalTokensText.Text = Services.UsageFormat.FormatTokens(snap.TotalTokens);
             UsageTotalCostText.Text = $"${snap.TotalCostUsd:0.00}";
             UsageTotalBuildsText.Text = $"{snap.TotalBuilds} build{(snap.TotalBuilds == 1 ? "" : "s")} all-time";
         }

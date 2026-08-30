@@ -218,45 +218,67 @@
 
                     <!-- Center: UNIVERSAL SEARCH BAR (primary). Replaces the old static
                          "Shane McCaw MSP • Antigravity IDE - {doc}" text. The app name stays
-                         top-left by the logo; the active-document context is kept here as a
-                         small secondary label to the right of the search box. -->
+                         top-left by the logo; the usage readout (Git #1864) is kept here as a
+                         small secondary element to the right of the search box. -->
                     <DockPanel Grid.Column="1"
                                VerticalAlignment="Center"
                                Margin="8,0,8,0"
                                LastChildFill="True">
 
-                        <!-- Active-document context (secondary). Kept alive because ~dozens of
-                             code-behind call sites set ActiveDocTitleText.Text; just deprioritized. -->
+                        <!-- Git #1864 - Shane: "there is a bunch of space in the title bar... to the
+                             left of the account switcher there is a title that's totally out of
+                             place... you can put the UsageTracking there." Replaces the old
+                             active-document label that used to live here (removed - the tab bar
+                             already shows which document is active, so it was duplicate information)
+                             with the real persisted usage/cost readout from UsageTrackingService.GetSnapshot.
+                             Session figures are the headline; all-time sits in the tooltip instead of
+                             competing for width. Updated from UsageTrackingService.Changed (see
+                             MainWindow.xaml.cs) - no polling, no new timer. -->
                         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                                     VerticalAlignment="Center" Margin="10,0,0,0">
-                            <TextBlock x:Name="ActiveDocTitleText"
-                                       Text=" - Claude.ai"
-                                       FontSize="11"
-                                       MaxWidth="220"
-                                       TextTrimming="CharacterEllipsis"
-                                       Foreground="{StaticResource Subtext0Brush}"
-                                       VerticalAlignment="Center"/>
+                            <Border x:Name="UsageReadoutBorder" Cursor="Help">
+                                <Border.ToolTip>
+                                    <ToolTip>
+                                        <TextBlock x:Name="UsageReadoutTooltipText" FontSize="11"/>
+                                    </ToolTip>
+                                </Border.ToolTip>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🪙" FontSize="11" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="UsageReadoutText"
+                                               Text="0 tokens · ~$0.00 est."
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource Subtext0Brush}"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
                             <!-- Git #934 - "- [DEBUG]" marker; Visibility/Text driven from code-behind
                                  (OnSourceInitialized) only when the running exe is under bin\Debug\. -->
                             <TextBlock x:Name="DebugBuildMarkerText"
-                                       Text=" - [DEBUG]"
+                                       Text="[DEBUG]"
                                        FontSize="11"
                                        FontWeight="Bold"
                                        Foreground="{StaticResource PeachBrush}"
                                        VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
                                        Visibility="Collapsed"/>
                         </StackPanel>
 
                         <!-- Universal search box (primary, spans the center). Focusing/typing
                              opens the grouped results dropdown (CommandPaletteOverlay) below;
                              Ctrl+K focuses it. IsHitTestVisibleInChrome so clicks reach it
-                             inside the WindowChrome drag bar. -->
+                             inside the WindowChrome drag bar. Git #1864 - Height is set in
+                             code-behind (SizeSearchBoxToCaptionHeight) against the window's
+                             real WindowChrome.CaptionHeight rather than a guessed pixel value
+                             here; Padding is reduced to near-zero vertically since that fixed
+                             Height plus each child's own VerticalAlignment="Center" now does
+                             the vertical centering. -->
                         <Border x:Name="SearchBorder"
                                 Background="{StaticResource Surface0Brush}"
                                 CornerRadius="6"
                                 BorderBrush="{StaticResource Surface1Brush}"
                                 BorderThickness="1"
-                                Padding="8,3"
+                                Padding="8,0"
                                 Width="240"
                                 MinWidth="180"
                                 MaxWidth="820"
