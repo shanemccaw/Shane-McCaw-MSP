@@ -1839,6 +1839,33 @@ namespace BuildConsole.Controls
 
             var buildSw = System.Diagnostics.Stopwatch.StartNew();
             BuildBoardFromGitHub(issues, milestoneInfos!);
+
+            // Git #1977 — a Focus Mode milestone that has reached 100% (all issues
+            // closed) or been closed on GitHub drops off the OPEN-only board entirely
+            // (BuildBoardFromGitHub above only keeps milestones with open issues plus
+            // non-closed real milestones — see #884/#925). Left focused, the hard
+            // filter IsMilestoneInFocus then matches NONE of the milestones actually on
+            // the board, so RenderIssuesTree's `shownMilestones` is empty and the whole
+            // Git Board — tree AND all four summary counts (Active Milestones/Epics/
+            // Pending/Done) — reads zero, even though `_milestones` correctly holds
+            // every fetched issue. That was the exact "439 fetched, board blank" report:
+            // the blocked-by sweep still counted 439 open issues off `_milestones`, but
+            // the focus-filtered render drew nothing. Detect that stale-focus state here
+            // — using the real, just-built tree milestone set — and auto-release Focus so
+            // the board falls back to showing everything instead of blanking. Guarded on
+            // a non-empty `_milestones` (never fire on a cold/failed fetch) and left
+            // alone while the immersive full-screen view is up (don't yank it out from
+            // under Shane mid-celebration; the next refresh releases it once he exits).
+            var focusSvc = BuildConsole.Services.FocusModeService.Instance;
+            if (focusSvc.IsActive && !focusSvc.ImmersiveActive && _milestones.Count > 0
+                && !_milestones.Any(m => focusSvc.IsMilestoneInFocus(m.GithubNumber, m.Title)))
+            {
+                ActivityLog.Log("focus-mode",
+                    $"active milestone '{focusSvc.ActiveMilestoneTitle}' (#{focusSvc.ActiveMilestoneNumber}) is no longer present on the open board " +
+                    "(100% complete / closed) — auto-releasing Focus so the Git Board isn't filtered to nothing (Git #1977).");
+                focusSvc.Deactivate();
+            }
+
             // Feed Focus Mode the real issue→milestone map + milestone counts (this is the
             // OPEN board fetch; the closed-view BuildBoardFromGitHub call deliberately does NOT
             // feed, so the filter map isn't overwritten with closed-only issues).
