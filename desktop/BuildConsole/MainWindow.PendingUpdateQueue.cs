@@ -10,29 +10,27 @@ using BuildConsole.Services;
 namespace BuildConsole
 {
     /// <summary>
-    /// Durable spillover for Queue clicks made while a version Update is pending.
+    /// Durable spillover for Queue clicks made while a version Update was pending.
     ///
-    /// The auto-Update button (see <see cref="MainWindow"/> in
-    /// MainWindow.VersionUpdate.cs) defers its deploy until the Build Queue drains,
-    /// then shells out to deploy-shanesbuild.cmd — which stops and relaunches THIS
-    /// whole process. A build request queued during that waiting window
-    /// (BT_QUEUE_BUILD → <see cref="Services.BuildQueuePostgresClient.QueueBuildAsync"/>)
-    /// is, until the direct-Postgres write returns, only an in-flight call and
-    /// an in-memory panel row — nothing durable on this machine. If the restart lands
-    /// first, that request is simply lost. Shane hit exactly this: clicking Queue
-    /// while an update sat waiting.
+    /// Git #1934 — the auto-Update button no longer blocks/defers behind the Build
+    /// Queue (that block-and-wait, #1370, was reversed once #1804's durable-file
+    /// redirect + pid-adoption made in-flight builds survive the deploy restart). So
+    /// there is no longer a "pending window" during which a Queue click is intercepted
+    /// and written here: while the app is alive a Queue click writes straight to
+    /// durable Postgres and survives the restart on its own, and once
+    /// deploy-shanesbuild.cmd force-stops the app there is no live UI to click. The
+    /// WRITE side of this feature is therefore retired.
     ///
-    /// So while <c>_updatePending</c> is set, we do NOT touch the live/in-memory
-    /// queue for a new Queue click. Instead we serialize the exact QueueBuildAsync
-    /// argument list to a tiny local JSON file under %AppData%\BuildConsole\ (the
-    /// same store settings/cache already use), which survives the restart. On the
-    /// next launch — after the Build Tracker client is reconnected and the panels
-    /// have initialized normally — <see cref="ReplayPersistedQueueRequestsOnLaunchAsync"/>
-    /// reads that file and re-queues each saved request through the real queue API,
-    /// exactly as if Shane had just clicked Queue.
+    /// What remains is purely a one-way SAFETY NET across the reversal itself:
+    /// <see cref="ReplayPersistedQueueRequestsOnLaunchAsync"/> still runs on every
+    /// launch and DRAINS any spillover file a prior (pre-#1934) blocking build left on
+    /// disk — re-queuing each saved request through the real queue API so nothing that
+    /// was persisted before this shipped is silently lost. In steady state the file no
+    /// longer exists and this is a cheap no-op. BuildQueuePanel's "Queued for Restart"
+    /// group likewise just surfaces any such leftover until it drains.
     ///
-    /// Multiple Queue clicks during a single pending window all survive: the file
-    /// holds an array and each interception appends to it.
+    /// The original persisted shape and durable-diagnostics machinery are kept intact
+    /// so a leftover file written by the old code still parses and replays correctly.
     ///
     /// Durability (2026-08-14 fix — the "restarted but nothing queued" bug):
     /// the relaunch fires the re-queue POSTs in the first moments of launch, when the
@@ -131,64 +129,16 @@ namespace BuildConsole
         /// <summary>
         /// Called by <see cref="Controls.BuildQueuePanel"/> each time it actually
         /// (re)renders the "Queued for Restart" group with a changed item set, so the
-        /// durable spillover log carries a real UI-refresh timestamp next to each
-        /// file-write timestamp <see cref="PersistQueueRequestDuringPendingUpdate"/>
-        /// already writes. The write→display lag Shane reported ("takes a really long
-        /// time to update") is then computable straight from pending-update-queue.log —
-        /// no live repro, and durable across the very restart this feature spans (unlike
-        /// <see cref="ActivityLog"/>, which is in-memory only). Durable-log only
-        /// (mirrorChannel null): a render line can fire on any queue poll, so it must not
-        /// spam the live version-update panel.
+        /// durable spillover log carries a real UI-refresh timestamp for any leftover
+        /// pre-#1934 spillover items still surfacing there before they drain. Durable
+        /// across the deploy restart (unlike <see cref="ActivityLog"/>, which is
+        /// in-memory only). Durable-log only (mirrorChannel null): a render line can fire
+        /// on any queue poll, so it must not spam the live version-update panel.
         /// </summary>
         public static void LogQueuedForRestartRender(int renderedCount) =>
             PendingUpdateQueueDiag(
                 $"UI refresh — BuildQueuePanel rendered the \"Queued for Restart\" group with {renderedCount} item(s).",
                 mirrorChannel: null);
-
-        /// <summary>
-        /// Called from the BT_QUEUE_BUILD handler while <c>_updatePending</c> is set,
-        /// in place of hitting the live queue. Appends the request to the on-disk
-        /// spillover file (so several Queue clicks during the wait all survive) rather
-        /// than adding it to the in-memory/live queue that the imminent deploy restart
-        /// would drop. Returns true on a successful persist, false if the write failed.
-        /// </summary>
-        private bool PersistQueueRequestDuringPendingUpdate(
-            string title, string prompt, string? model, string? effort, string? cwd,
-            int? githubNumber, List<int>? blockedByNumbers, string? chatUrl = null, string? originatingChatId = null,
-            string? buildSet = null, string? cli = null, string? account = null)
-        {
-            var pending = LoadPersistedQueueRequests();
-            pending.Add(new PersistedQueueRequest
-            {
-                Title = title,
-                Prompt = prompt,
-                Model = model,
-                Effort = effort,
-                Cwd = cwd,
-                GithubNumber = githubNumber,
-                BlockedByNumbers = blockedByNumbers,
-                ChatUrl = chatUrl,
-                OriginatingChatId = originatingChatId,
-                BuildSet = buildSet,
-                Cli = cli,
-                Account = account,
-            });
-
-            try
-            {
-                SavePersistedQueueRequests(pending);
-                PendingUpdateQueueDiag(
-                    $"Update pending — intercepted Queue request \"{title}\" (github #{githubNumber?.ToString() ?? "-"}) " +
-                    $"and persisted it to {PendingUpdateQueueFile} instead of the live queue; " +
-                    $"it will auto-requeue after the deploy restart ({pending.Count} now saved).");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                PendingUpdateQueueDiag($"FAILED to persist intercepted Queue request \"{title}\": {ex.Message}");
-                return false;
-            }
-        }
 
         /// <summary>
         /// Lightweight, read-only view of a persisted spillover entry for display

@@ -867,10 +867,12 @@ namespace BuildConsole
             // and MainWindow.FocusMode.cs — this is the single shell-side entry point.
             InitFocusMode();
 
-            // If a previous session persisted Queue clicks while a version Update was
-            // pending (the deploy restart would have dropped them), re-queue them now
-            // that the Build Tracker client + panels are initialized (see
-            // MainWindow.PendingUpdateQueue.cs). Fire-and-forget — never blocks launch.
+            // Git #1934 safety net: if a PRIOR (pre-#1934) blocking build persisted Queue
+            // clicks to the spillover file while a version Update was pending, drain and
+            // re-queue them now that the Build Tracker client + panels are initialized (see
+            // MainWindow.PendingUpdateQueue.cs — the write side is retired; this is the one
+            // remaining transitional reader). A cheap no-op once no leftover file exists.
+            // Fire-and-forget — never blocks launch.
             _ = ReplayPersistedQueueRequestsOnLaunchAsync();
 
             // Shane To-Do "Load SQL" -> real GitHub file content into the SQL Runner tab (index 2 in BottomTabs — Build Log, Terminal, SQL Runner, Output).
@@ -6442,18 +6444,6 @@ namespace BuildConsole
                         dialog.FinalGitBlockers, dialog.FinalLocalBlockers);
                 if (editStop) return;
 
-                if (_updatePending)
-                {
-                    bool saved = PersistQueueRequestDuringPendingUpdate(
-                        dialog.FinalTitle ?? "Untitled", dialog.FinalPrompt, dialog.FinalModel, dialog.FinalEffort, dialog.FinalCwd,
-                        dialogGithubNum, dialogBlockedByNums, buildSet: dialog.FinalBuildSet, cli: dialog.FinalCli, account: dialog.FinalAccount);
-                    if (saved)
-                    {
-                        ToastEngine.Success("Queued after update", "Build request saved for after restart.");
-                        try { await BuildQueuePanel.RefreshAsync(); } catch { }
-                    }
-                    return;
-                }
                 try
                 {
                     await _queueDb.QueueBuildAsync(
@@ -6594,47 +6584,6 @@ namespace BuildConsole
                         return;
                     }
                     githubNum = resolvedGithubNum;
-
-                    // A version Update is pending: the deploy is deferred until the
-                    // Build Queue drains, then deploy-shanesbuild.cmd restarts this
-                    // whole process. Don't add this request to the live/in-memory queue
-                    // the restart would drop it from — persist it to disk instead and
-                    // let the next launch re-queue it automatically (see
-                    // MainWindow.PendingUpdateQueue.cs).
-                    if (_updatePending)
-                    {
-                        bool saved = PersistQueueRequestDuringPendingUpdate(
-                            Str("title") ?? "Untitled", Str("prompt") ?? "", Str("model"), Str("effort"), Str("cwd"),
-                            githubNum, blockedByNumbers, chatUrl: chatUrl, originatingChatId: originatingChatId, buildSet: buildSet, cli: Str("cli"), account: accountFlag);
-                        // Unstick the injected button back to its clickable label (it was
-                        // set to a disabled "In Progress..." on click) — nothing is in the
-                        // live queue, so leaving it stuck would misrepresent reality.
-                        if (correlation != null)
-                            await RunScriptInAllChatWebViewsAsync($"window.__btQueueFailed && window.__btQueueFailed({JsLiteral(correlation)});");
-                        if (saved)
-                            ToastEngine.Success("Queued after update",
-                                "A BuildConsole update is pending and will restart the app once the Build Queue clears.\n\n" +
-                                "This build request has been saved and will be queued automatically right after that restart.");
-                        else
-                            ToastEngine.Warning("Queued after update",
-                                "A BuildConsole update is pending, but saving this build request to disk failed — it was NOT queued. Try again after the update finishes.");
-                        // Queued-for-Restart lag fix — repaint the "🔄 Queued for Restart"
-                        // group NOW instead of waiting up to 15s for the panel's own poll.
-                        // The normal (non-pending) queue path below already calls
-                        // RefreshAsync after its POST; the intercept path never did, so a
-                        // just-persisted item only appeared on a later poll that happened to
-                        // re-render for an unrelated reason — a real contributor to the lag
-                        // Shane reported. RefreshAsync now folds the spillover file into its
-                        // render signature, so this forces the group to show the new item
-                        // immediately. Only when it actually persisted (a failed save has
-                        // nothing to show).
-                        if (saved)
-                        {
-                            try { await BuildQueuePanel.RefreshAsync(); }
-                            catch { /* best-effort visual refresh */ }
-                        }
-                        return;
-                    }
 
                     // Git #1638 — generalized, VISIBLE dedup check shared by Queue and Park,
                     // run right before either would insert a new row. An active match (still

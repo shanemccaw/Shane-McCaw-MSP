@@ -18,9 +18,10 @@ namespace BuildConsole
     /// <see cref="VersionInfo"/>). When that's ahead of the build THIS instance
     /// was compiled from (<see cref="VersionInfo.RunningBuild"/>), it shows the
     /// diff and reveals the Update button. Clicking it deploys the newer build
-    /// to bin\ShanesBuild via deploy-shanesbuild.cmd — immediately if the Build
-    /// Queue is clear, otherwise deferred behind a loud persistent banner that
-    /// auto-fires the moment the queue drains.
+    /// to bin\ShanesBuild via deploy-shanesbuild.cmd immediately, regardless of
+    /// whether the Build Queue is active (Git #1934 — reverses #1370's old
+    /// block-and-wait, now that #1804's durable-file redirect + pid-adoption keep
+    /// in-flight builds alive through the deploy restart).
     ///
     /// All logging goes to the "version-update" ActivityLog channel.
     /// </summary>
@@ -29,20 +30,12 @@ namespace BuildConsole
         private const string VersionChannel = "version-update";
 
         private DispatcherTimer? _versionCheckTimer;
-        private DispatcherTimer? _pendingDeployPollTimer;
 
         // Last live build number computed from the local repo (null = couldn't read git).
         private int? _currentBuild;
 
-        // An Update was requested but the Build Queue was active, so the deploy is
-        // deferred until the queue drains (then it auto-fires — no second click).
-        private bool _updatePending;
-
         // Guards against launching deploy-shanesbuild.cmd more than once.
         private bool _deployInvoked;
-
-        // Guards the async pending poll against overlapping ticks.
-        private bool _pendingPollInFlight;
 
         /// <summary>Called once from the constructor (after InitializeComponent). Seeds the display with the running version, then starts the live current-version poll.</summary>
         private void InitializeVersionUpdate()
@@ -101,7 +94,7 @@ namespace BuildConsole
             {
                 CurrentVersionText.Text = $"Current: {VersionInfo.RunningVersion} (repo n/a)";
                 CurrentVersionText.Foreground = (Brush)Application.Current.FindResource("Subtext1Brush");
-                if (!_updatePending) BtnUpdate.Visibility = Visibility.Collapsed;
+                BtnUpdate.Visibility = Visibility.Collapsed;
                 return;
             }
 
@@ -125,15 +118,7 @@ namespace BuildConsole
                 CurrentVersionText.Foreground = (Brush)Application.Current.FindResource("Subtext1Brush");
             }
 
-            if (_updatePending)
-            {
-                // Deploy already queued behind the Build Queue — keep the button as a
-                // disabled pending indicator; the banner carries the real reminder.
-                BtnUpdate.Content = "⏳ Update pending…";
-                BtnUpdate.IsEnabled = false;
-                BtnUpdate.Visibility = Visibility.Visible;
-            }
-            else if (behind > 0)
+            if (behind > 0)
             {
                 BtnUpdate.Content = "⬆ Update";
                 BtnUpdate.IsEnabled = true;
@@ -160,146 +145,23 @@ namespace BuildConsole
 
         private async Task TriggerUpdateAsync(bool forceDeploy = false)
         {
-            if (_deployInvoked || _updatePending) return;
+            if (_deployInvoked) return;
 
-            BtnUpdate.IsEnabled = false; // no double-trigger while we check the queue
+            BtnUpdate.IsEnabled = false; // no double-trigger while the deploy spins up
             ActivityLog.Log(VersionChannel,
                 $"Rebuild & Deploy requested (force={forceDeploy}): {VersionInfo.RunningVersion} → {(_currentBuild.HasValue ? VersionInfo.Format(_currentBuild.Value) : "latest local code")}.");
 
-            // Freshen the queue snapshot so the clear/active decision is real, not
-            // up-to-15s stale (RefreshAsync swallows its own errors).
-            try { await BuildQueuePanel.RefreshAsync(); } catch { /* best-effort */ }
-
-            if (!BuildQueuePanel.HasActiveQueueItems)
-            {
-                ActivityLog.Log(VersionChannel, "Build Queue clear — rebuilding & deploying now.");
-                RunDeployScript();
-                return;
-            }
-
-            // Queue active — defer. Show the loud banner and poll until it drains.
-            _updatePending = true;
-            ActivityLog.Log(VersionChannel,
-                "Build Queue active — deferring deploy until it clears (queue-block engaged).");
-            UpdatePendingBannerText.Text = _currentBuild.HasValue
-                ? $"Update to {VersionInfo.Format(_currentBuild.Value)} pending — waiting for the Build Queue to clear before deploying…"
-                : "Update pending — waiting for the Build Queue to clear before deploying…";
-            UpdatePendingBanner.Visibility = Visibility.Visible;
-            ApplyVersionUiState();
-
-            _pendingDeployPollTimer ??= CreatePendingDeployPollTimer();
-            _pendingDeployPollTimer.Start();
-        }
-
-        /// <summary>Cancel button on the pending-update banner (Git #1370). Shane: "I want it to
-        /// block and do exactly what it does. I just want to be able to cancel it." Does NOT
-        /// change the blocking behavior itself — only lets the pending update be called off
-        /// entirely: clears <see cref="_updatePending"/>, stops the poll, hides the banner, and
-        /// resumes normal live queuing for the Build Queue exactly as if Update was never
-        /// clicked. Any Queue clicks that happened during the wait were intercepted-and-persisted
-        /// to the local spillover file (see MainWindow.PendingUpdateQueue.cs) instead of the live
-        /// queue — since we're canceling rather than restarting, replay them into the live queue
-        /// right now rather than leaving them redirected for a restart that's no longer coming.</summary>
-        private async void BtnCancelPendingUpdate_Click(object sender, RoutedEventArgs e)
-        {
-            if (!_updatePending) return;
-
-            ActivityLog.Log(VersionChannel, "Pending update canceled by Shane — Build Queue resumes normal live queuing.");
-
-            _updatePending = false;
-            _pendingDeployPollTimer?.Stop();
-            UpdatePendingBanner.Visibility = Visibility.Collapsed;
-            ApplyVersionUiState();
-
-            await ReplaySpilloverIntoLiveQueueAfterCancelAsync();
-        }
-
-        /// <summary>
-        /// Replays whatever's sitting in the pending-update spillover file straight into the
-        /// live queue (no restart involved, unlike <see cref="ReplayPersistedQueueRequestsOnLaunchAsync"/>
-        /// which runs on next launch after a real deploy restart). Reuses the same
-        /// <see cref="TryReplayOneAsync"/> queuing path and keep-on-failure semantics so a
-        /// request that fails to queue (DB unreachable) is retained rather than lost — it will
-        /// still be picked up by the normal launch-time replay if a restart happens later anyway.
-        /// </summary>
-        private async Task ReplaySpilloverIntoLiveQueueAfterCancelAsync()
-        {
-            var pending = LoadPersistedQueueRequests();
-            if (pending.Count == 0) return;
-
-            PendingUpdateQueueDiag(
-                $"Pending update canceled with {pending.Count} request(s) sitting in the spillover file — re-queuing them into the live queue now instead of leaving them redirected.");
-
-            var stillPending = new List<PersistedQueueRequest>();
-            foreach (var req in pending)
-            {
-                bool queued = await TryReplayOneAsync(req);
-                if (!queued) stillPending.Add(req);
-            }
-
-            if (stillPending.Count == 0)
-            {
-                TryDeletePendingUpdateQueueFile();
-                PendingUpdateQueueDiag("All spillover request(s) re-queued live after cancel — spillover file deleted.");
-                ToastEngine.Success("Update canceled",
-                    $"Pending update canceled. {pending.Count} build request(s) queued during the wait have been re-queued normally.");
-            }
-            else
-            {
-                try
-                {
-                    SavePersistedQueueRequests(stillPending);
-                }
-                catch
-                {
-                    // Leave the original file intact rather than lose anything — same
-                    // best-effort fallback as the launch-time replay path.
-                }
-                PendingUpdateQueueDiag(
-                    $"{stillPending.Count} of {pending.Count} spillover request(s) did NOT re-queue after cancel (DB unreachable?) — kept persisted, will retry on next launch or cancel.");
-                ToastEngine.Warning("Update canceled",
-                    $"Pending update canceled. {pending.Count - stillPending.Count} of {pending.Count} saved build request(s) re-queued; {stillPending.Count} couldn't reach the database and remain saved.");
-            }
-
-            try { await BuildQueuePanel.RefreshAsync(); } catch { /* best-effort */ }
-        }
-
-        private DispatcherTimer CreatePendingDeployPollTimer()
-        {
-            var t = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-            t.Tick += async (_, _) => await PendingDeployPollAsync();
-            return t;
-        }
-
-        /// <summary>While a deploy is deferred, re-checks the real Build Queue every 5s and auto-fires the script the instant it's empty.</summary>
-        private async Task PendingDeployPollAsync()
-        {
-            if (!_updatePending || _deployInvoked) return;
-            if (_pendingPollInFlight) return; // RefreshAsync can outlast the 5s interval
-            _pendingPollInFlight = true;
-            try
-            {
-                try { await BuildQueuePanel.RefreshAsync(); } catch { /* best-effort */ }
-
-                // Keep the live version fresh too, so the banner/label reflect reality
-                // if more commits land while we wait.
-                _currentBuild = await Task.Run(() => VersionInfo.GetCurrentBuild());
-                ApplyVersionUiState();
-
-                if (!BuildQueuePanel.HasActiveQueueItems)
-                {
-                    ActivityLog.Log(VersionChannel,
-                        "Build Queue cleared — auto-starting the deferred deploy (queue-block cleared).");
-                    _pendingDeployPollTimer?.Stop();
-                    _updatePending = false;
-                    UpdatePendingBanner.Visibility = Visibility.Collapsed;
-                    RunDeployScript();
-                }
-            }
-            finally
-            {
-                _pendingPollInFlight = false;
-            }
+            // Git #1934 — deploy immediately, regardless of whether the Build Queue is
+            // active. This deliberately reverses #1370's block-and-wait: at that time a
+            // deploy restart killed in-flight builds, so waiting for the queue to drain
+            // was a real safeguard. #1804 (durable-file stdout/stderr redirect) plus the
+            // pid-adoption-on-restart path mean launched builds now survive the deploy
+            // restart and are re-adopted into Build Watch on relaunch, so the wait no
+            // longer buys anything — it only delayed Shane's update behind long-running
+            // builds. Just deploy.
+            ActivityLog.Log(VersionChannel, "Rebuilding & deploying now (in-flight builds survive the restart via #1804).");
+            RunDeployScript();
+            await Task.CompletedTask;
         }
 
         /// <summary>
@@ -324,9 +186,6 @@ namespace BuildConsole
                 ToastEngine.Warning("Update BuildConsole",
                     "Couldn't find deploy-shanesbuild.cmd under desktop\\BuildConsole — deploy not started.");
                 // Re-offer the button so Shane can retry once the path is sorted.
-                _updatePending = false;
-                _pendingDeployPollTimer?.Stop();
-                UpdatePendingBanner.Visibility = Visibility.Collapsed;
                 ApplyVersionUiState();
                 return;
             }
