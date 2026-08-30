@@ -311,8 +311,12 @@
                                    Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="140"
                                    ToolTip="{Binding SessionLabel}"
                                    FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='12,15'}"/>
-                        <TextBlock Text="{Binding LocalLabel}" Foreground="{StaticResource ChatPane.Muted4}" Margin="6,1,0,0" VerticalAlignment="Center"
-                                   FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='10.5,13.5'}"/>
+                        <!-- Git #1892: GH# is the one thing Shane actually scans for across many running
+                             builds — it was reading smaller and dimmer than the title, exactly backwards
+                             from the hierarchy he needs. Bumped to match/exceed SessionLabel: bold weight,
+                             primary/bright text color, and a font-size range at or above the title's. -->
+                        <TextBlock Text="{Binding LocalLabel}" FontWeight="Bold" Foreground="{StaticResource ChatPane.Text1}" Margin="6,1,0,0" VerticalAlignment="Center"
+                                   FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='12,15'}"/>
                         <Border Width="1" Height="18" Background="{StaticResource ChatPane.Border}" Margin="12,0"/>
                         <TextBlock Text="{Binding ModelLabel}" Foreground="{StaticResource ChatPane.Muted4}" FontWeight="Medium"
                                    VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="220"
