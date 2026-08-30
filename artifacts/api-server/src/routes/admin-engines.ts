@@ -3,7 +3,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { db, pool, usersTable, engagementProjectsTable, tenantsTable, mspsTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, salesOfferRuleGroupsTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable } from "@workspace/db";
+import { db, pool, usersTable, engagementProjectsTable, tenantsTable, mspsTable, savedSqlScripts, tenantEngineOverridesTable, insertTenantEngineOverrideSchema, monitorChecksTable, salesOfferRuleGroupsTable, tenantEngineSnapshotsTable, impersonationTokensTable, signalDerivationRulesTable, signalRuleGroupsTable, policyRulesTable, policyRuleFiringsTable, psCapabilitySurveyRunsTable, psCapabilitySurveyResultsTable, type PS_CAPABILITY_SURVEY_SESSION_TYPES, type PS_CAPABILITY_SURVEY_STATUSES } from "@workspace/db";
 import { splitSqlStatements } from "../lib/sql-statement-splitter";
 import { recordFailedSqlRun, recordSqlRun } from "../lib/run-history";
 import { createNotification } from "../lib/notification-center";
@@ -2034,6 +2034,89 @@ router.post("/simulator/ps-execution/cmdlet", requireAdminOrIngestToken(), async
       cmdletKey,
       elapsedMs,
     });
+  }
+});
+
+/**
+ * @route GET /api/simulator/ps-execution/capability-survey
+ * @desc Reads back Git #1793's app-only PowerShell capability survey — which of
+ *       the several hundred cmdlets ExchangeOnlineManagement / MicrosoftTeams
+ *       actually export survive app-only certificate auth through
+ *       ca-ps-execution, with the real output shape of every one that works.
+ *
+ * WHY A ROUTE AND NOT JUST THE MARKDOWN: #1793 asks for the survey to be
+ * "queryable and re-runnable, not only a markdown file". A capability table
+ * goes stale the moment the container, the tenant's licensing, or the app's
+ * role assignments change, and a stale capability table is worse than none —
+ * it produces confident false negatives. This serves whatever is actually in
+ * `ps_capability_survey_results` right now; docs/powershell-capability-survey.md
+ * is a rendering of the same rows, never a second source of truth.
+ *
+ * READ-ONLY BY CONSTRUCTION: this route never calls the ps-execution container
+ * and never touches a tenant. Producing a survey is
+ * `scripts/src/ps-capability-survey.ts` (which goes through the #965-gated
+ * cmdlet route above); this only reads what that already recorded.
+ *
+ * Query params, all optional:
+ *   runId   — a specific ps_capability_survey_runs.id; defaults to the latest run.
+ *   session — exchange | compliance | teams.
+ *   status  — ok | access_denied | cmdlet_unavailable | not_supported_app_only |
+ *             throttled | error | auth_failed | not_attempted.
+ *   cmdlet  — case-insensitive substring of the cmdlet name.
+ */
+router.get("/simulator/ps-execution/capability-survey", requireAdminOrIngestToken(), async (req: Request, res: Response) => {
+  try {
+    const runIdArg = typeof req.query.runId === "string" && /^\d+$/.test(req.query.runId) ? Number(req.query.runId) : null;
+    const sessionArg = typeof req.query.session === "string" ? req.query.session.trim() : "";
+    const statusArg = typeof req.query.status === "string" ? req.query.status.trim() : "";
+    const cmdletArg = typeof req.query.cmdlet === "string" ? req.query.cmdlet.trim() : "";
+
+    const [run] = runIdArg
+      ? await db.select().from(psCapabilitySurveyRunsTable).where(eq(psCapabilitySurveyRunsTable.id, runIdArg)).limit(1)
+      : await db.select().from(psCapabilitySurveyRunsTable).orderBy(desc(psCapabilitySurveyRunsTable.startedAt)).limit(1);
+
+    if (!run) {
+      // An empty survey table is a real, reportable state — not an error, and
+      // deliberately NOT backfilled with anything invented. It means the survey
+      // has never been run against this database.
+      return res.json({
+        ok: true,
+        run: null,
+        totals: [],
+        rows: [],
+        note: "No capability survey has been run against this database yet. Run: pnpm --filter @workspace/scripts run ps-capability-survey",
+      });
+    }
+
+    const filters = [eq(psCapabilitySurveyResultsTable.runId, run.id)];
+    if (sessionArg) filters.push(eq(psCapabilitySurveyResultsTable.sessionType, sessionArg as (typeof PS_CAPABILITY_SURVEY_SESSION_TYPES)[number]));
+    if (statusArg) filters.push(eq(psCapabilitySurveyResultsTable.status, statusArg as (typeof PS_CAPABILITY_SURVEY_STATUSES)[number]));
+    if (cmdletArg) filters.push(sql`${psCapabilitySurveyResultsTable.cmdletName} ILIKE ${`%${cmdletArg}%`}`);
+
+    const rows = await db
+      .select()
+      .from(psCapabilitySurveyResultsTable)
+      .where(and(...filters))
+      .orderBy(psCapabilitySurveyResultsTable.sessionType, psCapabilitySurveyResultsTable.cmdletName);
+
+    // Totals are always for the WHOLE run, never the filtered slice — a
+    // filtered count read as a run total is exactly how a capability table
+    // starts lying about coverage.
+    const totals = await db
+      .select({
+        sessionType: psCapabilitySurveyResultsTable.sessionType,
+        status: psCapabilitySurveyResultsTable.status,
+        count: sql<number>`COUNT(*)::int`,
+      })
+      .from(psCapabilitySurveyResultsTable)
+      .where(eq(psCapabilitySurveyResultsTable.runId, run.id))
+      .groupBy(psCapabilitySurveyResultsTable.sessionType, psCapabilitySurveyResultsTable.status)
+      .orderBy(psCapabilitySurveyResultsTable.sessionType, psCapabilitySurveyResultsTable.status);
+
+    return res.json({ ok: true, run, totals, rows, filtered: rows.length, note: null });
+  } catch (err) {
+    psLog.error({ err }, "ps-execution capability survey read failed");
+    return res.status(500).json({ ok: false, error: (err as Error)?.message || "capability survey read failed" });
   }
 });
 

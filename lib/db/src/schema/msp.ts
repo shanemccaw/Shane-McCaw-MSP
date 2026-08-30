@@ -6428,3 +6428,116 @@ export const retainerWorkLogTable = pgTable("retainer_work_log", {
 
 export type RetainerWorkLogRow = typeof retainerWorkLogTable.$inferSelect;
 export type InsertRetainerWorkLogRow = typeof retainerWorkLogTable.$inferInsert;
+
+/**
+ * #1793 — the app-only PowerShell capability survey.
+ *
+ * The platform has always known which cmdlets it CHOSE to wire into
+ * `monitor_checks`. It has never known which of the several hundred cmdlets
+ * `ExchangeOnlineManagement` / `MicrosoftTeams` actually export survive
+ * app-only certificate authentication through `ca-ps-execution`. Microsoft's
+ * own documentation describes delegated behaviour, and app-only support
+ * differs cmdlet by cmdlet, so that question is only answerable by running
+ * them — which is what these two tables record.
+ *
+ * These are a MEASUREMENT of the execution surface, deliberately NOT a
+ * decision about it: #1793's explicit non-goal is that no `monitor_checks` row
+ * is derived from a survey. Cataloguing what works and choosing what to check
+ * are separate decisions, and the second waits for the resource model (#1795),
+ * which reads `property_names` off these rows.
+ */
+export const PS_CAPABILITY_SURVEY_SESSION_TYPES = ["exchange", "compliance", "teams"] as const;
+
+/**
+ * The per-cmdlet outcome vocabulary. The first seven values are #1793's own
+ * list, used literally. `cmdlet_unavailable` is an eighth, added because the
+ * container ALREADY distinguishes it as a first-class failure kind (#250,
+ * `PsExecutionError.kind`): a real `CommandNotFoundException` means the cmdlet
+ * was never registered into this tenant's session at all — a licensing or
+ * role-provisioning gap — which is a materially different finding from a
+ * cmdlet that ran and was refused (`access_denied`) or that threw (`error`).
+ * Collapsing it into `error` would delete a distinction the container went to
+ * real trouble to establish.
+ */
+export const PS_CAPABILITY_SURVEY_STATUSES = [
+  "ok",
+  "auth_failed",
+  "access_denied",
+  "not_supported_app_only",
+  "throttled",
+  "error",
+  "not_attempted",
+  "cmdlet_unavailable",
+] as const;
+
+export const PS_CAPABILITY_SURVEY_RUN_STATUSES = ["running", "completed", "failed"] as const;
+
+/** One execution of the survey against one tenant, through one container revision. */
+export const psCapabilitySurveyRunsTable = pgTable("ps_capability_survey_runs", {
+  id: serial("id").primaryKey(),
+  /** tenants.id of the surveyed tenant — always a testbed tenant (the route's #965 gate). */
+  customerId: integer("customer_id").notNull(),
+  /** The org actually handed to Connect-*, as the SERVER resolved it (never a caller value). */
+  organization: text("organization").notNull(),
+  /**
+   * The ps-execution container revision that served the run, read from its own
+   * /healthz. Load-bearing: a survey result is only meaningful against the code
+   * that produced it, and #1434's failure mode was verifying against a stale
+   * revision.
+   */
+  containerRevision: text("container_revision"),
+  containerImage: text("container_image"),
+  status: text("status", { enum: PS_CAPABILITY_SURVEY_RUN_STATUSES }).notNull().default("running"),
+  /** Honest free text: what was skipped, what blocked, what is a known unknown. */
+  notes: text("notes"),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (t) => [
+  index("ps_capability_survey_runs_customer_idx").on(t.customerId),
+  index("ps_capability_survey_runs_started_idx").on(t.startedAt),
+]);
+
+/** One cmdlet, one session type, one run. */
+export const psCapabilitySurveyResultsTable = pgTable("ps_capability_survey_results", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => psCapabilitySurveyRunsTable.id, { onDelete: "cascade" }),
+  /** Which Connect-* session the cmdlet was reached through — the thing being measured. */
+  sessionType: text("session_type", { enum: PS_CAPABILITY_SURVEY_SESSION_TYPES }).notNull(),
+  /** The real module the command was enumerated from, e.g. a `tmpEXO_*` session module. */
+  moduleName: text("module_name"),
+  cmdletName: text("cmdlet_name").notNull(),
+  verb: text("verb"),
+  noun: text("noun"),
+  commandType: text("command_type"),
+  status: text("status", { enum: PS_CAPABILITY_SURVEY_STATUSES }).notNull(),
+  /** Why a `not_attempted` cmdlet was never run — the literal read-safety gate that rejected it. */
+  reason: text("reason"),
+  /** The VERBATIM exception message on a failure. Never paraphrased. */
+  errorMessage: text("error_message"),
+  itemCount: integer("item_count"),
+  elapsedMs: integer("elapsed_ms"),
+  /** Exactly how the survey invoked it, e.g. "-ResultSize 5" or "(no parameters)". */
+  invokedWith: text("invoked_with"),
+  /** .NET type name of the first returned object. */
+  outputTypeName: text("output_type_name"),
+  /**
+   * The real output SHAPE — property NAMES only, never values (the surveyed
+   * tenant is a real production tenant). This is the column #1795's resource
+   * model reads; an `ok` row with a null here has not actually been surveyed.
+   */
+  propertyNames: jsonb("property_names").$type<string[]>(),
+  supportsShouldProcess: boolean("supports_should_process"),
+  minMandatoryParamCount: integer("min_mandatory_param_count"),
+  mandatoryParamNames: jsonb("mandatory_param_names").$type<string[]>(),
+  parameterCount: integer("parameter_count"),
+  observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("ps_capability_survey_results_run_session_cmdlet_uidx").on(t.runId, t.sessionType, t.cmdletName),
+  index("ps_capability_survey_results_status_idx").on(t.status),
+  index("ps_capability_survey_results_cmdlet_idx").on(t.cmdletName),
+]);
+
+export type PsCapabilitySurveyRun = typeof psCapabilitySurveyRunsTable.$inferSelect;
+export type InsertPsCapabilitySurveyRun = typeof psCapabilitySurveyRunsTable.$inferInsert;
+export type PsCapabilitySurveyResult = typeof psCapabilitySurveyResultsTable.$inferSelect;
+export type InsertPsCapabilitySurveyResult = typeof psCapabilitySurveyResultsTable.$inferInsert;
