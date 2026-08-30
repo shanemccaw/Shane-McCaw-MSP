@@ -684,6 +684,12 @@ namespace BuildConsole
             // title-bar icon, which calls CheckIssueClosuresAsync() directly.
             LeftSidebar.GitBoardOpenIssuesRefreshed += (s, openNumbers) => _buildWatch?.ApplyOpenIssueSet(openNumbers);
 
+            // Git #1862 — the SAME free open-issue set also feeds the QUEUE panel, so its
+            // four status counts and the DAG's 🔒 BLOCKED reflect which blockers GitHub
+            // actually reports open right now (not merely declared). Zero extra `gh` calls —
+            // second consumer of the exact fetch Build Watch already gets above.
+            LeftSidebar.GitBoardOpenIssuesRefreshed += (s, openNumbers) => BuildQueuePanel?.ApplyOpenIssueSet(openNumbers);
+
             // Git #1813 — same event-piggyback pattern as the two hooks just above:
             // a Git Board refresh (manual button or startup) just proved GitHub is
             // reachable and fetched a fresh open-issue set, so ride that same

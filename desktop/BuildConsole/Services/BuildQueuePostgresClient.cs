@@ -243,14 +243,12 @@ namespace BuildConsole.Services
         /// `gh issue list --state open` call (GitHubIssuesService). Overridden by
         /// tests to simulate GitHub open/closed/unreachable without a real network
         /// call or a real queued build actually launching.</param>
-        public async Task<List<QueueItem>> GetNextAsync(
-            int limit, Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null)
-        {
-            if (limit <= 0) return new List<QueueItem>();
-            limit = Math.Min(limit, 20); // same cap as the server
-
-            // Step 1 — fetch all queued rows (cheapest scan; the queue is tiny).
-            const string fetchSql = @"
+        /// <summary>
+        /// The queued-candidate scan shared by the claim path (<see cref="GetNextAsync"/>)
+        /// and the read-only peek (<see cref="PeekNextAsync"/>): all rows at status='queued',
+        /// in real claim order (created_at ASC).
+        /// </summary>
+        private const string QueuedCandidateSql = @"
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
@@ -259,10 +257,41 @@ namespace BuildConsole.Services
                 WHERE status = 'queued'
                 ORDER BY created_at ASC";
 
+        /// <summary>Result of <see cref="SelectClaimCandidatesAsync"/>: the ordered ready
+        /// rows (capped to the requested limit) plus the per-id held-reason map.</summary>
+        private sealed record CandidateSelection(List<QueueItem> Ready, Dictionary<int, string> HeldReasons);
+
+        /// <summary>
+        /// Git #1862 — the shared, strictly READ-ONLY candidate selection that both
+        /// <see cref="GetNextAsync"/> (which then claims the result) and
+        /// <see cref="PeekNextAsync"/> (which never claims) run, so the QUEUE dropdown can
+        /// never drift from what the watcher will actually claim next.
+        ///
+        /// Selects queued rows in real claim order (created_at ASC), drops
+        /// <c>PausedBuildIds</c>, then filters to rows whose every declared blocker GitHub
+        /// reports CLOSED, capped to <paramref name="limit"/>. Fail-closed (Git #1600): an
+        /// unreachable/undetermined open-issue set holds every blocked candidate.
+        ///
+        /// This method issues NO UPDATE and claims nothing — the ONLY write in the entire
+        /// claim path is GetNextAsync's Step 3, which runs AFTER this returns.
+        ///
+        /// <paramref name="presuppliedOpen"/>: when non-null it is used directly as the
+        /// live open-issue snapshot (PeekNextAsync reuses the panel's already-fetched Git
+        /// Board set, so it fires no `gh` call). When null, the snapshot is fetched via
+        /// <paramref name="liveOpenIssuesFetcher"/> or GitHubIssuesService (GetNextAsync's
+        /// own path).
+        /// </summary>
+        private async Task<CandidateSelection> SelectClaimCandidatesAsync(
+            NpgsqlConnection conn,
+            int limit,
+            LiveOpenIssuesResult? presuppliedOpen,
+            Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher)
+        {
+            // Step 1 — fetch all queued rows (cheapest scan; the queue is tiny),
+            // minus manually-paused ids.
             var pausedIds = BuildConsoleSettings.Load().PausedBuildIds;
             var candidates = new List<QueueItem>();
-            await using var conn = await OpenAsync();
-            await using var fetchCmd = new NpgsqlCommand(fetchSql, conn);
+            await using (var fetchCmd = new NpgsqlCommand(QueuedCandidateSql, conn))
             await using (var reader = await fetchCmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
@@ -276,15 +305,15 @@ namespace BuildConsole.Services
             // Step 2 — filter to items whose blockers are all confirmed closed on
             // GitHub, live, right now (Git #1600 — no exceptions for local queue-row
             // state). One live query covers every candidate this pass: gather the
-            // full set of distinct blocker numbers across ALL candidates first, fetch
+            // full set of distinct blocker numbers across ALL candidates first, resolve
             // GitHub's real open-issue set ONCE, then decide each candidate from that
             // single snapshot — a blocked queue of N items costs one `gh` call per
-            // tick, not N.
+            // tick, not N (and zero when the caller supplies the snapshot).
             var heldReasons = new Dictionary<int, string>();
-            var ready = new List<int>(); // ids to claim
+            var ready = new List<QueueItem>();
             var distinctBlockerNums = candidates.SelectMany(EffectiveBlockers).Distinct().ToList();
-            LiveOpenIssuesResult? live = null;
-            if (distinctBlockerNums.Count > 0)
+            LiveOpenIssuesResult? live = presuppliedOpen;
+            if (distinctBlockerNums.Count > 0 && live == null)
             {
                 live = await (liveOpenIssuesFetcher != null ? liveOpenIssuesFetcher() : GitHubIssuesService.TryGetOpenIssueNumbersAsync());
                 if (!live.Success)
@@ -296,7 +325,7 @@ namespace BuildConsole.Services
             {
                 if (ready.Count >= limit) break;
                 var blockers = EffectiveBlockers(item);
-                if (blockers.Count == 0) { ready.Add(item.Id); continue; }
+                if (blockers.Count == 0) { ready.Add(item); continue; }
 
                 if (live == null || !live.Success)
                 {
@@ -307,11 +336,27 @@ namespace BuildConsole.Services
                 }
 
                 var stillOpen = blockers.Where(b => live.OpenNumbers.Contains(b)).ToList();
-                if (stillOpen.Count == 0) { ready.Add(item.Id); continue; }
+                if (stillOpen.Count == 0) { ready.Add(item); continue; }
                 heldReasons[item.Id] = $"waiting on {string.Join(", ", stillOpen.Select(b => $"#{b}"))} (open)";
             }
-            LastHeldReasons = heldReasons;
+            return new CandidateSelection(ready, heldReasons);
+        }
 
+        public async Task<List<QueueItem>> GetNextAsync(
+            int limit, Func<Task<LiveOpenIssuesResult>>? liveOpenIssuesFetcher = null)
+        {
+            if (limit <= 0) return new List<QueueItem>();
+            limit = Math.Min(limit, 20); // same cap as the server
+
+            await using var conn = await OpenAsync();
+
+            // Steps 1 & 2 — the shared, read-only selection (identical to what the
+            // dropdown's PeekNextAsync sees). Only Step 3 below mutates anything.
+            var selection = await SelectClaimCandidatesAsync(
+                conn, limit, presuppliedOpen: null, liveOpenIssuesFetcher);
+            LastHeldReasons = selection.HeldReasons;
+
+            var ready = selection.Ready.Select(i => i.Id).ToList(); // ids to claim
             if (ready.Count == 0) return new List<QueueItem>();
 
             // Step 3 — claim atomically: WHERE status='queued' guards double-claim.
@@ -343,6 +388,47 @@ namespace BuildConsole.Services
             }
             await PopulateAssociatedIssueNumbersAsync(claimed, conn);
             return claimed;
+        }
+
+        // ── PeekNextAsync ─────────────────────────────────────────────────────────
+        /// <summary>Git #1862 — result of <see cref="PeekNextAsync"/>. <see cref="BlockerKnowledgeAvailable"/>
+        /// is false only when the caller has no live open-issue set yet (app start, before the
+        /// first Git Board refresh); the dropdown then says so honestly rather than showing an
+        /// order computed without blocker knowledge.</summary>
+        public sealed record PeekResult(List<QueueItem> Items, bool BlockerKnowledgeAvailable);
+
+        /// <summary>
+        /// Git #1862 — a strictly READ-ONLY peek at the next <paramref name="limit"/> builds
+        /// the watcher would claim, in the exact order <see cref="GetNextAsync"/> would claim
+        /// them, WITHOUT claiming or mutating anything.
+        ///
+        /// This runs the same shared <see cref="SelectClaimCandidatesAsync"/> selection the
+        /// real claim path runs and returns its ordered result verbatim. It issues NO UPDATE,
+        /// writes no status, sets no <c>claimed_at</c>, and does not touch
+        /// <see cref="LastHeldReasons"/> — a mistake here would claim work the dropdown is only
+        /// meant to preview, so the read-only guarantee is structural, not just documented.
+        ///
+        /// It also fires NO `gh` call of its own: it reuses <paramref name="openIssues"/>, the
+        /// panel's already-fetched Git Board open-issue set (Step 1 of #1862). Pass
+        /// <c>null</c> when that set hasn't arrived yet — the peek then returns
+        /// <see cref="PeekResult.BlockerKnowledgeAvailable"/> = false and no rows, so the UI can
+        /// say "waiting for issue status" instead of guessing an order blockers might reorder.
+        /// </summary>
+        public async Task<PeekResult> PeekNextAsync(int limit, HashSet<int>? openIssues)
+        {
+            if (limit <= 0) return new PeekResult(new List<QueueItem>(), openIssues != null);
+            limit = Math.Min(limit, 20);
+
+            // No blocker knowledge yet → don't invent an order. Say so instead.
+            if (openIssues == null)
+                return new PeekResult(new List<QueueItem>(), BlockerKnowledgeAvailable: false);
+
+            await using var conn = await OpenAsync();
+            var selection = await SelectClaimCandidatesAsync(
+                conn, limit,
+                presuppliedOpen: LiveOpenIssuesResult.Ok(openIssues),
+                liveOpenIssuesFetcher: null);
+            return new PeekResult(selection.Ready, BlockerKnowledgeAvailable: true);
         }
 
         // ── QueueBuildAsync ───────────────────────────────────────────────────────

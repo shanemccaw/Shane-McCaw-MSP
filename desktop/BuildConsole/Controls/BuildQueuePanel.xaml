@@ -216,19 +216,17 @@
                                        Foreground="{StaticResource Subtext1Brush}"
                                        Margin="0,0,0,6"/>
 
-                            <!-- Usage & Cost Summary — Shane: "There is a new feature that shows
-                                 me the tokens and estimated cost of the session... but that
-                                 should persist. And then give me a breakdown when I click it...
-                                 tokens total, cost total, tokens this session, cost this session
-                                 for fun and tracking purposes." The big numbers are now the REAL,
-                                 durable "this session" totals from UsageTrackingService (the
-                                 CLI's own total_cost_usd per completed turn, persisted to
-                                 %AppData%\BuildConsole\usage-totals.json so all-time survives a
-                                 restart) — unlike the old $5/1M ESTIMATE across only currently-
-                                 running builds, this doesn't zero out the moment nothing's
-                                 active, which is what read as "not persisting". Clicking opens
-                                 UsageBreakdownPopup with the full Total/Session split. -->
-                            <Border x:Name="ActiveUsageBorder"
+                            <!-- Queue status counts (Git #1862) — replaces the old token/cost
+                                 badge (it flipped between a context-window ESTIMATE and a real
+                                 spend total under one label; see #1862 for why it was unfixable).
+                                 Four REAL, reconciled counts: In queue = queued + limit-paused;
+                                 Blocked = queued rows a GitHub-open blocker holds; Up next = the
+                                 real claim candidates (queued, all blockers closed, not paused);
+                                 Verifying = rows at VerifyingStatus. The "(N active)" running
+                                 readout on the right is unchanged. Clicking opens QueueNextPopup:
+                                 the next five builds about to run, in genuine claim order (a
+                                 read-only peek at GetNextAsync's own selection — claims nothing). -->
+                            <Border x:Name="QueueStatusBorder"
                                     Background="{StaticResource Surface0Brush}"
                                     BorderBrush="{StaticResource Surface1Brush}"
                                     BorderThickness="1"
@@ -236,18 +234,9 @@
                                     Padding="8,5"
                                     Margin="0,0,0,8"
                                     Cursor="Hand"
-                                    ToolTip="Live usage/cost while builds are running, this-session total when idle — click for the full total/session breakdown"
-                                    MouseLeftButtonUp="ActiveUsageBorder_Click">
+                                    ToolTip="Live queue status — click for the next builds to run, in real claim order."
+                                    MouseLeftButtonUp="QueueStatusBorder_Click">
                                 <DockPanel LastChildFill="True">
-                                    <TextBlock Text="🪙" FontSize="11" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="QueueTokensText" Text="0 tokens"
-                                               FontSize="11" FontWeight="SemiBold"
-                                               Foreground="{StaticResource MauveBrush}"
-                                               VerticalAlignment="Center"/>
-                                    <TextBlock x:Name="QueueCostText" Text=" · ~$0.00"
-                                               FontSize="10.5" FontWeight="SemiBold"
-                                               Foreground="{StaticResource GreenBrush}"
-                                               VerticalAlignment="Center"/>
                                     <TextBlock Text="&#xE70D;"
                                                DockPanel.Dock="Right"
                                                FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
@@ -257,15 +246,22 @@
                                                HorizontalAlignment="Right"
                                                VerticalAlignment="Center"/>
                                     <TextBlock x:Name="QueueActiveSlotsText" Text=" (0 active)"
+                                               DockPanel.Dock="Right"
                                                FontSize="10"
                                                Foreground="{StaticResource Subtext0Brush}"
                                                HorizontalAlignment="Right"
                                                VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="QueueStatusCountsText"
+                                               Text="In queue: 0  ·  Blocked: 0  ·  Up next: 0  ·  Verifying: 0"
+                                               FontSize="10.5" FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextBrush}"
+                                               TextWrapping="Wrap"
+                                               VerticalAlignment="Center"/>
                                 </DockPanel>
                             </Border>
 
-                            <Popup x:Name="UsageBreakdownPopup"
-                                   PlacementTarget="{Binding ElementName=ActiveUsageBorder}"
+                            <Popup x:Name="QueueNextPopup"
+                                   PlacementTarget="{Binding ElementName=QueueStatusBorder}"
                                    Placement="Bottom"
                                    StaysOpen="False"
                                    AllowsTransparency="True">
@@ -274,40 +270,22 @@
                                         BorderThickness="1"
                                         CornerRadius="6"
                                         Padding="12,10"
-                                        MinWidth="220">
+                                        MinWidth="280"
+                                        MaxWidth="340">
                                     <Border.Effect>
                                         <DropShadowEffect Color="Black" BlurRadius="16" ShadowDepth="3" Opacity="0.4"/>
                                     </Border.Effect>
                                     <StackPanel>
-                                        <TextBlock Text="AI USAGE &amp; COST"
+                                        <TextBlock Text="NEXT TO RUN"
                                                    FontSize="10"
                                                    FontWeight="SemiBold"
                                                    Foreground="{StaticResource Subtext1Brush}"
+                                                   Margin="0,0,0,2"/>
+                                        <TextBlock Text="Real claim order — a read-only peek, claims nothing."
+                                                   FontSize="9.5"
+                                                   Foreground="{StaticResource Subtext0Brush}"
                                                    Margin="0,0,0,8"/>
-
-                                        <TextBlock Text="This Session" FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,2"/>
-                                        <Grid Margin="0,0,0,8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock x:Name="UsageSessionTokensText" Grid.Column="0" Text="0 tokens" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource MauveBrush}"/>
-                                            <TextBlock x:Name="UsageSessionCostText" Grid.Column="1" Text="$0.00" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource GreenBrush}"/>
-                                        </Grid>
-                                        <TextBlock x:Name="UsageSessionBuildsText" Text="0 builds" FontSize="10" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,10"/>
-
-                                        <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,0,0,8"/>
-
-                                        <TextBlock Text="All-Time Total" FontSize="10" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,2"/>
-                                        <Grid Margin="0,0,0,4">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock x:Name="UsageTotalTokensText" Grid.Column="0" Text="0 tokens" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource MauveBrush}"/>
-                                            <TextBlock x:Name="UsageTotalCostText" Grid.Column="1" Text="$0.00" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource GreenBrush}"/>
-                                        </Grid>
-                                        <TextBlock x:Name="UsageTotalBuildsText" Text="0 builds" FontSize="10" Foreground="{StaticResource Subtext1Brush}"/>
+                                        <StackPanel x:Name="QueueNextHost"/>
                                     </StackPanel>
                                 </Border>
                             </Popup>

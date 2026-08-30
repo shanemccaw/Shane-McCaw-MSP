@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -72,6 +73,14 @@ namespace BuildConsole.Controls
         private Services.BuildQueuePostgresClient? _db;
         private DispatcherTimer? _pollTimer;
         private List<QueueItem> _lastItems = new();
+        /// <summary>Git #1862 — the live open-issue set from the last Git Board refresh,
+        /// forwarded by MainWindow (same free fetch Build Watch already consumes — no new
+        /// `gh` call). Null until the first refresh arrives; a real blocker is only counted
+        /// as blocking when this set reports it OPEN, and the DAG's 🔒 BLOCKED / the four
+        /// header counts both read from it. On a cold start (still null) blocked-ness is
+        /// UNKNOWN — the header falls back to the old declared-blocker heuristic and marks
+        /// itself provisional (see <see cref="UpdateQueueStatusCounts"/>).</summary>
+        private HashSet<int>? _openIssues;
         private string _filter = "Running";
         private readonly HashSet<int> _manuallyHiddenQueueIds = new();
         /// <summary>Git #1834 — set by clicking a row in the build-set rollup summary;
@@ -183,22 +192,21 @@ namespace BuildConsole.Controls
                 _watcher.PausedStateChanged += (paused) => Dispatcher.BeginInvoke(new Action(() => SyncPauseToggleVisual(paused)));
             }
 
-            // Real, durable usage/cost tracking — refresh the badge the moment a build
-            // actually completes a turn, from any thread (UsageTrackingService.Changed
-            // fires off the recording thread, not the UI thread).
-            Services.UsageTrackingService.Changed += () => Dispatcher.BeginInvoke(new Action(UpdateUsageSummary));
+            // Git #1862 — the QUEUE header no longer reads usage/cost (that badge is gone;
+            // its persisted history moved to the title bar, #1864). UsageTrackingService is
+            // deliberately left recording, untouched — this panel just no longer subscribes.
 
             // Sessions presence polling
             _sessionsPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(10) };
             _sessionsPollTimer.Tick += async (_, _) =>
             {
                 await RefreshActiveSessionsAsync();
-                UpdateUsageSummary();
+                UpdateQueueStatusCounts();
                 DevServerRollbackService.CheckForRollbacks(this);
             };
             _sessionsPollTimer.Start();
             _ = RefreshActiveSessionsAsync();
-            UpdateUsageSummary();
+            UpdateQueueStatusCounts();
             DevServerRollbackService.CheckForRollbacks(this);
 
             _ = RefreshInFlightIssuesAsync("initial load");
@@ -718,7 +726,7 @@ namespace BuildConsole.Controls
                     RenderBuildSetRollup(_lastItems);
                 }
                 if (_filter == "Tests") RenderTestsTree();
-                UpdateUsageSummary();
+                UpdateQueueStatusCounts();
                 UpdateOrphanRecoveryBanner();
                 SyncError?.Invoke(this, _queueIsStale
                     ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
@@ -876,59 +884,246 @@ namespace BuildConsole.Controls
             await RefreshAsync();
         }
 
-        // Git #1864 — formatting moved to the shared Services.UsageFormat.FormatTokens
-        // so this panel and the title bar's usage readout (MainWindow.xaml) read the
-        // same numbers the same way instead of duplicating the logic.
+        // ── Queue status counts + next-to-run dropdown (Git #1862) ────────────────
+        // Replaces the old token/cost badge (which flipped between a context-window
+        // ESTIMATE and a real spend total under one label — see #1862 for why it was
+        // unfixable). The persisted usage history it used to show now lives in the
+        // title bar (#1864); UsageTrackingService is deliberately left untouched here.
+
+        /// <summary>Git #1862 — the same blocker cleanup RenderQueue's node loop applies:
+        /// drop the sentinel 0 and any self-reference.</summary>
+        private static List<int> CleanBlockers(QueueItem item)
+        {
+            var raw = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue
+                ? new List<int> { item.BlockedByNumber.Value } : new List<int>());
+            return raw.Where(b => b != 0 && b != item.GithubNumber).ToList();
+        }
 
         /// <summary>
-        /// Refreshes the header badge. Shane: "The Tokens and cost is also not
-        /// updating with the 4 builds running right now" — a regression from switching
-        /// the badge to ONLY the persisted "this session" totals (which only advance
-        /// when a build actually finishes a turn and reports its real
-        /// total_cost_usd/usage), so a build that's been actively streaming but hasn't
-        /// completed a turn yet looked frozen. Fixed by showing whichever is actually
-        /// live right now: while any build is running, the badge shows the real-time
-        /// in-progress estimate from GetActiveUsageSummary (updates continuously as
-        /// context grows, exactly like before); once nothing is running it falls back
-        /// to the persisted "this session" total instead of blanking to zero — the
-        /// original "should persist" ask. Either way, clicking still opens the full
-        /// This-Session/All-Time breakdown popup.
+        /// Git #1862 — is a queued item genuinely blocked RIGHT NOW? Blocked means it
+        /// declares a blocker the live open-issue set (<see cref="_openIssues"/>) reports
+        /// still OPEN — not merely that it declares one (the old heuristic, which painted
+        /// 🔒 BLOCKED on items whose blocker closed days ago). Until that set arrives
+        /// (_openIssues == null, cold start) blocked-ness is UNKNOWN, so we fail safe to
+        /// the old declared-blocker behaviour rather than assert a confident "runnable".
         /// </summary>
-        public void UpdateUsageSummary()
+        private bool IsGenuinelyBlocked(QueueItem item, List<int> cleanBlockers)
         {
-            var snap = Services.UsageTrackingService.GetSnapshot();
-            var (activeTokens, activeCost, active) = _watcher?.GetActiveUsageSummary() ?? (0, 0, 0);
+            if (item.Status != "queued") return false;
+            if (cleanBlockers.Count == 0) return false;
+            if (_openIssues == null) return true; // cold start: provisional-blocked
+            return cleanBlockers.Any(b => _openIssues.Contains(b));
+        }
 
-            if (active > 0)
+        /// <summary>
+        /// Git #1862 — forwarded by MainWindow off every Git Board refresh (the same free
+        /// open-issue fetch Build Watch already consumes; NO new `gh` call, no new poll).
+        /// Stores the set so both the four header counts and the DAG's 🔒 BLOCKED read the
+        /// live truth, then redraws so a blocker that just closed drops its lock immediately
+        /// instead of waiting for the panel's own 15s poll.
+        /// </summary>
+        public void ApplyOpenIssueSet(HashSet<int> open)
+        {
+            if (open == null || open.Count == 0) return; // empty == "couldn't determine", not "all closed"
+            _openIssues = open;
+            UpdateQueueStatusCounts();
+            try { if (QueueGraphContainer != null && _filter != "Tests") RenderQueue(ApplyFilter(_lastItems)); } catch { }
+        }
+
+        /// <summary>Git #1862 — the four reconciled buckets shown in the QUEUE header.</summary>
+        private readonly struct QueueStatusCounts
+        {
+            public int InQueue { get; init; }   // queued + limit-paused
+            public int Blocked { get; init; }   // non-paused queued with a blocker GitHub reports open
+            public int UpNext { get; init; }    // non-paused queued, all blockers closed (real claim candidates)
+            public int Verifying { get; init; } // VerifyingStatus rows
+            public int ManuallyPaused { get; init; } // queued rows in PausedBuildIds
+            public int LimitPaused { get; init; }    // LimitPausedStatus rows
+            public bool Provisional { get; init; }   // true on a cold start (no open-issue set yet)
+        }
+
+        /// <summary>
+        /// Git #1862 — computes the four counts straight off <see cref="_lastItems"/> (the
+        /// real queue) + <see cref="_openIssues"/> + PausedBuildIds. Among queued rows the
+        /// buckets PARTITION with manually-paused taking precedence (paused rows are set
+        /// aside exactly as GetNextAsync filters them out before the blocker check), so
+        /// Blocked + UpNext + ManuallyPaused + LimitPaused == InQueue by construction — the
+        /// reconciliation the badge must never violate. UpNext therefore equals GetNextAsync's
+        /// own candidate set (not paused, every blocker closed).
+        /// </summary>
+        private QueueStatusCounts ComputeQueueStatusCounts()
+        {
+            var paused = BuildConsoleSettings.Load().PausedBuildIds;
+            int blocked = 0, upNext = 0, manuallyPaused = 0, limitPaused = 0, verifying = 0, queued = 0;
+            foreach (var item in _lastItems)
             {
-                QueueTokensText.Text = Services.UsageFormat.FormatTokens(activeTokens);
-                QueueCostText.Text = $" · ~${activeCost:0.00}";
+                if (item.Status == BuildQueuePostgresClient.VerifyingStatus) { verifying++; continue; }
+                if (item.Status == Services.SessionLimitAutoRestartService.LimitPausedStatus) { limitPaused++; continue; }
+                if (item.Status != "queued") continue;
+
+                queued++;
+                if (paused.Contains(item.Id)) { manuallyPaused++; continue; }
+                if (IsGenuinelyBlocked(item, CleanBlockers(item))) blocked++;
+                else upNext++;
+            }
+            return new QueueStatusCounts
+            {
+                InQueue = queued + limitPaused,
+                Blocked = blocked,
+                UpNext = upNext,
+                Verifying = verifying,
+                ManuallyPaused = manuallyPaused,
+                LimitPaused = limitPaused,
+                Provisional = _openIssues == null && blocked > 0,
+            };
+        }
+
+        /// <summary>
+        /// Git #1862 — refreshes the QUEUE header: the four reconciled counts on the left and
+        /// the unchanged "(N active)" running readout on the right (still sourced from
+        /// GetActiveUsageSummary's active-slot count). On a cold start, before the first Git
+        /// Board refresh, the Blocked figure is provisional (computed from declared blockers
+        /// alone) and is rendered muted with a "*" and an explanatory tooltip rather than as a
+        /// confident number.
+        /// </summary>
+        public void UpdateQueueStatusCounts()
+        {
+            var c = ComputeQueueStatusCounts();
+            var (_, _, active) = _watcher?.GetActiveUsageSummary() ?? (0, 0, 0);
+
+            string blockedText = c.Provisional ? $"{c.Blocked}*" : c.Blocked.ToString();
+            QueueStatusCountsText.Text =
+                $"In queue: {c.InQueue}  ·  Blocked: {blockedText}  ·  Up next: {c.UpNext}  ·  Verifying: {c.Verifying}";
+
+            if (c.Provisional)
+            {
+                QueueStatusCountsText.Foreground = (Brush)Application.Current.FindResource("Subtext0Brush");
+                QueueStatusBorder.ToolTip = "Blocked count is provisional — waiting for the first Git Board refresh to confirm which blockers are still open. Click for the next builds to run.";
             }
             else
             {
-                QueueTokensText.Text = Services.UsageFormat.FormatTokens(snap.SessionTokens);
-                QueueCostText.Text = $" · ~${snap.SessionCostUsd:0.00}";
+                QueueStatusCountsText.Foreground = (Brush)Application.Current.FindResource("TextBrush");
+                QueueStatusBorder.ToolTip = "Live queue status — click for the next builds to run, in real claim order.";
             }
+
             QueueActiveSlotsText.Text = $" ({active} active)";
 
-            if (UsageBreakdownPopup?.IsOpen == true) RenderUsageBreakdown(snap);
+            if (QueueNextPopup?.IsOpen == true) _ = RenderNextToRunAsync();
         }
 
-        private void RenderUsageBreakdown(Services.UsageTrackingService.Snapshot snap)
+        private async void QueueStatusBorder_Click(object sender, MouseButtonEventArgs e)
         {
-            UsageSessionTokensText.Text = Services.UsageFormat.FormatTokens(snap.SessionTokens);
-            UsageSessionCostText.Text = $"${snap.SessionCostUsd:0.00}";
-            UsageSessionBuildsText.Text = $"{snap.SessionBuilds} build{(snap.SessionBuilds == 1 ? "" : "s")} this session";
-
-            UsageTotalTokensText.Text = Services.UsageFormat.FormatTokens(snap.TotalTokens);
-            UsageTotalCostText.Text = $"${snap.TotalCostUsd:0.00}";
-            UsageTotalBuildsText.Text = $"{snap.TotalBuilds} build{(snap.TotalBuilds == 1 ? "" : "s")} all-time";
+            QueueNextPopup.IsOpen = !QueueNextPopup.IsOpen;
+            if (QueueNextPopup.IsOpen) await RenderNextToRunAsync();
         }
 
-        private void ActiveUsageBorder_Click(object sender, MouseButtonEventArgs e)
+        /// <summary>
+        /// Git #1862 — fills the dropdown with the next five builds the watcher would claim,
+        /// in genuine claim order, via <see cref="BuildQueuePostgresClient.PeekNextAsync"/> —
+        /// a strictly READ-ONLY peek that claims/mutates nothing and reuses the panel's own
+        /// <see cref="_openIssues"/> set (no `gh` call). If that set hasn't arrived yet the
+        /// peek reports so and we say it honestly instead of showing an order blockers might
+        /// still reorder.
+        /// </summary>
+        private async Task RenderNextToRunAsync()
         {
-            RenderUsageBreakdown(Services.UsageTrackingService.GetSnapshot());
-            UsageBreakdownPopup.IsOpen = !UsageBreakdownPopup.IsOpen;
+            QueueNextHost.Children.Clear();
+
+            if (_db == null)
+            {
+                QueueNextHost.Children.Add(MakeNextInfoText("Not connected to the queue database."));
+                return;
+            }
+
+            BuildQueuePostgresClient.PeekResult peek;
+            try
+            {
+                peek = await _db.PeekNextAsync(5, _openIssues);
+            }
+            catch (Exception ex)
+            {
+                QueueNextHost.Children.Add(MakeNextInfoText($"Couldn't read the queue: {ex.Message}"));
+                return;
+            }
+
+            if (!peek.BlockerKnowledgeAvailable)
+            {
+                QueueNextHost.Children.Add(MakeNextInfoText(
+                    "Waiting for the first Git Board refresh to confirm issue status before showing claim order."));
+                return;
+            }
+
+            if (peek.Items.Count == 0)
+            {
+                QueueNextHost.Children.Add(MakeNextInfoText("Nothing ready to claim — the queue is empty or fully blocked/paused."));
+                return;
+            }
+
+            int n = 1;
+            foreach (var item in peek.Items)
+            {
+                QueueNextHost.Children.Add(MakeNextRow(n++, item));
+            }
+        }
+
+        private TextBlock MakeNextInfoText(string text) => new()
+        {
+            Text = text,
+            FontSize = 11,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+            Margin = new Thickness(0, 2, 0, 2),
+        };
+
+        private FrameworkElement MakeNextRow(int ordinal, QueueItem item)
+        {
+            var row = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 3, 0, 3) };
+
+            var ord = new TextBlock
+            {
+                Text = $"{ordinal}.",
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                Width = 16,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            DockPanel.SetDock(ord, Dock.Left);
+            row.Children.Add(ord);
+
+            string refText = item.GithubNumber.HasValue ? FormatIssueRef(item.GithubNumber.Value) : $"#{item.Id}";
+            var refBlock = new TextBlock
+            {
+                Text = refText,
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.FindResource("BlueBrush"),
+                Width = 52,
+                VerticalAlignment = VerticalAlignment.Top,
+            };
+            DockPanel.SetDock(refBlock, Dock.Left);
+            row.Children.Add(refBlock);
+
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(item.Title) ? "(untitled)" : item.Title.Trim(),
+                FontSize = 11,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)Application.Current.FindResource("TextBrush"),
+            });
+            if (!string.IsNullOrWhiteSpace(item.BuildSet))
+            {
+                stack.Children.Add(new TextBlock
+                {
+                    Text = $"set: {item.BuildSet.Trim()}",
+                    FontSize = 9.5,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                });
+            }
+            row.Children.Add(stack);
+            return row;
         }
 
         private List<QueueItem> ApplyFilter(List<QueueItem> items)
@@ -1232,7 +1427,11 @@ namespace BuildConsole.Controls
                     DisplayRef = item.GithubNumber.HasValue ? FormatIssueRef(item.GithubNumber.Value) : $"#{item.Id}",
                     Title = item.Title,
                     Status = item.Status,
-                    IsBlocked = cleanBlockers.Count > 0 && item.Status == "queued",
+                    // Git #1862 — blocked means a declared blocker GitHub reports OPEN, not
+                    // merely one declared (the old heuristic left 🔒 BLOCKED on items whose
+                    // blocker closed days ago). Cold start (no open-issue set yet) falls back
+                    // to declared-blocker behaviour, matching the header's provisional count.
+                    IsBlocked = IsGenuinelyBlocked(item, cleanBlockers),
                     IsWaitingForInput = isWaitingForInput,
                     BlockedBy = cleanBlockers,
                     Item = item,
