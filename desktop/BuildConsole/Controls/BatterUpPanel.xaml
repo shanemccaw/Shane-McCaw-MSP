@@ -42,15 +42,16 @@
                         Foreground="{StaticResource Subtext0Brush}" Cursor="Hand"
                         ToolTip="Refresh Batter Up now" Click="BtnRefresh_Click"/>
 
-                <ToggleButton x:Name="BtnCollapse" Grid.Column="3" Content="▾" Padding="6,2"
+                <ToggleButton x:Name="BtnCollapse" Grid.Column="3" Content="▸" Padding="6,2"
                               Background="Transparent" BorderThickness="0"
                               Foreground="{StaticResource Subtext0Brush}" Cursor="Hand"
-                              IsChecked="False" Click="BtnCollapse_Click"/>
+                              IsChecked="True" Click="BtnCollapse_Click"/>
             </Grid>
 
             <ScrollViewer x:Name="RowsScroller" DockPanel.Dock="Top"
                           VerticalScrollBarVisibility="Auto"
-                          MaxHeight="220">
+                          MaxHeight="220"
+                          Visibility="Collapsed">
                 <!-- Git #1803 — cards are built in code-behind (BuildBatterUpCard), the same way
                      BuildQueuePanel builds BuildQueueCard, so this row can carry the exact same
                      critter-avatar/card-border language instead of a DataTemplate text row. -->
@@ -59,7 +60,8 @@
 
             <TextBlock x:Name="TxtEmpty" DockPanel.Dock="Top" Margin="10,4,10,10"
                        Foreground="{StaticResource Subtext0Brush}" FontSize="11.5"
-                       TextWrapping="Wrap" Text="No open issues in Batter Up."/>
+                       TextWrapping="Wrap" Text="No open issues in Batter Up."
+                       Visibility="Collapsed"/>
 
         </DockPanel>
     </Border>
