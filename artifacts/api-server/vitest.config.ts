@@ -271,6 +271,9 @@ export default defineConfig({
       // #1551 — write consent decides the enactment shape (the NASA case): the
       // route file's authorization/scoping and the resolved wire response.
       "src/routes/msp-standing-policies.test.ts",
+      // #1553 — Policy Engine finding source: the mailbox_attribute compliance
+      // comparison logic (pure, no database, no Graph).
+      "src/lib/policy-compliance.test.ts",
       "src/lib/zoho-foundation.test.ts",
       "src/lib/zoho-crm.test.ts",
       "src/lib/zoho-projects.test.ts",
@@ -355,6 +358,10 @@ export default defineConfig({
       // readiness gate and shane_handles deliberately does not (see the
       // module's own header for why, straight from the design file's code).
       "src/lib/remediation-tracker-pricing.test.ts",
+      // #1542 — the decline-to-risk derivation: KB summary > scan finding >
+      // check label > catalogue title fallback chain, never-invented money/
+      // score fields, and idempotency on a repeat decline.
+      "src/lib/remediation-tracker-risk-decline.test.ts",
       // #776 (Phase 1 of epic #647): real GET endpoint for
       // tenant_check_item_details — tenantId resolution stays scoped to the
       // caller's own customerId, a requested checkKey with no collection is

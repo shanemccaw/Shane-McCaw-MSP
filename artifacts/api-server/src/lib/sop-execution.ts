@@ -23,6 +23,14 @@
  * that status already means on the read side (`portal-sops.ts`'s
  * `queueStateFor`/`runStateLabel`).
  *
+ * ── Policy enactment (#1548) ──────────────────────────────────────────────────
+ * "Policy is enacted by an SOP; the engine does not execute." A caller may pass
+ * `standingPolicyId` to attribute this run to a `standing_policies` row — the
+ * SAME insert this function already does, no second write path. Verified
+ * before anything fires: the policy must belong to this MSP, be `isActive`,
+ * and name exactly this `sopId` (a policy only gets credit for the procedure
+ * it actually named). `origin` is forced to `"policy"` when set this way.
+ *
  * ── Reconciliation, not a live callback ──────────────────────────────────────
  * The Workflow Engine has no per-SOP-run completion hook, so — exactly like
  * #1497's `settleAuthorizedChangeRequests` — `settleSopRuns` is a periodic
@@ -39,6 +47,7 @@ import {
   db,
   mspSopsTable,
   mspSopRunsTable,
+  standingPoliciesTable,
   tenantsTable,
   wfRunsTable,
   wfRunNodeOutputsTable,
@@ -69,7 +78,13 @@ export type SopExecutionErrorCode =
   | "missing_variables"
   | "customer_not_testbed"
   | "change_request_not_authorized"
-  | "concurrency_limit";
+  | "concurrency_limit"
+  // #1548 — a run claiming a `standingPolicyId` must actually be that policy's
+  // named procedure, and that policy must be switched on.
+  | "standing_policy_not_found"
+  | "standing_policy_inactive"
+  | "standing_policy_sop_mismatch"
+  | "standing_policy_requires_policy_origin";
 
 export class SopExecutionError extends Error {
   constructor(
@@ -114,6 +129,13 @@ export async function runSopForCustomer(opts: {
   origin?: MspSopRunOrigin;
   triggeredBy?: string;
   changeRequestAuthorization?: { changeRequestId: number };
+  /**
+   * #1548 — this run enacts `standing_policies.id`. Verified against THIS
+   * MSP, required to be active, and required to name THIS `sopId` — a policy
+   * only gets credit for the procedure it actually named. `origin` must be
+   * `"policy"` when set (defaulted to it if the caller left `origin` unset).
+   */
+  standingPolicyId?: number;
 }): Promise<RunSopResult> {
   const { mspId, sopId, customerId } = opts;
 
@@ -123,6 +145,39 @@ export async function runSopForCustomer(opts: {
     .where(and(eq(mspSopsTable.mspId, mspId), eq(mspSopsTable.sopId, sopId)))
     .limit(1);
   if (!sop) throw new SopExecutionError("sop_not_found", `SOP '${sopId}' not found`);
+
+  // ── #1548 — policy enactment binding, verified before anything fires ───────
+  let origin = opts.origin;
+  if (opts.standingPolicyId !== undefined) {
+    if (origin !== undefined && origin !== "policy") {
+      throw new SopExecutionError(
+        "standing_policy_requires_policy_origin",
+        `A run naming a standingPolicyId must have origin "policy" (got "${origin}")`,
+      );
+    }
+    origin = "policy";
+
+    const [policy] = await db
+      .select({ isActive: standingPoliciesTable.isActive, sopId: standingPoliciesTable.sopId })
+      .from(standingPoliciesTable)
+      .where(and(eq(standingPoliciesTable.id, opts.standingPolicyId), eq(standingPoliciesTable.mspId, mspId)))
+      .limit(1);
+    if (!policy) {
+      throw new SopExecutionError("standing_policy_not_found", `Standing policy ${opts.standingPolicyId} not found`);
+    }
+    if (!policy.isActive) {
+      throw new SopExecutionError(
+        "standing_policy_inactive",
+        `Standing policy ${opts.standingPolicyId} is not active — switch it on before it can enact a run`,
+      );
+    }
+    if (policy.sopId !== sopId) {
+      throw new SopExecutionError(
+        "standing_policy_sop_mismatch",
+        `Standing policy ${opts.standingPolicyId} names SOP '${policy.sopId ?? "(none)"}', not '${sopId}'`,
+      );
+    }
+  }
 
   const steps = readSteps(sop.steps);
   const { graph, materialized, requiredVariables } = buildSopWorkflowGraph(steps);
@@ -231,7 +286,8 @@ export async function runSopForCustomer(opts: {
         tenantName: customer.name,
         targetEntity,
         operator: opts.operator,
-        origin: opts.origin ?? "manual",
+        origin: origin ?? "manual",
+        standingPolicyId: opts.standingPolicyId ?? null,
         startedAt: now.toISOString(),
         status: "In Progress",
         currentStepIndex: 0,
@@ -259,7 +315,14 @@ export async function runSopForCustomer(opts: {
     }
 
     log.info(
-      { sopId, customerId, wfRunId, sopRunId: inserted.id, authorizingChangeRequestId: claimedChangeRequestId },
+      {
+        sopId,
+        customerId,
+        wfRunId,
+        sopRunId: inserted.id,
+        authorizingChangeRequestId: claimedChangeRequestId,
+        standingPolicyId: opts.standingPolicyId ?? null,
+      },
       "sop-execution: run fired",
     );
 

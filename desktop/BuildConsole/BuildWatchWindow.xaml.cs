@@ -69,7 +69,7 @@ namespace BuildConsole
         /// <summary>The standard Claude context-window size — a real model constant (not fetched per-build; every model this app launches uses the standard 200k window). Shown as the composer footer's token-fraction denominator only once real usage data exists (QueueWatcherService.GetContextTokens) — never fabricated.</summary>
         private const long StandardContextWindowTokens = 200_000;
 
-        private enum SlotState { Empty, Running, Done, Failed, Stale }
+        private enum SlotState { Empty, Running, Done, Failed, Stale, Stalled }
 
         private sealed class BuildWatchSlot
         {
@@ -899,7 +899,14 @@ namespace BuildConsole
                     }
                     else if (_watcher != null && _watcher.HasExited(slot.QueueItemId, out int localExitCode))
                     {
-                        SetSlotState(slot, localExitCode == 0 ? SlotState.Done : SlotState.Failed, localExitCode);
+                        if (_watcher.IsSessionLimitHit(slot.QueueItemId))
+                        {
+                            SetSlotState(slot, SlotState.Stalled, localExitCode);
+                        }
+                        else
+                        {
+                            SetSlotState(slot, localExitCode == 0 ? SlotState.Done : SlotState.Failed, localExitCode);
+                        }
                     }
                     else if (byId.TryGetValue(slot.QueueItemId, out var item))
                     {
@@ -1023,6 +1030,9 @@ namespace BuildConsole
                 case "done":
                     SetSlotState(slot, SlotState.Done, item.ExitCode);
                     break;
+                case "limit-paused":
+                    SetSlotState(slot, SlotState.Stalled, item.ExitCode);
+                    break;
                 case "failed":
                 case "canceled":
                     // #943 GUARD: -2 is the orphan-sweep sentinel, a known
@@ -1061,7 +1071,7 @@ namespace BuildConsole
             // If a code diff was still being collected when the run ended, flush it now so
             // its content isn't lost — the raw-run case normally closes on the next non-diff
             // line, but a build can go terminal/stale without one ever arriving.
-            if (newState is SlotState.Done or SlotState.Failed or SlotState.Stale)
+            if (newState is SlotState.Done or SlotState.Failed or SlotState.Stale or SlotState.Stalled)
                 FinishDiff(slot);
 
             switch (newState)
@@ -1136,6 +1146,20 @@ namespace BuildConsole
                     ApplyPillTone(slot, "Warning", "NOT IN QUEUE",
                         "This build's queue row disappeared while it was running — its process may still be alive (see #943). Not treated as done; dismiss it yourself when you're sure.",
                         pulsing: false);
+                    slot.CompletedAtUtc = null; // deliberately not a confirmed completion
+                    RemoveStatusLine(slot);
+                    break;
+
+                case SlotState.Stalled:
+                    slot.Verifying = false;
+                    vm.Mode = ComposerMode.Terminal;
+                    vm.CanStop = false;
+                    vm.PlaceholderText = "Session limit reached — waiting for reset…";
+                    slot.Container.BorderBrush = _ringWarning;
+                    slot.Container.BorderThickness = new Thickness(2);
+                    ApplyPillTone(slot, "Warning", "STALLED",
+                        "This build hit the Claude session limit and is waiting to be restarted automatically after the reset.",
+                        pulsing: true);
                     slot.CompletedAtUtc = null; // deliberately not a confirmed completion
                     RemoveStatusLine(slot);
                     break;
@@ -1878,10 +1902,13 @@ namespace BuildConsole
         private void UpdateSubtitle()
         {
             int running = _slots.Count(s => s.Occupied && (s.State == SlotState.Running));
+            int stalled = _slots.Count(s => s.Occupied && s.State == SlotState.Stalled);
             int done = _slots.Count(s => s.Occupied && s.State == SlotState.Done);
             int failed = _slots.Count(s => s.Occupied && s.State == SlotState.Failed);
             int stale = _slots.Count(s => s.Occupied && s.State == SlotState.Stale);
-            var parts = new List<string> { $"{running} running", $"{done} done" };
+            var parts = new List<string> { $"{running} running" };
+            if (stalled > 0) parts.Add($"{stalled} stalled");
+            parts.Add($"{done} done");
             if (failed > 0) parts.Add($"{failed} failed");
             if (stale > 0) parts.Add($"{stale} stale");
             if (_waiting.Count > 0) parts.Add($"{_waiting.Count} waiting");

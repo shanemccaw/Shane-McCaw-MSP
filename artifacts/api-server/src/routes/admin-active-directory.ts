@@ -228,6 +228,7 @@ router.get("/admin/active-directory/tree", requireAdmin, async (_req: Request, r
         .select({
           id: activeDirectoryOusTable.id,
           name: activeDirectoryOusTable.name,
+          tenantId: activeDirectoryOusTable.tenantId,
           createdAt: activeDirectoryOusTable.createdAt,
           updatedAt: activeDirectoryOusTable.updatedAt,
         })
@@ -1121,15 +1122,33 @@ router.patch("/admin/active-directory/user/:id/entitlements", requireAdmin, asyn
 // Organizational Unit placeholder objects — create/list/rename/delete a
 // container node only. No policy logic, no object-to-OU membership model.
 
+// `tenantId` (#1549): optional, nullable — which real customer tenant this OU
+// governs. Validated against a real tenants row when provided; never a bare
+// pass-through int, and never required (a platform/MSP-level OU has none).
+async function resolveOuTenantId(body: unknown): Promise<{ ok: true; tenantId: number | null } | { ok: false; error: string }> {
+  const raw = (body as Record<string, unknown> | null | undefined)?.tenantId;
+  if (raw === undefined || raw === null) return { ok: true, tenantId: null };
+  const tenantId = Number(raw);
+  if (!Number.isInteger(tenantId)) return { ok: false, error: "tenantId must be an integer" };
+  const [tenant] = await db.select({ id: tenantsTable.id }).from(tenantsTable).where(eq(tenantsTable.id, tenantId)).limit(1);
+  if (!tenant) return { ok: false, error: `Tenant '${tenantId}' does not exist` };
+  return { ok: true, tenantId };
+}
+
 router.post("/admin/active-directory/ou", requireAdmin, async (req: Request, res: Response) => {
   const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
   if (!name) {
     res.status(400).json({ error: "OU name is required" });
     return;
   }
+  const tenantResolution = await resolveOuTenantId(req.body);
+  if (!tenantResolution.ok) {
+    res.status(400).json({ error: tenantResolution.error });
+    return;
+  }
 
   try {
-    const [created] = await db.insert(activeDirectoryOusTable).values({ name }).returning();
+    const [created] = await db.insert(activeDirectoryOusTable).values({ name, tenantId: tenantResolution.tenantId }).returning();
     res.status(201).json(created);
   } catch (err) {
     log.error({ err }, "Failed to create OU");
@@ -1148,11 +1167,23 @@ router.patch("/admin/active-directory/ou/:id", requireAdmin, async (req: Request
     res.status(400).json({ error: "OU name is required" });
     return;
   }
+  // tenantId is only touched when the caller explicitly sends the key — omitting
+  // it entirely leaves the OU's existing tenant attachment untouched on a rename.
+  const bodyHasTenantId = req.body != null && Object.prototype.hasOwnProperty.call(req.body, "tenantId");
+  let tenantId: number | null | undefined;
+  if (bodyHasTenantId) {
+    const tenantResolution = await resolveOuTenantId(req.body);
+    if (!tenantResolution.ok) {
+      res.status(400).json({ error: tenantResolution.error });
+      return;
+    }
+    tenantId = tenantResolution.tenantId;
+  }
 
   try {
     const [updated] = await db
       .update(activeDirectoryOusTable)
-      .set({ name, updatedAt: new Date() })
+      .set({ name, ...(bodyHasTenantId ? { tenantId } : {}), updatedAt: new Date() })
       .where(eq(activeDirectoryOusTable.id, ouId))
       .returning();
     if (!updated) {

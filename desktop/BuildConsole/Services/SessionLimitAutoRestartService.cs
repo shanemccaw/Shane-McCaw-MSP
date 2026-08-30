@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -71,6 +72,8 @@ namespace BuildConsole.Services
         private Timer? _timer;
         /// <summary>The LOCAL time the armed restart fires at, or null when nothing is armed.</summary>
         private DateTime? _restartAtLocal;
+        /// <summary>The LOCAL time the session limit resets at, or null when nothing is armed.</summary>
+        private DateTime? _resetAtLocal;
 
         public SessionLimitAutoRestartService(BuildQueuePostgresClient? db, Action resumeQueue)
         {
@@ -79,6 +82,7 @@ namespace BuildConsole.Services
         }
 
         public DateTime? RestartAtLocal { get { lock (_gate) return _restartAtLocal; } }
+        public DateTime? ResetAtLocal { get { lock (_gate) return _resetAtLocal; } }
 
         // ── 1. Detection ─────────────────────────────────────────────────────
 
@@ -150,11 +154,11 @@ namespace BuildConsole.Services
                 : DateTime.Now.AddHours(1);
             if (fireAt <= DateTime.Now) fireAt = DateTime.Now.AddMinutes(1);
 
-            Arm(fireAt, $"queue #{queueId} hit the session limit (resets {resetLabel ?? "unparsed"})");
+            Arm(fireAt, resetLocal, $"queue #{queueId} hit the session limit (resets {resetLabel ?? "unparsed"})");
         }
 
         /// <summary>Arms the restart timer, keeping the furthest-out target when one is already armed. Persists the target so an app restart re-arms it.</summary>
-        private void Arm(DateTime fireAtLocal, string reason)
+        private void Arm(DateTime fireAtLocal, DateTime? resetAtLocal, string reason)
         {
             lock (_gate)
             {
@@ -164,6 +168,7 @@ namespace BuildConsole.Services
                     return;
                 }
                 _restartAtLocal = fireAtLocal;
+                _resetAtLocal = resetAtLocal ?? fireAtLocal.AddMinutes(-BuildConsoleSettings.Load().SessionLimitAutoRestartDelayMinutes);
                 _timer?.Dispose();
                 var due = fireAtLocal - DateTime.Now;
                 if (due < TimeSpan.FromSeconds(5)) due = TimeSpan.FromSeconds(5);
@@ -174,6 +179,7 @@ namespace BuildConsole.Services
             {
                 var settings = BuildConsoleSettings.Load();
                 settings.SessionLimitRestartAtIso = fireAtLocal.ToString("o", CultureInfo.InvariantCulture);
+                settings.SessionLimitResetAtIso = _resetAtLocal.HasValue ? _resetAtLocal.Value.ToString("o", CultureInfo.InvariantCulture) : "";
                 settings.Save();
             }
             catch (Exception ex) { ActivityLog.Log("session-limit", $"Couldn't persist the armed restart time: {ex.Message}"); }
@@ -187,6 +193,7 @@ namespace BuildConsole.Services
             lock (_gate)
             {
                 _restartAtLocal = null;
+                _resetAtLocal = null;
                 _timer?.Dispose();
                 _timer = null;
             }
@@ -194,6 +201,7 @@ namespace BuildConsole.Services
             {
                 var settings = BuildConsoleSettings.Load();
                 settings.SessionLimitRestartAtIso = "";
+                settings.SessionLimitResetAtIso = "";
                 settings.Save();
             }
             catch { }
@@ -216,7 +224,7 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log("session-limit", $"Auto-restart couldn't re-queue limit-paused rows: {ex.Message} — retrying in 5 minutes.");
-                Arm(DateTime.Now.AddMinutes(5), "re-queue failed");
+                Arm(DateTime.Now.AddMinutes(5), null, "re-queue failed");
                 return;
             }
 
@@ -229,6 +237,109 @@ namespace BuildConsole.Services
                 ? $"Session-limit auto-restart fired — {count} build{(count == 1 ? "" : "s")} back in the queue."
                 : "Session-limit auto-restart fired — no limit-paused builds found to re-queue (already resumed manually?). Queue toggle resumed.");
             if (count > 0) { try { LimitPausedResumed?.Invoke(count); } catch { } }
+        }
+
+        // ── Manual recovery (Build Queue panel button) ──────────────────────────
+
+        /// <summary>
+        /// "Recover Session-Limit Builds" — manual counterpart to the live detection in
+        /// QueueWatcherService. That live path only flags a build while its process is
+        /// still attached to the watcher; if a build died some other way (app restart,
+        /// a manual kill, a variant of the limit message the live regex saw but the
+        /// reap loop didn't get to before exit) the row can be left sitting
+        /// failed/canceled/held with the limit message as the last thing it ever
+        /// printed, and nothing ever resumes it. This sweeps every build's raw stdout
+        /// log file touched in the last <paramref name="window"/>, re-detects the same
+        /// "hit your session limit · resets …" shape via <see cref="TryDetectLimitMessage"/>,
+        /// and requeues (resume, not restart-from-scratch) whatever it finds — same
+        /// resume_session_id preservation as the automatic path, just triggered by hand
+        /// instead of waiting on the reset timer.
+        /// </summary>
+        public async Task<(List<QueueItem> Resumed, int Scanned)> ManualRecoverFromLogsAsync(TimeSpan window)
+        {
+            var resumed = new List<QueueItem>();
+            int scanned = 0;
+
+            if (_db == null)
+            {
+                ActivityLog.Log("session-limit", "Manual recover: no direct DB connection available — can't scan/requeue.");
+                return (resumed, scanned);
+            }
+
+            string dir = BuildLogPaths.LogDirectory;
+            if (!Directory.Exists(dir)) return (resumed, scanned);
+
+            var cutoffUtc = DateTime.UtcNow - window;
+            string[] files;
+            try { files = Directory.GetFiles(dir, "queue-*.log"); }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("session-limit", $"Manual recover: couldn't list {dir}: {ex.Message}");
+                return (resumed, scanned);
+            }
+
+            foreach (var file in files)
+            {
+                DateTime lastWriteUtc;
+                try { lastWriteUtc = File.GetLastWriteTimeUtc(file); }
+                catch { continue; }
+                if (lastWriteUtc < cutoffUtc) continue;
+
+                var m = Regex.Match(Path.GetFileNameWithoutExtension(file), @"^queue-(\d+)$");
+                if (!m.Success) continue;
+                int id = int.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture);
+                scanned++;
+
+                string tail;
+                try { tail = ReadTail(file, 32 * 1024); }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("session-limit", $"Manual recover: couldn't read log for #{id}: {ex.Message}");
+                    continue;
+                }
+
+                // Walk from the end — the limit line, when present, is the last
+                // meaningful thing the CLI printed before the process exited.
+                string? resetLabel = null;
+                bool hit = false;
+                var lines = tail.Split('\n');
+                for (int i = lines.Length - 1; i >= 0; i--)
+                {
+                    if (TryDetectLimitMessage(lines[i], out resetLabel)) { hit = true; break; }
+                }
+                if (!hit) continue;
+
+                try
+                {
+                    var item = await _db.RecoverStalledSessionLimitRowAsync(id);
+                    if (item != null)
+                    {
+                        resumed.Add(item);
+                        ActivityLog.Log("session-limit", $"Manual recover: #{id} ({item.Title}) hit the session limit (resets {resetLabel ?? "unknown"}) — re-queued for resume.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("session-limit", $"Manual recover: couldn't requeue #{id}: {ex.Message}");
+                }
+            }
+
+            if (resumed.Count > 0)
+            {
+                try { _resumeQueue(); }
+                catch (Exception ex) { ActivityLog.Log("session-limit", $"Manual recover: couldn't resume the queue toggle: {ex.Message}"); }
+            }
+
+            return (resumed, scanned);
+        }
+
+        /// <summary>Reads at most the last <paramref name="maxBytes"/> bytes of a file that's still being actively written to (shared read/write access, same as the log tailer).</summary>
+        private static string ReadTail(string path, int maxBytes)
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            using var reader = new StreamReader(fs);
+            if (fs.Length > maxBytes) fs.Seek(-maxBytes, SeekOrigin.End);
+            return reader.ReadToEnd();
         }
 
         // ── Startup ──────────────────────────────────────────────────────────
@@ -278,7 +389,7 @@ namespace BuildConsole.Services
                     if (reset.HasValue && reset.Value - DateTime.Now > TimeSpan.FromHours(12)) reset = DateTime.Now;
                     var fireAt = (reset ?? DateTime.Now).AddMinutes(Math.Max(0, settings.SessionLimitAutoRestartDelayMinutes));
                     if (fireAt <= DateTime.Now) fireAt = DateTime.Now.AddMinutes(1);
-                    Arm(fireAt, $"first-set bootstrap ({parked} build(s), resets {FirstSetResetLabel})");
+                    Arm(fireAt, reset, $"first-set bootstrap ({parked} build(s), resets {FirstSetResetLabel})");
                     return; // Arm persisted the time; no further re-arm needed below.
                 }
                 ActivityLog.Log("session-limit", "First-set bootstrap: no matching failed/canceled/held rows found to park (already resumed or re-queued?).");
@@ -288,7 +399,13 @@ namespace BuildConsole.Services
             if (!string.IsNullOrWhiteSpace(settings.SessionLimitRestartAtIso)
                 && DateTime.TryParse(settings.SessionLimitRestartAtIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var persisted))
             {
-                Arm(persisted <= DateTime.Now ? DateTime.Now.AddMinutes(1) : persisted, "re-armed persisted restart from a previous app run");
+                DateTime? persistedReset = null;
+                if (!string.IsNullOrWhiteSpace(settings.SessionLimitResetAtIso)
+                    && DateTime.TryParse(settings.SessionLimitResetAtIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var pr))
+                {
+                    persistedReset = pr;
+                }
+                Arm(persisted <= DateTime.Now ? DateTime.Now.AddMinutes(1) : persisted, persistedReset, "re-armed persisted restart from a previous app run");
             }
             else if (_db != null)
             {
@@ -299,6 +416,7 @@ namespace BuildConsole.Services
                     var stranded = await _db.GetLimitPausedAsync();
                     if (stranded.Count > 0)
                         Arm(DateTime.Now.AddMinutes(Math.Max(1, settings.SessionLimitAutoRestartDelayMinutes)),
+                            null,
                             $"found {stranded.Count} limit-paused build(s) with no armed restart");
                 }
                 catch (Exception ex) { ActivityLog.Log("session-limit", $"Startup limit-paused sweep failed: {ex.Message}"); }

@@ -213,6 +213,16 @@ export const tenantsTable = pgTable("tenants", {
   // throughout consent.ts / portal routes, which everywhere else in this
   // codebase means `tenants.id`, a local row id.
   stripeCustomerId: text("stripe_customer_id"),
+  /**
+   * Policy Engine opt-in (#1549) — a per-customer onboarding checkbox, default
+   * OFF. Distinct from `standing_policies.is_active` (whether one specific
+   * policy has been switched on): this is the tenant-wide kill switch #1549's
+   * SETTLED section requires — "the platform does not evaluate or act against
+   * tenants that have not opted in." The continuous-evaluation reconciliation
+   * loop checks BOTH: a policy only actually evaluates when its own is_active
+   * is true AND its OU's tenant has opted in here.
+   */
+  policyEngineOptIn: boolean("policy_engine_opt_in").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -3169,6 +3179,14 @@ export type InsertMspDiagnosticRun = typeof mspDiagnosticRunsTable.$inferInsert;
 export const MSP_DIAGNOSTIC_FINDING_SEVERITY = ["ok", "info", "warning", "critical"] as const;
 export type MspDiagnosticFindingSeverity = typeof MSP_DIAGNOSTIC_FINDING_SEVERITY[number];
 
+// #1553: a finding's provenance. Every finding until now derived from a check
+// against a Microsoft-defined or best-practice baseline. A policy-sourced
+// finding derives from what the customer themselves declared they wanted
+// (`standing_policies.target_state`) — there is no Microsoft rule behind it,
+// only the customer's own stated policy, and the UI must be able to say so.
+export const MSP_DIAGNOSTIC_FINDING_SOURCES = ["baseline", "policy"] as const;
+export type MspDiagnosticFindingSource = typeof MSP_DIAGNOSTIC_FINDING_SOURCES[number];
+
 export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
   id: serial("id").primaryKey(),
   findingId: uuid("finding_id").notNull().unique().defaultRandom(),
@@ -3189,11 +3207,19 @@ export const mspDiagnosticFindingsTable = pgTable("msp_diagnostic_findings", {
   }>(),
   extractedProperties: jsonb("extracted_properties").$type<Record<string, unknown>>(),
   checkStatus: text("check_status"),
+  // #1553: "baseline" for every pre-existing finding (the default — this column
+  // is additive and every prior row is a Microsoft-baseline check). "policy"
+  // marks a finding raised from standing-policy non-compliance instead.
+  findingSource: text("finding_source", { enum: MSP_DIAGNOSTIC_FINDING_SOURCES }).notNull().default("baseline"),
+  // #1553: which standing policy this finding was raised from, when findingSource
+  // is "policy". Null for every baseline finding — there is no policy behind those.
+  standingPolicyId: integer("standing_policy_id").references(() => standingPoliciesTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_diagnostic_findings_run_id_idx").on(t.runId),
   index("msp_diagnostic_findings_customer_id_idx").on(t.customerId),
   index("msp_diagnostic_findings_severity_idx").on(t.severity),
+  index("msp_diagnostic_findings_standing_policy_id_idx").on(t.standingPolicyId),
 ]);
 
 export type MspDiagnosticFinding = typeof mspDiagnosticFindingsTable.$inferSelect;
@@ -4693,6 +4719,65 @@ export type StandingPolicy = typeof standingPoliciesTable.$inferSelect;
 export type InsertStandingPolicy = typeof standingPoliciesTable.$inferInsert;
 export type StandingPolicyTargetKind = (typeof STANDING_POLICY_TARGET_KIND)[number];
 
+// ── Policy Evaluation Runs (#1549) — the continuous-evaluation reconciliation loop ──
+//
+// #1549 SETTLED: "the policy engine evaluates continuously," on two triggers —
+// EVENT (something changed for one tenant right now, e.g. a standing policy
+// was just switched on) and DIVERGENCE (a periodic sweep that re-checks every
+// active policy so drift introduced by hand is eventually caught, not only
+// provisioning-time state). This table is the durable, queryable register that
+// loop produces: one row per policy actually considered on a pass. It is the
+// visible proof the reconciliation loop ran, and the hand-off point #1548
+// (SOP enactment) and #1553 (non-compliance -> finding) attach to next — this
+// issue does not execute an SOP and does not write a finding itself.
+//
+// `outcome` is honest about what could actually be checked at this point in
+// the build-out. `not_evaluable` is the real, current answer for every target
+// kind today: `standing_policies` has no OU-membership model yet (deliberately
+// reserved — see active-directory.ts's own OU comment), so there is no
+// "who belongs to this OU" to read live Graph state for and compare against
+// `target_state`. Recording that honestly, per-policy, per-pass, is real work
+// — it is NOT a fabricated compliant/divergent verdict, which would be worse
+// than no answer. `skipped_not_opted_in` is equally honest: the pass reached a
+// policy whose OU resolves to a real tenant, but that tenant has not flipped
+// the opt-in checkbox, so nothing was read or acted on for it.
+export const POLICY_EVALUATION_TRIGGER_KIND = ["event", "schedule"] as const;
+export type PolicyEvaluationTriggerKind = (typeof POLICY_EVALUATION_TRIGGER_KIND)[number];
+
+export const POLICY_EVALUATION_OUTCOME = [
+  "compliant",
+  "divergent",
+  "not_evaluable",
+  "skipped_not_opted_in",
+  "error",
+] as const;
+export type PolicyEvaluationOutcome = (typeof POLICY_EVALUATION_OUTCOME)[number];
+
+export const policyEvaluationRunsTable = pgTable("policy_evaluation_runs", {
+  id: serial("id").primaryKey(),
+  standingPolicyId: integer("standing_policy_id").notNull().references(() => standingPoliciesTable.id, { onDelete: "cascade" }),
+  /** Denormalized from the policy at evaluation time, for querying without a join. */
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The tenant this pass resolved via the policy's OU. Null when the OU carries no tenant. */
+  tenantId: integer("tenant_id").references(() => tenantsTable.id, { onDelete: "set null" }),
+  triggerKind: text("trigger_kind", { enum: POLICY_EVALUATION_TRIGGER_KIND }).notNull(),
+  /** The canonical event name that fired this pass, e.g. "policy.standing_policy.activated". Null for a scheduled sweep. */
+  triggerEventType: text("trigger_event_type"),
+  outcome: text("outcome", { enum: POLICY_EVALUATION_OUTCOME }).notNull(),
+  /** Structured, honest detail — e.g. { reason: "..." }. Never fabricated data. */
+  detail: jsonb("detail").notNull().default({}),
+  evaluatedAt: timestamp("evaluated_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("policy_evaluation_runs_standing_policy_id_idx").on(t.standingPolicyId),
+  index("policy_evaluation_runs_msp_evaluated_idx").on(t.mspId, t.evaluatedAt),
+  index("policy_evaluation_runs_tenant_evaluated_idx").on(t.tenantId, t.evaluatedAt),
+]);
+
+export const insertPolicyEvaluationRunSchema = createInsertSchema(policyEvaluationRunsTable).omit({ id: true, createdAt: true });
+export type PolicyEvaluationRun = typeof policyEvaluationRunsTable.$inferSelect;
+export type InsertPolicyEvaluationRun = typeof policyEvaluationRunsTable.$inferInsert;
+
 // ── Change Advisory Board — membership, meetings, agenda, ECAB (#1501) ───────
 //
 // `useChangeControl.ts:22` recorded the gap: no CAB agenda table. This closes
@@ -5419,6 +5504,23 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   spawnedByChangeRequestId: integer("spawned_by_change_request_id"),
   dischargedByChangeRequestId: integer("discharged_by_change_request_id"),
 
+  // ── Remediation ⟷ Risk pointer (#1542, part of #1489) ──────────────────────
+  //
+  // The SAME rejection-to-risk path as #1514, arriving from the Remediation
+  // Tracker rather than Change Control: a customer declining to fix a checklist
+  // item is accepting the residual risk, and the rejection IS the acceptance.
+  // `remediation-tracker-risk-decline.ts` is this side's
+  // `createAcceptedRiskFromDecline()` counterpart.
+  //   • spawnedByRemediationStepId — the remediation_tracker_steps.id whose
+  //     decline created this risk. No FK, matching every other cross-table
+  //     reference on that table (see its own header note).
+  // Discharge reuses `dischargedByChangeRequestId` above rather than a second
+  // column — a remediation-declined risk, like a CR-declined one, is only ever
+  // discharged by a fresh CR that supersedes it (#1514's lifecycle applies
+  // identically regardless of which side spawned the risk).
+  // NULL for every risk decision not spawned by a remediation-item decline.
+  spawnedByRemediationStepId: integer("spawned_by_remediation_step_id"),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -5426,6 +5528,7 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   index("msp_risk_decisions_tenant_id_idx").on(t.tenantId),
   unique("msp_risk_decisions_msp_id_rbd_id_uidx").on(t.mspId, t.rbdId),
   index("msp_risk_decisions_tenant_check_status_idx").on(t.tenantId, t.checkKey, t.status),
+  index("msp_risk_decisions_spawned_by_remediation_step_idx").on(t.spawnedByRemediationStepId),
 ]);
 
 export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -5674,6 +5777,17 @@ export type InsertRemediationKnowledgeBaseRow = typeof remediationKnowledgeBaseT
 // about the step — and splitting them across parallel boolean/reason fields
 // bolted onto `completed_at`'s neighbours is exactly what Phase A's own
 // comment on this column warned against.
+// `accepted_risk` (#1542) — the customer explicitly declined this remediation
+// item and it has EXITED the checklist to the register. This is deliberately
+// its OWN value rather than folded into `deferred`/`not_applicable`: those two
+// are claims with no formal record behind them, while `accepted_risk` is ONLY
+// ever set by `remediation-tracker-risk-decline.ts` in the same transaction
+// that creates a SIGNED `msp_risk_decisions` row (the same rejection-to-risk
+// path as #1514, arriving from this side rather than Change Control) — a
+// verifiable fact, not a claim awaiting proof, so it is never reset back to
+// `unverified`-eligible re-verification the way the other five are (see
+// `remediation-tracker-verification.ts`'s explicit allow-list, which this
+// value is deliberately left out of).
 export const REMEDIATION_TRACKER_STEP_STATUS = [
   "not_started",
   "completed",
@@ -5681,6 +5795,7 @@ export const REMEDIATION_TRACKER_STEP_STATUS = [
   "not_applicable",
   "deferred",
   "shane_handles",
+  "accepted_risk",
 ] as const;
 export type RemediationTrackerStepStatus = (typeof REMEDIATION_TRACKER_STEP_STATUS)[number];
 

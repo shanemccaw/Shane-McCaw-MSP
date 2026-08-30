@@ -526,10 +526,16 @@ export function buildCustomerDetail(params: {
 // not to this browse tree. Still do not add policy columns or an object-to-OU
 // membership model HERE — the policy object is its own table that references
 // the OU, never columns bolted onto this container node.
+//
+// `tenantId` (#1549) is the one exception, and a narrow one: it answers "which
+// real tenant does this OU govern", not "who belongs to it" — the continuous
+// evaluation loop cannot resolve ANY tenant to check policy against without
+// it. Nullable — a platform/MSP-level grouping node legitimately has none.
 
 export interface OuRow {
   id: number;
   name: string;
+  tenantId: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -537,11 +543,12 @@ export interface OuRow {
 export interface OuNode {
   id: number;
   name: string;
+  tenantId: number | null;
 }
 
 /** OUs sorted by name — same list-shape convention as buildMspTree/buildGroupNodes. */
 export function buildOuNodes(ous: OuRow[]): OuNode[] {
-  return [...ous].sort((a, b) => a.name.localeCompare(b.name)).map((o) => ({ id: o.id, name: o.name }));
+  return [...ous].sort((a, b) => a.name.localeCompare(b.name)).map((o) => ({ id: o.id, name: o.name, tenantId: o.tenantId }));
 }
 
 // ── User Object detail pane (Phase 6) ────────────────────────────────────────

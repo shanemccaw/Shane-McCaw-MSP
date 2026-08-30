@@ -24,8 +24,22 @@
  * requires no signature (that is what makes it a second object, not a register
  * entry). The #1550 approval binding — a policy IS a standard change catalog
  * item — is recorded as an optional `catalogItemId` reference and is built out
- * by #1550, not here. Enactment (#1548) and continuous evaluation (#1549) are
- * separate builds; this route ends at the wire contract.
+ * by #1550, not here. Continuous evaluation (#1549) is a separate build.
+ *
+ * #1548 (enactment): "Policy defines a target state and names the procedure
+ * that achieves it." That naming — an optional `sopId` referencing this MSP's
+ * own `msp_sops.sop_id` — is authored here. Actually firing the SOP still goes
+ * through the EXISTING `POST /api/msp/sops/:sopId/run` (`runSopForCustomer`,
+ * #1559), passing this policy's id so the run traces back to it — no new
+ * execution path is created, per that issue's own constraint.
+ *
+ *   POST /msp/standing-policies/:id/evaluate  — #1553: on-demand compliance
+ *   pass for one customer against one policy — real Graph reads, real
+ *   `msp_diagnostic_findings` rows for real non-compliance, never a fabricated
+ *   verdict. #1549's continuous-evaluation loop is the future automatic
+ *   trigger for this same evaluator; this route is the pointed, on-demand
+ *   path (the same "on-demand targeted check" shape #1540 already established
+ *   for the Remediation Tracker) until that loop lands.
  *
  *   GET /msp/standing-policies/:id/enactment?customerId=  — #1551: preview the
  *   enactment ROUTE this policy would take for one tenant right now, using
@@ -44,6 +58,7 @@ import {
   activeDirectoryOusTable,
   changeCatalogItemsTable,
   tenantsTable,
+  mspSopsTable,
   STANDING_POLICY_TARGET_KIND,
 } from "@workspace/db";
 import { and, desc, eq } from "drizzle-orm";
@@ -56,6 +71,7 @@ import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { logger } from "../lib/logger";
 import { toWireStandingPolicy } from "../lib/standing-policies";
 import { resolvePolicyEnactmentRoute } from "../lib/policy-enactment-route";
+import { evaluateStandingPolicyForCustomer } from "../lib/policy-compliance-evaluator";
 
 const log = logger.child({ channel: "workflow.change-control" });
 
@@ -108,6 +124,9 @@ const createSchema = z.object({
   targetState: z.record(z.string(), z.unknown()).optional(),
   // #1550: bind to a pre-approved catalog item. Optional; scoped to this MSP below.
   catalogItemId: z.number().int().positive().optional(),
+  // #1548: names the procedure that enacts this policy's target state.
+  // `msp_sops.sop_id` — optional; scoped to this MSP below.
+  sopId: z.string().trim().min(1).max(200).optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -154,6 +173,21 @@ router.post(
         }
       }
 
+      // #1548: if a procedure is named, it must be this MSP's own real SOP —
+      // "names the procedure that achieves it" only means something if the
+      // name resolves to a real msp_sops row this MSP actually owns.
+      if (parsed.data.sopId !== undefined) {
+        const [sop] = await db
+          .select({ sopId: mspSopsTable.sopId })
+          .from(mspSopsTable)
+          .where(and(eq(mspSopsTable.mspId, mspId), eq(mspSopsTable.sopId, parsed.data.sopId)))
+          .limit(1);
+        if (!sop) {
+          apiError(res, 400, ApiErrorCode.VALIDATION, `SOP '${parsed.data.sopId}' does not exist for this MSP`);
+          return;
+        }
+      }
+
       const actor = actorIdentity(req);
       const [inserted] = await db
         .insert(standingPoliciesTable)
@@ -165,16 +199,76 @@ router.post(
           targetKind: parsed.data.targetKind,
           targetState: parsed.data.targetState ?? {},
           catalogItemId: parsed.data.catalogItemId ?? null,
+          sopId: parsed.data.sopId ?? null,
           isActive: parsed.data.isActive ?? false,
           createdByPersonId: actor.personId,
           createdByName: actor.name,
         })
         .returning();
 
-      log.info({ mspId, standingPolicyId: inserted.id, ouId: inserted.ouId, targetKind: inserted.targetKind }, "standing policy authored");
+      log.info(
+        { mspId, standingPolicyId: inserted.id, ouId: inserted.ouId, targetKind: inserted.targetKind, sopId: inserted.sopId },
+        "standing policy authored",
+      );
       res.status(201).json(toWireStandingPolicy(inserted));
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/standing-policies failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// ── Evaluate (#1553) ───────────────────────────────────────────────────────
+// On-demand compliance pass for one customer against one policy — real Graph
+// reads, real `msp_diagnostic_findings` rows for real non-compliance, never a
+// fabricated verdict. #1549's continuous-evaluation loop is the future
+// automatic trigger for this same evaluator; this route is the pointed,
+// on-demand path (the same "on-demand targeted check" shape #1540 already
+// established for the Remediation Tracker) until that loop lands.
+const evaluateSchema = z.object({
+  customerId: z.number().int().positive(),
+});
+
+router.post(
+  "/msp/standing-policies/:id/evaluate",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+        return;
+      }
+
+      const policyId = Number(req.params.id);
+      if (!Number.isInteger(policyId) || policyId <= 0) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid standing policy id");
+        return;
+      }
+
+      const parsed = evaluateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid evaluate request", parsed.error.flatten());
+        return;
+      }
+
+      // The policy must be this MSP's own — never evaluate across an MSP boundary.
+      const [policy] = await db
+        .select({ id: standingPoliciesTable.id })
+        .from(standingPoliciesTable)
+        .where(and(eq(standingPoliciesTable.id, policyId), eq(standingPoliciesTable.mspId, mspId)))
+        .limit(1);
+      if (!policy) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, `Standing policy '${policyId}' does not exist for this MSP`);
+        return;
+      }
+
+      const summary = await evaluateStandingPolicyForCustomer(policyId, parsed.data.customerId);
+      log.info({ mspId, policyId, customerId: parsed.data.customerId, summary }, "standing policy compliance evaluated on demand");
+      res.json(summary);
+    } catch (err: unknown) {
+      log.error({ err }, "POST /api/msp/standing-policies/:id/evaluate failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

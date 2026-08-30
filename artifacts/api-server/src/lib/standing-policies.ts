@@ -29,6 +29,8 @@ export interface WireStandingPolicy {
   readonly targetState: unknown;
   /** #1550: the pre-approved catalog item a forward enactment would raise its CR from; null until bound. */
   readonly catalogItemId: number | null;
+  /** #1548: the `msp_sops.sop_id` that enacts this policy's target state; null until named. */
+  readonly sopId: string | null;
   readonly isActive: boolean;
   readonly createdByName: string | null;
   readonly createdAt: string;
@@ -60,6 +62,7 @@ export function toWireStandingPolicy(row: StandingPolicy): WireStandingPolicy {
     targetKind: row.targetKind,
     targetState: row.targetState,
     catalogItemId: row.catalogItemId,
+    sopId: row.sopId,
     isActive: row.isActive,
     createdByName: row.createdByName,
     createdAt: row.createdAt.toISOString(),
