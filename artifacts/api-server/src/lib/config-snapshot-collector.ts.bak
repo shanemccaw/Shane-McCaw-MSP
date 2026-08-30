@@ -833,7 +833,7 @@ export async function collectTenantConfigSnapshot(
     } catch (err) {
       if (err instanceof ConsentRevokedError) {
         // Tenant-wide. Recorded once here, and the run stops — see the loop.
-        consent.revoked = err;
+        consentRevoked = err;
         record({
           ...base,
           status: "failed",
@@ -888,7 +888,7 @@ export async function collectTenantConfigSnapshot(
   // never takes another one down, because runOne cannot throw.
   const worker = async () => {
     for (;;) {
-      if (consent.revoked) return;
+      if (consentRevoked) return;
       const i = nextIndex++;
       if (i >= targets.length) return;
       await runOne(targets[i], i);
@@ -898,7 +898,7 @@ export async function collectTenantConfigSnapshot(
 
   // Consent died partway. Every resource never reached is still recorded — an
   // omitted resource and a resource we never got to are different facts.
-  if (consent.revoked) {
+  if (consentRevoked) {
     const recorded = new Set(outcomes.map((o) => o.resourceKey));
     for (const rt of targets) {
       if (recorded.has(rt.resourceKey)) continue;
@@ -950,7 +950,7 @@ export async function collectTenantConfigSnapshot(
   const failed = count("failed");
   const objectCount = outcomes.reduce((n, o) => n + o.objectCount, 0);
   const isComplete = partial === 0 && skipped === 0 && failed === 0;
-  const revoked = consent.revoked;
+  const revoked: ConsentRevokedError | null = consentRevoked;
   const finalStatus: "sealed" | "failed" = revoked ? "failed" : "sealed";
   const errorText = revoked ? `Admin consent revoked mid-run: ${revoked.message}` : null;
   const now = new Date();
