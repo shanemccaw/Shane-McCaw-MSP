@@ -19,18 +19,25 @@
  * Gated by BOTH a per-policy switch (`standing_policies.is_active`, #1547)
  * AND the per-customer opt-in checkbox this issue adds
  * (`tenants.policy_engine_opt_in`, default OFF) — "the platform does not
- * evaluate or act against tenants that have not opted in."
+ * evaluate or act against tenants that have not opted in." That gate
+ * (policy-engine-evaluator.ts's `decideEvaluationGate`) is THIS issue's own
+ * job; #1553's real evaluator (`evaluateStandingPolicyForCustomer`,
+ * policy-compliance-evaluator.ts) has no opt-in concept — it's an on-demand,
+ * human-supplied-customerId route, always human-authorized per call. This
+ * automatic loop is the one place the opt-in gate has to be enforced BEFORE
+ * that real evaluator (or any Graph read) is ever reached.
  *
- * This node records what the loop found (`policy_evaluation_runs`) and does
- * NOT execute an SOP (#1548's job) or write a finding (#1553's job) — see
- * policy-engine-evaluator.ts for why every real target kind currently
- * resolves to `not_evaluable` rather than a fabricated verdict.
+ * The real comparison and finding-writing is #1553's job, reused here
+ * unchanged — this node does not duplicate it, does not execute an SOP
+ * (#1548's job), and only records the reconciliation loop's own trigger/
+ * outcome history in `policy_evaluation_runs`.
  */
 
 import { db, standingPoliciesTable, activeDirectoryOusTable, tenantsTable, policyEvaluationRunsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "./logger";
-import { decideEvaluationOutcome } from "./policy-engine-evaluator";
+import { decideEvaluationGate } from "./policy-engine-evaluator";
+import { evaluateStandingPolicyForCustomer } from "./policy-compliance-evaluator";
 
 const log = logger.child({ channel: "engine.policy" });
 
@@ -90,11 +97,37 @@ export async function handlePolicyEvaluateDue(
 
   for (const row of rows) {
     try {
-      const decision = decideEvaluationOutcome({
-        tenantId: row.tenantId,
-        policyEngineOptIn: row.policyEngineOptIn ?? false,
-        targetKind: row.policy.targetKind,
-      });
+      const gate = decideEvaluationGate({ tenantId: row.tenantId, policyEngineOptIn: row.policyEngineOptIn ?? false });
+
+      if (!gate.proceed) {
+        await db.insert(policyEvaluationRunsTable).values({
+          standingPolicyId: row.policy.id,
+          mspId: row.policy.mspId,
+          tenantId: row.tenantId,
+          triggerKind,
+          triggerEventType,
+          outcome: gate.outcome,
+          detail: gate.detail,
+        });
+        if (gate.outcome === "not_evaluable") summary.notEvaluable++;
+        else summary.skippedNotOptedIn++;
+        continue;
+      }
+
+      // Gate passed — reuse #1553's real evaluator unchanged. `row.tenantId`
+      // is non-null here (the gate only proceeds once it is resolved).
+      const result = await evaluateStandingPolicyForCustomer(row.policy.id, row.tenantId as number);
+
+      const outcome = result.notEvaluableReason !== null ? "not_evaluable" : result.nonCompliant > 0 ? "divergent" : "compliant";
+      const detail: Record<string, unknown> = result.notEvaluableReason !== null
+        ? { reason: result.notEvaluableReason }
+        : {
+            runId: result.runId,
+            membersObserved: result.membersObserved,
+            compliant: result.compliant,
+            nonCompliant: result.nonCompliant,
+            findingsCreated: result.findingsCreated,
+          };
 
       await db.insert(policyEvaluationRunsTable).values({
         standingPolicyId: row.policy.id,
@@ -102,20 +135,18 @@ export async function handlePolicyEvaluateDue(
         tenantId: row.tenantId,
         triggerKind,
         triggerEventType,
-        outcome: decision.outcome,
-        detail: decision.detail,
+        outcome,
+        detail,
       });
 
-      switch (decision.outcome) {
+      switch (outcome) {
         case "compliant": summary.compliant++; break;
         case "divergent": summary.divergent++; break;
         case "not_evaluable": summary.notEvaluable++; break;
-        case "skipped_not_opted_in": summary.skippedNotOptedIn++; break;
-        case "error": summary.errors++; break;
       }
     } catch (err) {
       summary.errors++;
-      log.error({ err, standingPolicyId: row.policy.id }, "policy-engine: failed to record an evaluation run");
+      log.error({ err, standingPolicyId: row.policy.id }, "policy-engine: evaluation pass failed for this policy");
       try {
         await db.insert(policyEvaluationRunsTable).values({
           standingPolicyId: row.policy.id,
