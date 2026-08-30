@@ -100,6 +100,8 @@ import { logger } from "./logger.ts";
 import { computeSkuCostBreakdown, centsToDollars, lookupSkuMonthlyPriceCents } from "./cost-engine.ts";
 import { resolveLicenseWasteCounts, paidSeatFiguresFromLines } from "./license-waste-source.ts";
 import { evaluateDocGateCoverage } from "./doc-gate-coverage";
+import { getTenantServiceState, serviceDisplayName } from "./service-availability.ts";
+import { TENANT_SERVICE_KEYS, type TenantServiceKey } from "@workspace/db";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -498,6 +500,31 @@ export interface MonitorScalarResult {
   status: string | null;
   /** Only set when status === "license_gap" — the missing M365 feature/add-on, straight from monitor-executor's LicenseGapError. */
   licenseGapFeature: string | null;
+  /**
+   * Only set when status === "service_not_configured" (#1847) — which Microsoft
+   * service refused. The full sentence is NOT duplicated here: it lives on the one
+   * `tenant_service_availability` row this key looks up, which is what "report the
+   * tenant-level fact once" means in practice.
+   */
+  serviceKey: TenantServiceKey | null;
+}
+
+/**
+ * The customer-safe sentence for a metric whose backing Microsoft service does not
+ * answer — read from the tenant's own recorded service-state row rather than
+ * composed here, so there is exactly ONE wording of this fact per tenant and it is
+ * the one backed by the recorded evidence.
+ */
+async function serviceUnavailableMessage(
+  tenantId: string,
+  serviceKey: TenantServiceKey | null,
+): Promise<string> {
+  if (!serviceKey) {
+    return "We couldn't evaluate this because the Microsoft service behind it isn't responding for your tenant.";
+  }
+  const row = await getTenantServiceState(tenantId, serviceKey);
+  if (row?.reason) return row.reason;
+  return `We couldn't evaluate this because ${serviceDisplayName(serviceKey)} isn't set up on your Microsoft 365 tenant. This isn't a security problem and it isn't a measurement of zero — the service isn't there to read.`;
 }
 
 /**
@@ -519,16 +546,27 @@ async function monitorScalarForTenant(
     // look identical to every consumer otherwise, and the second is a wiring bug
     // that would otherwise stay invisible forever.
     const mapping = await loadCheckMapping(checkKey);
-    return { value: null, valueSource: null, checkExists: mapping != null, status: null, licenseGapFeature: null };
+    return { value: null, valueSource: null, checkExists: mapping != null, status: null, licenseGapFeature: null, serviceKey: null };
   }
   const status = typeof props.__status === "string" ? props.__status : null;
   const licenseGapFeature = status === "license_gap" ? licenseGapFeatureFromProps(props) : null;
+  // #1847 — a check whose Microsoft service will not answer has NO measured value.
+  // Return early rather than falling through to `_itemCount`, which for these rows
+  // would hand back a real 0 and render as a measured zero. This is the whole
+  // failure the issue names: nothing was measured, so nothing is reported.
+  if (status === "service_not_configured") {
+    const raw = props["_serviceKey"];
+    const serviceKey = (TENANT_SERVICE_KEYS as readonly string[]).includes(String(raw))
+      ? (raw as TenantServiceKey)
+      : null;
+    return { value: null, valueSource: null, checkExists: true, status, licenseGapFeature: null, serviceKey };
+  }
   const mapping = await loadCheckMapping(checkKey);
   const picked = mapping
     ? pickMappedValueField(metricKey, checkKey, mapping.targetFields, props)
     : null;
   if (picked) {
-    return { value: picked.value, valueSource: `mapping:${picked.field}`, checkExists: true, status, licenseGapFeature };
+    return { value: picked.value, valueSource: `mapping:${picked.field}`, checkExists: true, status, licenseGapFeature, serviceKey: null };
   }
   const itemCount = toNumber(props["_itemCount"]);
   return {
@@ -537,6 +575,7 @@ async function monitorScalarForTenant(
     checkExists: mapping != null,
     status,
     licenseGapFeature,
+    serviceKey: null,
   };
 }
 
@@ -625,6 +664,13 @@ async function resolveMonitorProfile(def: MetricDef, ctx: ResolveContext): Promi
     if (resolved.status === "license_gap") {
       const feature = resolved.licenseGapFeature ?? "a required Microsoft 365 add-on";
       return { ...notAvailable(def, "license_gap", licenseGapMessage(feature)), licenseFeature: feature };
+    }
+    // #1847 — the Microsoft service behind this check does not answer for this
+    // tenant. Its own tenant-level row in `tenant_service_availability` holds the
+    // full sentence and the evidence; the metric just needs to say unavailable
+    // (never 0, never an error) and name which service.
+    if (resolved.status === "service_not_configured") {
+      return notAvailable(def, "service_not_configured", await serviceUnavailableMessage(tenantId, resolved.serviceKey));
     }
     return resolved.checkExists
       ? notAvailable(def, "no_data", `no monitor profile rows for check "${def.sourceKey}"`)

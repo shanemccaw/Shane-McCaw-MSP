@@ -31,6 +31,7 @@ import {
   KeyRound,
   Link2Off,
   PencilLine,
+  PlugZap,
   Route,
   ShieldAlert,
   SlidersHorizontal,
@@ -47,6 +48,7 @@ export type FailureCategory =
   | "dead_api"
   | "license_gap"
   | "consent_revoked"
+  | "service_not_configured"
   | "unclassified";
 
 export type FailureActionKind = "show_permission" | "edit_endpoint" | "retire_check" | "none";
@@ -95,6 +97,9 @@ const CATEGORY_TONE: Record<FailureCategory, string> = {
   dead_api: "border-muted-foreground/40 bg-muted/40 text-muted-foreground",
   license_gap: "border-amber-400/40 bg-amber-400/10 text-amber-300",
   consent_revoked: "border-amber-400/40 bg-amber-400/10 text-amber-300",
+  // Git #1847 - the service was never stood up on the tenant. Amber, never red: the
+  // endpoint and the permission are both correct, so nothing here is broken.
+  service_not_configured: "border-amber-400/40 bg-amber-400/10 text-amber-300",
   unclassified: "border-border bg-card text-muted-foreground",
 };
 
@@ -107,6 +112,7 @@ const CATEGORY_ICON: Record<FailureCategory, React.ComponentType<{ className?: s
   dead_api: Archive,
   license_gap: KeyRound,
   consent_revoked: ShieldAlert,
+  service_not_configured: PlugZap,
   unclassified: AlertTriangle,
 };
 

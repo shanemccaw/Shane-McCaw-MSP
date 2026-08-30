@@ -1929,7 +1929,15 @@ export type MonitoringPackageCheck = typeof monitoringPackageChecksTable.$inferS
 // "ok" (which would hide that coverage was incomplete) and "error" (which would
 // throw away the real data that WAS collected). Only produced by the fan-out
 // execution path; the one-check-one-URL path never yields it.
-export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap", "partial"] as const;
+// "service_not_configured" (Git #1847): the check's Microsoft SERVICE will not
+// answer for this tenant at all — Intune never enrolled, or never licensed. It is
+// deliberately NOT "ok with zero items", which is what these checks used to record
+// and which told the customer a measured zero for something never measured; and it
+// is deliberately NOT "license_gap", because "you have not set this up" and "you do
+// not own this product" are different customer conversations. Which of the five real
+// service states it is, and the evidence, live on the ONE tenant-level
+// `tenant_service_availability` row this status refers to.
+export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap", "partial", "service_not_configured"] as const;
 export type TenantMonitorProfileStatus = typeof TENANT_MONITOR_PROFILE_STATUS[number];
 
 export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
@@ -2636,6 +2644,8 @@ export const M365_NOT_MEASURED_REASONS = [
   "license_gap",
   "consent_revoked",
   "requires_script",
+  /** Git #1847 — the Microsoft service behind the probe does not answer for this tenant. */
+  "service_not_configured",
 ] as const;
 export type M365NotMeasuredReason = (typeof M365_NOT_MEASURED_REASONS)[number];
 

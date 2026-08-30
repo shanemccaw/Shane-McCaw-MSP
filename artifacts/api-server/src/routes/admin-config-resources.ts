@@ -36,6 +36,8 @@ import {
   configResourceCheckCoverageTable,
   configResourceSamplesTable,
   configModelExtractionsTable,
+  tenantServiceAvailabilityTable,
+  tenantsTable,
   CONFIG_SURFACES,
   CONFIG_READ_TRANSPORTS,
   CONFIG_AVAILABILITY,
@@ -43,6 +45,7 @@ import {
   CONFIG_COVERAGE_STATES,
   EXECUTOR_BACKED_TRANSPORTS,
   coverageStateFor,
+  TENANT_SERVICE_KEYS,
 } from "@workspace/db";
 import { and, asc, desc, eq, ilike, or, sql, type SQL } from "drizzle-orm";
 import { requireAdmin } from "../middlewares/requireAuth.ts";
@@ -66,6 +69,82 @@ const EXECUTOR_BACKED_SQL = sql`(${sql.join(
   EXECUTOR_BACKED_TRANSPORTS.map((t) => sql`${t}`),
   sql`, `,
 )})`;
+
+/**
+ * Git #1847 — the per-tenant SERVICE-availability half of the model, and the number
+ * that measures the contradiction between the two halves.
+ *
+ * `config_resources.availability` is a PERMISSION fact. On the tenant the model was
+ * reconciled against, 189 `/deviceManagement*` rows read `available_now` while Intune
+ * itself answers nothing. Both statements are true, and the model was only carrying
+ * the first — so it claimed availability that live evidence contradicts.
+ *
+ * This resolves the model's own reconciliation tenant (never an arbitrary one), reads
+ * its recorded service states, and counts the resources whose permission-availability
+ * is contradicted by their service's state. When nothing has been observed the
+ * counts are simply absent rather than assumed to be zero.
+ */
+async function loadServiceAvailability(reconciledAgainstTenantId: number | null) {
+  if (reconciledAgainstTenantId == null) {
+    return { tenantId: null, reconciledAgainstTenantId: null, services: [], contradictedByService: {} as Record<string, number> };
+  }
+
+  const [tenant] = await db
+    .select({ tenantId: tenantsTable.tenantId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, reconciledAgainstTenantId))
+    .limit(1);
+
+  const graphTenantId = tenant?.tenantId ?? null;
+  if (!graphTenantId) {
+    return { tenantId: null, reconciledAgainstTenantId, services: [], contradictedByService: {} as Record<string, number> };
+  }
+
+  const states = await db
+    .select()
+    .from(tenantServiceAvailabilityTable)
+    .where(eq(tenantServiceAvailabilityTable.tenantId, graphTenantId));
+
+  const contradictedByService: Record<string, number> = {};
+  for (const s of states) {
+    if (s.state === "available" || s.state === "unknown") continue;
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(configResourcesTable)
+      .where(
+        and(
+          eq(configResourcesTable.serviceKey, s.serviceKey),
+          eq(configResourcesTable.availability, "available_now"),
+        ),
+      );
+    contradictedByService[s.serviceKey] = row?.n ?? 0;
+  }
+
+  return {
+    tenantId: graphTenantId,
+    reconciledAgainstTenantId,
+    services: states.map((s) => ({
+      serviceKey: s.serviceKey,
+      state: s.state,
+      evidenceBasis: s.evidenceBasis,
+      reason: s.reason,
+      detectionSignature: s.detectionSignature,
+      observedEndpoint: s.observedEndpoint,
+      observedHttpStatus: s.observedHttpStatus,
+      evidence: s.evidence,
+      detectedByCheckKey: s.detectedByCheckKey,
+      firstObservedAt: s.firstObservedAt instanceof Date ? s.firstObservedAt.toISOString() : s.firstObservedAt,
+      lastObservedAt: s.lastObservedAt instanceof Date ? s.lastObservedAt.toISOString() : s.lastObservedAt,
+    })),
+    /**
+     * Per service: how many resources the model still classifies `available_now` on
+     * permissions while that service does not answer for this tenant. This is the
+     * measurement, not an assertion — the permission verdict stays as it is, because
+     * it is separately true.
+     */
+    contradictedByService,
+  };
+}
 
 /** Shared roll-up so the list and the summary endpoints cannot drift apart. */
 async function loadSummary() {
@@ -99,8 +178,10 @@ async function loadSummary() {
 
   const latest = extraction[0] ?? null;
   const c = coverage[0] ?? { totalResources: 0, covered: 0, uncovered: 0, noExecutor: 0, totalProperties: 0 };
+  const serviceAvailability = await loadServiceAvailability(latest?.reconciledAgainstTenantId ?? null);
 
   return {
+    serviceAvailability,
     totals: {
       resources: c.totalResources,
       properties: c.totalProperties,
@@ -186,6 +267,14 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
     const workload = String(q["workload"] ?? "").trim();
     if (workload) conditions.push(eq(configResourcesTable.workload, workload));
 
+    // #1847 — filter by the Microsoft service a resource actually needs stood up, so
+    // "everything blocked by Intune not being configured" is one query rather than a
+    // guess from `workload` (which labels 226 of the 261 Intune paths MicrosoftGraph).
+    const serviceKey = String(q["serviceKey"] ?? "").trim();
+    if (serviceKey && (TENANT_SERVICE_KEYS as readonly string[]).includes(serviceKey)) {
+      conditions.push(eq(configResourcesTable.serviceKey, serviceKey as (typeof TENANT_SERVICE_KEYS)[number]));
+    }
+
     // coverage=covered | uncovered | no_executor — the three states of the
     // measurement (#1849 point 3, built in #1869). `uncovered` now excludes
     // resources whose transport has no executor: those are a separate,
@@ -255,6 +344,8 @@ router.get("/admin/config-resources", requireAdmin, async (req: Request, res: Re
         permissionSource: r.permissionSource,
         permissionPathMatched: r.permissionPathMatched,
         requiredRoles: r.requiredRoles,
+        /** #1847 — which Microsoft service must be stood up for this to answer. */
+        serviceKey: r.serviceKey,
         availability: r.availability,
         availabilityReason: r.availabilityReason,
         missingPermissions: r.missingPermissions,

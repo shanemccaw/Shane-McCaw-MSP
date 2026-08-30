@@ -59,6 +59,14 @@ export const FAILURE_CATEGORIES = [
   "license_gap",
   /** Already classified upstream: consent is gone. Not an endpoint problem. */
   "consent_revoked",
+  /**
+   * Already classified upstream (Git #1847): the Microsoft SERVICE behind the check
+   * is not stood up on this tenant. Emphatically NOT `wrong_endpoint` — the endpoint
+   * is correct and matches Microsoft's published path; without this category the raw
+   * IIS "Service Unavailable" HTML body classifies as a bad endpoint and invites an
+   * operator to "fix" a URL that was never wrong.
+   */
+  "service_not_configured",
   /** Matched nothing known. Deliberate — see the module header. */
   "unclassified",
 ] as const;
@@ -79,6 +87,7 @@ export const FAILURE_CATEGORY_TITLES: Record<FailureCategory, string> = {
   dead_api: "Dead API",
   license_gap: "Tenant licence gap",
   consent_revoked: "Consent revoked",
+  service_not_configured: "Service not set up on the tenant",
   unclassified: "Unclassified failure",
 };
 
@@ -389,6 +398,19 @@ export function classifyMonitorFailure(input: FailureClassifierInput): FailureCl
       guidance:
         "Not a broken check and not an error — the tenant lacks the Microsoft 365 SKU or add-on. Nothing to fix on the endpoint.",
       evidence: ["executor status: license_gap"],
+      statusCode: status,
+      action: NO_ACTION,
+    });
+  }
+  // #1847 — the executor already resolved this against the tenant's own wire
+  // signature AND its /subscribedSkus entitlement, which is strictly more evidence
+  // than anything derivable from the error text here. Defer to it.
+  if (input.resultStatus === "service_not_configured") {
+    return build("service_not_configured", {
+      summary: "The Microsoft service this check reads is not set up on this tenant.",
+      guidance:
+        "Not a broken check and not a wrong endpoint — the path is correct and the permission is granted, but the service itself does not answer for this tenant. The tenant-level state and the evidence are recorded on the tenant's own service-availability row.",
+      evidence: ["executor status: service_not_configured"],
       statusCode: status,
       action: NO_ACTION,
     });

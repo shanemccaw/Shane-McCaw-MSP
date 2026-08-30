@@ -26,6 +26,14 @@ import {
 } from "@workspace/db";
 import { eq, and, inArray, desc, gte } from "drizzle-orm";
 import { graphFetchForTenant, ConsentRevokedError, LicenseGapError, markTenantConsentRevoked, getInitialDomainForTenant } from "./graph";
+import {
+  ServiceNotConfiguredError,
+  matchIntuneWireSignature,
+  readIntuneEntitlement,
+  resolveIntuneServiceState,
+  recordTenantServiceState,
+  serviceDisplayName,
+} from "./service-availability";
 import { maybeCollectDriftForCheck, type DriftAttribution } from "./drift-collector.ts";
 import { driftSpecForCheck } from "./drift-check-specs.ts";
 import { callPsExecution, PsExecutionError } from "./ps-execution-client";
@@ -330,7 +338,7 @@ const MALFORMED_PARAMS = "__malformedParams__";
 
 export interface CheckResult {
   checkKey: string;
-  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial";
+  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial" | "service_not_configured";
   extractedProperties: Record<string, unknown>;
   severityMatched: string | null;
   /**
@@ -350,6 +358,13 @@ export interface CheckResult {
   profileId?: string;
   /** For status "license_gap": the customer-safe name of the missing M365 add-on. */
   licenseFeature?: string;
+  /**
+   * For status "service_not_configured" (#1847): which Microsoft service refused, and
+   * which of the real service states it is in. The full sentence and the evidence live
+   * on the single tenant-level `tenant_service_availability` row, not repeated here.
+   */
+  serviceKey?: string;
+  serviceState?: string;
   /**
    * The FULL fetched item list, returned only when the caller passes
    * `includeItems: true` (the Simulator Studio's engine trace).
@@ -378,6 +393,17 @@ export interface PackageRunResult {
   licenseGapCount: number;
   /** Distinct customer-safe names of the missing M365 add-ons this run detected. */
   licenseGapFeatures: string[];
+  /**
+   * #1847 — checks that couldn't run because the Microsoft SERVICE behind them does
+   * not answer for this tenant. Not a failure, and not zero rows.
+   */
+  serviceNotConfiguredCount: number;
+  /**
+   * The DISTINCT tenant-level service states this run hit — one entry per service,
+   * not one per check. Ten `devices:*` checks meeting the same Intune condition
+   * produce ONE entry here, which is what reporting the fact at tenant level means.
+   */
+  serviceStates: Array<{ serviceKey: string; state: string }>;
   startedAt: string;
   completedAt: string;
 }
@@ -1457,6 +1483,19 @@ export interface ThrottleRetryOptions {
   baseDelayMs: number;
 }
 
+// ── Intune service-level reachability (#487, re-scoped by #1847) ──────────────
+// The signature matching, the entitlement read and the combined tenant-level
+// verdict all live in service-availability.ts now. What changed in #1847 is what
+// happens on a match: this file used to return `{ value: [], _intuneNotConfigured:
+// true }` and let the check land as `status: 'ok', item_count: 0` — a measured zero
+// reported for something that was never measured, indistinguishable downstream from
+// a tenant that genuinely manages zero devices. It now throws
+// ServiceNotConfiguredError, which executeCheck classifies as its own status and
+// records ONCE at tenant level in `tenant_service_availability`.
+//
+// The historical detection notes below are kept because they are the evidence the
+// signature list was built from.
+//
 // ── Intune "MDM never configured" detection (#487) ─────────────────────────────
 // Devices/Intune checks (encryption-status, os-patch-compliance,
 // autopilot-coverage, enrollment-status, app-protection-coverage,
@@ -1492,20 +1531,18 @@ export interface ThrottleRetryOptions {
 // particular has no Intune-specific text of its own, and firing on it
 // endpoint-agnostically would risk silently swallowing a genuine outage on
 // an unrelated workload as "no MDM configured".
-const INTUNE_ENDPOINT_PREFIXES = ["/deviceManagement/", "/deviceAppManagement/"];
-
+/**
+ * Kept as the boolean predicate this module has always exported. The signature list
+ * itself now lives in service-availability.ts so the classifier, the resource model
+ * and this executor cannot drift apart on what "not configured" looks like on the
+ * wire.
+ *
+ * Note the widened path gate: #1847's own evidence includes a 503 from the BARE
+ * `/deviceManagement` root, which the old `"/deviceManagement/"` prefix (trailing
+ * slash) did not match — so the root's refusal fell through to a generic error.
+ */
 export function isIntuneServiceNotConfiguredError(endpoint: string, status: number, body: string): boolean {
-  if (!INTUNE_ENDPOINT_PREFIXES.some((p) => endpoint.startsWith(p))) return false;
-  if (status === 401) {
-    return body.includes("DeviceFE/StatelessDeviceFEService");
-  }
-  if (status === 400) {
-    return body.includes('"code":"BadRequest"') && body.includes("Resource not found for the segment");
-  }
-  if (status === 503) {
-    return body.includes("<!DOCTYPE HTML") && body.includes("Service Unavailable");
-  }
-  return false;
+  return matchIntuneWireSignature(endpoint, status, body) !== null;
 }
 
 // ── "No company branding configured" detection (Git #1786) ─────────────────────
@@ -1600,15 +1637,26 @@ export async function graphFetchPaginated(
 
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      if (isIntuneServiceNotConfiguredError(resolvedEndpoint, res.status, text)) {
+      // #1847: a documented never-configured signature is a real, reportable STATE,
+      // not zero rows. Resolve the tenant-level verdict (signature + the tenant's own
+      // /subscribedSkus entitlement, which is the only thing that can separate "never
+      // enrolled" from "never licensed") and throw it for executeCheck to classify.
+      const intuneSignature = matchIntuneWireSignature(resolvedEndpoint, res.status, text);
+      if (intuneSignature) {
+        const entitlement = await readIntuneEntitlement(tenantId);
+        const verdict = resolveIntuneServiceState(intuneSignature, entitlement);
         log.info(
-          { tenantId, endpoint: resolvedEndpoint, status: res.status },
-          "monitor-executor: Intune backend returned a known 'MDM never configured' signature (#487) — treating as a real ok result with zero devices/policies, not an error",
+          {
+            tenantId,
+            endpoint: resolvedEndpoint,
+            status: res.status,
+            signature: intuneSignature,
+            state: verdict.state,
+            entitlement: entitlement.verdict,
+          },
+          "monitor-executor: Intune is not answering for this tenant (#1847) — resolving to a tenant-level service state, not zero rows",
         );
-        if (pageCount === 0) rawResponse = { value: [], _intuneNotConfigured: true };
-        pageCount++;
-        url = "";
-        continue;
+        throw new ServiceNotConfiguredError(tenantId, verdict, resolvedEndpoint, res.status, text);
       }
       if (isBrandingNotConfiguredError(resolvedEndpoint, res.status, text)) {
         log.info(
@@ -3065,6 +3113,65 @@ export async function executeMonitorCheck(opts: {
       };
     }
 
+    // #1847 — the Microsoft SERVICE behind this check will not answer for this
+    // tenant, and we know from real signals why. This is a state, not a failure and
+    // not zero rows: `_serviceState` names which of the five conditions it is, so no
+    // consumer has to infer it, and no numeric value is extracted at all — a check
+    // that resolves here has NO measured value, and every resolver treats a missing
+    // value as unavailable rather than as 0.
+    //
+    // The tenant-level fact is recorded ONCE, keyed (tenantId, serviceKey), so the
+    // ten devices:* checks hitting this in a single run leave one row rather than ten
+    // independent announcements of the same tenant-wide condition.
+    if (err instanceof ServiceNotConfiguredError) {
+      await recordTenantServiceState({
+        tenantId,
+        verdict: err.verdict,
+        observedEndpoint: err.endpoint,
+        observedHttpStatus: err.httpStatus,
+        responseBody: err.responseBody,
+        detectedByCheckKey: check.key,
+      });
+
+      const service = serviceDisplayName(err.serviceKey);
+      const extracted: Record<string, unknown> = {
+        _serviceUnavailable: true,
+        _serviceKey: err.serviceKey,
+        _serviceState: err.state,
+        _serviceName: service,
+        _serviceDetectionSignature: err.detectionSignature,
+      };
+      log.info(
+        { checkKey: check.key, tenantId, serviceKey: err.serviceKey, state: err.state },
+        "monitor-executor: check unavailable — the Microsoft service behind it is not answering for this tenant",
+      );
+      const profileId = await persistCheckProfile(persistProfile, {
+        tenantId,
+        checkKey: check.key,
+        checkSchemaVersion: check.schemaVersion,
+        triggerId,
+        idempotencyKey,
+        status: "service_not_configured",
+        extractedProperties: extracted,
+        errorMessage: err.reason,
+        itemCount: 0,
+        pageCount: 0,
+      });
+
+      return {
+        checkKey: check.key,
+        status: "service_not_configured",
+        extractedProperties: extracted,
+        severityMatched: null,
+        errorMessage: err.reason,
+        itemCount: 0,
+        pageCount: 0,
+        profileId,
+        serviceKey: err.serviceKey,
+        serviceState: err.state,
+      };
+    }
+
     // PsExecutionError with kind "cmdlet_unavailable" (#250, #491): the
     // ps-execution container caught a real CommandNotFoundException
     // resolving the check's cmdlet — see ps-execution-client.ts's
@@ -3242,6 +3349,8 @@ export async function executeMonitoringPackage(opts: {
       triggerId,
       runStatus: "no_checks",
       checks: [],
+      serviceNotConfiguredCount: 0,
+      serviceStates: [],
       enginesRecomputed: [],
       licenseGapCount: 0,
       licenseGapFeatures: [],
@@ -3345,6 +3454,18 @@ export async function executeMonitoringPackage(opts: {
     licenseGapResults.map(r => r.licenseFeature).filter((f): f is string => !!f),
   )];
 
+  // #1847 — collapse the per-check results down to the DISTINCT tenant-level
+  // service states. Ten devices:* checks hitting the same Intune condition are one
+  // fact about the tenant, and the run summary says it once.
+  const serviceNotConfiguredResults = results.filter(r => r.status === "service_not_configured");
+  const serviceStates = [
+    ...new Map(
+      serviceNotConfiguredResults
+        .filter(r => r.serviceKey && r.serviceState)
+        .map(r => [r.serviceKey!, { serviceKey: r.serviceKey!, state: r.serviceState! }]),
+    ).values(),
+  ];
+
   // Collect engines to recompute from both package and individual check definitions
   const enginesSet = new Set<string>();
   for (const e of (pkg.engines ?? []) as string[]) enginesSet.add(e);
@@ -3361,6 +3482,8 @@ export async function executeMonitoringPackage(opts: {
     enginesRecomputed: [...enginesSet],
     licenseGapCount: licenseGapResults.length,
     licenseGapFeatures,
+    serviceNotConfiguredCount: serviceNotConfiguredResults.length,
+    serviceStates,
     startedAt,
     completedAt: new Date().toISOString(),
   };

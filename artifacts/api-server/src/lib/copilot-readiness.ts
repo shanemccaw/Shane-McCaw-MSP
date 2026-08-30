@@ -106,6 +106,10 @@ export interface CopilotReadinessResult {
 function collectedCount(props: Record<string, unknown> | null): number | null {
   if (!props) return null;
   if (props["__status"] === "error") return null;
+  // #1847 — the Microsoft service behind the check never answered, so there is no
+  // count. Stated explicitly rather than relying on `_itemCount` being absent: the
+  // whole point of the issue is that "unreadable" must never become a scored zero.
+  if (props["__status"] === "service_not_configured") return null;
   const n = Number(props["_itemCount"]);
   return Number.isFinite(n) && n >= 0 ? n : null;
 }

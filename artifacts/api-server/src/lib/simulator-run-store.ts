@@ -514,6 +514,13 @@ export interface BatchSummary {
   partial: number;
   /** Distinct customer-safe add-on names behind the license_gap results. */
   licenseGapFeatures: string[];
+  /**
+   * #1847 — runs whose Microsoft service is not stood up on the tenant. Counted
+   * separately from `error` for the same reason `licenseGap` is: it is a fact about
+   * the tenant, not a broken check, and folding it into the error count would report
+   * a correct endpoint as failing.
+   */
+  serviceNotConfigured: number;
   /** True once no run in the batch is still pending or running. */
   finished: boolean;
 }
@@ -549,6 +556,7 @@ export function summarizeBatch(batchId: string, runs: MonitorCheckRunSummary[]):
     requiresScript: count((r) => r.resultStatus === "requires_script"),
     // Fan-out checks that completed with real data but incomplete per-item coverage.
     partial: count((r) => r.resultStatus === "partial"),
+    serviceNotConfigured: count((r) => r.resultStatus === "service_not_configured"),
     licenseGapFeatures,
     finished: runs.every((r) => r.status === "completed" || r.status === "failed"),
   };

@@ -230,6 +230,11 @@ async function resolveViaMonitorCheck(opts: {
     };
   }
   if (result.status === "license_gap") return notMeasured({ checkKey, live: true, reason: "license_gap" });
+  // #1847 — the service behind the probe does not answer for this tenant. Not
+  // measured, and specifically NOT an affectedCount of 0.
+  if (result.status === "service_not_configured") {
+    return notMeasured({ checkKey, live: true, reason: "service_not_configured" });
+  }
   if (result.status === "consent_revoked") return notMeasured({ checkKey, live: true, reason: "consent_revoked" });
   if (result.status === "requires_script") return notMeasured({ checkKey, live: true, reason: "requires_script" });
 
