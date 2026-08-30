@@ -1907,7 +1907,36 @@ namespace BuildConsole.Controls
             AttachBubbleTooltip(titleBlock, p.Title);
             sp.Children.Add(titleBlock);
 
-            card.Child = sp;
+            // ── Git #1640 — critter + 💤 badge, same 2-column layout BuildQueueCard uses.
+            // RestartItem (PersistedQueueDisplayItem) carries no Id, only Title + optional
+            // GithubNumber, so the stable variant seed is GithubNumber when present, else a
+            // stable hash of Title — either way the same restart item always draws the same
+            // critter across repaints, never re-randomized.
+            var cardGrid = new Grid { HorizontalAlignment = HorizontalAlignment.Stretch };
+            cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            cardGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(sp, 0);
+            cardGrid.Children.Add(sp);
+
+            int restartSeed = p.GithubNumber ?? p.Title.GetHashCode();
+            var mascot = (Canvas)CreateGenericCardMascot(restartSeed, CritterMood.Normal, isBlocked: false);
+            var sleepBadge = new Border
+            {
+                Background = HexBrush("#89B4FA"), // calm sapphire/lavender — distinct from the red 🔒 blocked badge
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(3, 1, 3, 1),
+                Effect = new DropShadowEffect { Color = Color.FromRgb(0x89, 0xB4, 0xFA), BlurRadius = 4, ShadowDepth = 0 },
+                ToolTip = "Queued for restart — waiting for its build set to finish, not blocked on a dependency"
+            };
+            sleepBadge.Child = new TextBlock { Text = "💤", FontSize = 9 };
+            Canvas.SetLeft(sleepBadge, 22);
+            Canvas.SetTop(sleepBadge, -3);
+            mascot.Children.Add(sleepBadge);
+
+            Grid.SetColumn(mascot, 1);
+            cardGrid.Children.Add(mascot);
+
+            card.Child = cardGrid;
             return card;
         }
 
