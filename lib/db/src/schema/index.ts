@@ -612,10 +612,6 @@ export const projectsTable = pgTable("projects", {
   signedOffAt: timestamp("signed_off_at"),
   signedOffBy: integer("signed_off_by").references(() => usersTable.id),
   quickWinElapsedSeconds: integer("quick_win_elapsed_seconds"),
-  // Links this local project to a Zoho Project (#85). Nullable — set by an
-  // admin via the Zoho Projects board link/create flow, independent of
-  // kanban_tasks/project-kanban.tsx's local delivery board.
-  zohoProjectId: text("zoho_project_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

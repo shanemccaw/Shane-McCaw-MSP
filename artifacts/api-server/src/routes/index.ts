@@ -227,7 +227,6 @@ import copilotAssessmentQuizCatalogRouter from "./copilot-assessment-quiz-catalo
 import portalFirstLoginRouter from "./portal-first-login";
 import mspDiagnosticsRouter from "./msp-diagnostics";
 import portalDeliveryKanbanRouter from "./portal-delivery-kanban";
-import portalZohoProjectsRouter from "./portal-zoho-projects";
 import adminLiveMonitorRouter from "./admin-live-monitor";
 import mspSowRouter from "./msp-sow";
 import adminObservabilityRouter from "./admin-observability";
@@ -524,7 +523,6 @@ router.use(copilotAssessmentQuizCatalogRouter);
 router.use(portalFirstLoginRouter);
 router.use(mspDiagnosticsRouter);
 router.use(portalDeliveryKanbanRouter);
-router.use(portalZohoProjectsRouter);
 router.use(adminLiveMonitorRouter);
 router.use(mspSowRouter);
 router.use(adminObservabilityRouter);

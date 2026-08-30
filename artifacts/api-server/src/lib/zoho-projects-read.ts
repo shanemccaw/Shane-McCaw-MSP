@@ -1,11 +1,18 @@
 // Zoho Projects read/list passthrough (#85), mirroring zoho-read.ts (#82).
 //
-// Synchronous, paginated list/get reads against Zoho Projects for live
-// in-app browsing (msp-portal's board, #85) and for the zoho_get_*/zoho_list_*
-// workflow nodes zoho-projects.ts dispatches. Per the "never leave the
-// platform" principle these reads back page loads directly — deliberately
-// NOT routed through msp_job_queue: a page waiting on a Zoho GET is fine,
-// only writes get deferred to the 5-minute drain.
+// Synchronous, paginated list/get reads against Zoho Projects for the
+// zoho_get_*/zoho_list_* workflow nodes zoho-projects.ts dispatches. Per the
+// "never leave the platform" principle these reads back page loads directly —
+// deliberately NOT routed through msp_job_queue: a page waiting on a Zoho GET
+// is fine, only writes get deferred to the 5-minute drain.
+//
+// #1574 (2026-08-30): msp-portal's own Zoho Projects board and its API
+// (portal-zoho-projects.ts, projects.zoho_project_id) were removed — the
+// board's page was deleted when artifacts/msp-portal was retired and nothing
+// ever linked a local project to a Zoho one (zoho_project_id was NULL on all
+// 6 rows). This module's read surface stays: it backs the workflow-automation
+// node layer below, which is genuinely wired into node-type-registry.ts /
+// workflow-executor.ts the same way Zoho CRM/Desk/Books nodes are.
 //
 // Also owns Zoho Projects' portal id resolution — a Projects-specific
 // concept zoho-client.ts deliberately stays out of ("No CRM-specific logic
