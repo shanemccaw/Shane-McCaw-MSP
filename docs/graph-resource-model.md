@@ -71,12 +71,32 @@ Microsoft365DSC, or from **both** when the two were matched — and `link_basis`
 Key columns:
 
 - `read_transport` — `graph` · `powershell` · `sharepoint-admin` · `dns` · `power-platform` ·
-  `azure-rm` · `unknown`. The first **five** mirror `MONITOR_CHECK_EXECUTOR_TYPES` so
-  the model and the monitor catalog stay on one vocabulary. The rest are real transports
-  Microsoft365DSC uses that this platform has **no executor for at all** — which is itself
-  part of the measured answer to "what can we not collect".
-  (`power-platform` moved into the executor-backed set in #1869; `azure-rm` has not — its
-  scope question is still open and is explicitly **not** answered by #1869.)
+  `azure-rm` · `unknown`. The first **six** mirror `MONITOR_CHECK_EXECUTOR_TYPES` so
+  the model and the monitor catalog stay on one vocabulary. Any that do not are real
+  transports Microsoft365DSC uses that this platform has **no executor for at all** —
+  which is itself part of the measured answer to "what can we not collect".
+
+  That distinction is surfaced explicitly rather than left to be inferred (#1849 point 3,
+  built in #1869 and #1871): `transportHasExecutor()` / `coverageStateFor()` in
+  `lib/db/src/schema/config-state.ts` are **derived** from `MONITOR_CHECK_EXECUTOR_TYPES`,
+  and `/api/admin/config-resources` returns a per-resource `coverageState` of
+  `covered` / `uncovered` / `no_executor` plus a `resourcesWithNoExecutor` total — so
+  "no code path could read this" never again reads the same as "nobody has written the
+  check yet". Because it is derived, it cannot go stale as transports are added.
+
+  Both transports #1849 flagged now have executors: `power-platform` in #1869, and
+  `azure-rm` in #1871 (Azure Resource Manager REST — see
+  `artifacts/api-server/src/lib/azure-rm.ts`). `resourcesWithNoExecutor` should therefore
+  now read **0**.
+
+  Caveat on the `azure-rm` grouping itself, found while building that executor: the
+  transport was derived from Microsoft365DSC's permission *workload* names, and the rule
+  folds `Azure DevOps` in with `Azure`/`Azure Service Management`
+  (`scripts/config-state/build-resource-model.mjs`). The four `ADO*` resources are
+  therefore labelled `azure-rm` but are **not** ARM at all — Microsoft365DSC reads them
+  from `https://dev.azure.com/{org}/_apis/…` under a different token audience
+  (`499b84ac-1321-427f-aa17-267ca6975798`) and Azure DevOps' own permission model, not
+  Azure RBAC. 18 of the 22 are genuinely ARM.
 - `graph_version` + `graph_path` + `graph_container_kind` — the addressable read.
 - `read_cmdlets` — the PowerShell read path where there is one.
 - `availability` — see below.

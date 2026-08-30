@@ -383,6 +383,10 @@ export default defineConfig({
       // branches (Entra Premium gap, no-active-Intune gap, consent revoked).
       "src/lib/account-security-graph.test.ts",
       "src/routes/portal-account-security-graph.test.ts",
+      // #1871 — the azure-rm ARM transport's reach model: "no Azure RBAC" and
+      // "no Azure subscriptions" are the same empty HTTP 200 and must stay
+      // distinguishable.
+      "src/lib/__tests__/azure-rm.test.ts",
     ],
     coverage: {
       provider: "v8",

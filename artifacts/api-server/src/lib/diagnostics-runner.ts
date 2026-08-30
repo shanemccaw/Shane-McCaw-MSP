@@ -65,6 +65,12 @@ function classifyCheckSeverity(result: CheckResult): FindingSeverity {
   // Informational, exactly like a licence gap: it is a real fact about the tenant,
   // not a security finding the customer must "fix", and never red.
   if (result.status === "service_not_configured") return "info";
+  // Neither Azure no-data state is a security finding (#1871). "No Azure at all"
+  // is a complete, clean answer for an M365 governance customer; "we hold no
+  // Azure RBAC here" is an onboarding gap on OUR side, not something wrong with
+  // the customer's tenant. Both are informational, never red.
+  if (result.status === "azure_no_subscriptions") return "ok";
+  if (result.status === "azure_no_rbac") return "info";
   if (result.severityMatched) {
     const s = result.severityMatched.toLowerCase();
     if (s === "critical" || s === "high") return "critical";
@@ -118,6 +124,8 @@ export function buildFindingTitle(result: CheckResult): string {
       ? `Not checked — ${serviceNameOf(result)} isn't licensed on this tenant`
       : `Not checked — ${serviceNameOf(result)} isn't set up on this tenant`;
   }
+  if (result.status === "azure_no_subscriptions") return "No Azure subscriptions in this tenant";
+  if (result.status === "azure_no_rbac") return "Not checked — Azure access has not been granted";
   // The matched rule's OWN sentence, whenever it has one (#408). Everything
   // below it is a fallback for a rule that genuinely carries no label — the
   // generic band text is the last resort, not the normal case it used to be.
@@ -310,6 +318,16 @@ export function buildFindingDescription(result: CheckResult): string {
     return serviceStateOf(result) === "not_licensed"
       ? `We couldn't evaluate this because ${service} isn't licensed on your Microsoft 365 tenant. This isn't a security problem, and it isn't a measurement of zero — the service isn't there to read.`
       : `We couldn't evaluate this because ${service} isn't set up on your Microsoft 365 tenant. This isn't a security problem, and it isn't a measurement of zero — the service isn't there to read.`;
+  }
+  if (result.status === "azure_no_subscriptions") {
+    return "This tenant has no Azure subscriptions, so there is no Azure configuration to review. That isn't a problem — plenty of Microsoft 365 organisations run no Azure resources at all.";
+  }
+  if (result.status === "azure_no_rbac") {
+    // Deliberately does NOT say "you have no Azure". An Azure listing only ever
+    // shows what the caller has been granted a role on, so this state cannot
+    // tell the two apart — and claiming otherwise would state a fact we did not
+    // observe (#1871).
+    return "We couldn't review your Azure configuration because we haven't been granted access to it. Azure access is separate from the Microsoft 365 permissions you've already approved, and has to be granted on the Azure side before we can see anything there.";
   }
   const props = result.extractedProperties;
   if (props && Object.keys(props).length > 0) {

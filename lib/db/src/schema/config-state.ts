@@ -52,7 +52,7 @@ export const GRAPH_VERSIONS = ["v1.0", "beta"] as const;
 export type GraphVersion = typeof GRAPH_VERSIONS[number];
 
 /**
- * How a resource is READ. The first five mirror `MONITOR_CHECK_EXECUTOR_TYPES` so the
+ * How a resource is READ. The first six mirror `MONITOR_CHECK_EXECUTOR_TYPES` so the
  * model and the existing monitor catalog stay on one vocabulary; the rest are real
  * transports Microsoft365DSC uses that this platform has no executor for yet — which
  * is itself part of the measured answer to "what can we not collect".
