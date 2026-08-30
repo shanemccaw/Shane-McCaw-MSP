@@ -427,6 +427,15 @@ namespace BuildConsole
             };
             BatterUpPanel.Initialize(_queueDb);
 
+            // Git #1779 — "Dispatch #___": a third door into the SAME _queueDb.QueueBuildAsync
+            // pipeline, for firing one specific issue right now regardless of its board status.
+            // Never touches BatterUpPanel/AiBatterUpPanel or BuildQueuePanel's own actions.
+            DispatchPanel.Dispatched += (_, _) =>
+            {
+                try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
+            };
+            DispatchPanel.Initialize(_queueDb);
+
             // Git #1710 — additive "AI Batter Up" review panel: agent-filed findings
             // awaiting Shane's Yes/No. Owns no queue/launch logic of its own — Yes only
             // flips the board Status to real "Batter Up" (BatterUpPanel above picks it

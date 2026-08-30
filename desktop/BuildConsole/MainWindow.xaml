@@ -978,6 +978,7 @@
 
                 <!-- ── Build Queue column: AI Batter Up review (Git #1710) + Batter Up (Git #1709) above the existing Build Queue Panel ── -->
                 <DockPanel Grid.Column="5" LastChildFill="True">
+                    <ctrl:DispatchPanel x:Name="DispatchPanel" DockPanel.Dock="Top"/>
                     <ctrl:AiBatterUpPanel x:Name="AiBatterUpPanel" DockPanel.Dock="Top"/>
                     <ctrl:BatterUpPanel x:Name="BatterUpPanel" DockPanel.Dock="Top"/>
                     <ctrl:BuildQueuePanel x:Name="BuildQueuePanel"/>
