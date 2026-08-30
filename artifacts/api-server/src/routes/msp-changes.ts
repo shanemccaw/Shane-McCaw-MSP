@@ -9,6 +9,15 @@ import { logger } from "../lib/logger.ts";
 import { logRetainerWorkFromTracker, pillarHintForCategory } from "../lib/retainer-work-logger.ts";
 import { workloadForCategory } from "../lib/portal-change-control.ts";
 import { activeFreezeForSubmit, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
+import { personIdForUser } from "../lib/portal-ownership.ts";
+import {
+  addAttachment,
+  addComment,
+  listAttachmentsForChangeIds,
+  listCommentsForChangeIds,
+  listEventsForChangeIds,
+  recordCrEvent,
+} from "../lib/portal-change-timeline-store.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -173,7 +182,21 @@ router.post(
           proposedPayload: parsedBody.data.proposedPayload,
           rollbackScriptSnippet: parsedBody.data.rollbackScriptSnippet,
         })
-        .returning({ id: mspChangeRequestsTable.id });
+        .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
+
+      // #1503 — every CR-creation path emits the `raised` event that opens its timeline.
+      await recordCrEvent({
+        changeRequestId: inserted.id,
+        mspId,
+        tenantId: parsedBody.data.tenantId,
+        eventType: "raised",
+        fromValue: null,
+        toValue: "pending_approval",
+        actorRole: "msp",
+        actorPersonId: req.user ? personIdForUser(req.user.id) : null,
+        actorName: userEmail,
+        occurredAt: inserted.createdAt,
+      });
 
       // #1500 — allowed through an active freeze ONLY because a justification
       // was given; that becomes its own higher-bar approval stage (MSP
@@ -258,6 +281,31 @@ router.patch(
         .set(updateData)
         .where(eq(mspChangeRequestsTable.id, dbId));
 
+      // #1503 — this generic PATCH is how the MSP console drives scheduled /
+      // in_progress / completed / rolled_back / rejected. Every REAL status
+      // change (not a re-save of the same status) is a transition the timeline
+      // must have a hole-free record of. `pending_approval` has no lifecycle
+      // event of its own — a CR arrives there via its `raised` event and never
+      // legitimately transitions back into it — so it is not emitted here.
+      const CR_STATUS_EVENT_TYPES = new Set(["scheduled", "in_progress", "completed", "rolled_back", "rejected"]);
+      if (
+        parsedBody.data.status !== undefined &&
+        parsedBody.data.status !== existing.status &&
+        CR_STATUS_EVENT_TYPES.has(parsedBody.data.status)
+      ) {
+        await recordCrEvent({
+          changeRequestId: dbId,
+          mspId,
+          tenantId: existing.tenantId,
+          eventType: parsedBody.data.status as "scheduled" | "in_progress" | "completed" | "rolled_back" | "rejected",
+          fromValue: existing.status,
+          toValue: parsedBody.data.status,
+          actorRole: "msp",
+          actorPersonId: req.user ? personIdForUser(req.user.id) : null,
+          actorName: req.user?.email ?? null,
+        });
+      }
+
       // ── Retainer byproduct hook (Git #1293) ──────────────────────────────
       // Closing a change request is the real "hours-logging moment": when Shane
       // resolves a tracked item, a retainer_work_log entry is created for that
@@ -299,6 +347,242 @@ router.patch(
       });
     } catch (err: unknown) {
       log.error({ err }, "PATCH /api/msp/change-requests/:id failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  }
+);
+
+// ── Timeline: events, comments, attachments (#1503) — MSP-operator side ──────
+//
+// Mirrors the customer-portal routes in `routes/portal-change-control.ts` over
+// the same three tables, scoped to `mspId` the same way every other route in
+// this file is. `cr_events` is read-only here too — it is appended exclusively
+// from the transitions above and from the customer-portal approval model
+// (#1496); an operator posts a COMMENT, never an event directly.
+
+interface WireCrEvent {
+  readonly eventType: string;
+  readonly fromValue: string | null;
+  readonly toValue: string;
+  readonly stage: number | null;
+  readonly actorRole: string;
+  readonly actorName: string | null;
+  readonly reason: string | null;
+  readonly occurredAt: string;
+}
+
+interface WireCrComment {
+  readonly authorRole: string;
+  readonly authorName: string;
+  readonly body: string;
+  readonly createdAt: string;
+}
+
+interface WireCrAttachment {
+  readonly kind: string;
+  readonly label: string;
+  readonly externalUrl: string | null;
+  readonly mimeType: string | null;
+  readonly sizeBytes: number | null;
+  readonly uploadedByRole: string;
+  readonly uploadedByName: string;
+  readonly createdAt: string;
+}
+
+// GET /api/msp/change-requests/:id/timeline
+router.get(
+  "/msp/change-requests/:id/timeline",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+      const dbId = parseCrId(String(req.params.id));
+      if (dbId === null) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid change request ID format");
+        return;
+      }
+      const [existing] = await db
+        .select({ id: mspChangeRequestsTable.id })
+        .from(mspChangeRequestsTable)
+        .where(and(eq(mspChangeRequestsTable.id, dbId), eq(mspChangeRequestsTable.mspId, mspId)))
+        .limit(1);
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Change request not found");
+        return;
+      }
+
+      const [events, comments, attachments] = await Promise.all([
+        listEventsForChangeIds([dbId]),
+        listCommentsForChangeIds([dbId]),
+        listAttachmentsForChangeIds([dbId]),
+      ]);
+
+      res.json({
+        id: formatCrId(dbId),
+        events: events.map((e): WireCrEvent => ({
+          eventType: e.eventType,
+          fromValue: e.fromValue,
+          toValue: e.toValue,
+          stage: e.stage,
+          actorRole: e.actorRole,
+          actorName: e.actorName,
+          reason: e.reason,
+          occurredAt: e.occurredAt.toISOString(),
+        })),
+        comments: comments.map((c): WireCrComment => ({
+          authorRole: c.authorRole,
+          authorName: c.authorName,
+          body: c.body,
+          createdAt: c.createdAt.toISOString(),
+        })),
+        attachments: attachments.map((a): WireCrAttachment => ({
+          kind: a.kind,
+          label: a.label,
+          externalUrl: a.externalUrl,
+          mimeType: a.mimeType,
+          sizeBytes: a.sizeBytes,
+          uploadedByRole: a.uploadedByRole,
+          uploadedByName: a.uploadedByName,
+          createdAt: a.createdAt.toISOString(),
+        })),
+      });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/change-requests/:id/timeline failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  }
+);
+
+const mspCommentSchema = z.object({ body: z.string().trim().min(1).max(4_000) });
+
+// POST /api/msp/change-requests/:id/comments
+router.post(
+  "/msp/change-requests/:id/comments",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+      const dbId = parseCrId(String(req.params.id));
+      if (dbId === null) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid change request ID format");
+        return;
+      }
+      const parsedBody = mspCommentSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid comment payload", parsedBody.error.flatten());
+        return;
+      }
+      const [existing] = await db
+        .select({ id: mspChangeRequestsTable.id, tenantId: mspChangeRequestsTable.tenantId })
+        .from(mspChangeRequestsTable)
+        .where(and(eq(mspChangeRequestsTable.id, dbId), eq(mspChangeRequestsTable.mspId, mspId)))
+        .limit(1);
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Change request not found");
+        return;
+      }
+
+      const comment = await addComment({
+        changeRequestId: dbId,
+        mspId,
+        tenantId: existing.tenantId,
+        authorRole: "msp",
+        authorPersonId: req.user ? personIdForUser(req.user.id) : "unknown",
+        authorName: req.user?.email || "unknown@mspplatform.com",
+        body: parsedBody.data.body,
+      });
+      res.status(201).json({
+        id: formatCrId(dbId),
+        comment: { authorRole: comment.authorRole, authorName: comment.authorName, body: comment.body, createdAt: comment.createdAt.toISOString() } satisfies WireCrComment,
+      });
+    } catch (err: unknown) {
+      log.error({ err }, "POST /api/msp/change-requests/:id/comments failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  }
+);
+
+const mspAttachmentSchema = z.object({
+  kind: z.enum(["evidence", "test_result", "approval_email", "other"]).default("other"),
+  label: z.string().trim().min(1).max(200),
+  externalUrl: z.string().trim().url().max(2_000).optional(),
+  mimeType: z.string().trim().max(120).optional(),
+  sizeBytes: z.number().int().min(0).max(1_000_000_000).optional(),
+});
+
+// POST /api/msp/change-requests/:id/attachments
+router.post(
+  "/msp/change-requests/:id/attachments",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+      const dbId = parseCrId(String(req.params.id));
+      if (dbId === null) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid change request ID format");
+        return;
+      }
+      const parsedBody = mspAttachmentSchema.safeParse(req.body);
+      if (!parsedBody.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid attachment payload", parsedBody.error.flatten());
+        return;
+      }
+      const [existing] = await db
+        .select({ id: mspChangeRequestsTable.id, tenantId: mspChangeRequestsTable.tenantId })
+        .from(mspChangeRequestsTable)
+        .where(and(eq(mspChangeRequestsTable.id, dbId), eq(mspChangeRequestsTable.mspId, mspId)))
+        .limit(1);
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Change request not found");
+        return;
+      }
+
+      const attachment = await addAttachment({
+        changeRequestId: dbId,
+        mspId,
+        tenantId: existing.tenantId,
+        kind: parsedBody.data.kind,
+        label: parsedBody.data.label,
+        externalUrl: parsedBody.data.externalUrl ?? null,
+        mimeType: parsedBody.data.mimeType ?? null,
+        sizeBytes: parsedBody.data.sizeBytes ?? null,
+        uploadedByRole: "msp",
+        uploadedByPersonId: req.user ? personIdForUser(req.user.id) : "unknown",
+        uploadedByName: req.user?.email || "unknown@mspplatform.com",
+      });
+      res.status(201).json({
+        id: formatCrId(dbId),
+        attachment: {
+          kind: attachment.kind,
+          label: attachment.label,
+          externalUrl: attachment.externalUrl,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          uploadedByRole: attachment.uploadedByRole,
+          uploadedByName: attachment.uploadedByName,
+          createdAt: attachment.createdAt.toISOString(),
+        } satisfies WireCrAttachment,
+      });
+    } catch (err: unknown) {
+      log.error({ err }, "POST /api/msp/change-requests/:id/attachments failed");
       const msg = err instanceof Error ? err.message : String(err);
       apiError(res, 500, ApiErrorCode.INTERNAL, msg);
     }

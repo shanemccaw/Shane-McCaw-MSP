@@ -134,6 +134,14 @@ import {
 } from "../lib/portal-change-approvals-store";
 import { recordRejection } from "../lib/portal-change-rejection";
 import { activeFreezeForSubmit, recordFreezeException } from "../lib/portal-change-freeze-store";
+import {
+  addAttachment,
+  addComment,
+  listAttachmentsForChangeIds,
+  listCommentsForChangeIds,
+  listEventsForChangeIds,
+  recordCrEvent,
+} from "../lib/portal-change-timeline-store";
 import { logger } from "../lib/logger";
 import {
   CHANGE_CLASSES,
@@ -653,6 +661,20 @@ router.post(
         })
         .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
 
+      // #1503 — every CR-creation path emits the `raised` event that opens its timeline.
+      await recordCrEvent({
+        changeRequestId: inserted.id,
+        mspId: scope.mspId,
+        tenantId: scope.tenantId,
+        eventType: "raised",
+        fromValue: null,
+        toValue: "pending_approval",
+        actorRole: "customer",
+        actorPersonId: personIdForUser(req.user!.id),
+        actorName: requestedBy,
+        occurredAt: inserted.createdAt,
+      });
+
       // #1496 — a real change produces a real approval record from the moment it
       // is raised. A wizard CR is `normal`, unapproved, so this materialises the
       // required pending stage(s) with their SLA. Non-fatal if it fails: the CR
@@ -880,6 +902,7 @@ router.post(
         approverName: parsed.data.fullName,
         approverEmail: req.user?.email ?? "",
         statement: parsed.data.statement,
+        actorPersonId: req.user ? personIdForUser(req.user.id) : undefined,
       });
 
       log.info(
@@ -1066,6 +1089,245 @@ router.post(
     } catch (err) {
       log.error({ err, customerId, crId }, "POST /portal/change-control/:code/reject failed");
       res.status(500).json({ error: "Failed to reject the change" });
+    }
+  },
+);
+
+// ── Timeline: events, comments, attachments (#1503) ──────────────────────────
+//
+// The register had no per-CR history at all — "Add a comment" was one of five
+// dead buttons in the retired prototype. All three floor at the same
+// CustomerUser + change_control entitlement as the register read and the
+// approve/reject/decline actions above: this is part of the same approval
+// experience, not a separate free surface.
+//
+// `cr_events` has NO write route here — it is system-authored only, appended
+// exclusively from the approval/rejection/execution transitions above and in
+// `msp-changes.ts`'s PATCH. A customer or operator never posts an event
+// directly; they post a COMMENT, which is a different table for a reason (see
+// `lib/db/src/schema/msp.ts`'s header on the three tables).
+
+interface WireCrEvent {
+  readonly eventType: string;
+  readonly fromValue: string | null;
+  readonly toValue: string;
+  readonly stage: number | null;
+  readonly actorRole: string;
+  readonly actorName: string | null;
+  readonly reason: string | null;
+  readonly occurredAt: string;
+}
+
+interface WireCrComment {
+  readonly authorRole: string;
+  readonly authorName: string;
+  readonly body: string;
+  readonly createdAt: string;
+}
+
+interface WireCrAttachment {
+  readonly kind: string;
+  readonly label: string;
+  readonly externalUrl: string | null;
+  readonly mimeType: string | null;
+  readonly sizeBytes: number | null;
+  readonly uploadedByRole: string;
+  readonly uploadedByName: string;
+  readonly createdAt: string;
+}
+
+router.get(
+  "/portal/change-control/:code/timeline",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    const crId = parseChangeRequestCode(String(req.params.code));
+    if (crId === null) {
+      res.status(400).json({ error: "Invalid change request code" });
+      return;
+    }
+    try {
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.status(409).json({ error: "This account has no connected Microsoft 365 tenant" });
+        return;
+      }
+      const cr = await loadScopedChange(crId, scope.mspId, scope.tenantId);
+      if (!cr) {
+        res.status(404).json({ error: "Change request not found" });
+        return;
+      }
+
+      const [events, comments, attachments] = await Promise.all([
+        listEventsForChangeIds([crId]),
+        listCommentsForChangeIds([crId]),
+        listAttachmentsForChangeIds([crId]),
+      ]);
+
+      res.json({
+        code: formatChangeRequestCode(crId),
+        events: events.map((e): WireCrEvent => ({
+          eventType: e.eventType,
+          fromValue: e.fromValue,
+          toValue: e.toValue,
+          stage: e.stage,
+          actorRole: e.actorRole,
+          actorName: e.actorName,
+          reason: e.reason,
+          occurredAt: e.occurredAt.toISOString(),
+        })),
+        comments: comments.map((c): WireCrComment => ({
+          authorRole: c.authorRole,
+          authorName: c.authorName,
+          body: c.body,
+          createdAt: c.createdAt.toISOString(),
+        })),
+        attachments: attachments.map((a): WireCrAttachment => ({
+          kind: a.kind,
+          label: a.label,
+          externalUrl: a.externalUrl,
+          mimeType: a.mimeType,
+          sizeBytes: a.sizeBytes,
+          uploadedByRole: a.uploadedByRole,
+          uploadedByName: a.uploadedByName,
+          createdAt: a.createdAt.toISOString(),
+        })),
+      });
+    } catch (err) {
+      log.error({ err, customerId, crId }, "GET /portal/change-control/:code/timeline failed");
+      res.status(500).json({ error: "Failed to load the change's timeline" });
+    }
+  },
+);
+
+const commentSchema = z.object({ body: z.string().trim().min(1).max(4_000) });
+
+router.post(
+  "/portal/change-control/:code/comments",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    const crId = parseChangeRequestCode(String(req.params.code));
+    if (crId === null) {
+      res.status(400).json({ error: "Invalid change request code" });
+      return;
+    }
+    const parsed = commentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+    try {
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.status(409).json({ error: "This account has no connected Microsoft 365 tenant" });
+        return;
+      }
+      const cr = await loadScopedChange(crId, scope.mspId, scope.tenantId);
+      if (!cr) {
+        res.status(404).json({ error: "Change request not found" });
+        return;
+      }
+      const approver = approverIdentity(req, customerId);
+      const comment = await addComment({
+        changeRequestId: crId,
+        mspId: scope.mspId,
+        tenantId: scope.tenantId,
+        authorRole: approver.role,
+        authorPersonId: approver.personId,
+        authorName: approver.name,
+        body: parsed.data.body,
+      });
+      res.status(201).json({
+        code: formatChangeRequestCode(crId),
+        comment: { authorRole: comment.authorRole, authorName: comment.authorName, body: comment.body, createdAt: comment.createdAt.toISOString() } satisfies WireCrComment,
+      });
+    } catch (err) {
+      log.error({ err, customerId, crId }, "POST /portal/change-control/:code/comments failed");
+      res.status(500).json({ error: "Failed to add the comment" });
+    }
+  },
+);
+
+const attachmentSchema = z.object({
+  kind: z.enum(["evidence", "test_result", "approval_email", "other"]).default("other"),
+  label: z.string().trim().min(1).max(200),
+  externalUrl: z.string().trim().url().max(2_000).optional(),
+  mimeType: z.string().trim().max(120).optional(),
+  sizeBytes: z.number().int().min(0).max(1_000_000_000).optional(),
+});
+
+router.post(
+  "/portal/change-control/:code/attachments",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    const crId = parseChangeRequestCode(String(req.params.code));
+    if (crId === null) {
+      res.status(400).json({ error: "Invalid change request code" });
+      return;
+    }
+    const parsed = attachmentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.issues.map((i) => i.message).join("; ") });
+      return;
+    }
+    try {
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.status(409).json({ error: "This account has no connected Microsoft 365 tenant" });
+        return;
+      }
+      const cr = await loadScopedChange(crId, scope.mspId, scope.tenantId);
+      if (!cr) {
+        res.status(404).json({ error: "Change request not found" });
+        return;
+      }
+      const approver = approverIdentity(req, customerId);
+      const attachment = await addAttachment({
+        changeRequestId: crId,
+        mspId: scope.mspId,
+        tenantId: scope.tenantId,
+        kind: parsed.data.kind,
+        label: parsed.data.label,
+        externalUrl: parsed.data.externalUrl ?? null,
+        mimeType: parsed.data.mimeType ?? null,
+        sizeBytes: parsed.data.sizeBytes ?? null,
+        uploadedByRole: approver.role,
+        uploadedByPersonId: approver.personId,
+        uploadedByName: approver.name,
+      });
+      res.status(201).json({
+        code: formatChangeRequestCode(crId),
+        attachment: {
+          kind: attachment.kind,
+          label: attachment.label,
+          externalUrl: attachment.externalUrl,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          uploadedByRole: attachment.uploadedByRole,
+          uploadedByName: attachment.uploadedByName,
+          createdAt: attachment.createdAt.toISOString(),
+        } satisfies WireCrAttachment,
+      });
+    } catch (err) {
+      log.error({ err, customerId, crId }, "POST /portal/change-control/:code/attachments failed");
+      res.status(500).json({ error: "Failed to record the attachment" });
     }
   },
 );

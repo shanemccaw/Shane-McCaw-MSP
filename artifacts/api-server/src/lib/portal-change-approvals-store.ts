@@ -32,6 +32,7 @@ import {
   summarizeApprovals,
   violatesSeparationOfDuties,
 } from "./portal-change-approvals";
+import { recordCrEvent } from "./portal-change-timeline-store";
 import type { StoredChangeClass, StoredRiskLevel } from "./portal-change-control";
 import { logger } from "./logger";
 
@@ -137,6 +138,19 @@ export async function materializeApprovalsForChange(
       reason: "Auto-approved at creation — inherited approval.",
       decidedAt: cr.createdAt ?? now,
     });
+    await recordCrEvent({
+      changeRequestId: cr.id,
+      mspId: cr.mspId,
+      tenantId: cr.tenantId,
+      eventType: "approved",
+      fromValue: "pending",
+      toValue: "approved (stage 1)",
+      stage: 1,
+      actorRole: approverRole === "microsoft_forced" ? "microsoft" : "msp",
+      actorName: approvedBy,
+      reason: "Auto-approved at creation — inherited approval.",
+      occurredAt: cr.createdAt ?? now,
+    });
     return 1;
   }
 
@@ -154,6 +168,19 @@ export async function materializeApprovalsForChange(
       approverName: "Standard change — pre-approved",
       reason: "Standard change — pre-approved by policy.",
       decidedAt: cr.createdAt ?? now,
+    });
+    await recordCrEvent({
+      changeRequestId: cr.id,
+      mspId: cr.mspId,
+      tenantId: cr.tenantId,
+      eventType: "approved",
+      fromValue: "pending",
+      toValue: "approved (stage 1)",
+      stage: 1,
+      actorRole: "msp",
+      actorName: "Standard change — pre-approved",
+      reason: "Standard change — pre-approved by policy.",
+      occurredAt: cr.createdAt ?? now,
     });
     return 1;
   }
@@ -298,6 +325,21 @@ export async function recordApproval(
       .set({ approvedBy: `Approved by ${approver.name}`, updatedAt: now })
       .where(eq(mspChangeRequestsTable.id, cr.id));
   }
+
+  await recordCrEvent({
+    changeRequestId: cr.id,
+    mspId: cr.mspId,
+    tenantId: cr.tenantId,
+    eventType: "approved",
+    fromValue: "pending",
+    toValue: `approved (stage ${stage})`,
+    stage,
+    actorRole: approver.role,
+    actorPersonId: approver.personId,
+    actorName: approver.name,
+    reason: note,
+    occurredAt: now,
+  });
 
   log.info(
     { changeRequestId: cr.id, mspId: cr.mspId, stage, approverPersonId: approver.personId, onBehalfOf, complete: state.complete },

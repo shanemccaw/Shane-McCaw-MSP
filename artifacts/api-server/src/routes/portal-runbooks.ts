@@ -79,6 +79,8 @@ import {
   holdTMinus,
   runbookStatusFromHold,
 } from "../lib/portal-hold-windows";
+import { personIdForUser } from "../lib/portal-ownership";
+import { recordCrEvent } from "../lib/portal-change-timeline-store";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -735,6 +737,20 @@ async function raiseHoldChangeRequest(opts: {
       linkedFinding: `${titleCasePillar(opts.hold.pillar)} · ${opts.hold.title}`,
     })
     .returning({ id: mspChangeRequestsTable.id });
+
+  // #1503 — every CR-creation path emits the `raised` event that opens its timeline.
+  await recordCrEvent({
+    changeRequestId: inserted.id,
+    mspId: scope.mspId,
+    tenantId: scope.tenantId,
+    eventType: "raised",
+    fromValue: null,
+    toValue: "pending_approval",
+    actorRole: "customer",
+    actorPersonId: opts.req.user ? personIdForUser(opts.req.user.id) : null,
+    actorName: opts.req.user?.email ?? null,
+    occurredAt: opts.now,
+  });
 
   return { id: inserted.id, code: formatChangeRequestCode(inserted.id) };
 }

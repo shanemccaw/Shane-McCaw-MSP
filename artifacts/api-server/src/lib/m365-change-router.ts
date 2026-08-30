@@ -74,6 +74,7 @@ import {
   type ChangeClass,
 } from "./portal-change-control";
 import { materializeApprovalsForChange } from "./portal-change-approvals-store";
+import { recordCrEvent } from "./portal-change-timeline-store";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "workflow.change-control" });
@@ -314,6 +315,20 @@ export async function createRoutedChangeRequest(input: {
         sourceResolutionId: resolution.id,
       })
       .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
+
+    // #1503 — every CR-creation path emits the `raised` event that opens its
+    // timeline, regardless of whether an approval record ever materialises.
+    await recordCrEvent({
+      changeRequestId: inserted.id,
+      mspId: resolution.mspId,
+      tenantId: tenant.tenantId,
+      eventType: "raised",
+      fromValue: null,
+      toValue: "pending_approval",
+      actorRole: "microsoft",
+      actorName: "Microsoft 365 change routing",
+      occurredAt: inserted.createdAt,
+    });
 
     // #1496 — a routed change produces its real approval record too. An
     // `informed` (forced) change arrives auto-approved, so this records ONE
@@ -612,6 +627,10 @@ export interface DeclineInput {
   approverEmail?: string;
   /** The exact sentence the customer agreed to, snapshotted at accept time. */
   statement?: string;
+  /** The approval stage this decline lands on, when the caller has one (e.g. via `recordRejection`). Defaults to 1 for a direct decline that never touched the approval ledger. */
+  stage?: number;
+  /** The acting person's wire id (`personIdForUser`), for the cr_events actor. */
+  actorPersonId?: string;
 }
 
 export interface DeclineResult {
@@ -652,6 +671,25 @@ export async function declineRoutedChangeToRisk(input: DeclineInput): Promise<De
     .update(mspChangeRequestsTable)
     .set({ status: "rejected", approvedBy: `Rejected by ${approverName}`, updatedAt: rejectedAt })
     .where(eq(mspChangeRequestsTable.id, cr.id));
+
+  // #1503 — the single choke point for BOTH callers of this function: a
+  // rejection routed through `recordRejection`'s routed branch, and the
+  // `/portal/change-control/:code/decline` route, which calls this directly
+  // and never touches `cr_approvals` at all.
+  await recordCrEvent({
+    changeRequestId: cr.id,
+    mspId: input.mspId,
+    tenantId: cr.tenantId,
+    eventType: "rejected",
+    fromValue: cr.status,
+    toValue: "rejected",
+    stage: input.stage ?? 1,
+    actorRole: input.declinedBy === "customer" ? "customer" : "msp",
+    actorPersonId: input.actorPersonId ?? null,
+    actorName: approverName,
+    reason: (input.statement ?? "").trim() || null,
+    occurredAt: rejectedAt,
+  });
 
   // An MSP rejecting its own routed change produces no risk record (#1514).
   if (input.declinedBy === "msp") {

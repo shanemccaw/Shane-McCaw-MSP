@@ -4406,6 +4406,169 @@ export const insertCabAgendaItemSchema = createInsertSchema(cabAgendaItemsTable)
 export type CabAgendaItem = typeof cabAgendaItemsTable.$inferSelect;
 export type InsertCabAgendaItem = typeof cabAgendaItemsTable.$inferInsert;
 
+// ── Change Control timeline: events, comments, attachments (#1503) ──────────
+//
+// The register had no per-CR history at all. `msp_audit_logs` is platform-wide
+// and carries nothing CR-shaped; "Add a comment" was one of five dead buttons
+// in the retired prototype (proto 1513-1524, no `onClick`). These three tables
+// are the timeline: `cr_events` is the durable, IMMUTABLE record of every state
+// transition a change goes through; `cr_comments` and `cr_attachments` are the
+// human-authored record layered on top of it.
+//
+// CONSTRAINT (from the issue): a change request is immutable after close — that
+// is what makes the register defensible. The timeline follows the same rule:
+// APPEND-ONLY. None of the three tables below has an update or delete path
+// anywhere in this codebase, and none should ever get one; a correction is a
+// new row, never an edit to an old one.
+//
+// (mspId, tenantId) is denormalised onto every row from the parent CR, for the
+// same reason `cr_approvals` does it — it lets every timeline read scope on the
+// exact predicate pair `routes/portal-change-control.ts`'s header requires,
+// without a join back through `msp_change_requests` just to enforce tenant
+// isolation.
+
+/**
+ * The full `cr_events` vocabulary. Deliberately covers BOTH halves of a change's
+ * life — the approval-ledger decisions (`approved`/`rejected`/`superseded`,
+ * mirroring `cr_approvals.decision`) and the change's own execution lifecycle
+ * (`raised`/`scheduled`/`executing`/`completed`/`rolled_back`/`rejected`,
+ * mirroring `msp_change_requests.status`) — as ONE ordered timeline, because
+ * that is how a customer or an auditor actually reads a change: one story, not
+ * two tables to reconcile by hand.
+ *
+ * This is also the source table for #1506 (change metrics): lead time is
+ * `completed.createdAt - raised.createdAt` per change; success rate is
+ * `count(completed) / count(completed | rolled_back)`; emergency ratio joins
+ * `raised` events back to the CR's `changeClass`; CAB throughput is
+ * `approved`/`rejected` events grouped by approver/period. Shaped so #1506 reads
+ * this table directly rather than needing a second pass at the data.
+ */
+export const CR_EVENT_TYPES = [
+  "raised",
+  "approved",
+  "rejected",
+  "superseded",
+  "scheduled",
+  "in_progress",
+  "completed",
+  "rolled_back",
+] as const;
+export type CrEventType = (typeof CR_EVENT_TYPES)[number];
+
+/** Who a `cr_events` row's `actorRole` may name. Never "the system" — see `cr_approvals.approverRole` for the same rule. */
+export const CR_EVENT_ACTOR_ROLES = ["customer", "msp", "microsoft", "system"] as const;
+export type CrEventActorRole = (typeof CR_EVENT_ACTOR_ROLES)[number];
+
+export const crEventsTable = pgTable("cr_events", {
+  id: serial("id").primaryKey(),
+  /** The change this event happened to. Real FK — an event cannot outlive its CR. */
+  changeRequestId: integer("change_request_id")
+    .notNull()
+    .references(() => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+  eventType: text("event_type", { enum: CR_EVENT_TYPES }).notNull(),
+  /**
+   * The state before/after this transition. For a lifecycle event these mirror
+   * `msp_change_requests.status` (e.g. `pending_approval` → `scheduled`). For an
+   * approval-ledger event these are NOT that column — `toValue` is a synthetic
+   * label such as `approved (stage 1 of 2)` — because the CR's own `status`
+   * column often does not change when one stage clears. `fromValue` is null for
+   * the first event a change ever gets (`raised`).
+   */
+  fromValue: text("from_value"),
+  toValue: text("to_value").notNull(),
+  /** The approval stage this event belongs to, when it is an approval-ledger event. Null for a lifecycle event. */
+  stage: integer("stage"),
+  actorRole: text("actor_role", { enum: CR_EVENT_ACTOR_ROLES }).notNull(),
+  /** The acting person's wire id (`personIdForUser`), null for a `microsoft`/`system` actor. */
+  actorPersonId: text("actor_person_id"),
+  actorName: text("actor_name"),
+  /** Rejection reason, approval note, or a short system-generated explanation. Null when none was given. */
+  reason: text("reason"),
+  /**
+   * When this really happened. Equal to `createdAt` for every event recorded
+   * live going forward; distinct only for the one-time migration backfill of
+   * pre-existing CRs, where the true transition moment was never recorded and
+   * the best available real timestamp (the CR's own `createdAt`/`updatedAt`) is
+   * used instead — reconstructed from real data, not invented.
+   */
+  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cr_events_change_request_id_idx").on(t.changeRequestId),
+  index("cr_events_msp_tenant_idx").on(t.mspId, t.tenantId),
+  // #1506's metrics queries scan by type and time.
+  index("cr_events_type_occurred_idx").on(t.eventType, t.occurredAt),
+]);
+
+export const insertCrEventSchema = createInsertSchema(crEventsTable).omit({ id: true, createdAt: true });
+export type CrEvent = typeof crEventsTable.$inferSelect;
+export type InsertCrEvent = typeof crEventsTable.$inferInsert;
+
+/** Who may author a `cr_comments`/`cr_attachments` row. A narrower set than `cr_events.actorRole` — a comment or an upload is always a human action. */
+export const CR_TIMELINE_AUTHOR_ROLES = ["customer", "msp"] as const;
+export type CrTimelineAuthorRole = (typeof CR_TIMELINE_AUTHOR_ROLES)[number];
+
+export const crCommentsTable = pgTable("cr_comments", {
+  id: serial("id").primaryKey(),
+  changeRequestId: integer("change_request_id")
+    .notNull()
+    .references(() => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+  authorRole: text("author_role", { enum: CR_TIMELINE_AUTHOR_ROLES }).notNull(),
+  authorPersonId: text("author_person_id").notNull(),
+  authorName: text("author_name").notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cr_comments_change_request_id_idx").on(t.changeRequestId),
+  index("cr_comments_msp_tenant_idx").on(t.mspId, t.tenantId),
+]);
+
+export const insertCrCommentSchema = createInsertSchema(crCommentsTable).omit({ id: true, createdAt: true });
+export type CrComment = typeof crCommentsTable.$inferSelect;
+export type InsertCrComment = typeof crCommentsTable.$inferInsert;
+
+/** What a `cr_attachments` row is evidence OF — the three kinds the issue names, plus a catch-all. */
+export const CR_ATTACHMENT_KINDS = ["evidence", "test_result", "approval_email", "other"] as const;
+export type CrAttachmentKind = (typeof CR_ATTACHMENT_KINDS)[number];
+
+/**
+ * Evidence, test results, approval emails — attached to a change AS A RECORD,
+ * not as binary storage this build introduces. `externalUrl` points at where
+ * the real artifact already lives (a SharePoint document via the existing
+ * `msp_documents`/SharePoint-connector pipeline, an Exchange/Graph message
+ * permalink, or any other durable link); nothing here re-implements file
+ * upload. A row with no `externalUrl` is still a real, meaningful record — e.g.
+ * "Ran the post-change validation script, all 12 checks passed" needs no link.
+ */
+export const crAttachmentsTable = pgTable("cr_attachments", {
+  id: serial("id").primaryKey(),
+  changeRequestId: integer("change_request_id")
+    .notNull()
+    .references(() => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+  kind: text("kind", { enum: CR_ATTACHMENT_KINDS }).notNull().default("other"),
+  label: text("label").notNull(),
+  externalUrl: text("external_url"),
+  mimeType: text("mime_type"),
+  sizeBytes: integer("size_bytes"),
+  uploadedByRole: text("uploaded_by_role", { enum: CR_TIMELINE_AUTHOR_ROLES }).notNull(),
+  uploadedByPersonId: text("uploaded_by_person_id").notNull(),
+  uploadedByName: text("uploaded_by_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cr_attachments_change_request_id_idx").on(t.changeRequestId),
+  index("cr_attachments_msp_tenant_idx").on(t.mspId, t.tenantId),
+]);
+
+export const insertCrAttachmentSchema = createInsertSchema(crAttachmentsTable).omit({ id: true, createdAt: true });
+export type CrAttachment = typeof crAttachmentsTable.$inferSelect;
+export type InsertCrAttachment = typeof crAttachmentsTable.$inferInsert;
+
 // ── MSP SOPs (Standard Operating Procedures) ─────────────────────────────────
 //
 // ITIL v4 Incident Response and Drift Remediation templates representing standard

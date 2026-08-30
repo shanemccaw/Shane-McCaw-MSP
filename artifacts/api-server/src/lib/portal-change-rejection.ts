@@ -30,6 +30,7 @@ import { createHash } from "node:crypto";
 import { declineRoutedChangeToRisk } from "./m365-change-router";
 import { violatesSeparationOfDuties } from "./portal-change-approvals";
 import { resolveDelegatedAuthority, NO_POLICY, type ApprovalPolicyConfig, type ApproverIdentity, type CrEssentials } from "./portal-change-approvals-store";
+import { recordCrEvent } from "./portal-change-timeline-store";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "workflow.change-control" });
@@ -63,10 +64,15 @@ export async function recordRejection(
   const now = new Date();
   const onBehalfOf = await resolveDelegatedAuthority(approver.customerId, approver.personId);
   const pending = rows.filter((r) => r.decision === "pending");
+  // The stage the rejection landed on — carried past the branch below so the
+  // single terminal `rejected` cr_event (emitted once the CR's actual status
+  // flips, not here at the approval-ledger row) can still name it.
+  let decidedStage = 1;
 
   if (pending.length > 0) {
     const stage = Math.min(...pending.map((r) => r.stage));
     const slot = pending.find((r) => r.stage === stage)!;
+    decidedStage = stage;
     // #1500 — same higher bar as the approval path: only MSP staff may decide
     // (reject, same as approve) a freeze-exception stage.
     if (slot.freezeWindowId !== null && approver.role !== "msp") {
@@ -93,6 +99,20 @@ export async function recordRejection(
     for (const r of pending) {
       if (r.id !== slot.id) {
         await db.update(crApprovalsTable).set({ decision: "superseded", updatedAt: now }).where(eq(crApprovalsTable.id, r.id));
+        await recordCrEvent({
+          changeRequestId: cr.id,
+          mspId: cr.mspId,
+          tenantId: cr.tenantId,
+          eventType: "superseded",
+          fromValue: "pending",
+          toValue: `superseded (stage ${r.stage})`,
+          stage: r.stage,
+          actorRole: approver.role,
+          actorPersonId: approver.personId,
+          actorName: approver.name,
+          reason: "Superseded by the rejection at an earlier stage.",
+          occurredAt: now,
+        });
       }
     }
   } else {
@@ -125,6 +145,8 @@ export async function recordRejection(
       approverName: approver.name,
       approverEmail: approver.email,
       statement: reason,
+      stage: decidedStage,
+      actorPersonId: approver.personId,
     });
     riskDecisionId = result.riskDecisionId;
   } else {
@@ -132,6 +154,20 @@ export async function recordRejection(
       .update(mspChangeRequestsTable)
       .set({ status: "rejected", approvedBy: `Rejected by ${approver.name}`, updatedAt: now })
       .where(eq(mspChangeRequestsTable.id, cr.id));
+    await recordCrEvent({
+      changeRequestId: cr.id,
+      mspId: cr.mspId,
+      tenantId: cr.tenantId,
+      eventType: "rejected",
+      fromValue: cr.status,
+      toValue: "rejected",
+      stage: decidedStage,
+      actorRole: approver.role,
+      actorPersonId: approver.personId,
+      actorName: approver.name,
+      reason,
+      occurredAt: now,
+    });
     if (approver.role === "customer") {
       riskDecisionId = await createAssignedRiskFromRejection(cr, approver, reason, now);
     }
