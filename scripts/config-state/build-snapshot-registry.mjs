@@ -218,6 +218,7 @@ async function main() {
       let reason = null;
       if (!hasExecutor) reason = "no_executor";
       else if (identity.strategy === "unresolved") reason = "identity_unresolved";
+      else if (res.graph_container_kind === "function") reason = "not_collectable";
       else if (res.availability === "unavailable") reason = "not_collectable";
 
       const isCollectable = reason === null;
@@ -230,9 +231,18 @@ async function main() {
 
       const notes = reason === "no_executor"
         ? `no executor exists for the ${res.read_transport} transport (Git #1849)`
-        : reason === "not_collectable"
-          ? "published sources state no app-only read path exists for this resource"
-          : null;
+        : reason === "not_collectable" && res.graph_container_kind === "function"
+          // A bound Function is an OPERATION, not persistent configuration state:
+          // /reports/getApiUsage and /deviceManagement/getEffectivePermissions compute
+          // an answer on demand, many require parameters, and re-invoking one yields a
+          // different result with no object to pair across snapshots. Snapshotting them
+          // would put report output into a configuration store and manufacture diff
+          // churn. Registered and reasoned rather than dropped — see the finding filed
+          // against the resource model for whether they belong in it at all.
+          ? "Graph bound Function: an operation, not configuration state, so there is nothing stable to snapshot or diff"
+          : reason === "not_collectable"
+            ? "published sources state no app-only read path exists for this resource"
+            : null;
 
       if (DRY_RUN) continue;
 
