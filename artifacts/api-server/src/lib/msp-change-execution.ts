@@ -132,6 +132,79 @@ export interface PlanDiff {
   readonly steps: PlanStepDiff[];
 }
 
+/**
+ * The wf_run node id a config-pack template step runs under. Kept byte-identical
+ * to `config-pack-graph.ts`'s `templateNodeId` / `nodeIdSafe` (a template step's
+ * node is `tpl-<templateId-with-dots-as-dashes>`, and a monitor-check step's
+ * node uses its checkKey the same way) so a captured plan and the run's node
+ * outputs key on the SAME id and the diff aligns them. Duplicated as a one-liner
+ * rather than imported to keep this module pure and free of the graph builder's
+ * dependencies; config-pack-graph.ts is the source of truth for the format.
+ */
+function templateNodeId(rawStepId: string): string {
+  return `tpl-${rawStepId.replace(/\./g, "-")}`;
+}
+
+/**
+ * Normalise a captured `planOnly` dry-run (a `ConfigPackDryRun`, stored verbatim
+ * in `planned_plan`) into the comparable plan steps the diff keys on. Defensive
+ * over `unknown`: a plan that was never captured, or is not the expected shape,
+ * yields no steps rather than throwing — the diff then honestly reports the
+ * actual steps as unplanned.
+ */
+export function planStepsFromDryRun(plan: unknown): PlanStep[] {
+  if (!plan || typeof plan !== "object") return [];
+  const actions = (plan as { actions?: unknown }).actions;
+  if (!Array.isArray(actions)) return [];
+  const steps: PlanStep[] = [];
+  for (const raw of actions) {
+    if (!raw || typeof raw !== "object") continue;
+    const a = raw as Record<string, unknown>;
+    const templateId = typeof a.templateId === "string" ? a.templateId : null;
+    const checkKey = typeof a.checkKey === "string" ? a.checkKey : null;
+    const rawStepId = templateId ?? checkKey;
+    if (!rawStepId) continue;
+    steps.push({
+      key: templateNodeId(rawStepId),
+      label: typeof a.label === "string" ? a.label : rawStepId,
+      method: typeof a.method === "string" ? a.method : null,
+      endpoint: typeof a.endpoint === "string" ? a.endpoint : null,
+      plannedWrite:
+        a.plannedWrite && typeof a.plannedWrite === "object" ? (a.plannedWrite as Record<string, unknown>) : null,
+      changeKind: typeof a.changeKind === "string" ? a.changeKind : "update",
+    });
+  }
+  return steps;
+}
+
+/**
+ * Normalise a run's `wf_run_node_outputs` rows into comparable actual steps. The
+ * synthetic graph nodes the orchestrator splices in — `start` and the `map-*`
+ * output-mapping nodes — are internal plumbing, not authorized writes, so they
+ * are dropped rather than diffed as unplanned steps.
+ */
+export function actualStepsFromRunNodes(
+  rows: readonly {
+    readonly nodeId: string;
+    readonly status: string;
+    readonly output: unknown;
+    readonly errorMessage: string | null;
+  }[],
+): ActualStep[] {
+  const steps: ActualStep[] = [];
+  for (const r of rows) {
+    if (r.nodeId === "start" || r.nodeId.startsWith("map-")) continue;
+    steps.push({
+      key: r.nodeId,
+      label: r.nodeId,
+      status: r.status,
+      output: r.output && typeof r.output === "object" ? (r.output as Record<string, unknown>) : null,
+      errorMessage: r.errorMessage,
+    });
+  }
+  return steps;
+}
+
 /** An actual step "succeeded" when its status is one of these — the wf_run node-output ok vocabulary. */
 const ACTUAL_OK_STATUSES = new Set(["ok", "completed", "succeeded", "success"]);
 
