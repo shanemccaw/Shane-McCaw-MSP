@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -1016,6 +1017,22 @@ namespace BuildConsole
             HideTabSwitcher(confirmSelection: true);
         }
 
+        // Git #1802 — Shane: a chat tab's title already carries a real issue
+        // number (`[#1202] Some title`, `#1202 some title`, or a bare `#1212`)
+        // whether or not the tab is a tracked BoardChat yet. Parse it out of
+        // the real displayed title text so the Working-epic highlight can
+        // resolve WITHOUT requiring manual assignment first.
+        private static readonly Regex TabTitleIssueNumberRegex = new(@"^\s*(?:\[#(\d+)\]|#(\d+)(?=\s|$))", RegexOptions.Compiled);
+
+        private static int? ExtractTabTitleIssueNumber(string? title)
+        {
+            if (string.IsNullOrWhiteSpace(title)) return null;
+            var match = TabTitleIssueNumberRegex.Match(title);
+            if (!match.Success) return null;
+            var group = match.Groups[1].Success ? match.Groups[1] : match.Groups[2];
+            return int.TryParse(group.Value, out var number) ? number : null;
+        }
+
         private static string ExtractTabTitle(TabItem tab)
         {
             if (tab.Header is StackPanel sp)
@@ -1538,6 +1555,20 @@ namespace BuildConsole
                         }
                     }
 
+                    // Git #1802 — last resort: a freshly opened or manually
+                    // renamed BoardChat tab may carry the issue number in its
+                    // visible title before GetEpicForChat/tabState/chat
+                    // tracking catches up. Same title-parsing fallback as the
+                    // untracked-tab case below.
+                    if (resolvedEpic == null)
+                    {
+                        var titleNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(selectedTab));
+                        if (titleNumber.HasValue)
+                        {
+                            resolvedEpic = LeftSidebar.GetEpicByGithubNumber(titleNumber.Value);
+                        }
+                    }
+
                     int? epicId = resolvedEpic?.Id;
                     int? epicGithubNumber = resolvedEpic?.GithubNumber;
                     string? epicTitle = resolvedEpic?.Title;
@@ -1551,8 +1582,24 @@ namespace BuildConsole
                 }
                 else
                 {
-                    BuildQueuePanel.SetActiveChatEpic(null, null, null);
-                    LeftSidebar.SetActiveEpicGithubNumber(null);
+                    // Git #1802 — this tab isn't a tracked BoardChat (a plain
+                    // browser tab, an unassigned/manually opened claude.ai tab,
+                    // or a tab predating tracking), but its visible title may
+                    // still carry a real issue number — parse it the same way
+                    // as the BoardChat last-resort fallback above rather than
+                    // unconditionally clearing the highlight.
+                    BuildConsole.Services.BoardEpic? untrackedEpic = null;
+                    if (EditorTabs.SelectedItem is TabItem untrackedTab)
+                    {
+                        var titleNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(untrackedTab));
+                        if (titleNumber.HasValue)
+                        {
+                            untrackedEpic = LeftSidebar.GetEpicByGithubNumber(titleNumber.Value);
+                        }
+                    }
+
+                    BuildQueuePanel.SetActiveChatEpic(untrackedEpic?.Id, untrackedEpic?.GithubNumber, untrackedEpic?.Title);
+                    LeftSidebar.SetActiveEpicGithubNumber(untrackedEpic?.GithubNumber);
                 }
             }
         }
