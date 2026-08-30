@@ -71,6 +71,8 @@ namespace BuildConsole.Services
         private Timer? _timer;
         /// <summary>The LOCAL time the armed restart fires at, or null when nothing is armed.</summary>
         private DateTime? _restartAtLocal;
+        /// <summary>The LOCAL time the session limit resets at, or null when nothing is armed.</summary>
+        private DateTime? _resetAtLocal;
 
         public SessionLimitAutoRestartService(BuildQueuePostgresClient? db, Action resumeQueue)
         {
@@ -79,6 +81,7 @@ namespace BuildConsole.Services
         }
 
         public DateTime? RestartAtLocal { get { lock (_gate) return _restartAtLocal; } }
+        public DateTime? ResetAtLocal { get { lock (_gate) return _resetAtLocal; } }
 
         // ── 1. Detection ─────────────────────────────────────────────────────
 
@@ -150,11 +153,11 @@ namespace BuildConsole.Services
                 : DateTime.Now.AddHours(1);
             if (fireAt <= DateTime.Now) fireAt = DateTime.Now.AddMinutes(1);
 
-            Arm(fireAt, $"queue #{queueId} hit the session limit (resets {resetLabel ?? "unparsed"})");
+            Arm(fireAt, resetLocal, $"queue #{queueId} hit the session limit (resets {resetLabel ?? "unparsed"})");
         }
 
         /// <summary>Arms the restart timer, keeping the furthest-out target when one is already armed. Persists the target so an app restart re-arms it.</summary>
-        private void Arm(DateTime fireAtLocal, string reason)
+        private void Arm(DateTime fireAtLocal, DateTime? resetAtLocal, string reason)
         {
             lock (_gate)
             {
@@ -164,6 +167,7 @@ namespace BuildConsole.Services
                     return;
                 }
                 _restartAtLocal = fireAtLocal;
+                _resetAtLocal = resetAtLocal ?? fireAtLocal.AddMinutes(-BuildConsoleSettings.Load().SessionLimitAutoRestartDelayMinutes);
                 _timer?.Dispose();
                 var due = fireAtLocal - DateTime.Now;
                 if (due < TimeSpan.FromSeconds(5)) due = TimeSpan.FromSeconds(5);
@@ -174,6 +178,7 @@ namespace BuildConsole.Services
             {
                 var settings = BuildConsoleSettings.Load();
                 settings.SessionLimitRestartAtIso = fireAtLocal.ToString("o", CultureInfo.InvariantCulture);
+                settings.SessionLimitResetAtIso = _resetAtLocal.HasValue ? _resetAtLocal.Value.ToString("o", CultureInfo.InvariantCulture) : "";
                 settings.Save();
             }
             catch (Exception ex) { ActivityLog.Log("session-limit", $"Couldn't persist the armed restart time: {ex.Message}"); }
@@ -187,6 +192,7 @@ namespace BuildConsole.Services
             lock (_gate)
             {
                 _restartAtLocal = null;
+                _resetAtLocal = null;
                 _timer?.Dispose();
                 _timer = null;
             }
@@ -194,6 +200,7 @@ namespace BuildConsole.Services
             {
                 var settings = BuildConsoleSettings.Load();
                 settings.SessionLimitRestartAtIso = "";
+                settings.SessionLimitResetAtIso = "";
                 settings.Save();
             }
             catch { }
@@ -216,7 +223,7 @@ namespace BuildConsole.Services
             catch (Exception ex)
             {
                 ActivityLog.Log("session-limit", $"Auto-restart couldn't re-queue limit-paused rows: {ex.Message} — retrying in 5 minutes.");
-                Arm(DateTime.Now.AddMinutes(5), "re-queue failed");
+                Arm(DateTime.Now.AddMinutes(5), null, "re-queue failed");
                 return;
             }
 
@@ -278,7 +285,7 @@ namespace BuildConsole.Services
                     if (reset.HasValue && reset.Value - DateTime.Now > TimeSpan.FromHours(12)) reset = DateTime.Now;
                     var fireAt = (reset ?? DateTime.Now).AddMinutes(Math.Max(0, settings.SessionLimitAutoRestartDelayMinutes));
                     if (fireAt <= DateTime.Now) fireAt = DateTime.Now.AddMinutes(1);
-                    Arm(fireAt, $"first-set bootstrap ({parked} build(s), resets {FirstSetResetLabel})");
+                    Arm(fireAt, reset, $"first-set bootstrap ({parked} build(s), resets {FirstSetResetLabel})");
                     return; // Arm persisted the time; no further re-arm needed below.
                 }
                 ActivityLog.Log("session-limit", "First-set bootstrap: no matching failed/canceled/held rows found to park (already resumed or re-queued?).");
@@ -288,7 +295,13 @@ namespace BuildConsole.Services
             if (!string.IsNullOrWhiteSpace(settings.SessionLimitRestartAtIso)
                 && DateTime.TryParse(settings.SessionLimitRestartAtIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var persisted))
             {
-                Arm(persisted <= DateTime.Now ? DateTime.Now.AddMinutes(1) : persisted, "re-armed persisted restart from a previous app run");
+                DateTime? persistedReset = null;
+                if (!string.IsNullOrWhiteSpace(settings.SessionLimitResetAtIso)
+                    && DateTime.TryParse(settings.SessionLimitResetAtIso, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var pr))
+                {
+                    persistedReset = pr;
+                }
+                Arm(persisted <= DateTime.Now ? DateTime.Now.AddMinutes(1) : persisted, persistedReset, "re-armed persisted restart from a previous app run");
             }
             else if (_db != null)
             {
@@ -299,6 +312,7 @@ namespace BuildConsole.Services
                     var stranded = await _db.GetLimitPausedAsync();
                     if (stranded.Count > 0)
                         Arm(DateTime.Now.AddMinutes(Math.Max(1, settings.SessionLimitAutoRestartDelayMinutes)),
+                            null,
                             $"found {stranded.Count} limit-paused build(s) with no armed restart");
                 }
                 catch (Exception ex) { ActivityLog.Log("session-limit", $"Startup limit-paused sweep failed: {ex.Message}"); }

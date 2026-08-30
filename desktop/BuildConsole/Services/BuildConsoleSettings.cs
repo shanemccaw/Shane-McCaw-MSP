@@ -474,10 +474,13 @@ namespace BuildConsole.Services
         public bool SessionLimitAutoRestartEnabled { get; set; } = true;
 
         /// <summary>Minutes AFTER the parsed session-limit reset moment to wait before auto-restarting (Shane: "10 minutes after the reset").</summary>
-        public int SessionLimitAutoRestartDelayMinutes { get; set; } = 10;
+        public int SessionLimitAutoRestartDelayMinutes { get; set; } = 1;
 
         /// <summary>The armed auto-restart moment (local time, ISO-8601 round-trip), persisted so an app restart re-arms it. Empty = nothing armed.</summary>
         public string SessionLimitRestartAtIso { get; set; } = "";
+
+        /// <summary>The parsed session-limit reset moment (local time, ISO-8601 round-trip), persisted so an app restart knows the reset moment. Empty = nothing armed.</summary>
+        public string SessionLimitResetAtIso { get; set; } = "";
 
         /// <summary>One-shot: true once the first-set bootstrap (Git #1446/#1439/#1441/#1442/#1452/#1444, capped until 2:40am ET) has run. Never reset by the app.</summary>
         public bool SessionLimitFirstSetBootstrapDone { get; set; } = false;

@@ -19,8 +19,13 @@
             BorderThickness="0,0,0,1">
         <StackPanel Margin="10,8,10,8">
 
-            <TextBlock Text="🎯 Dispatch" FontWeight="SemiBold" FontSize="13"
-                       Foreground="{StaticResource TextBrush}" Margin="0,0,0,6"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                <TextBlock Text="🎯 Dispatch" FontWeight="SemiBold" FontSize="13"
+                           Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                <TextBlock x:Name="TxtCountdown" FontSize="11.5" Margin="8,0,0,0"
+                           Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"
+                           Visibility="Collapsed"/>
+            </StackPanel>
 
             <Grid>
                 <Grid.ColumnDefinitions>

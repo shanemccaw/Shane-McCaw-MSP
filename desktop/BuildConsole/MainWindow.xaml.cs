@@ -495,7 +495,7 @@ namespace BuildConsole
             // Git #1838 — DispatchPanel is a second door into QueueBuildAsync. In agent mode we
             // pass null; DispatchAsync already refuses with "Not connected to the build queue
             // database." when _db is null, so the panel renders but can't dispatch a real build.
-            DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
+            DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb, _sessionLimitAutoRestart);
 
             // Git #1710 — additive "AI Batter Up" review panel: agent-filed findings
             // awaiting Shane's Yes/No. Owns no queue/launch logic of its own — Yes only

@@ -22,6 +22,8 @@ namespace BuildConsole.Controls
     public partial class DispatchPanel : UserControl
     {
         private Services.BuildQueuePostgresClient? _db;
+        private Services.SessionLimitAutoRestartService? _autoRestart;
+        private System.Windows.Threading.DispatcherTimer? _countdownTimer;
         private bool _dispatching;
 
         /// <summary>Fired after a successful direct dispatch so MainWindow can tell the
@@ -32,12 +34,89 @@ namespace BuildConsole.Controls
         public DispatchPanel()
         {
             InitializeComponent();
+            this.Unloaded += DispatchPanel_Unloaded;
         }
 
         /// <summary>Mirrors BatterUpPanel.Initialize's shape — called once from MainWindow.</summary>
-        public void Initialize(Services.BuildQueuePostgresClient? db)
+        public void Initialize(Services.BuildQueuePostgresClient? db, Services.SessionLimitAutoRestartService? autoRestart)
         {
             _db = db;
+            _autoRestart = autoRestart;
+
+            if (_autoRestart != null)
+            {
+                _countdownTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                _countdownTimer.Tick += CountdownTimer_Tick;
+                _countdownTimer.Start();
+                CountdownTimer_Tick(null, EventArgs.Empty); // Force immediate refresh
+            }
+        }
+
+        private void DispatchPanel_Unloaded(object sender, RoutedEventArgs e)
+        {
+            if (_countdownTimer != null)
+            {
+                _countdownTimer.Stop();
+                _countdownTimer.Tick -= CountdownTimer_Tick;
+                _countdownTimer = null;
+            }
+        }
+
+        private void CountdownTimer_Tick(object? sender, EventArgs e)
+        {
+            if (_autoRestart == null)
+            {
+                TxtCountdown.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var restartAt = _autoRestart.RestartAtLocal;
+            var resetAt = _autoRestart.ResetAtLocal;
+
+            if (!restartAt.HasValue)
+            {
+                TxtCountdown.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            var now = DateTime.Now;
+            if (now >= restartAt.Value)
+            {
+                TxtCountdown.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            TxtCountdown.Visibility = Visibility.Visible;
+
+            // Determine if we are before or after the reset time
+            var actualResetAt = resetAt ?? restartAt.Value.AddMinutes(-1); // Fallback to 1 min before restart
+
+            if (now < actualResetAt)
+            {
+                var timeToReset = actualResetAt - now;
+                string countdownStr;
+                if (timeToReset.TotalHours >= 1)
+                {
+                    countdownStr = $"{(int)timeToReset.TotalHours}h {timeToReset.Minutes}m";
+                }
+                else
+                {
+                    countdownStr = $"{timeToReset.Minutes}m {timeToReset.Seconds}s";
+                }
+                TxtCountdown.Text = $"{actualResetAt:h:mm tt} ({countdownStr})";
+                TxtCountdown.Foreground = (Brush)Application.Current.FindResource("Subtext0Brush");
+            }
+            else
+            {
+                // We are between the reset time and the restart time.
+                // Flip to a T-1 min timer counting down to when the queue is going to reset (restart paused builds)
+                var timeToRestart = restartAt.Value - now;
+                if (timeToRestart < TimeSpan.Zero) timeToRestart = TimeSpan.Zero;
+                
+                string countdownStr = $"{(int)timeToRestart.TotalMinutes}:{timeToRestart.Seconds:D2}";
+                TxtCountdown.Text = $"T-{countdownStr}";
+                TxtCountdown.Foreground = (Brush)Application.Current.FindResource("RedBrush");
+            }
         }
 
         private void TxtIssueNumber_KeyDown(object sender, KeyEventArgs e)
