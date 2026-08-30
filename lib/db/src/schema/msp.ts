@@ -5257,6 +5257,37 @@ export type InsertAiDevResponseCacheRow = typeof aiDevResponseCacheTable.$inferI
 export const REMEDIATION_KB_STATUS = ["draft", "published"] as const;
 export type RemediationKbStatus = typeof REMEDIATION_KB_STATUS[number];
 
+// ── Fix route — the first-class item shape (#1539) ────────────────────────────
+//
+// The Remediation Tracker turns findings into a worked list, and the single
+// dimension that decides how every other part of an item behaves is HOW the fix
+// actually gets made — its "fix route". #1539 makes that a first-class value:
+// nothing else in the module (the affordance the row shows, whether a Change
+// Control is armed with a runnable pack, what evidence closing it produces) can
+// be modelled until an item knows which of exactly three shapes it is.
+//
+//   we_can_run       — a Graph write pack / PowerShell fix exists AND this
+//                      tenant has granted write-back, so the platform executes
+//                      it on the customer's behalf (through a Change Control →
+//                      orchestrator). The button DOES it.
+//   you_must_run     — a script exists but there is no delegated path to run it
+//                      here — either no write pack automates the check, or the
+//                      tenant has NOT granted write-back. The customer runs the
+//                      PowerShell themselves; the button COPIES it.
+//   admin_center_only — no script exists at all; the change is only reachable
+//                      through a Microsoft admin-centre screen. The row LINKS
+//                      out with instructions.
+//
+// ORDERING IS LOAD-BEARING. The shapes form a rank from most-automated (2) to
+// least (0), because resolution is a `min()` over two independent inputs — what
+// the finding supports and what the tenant permits (see
+// `remediation-fix-route.ts`). A write-denied tenant is a first-class posture,
+// not a degraded one: a fully-automatable finding legitimately renders as
+// `you_must_run` for a tenant that follows step-by-step instructions instead of
+// granting write (the resolved architecture on #1539 — the "NASA" posture).
+export const REMEDIATION_FIX_ROUTE = ["we_can_run", "you_must_run", "admin_center_only"] as const;
+export type RemediationFixRoute = (typeof REMEDIATION_FIX_ROUTE)[number];
+
 /** One ordered remediation step. Shape-identical to `RemediationStep` in remediation-detail-generator.ts, deliberately — see the table comment. */
 export interface RemediationKbStep {
   text: string;
@@ -5304,6 +5335,26 @@ export const remediationKnowledgeBaseTable = pgTable("remediation_knowledge_base
    * being rendered under a green "verified" banner it hasn't earned.
    */
   status: text("status", { enum: REMEDIATION_KB_STATUS }).notNull().default("draft"),
+  /**
+   * The finding-side fix-route CEILING for this check (#1539) — the best shape
+   * this check's authored content could ever reach, before the tenant's own
+   * write-back consent is applied on top of it.
+   *
+   *   admin_center_only (default) — no script authored; only `adminCenterPath`/
+   *     `adminCenterUrl` reach the fix. A tenant's write consent cannot lift
+   *     this: there is nothing to run.
+   *   you_must_run — a PowerShell/Graph fix exists in `remediation_steps[].code`
+   *     but no config pack automates it, so the customer runs it themselves.
+   *   we_can_run — the fix is scriptable AND wired to a runnable path (a config
+   *     pack maps this check), so a write-consenting tenant can have it executed.
+   *
+   * Deliberately authored, not inferred, so "what kind of item is this" is a
+   * queryable first-class fact rather than a guess from whether someone happened
+   * to paste code into a step. The read-time resolver (`remediation-fix-route.ts`)
+   * still RAISES this to `we_can_run` when a live config pack maps the check even
+   * if the column lags, so the column is a floor, never a false cap.
+   */
+  fixRouteCapability: text("fix_route_capability", { enum: REMEDIATION_FIX_ROUTE }).notNull().default("admin_center_only"),
   /** Internal notes — never rendered into a customer document. */
   notes: text("notes"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
