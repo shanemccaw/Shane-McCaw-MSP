@@ -112,13 +112,12 @@ function loadEnvFile(filePath) {
 const fileEnv = loadEnvFile(envPath);
 
 // --- Defined Services ---
-const services = [
-  { name: "api-server", pkg: "@workspace/api-server", port: 8080, title: "API Server" },
-  { name: "shane-mccaw-consulting", pkg: "@workspace/shane-mccaw-consulting", port: 5173, title: "Marketing" },
-  { name: "admin-panel", pkg: "@workspace/admin-panel", port: 5174, title: "Admin" },
-  { name: "portal", pkg: "@workspace/portal", port: 5175, title: "Portal" },
-  { name: "msp-website", pkg: "@workspace/msp-website", port: 5176, title: "Website" },
-];
+// Single source of truth: scripts/dev-server/services.json (Git #1782). The same file
+// is read by desktop/BuildConsole/Services/DevServicesManager.cs at startup, so a new
+// artifact needs exactly one edit — this file's `services` array — to show up both here
+// and in BuildConsole's title-bar Services menu.
+const servicesConfigPath = path.join(repoRoot, "scripts", "dev-server", "services.json");
+const services = JSON.parse(readFileSync(servicesConfigPath, "utf8")).services;
 
 function recordServiceMeta(svc, pid, status = "running") {
   try {

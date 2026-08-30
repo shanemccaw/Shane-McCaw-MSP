@@ -30,14 +30,69 @@ namespace BuildConsole.Services
     {
         private const string LogChannel = "devserver.services";
 
-        public static readonly Dictionary<string, (string Title, int Port, string RelPath, string Icon)> KnownServices = new()
+        /// <summary>
+        /// Icon glyphs are cosmetic and BuildConsole-specific, so they stay in a small
+        /// C#-side lookup rather than in the shared JSON config that scripts/dev-all.mjs
+        /// also reads (Git #1782). Anything not listed here falls back to <see cref="DefaultIconGlyph"/>.
+        /// </summary>
+        private static readonly Dictionary<string, string> IconGlyphs = new()
         {
-            ["shane-mccaw-consulting"] = ("Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐"),
-            ["portal"] = ("Portal", 5175, "artifacts/portal", "💼"),
-            ["admin-panel"] = ("Admin", 5174, "artifacts/admin-panel", "⚙️"),
-            ["api-server"] = ("API Server", 8080, "artifacts/api-server", "🖥️"),
-            ["msp-website"] = ("Website", 5176, "artifacts/msp-website", "📄")
+            ["shane-mccaw-consulting"] = "🌐",
+            ["portal"] = "💼",
+            ["admin-panel"] = "⚙️",
+            ["api-server"] = "🖥️",
+            ["msp-website"] = "📄",
         };
+
+        private const string DefaultIconGlyph = "🧩";
+
+        /// <summary>
+        /// The one real source of truth for the port-based dev service list is
+        /// scripts/dev-server/services.json — the same file scripts/dev-all.mjs reads
+        /// (Git #1782). Loaded once at startup; a new artifact needs only a line added
+        /// to that JSON file, not a code change here.
+        /// </summary>
+        public static readonly Dictionary<string, (string Title, int Port, string RelPath, string Icon)> KnownServices = LoadKnownServices();
+
+        private static Dictionary<string, (string Title, int Port, string RelPath, string Icon)> LoadKnownServices()
+        {
+            var result = new Dictionary<string, (string Title, int Port, string RelPath, string Icon)>();
+            try
+            {
+                string? repoRoot = BuildTrackerConfig.FindRepoRoot();
+                string configPath = Path.Combine(repoRoot ?? ".", "scripts", "dev-server", "services.json");
+                if (!File.Exists(configPath))
+                {
+                    ActivityLog.Log(LogChannel, $"[dev-all] Shared services config not found at {configPath}.");
+                    return result;
+                }
+
+                string json = File.ReadAllText(configPath);
+                using var doc = JsonDocument.Parse(json);
+                if (doc.RootElement.TryGetProperty("services", out var servicesEl) && servicesEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var svcEl in servicesEl.EnumerateArray())
+                    {
+                        if (!svcEl.TryGetProperty("name", out var nameEl)) continue;
+                        string name = nameEl.GetString() ?? string.Empty;
+                        if (string.IsNullOrWhiteSpace(name)) continue;
+
+                        string title = svcEl.TryGetProperty("title", out var titleEl) ? (titleEl.GetString() ?? name) : name;
+                        int port = svcEl.TryGetProperty("port", out var portEl) ? portEl.GetInt32() : 0;
+                        string relPath = $"artifacts/{name}";
+                        string icon = IconGlyphs.TryGetValue(name, out var glyph) ? glyph : DefaultIconGlyph;
+
+                        result[name] = (title, port, relPath, icon);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"[dev-all] Failed to load shared services config: {ex.Message}");
+            }
+
+            return result;
+        }
 
         public static string GetLogDir()
         {

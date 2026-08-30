@@ -9,6 +9,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using BuildConsole.Controls;
 using BuildConsole.Services;
 
 namespace BuildConsole
@@ -457,6 +458,7 @@ namespace BuildConsole
             AdminLogView.Initialize("admin-panel", "Admin", 5174, "artifacts/admin-panel", "⚙️");
             ApiServerLogView.Initialize("api-server", "API Server", 8080, "artifacts/api-server", "🖥️");
 
+            BuildServicesMenu();
             StartTopServicesPoll();
 
             // Git #902 — Shane: "Replit shuts its dev mode down after ~10 min of
@@ -4844,6 +4846,98 @@ namespace BuildConsole
 
         private DispatcherTimer? _topServicesTimer;
 
+        // service name -> the dynamically-built top-bar MenuItem for it (Git #1782).
+        private readonly Dictionary<string, MenuItem> _serviceMenuItems = new();
+
+        // The four services below have a dedicated bottom-panel tab + ServiceLogView
+        // control wired up today (unchanged from before #1782). Any other
+        // DevServicesManager.KnownServices entry (e.g. Website, or a new artifact added
+        // later) still gets a full dynamic Start/Stop/Open-in-Edge menu - it just has no
+        // dedicated log tab to jump to until one is built for it by name here.
+        private static int TabIndexForService(string name) => name switch
+        {
+            "shane-mccaw-consulting" => 2,
+            "portal" => 3,
+            "admin-panel" => 4,
+            "api-server" => 5,
+            _ => -1,
+        };
+
+        private ServiceLogView? LogViewForService(string name) => name switch
+        {
+            "shane-mccaw-consulting" => MarketingLogView,
+            "portal" => PortalLogView,
+            "admin-panel" => AdminLogView,
+            "api-server" => ApiServerLogView,
+            _ => null,
+        };
+
+        /// <summary>
+        /// Builds one MenuItem per DevServicesManager.KnownServices entry (itself loaded
+        /// from scripts/dev-server/services.json) and inserts them ahead of the static
+        /// "Start All / Stop All / Refresh" items already in XAML. No fixed per-service
+        /// list in XAML or code-behind (Git #1782) - adding a real artifact to the shared
+        /// JSON config is the only edit needed for it to show up here.
+        /// </summary>
+        private void BuildServicesMenu()
+        {
+            int insertAt = 0;
+            foreach (var kvp in DevServicesManager.KnownServices)
+            {
+                string name = kvp.Key;
+                var (title, port, _, icon) = kvp.Value;
+
+                var item = new MenuItem { Header = $"{icon} {title} ({port})", StaysOpenOnClick = true };
+
+                var start = new MenuItem { Header = $"▶ Start {title}" };
+                start.Click += async (_, _) => await StartServiceFromMenuAsync(name);
+                item.Items.Add(start);
+
+                var stop = new MenuItem { Header = $"⏹ Stop {title}" };
+                stop.Click += async (_, _) => await StopServiceFromMenuAsync(name);
+                item.Items.Add(stop);
+
+                item.Items.Add(new Separator());
+
+                int tabIndex = TabIndexForService(name);
+                if (tabIndex >= 0)
+                {
+                    var viewTab = new MenuItem { Header = "📄 View Log Tab" };
+                    viewTab.Click += (_, _) => SetBottomPanel(true, tabIndex: tabIndex);
+                    item.Items.Add(viewTab);
+                }
+
+                var openTab = new MenuItem { Header = $"🪟 Open in Tab (localhost:{port})" };
+                openTab.Click += (_, _) => OpenWebTab($"http://localhost:{port}", title, icon);
+                item.Items.Add(openTab);
+
+                var openEdge = new MenuItem { Header = $"🌐 Open in Edge (localhost:{port})" };
+                openEdge.Click += (_, _) => OpenBrowserUrl($"http://localhost:{port}");
+                item.Items.Add(openEdge);
+
+                _serviceMenuItems[name] = item;
+                TopServicesMenuItem.Items.Insert(insertAt++, item);
+            }
+        }
+
+        private async System.Threading.Tasks.Task StartServiceFromMenuAsync(string name)
+        {
+            int tabIndex = TabIndexForService(name);
+            if (tabIndex >= 0) SetBottomPanel(true, tabIndex: tabIndex);
+            await DevServicesManager.StartServiceAsync(name);
+            await RefreshTopServicesStatusAsync();
+            var logView = LogViewForService(name);
+            if (logView != null) await logView.UpdateStatusAsync();
+        }
+
+        private async System.Threading.Tasks.Task StopServiceFromMenuAsync(string name)
+        {
+            await DevServicesManager.StopServiceAsync(name);
+            await RefreshTopServicesStatusAsync();
+            var logView = LogViewForService(name);
+            if (logView != null) await logView.UpdateStatusAsync();
+        }
+
         private void StartTopServicesPoll()
         {
             _topServicesTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -4856,154 +4950,38 @@ namespace BuildConsole
         {
             try
             {
-                bool mkt  = await DevServicesManager.IsPortOpenAsync(5173);
-                bool port = await DevServicesManager.IsPortOpenAsync(5175);
-                bool adm  = await DevServicesManager.IsPortOpenAsync(5174);
-                bool api  = await DevServicesManager.IsPortOpenAsync(8080);
+                int total = DevServicesManager.KnownServices.Count;
+                int runningCount = 0;
 
-                int runningCount = (mkt ? 1 : 0) + (port ? 1 : 0) + (adm ? 1 : 0) + (api ? 1 : 0);
-                if (runningCount == 4)
+                foreach (var kvp in DevServicesManager.KnownServices)
+                {
+                    string name = kvp.Key;
+                    var (title, port, _, icon) = kvp.Value;
+                    bool running = await DevServicesManager.IsPortOpenAsync(port);
+                    if (running) runningCount++;
+                    if (_serviceMenuItems.TryGetValue(name, out var menuItem))
+                    {
+                        menuItem.Header = $"{icon} {title} ({port}) [{(running ? "RUNNING" : "STOPPED")}]";
+                    }
+                }
+
+                if (total > 0 && runningCount == total)
                 {
                     TopServicesStatusDot.Text = "🟢";
-                    TopServicesStatusDot.ToolTip = "All 4 dev services running (5173, 5174, 5175, 8080)";
+                    TopServicesStatusDot.ToolTip = $"All {total} dev services running";
                 }
                 else if (runningCount > 0)
                 {
                     TopServicesStatusDot.Text = "🟡";
-                    TopServicesStatusDot.ToolTip = $"{runningCount}/4 dev services running";
+                    TopServicesStatusDot.ToolTip = $"{runningCount}/{total} dev services running";
                 }
                 else
                 {
                     TopServicesStatusDot.Text = "⚪";
                     TopServicesStatusDot.ToolTip = "All dev services stopped";
                 }
-
-                MenuMarketingItem.Header  = $"🌐 Marketing (5173) [{(mkt  ? "RUNNING" : "STOPPED")}]";
-                MenuPortalItem.Header     = $"💼 Portal (5175) [{(port ? "RUNNING" : "STOPPED")}]";
-                MenuAdminItem.Header      = $"⚙️ Admin (5174) [{(adm  ? "RUNNING" : "STOPPED")}]";
-                MenuApiServerItem.Header  = $"🖥️ API Server (8080) [{(api  ? "RUNNING" : "STOPPED")}]";
             }
             catch { }
-        }
-
-        private async void MenuStartMarketing_Click(object sender, RoutedEventArgs e)
-        {
-            SetBottomPanel(true, tabIndex: 2); // Marketing tab
-            await DevServicesManager.StartServiceAsync("shane-mccaw-consulting");
-            await RefreshTopServicesStatusAsync();
-            await MarketingLogView.UpdateStatusAsync();
-        }
-
-        private async void MenuStopMarketing_Click(object sender, RoutedEventArgs e)
-        {
-            await DevServicesManager.StopServiceAsync("shane-mccaw-consulting");
-            await RefreshTopServicesStatusAsync();
-            await MarketingLogView.UpdateStatusAsync();
-        }
-
-        private void MenuOpenMarketingTab_Click(object sender, RoutedEventArgs e)
-        {
-            SetBottomPanel(true, tabIndex: 2);
-        }
-
-        private void MenuBrowseMarketing_Click(object sender, RoutedEventArgs e)
-        {
-            OpenWebTab("http://localhost:5173", "Marketing", "🌐");
-        }
-
-        private void MenuOpenInEdgeMarketing_Click(object sender, RoutedEventArgs e)
-        {
-            OpenBrowserUrl("http://localhost:5173");
-        }
-
-        private async void MenuStartPortal_Click(object sender, RoutedEventArgs e)
-        {
-            SetBottomPanel(true, tabIndex: 3); // Portal tab
-            await DevServicesManager.StartServiceAsync("portal");
-            await RefreshTopServicesStatusAsync();
-            await PortalLogView.UpdateStatusAsync();
-        }
-
-        private async void MenuStopPortal_Click(object sender, RoutedEventArgs e)
-        {
-            await DevServicesManager.StopServiceAsync("portal");
-            await RefreshTopServicesStatusAsync();
-            await PortalLogView.UpdateStatusAsync();
-        }
-
-        private void MenuOpenPortalTab_Click(object sender, RoutedEventArgs e)
-        {
-            SetBottomPanel(true, tabIndex: 3);
-        }
-
-        private void MenuBrowsePortal_Click(object sender, RoutedEventArgs e)
-        {
-            OpenWebTab("http://localhost:5175", "Portal", "💼");
-        }
-
-        private void MenuOpenInEdgePortal_Click(object sender, RoutedEventArgs e)
-        {
-            OpenBrowserUrl("http://localhost:5175");
-        }
-
-        private async void MenuStartAdmin_Click(object sender, RoutedEventArgs e)
-        {
-            SetBottomPanel(true, tabIndex: 4); // Admin tab
-            await DevServicesManager.StartServiceAsync("admin-panel");
-            await RefreshTopServicesStatusAsync();
-            await AdminLogView.UpdateStatusAsync();
-        }
-
-        private async void MenuStopAdmin_Click(object sender, RoutedEventArgs e)
-        {
-            await DevServicesManager.StopServiceAsync("admin-panel");
-            await RefreshTopServicesStatusAsync();
-            await AdminLogView.UpdateStatusAsync();
-        }
-
-        private void MenuOpenAdminTab_Click(object sender, RoutedEventArgs e)
-        {
-            SetBottomPanel(true, tabIndex: 4);
-        }
-
-        private void MenuBrowseAdmin_Click(object sender, RoutedEventArgs e)
-        {
-            OpenWebTab("http://localhost:5174", "Admin", "⚙️");
-        }
-
-        private void MenuOpenInEdgeAdmin_Click(object sender, RoutedEventArgs e)
-        {
-            OpenBrowserUrl("http://localhost:5174");
-        }
-
-        private async void MenuStartApiServer_Click(object sender, RoutedEventArgs e)
-        {
-            SetBottomPanel(true, tabIndex: 5); // API Server tab
-            await DevServicesManager.StartServiceAsync("api-server");
-            await RefreshTopServicesStatusAsync();
-            await ApiServerLogView.UpdateStatusAsync();
-        }
-
-        private async void MenuStopApiServer_Click(object sender, RoutedEventArgs e)
-        {
-            await DevServicesManager.StopServiceAsync("api-server");
-            await RefreshTopServicesStatusAsync();
-            await ApiServerLogView.UpdateStatusAsync();
-        }
-
-        private void MenuOpenApiServerTab_Click(object sender, RoutedEventArgs e)
-        {
-            SetBottomPanel(true, tabIndex: 5);
-        }
-
-        private void MenuBrowseApiServer_Click(object sender, RoutedEventArgs e)
-        {
-            OpenWebTab("http://localhost:8080", "API Server", "🖥️");
-        }
-
-        private void MenuOpenInEdgeApiServer_Click(object sender, RoutedEventArgs e)
-        {
-            OpenBrowserUrl("http://localhost:8080");
         }
 
         private async void MenuStartAllServices_Click(object sender, RoutedEventArgs e)

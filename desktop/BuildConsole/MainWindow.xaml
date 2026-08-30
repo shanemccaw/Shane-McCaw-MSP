@@ -386,45 +386,10 @@
                                     </StackPanel>
                                 </MenuItem.Header>
 
-                                <!-- Marketing -->
-                                <MenuItem x:Name="MenuMarketingItem" Header="🌐 Marketing (5173)" StaysOpenOnClick="True">
-                                    <MenuItem Header="▶ Start Marketing" Click="MenuStartMarketing_Click"/>
-                                    <MenuItem Header="⏹ Stop Marketing" Click="MenuStopMarketing_Click"/>
-                                    <Separator/>
-                                    <MenuItem Header="📄 View Log Tab" Click="MenuOpenMarketingTab_Click"/>
-                                    <MenuItem Header="🪟 Open in Tab (localhost:5173)" Click="MenuBrowseMarketing_Click"/>
-                                    <MenuItem Header="🌐 Open in Edge (localhost:5173)" Click="MenuOpenInEdgeMarketing_Click"/>
-                                </MenuItem>
-
-                                <!-- Portal -->
-                                <MenuItem x:Name="MenuPortalItem" Header="💼 Portal (5175)" StaysOpenOnClick="True">
-                                    <MenuItem Header="▶ Start Portal" Click="MenuStartPortal_Click"/>
-                                    <MenuItem Header="⏹ Stop Portal" Click="MenuStopPortal_Click"/>
-                                    <Separator/>
-                                    <MenuItem Header="📄 View Log Tab" Click="MenuOpenPortalTab_Click"/>
-                                    <MenuItem Header="🪟 Open in Tab (localhost:5175)" Click="MenuBrowsePortal_Click"/>
-                                    <MenuItem Header="🌐 Open in Edge (localhost:5175)" Click="MenuOpenInEdgePortal_Click"/>
-                                </MenuItem>
-
-                                <!-- Admin -->
-                                <MenuItem x:Name="MenuAdminItem" Header="⚙️ Admin (5174)" StaysOpenOnClick="True">
-                                    <MenuItem Header="▶ Start Admin" Click="MenuStartAdmin_Click"/>
-                                    <MenuItem Header="⏹ Stop Admin" Click="MenuStopAdmin_Click"/>
-                                    <Separator/>
-                                    <MenuItem Header="📄 View Log Tab" Click="MenuOpenAdminTab_Click"/>
-                                    <MenuItem Header="🪟 Open in Tab (localhost:5174)" Click="MenuBrowseAdmin_Click"/>
-                                    <MenuItem Header="🌐 Open in Edge (localhost:5174)" Click="MenuOpenInEdgeAdmin_Click"/>
-                                </MenuItem>
-
-                                <!-- API Server -->
-                                <MenuItem x:Name="MenuApiServerItem" Header="🖥️ API Server (8080)" StaysOpenOnClick="True">
-                                    <MenuItem Header="▶ Start API Server" Click="MenuStartApiServer_Click"/>
-                                    <MenuItem Header="⏹ Stop API Server" Click="MenuStopApiServer_Click"/>
-                                    <Separator/>
-                                    <MenuItem Header="📄 View Log Tab" Click="MenuOpenApiServerTab_Click"/>
-                                    <MenuItem Header="🪟 Open in Tab (localhost:8080)" Click="MenuBrowseApiServer_Click"/>
-                                    <MenuItem Header="🌐 Open in Edge (localhost:8080)" Click="MenuOpenInEdgeApiServer_Click"/>
-                                </MenuItem>
+                                <!-- Per-service items (Marketing/Portal/Admin/API Server/...) are built
+                                     dynamically at startup by MainWindow.BuildServicesMenu(), from
+                                     whatever DevServicesManager.KnownServices contains (itself loaded
+                                     from scripts/dev-server/services.json) - no fixed list here (Git #1782). -->
 
                                 <Separator/>
 

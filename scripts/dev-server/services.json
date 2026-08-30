@@ -1,0 +1,16 @@
+{
+  "$comment": "Single source of truth for the port-based local dev services (Git #1782). scripts/dev-all.mjs reads the `services` array to know what to spawn/kill; desktop/BuildConsole/Services/DevServicesManager.cs reads the same array at startup to populate KnownServices, which drives BuildConsole's title-bar Services menu (built dynamically, no fixed XAML/code-behind list). Adding a real artifact here is the only edit needed for it to show up in both places — icon glyphs are cosmetic and stay in a small C#-side lookup, not here.",
+  "services": [
+    { "name": "api-server", "pkg": "@workspace/api-server", "port": 8080, "title": "API Server" },
+    { "name": "shane-mccaw-consulting", "pkg": "@workspace/shane-mccaw-consulting", "port": 5173, "title": "Marketing" },
+    { "name": "admin-panel", "pkg": "@workspace/admin-panel", "port": 5174, "title": "Admin" },
+    { "name": "portal", "pkg": "@workspace/portal", "port": 5175, "title": "Portal" },
+    { "name": "msp-website", "pkg": "@workspace/msp-website", "port": 5176, "title": "Website" }
+  ],
+  "excluded": [
+    {
+      "name": "mcp-server",
+      "reason": "Git #1782 investigation: artifacts/mcp-server has no \"dev\" script (package.json only defines start/typecheck/e2e) and artifacts/mcp-server/src/index.ts connects via StdioServerTransport, not an HTTP listener on a port. It's a stdio MCP server with no port/URL concept, so it doesn't fit the port-based Vite/api-server shape this config and dev-all.mjs assume. Not included until/unless it grows a real dev-server treatment of its own."
+    }
+  ]
+}
