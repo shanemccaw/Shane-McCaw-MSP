@@ -536,6 +536,9 @@ const CONFIG_PACK_ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   customer_not_testbed: 403,
   customer_write_consent_missing: 422,
   tenant_domain_unresolved: 422,
+  // #1497 — mission-control remediate never passes a changeRequestAuthorization
+  // (it is testbed-gated), so this code cannot arise here; mapped for exhaustiveness.
+  change_request_not_authorized: 403,
 };
 
 router.post(

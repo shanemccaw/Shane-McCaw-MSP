@@ -174,6 +174,9 @@ export default defineConfig({
       "src/routes/pcc.test.ts",
       "src/lib/config-pack-graph.test.ts",
       "src/lib/config-pack-orchestrator.test.ts",
+      // #1497 — Change Control as the fail-closed authorization gate on the
+      // tenant write path: the pure CR-authorization rule.
+      "src/lib/change-control-write-gate.test.ts",
       // #1316 — the real dry-run + purchase-authorized execution behind /buy's
       // pack approve/execute stages (real local pack rows, Graph mocked).
       "src/lib/config-pack-dry-run.test.ts",
