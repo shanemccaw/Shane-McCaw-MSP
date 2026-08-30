@@ -302,8 +302,14 @@
                         <Border Width="24" Height="24" CornerRadius="7" Background="{StaticResource ChatPane.BrandGradient}">
                             <TextBlock Text="SM" FontSize="10" FontWeight="ExtraBold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
+                        <!-- Git #1801: long real issue titles (e.g. #1799) were reading as visually bulky
+                             on the slot card; TextTrimming+MaxWidth already caps this to one line with an
+                             ellipsis, but nothing let Shane read the rest of a truncated title short of
+                             opening the issue — the ToolTip below surfaces the untruncated SessionLabel
+                             on hover. -->
                         <TextBlock Text="{Binding SessionLabel}" FontWeight="SemiBold" Foreground="{StaticResource ChatPane.Text1}"
                                    Margin="10,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="140"
+                                   ToolTip="{Binding SessionLabel}"
                                    FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='12,15'}"/>
                         <TextBlock Text="{Binding LocalLabel}" Foreground="{StaticResource ChatPane.Muted4}" Margin="6,1,0,0" VerticalAlignment="Center"
                                    FontSize="{Binding ActualWidth, ElementName=Root, Converter={StaticResource Fluid}, ConverterParameter='10.5,13.5'}"/>
