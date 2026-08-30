@@ -173,6 +173,18 @@ namespace BuildConsole.Services
         el.style.color = "#F38BA8";
         if (sendSib) sendSib.style.display = "";
         if (editSib) editSib.style.display = "";
+      } else if (mode === "capped") {
+        // Git #1989 — Conservation Cap: parked because it exceeded Sonnet High.
+        // Peach, not "parked"'s neutral gray, matching the same distinct accent
+        // BuildQueuePanel's own capped pill/card use.
+        el.dataset.btWaiting = "0";
+        delete el.dataset.btFailed;
+        el.disabled = true;
+        el.style.borderColor = "#FAB387";
+        el.style.backgroundColor = "#2A201A";
+        el.style.color = "#FAB387";
+        if (sendSib) sendSib.style.display = "none";
+        if (editSib) editSib.style.display = "none";
       } else {
         delete el.dataset.btFailed;
         delete el.dataset.btWaiting;
