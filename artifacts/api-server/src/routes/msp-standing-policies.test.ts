@@ -31,7 +31,7 @@ vi.mock("@workspace/db", () => ({
   standingPoliciesTable: { id: "id", mspId: "mspId", ouId: "ouId", targetKind: "targetKind" },
   activeDirectoryOusTable: { id: "id" },
   changeCatalogItemsTable: { id: "id", mspId: "mspId" },
-  tenantsTable: { id: "id", mspId: "mspId", consent: "consent" },
+  tenantsTable: { id: "id", mspId: "mspId", consent: "consent", policyEngineOptIn: "policyEngineOptIn" },
   STANDING_POLICY_TARGET_KIND: ["mailbox_attribute", "group_membership", "service_policy"],
 }));
 
@@ -122,7 +122,7 @@ describe("GET /msp/standing-policies/:id/enactment", () => {
   it("opted in + write consent granted -> engine_enacts", async () => {
     mockSelect
       .mockReturnValueOnce(buildChain([POLICY]))
-      .mockReturnValueOnce(buildChain([{ id: 1, mspId: MSP_ID, consent: { graph: { status: "granted" }, writeBack: { status: "granted" } } }]));
+      .mockReturnValueOnce(buildChain([{ id: 1, mspId: MSP_ID, policyEngineOptIn: true, consent: { writeBack: { status: "granted" } } }]));
 
     const res = await request(makeApp())
       .get("/api/msp/standing-policies/7/enactment?customerId=1")
@@ -143,7 +143,7 @@ describe("GET /msp/standing-policies/:id/enactment", () => {
   it("opted in + write consent denied -> checklist_item (the NASA posture)", async () => {
     mockSelect
       .mockReturnValueOnce(buildChain([POLICY]))
-      .mockReturnValueOnce(buildChain([{ id: 1, mspId: MSP_ID, consent: { graph: { status: "granted" }, writeBack: { status: "declined" } } }]));
+      .mockReturnValueOnce(buildChain([{ id: 1, mspId: MSP_ID, policyEngineOptIn: true, consent: { writeBack: { status: "declined" } } }]));
 
     const res = await request(makeApp())
       .get("/api/msp/standing-policies/7/enactment?customerId=1")
@@ -154,10 +154,10 @@ describe("GET /msp/standing-policies/:id/enactment", () => {
     expect(res.body.reason).toBe("write_consent_denied");
   });
 
-  it("no Graph consent -> not_evaluated, tenant_not_connected", async () => {
+  it("tenant not opted in -> not_evaluated, tenant_not_opted_in", async () => {
     mockSelect
       .mockReturnValueOnce(buildChain([POLICY]))
-      .mockReturnValueOnce(buildChain([{ id: 1, mspId: MSP_ID, consent: {} }]));
+      .mockReturnValueOnce(buildChain([{ id: 1, mspId: MSP_ID, policyEngineOptIn: false, consent: { writeBack: { status: "granted" } } }]));
 
     const res = await request(makeApp())
       .get("/api/msp/standing-policies/7/enactment?customerId=1")
@@ -165,13 +165,13 @@ describe("GET /msp/standing-policies/:id/enactment", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.route).toBe("not_evaluated");
-    expect(res.body.reason).toBe("tenant_not_connected");
+    expect(res.body.reason).toBe("tenant_not_opted_in");
   });
 
   it("policy not active -> not_evaluated, policy_inactive, even with full consent", async () => {
     mockSelect
       .mockReturnValueOnce(buildChain([{ ...POLICY, isActive: false }]))
-      .mockReturnValueOnce(buildChain([{ id: 1, mspId: MSP_ID, consent: { graph: { status: "granted" }, writeBack: { status: "granted" } } }]));
+      .mockReturnValueOnce(buildChain([{ id: 1, mspId: MSP_ID, policyEngineOptIn: true, consent: { writeBack: { status: "granted" } } }]));
 
     const res = await request(makeApp())
       .get("/api/msp/standing-policies/7/enactment?customerId=1")

@@ -24,21 +24,18 @@
  *                      in this issue's title).
  *   not_evaluated   — no evaluation happens at all, so no divergence is even
  *                      detected. Two independent reasons collapse to this one
- *                      route: the policy itself is not switched on (#1547's
- *                      own opt-in, default-off gate), or the tenant has not
- *                      granted Graph READ consent at all — there is nothing
- *                      to compare the target state against without it.
+ *                      route: the policy itself is not switched on
+ *                      (`standing_policies.is_active`, #1547's own opt-in,
+ *                      default-off gate), or the tenant has not flipped its
+ *                      OWN opt-in checkbox — see below.
  *
  * THE RESOLUTION RULE
  * ────────────────────
  * "Tenant state" in the settled architecture is TWO independent, already-real
- * consent keys on `tenants.consent` (graph.ts's own gates, `graphWriteForTenant`
- * and the read-side `graphFetchForTenant` path):
+ * per-tenant signals:
  *
- *   consent.graph.status === "granted"      — the tenant is connected at all;
- *                                              without it there is no read
- *                                              access to detect a divergence.
- *   consent.writeBack.status === "granted"  — the SAME status
+ *   consent.writeBack.status === "granted"  — `tenants.consent.writeBack`, the
+ *                                              SAME status
  *                                              `resolveTenantWriteCeiling`
  *                                              (#1539, remediation-fix-route.ts)
  *                                              already gates platform-driven
@@ -47,12 +44,30 @@
  *                                              caps at `checklist_item` — never
  *                                              lower, the tenant can always
  *                                              follow the instructions.
+ *   tenantOptedIn                           — `tenants.policy_engine_opt_in`
+ *                                              (#1549's own per-customer
+ *                                              onboarding checkbox, default
+ *                                              OFF): "the platform does not
+ *                                              evaluate or act against tenants
+ *                                              that have not opted in." This
+ *                                              is a tenant-wide kill switch,
+ *                                              independent of write consent —
+ *                                              a tenant can opt into
+ *                                              evaluation while still denying
+ *                                              write (the NASA posture is
+ *                                              opted in AND write-denied, not
+ *                                              opted out).
  *
  * This mirrors #1539's own model exactly, which is why #1551 depends on
- * #1539/#1540 and not on #1553 (the finding-source build, still separate,
- * still in flight): detection is someone else's job (#1549/#1553); this
- * module resolves only the ROUTE a detected divergence takes for a given
- * (policy, tenant) pair, using per-tenant consent state that already exists.
+ * #1539/#1540 and not on #1553 (the finding-source build): detection is
+ * someone else's job (#1549's `policy_evaluation_runs` reconciliation loop,
+ * #1553's finding write); this module resolves only the ROUTE a detected
+ * divergence takes for a given (policy, tenant) pair, using per-tenant state
+ * that already exists. #1549's own reconciliation loop checks the identical
+ * two gates (`is_active` AND `policy_engine_opt_in`) before it ever reaches a
+ * write-consent question — this resolver is the write-consent half of that
+ * same decision, factored out so both the evaluation loop and any preview
+ * surface share one truth table instead of two.
  */
 
 import type { TenantConsentMap } from "@workspace/db";
@@ -63,13 +78,15 @@ export type PolicyEnactmentRoute = (typeof POLICY_ENACTMENT_ROUTE)[number];
 
 /**
  * Why a route resolved the way it did — kept distinct from the route itself so
- * a caller (or the future #1549 evaluation loop) can tell "policy switched
- * off" apart from "tenant not connected" even though both collapse to the same
- * `not_evaluated` route.
+ * a caller (or the #1549 evaluation loop) can tell "policy switched off" apart
+ * from "tenant not opted in" even though both collapse to the same
+ * `not_evaluated` route. `tenant_not_opted_in` deliberately matches the name of
+ * `policy_evaluation_runs.outcome`'s own `skipped_not_opted_in` value (#1549) —
+ * same real gate, same vocabulary, not a second invented name for it.
  */
 export const POLICY_ENACTMENT_REASON = [
   "policy_inactive",
-  "tenant_not_connected",
+  "tenant_not_opted_in",
   "write_consent_granted",
   "write_consent_denied",
 ] as const;
@@ -108,18 +125,21 @@ export const POLICY_ENACTMENT_AFFORDANCE: Record<PolicyEnactmentRoute, "execute"
  *
  * `policyActive` is `standing_policies.is_active` (#1547) — a policy authored
  * but never switched on never reaches evaluation, regardless of tenant state.
- * `consent` is the tenant's own `tenants.consent` map, read verbatim — no
- * inferred or invented status.
+ * `tenantOptedIn` is `tenants.policy_engine_opt_in` (#1549) — the tenant-wide
+ * kill switch, checked independently of the policy's own gate. `consent` is
+ * the tenant's own `tenants.consent` map, read verbatim — no inferred or
+ * invented status.
  */
 export function resolvePolicyEnactmentRoute(input: {
   policyActive: boolean;
+  tenantOptedIn: boolean;
   consent: TenantConsentMap | null | undefined;
 }): PolicyEnactmentDecision {
   if (!input.policyActive) {
     return { route: "not_evaluated", reason: "policy_inactive" };
   }
-  if (input.consent?.graph?.status !== "granted") {
-    return { route: "not_evaluated", reason: "tenant_not_connected" };
+  if (!input.tenantOptedIn) {
+    return { route: "not_evaluated", reason: "tenant_not_opted_in" };
   }
   if (input.consent?.writeBack?.status === "granted") {
     return { route: "engine_enacts", reason: "write_consent_granted" };

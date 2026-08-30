@@ -3,9 +3,10 @@
  * resolver (#1551).
  *
  * Locks the settled table: same policy, same detection, different route,
- * decided by policy.isActive + the tenant's own Graph/write-back consent —
- * "opted in, granted" -> engine enacts, "opted in, denied" -> checklist item
- * (the NASA posture), "not opted in" -> no evaluation at all.
+ * decided by policy.isActive + tenants.policy_engine_opt_in (#1549) + the
+ * tenant's own write-back consent — "opted in, granted" -> engine enacts,
+ * "opted in, denied" -> checklist item (the NASA posture), "not opted in" ->
+ * no evaluation at all.
  */
 
 import { describe, it, expect } from "vitest";
@@ -17,68 +18,49 @@ import {
   resolvePolicyEnactmentRoute,
 } from "./policy-enactment-route";
 
-const connectedAndGranted: TenantConsentMap = {
-  graph: { status: "granted" },
-  writeBack: { status: "granted" },
-};
-const connectedAndDenied: TenantConsentMap = {
-  graph: { status: "granted" },
-  writeBack: { status: "declined" },
-};
-const connectedAndRevoked: TenantConsentMap = {
-  graph: { status: "granted" },
-  writeBack: { status: "revoked" },
-};
-const connectedNoWriteRow: TenantConsentMap = {
-  graph: { status: "granted" },
-};
-const notConnected: TenantConsentMap = {
-  graph: { status: "pending" },
-  writeBack: { status: "granted" },
-};
+const granted: TenantConsentMap = { writeBack: { status: "granted" } };
+const declined: TenantConsentMap = { writeBack: { status: "declined" } };
+const revoked: TenantConsentMap = { writeBack: { status: "revoked" } };
+const noWriteRow: TenantConsentMap = {};
 
 describe("resolvePolicyEnactmentRoute — the settled table", () => {
   it("opted in + write consent granted -> engine enacts", () => {
-    expect(resolvePolicyEnactmentRoute({ policyActive: true, consent: connectedAndGranted })).toEqual({
+    expect(resolvePolicyEnactmentRoute({ policyActive: true, tenantOptedIn: true, consent: granted })).toEqual({
       route: "engine_enacts",
       reason: "write_consent_granted",
     });
   });
 
   it("opted in + write consent denied -> checklist item (the NASA posture)", () => {
-    expect(resolvePolicyEnactmentRoute({ policyActive: true, consent: connectedAndDenied })).toEqual({
+    expect(resolvePolicyEnactmentRoute({ policyActive: true, tenantOptedIn: true, consent: declined })).toEqual({
       route: "checklist_item",
       reason: "write_consent_denied",
     });
   });
 
   it("every non-granted write status caps at checklist_item, never below", () => {
-    expect(resolvePolicyEnactmentRoute({ policyActive: true, consent: connectedAndRevoked }).route).toBe("checklist_item");
-    expect(resolvePolicyEnactmentRoute({ policyActive: true, consent: connectedNoWriteRow }).route).toBe("checklist_item");
+    expect(resolvePolicyEnactmentRoute({ policyActive: true, tenantOptedIn: true, consent: revoked }).route).toBe("checklist_item");
+    expect(resolvePolicyEnactmentRoute({ policyActive: true, tenantOptedIn: true, consent: noWriteRow }).route).toBe("checklist_item");
+    expect(resolvePolicyEnactmentRoute({ policyActive: true, tenantOptedIn: true, consent: null }).route).toBe("checklist_item");
+    expect(resolvePolicyEnactmentRoute({ policyActive: true, tenantOptedIn: true, consent: undefined }).route).toBe("checklist_item");
   });
 
-  it("not opted in (no Graph consent) -> no evaluation, no action, regardless of write consent", () => {
-    expect(resolvePolicyEnactmentRoute({ policyActive: true, consent: notConnected })).toEqual({
+  it("tenant not opted in (policy_engine_opt_in = false) -> no evaluation, no action, regardless of write consent", () => {
+    expect(resolvePolicyEnactmentRoute({ policyActive: true, tenantOptedIn: false, consent: granted })).toEqual({
       route: "not_evaluated",
-      reason: "tenant_not_connected",
+      reason: "tenant_not_opted_in",
     });
   });
 
-  it("a policy that is not switched on is never_evaluated regardless of tenant state", () => {
-    expect(resolvePolicyEnactmentRoute({ policyActive: false, consent: connectedAndGranted })).toEqual({
+  it("a policy that is not switched on is not_evaluated regardless of tenant state", () => {
+    expect(resolvePolicyEnactmentRoute({ policyActive: false, tenantOptedIn: true, consent: granted })).toEqual({
       route: "not_evaluated",
       reason: "policy_inactive",
     });
   });
 
-  it("policy_inactive is checked before tenant connectivity — the policy gate comes first", () => {
-    expect(resolvePolicyEnactmentRoute({ policyActive: false, consent: null }).reason).toBe("policy_inactive");
-  });
-
-  it("handles an absent/empty consent map as not connected", () => {
-    expect(resolvePolicyEnactmentRoute({ policyActive: true, consent: null }).route).toBe("not_evaluated");
-    expect(resolvePolicyEnactmentRoute({ policyActive: true, consent: undefined }).route).toBe("not_evaluated");
-    expect(resolvePolicyEnactmentRoute({ policyActive: true, consent: {} }).route).toBe("not_evaluated");
+  it("policy_inactive is checked before tenant opt-in — the policy gate comes first", () => {
+    expect(resolvePolicyEnactmentRoute({ policyActive: false, tenantOptedIn: false, consent: null }).reason).toBe("policy_inactive");
   });
 });
 

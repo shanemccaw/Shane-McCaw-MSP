@@ -29,11 +29,12 @@
  *
  *   GET /msp/standing-policies/:id/enactment?customerId=  — #1551: preview the
  *   enactment ROUTE this policy would take for one tenant right now, using
- *   policy.isActive + that tenant's own Graph/write-back consent (state that
- *   already exists — see policy-enactment-route.ts). This does not detect a
- *   divergence or enact anything; #1549/#1553 own that. It answers "if this
- *   policy fired for this tenant today, which of the three settled shapes
- *   would it take, and why".
+ *   policy.isActive + that tenant's own policy_engine_opt_in (#1549) and
+ *   write-back consent (state that already exists — see
+ *   policy-enactment-route.ts). This does not detect a divergence or enact
+ *   anything; #1549's reconciliation loop and #1553's finding write own that.
+ *   It answers "if this policy fired for this tenant today, which of the
+ *   three settled shapes would it take, and why".
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -224,7 +225,12 @@ router.get(
       // use — and the same "must belong to this MSP" guard, so a policy can never be
       // previewed against a tenant it has no authority over.
       const [customer] = await db
-        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId, consent: tenantsTable.consent })
+        .select({
+          id: tenantsTable.id,
+          mspId: tenantsTable.mspId,
+          consent: tenantsTable.consent,
+          policyEngineOptIn: tenantsTable.policyEngineOptIn,
+        })
         .from(tenantsTable)
         .where(and(eq(tenantsTable.id, parsedQuery.data.customerId), eq(tenantsTable.mspId, mspId)))
         .limit(1);
@@ -233,7 +239,11 @@ router.get(
         return;
       }
 
-      const decision = resolvePolicyEnactmentRoute({ policyActive: policy.isActive, consent: customer.consent });
+      const decision = resolvePolicyEnactmentRoute({
+        policyActive: policy.isActive,
+        tenantOptedIn: customer.policyEngineOptIn,
+        consent: customer.consent,
+      });
 
       log.info(
         { mspId, standingPolicyId: policy.id, customerId: customer.id, route: decision.route, reason: decision.reason },
