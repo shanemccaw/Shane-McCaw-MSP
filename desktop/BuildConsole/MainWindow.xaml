@@ -382,6 +382,32 @@
                                 <TextBlock x:Name="TopAccountToggleText" Text="Primary" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
+                        <!-- Git #1986 — Home/Rental location toggle. Sits next to the account
+                             toggle above and uses the identical de-brightened idiom: a dark
+                             surface with an accent border/text when Rental (the metered state
+                             worth noticing), never a solid bright fill; Home is the neutral
+                             state. Colors/text driven from code-behind (RefreshTopLocationToggleUi)
+                             so the current location — and a live one-shot "override active"
+                             exception — is always visible at a glance. Manual switch ONLY: never
+                             auto-detected. Drives BUILD_NETWORK on launched builds, the network
+                             header flag, the .pnpmfile.cjs metered-install refusal, and the
+                             version-update deploy's one-shot metered override. No emoji, per #1986.
+                             (The build carries its network context via a "network" header flag,
+                             same shape as the account flag.) -->
+                        <Border x:Name="TopLocationToggleBorder"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource Surface1Brush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="7,2"
+                                Margin="0,0,6,0"
+                                Cursor="Hand"
+                                MouseLeftButtonUp="TopLocationToggle_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Location:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock x:Name="TopLocationToggleText" Text="Home" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
                         <!-- Git #1989 — Conservation Cap toggle. When ON, no build above Sonnet
                              High launches — it's detected and PARKED (never silently
                              downgraded) until Shane overrides it per-item or turns this off (or
@@ -680,7 +706,20 @@
                                 Padding="8,1" Margin="8,0,0,0"
                                 Visibility="Collapsed"
                                 Click="BtnUpdate_Click"
-                                ToolTip="A newer BuildConsole build is committed locally — build &amp; deploy it to bin\ShanesBuild via deploy-shanesbuild.cmd. Deploys immediately when the Build Queue is clear, otherwise waits until it drains, then fires automatically."/>
+                                ToolTip="A newer BuildConsole build is committed locally — build &amp; deploy it to bin\ShanesBuild via deploy-shanesbuild.cmd. Deploys immediately when the Build Queue is clear, otherwise waits until it drains, then fires automatically.">
+                            <!-- Git #1986 — one-shot metered override. On the Rental (capped)
+                                 connection the deploy (git fetch origin main + local Release
+                                 rebuild) is held; this right-click is the deliberate, per-instance
+                                 authorisation to run it anyway. It never flips the Location switch. -->
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem x:Name="RunUpdateAnywayMeteredItem"
+                                              Header="Run anyway (metered)"
+                                              Click="RunUpdateAnywayMetered_Click"
+                                              ToolTip="Authorise this one deploy on the capped connection. One-shot: it runs only this deploy and reverts; the Location stays Rental and nothing else is un-gated."/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
                     </StackPanel>
                 </StatusBarItem>
                 <Separator Grid.Column="11"/>

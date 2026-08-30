@@ -506,6 +506,23 @@
                                     </StackPanel>
                                 </Border>
 
+                                <!-- Git #1986 — Home/Rental location switch (gate metered network ops) -->
+                                <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Location / Metered Connection Gate" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{StaticResource PeachBrush}" Margin="0,0,0,6"/>
+                                        <TextBlock Text="Which connection this machine is on. Home = fibre (unmetered); Rental = capped Verizon (metered). This is manual and never auto-detected — a wrong guess that silently downloaded on the capped line is exactly what this prevents. When Rental, network-heavy work is gated: every launched build carries BUILD_NETWORK=metered, a `pnpm install` at the repo root is refused (.pnpmfile.cjs), and the version-update deploy needs a one-shot right-click override. Defaults to Home in every ambiguous case (missing or corrupt settings). Also switchable from the title-bar Location toggle."
+                                                   FontSize="10.5" Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Location" FontSize="11" Foreground="{StaticResource Subtext1Brush}" Margin="0,0,0,4"/>
+                                        <ComboBox x:Name="LocationModeCombo" Width="200" HorizontalAlignment="Left" FontSize="12" Margin="0,0,0,10"
+                                                  SelectionChanged="LocationModeCombo_Changed">
+                                            <ComboBoxItem Content="Home (fibre — unmetered)"/>
+                                            <ComboBoxItem Content="Rental (capped Verizon — metered)"/>
+                                        </ComboBox>
+                                        <TextBlock x:Name="LocationModeSavedText" Text="" FontSize="11" Foreground="{StaticResource GreenBrush}" Margin="0,0,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- Git #1639 — automatic Encouragement critter, off by default -->
                                 <Border BorderBrush="{StaticResource Surface0Brush}" BorderThickness="0,1,0,0" Margin="0,16,0,0" Padding="0,14,0,0">
                                     <StackPanel>

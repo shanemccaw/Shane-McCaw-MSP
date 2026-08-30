@@ -404,6 +404,21 @@ namespace BuildConsole.Services
             return path;
         }
 
+        /// <summary>Git #1986 — true when a build's prompt carries a leading `--network metered`
+        /// header flag. This can only TIGHTEN the launch to metered (see LaunchItem); a build can
+        /// never self-declare `--network unmetered` to escape a Rental gate. Parsing is limited to
+        /// the first line, the same header-flag convention EditBuildPromptDialog uses. A missing/
+        /// blank/`unmetered` flag returns false so the live global toggle is authoritative.</summary>
+        private static bool HeaderFlagSaysMetered(string? prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt)) return false;
+            int nl = prompt.IndexOf('\n');
+            string firstLine = nl == -1 ? prompt : prompt.Substring(0, nl);
+            var m = System.Text.RegularExpressions.Regex.Match(
+                firstLine, @"--network\s+(\S+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return m.Success && string.Equals(m.Groups[1].Value, "metered", StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>Git #1371 — the provisioning name/id for a build's isolated worktree. Uses the
         /// queue row id (globally unique, stable across a Reply/resume of the same row) plus the
         /// GitHub number when known, giving a readable branch/path (agent/&lt;name&gt;, C:\wt\&lt;name&gt;).</summary>
@@ -1278,6 +1293,27 @@ namespace BuildConsole.Services
                     ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) routed to the SECONDARY Claude account — CLAUDE_CONFIG_DIR={secondaryDir}" +
                         (hadOAuthToken || hadApiKey ? $" (stripped inherited {(hadOAuthToken ? "CLAUDE_CODE_OAUTH_TOKEN" : "")}{(hadOAuthToken && hadApiKey ? " + " : "")}{(hadApiKey ? "ANTHROPIC_API_KEY" : "")} so the secondary config dir's own session is actually used)" : "") + ".");
                 }
+            }
+
+            // Git #1986 — Home/Rental network gate. Inject BUILD_NETWORK into EVERY launched
+            // build so the session can read whether it's on Shane's capped Verizon connection.
+            // The value is taken from the LIVE global location toggle at launch time
+            // (BuildConsoleSettings.CurrentNetworkIsMetered), so it always reflects where the
+            // machine actually is NOW — never a stale queued-time value. A build's own
+            // `--network metered` header flag can TIGHTEN this to metered even when the global
+            // toggle is Home, but can NEVER loosen it: a build cannot self-declare "unmetered"
+            // to escape a Rental gate — that would be exactly the agent self-override the gate
+            // forbids. This is a signal an agent READS, never one it can flip to grant itself an
+            // exception. The .pnpmfile.cjs metered-install refusal at the repo root reads the same
+            // BUILD_NETWORK, catching a `pnpm install` an agent shell runs that this UI can't see.
+            {
+                bool globalMetered = BuildConsoleSettings.CurrentNetworkIsMetered();
+                bool flagMetered = HeaderFlagSaysMetered(item.Prompt);
+                bool metered = globalMetered || flagMetered;
+                envOverrides["BUILD_NETWORK"] = metered ? "metered" : "unmetered";
+                ActivityLog.Log("watcher",
+                    $"Queue #{item.Id} launched with BUILD_NETWORK={(metered ? "metered" : "unmetered")} (location {(globalMetered ? "Rental" : "Home")}" +
+                    (flagMetered && !globalMetered ? ", forced metered by --network flag" : "") + ").");
             }
 
             // Git #826 — a Reply resumes the ORIGINAL session instead of

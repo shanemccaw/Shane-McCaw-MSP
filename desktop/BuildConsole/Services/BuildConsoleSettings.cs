@@ -215,6 +215,37 @@ namespace BuildConsole.Services
                 ? "secondary"
                 : "primary";
 
+        // ── Git #1986 — Home/Rental location switch (gate metered network ops) ──────
+        // Shane splits time between a fibre "Home" connection (bandwidth a non-issue)
+        // and a capped Verizon "Rental" connection where a large download is a real,
+        // metered cost. This is a MANUAL, explicit, persisted switch — NEVER auto-
+        // detected (a wrong guess that silently enabled heavy downloads on the capped
+        // line is exactly the failure being prevented). Same field-initializer-as-
+        // default / %AppData%\BuildConsole\settings.json convention as DefaultAccount
+        // above. The default is "Home" (unmetered) in EVERY ambiguous case — a missing
+        // key, and a corrupt settings.json (Load()'s catch returns a fresh instance) —
+        // so the app never silently starts throttling. Only "Rental" (case-insensitive)
+        // is treated as metered; anything else, including blank/garbage, reads as Home.
+        //
+        // The gate this drives: BUILD_NETWORK=metered|unmetered injected into every
+        // launched build (QueueWatcherService.LaunchItem), the `--network` header flag,
+        // the .pnpmfile.cjs metered-install refusal at the repo root, and the one-shot
+        // per-operation override on the version-update deploy. The override is a UI
+        // action only and NEVER flips this field — see MainWindow's metered-override
+        // handling. There is deliberately no env var / settings key / build-prompt flag
+        // an agent can set to grant itself an exception.
+
+        /// <summary>Git #1986 — the persisted location: "Home" (fibre, unmetered) or "Rental" (capped Verizon, metered). Default "Home". Never auto-detected. Only "Rental" (case-insensitive) means metered; every other value, including a missing/corrupt setting, reads as Home so the app never silently throttles.</summary>
+        public string LocationMode { get; set; } = "Home";
+
+        /// <summary>True when the persisted <see cref="LocationMode"/> is "Rental" (the capped, metered connection). Every ambiguous case (blank, unknown value, missing/corrupt settings.json) returns false — Home/unmetered — so the app never silently starts throttling.</summary>
+        public static bool CurrentNetworkIsMetered() =>
+            string.Equals(Load().LocationMode, "Rental", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Git #1986 — the value BuildConsole injects as BUILD_NETWORK into every launched build: "metered" when Rental, else "unmetered".</summary>
+        public static string CurrentNetworkLabel() =>
+            CurrentNetworkIsMetered() ? "metered" : "unmetered";
+
         // ── Git #937 (Epic #803) — always-on-top Sticky Notes floaty ──────────
         // Shane: "a floaty sticky notes... take notes for... Then I should be
         // able to send what I note down into a Claude chat that I'm typing into

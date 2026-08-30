@@ -26,10 +26,15 @@ namespace BuildConsole.Controls
         private string _varSearchQuery = "";
         private readonly HashSet<string> _revealedVariables = new(StringComparer.OrdinalIgnoreCase);
 
+        // Git #1986 — guards LocationModeCombo's SelectionChanged from firing a spurious
+        // save/log while the constructor seeds the control's initial value.
+        private bool _loadingSettings;
+
         public SettingsTabView()
         {
             InitializeComponent();
 
+            _loadingSettings = true;
             var savedSettings = BuildConsoleSettings.Load();
             GitHubPatBox.Password = savedSettings.GitHubPat;
             GitHubPatPlainBox.Text = savedSettings.GitHubPat;
@@ -65,6 +70,14 @@ namespace BuildConsole.Controls
 
             EncouragementCrittersEnabledCheck.IsChecked = savedSettings.EncouragementCrittersEnabled;
 
+            // Git #1986 — Home/Rental location gate. Only "Rental" (case-insensitive) reads as
+            // metered; every other value, including a missing/corrupt setting, seeds Home (index 0),
+            // per the Home-is-the-safe-default rule.
+            LocationModeCombo.SelectedIndex =
+                BuildConsoleSettings.CurrentNetworkIsMetered() ? 1 : 0;
+
+            _loadingSettings = false;
+
             RenderWebToolsSettingsList();
             RenderUserAccountsSettingsList();
 
@@ -93,6 +106,25 @@ namespace BuildConsole.Controls
             var settings = BuildConsoleSettings.Load();
             settings.EncouragementCrittersEnabled = EncouragementCrittersEnabledCheck.IsChecked == true;
             settings.Save();
+        }
+
+        /// <summary>Git #1986 — persists the Home/Rental location and refreshes the title-bar
+        /// Location toggle live so both controls always agree. Index 1 = Rental (metered), index 0
+        /// = Home (unmetered, the safe default). Guarded against the constructor's seeding.</summary>
+        private void LocationModeCombo_Changed(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (_loadingSettings) return;
+            var settings = BuildConsoleSettings.Load();
+            bool metered = LocationModeCombo.SelectedIndex == 1;
+            settings.LocationMode = metered ? "Rental" : "Home";
+            settings.Save();
+            LocationModeSavedText.Text = metered
+                ? "Saved — Rental (metered). Network-heavy work is now gated."
+                : "Saved — Home (unmetered).";
+            ActivityLog.Log("system.core",
+                $"Location set from Settings to {(metered ? "RENTAL (metered)" : "HOME (unmetered)")}.");
+            // Keep the title-bar toggle in sync live (it reflects the same LocationMode field).
+            try { (Application.Current?.MainWindow as BuildConsole.MainWindow)?.RefreshLocationToggle(); } catch { /* best-effort */ }
         }
 
         public void Initialize(BuildTrackerApiClient? api)
