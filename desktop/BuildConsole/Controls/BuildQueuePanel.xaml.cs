@@ -1192,8 +1192,19 @@ namespace BuildConsole.Controls
                 bucket.Add(n);
             }
 
+            // Git #1825 — Shane: an entirely-blocked build set (every node blocked)
+            // was rendering above a set with real active work happening, because
+            // buildSetOrder above is pure first-seen order with zero awareness of
+            // status. Re-sort it (stably — OrderBy preserves first-seen order as the
+            // tiebreaker) so any set containing at least one non-blocked/active node
+            // renders before a set where every node is blocked. This only reorders
+            // which build-set SECTION comes first; OrderByDependency itself and the
+            // node order/lane assignment within a single set (#1760) are untouched.
+            var orderedBuildSets = buildSetOrder
+                .OrderBy(setName => buildSetBuckets[setName].All(n => n.IsBlocked) ? 1 : 0);
+
             _currentGraphNodes.AddRange(OrderByDependency(ungroupedNodes));
-            foreach (var setName in buildSetOrder)
+            foreach (var setName in orderedBuildSets)
                 _currentGraphNodes.AddRange(OrderByDependency(buildSetBuckets[setName]));
 
             QueueEmptyText.Visibility = _currentGraphNodes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
