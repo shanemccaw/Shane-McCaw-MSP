@@ -1001,8 +1001,9 @@ namespace BuildConsole.Services
         /// CancelAsync already made by accepting 'limit-paused' alongside 'queued').
         /// Verifying items are deliberately NOT included — that work is already done
         /// and only waiting on GitHub to close; parking it would be a confusing
-        /// state. Running items aren't included either — Stop/Cancel is the correct
-        /// action there, not Park.
+        /// state. Running items go through <see cref="ParkRunningAsync"/> instead,
+        /// which also stops the process and preserves the session for resume — see
+        /// that method's own doc for why it's a separate path, not folded in here.
         ///
         /// No label sync here, unlike UnparkAsync — this deliberately mirrors
         /// QueueBuildAsync's own stance (see its `!park` guard above): a parked item
@@ -1021,6 +1022,42 @@ namespace BuildConsole.Services
                  WHERE id     = @id
                    AND status IN ('queued', 'limit-paused')", conn);
             cmd.Parameters.AddWithValue("@id", id);
+            var rowsAffected = await cmd.ExecuteNonQueryAsync();
+            return rowsAffected > 0;
+        }
+
+        /// <summary>
+        /// Park a RUNNING build — Shane: "sometimes a build agent decides it cannot
+        /// continue until something is unblocked" (waiting on another issue/PR, a
+        /// missing credential, a product decision, etc). Right-clicking a running
+        /// build's "Park" pulls it straight out of the active queue into the same
+        /// staging area <see cref="ParkAsync"/> uses for queued/limit-paused rows,
+        /// so it stops competing for a Build Watch slot until the blocker clears —
+        /// but unlike Stop/Cancel (which mark the row failed/canceled and abandon
+        /// the conversation) this preserves resume_session_id, so Un-park later
+        /// resumes the exact session (`claude --resume`) instead of starting the
+        /// prompt over. The caller (BuildQueuePanel) stops the actual process
+        /// first via QueueWatcherService.TryStop and passes along whatever session
+        /// id it captured (item.SessionId, falling back to the watcher's live one);
+        /// this just does the DB half. Only fires from 'running' — a stale
+        /// double-click after the build already finished is a safe no-op.
+        /// </summary>
+        public async Task<bool> ParkRunningAsync(int id, string? sessionId)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status            = 'parked',
+                       claimed_at        = NULL,
+                       session_id        = COALESCE(@sessionId, session_id),
+                       resume_session_id = COALESCE(resume_session_id, @sessionId, session_id),
+                       updated_at        = NOW(),
+                       build_pid            = NULL,
+                       build_pid_started_at = NULL
+                 WHERE id     = @id
+                   AND status = 'running'", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@sessionId", (object?)sessionId ?? DBNull.Value);
             var rowsAffected = await cmd.ExecuteNonQueryAsync();
             return rowsAffected > 0;
         }

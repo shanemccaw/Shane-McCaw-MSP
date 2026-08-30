@@ -3318,6 +3318,45 @@ namespace BuildConsole.Controls
                     await RefreshAsync();
                 };
                 cm.Items.Add(miStop);
+
+                // Shane: "sometimes a build agent decides it cannot continue until
+                // something is unblocked" — a real mid-session state, distinct from
+                // Stop (marks it failed/canceled, abandons the conversation). Park
+                // stops the process but preserves resume_session_id and stages the
+                // row in the same 'parked' lot as queued/limit-paused Park, so it's
+                // out of the active queue until the blocker clears and Un-park (or
+                // "I tell it to build again") resumes the exact session.
+                var miParkRunning = new MenuItem { Header = "🅿️ Park (blocked on something else)" };
+                miParkRunning.Click += async (_, _) =>
+                {
+                    if (_db == null)
+                    {
+                        ToastEngine.Warning("Park", "No direct DB connection — can't park.");
+                        return;
+                    }
+                    string? sid = !string.IsNullOrWhiteSpace(item.SessionId)
+                        ? item.SessionId
+                        : _watcher?.GetSessionId(item.Id);
+                    _watcher?.TryStop(item.Id);
+                    _watcher?.ReleaseInteractive(item.Id);
+                    try
+                    {
+                        if (await _db.ParkRunningAsync(item.Id, sid))
+                        {
+                            ToastEngine.Success("Parked", $"Stopped and staged for later: {item.Title}");
+                            ActivityLog.Log("build-queue", $"Parked running queue item #{item.Id} ({item.Title}) — stopped and staged" +
+                                (string.IsNullOrWhiteSpace(sid) ? ", no session id captured so Un-park will start it over." : "; Un-park will resume its session."));
+                        }
+                        else
+                            ToastEngine.Warning("Park", $"No longer running: {item.Title}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Park Failed", $"Couldn't park: {ex.Message}");
+                    }
+                    await RefreshAsync();
+                };
+                cm.Items.Add(miParkRunning);
             }
             else if (item.Status == "queued")
             {
