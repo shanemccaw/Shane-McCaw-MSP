@@ -112,6 +112,14 @@ export async function runSopForCustomer(opts: {
   variables?: Record<string, string>;
   operator: string;
   origin?: MspSopRunOrigin;
+  /**
+   * #1548/#1550 — the `standing_policies.id` this run enacts, when
+   * `origin === "policy"`. Persisted onto `msp_sop_runs.standing_policy_id`,
+   * the enactment record a policy-invoked run is traced back through. #1548
+   * added that column; this is where it actually gets set — every other
+   * origin leaves it null.
+   */
+  standingPolicyId?: number;
   triggeredBy?: string;
   changeRequestAuthorization?: { changeRequestId: number };
 }): Promise<RunSopResult> {
@@ -232,6 +240,7 @@ export async function runSopForCustomer(opts: {
         targetEntity,
         operator: opts.operator,
         origin: opts.origin ?? "manual",
+        standingPolicyId: opts.standingPolicyId ?? null,
         startedAt: now.toISOString(),
         status: "In Progress",
         currentStepIndex: 0,

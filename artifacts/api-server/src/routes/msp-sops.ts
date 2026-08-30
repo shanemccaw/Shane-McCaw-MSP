@@ -7,6 +7,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { runSopForCustomer, SopExecutionError, type SopExecutionErrorCode } from "../lib/sop-execution.ts";
+import { raisePolicyEnactmentChangeRequest } from "../lib/policy-enactment.ts";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -53,6 +54,17 @@ const runSopSchema = z.object({
   // #1497 — an approved Change Request authorizes this write against a live
   // tenant. Optional only for a testbed customer.
   changeRequestId: z.number().int().positive().optional(),
+  // #1550 — origin "policy" never carries a pre-existing changeRequestId
+  // (rejected above by the schema's refine); it raises its OWN
+  // auto-approved change request from the named standing policy's bound
+  // catalog item, inheriting that item's real approver.
+  standingPolicyId: z.number().int().positive().optional(),
+}).refine((d) => d.origin !== "policy" || d.standingPolicyId != null, {
+  message: "origin 'policy' requires standingPolicyId",
+  path: ["standingPolicyId"],
+}).refine((d) => !(d.origin === "policy" && d.changeRequestId != null), {
+  message: "origin 'policy' raises its own auto-approved change request from the policy's catalog item — do not pass changeRequestId",
+  path: ["changeRequestId"],
 });
 
 const createSopRunSchema = z.object({
@@ -209,18 +221,41 @@ router.post(
         return;
       }
 
+      const operator = parsedBody.data.operator ?? req.user?.email ?? "unknown";
+
+      // #1550 — origin "policy" never carries a pre-existing changeRequestId
+      // (rejected above by the schema's refine); it raises its OWN
+      // auto-approved standard CR from the named policy's bound catalog item,
+      // inheriting that item's real approver. "Approve once, execute many"
+      // applied to policy enactments — no per-instance manual approval, but a
+      // real, complete change record every time.
+      let changeRequestId = parsedBody.data.changeRequestId ?? null;
+      if (parsedBody.data.origin === "policy") {
+        const raised = await raisePolicyEnactmentChangeRequest({
+          mspId,
+          standingPolicyId: parsedBody.data.standingPolicyId!,
+          customerId: parsedBody.data.customerId,
+          targetDescription: (parsedBody.data.targetEntity ?? "").trim() || `SOP ${sopId} run`,
+          requestedBy: operator,
+        });
+        if (!raised.ok) {
+          apiError(res, 409, ApiErrorCode.CONFLICT, `Cannot enact standing policy: ${raised.reason}`);
+          return;
+        }
+        changeRequestId = raised.changeRequestId;
+      }
+
       const result = await runSopForCustomer({
         mspId,
         sopId,
         customerId: parsedBody.data.customerId,
         targetEntity: parsedBody.data.targetEntity,
         variables: parsedBody.data.variables,
-        operator: parsedBody.data.operator ?? req.user?.email ?? "unknown",
+        operator,
         origin: parsedBody.data.origin,
+        standingPolicyId: parsedBody.data.standingPolicyId,
         triggeredBy: `sop:${sopId}:customer:${parsedBody.data.customerId}:operator:${req.user?.id ?? "unknown"}`,
-        ...(parsedBody.data.changeRequestId != null
-          ? { changeRequestAuthorization: { changeRequestId: parsedBody.data.changeRequestId } }
-          : {}),
+        ...(changeRequestId != null ? { changeRequestAuthorization: { changeRequestId } } : {}),
       });
 
       res.status(202).json({
