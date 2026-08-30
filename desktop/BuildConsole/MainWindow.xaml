@@ -395,6 +395,37 @@
                                 Padding="6,4">
                             <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource BlueBrush}"/>
                         </Button>
+                        <!-- Git #1872 - Batter Up and AI Batter Up moved out of the queue column
+                             into their own document tabs (MainWindow.BatterUpTabs.cs); these two
+                             buttons open/focus them and carry a live count fed by each panel's
+                             CountChanged event - no new GitHub polling, no new timer. The count
+                             stays visible at 0 (calm, not hidden) rather than disappearing. -->
+                        <Button x:Name="BtnBatterUp"
+                                AutomationProperties.AutomationId="BtnBatterUp"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Batter Up"
+                                Click="BtnBatterUp_Click"
+                                Padding="6,4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚾" FontSize="12" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TopBatterUpCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                           Margin="4,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="BtnAiBatterUp"
+                                AutomationProperties.AutomationId="BtnAiBatterUp"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="AI Batter Up"
+                                Click="BtnAiBatterUp_Click"
+                                Padding="6,4">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🔍" FontSize="12" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TopAiBatterUpCount" Text="0" FontSize="10.5" FontWeight="SemiBold"
+                                           Margin="4,0,0,0" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Subtext0Brush}"/>
+                            </StackPanel>
+                        </Button>
                         <Button Style="{StaticResource IconButton}"
                                 ToolTip="Toggle Primary Side Bar (Ctrl+B)"
                                 Click="ToggleSidebar_Click"
@@ -992,7 +1023,11 @@
                               VerticalAlignment="Stretch"
                               ShowsPreview="False"/>
 
-                <!-- ── Build Queue column: AI Batter Up review (Git #1710) + Batter Up (Git #1709) above the existing Build Queue Panel ──
+                <!-- ── Build Queue column: Dispatch above the existing Build Queue Panel ──
+                     Git #1872 — AI Batter Up (#1710) and Batter Up (#1709) moved out of this
+                     column entirely into their own title-bar-launched document tabs (see
+                     MainWindow.BatterUpTabs.cs); #1834's build-set rollup, docked at the top
+                     of BuildQueuePanel, already occupies the space they vacated.
                      Git #1831 - Margin="0,0,8,0" pulls the whole column (and its outer
                      scrollbar) 8px in from the literal window right edge, which the
                      scrollbar previously rendered flush against - confirmed via
@@ -1002,8 +1037,6 @@
                      through onto the adjacent monitor; now it lands on this panel. -->
                 <DockPanel Grid.Column="5" LastChildFill="True" Margin="0,0,8,0">
                     <ctrl:DispatchPanel x:Name="DispatchPanel" DockPanel.Dock="Top"/>
-                    <ctrl:AiBatterUpPanel x:Name="AiBatterUpPanel" DockPanel.Dock="Top"/>
-                    <ctrl:BatterUpPanel x:Name="BatterUpPanel" DockPanel.Dock="Top"/>
                     <ctrl:BuildQueuePanel x:Name="BuildQueuePanel"/>
                 </DockPanel>
 
