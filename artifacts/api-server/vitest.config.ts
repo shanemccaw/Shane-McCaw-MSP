@@ -7,6 +7,7 @@ export default defineConfig({
       "src/lib/drift-check-specs.test.ts",
       "src/lib/retainer-hours.test.ts",
       "src/lib/remediation-catalog.test.ts",
+      "src/lib/graph-write-permissions.test.ts",
       "src/lib/portal-message-center.test.ts",
       "src/lib/portal-pii-governance.test.ts",
       "src/lib/doc-gate-coverage.test.ts",

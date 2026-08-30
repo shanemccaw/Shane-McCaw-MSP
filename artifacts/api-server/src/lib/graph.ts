@@ -5,8 +5,12 @@ import { eq, ne, and, or, gt, isNull, sql } from "drizzle-orm";
 import { simulatorStorage } from "./simulator-events";
 import { createAuditLog } from "./audit";
 import { annotateCapturedResponse, recordOutgoingGraphRequest } from "./graph-request-capture";
+import { DERIVED_WRITE_APP_PERMISSIONS } from "./graph-write-permissions";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
+
+/** Microsoft Graph's own service principal appId — the resource app roles are defined on. */
+const MICROSOFT_GRAPH_RESOURCE_APP_ID = "00000003-0000-0000-c000-000000000000";
 
 /**
  * Merge a partial consent record into ONE key of `tenants.consent`, leaving the
@@ -113,65 +117,38 @@ export const REQUIRED_MT_SCOPES = [
 
 export type MtScope = typeof REQUIRED_MT_SCOPES[number];
 
-// ── Write App Registration permissions (#475) ──────────────────────────────────
+// ── Write App Registration permissions (#475, rewritten by #1875) ─────────────
 //
-// The Application permissions configured on the SEPARATE write app
-// (MT_APP_WRITE_CLIENT_ID — appId 3308b280-e41e-42ba-9f73-73aac2ad3dee,
-// "Shane McCaw Consulting — MSP Platform (Write)"), mirrored here the same way
-// REQUIRED_MT_SCOPES mirrors the read app and REQUIRED_SHAREPOINT_APP_PERMISSIONS
-// mirrors the SharePoint resource, so the assessment flow can show a buyer what
-// they are about to approve before they click through to Microsoft.
+// The Application permissions the SEPARATE write app (MT_APP_WRITE_CLIENT_ID)
+// must hold, shown to a buyer in the assessment flow before they approve the
+// write consent, the same way REQUIRED_MT_SCOPES covers the read app.
 //
-// These values were read off the live App Registration by Shane (2026-08-06) and
-// transcribed verbatim. They are NOT derivable from anywhere in this repo, and
-// nothing here should try to derive them: the write consent uses Microsoft's v2
+// #1875 CHANGED WHERE THIS COMES FROM. It used to be a hand-typed TRANSCRIPTION
+// of whatever the Entra registration happened to declare, carrying its own
+// comment admitting it "can drift silently if the app registration is edited."
+// It had drifted, and it was also incomplete: it listed 4 permissions while the
+// four executable Config Packs need 16, which is why quickstart-v1 could not
+// complete a single write even after step 1's permission was granted.
+//
+// It is now DERIVED — a union over lib/graph-write-permissions.ts, which maps
+// every real write this platform issues to the application permission Microsoft
+// documents for that exact method + path, with a justification naming the step.
+// The transcription step, and with it the whole drift class, is gone: the list
+// cannot disagree with the code that issues the writes, because it is computed
+// from it.
+//
+// Deriving it does NOT grant it. The write consent uses Microsoft's v2
 // /adminconsent flow, which passes NO scope parameter (see buildAdminConsentUrl
-// below) — it grants whatever the registration already declares in Entra. The
-// code's own write call sites tell you what the app NEEDS, not what it HAS, and
-// `tenants.consent.writeBack` is not a source either (the write callback
-// deliberately records no `grants` snapshot).
-//
-// So this array is a TRANSCRIPTION, and it can drift silently if the app
-// registration is edited. It is shown to paying customers next to Microsoft's
-// own consent screen, which would visibly disagree with it. Re-check it against:
-//   Entra admin center → App registrations → "Shane McCaw Consulting — MSP
-//   Platform (Write)" (3308b280-e41e-42ba-9f73-73aac2ad3dee) → API permissions
-// whenever that registration changes.
+// below) — it grants whatever the REGISTRATION declares in Entra. So this array
+// and the registration must be kept in step; `scripts/azure/
+// apply-write-app-permissions-1875.mjs` writes this exact set to the
+// registration and admin-consents it, and is the supported way to do that.
 //
 // An empty array is a supported state, not a broken one:
 // /api/public/flow/write-consent-url returns `permissions: []` and the flow's
 // write-consent step renders its explanation copy with no permission panel at
 // all — showing nothing beats showing a list that is wrong.
-export const REQUIRED_WRITE_APP_PERMISSIONS: readonly string[] = [
-  // Manage app registrations — the write app's own reach over directory objects.
-  "Application.ReadWrite.All",
-  // Create the Entra security group that dlp-role-group-provisioning.ts assigns
-  // to the Purview role group. Group.Create makes the calling app the created
-  // group's OWNER, which is what lets that chain then add the read app's service
-  // principal to the group it just created without a broader Group.ReadWrite.All.
-  "Group.Create",
-  // Assign a built-in directory role to a principal — #1130's Global Reader
-  // grant (global-reader-role-provisioning.ts) assigns the READ app's service
-  // principal the tenant-wide Global Reader role via
-  // /roleManagement/directory/roleAssignments. This is the ONLY permission that
-  // makes that write possible, and it lives on the WRITE app deliberately so the
-  // READ app never carries a role-management write scope. TRANSCRIPTION NOTE
-  // (same caveat as the whole array above): Shane must add this permission to
-  // the live write app registration in Entra and admin-consent it — this array
-  // only mirrors the manifest for the assessment consent screen, it does not
-  // grant anything by itself.
-  "RoleManagement.ReadWrite.Directory",
-  // Create, restore, and manage user objects — every baseline action template
-  // that touches a user needs this: action.restore-deleted-user (undelete a
-  // removed account), action.admin-set-password (force-reset a credential),
-  // and any revokeSignInSessions-backed remediation (kills a compromised
-  // user's active sessions). Without it those templates always 403 with
-  // Authorization_RequestDenied in production, even after Shane manually
-  // grants the permission in Entra, because a fresh tenant's write-consent
-  // grant is driven by THIS array (#1328 — found via #1317's real 403 and
-  // confirmed against #1323's revokeSignInSessions test).
-  "User.ReadWrite.All",
-];
+export const REQUIRED_WRITE_APP_PERMISSIONS: readonly string[] = DERIVED_WRITE_APP_PERMISSIONS;
 
 export function graphCredentialsPresent(): boolean {
   return Boolean(
@@ -1126,6 +1103,111 @@ export async function graphWriteForTenant(
 
   const text = await res.text();
   return { success: false, status: res.status, errorType: "unexpected", data: text };
+}
+
+// ── Live write-permission consent state (#1875) ────────────────────────────────
+
+export interface GrantedWritePermissions {
+  /** The write app whose consent was read. */
+  writeAppId: string;
+  /** Its service principal object id in this tenant, or null if it has none. */
+  servicePrincipalId: string | null;
+  /**
+   * Graph application permissions actually admin-consented on that service
+   * principal in THIS tenant — read from Entra, not from any local record.
+   */
+  granted: string[];
+  /** Set when the state could not be read; `granted` is then empty and unusable. */
+  error: string | null;
+}
+
+const writePermissionCache = new Map<string, { value: GrantedWritePermissions; expiresAt: number }>();
+const WRITE_PERMISSION_TTL_MS = 60_000;
+
+/**
+ * Read which Graph application permissions the WRITE app actually holds in a
+ * customer's tenant.
+ *
+ * This is the ground truth behind the "write refused by tenant permissions"
+ * state (#1875): `tenants.consent.writeBack = granted` only records that the
+ * admin completed the consent redirect, NOT which permissions the registration
+ * declared at that moment. A tenant can be `granted` and still 403 every write,
+ * which is exactly what happened on run 30301 — so a surface that offers a
+ * "Run for REAL" button must consult this, not the consent flag.
+ *
+ * Read via the READ app (`graphFetchForTenant`), which carries
+ * Application.Read.All / Directory.Read.All. Never writes. Never throws —
+ * failures come back on `.error` so a caller can render an honest unknown state
+ * rather than a falsely-green one.
+ */
+export async function getGrantedWriteAppPermissionsForTenant(
+  tenantId: string,
+): Promise<GrantedWritePermissions> {
+  const writeAppId = process.env.MT_APP_WRITE_CLIENT_ID ?? "";
+  const cacheKey = `${tenantId}:${writeAppId}`;
+  const cached = writePermissionCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.value;
+
+  const base: GrantedWritePermissions = {
+    writeAppId,
+    servicePrincipalId: null,
+    granted: [],
+    error: null,
+  };
+
+  if (!writeAppId) {
+    return { ...base, error: "MT_APP_WRITE_CLIENT_ID is not configured" };
+  }
+
+  try {
+    // The write app's service principal (Enterprise Application) in this tenant.
+    const spRes = await graphFetchForTenant(
+      tenantId,
+      `/servicePrincipals(appId='${encodeURIComponent(writeAppId)}')?$select=id`,
+    );
+    if (spRes.status === 404) {
+      const value = { ...base, error: "The write app has no service principal in this tenant — write consent has never been completed here" };
+      writePermissionCache.set(cacheKey, { value, expiresAt: Date.now() + WRITE_PERMISSION_TTL_MS });
+      return value;
+    }
+    if (!spRes.ok) {
+      return { ...base, error: `Could not read the write app's service principal (${spRes.status})` };
+    }
+    const sp = (await spRes.json()) as { id: string };
+
+    // Microsoft Graph's own service principal, to resolve appRoleId → name.
+    const graphSpRes = await graphFetchForTenant(
+      tenantId,
+      `/servicePrincipals(appId='${MICROSOFT_GRAPH_RESOURCE_APP_ID}')?$select=id,appRoles`,
+    );
+    if (!graphSpRes.ok) {
+      return { ...base, servicePrincipalId: sp.id, error: `Could not read Microsoft Graph app roles (${graphSpRes.status})` };
+    }
+    const graphSp = (await graphSpRes.json()) as { id: string; appRoles: Array<{ id: string; value: string }> };
+    const roleNameById = new Map(graphSp.appRoles.map((r) => [r.id, r.value]));
+
+    const asgRes = await graphFetchForTenant(
+      tenantId,
+      `/servicePrincipals/${sp.id}/appRoleAssignments?$top=200`,
+    );
+    if (!asgRes.ok) {
+      return { ...base, servicePrincipalId: sp.id, error: `Could not read the write app's granted permissions (${asgRes.status})` };
+    }
+    const asg = (await asgRes.json()) as { value: Array<{ appRoleId: string; resourceId: string }> };
+
+    const granted = asg.value
+      .filter((a) => a.resourceId === graphSp.id)
+      .map((a) => roleNameById.get(a.appRoleId))
+      .filter((v): v is string => Boolean(v))
+      .sort();
+
+    const value: GrantedWritePermissions = { writeAppId, servicePrincipalId: sp.id, granted, error: null };
+    writePermissionCache.set(cacheKey, { value, expiresAt: Date.now() + WRITE_PERMISSION_TTL_MS });
+    return value;
+  } catch (err) {
+    log.warn({ err, tenantId, writeAppId }, "getGrantedWriteAppPermissionsForTenant: read failed");
+    return { ...base, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 async function graphFetch(path: string, options: RequestInit = {}): Promise<Response> {
