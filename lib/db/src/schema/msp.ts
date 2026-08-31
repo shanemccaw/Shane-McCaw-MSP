@@ -7460,3 +7460,86 @@ export type PsCapabilitySurveyRun = typeof psCapabilitySurveyRunsTable.$inferSel
 export type InsertPsCapabilitySurveyRun = typeof psCapabilitySurveyRunsTable.$inferInsert;
 export type PsCapabilitySurveyResult = typeof psCapabilitySurveyResultsTable.$inferSelect;
 export type InsertPsCapabilitySurveyResult = typeof psCapabilitySurveyResultsTable.$inferInsert;
+
+/**
+ * policy_decisions (Git #2024) — Policy Decisions' OWN table, own primary key,
+ * own lifecycle. Decided on #1528 (2026-08-31): a policy decision and a risk
+ * decision looked like the same shape, but #1528 settled that they are two
+ * objects that will grow divergent fields — split now rather than unwind a
+ * shared table later. Do NOT fold this back into `mspRiskDecisionsTable` as a
+ * `decisionState` discriminator; that was the option #1528 explicitly rejected.
+ *
+ * This table's own create path can start from "we've decided X" with no risk
+ * or finding required first (#1528) — unlike `msp_risk_decisions`, which only
+ * ever gets a row from a raised liability. There is deliberately no unsigned
+ * intermediate state: a row here IS a signed decision from the moment it
+ * exists, created by the one combined create/sign-off endpoint
+ * (`portal-policy-decisions.ts`) — matching the "Sign it off" form's own
+ * fields (owner / review cadence / compensating control) plus the signature
+ * fields the Risk Register's accept flow already established (typed name,
+ * server-set timestamp, statement, IP + hash for the same audit rigor).
+ *
+ * `decisionState`/`reviewState` reuse the exact vocabularies `msp_risk_decisions`
+ * already defined for this same concept (POLICY_DECISION_STATES /
+ * RISK_REVIEW_STATES below) — these are genuinely the same operational
+ * lanes, not a coincidence to preserve, so there is no reason to mint new enum
+ * values that mean the same thing.
+ */
+export const policyDecisionsTable = pgTable("policy_decisions", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+
+  title: text("title").notNull(),
+  /** The cited authority this decision is a documented deviation from, e.g.
+   * "GDPR Art. 5(1)(e)" — first-class per #1723, not a free-text note. */
+  obligation: text("obligation").notNull(),
+  pillar: text("pillar"),
+
+  owner: text("owner").notNull(),
+  /** RACI person key behind `owner`, matching the Risk Register's ownership chips. */
+  ownerId: text("owner_id"),
+  /** The "Sign it off" form's own `review` field — a cadence ("Quarterly",
+   * "Annual"), not a date. Free text: no fixed cadence vocabulary has been
+   * decided yet, and inventing one here would be exactly the kind of display
+   * vocabulary this schema's house style forbids. */
+  reviewCadence: text("review_cadence").notNull(),
+  /** The "Sign it off" form's own `control` field. */
+  compensatingControl: text("compensating_control").notNull(),
+
+  /** POLICY_DECISION_STATES. Starts `live` — a signed decision is live the
+   * moment it's created; there is no unsigned `proposed` row on this table. */
+  decisionState: text("decision_state").notNull().default("live"),
+  /** RISK_REVIEW_STATES. Starts `on_track`; nothing has computed a due date
+   * from `reviewCadence` yet, so `reviewDueAt` stays null until that exists —
+   * served as null rather than a guessed date, matching this schema's rule
+   * that an unscheduled review is null, never defaulted. */
+  reviewState: text("review_state").notNull().default("on_track"),
+  reviewDueAt: timestamp("review_due_at", { withTimezone: true }),
+
+  /** The name the customer TYPED at sign-off — same rigor as
+   * `msp_risk_decisions.clientApprover.name` / the accept flow's `fullName`. */
+  signedBy: text("signed_by").notNull(),
+  /** Server clock, never the client's — same guarantee as `acceptedAt`. */
+  signedAt: timestamp("signed_at", { withTimezone: true }).notNull(),
+  /** The exact confirmation sentence typed at sign-off, snapshotted so a later
+   * reword of the copy cannot rewrite what was agreed to. */
+  statement: text("statement").notNull(),
+  /** Same known limitation as `msp_risk_decisions.clientApprover.ipAddress`:
+   * behind Replit's proxy with no `trust proxy` configured, this is the
+   * proxy's loopback hop, not the customer's real address, until that app-wide
+   * setting is made. Recorded anyway — absent would be worse — but nothing
+   * should be inferred from it today. */
+  ipAddress: text("ip_address"),
+  signatureHash: text("signature_hash").notNull(),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("policy_decisions_msp_id_idx").on(t.mspId),
+  index("policy_decisions_tenant_id_idx").on(t.tenantId),
+  index("policy_decisions_msp_tenant_idx").on(t.mspId, t.tenantId),
+]);
+
+export type PolicyDecision = typeof policyDecisionsTable.$inferSelect;
+export type InsertPolicyDecision = typeof policyDecisionsTable.$inferInsert;
