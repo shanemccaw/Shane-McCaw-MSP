@@ -5744,6 +5744,47 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
    * time — so a later reword of the copy cannot rewrite what they agreed to. */
   acceptedStatement: text("accepted_statement"),
 
+  // ── Role-based acceptance authority (#1511, part of #1487) ─────────────────
+  //
+  // `clientApprover` above is EVIDENCE OF WHO SIGNED — a person: name, title,
+  // email, signedAt, ipAddress, signatureHash. It cannot also be what GRANTS
+  // the right to sign; people leave and change jobs, and the authority to
+  // accept risk must survive them. Authority resolves through the
+  // Ownership/RACI matrix (#1491): whoever currently holds Accountable (A) on
+  // the M365 workload this risk's `checkKey` resolves to (#1523's settled
+  // rule — RACI attaches to the service, findings inherit it, risks derive
+  // from findings). These four columns record BOTH ends of that resolution —
+  // the role/workload that authorised, and the individual who exercised it —
+  // alongside (never instead of) the human-signature evidence above.
+  //
+  // ALL NULLABLE. Null across all four when `checkKey` resolves to no workload
+  // (a free-standing liability record authored directly via `msp-rbd.ts`,
+  // never raised against an automated check, or raised against a cross-cutting
+  // check category — cost:*, appgov:*, governance:* etc — that is not one
+  // workload's accountability). That is the honest, unresolved case, not an
+  // error: the accept route falls back to its pre-#1511 behaviour (any
+  // `CustomerUser` may sign) for exactly this case, rather than inventing an
+  // authority this table cannot back up.
+  /** The authorising matrix object id, e.g. "wl-icam" — same id space
+   * `portal_ownership_assignments.object_id` / `workloadObject()` use. */
+  authorizingWorkloadId: text("authorizing_workload_id"),
+  /** Display label for the workload above, e.g. "Identity & Access (Entra ID)". */
+  authorizingWorkloadLabel: text("authorizing_workload_label"),
+  /**
+   * Every wire person id (`"u" + users.id`) that held Accountable on the
+   * workload above AT THE MOMENT THIS RISK WAS SIGNED — a point-in-time
+   * replay of `portal_ownership_events` (#1522), not a re-read of current
+   * state, so a later roster change cannot rewrite who actually had authority
+   * when this acceptance happened. "A can be multiple, all holding identical
+   * authority" (#1515) — this is the full set, not just the signer.
+   */
+  authorizingHolderPersonIds: jsonb("authorizing_holder_person_ids").$type<string[]>(),
+  /** The wire person id of whoever actually authenticated and signed — must be
+   * one of `authorizingHolderPersonIds` when that array is non-null. Distinct
+   * from `clientApprover.name` (a free-typed display string): this is the
+   * structured link back to the real account the accept request carried. */
+  signedByPersonId: text("signed_by_person_id"),
+
   // ── Change-Control ⟷ Risk pointers (#1514, part of #1487) ──────────────────
   //
   // The rejection-to-risk path: when a CUSTOMER rejects a Change Request they are

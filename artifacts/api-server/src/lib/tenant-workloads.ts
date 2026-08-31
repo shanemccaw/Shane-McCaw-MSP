@@ -102,6 +102,44 @@ export function resolveWorkloadForServicePlan(servicePlanName: string): Workload
   return WORKLOAD_BY_SERVICE_PLAN_NAME[servicePlanName] ?? null;
 }
 
+/**
+ * `monitor_checks.key` category prefixes, mapped to the SAME workload buckets
+ * above (Git #1511 — role-based risk-acceptance authority). The prefix is the
+ * check's own real, already-stored category (`identity:mfa-registration`,
+ * `exchange:distribution-list-count`), read verbatim off `monitor_checks.key` /
+ * `msp_risk_decisions.check_key` — not an invented taxonomy layered on top.
+ *
+ * A category with no single-workload owner (adoption, appgov, compliance,
+ * copilot, cost, governance, license/licensing, m365, platform, diagnostics —
+ * every one of them cross-cutting reporting or governance rather than one
+ * workload's accountability) is deliberately absent, resolving to null: the
+ * same "silence is the honest answer" rule `resolveWorkloadForServicePlan`
+ * follows for a service plan outside its map.
+ */
+const WORKLOAD_BY_CHECK_CATEGORY: Readonly<Record<string, WorkloadDefinition>> = {
+  exchange: { key: "exchange", label: "Exchange Online" },
+  sharepoint: { key: "sharepoint", label: "SharePoint & OneDrive" },
+  // OneDrive rides on the SharePoint service (see the service-plan map above) —
+  // folding its check category into the same workload is the same fact about
+  // Microsoft's own provisioning, not an invented merge.
+  onedrive: { key: "sharepoint", label: "SharePoint & OneDrive" },
+  teams: { key: "teams", label: "Teams" },
+  security: { key: "security", label: "Security (Defender)" },
+  identity: { key: "icam", label: "Identity & Access (Entra ID)" },
+  devices: { key: "endpoint", label: "Endpoint Management (Intune)" },
+};
+
+/**
+ * Resolves a `monitor_checks.key` (e.g. "identity:mfa-registration") to the
+ * workload whose Ownership/RACI matrix row carries risk-acceptance authority
+ * for it. Null for a check with no category prefix, or a category this map
+ * does not cover.
+ */
+export function resolveWorkloadForCheckKey(checkKey: string): WorkloadDefinition | null {
+  const prefix = checkKey.split(":")[0] ?? "";
+  return prefix ? (WORKLOAD_BY_CHECK_CATEGORY[prefix] ?? null) : null;
+}
+
 export interface EnabledServicePlanRow {
   readonly servicePlanId: string;
   readonly servicePlanName: string;

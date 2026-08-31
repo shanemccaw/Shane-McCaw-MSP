@@ -21,6 +21,7 @@ import {
   parseEnabledServicePlans,
   resolveWorkloadForServicePlan,
   groupEnabledServicePlansByWorkload,
+  resolveWorkloadForCheckKey,
 } from "./tenant-workloads.ts";
 
 /** The real /subscribedSkus shape, as Graph returns it. */
@@ -83,6 +84,30 @@ describe("resolveWorkloadForServicePlan", () => {
 
   it("returns null for a real but un-mapped plan name rather than guessing", () => {
     expect(resolveWorkloadForServicePlan("MESH_IMMERSIVE")).toBeNull();
+  });
+});
+
+describe("resolveWorkloadForCheckKey", () => {
+  it("maps a real monitor_checks.key category prefix to the same workload buckets", () => {
+    expect(resolveWorkloadForCheckKey("identity:mfa-registration")).toEqual({ key: "icam", label: "Identity & Access (Entra ID)" });
+    expect(resolveWorkloadForCheckKey("exchange:distribution-list-count")).toEqual({ key: "exchange", label: "Exchange Online" });
+    expect(resolveWorkloadForCheckKey("devices:encryption-status")).toEqual({ key: "endpoint", label: "Endpoint Management (Intune)" });
+  });
+
+  it("folds onedrive: into the same SharePoint & OneDrive workload as sharepoint:", () => {
+    expect(resolveWorkloadForCheckKey("onedrive:overshared-files")).toEqual({ key: "sharepoint", label: "SharePoint & OneDrive" });
+    expect(resolveWorkloadForCheckKey("sharepoint:external-sharing")).toEqual({ key: "sharepoint", label: "SharePoint & OneDrive" });
+  });
+
+  it("returns null for a cross-cutting category with no single-workload owner, rather than guessing", () => {
+    expect(resolveWorkloadForCheckKey("cost:unused-unassigned-licenses")).toBeNull();
+    expect(resolveWorkloadForCheckKey("appgov:stale-app-registrations")).toBeNull();
+    expect(resolveWorkloadForCheckKey("governance:anything")).toBeNull();
+  });
+
+  it("returns null for a key with no category prefix", () => {
+    expect(resolveWorkloadForCheckKey("no-colon-here")).toBeNull();
+    expect(resolveWorkloadForCheckKey("")).toBeNull();
   });
 });
 

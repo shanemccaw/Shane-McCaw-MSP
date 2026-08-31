@@ -215,6 +215,7 @@ export default defineConfig({
       "src/lib/cost-engine.test.ts",
       "src/lib/license-waste-source.test.ts",
       "src/lib/tenant-workloads.test.ts",
+      "src/lib/risk-authority.test.ts",
       "src/lib/license-waste-paid-seats.test.ts",
       "src/lib/license-sku-ledger.test.ts",
       "src/lib/m365-change-resolver.test.ts",

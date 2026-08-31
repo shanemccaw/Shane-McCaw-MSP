@@ -90,6 +90,16 @@ import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-sc
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
 import { formatChangeRequestCode } from "../lib/portal-change-control";
 import { logger } from "../lib/logger";
+import { personIdForUser } from "../lib/portal-ownership";
+import {
+  currentAHolderPersonIds,
+  namesForPersonIds,
+  resolveRiskAuthoritiesBatch,
+  resolveRiskWorkload,
+  type RiskAuthority,
+  type RiskAuthorityHolder,
+  type RiskAuthorizedBy,
+} from "../lib/risk-authority";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -127,6 +137,39 @@ interface WireAcceptance {
   readonly compensating: string | null;
   /** The exact sentence they ticked, snapshotted at accept time. */
   readonly statement: string | null;
+  /**
+   * Role-based acceptance authority (Git #1511) as of the moment this risk was
+   * signed — the workload whose Accountable role backed the signature, and
+   * every wire person id that held it at that instant, replayed from the
+   * ownership event log. Null when the risk's `checkKey` resolved to no
+   * workload (a free-standing liability record, or a cross-cutting check
+   * category) — the honest unresolved case, not an error.
+   */
+  readonly authorizedBy: WireRiskAuthority | null;
+}
+
+/** One current or point-in-time Accountable holder, for display. */
+interface WireRiskAuthorityHolder {
+  readonly personId: string;
+  readonly name: string;
+}
+
+/** The workload + holder set behind an authority resolution (current or
+ * point-in-time) — shared shape for `WireRisk.authority` and
+ * `WireAcceptance.authorizedBy`. */
+interface WireRiskAuthority {
+  readonly workloadId: string;
+  readonly workloadLabel: string;
+  readonly holders: readonly WireRiskAuthorityHolder[];
+}
+
+function toWireRiskAuthority(a: RiskAuthority | RiskAuthorizedBy | null): WireRiskAuthority | null {
+  if (!a) return null;
+  return {
+    workloadId: a.workload.objectId,
+    workloadLabel: a.workload.label,
+    holders: a.holders.map((h: RiskAuthorityHolder) => ({ personId: h.personId, name: h.name })),
+  };
 }
 
 /** One risk, in the shape the Risk Register page consumes. */
@@ -182,6 +225,13 @@ interface WireRisk {
    */
   readonly spawnedByChangeRequestCode: string | null;
   readonly dischargedByChangeRequestCode: string | null;
+  /**
+   * Role-based acceptance authority (Git #1511) — the workload this risk's
+   * `checkKey` resolves to, and who CURRENTLY holds Accountable there. This is
+   * "who may sign it right now", independent of whether it has been. Null
+   * when `checkKey` resolves to no workload.
+   */
+  readonly authority: WireRiskAuthority | null;
 }
 
 /** One policy decision — the same rows, read as documented policy positions. */
@@ -249,7 +299,12 @@ async function loadObligationTypes(obligationIds: readonly number[]): Promise<Ma
   return new Map(rows.map((r) => [r.obligationId, r.authorityType]));
 }
 
-function toWireRisk(row: RiskRow, obligationTypeById: Map<number, string>): WireRisk {
+function toWireRisk(
+  row: RiskRow,
+  obligationTypeById: Map<number, string>,
+  authority: RiskAuthority | null,
+  authorizedBy: RiskAuthorizedBy | null,
+): WireRisk {
   const acceptedAt = iso(row.acceptedAt);
   const approver = (row.clientApprover ?? null) as ClientApprover | null;
 
@@ -266,6 +321,7 @@ function toWireRisk(row: RiskRow, obligationTypeById: Map<number, string>): Wire
           why: row.rationale ?? null,
           compensating: compensatingSentence(row.compensatingControls),
           statement: row.acceptedStatement ?? null,
+          authorizedBy: toWireRiskAuthority(authorizedBy),
         }
       : undefined;
 
@@ -288,6 +344,7 @@ function toWireRisk(row: RiskRow, obligationTypeById: Map<number, string>): Wire
     evidence: row.evidence ?? null,
     controls: controlDescriptions(row.compensatingControls),
     plan: row.plan ?? null,
+    authority: toWireRiskAuthority(authority),
     ...(accepted ? { accepted } : {}),
     isAccepted: accepted !== undefined,
     liabilityValueUsd: row.liabilityValueUsd,
@@ -371,7 +428,13 @@ router.get(
       const obligationTypeById = await loadObligationTypes(
         rows.map((r) => r.obligationId).filter((id): id is number => id !== null),
       );
-      res.json({ risks: rows.map((row) => toWireRisk(row, obligationTypeById)) });
+      const { current, authorizedBy } = await resolveRiskAuthoritiesBatch(
+        scope.customerId,
+        rows.map((r) => ({ checkKey: r.checkKey, acceptedAt: r.acceptedAt })),
+      );
+      res.json({
+        risks: rows.map((row, i) => toWireRisk(row, obligationTypeById, current[i] ?? null, authorizedBy[i] ?? null)),
+      });
     } catch (err: unknown) {
       log.error({ err }, "GET /portal/risk-register failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
@@ -494,6 +557,45 @@ router.post(
         return;
       }
 
+      // ── Role-based acceptance authority (Git #1511) ────────────────────────
+      // Resolved from the finding's WORKLOAD, never from a per-risk assignment
+      // (#1523's settled rule). When `checkKey` resolves to a real workload,
+      // only a CURRENT Accountable holder on that workload may sign — any one
+      // of them, in any order, all carrying identical authority (#1515/#1517).
+      // A `checkKey` resolving to no workload (a free-standing liability
+      // record authored directly via `msp-rbd.ts`, or a cross-cutting check
+      // category) keeps the pre-#1511 behaviour: any `CustomerUser` may sign,
+      // because there is no workload to check authority against — the honest
+      // unresolved case, not a security hole this build introduces.
+      const workload = resolveRiskWorkload(existing.checkKey);
+      const signerPersonId = typeof req.user?.id === "number" ? personIdForUser(req.user.id) : null;
+      let authorizingHolderIds: string[] | null = null;
+
+      if (workload) {
+        const holderIds = await currentAHolderPersonIds(customerId, workload.objectId);
+        if (holderIds.length === 0) {
+          apiError(
+            res,
+            409,
+            ApiErrorCode.CONFLICT,
+            `No one currently holds Accountable authority for ${workload.label}. Assign an owner on the Ownership page before this risk can be accepted.`,
+          );
+          return;
+        }
+        if (!signerPersonId || !holderIds.includes(signerPersonId)) {
+          const names = await namesForPersonIds(customerId, holderIds);
+          apiError(
+            res,
+            403,
+            ApiErrorCode.FORBIDDEN,
+            `Only an Accountable holder for ${workload.label} can accept this risk.`,
+            { workload: workload.label, holders: holderIds.map((id) => names.get(id) ?? id) },
+          );
+          return;
+        }
+        authorizingHolderIds = holderIds;
+      }
+
       const acceptedAt = new Date();
 
       // Both derived SERVER-side. `msp-rbd.ts`'s own sign handler takes
@@ -543,6 +645,10 @@ router.post(
           clientApprover,
           status: "active",
           riskStatus: "Accepted",
+          authorizingWorkloadId: workload?.objectId ?? null,
+          authorizingWorkloadLabel: workload?.label ?? null,
+          authorizingHolderPersonIds: authorizingHolderIds,
+          signedByPersonId: signerPersonId,
           updatedAt: acceptedAt,
         })
         .where(
@@ -569,9 +675,21 @@ router.post(
           acceptedBy: parsed.data.fullName,
           userId: typeof req.user?.id === "number" ? req.user.id : null,
           signatureHash,
+          authorizingWorkloadId: workload?.objectId ?? null,
+          signedByPersonId: signerPersonId,
         },
         "risk accepted by customer",
       );
+
+      let authorizedBy: WireRiskAuthority | null = null;
+      if (workload && authorizingHolderIds) {
+        const names = await namesForPersonIds(customerId, authorizingHolderIds);
+        authorizedBy = {
+          workloadId: workload.objectId,
+          workloadLabel: workload.label,
+          holders: authorizingHolderIds.map((id) => ({ personId: id, name: names.get(id) ?? id })),
+        };
+      }
 
       res.status(201).json({
         rbdId,
@@ -584,6 +702,7 @@ router.post(
           why: existing.rationale ?? null,
           compensating: compensatingSentence(existing.compensatingControls),
           statement: parsed.data.statement,
+          authorizedBy,
         },
       });
     } catch (err: unknown) {
