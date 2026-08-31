@@ -6654,6 +6654,56 @@ export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignm
 export type PortalOwnershipAssignment = typeof portalOwnershipAssignmentsTable.$inferSelect;
 export type InsertPortalOwnershipAssignment = typeof portalOwnershipAssignmentsTable.$inferInsert;
 
+/** The five things that can happen to one cell holder — nothing else is recorded. */
+export const OWN_EVENT_TYPES = ["assigned", "accepted", "declined", "cleared", "reassigned"] as const;
+export type OwnershipEventType = typeof OWN_EVENT_TYPES[number];
+
+/**
+ * The append-only history behind one matrix cell holder (#1522).
+ *
+ * `portal_ownership_assignments` is CURRENT STATE — one row per
+ * (customer, object, role, owner), overwritten on every re-assert. This table is
+ * the record that survives the overwrite: every assign / accept / decline / clear
+ * / reassign is inserted here and NEVER updated or deleted, so "who held A when
+ * this RBD was signed" is a replay of this log as of a date, not a question the
+ * current-state table can answer once a later event has overwritten it.
+ *
+ * Rows are never mutated after insert — there is deliberately no `updatedAt` and
+ * no route that touches an existing row. `ownerPersonId` of "" is a real value,
+ * same as the assignments table: an event clearing a cell to a gap is itself a
+ * holder-less event, not the absence of one.
+ */
+export const portalOwnershipEventsTable = pgTable("portal_ownership_events", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  /** The matrix object's opaque wire id, as assembled by the read layer. */
+  objectId: text("object_id").notNull(),
+  /** One of r | a | c | i. */
+  roleKey: text("role_key").notNull(),
+  /** The wire person id this event is about (e.g. "u39"), or "" for a gap. */
+  ownerPersonId: text("owner_person_id").notNull().default(""),
+  eventType: text("event_type", { enum: OWN_EVENT_TYPES }).notNull(),
+  /** Who performed the action — display name or email, same provenance as `setBy`. */
+  actor: text("actor").notNull().default(""),
+  /** Free-text reason, where one applies (e.g. a decline reason). "" when none. */
+  reason: text("reason").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_ownership_events_customer_id_idx").on(t.customerId),
+  // The cell-history lookup: every event for one (object, role, owner) holder, in
+  // order. `createdAt` is the replay axis; `id` only tiebreaks same-timestamp inserts.
+  index("portal_ownership_events_cell_idx").on(
+    t.customerId,
+    t.objectId,
+    t.roleKey,
+    t.ownerPersonId,
+  ),
+]);
+
+export type PortalOwnershipEvent = typeof portalOwnershipEventsTable.$inferSelect;
+export type InsertPortalOwnershipEvent = typeof portalOwnershipEventsTable.$inferInsert;
+
 /**
  * A dated handover of one person's work to another. It annotates the matrix, it
  * does not reassign it (the design: "It ends by itself, and the matrix goes back
