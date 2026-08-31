@@ -22,6 +22,30 @@ namespace BuildConsole.Services
     /// (BT_ISSUE_MENTIONS_SCAN, delta-only after the first report) so MainWindow can
     /// maintain a live per-chat "every issue this chat has ever mentioned" registry —
     /// a separate, noisy signal from the deliberate bt_chat_issues association table.
+    ///
+    /// Git #2123 — bare numbers (no leading '#') are also decorated, since some chats
+    /// write "1511 — NOT landed" instead of "#1511 — NOT landed" and got zero underline.
+    /// A bare number is inherently ambiguous (could be a year, a port, a count, ...), so
+    /// this uses two independent, non-exclusive heuristics rather than one strict rule —
+    /// either is treated as sufficient on its own, per Shane's explicit call ("I'd rather
+    /// a few false positives than arguing with agent at 3am"):
+    ///   1. BARE_ISSUE_RE — any standalone 4-5 digit run, anywhere in the text. This runs
+    ///      as injected page-context JS with no cheap per-match way to hit the GitHub API
+    ///      (a live min/max lookup isn't practical here), so the 4-digit floor is a fixed
+    ///      approximation of this repo's real issue-number range, not a live query —
+    ///      confirmed 2026-08-31 the repo's live issues run from the low hundreds through
+    ///      the low 2000s. Known false positives: years (2026), ports (8080), any other
+    ///      4-5 digit quantity in prose. Known false negative: real 1-3 digit issue
+    ///      numbers (this repo does have some, e.g. #305) outside structural context.
+    ///   2. BARE_ISSUE_CTX_RE — a 2-5 digit run at the start of a line/bullet immediately
+    ///      followed by an em/en-dash or colon (the exact shape of the reported example).
+    ///      This structural correlation is strong enough on its own to admit smaller,
+    ///      sub-1000 numbers that BARE_ISSUE_RE's floor would otherwise miss. Known false
+    ///      positive: a numbered heading/line using "N: " or "N — " for something other
+    ///      than an issue reference.
+    /// Both heuristics only add candidate matches; the existing index-sorted overlap
+    /// dedup in decorateTextNode still gives priority to a real "#NNN" or ".sql" match
+    /// covering the same text, so a bare-number heuristic never overrides a stronger one.
     /// </summary>
     public static class IssueMentionInjector
     {
@@ -205,6 +229,10 @@ namespace BuildConsole.Services
   /* ── Issue & SQL mention decoration ───────────────────────────── */
   var ISSUE_RE = /#(\d{1,5})\b/g;
   var SQL_RE = /\b([\w\-\./\\]+\.sql)\b/gi;
+  /* Git #2123 — bare (no '#') issue-number heuristics. See the class doc-comment above
+     for the full rationale and known false-positive/false-negative tradeoffs. */
+  var BARE_ISSUE_RE = /\b(\d{4,5})\b/g;
+  var BARE_ISSUE_CTX_RE = /(?<=^|\n)[ \t]*(?:[-*•]\s*)?(\d{2,5})(?=[ \t]*[—–:])/g;
   var SKIP_TAGS = { CODE:1, PRE:1, SCRIPT:1, STYLE:1, TEXTAREA:1, INPUT:1 };
 
   function makeIssueSpan(num, rawText) {
@@ -311,6 +339,20 @@ namespace BuildConsole.Services
       matches.push({ index: m.index, length: m[0].length, type: 'sql', value: m[1], text: m[0] });
     }
 
+    /* Git #2123 — bare-number candidates are pushed last so the overlap dedup below
+       (sorted by index, first match at a given position wins) always prefers a real
+       "#NNN" or ".sql" match over a bare-number guess covering the same text. */
+    BARE_ISSUE_RE.lastIndex = 0;
+    while ((m = BARE_ISSUE_RE.exec(text)) !== null) {
+      matches.push({ index: m.index, length: m[0].length, type: 'issue', value: parseInt(m[1], 10), text: m[0] });
+    }
+
+    BARE_ISSUE_CTX_RE.lastIndex = 0;
+    while ((m = BARE_ISSUE_CTX_RE.exec(text)) !== null) {
+      var digitStart = m.index + (m[0].length - m[1].length);
+      matches.push({ index: digitStart, length: m[1].length, type: 'issue', value: parseInt(m[1], 10), text: m[1] });
+    }
+
     if (matches.length === 0) return;
 
     matches.sort(function (a, b) { return a.index - b.index; });
@@ -393,7 +435,9 @@ namespace BuildConsole.Services
       var txt = node.nodeValue || '';
       ISSUE_RE.lastIndex = 0;
       SQL_RE.lastIndex = 0;
-      if (ISSUE_RE.test(txt) || SQL_RE.test(txt)) batch.push(node);
+      BARE_ISSUE_RE.lastIndex = 0;
+      BARE_ISSUE_CTX_RE.lastIndex = 0;
+      if (ISSUE_RE.test(txt) || SQL_RE.test(txt) || BARE_ISSUE_RE.test(txt) || BARE_ISSUE_CTX_RE.test(txt)) batch.push(node);
     }
     batch.forEach(decorateTextNode);
     reportMentionsIfAny();
