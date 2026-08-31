@@ -102,7 +102,7 @@ import {
 import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 
 import { requireRole, type AuthUser } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
 import {
@@ -146,6 +146,148 @@ const router: IRouter = Router();
  */
 const MAX_CHANGES = 25;
 
+export interface OwnershipObjectsResult {
+  readonly objects: WireOwnObject[];
+  readonly people: WireOwnPerson[];
+  readonly emails: ReadonlyMap<string, string>;
+  readonly counts: Record<OwnObjectType, number>;
+}
+
+/**
+ * Assembles one customer's real matrix objects — service / change / cr /
+ * freeze, exactly as `GET /portal/ownership` builds them for that customer's
+ * own page. Factored out so a cross-customer reader (the MSP "what do I hold,
+ * everywhere" view, #1521) can resolve a matched assignment's object id back
+ * to a real name/type without re-deriving this logic per caller. Pure DB
+ * reads, no auth/scoping decision of its own — the caller supplies an
+ * already-resolved `customerId` and `scope`.
+ */
+export async function gatherOwnershipObjects(
+  customerId: number,
+  scope: TenantScope | null,
+): Promise<OwnershipObjectsResult> {
+  const userRows: UserRow[] = await db
+    .select({
+      id: usersTable.id,
+      email: usersTable.email,
+      name: usersTable.name,
+      jobTitle: usersTable.jobTitle,
+      department: usersTable.department,
+      mspRole: usersTable.mspRole,
+    })
+    .from(usersTable)
+    .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
+    .orderBy(asc(usersTable.id));
+
+  const customerName = scope?.tenantName ?? "Your organisation";
+  const sides = sidesFor(customerName);
+  const people = userRows.map((row) => toWirePerson(row, sides[0]!));
+  const emails = emailIndex(userRows);
+
+  const objects: WireOwnObject[] = [];
+
+  const serviceRows = await db
+    .select({
+      id: clientServicesTable.id,
+      name: servicesTable.name,
+      status: clientServicesTable.status,
+      nextMilestone: clientServicesTable.nextMilestone,
+    })
+    .from(clientServicesTable)
+    .innerJoin(usersTable, eq(usersTable.id, clientServicesTable.clientUserId))
+    .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+    .where(eq(usersTable.tenantId, customerId))
+    .orderBy(asc(clientServicesTable.id));
+  for (const row of serviceRows) objects.push(serviceObject(row));
+
+  const holdRows = await db
+    .select({
+      id: portalHoldWindowsTable.id,
+      holdKey: portalHoldWindowsTable.holdKey,
+      title: portalHoldWindowsTable.title,
+      gates: portalHoldWindowsTable.gates,
+    })
+    .from(portalHoldWindowsTable)
+    .where(
+      and(
+        eq(portalHoldWindowsTable.customerId, customerId),
+        isNull(portalHoldWindowsTable.closedAt),
+      ),
+    )
+    .orderBy(asc(portalHoldWindowsTable.id));
+
+  let changeCount = 0;
+  let crCount = 0;
+
+  if (scope) {
+    const changeRows = await db
+      .select({
+        graphMessageId: mspMessageCenterItemsTable.graphMessageId,
+        title: mspMessageCenterItemsTable.title,
+        category: mspMessageCenterItemsTable.category,
+        isMajorChange: mspMessageCenterItemsTable.isMajorChange,
+        services: mspMessageCenterItemsTable.services,
+        actionRequiredByDateTime: mspMessageCenterItemsTable.actionRequiredByDateTime,
+      })
+      .from(mspMessageCenterItemsTable)
+      .where(
+        and(
+          eq(mspMessageCenterItemsTable.mspId, scope.mspId),
+          eq(mspMessageCenterItemsTable.tenantId, scope.tenantId),
+          gt(mspMessageCenterItemsTable.actionRequiredByDateTime, new Date()),
+        ),
+      )
+      .orderBy(asc(mspMessageCenterItemsTable.actionRequiredByDateTime))
+      .limit(MAX_CHANGES);
+    for (const row of changeRows) objects.push(messageCentreObject(row));
+    changeCount = changeRows.length;
+
+    const crRows = await db
+      .select({
+        id: mspChangeRequestsTable.id,
+        title: mspChangeRequestsTable.title,
+        status: mspChangeRequestsTable.status,
+        scheduledFor: mspChangeRequestsTable.scheduledFor,
+        requestedBy: mspChangeRequestsTable.requestedBy,
+        approvedBy: mspChangeRequestsTable.approvedBy,
+      })
+      .from(mspChangeRequestsTable)
+      .where(
+        and(
+          eq(mspChangeRequestsTable.mspId, scope.mspId),
+          eq(mspChangeRequestsTable.tenantId, scope.tenantId),
+        ),
+      )
+      .orderBy(asc(mspChangeRequestsTable.id));
+    for (const row of crRows) {
+      objects.push(
+        crObject(
+          row,
+          formatChangeRequestCode(row.id),
+          displayStatus(row.status, row.approvedBy),
+          resolvePersonId(row.requestedBy, people, emails),
+          resolvePersonId(row.approvedBy, people, emails),
+        ),
+      );
+    }
+    crCount = crRows.length;
+  }
+
+  for (const row of holdRows) objects.push(holdWindowObject(row));
+
+  const counts: Record<OwnObjectType, number> = {
+    service: serviceRows.length,
+    change: changeCount,
+    cr: crCount,
+    freeze: holdRows.length,
+    control: 0,
+    incident: 0,
+    announce: 0,
+  };
+
+  return { objects, people, emails, counts };
+}
+
 export interface WireOwnershipPayload {
   readonly customer: { readonly id: number; readonly name: string };
   readonly sides: readonly string[];
@@ -183,129 +325,13 @@ router.get(
     try {
       const scope = await resolveTenantScope(customerId);
 
-      // ── The people list ───────────────────────────────────────────────────
-      // The tenant's own active users. Suspended accounts are left out rather
-      // than shown as "away": `away` holds a RETURN date, and a suspended
-      // account has no return date — it has a decision behind it.
-      const userRows: UserRow[] = await db
-        .select({
-          id: usersTable.id,
-          email: usersTable.email,
-          name: usersTable.name,
-          jobTitle: usersTable.jobTitle,
-          department: usersTable.department,
-          mspRole: usersTable.mspRole,
-        })
-        .from(usersTable)
-        .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
-        .orderBy(asc(usersTable.id));
-
+      // ── People + objects ─────────────────────────────────────────────────
+      // Suspended accounts are left out of the people list rather than shown
+      // as "away": `away` holds a RETURN date, and a suspended account has no
+      // return date — it has a decision behind it.
+      const { objects, people, emails, counts } = await gatherOwnershipObjects(customerId, scope);
       const customerName = scope?.tenantName ?? "Your organisation";
       const sides = sidesFor(customerName);
-      const people = userRows.map((row) => toWirePerson(row, sides[0]!));
-      const emails = emailIndex(userRows);
-
-      // ── The objects ───────────────────────────────────────────────────────
-      const objects: WireOwnObject[] = [];
-
-      const serviceRows = await db
-        .select({
-          id: clientServicesTable.id,
-          name: servicesTable.name,
-          status: clientServicesTable.status,
-          nextMilestone: clientServicesTable.nextMilestone,
-        })
-        .from(clientServicesTable)
-        .innerJoin(usersTable, eq(usersTable.id, clientServicesTable.clientUserId))
-        .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
-        .where(eq(usersTable.tenantId, customerId))
-        .orderBy(asc(clientServicesTable.id));
-      for (const row of serviceRows) objects.push(serviceObject(row));
-
-      const holdRows = await db
-        .select({
-          id: portalHoldWindowsTable.id,
-          holdKey: portalHoldWindowsTable.holdKey,
-          title: portalHoldWindowsTable.title,
-          gates: portalHoldWindowsTable.gates,
-        })
-        .from(portalHoldWindowsTable)
-        .where(
-          and(
-            eq(portalHoldWindowsTable.customerId, customerId),
-            isNull(portalHoldWindowsTable.closedAt),
-          ),
-        )
-        .orderBy(asc(portalHoldWindowsTable.id));
-
-      let changeCount = 0;
-      let crCount = 0;
-
-      if (scope) {
-        const changeRows = await db
-          .select({
-            graphMessageId: mspMessageCenterItemsTable.graphMessageId,
-            title: mspMessageCenterItemsTable.title,
-            category: mspMessageCenterItemsTable.category,
-            isMajorChange: mspMessageCenterItemsTable.isMajorChange,
-            services: mspMessageCenterItemsTable.services,
-            actionRequiredByDateTime: mspMessageCenterItemsTable.actionRequiredByDateTime,
-          })
-          .from(mspMessageCenterItemsTable)
-          .where(
-            and(
-              eq(mspMessageCenterItemsTable.mspId, scope.mspId),
-              eq(mspMessageCenterItemsTable.tenantId, scope.tenantId),
-              gt(mspMessageCenterItemsTable.actionRequiredByDateTime, new Date()),
-            ),
-          )
-          .orderBy(asc(mspMessageCenterItemsTable.actionRequiredByDateTime))
-          .limit(MAX_CHANGES);
-        for (const row of changeRows) objects.push(messageCentreObject(row));
-        changeCount = changeRows.length;
-
-        const crRows = await db
-          .select({
-            id: mspChangeRequestsTable.id,
-            title: mspChangeRequestsTable.title,
-            status: mspChangeRequestsTable.status,
-            scheduledFor: mspChangeRequestsTable.scheduledFor,
-            requestedBy: mspChangeRequestsTable.requestedBy,
-            approvedBy: mspChangeRequestsTable.approvedBy,
-          })
-          .from(mspChangeRequestsTable)
-          .where(
-            and(
-              eq(mspChangeRequestsTable.mspId, scope.mspId),
-              eq(mspChangeRequestsTable.tenantId, scope.tenantId),
-            ),
-          )
-          .orderBy(asc(mspChangeRequestsTable.id));
-        for (const row of crRows) {
-          objects.push(
-            crObject(
-              row,
-              formatChangeRequestCode(row.id),
-              displayStatus(row.status, row.approvedBy),
-              resolvePersonId(row.requestedBy, people, emails),
-              resolvePersonId(row.approvedBy, people, emails),
-            ),
-          );
-        }
-        crCount = crRows.length;
-      }
-
-      for (const row of holdRows) objects.push(holdWindowObject(row));
-
-      const counts: Record<OwnObjectType, number> = {
-        service: serviceRows.length,
-        change: changeCount,
-        cr: crCount,
-        freeze: holdRows.length,
-        control: 0,
-        incident: 0,
-        announce: 0,
-      };
 
       const callerEmail = ((req.user as { email?: string } | undefined)?.email ?? "").toLowerCase();
       const currentUserId = callerEmail ? (emails.get(callerEmail) ?? "") : "";
