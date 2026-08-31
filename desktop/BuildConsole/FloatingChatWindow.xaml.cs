@@ -552,10 +552,23 @@ namespace BuildConsole
             }
         }
 
+        // Git #2078 — CoreWebView2.ExecuteScriptAsync carries no timeout of its own. If the
+        // renderer stalls or its process dies mid-script, the returned Task can hang
+        // indefinitely; since InsertAndSubmitAsync is awaited directly inside SendAsync's
+        // try/finally, an unbounded hang here means the finally that re-enables BtnSend is
+        // never reached — the button reads as permanently stuck disabled even though the
+        // C# disable/enable logic itself is correct. Bound every script execution so a
+        // WebView2-side stall always surfaces as a timed-out "error: …" status instead of
+        // hanging SendAsync forever.
+        private static readonly TimeSpan ScriptTimeout = TimeSpan.FromSeconds(8);
+
         private async System.Threading.Tasks.Task<string> ExecScriptString(FloatingChatTab tab, string js)
         {
             if (tab.Wv?.CoreWebView2 == null) return "error: no-webview";
-            string raw = await tab.Wv.CoreWebView2.ExecuteScriptAsync(js) ?? "";
+            var execTask = tab.Wv.CoreWebView2.ExecuteScriptAsync(js);
+            var completed = await System.Threading.Tasks.Task.WhenAny(execTask, System.Threading.Tasks.Task.Delay(ScriptTimeout));
+            if (completed != execTask) return "error: timeout";
+            string raw = await execTask ?? "";
             try { return JsonSerializer.Deserialize<string>(raw) ?? ""; }
             catch { return raw; }
         }
