@@ -56,7 +56,7 @@
 /** The four names, in the matrix's own column order. */
 export type OwnRoleKey = "r" | "a" | "c" | "i";
 
-/** The seven object types the matrix groups by. */
+/** The eight object types the matrix groups by. */
 export type OwnObjectType =
   | "service"
   | "change"
@@ -64,7 +64,8 @@ export type OwnObjectType =
   | "control"
   | "freeze"
   | "incident"
-  | "announce";
+  | "announce"
+  | "workload";
 
 /**
  * The row's link label. This is COPY, taken from the design, which is why it is
@@ -78,6 +79,7 @@ export const OWN_LINK_LABEL: Readonly<Record<OwnObjectType, string>> = {
   freeze: "Freeze →",
   incident: "Incident →",
   announce: "Notice →",
+  workload: "Workload →",
 };
 
 /** The separator the design puts between facts on a row's sub-line. */
@@ -366,6 +368,35 @@ export function serviceObject(row: ClientServiceRow): WireOwnObject {
   };
 }
 
+export interface WorkloadRow {
+  /** The workload bucket key from tenant-workloads.ts (e.g. "exchange"). */
+  readonly key: string;
+  readonly label: string;
+  /** The real Microsoft servicePlanName(s) enabled on the tenant behind this row. */
+  readonly servicePlanNames: readonly string[];
+}
+
+/**
+ * A real enabled M365 workload as a matrix row (Git #2008). Unlike every
+ * other object type here, this one is not scoped to what the customer
+ * purchased — it is scoped to what the tenant's own `subscribedSkus` says is
+ * genuinely running, per #1523's settled rule. `sub` names the real service
+ * plan(s) behind the row rather than inventing further description.
+ */
+export function workloadObject(row: WorkloadRow): WireOwnObject {
+  return {
+    type: "workload",
+    id: "wl-" + row.key,
+    name: row.label,
+    sub: row.servicePlanNames.join(DOT),
+    r: "",
+    a: "",
+    c: "",
+    i: "",
+    link: OWN_LINK_LABEL.workload,
+  };
+}
+
 export interface HoldWindowRow {
   readonly id: number;
   readonly holdKey: string;
@@ -405,6 +436,7 @@ export function buildSources(
   counts: Readonly<Record<OwnObjectType, number>>,
 ): readonly WireOwnSource[] {
   return [
+    { type: "workload", live: true, count: counts.workload, note: "Workloads enabled in your tenant's Microsoft 365 licensing." },
     { type: "service", live: true, count: counts.service, note: "Your purchased services." },
     { type: "change", live: true, count: counts.change, note: "Microsoft changes with an action still due." },
     { type: "cr", live: true, count: counts.cr, note: "Your change requests." },

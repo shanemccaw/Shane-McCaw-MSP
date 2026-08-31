@@ -159,8 +159,13 @@ export function unusedSeatsFromSubscribedSkus(
   return { counts, lines, totalEnabledSeats };
 }
 
-/** Active checks whose endpoint hits /subscribedSkus, preferred one first. */
-async function subscribedSkusCheckKeys(): Promise<string[]> {
+/**
+ * Active checks whose endpoint hits /subscribedSkus, preferred one first.
+ * Exported for `tenant-workloads.ts` (Git #2008), which sources the tenant's
+ * enabled-workload derivation from the same stored Graph pages this module
+ * already discovers — one discovery implementation, not two.
+ */
+export async function subscribedSkusCheckKeys(): Promise<string[]> {
   const rows = await db
     .select({ key: monitorChecksTable.key, endpoint: monitorChecksTable.endpoint })
     .from(monitorChecksTable)

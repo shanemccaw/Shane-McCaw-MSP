@@ -62,6 +62,7 @@ import {
 } from "./azure-rm";
 import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
 import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing";
+import { syncTenantServicePlans } from "./tenant-workloads.ts";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -3770,6 +3771,24 @@ export async function executeMonitoringPackage(opts: {
       severityMatched: result.severityMatched,
       severityLabel: result.severityLabel,
     });
+  }
+
+  // Tenant workload estate (Git #2008) — refreshed only when this run actually
+  // included a check hitting /subscribedSkus, so an unrelated package doesn't
+  // pay for a pointless lookup. syncTenantServicePlans reads the page this run
+  // just persisted to tenant_monitor_profiles (no extra Graph call) and is
+  // never allowed to fail a monitor run — this is a secondary derived table,
+  // not the check result itself.
+  if (orderedChecks.some((c) => c.endpoint.toLowerCase().includes("subscribedskus"))) {
+    try {
+      const workloadSync = await syncTenantServicePlans(tenantId);
+      log.info({ tenantId, packageKey, ...workloadSync }, "executeMonitoringPackage: tenant workload estate synced");
+    } catch (err) {
+      log.warn(
+        { tenantId, packageKey, err: err instanceof Error ? err.message : String(err) },
+        "executeMonitoringPackage: tenant workload estate sync failed (non-fatal)",
+      );
+    }
   }
 
   // Determine overall run status.

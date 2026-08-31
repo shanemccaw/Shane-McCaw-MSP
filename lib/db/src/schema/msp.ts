@@ -2096,6 +2096,77 @@ export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {
 
 export type TenantMonitorProfile = typeof tenantMonitorProfilesTable.$inferSelect;
 
+// ── Tenant service-plan / workload estate (Git #2008) ──────────────────────────
+//
+// The tenant's REAL enabled Microsoft 365 service-plan estate, as last observed
+// on `GET /subscribedSkus`. Exists because the Ownership/RACI matrix must attach
+// a row to every workload the tenant actually RUNS (Exchange, SharePoint,
+// OneDrive, Teams, Security, Identity...) — #1523's settled rule — not to what
+// the customer happens to have purchased through this platform
+// (`client_services`). A customer with only a Monitoring purchase still runs
+// Exchange, and Exchange still needs an accountable owner.
+//
+// THE ONE CONDITION (settled on #1516, restated on #2008): a service plan whose
+// `provisioningStatus` is "Success" is enabled — full stop. No second "and
+// someone actually uses it" condition; usage/consumption is a separate
+// Licensing-pillar signal (cost-engine.ts / license-waste-source.ts) and is
+// deliberately NOT conflated with this table. Only Success rows are ever
+// stored — a plan that lapses to Disabled/Pending* simply stops appearing on
+// the next sync (a full REPLACE per (msp_id, tenant_id), not an in-place status
+// flip — see `syncTenantServicePlans` in `lib/tenant-workloads.ts`), so a reader
+// never has to re-learn the provisioning-status vocabulary.
+//
+// WORKLOAD GROUPING IS NOT STORED HERE. `service_plan_name` is Microsoft's own
+// real identifier (e.g. "EXCHANGE_S_ENTERPRISE"), kept verbatim — the same
+// discipline `account-security-graph.ts`'s FULL_INTUNE_SERVICE_PLAN constant
+// already uses for Intune. Coarse workload buckets (Exchange, SharePoint...)
+// are a pure, testable derivation over that real identifier —
+// `resolveWorkloadForServicePlan()` in `lib/tenant-workloads.ts` — computed at
+// read time, so the mapping can be corrected without a migration.
+//
+// Keyed by (msp_id, tenant_id) — the same M365-tenant-GUID scope
+// `msp_change_requests` / `msp_message_center_items` already use, NOT by
+// `tenants.id`: this data is a property of the Graph tenant the platform reads,
+// sourced independently of which portal customer row currently points at it.
+// Consumers that need `tenants.id` (portal-ownership.ts) resolve it the same
+// way they already resolve the other MSP-era tables — via
+// `resolveTenantScope()`.
+//
+// Sourced from the ALREADY-COLLECTED `tenant_monitor_profiles` row for whichever
+// active check hits `/subscribedSkus` (same discovery `license-waste-source.ts`
+// uses) — no dedicated Graph call of its own. Synced after every monitor
+// package run that included one of those checks (`executeMonitoringPackage` in
+// monitor-executor.ts), so this table tracks Graph state on the platform's
+// existing scan cadence rather than a separate job.
+export const tenantServicePlansTable = pgTable("tenant_service_plans", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull(),
+  /** The M365 tenant GUID — tenants.tenantId, matching tenant_monitor_profiles.tenantId. */
+  tenantId: text("tenant_id").notNull(),
+  /** Graph's own service-plan GUID (subscribedSkus[].servicePlans[].servicePlanId). */
+  servicePlanId: uuid("service_plan_id").notNull(),
+  /** Microsoft's real identifier, e.g. "EXCHANGE_S_ENTERPRISE" — never invented. */
+  servicePlanName: text("service_plan_name").notNull(),
+  /**
+   * Microsoft's own (much more granular) category for the plan
+   * (servicePlans[].servicePlanType), stored verbatim for reference. NOT what
+   * the ownership matrix groups by — see header.
+   */
+  servicePlanType: text("service_plan_type"),
+  /** The parent SKU this plan came from — subscribedSkus[].skuPartNumber. */
+  skuPartNumber: text("sku_part_number").notNull(),
+  skuId: uuid("sku_id").notNull(),
+  /** Always "Success" by construction (see header) — a real column, not assumed, so a future relaxation of the filter doesn't silently change meaning. */
+  provisioningStatus: text("provisioning_status").notNull(),
+  collectedAt: timestamp("collected_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("tenant_service_plans_msp_tenant_plan_idx").on(t.mspId, t.tenantId, t.servicePlanId),
+  index("tenant_service_plans_msp_tenant_idx").on(t.mspId, t.tenantId),
+]);
+
+export type TenantServicePlan = typeof tenantServicePlansTable.$inferSelect;
+
 // ── Azure Resource Manager reach (#1871) ───────────────────────────────────────
 //
 // What Azure the platform can actually SEE in a tenant, as last observed. This

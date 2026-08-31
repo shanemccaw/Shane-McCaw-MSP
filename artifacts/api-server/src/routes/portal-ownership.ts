@@ -20,8 +20,15 @@
  * everything else comes back as a gap, which is the state the page was designed
  * to make loud.
  *
- * The four object types served, and their sources:
+ * The five object types served, and their sources:
  *
+ *   • `workload` — `tenant_service_plans` (Git #2008), the tenant's REAL
+ *                 enabled M365 workloads (Exchange, SharePoint, Teams...) as
+ *                 last synced from `/subscribedSkus` — see
+ *                 `lib/tenant-workloads.ts`. Scoped like `change`/`cr` below,
+ *                 through `resolveTenantScope`. Unlike every other row here,
+ *                 this one is NOT gated on a purchase: #1523 settled that RACI
+ *                 attaches to what the tenant runs, not to what was bought.
  *   • `service` — `client_services` joined to `services`, reached through the
  *                 customer's own users (`client_services.client_user_id`).
  *   • `change`  — `msp_message_center_items` whose action-required date is
@@ -108,6 +115,7 @@ import {
   portalOwnershipEventsTable,
   portalOwnershipRowsTable,
   servicesTable,
+  tenantServicePlansTable,
   usersTable,
 } from "@workspace/db";
 import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
@@ -121,6 +129,7 @@ import {
 } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
+import { groupEnabledServicePlansByWorkload } from "../lib/tenant-workloads.ts";
 import {
   assignEventType,
   buildSources,
@@ -139,6 +148,7 @@ import {
   toWireEvent,
   toWirePerson,
   toWireRow,
+  workloadObject,
   type OwnObjectType,
   type OwnRoleKey,
   type UserRow,
@@ -267,8 +277,29 @@ export async function gatherOwnershipObjects(
 
   let changeCount = 0;
   let crCount = 0;
+  let workloadCount = 0;
 
   if (scope) {
+    // The tenant's REAL enabled workloads (Git #2008) — scoped like the
+    // MSP-era lists below, through the same (mspId, tenantId) pair, because
+    // `tenant_service_plans` is keyed on the M365 Graph tenant, not on
+    // `tenants.id`. Deliberately NOT gated on any purchase: #1523 settled
+    // that RACI attaches to what the tenant runs.
+    const servicePlanRows = await db
+      .select({ servicePlanName: tenantServicePlansTable.servicePlanName })
+      .from(tenantServicePlansTable)
+      .where(
+        and(
+          eq(tenantServicePlansTable.mspId, scope.mspId),
+          eq(tenantServicePlansTable.tenantId, scope.tenantId),
+        ),
+      );
+    const workloadGroups = groupEnabledServicePlansByWorkload(servicePlanRows);
+    for (const group of workloadGroups) {
+      objects.push(workloadObject({ key: group.key, label: group.label, servicePlanNames: group.servicePlanNames }));
+    }
+    workloadCount = workloadGroups.length;
+
     const changeRows = await db
       .select({
         graphMessageId: mspMessageCenterItemsTable.graphMessageId,
@@ -325,6 +356,7 @@ export async function gatherOwnershipObjects(
   for (const row of holdRows) objects.push(holdWindowObject(row));
 
   const counts: Record<OwnObjectType, number> = {
+    workload: workloadCount,
     service: serviceRows.length,
     change: changeCount,
     cr: crCount,
