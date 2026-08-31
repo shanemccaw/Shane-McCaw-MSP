@@ -64,7 +64,7 @@ namespace BuildConsole.Services
     /// If GitHub can't be reached, every blocked candidate is held (fail closed) —
     /// see GetNextAsync's Step 2.
     /// </summary>
-    public class BuildQueuePostgresClient
+    public partial class BuildQueuePostgresClient
     {
         /// <summary>
         /// Git #1469 — a queue row's real terminal state after its session exits
