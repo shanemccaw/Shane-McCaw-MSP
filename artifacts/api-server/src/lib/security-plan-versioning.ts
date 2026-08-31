@@ -16,6 +16,11 @@
  *
  * The container is one Security Plan per customer tenant, so the chain is keyed on
  * `(mspId, customerId)` where `customerId` is a `tenants.id`.
+ *
+ * `getLastSignedSecurityPlanVersion` is the one addition beyond the RBD shape: #1562
+ * settles that the live view sits alongside its drift from the LAST SIGNED version
+ * (not merely the current one, which can itself be unsigned) — see
+ * `security-plan-drift.ts` for the pure comparison that consumes it.
  */
 import {
   db,
@@ -104,6 +109,30 @@ export async function getCurrentSecurityPlanVersion(
         isNull(mspSecurityPlanVersionsTable.supersededAt),
       ),
     )
+    .limit(1);
+  return row ?? null;
+}
+
+/** The most recently SIGNED version, regardless of whether it is still current — the
+ * anchor #1562's drift view compares the live assembled document against. Signing only
+ * ever happens on the current version at the time (see `signSecurityPlanVersion`), but a
+ * later unsigned seal can leave the current version unsigned while an older, superseded
+ * one remains the last real signature. Null if nothing has ever been signed. */
+export async function getLastSignedSecurityPlanVersion(
+  mspId: number,
+  customerId: number,
+): Promise<MspSecurityPlanVersion | null> {
+  const [row] = await db
+    .select()
+    .from(mspSecurityPlanVersionsTable)
+    .where(
+      and(
+        eq(mspSecurityPlanVersionsTable.mspId, mspId),
+        eq(mspSecurityPlanVersionsTable.customerId, customerId),
+        eq(mspSecurityPlanVersionsTable.signed, true),
+      ),
+    )
+    .orderBy(desc(mspSecurityPlanVersionsTable.versionNumber))
     .limit(1);
   return row ?? null;
 }

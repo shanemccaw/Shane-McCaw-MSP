@@ -6119,6 +6119,48 @@ export interface SecurityPlanContent {
   readonly prose: string | null;
 }
 
+/** One item's state/detail as of a snapshot, for a changed-row drift entry (#1562). */
+export interface SecurityPlanDriftItemState {
+  readonly state: string | null;
+  readonly detail: string | null;
+}
+
+/** One item that changed between the last signed snapshot and the live view: present
+ * in both, but its `state` and/or `detail` differ (#1562). */
+export interface SecurityPlanDriftChangedItem {
+  readonly id: string;
+  readonly title: string;
+  readonly from: SecurityPlanDriftItemState;
+  readonly to: SecurityPlanDriftItemState;
+}
+
+/** One module's drift between the last signed snapshot and the live view (#1562).
+ * `added`/`removed` are keyed by item id presence; `changed` is same-id, different
+ * state/detail. A module with none of the three is unchanged since the last signature. */
+export interface SecurityPlanModuleDrift {
+  readonly moduleKey: string;
+  readonly label: string;
+  readonly added: readonly SecurityPlanAssembledItem[];
+  readonly removed: readonly SecurityPlanAssembledItem[];
+  readonly changed: readonly SecurityPlanDriftChangedItem[];
+}
+
+/** The tension #1562 settles: "cumulative" (a signed version, frozen) and "live" (true
+ * today) both matter, so the live view carries its drift from the last signed version
+ * alongside it, rather than the two being irreconcilable. `hasLastSignedVersion` is
+ * false when nothing has ever been signed for this plan — there is nothing to drift
+ * from yet, which is distinct from "signed and no drift since". */
+export interface SecurityPlanDrift {
+  readonly hasLastSignedVersion: boolean;
+  readonly lastSignedVersionUid: string | null;
+  readonly lastSignedVersionNumber: number | null;
+  readonly lastSignedAt: string | null;
+  readonly modules: readonly SecurityPlanModuleDrift[];
+  readonly totalAdded: number;
+  readonly totalRemoved: number;
+  readonly totalChanged: number;
+}
+
 export const mspSecurityPlanVersionsTable = pgTable("msp_security_plan_versions", {
   id: serial("id").primaryKey(),
   versionUid: uuid("version_uid").notNull().unique().defaultRandom(),

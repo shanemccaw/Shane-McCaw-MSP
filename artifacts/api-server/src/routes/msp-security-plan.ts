@@ -5,6 +5,9 @@
  *   GET   /api/msp/security-plan/:customerId/assembled              — the live, honest
  *                                                                     assembled view over
  *                                                                     the eight modules
+ *   GET   /api/msp/security-plan/:customerId/drift                  — the live view's
+ *                                                                     drift from the LAST
+ *                                                                     SIGNED version (#1562)
  *   GET   /api/msp/security-plan/:customerId/versions              — the full seal chain
  *   GET   /api/msp/security-plan/:customerId/versions/current       — the current sealed version
  *   POST  /api/msp/security-plan/:customerId/versions              — seal a new version,
@@ -14,8 +17,13 @@
  * MSP-side, matching `msp-rbd-versions.ts` next door — this is the authoring/sealing
  * side. Per #1561 the MSP writes and signs the plan of record FOR a tenant and the
  * customer reads it; the customer-facing read/sign surface is a separate, not-yet-built
- * concern. SCOPE STOP on #1561 ends this build at the wire contract — there is no
+ * concern. SCOPE STOP on #1561/#1562 ends this build at the wire contract — there is no
  * `Design/portal` export and no `artifacts/portal` page to wire it to yet.
+ *
+ * #1562 settles the "cumulative vs live" tension: a version is assembled, frozen and
+ * signed at a point in time; the live view sits ALONGSIDE it, showing drift from the
+ * last signed version, rather than the document silently re-rendering out from under a
+ * prior signature. `/drift` is that companion view — see `security-plan-drift.ts`.
  *
  * `:customerId` is a `tenants.id`. `resolveTenantScope` resolves it to the
  * `(mspId, tenantId)` pair the MSP-era source tables need AND carries the mspId used to
@@ -35,6 +43,7 @@ import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-sco
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { assembleSecurityPlan, scopeMissingRequiredStatement } from "../lib/security-plan-assembly.ts";
+import { getSecurityPlanDrift } from "../lib/security-plan-drift.ts";
 import {
   createSecurityPlanVersion,
   getCurrentSecurityPlanVersion,
@@ -159,6 +168,27 @@ router.get(
       res.json({ document });
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/security-plan/:customerId/assembled failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// GET /api/msp/security-plan/:customerId/drift — the live (honest, unscoped) view
+// alongside its drift from the last SIGNED version (#1562). Always the honest view on
+// the live side, regardless of any scope query params: drift answers "what actually
+// changed since the signature," not "what changed within whatever slice was asked for."
+router.get(
+  "/msp/security-plan/:customerId/drift",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const tenant = await resolveOwnedTenant(req, res);
+      if (!tenant) return;
+      const { live, drift } = await getSecurityPlanDrift(tenant);
+      res.json({ document: live, drift });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/security-plan/:customerId/drift failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },
