@@ -477,6 +477,17 @@ namespace BuildConsole
                         _buildTrackerApi, _queueDb, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
                     _queueWatcher.BuildFinished += QueueWatcher_BuildFinished;
 
+                    // Git #1883 — the pickup loop must never claim/launch a queued item until
+                    // the app itself is genuinely, fully ready — #1882's real AllSettled signal
+                    // (every launch connection AND the "Application shell" row settled), not
+                    // just the loading overlay visually dismissing. Wired here, BEFORE
+                    // _queueWatcher.Start() is ever called below, so there's no window where a
+                    // claim could slip through before this subscription exists. AllSettled may
+                    // fire on a background thread; MarkAppReady is a single volatile bool flip,
+                    // safe from any thread.
+                    if (_startupConnectivity != null)
+                        _startupConnectivity.AllSettled += () => _queueWatcher?.MarkAppReady();
+
                     _sessionLimitAutoRestart = new BuildConsole.Services.SessionLimitAutoRestartService(
                         _queueDb, () => _queueWatcher?.SetPaused(false));
                     _queueWatcher.SessionLimitAutoRestart = _sessionLimitAutoRestart;
