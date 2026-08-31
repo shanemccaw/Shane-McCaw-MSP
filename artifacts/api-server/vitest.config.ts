@@ -373,6 +373,8 @@ export default defineConfig({
       // check label > catalogue title fallback chain, never-invented money/
       // score fields, and idempotency on a repeat decline.
       "src/lib/remediation-tracker-risk-decline.test.ts",
+      "src/lib/portal-change-rejection.test.ts",
+      "src/lib/change-request-risk-discharge.test.ts",
       // #776 (Phase 1 of epic #647): real GET endpoint for
       // tenant_check_item_details — tenantId resolution stays scoped to the
       // caller's own customerId, a requested checkKey with no collection is

@@ -88,6 +88,7 @@ import { z } from "zod";
 import { requireRole } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
 import { apiError, ApiErrorCode } from "../lib/api-helpers";
+import { formatChangeRequestCode } from "../lib/portal-change-control";
 import { logger } from "../lib/logger";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -169,6 +170,18 @@ interface WireRisk {
   /** The cited authority's type (AUTHORITY_TYPES), resolved from `obligationId`.
    * Null unless `obligationId` is set. */
   readonly obligationType: string | null;
+  /**
+   * #1514 — the Change-Control provenance pair. `spawnedByChangeRequestCode` is
+   * the change the customer rejected, whose decline became this accepted risk
+   * (null for every risk not raised that way — e.g. a Remediation Tracker
+   * decline, or an `msp-rbd.ts`-authored liability record). `dischargedByChangeRequestCode`
+   * is the LATER, fresh change that has since superseded this acceptance — null
+   * while the risk still stands, which is the common case. Both are display
+   * codes (`formatChangeRequestCode`), not raw ids, matching every other
+   * customer-facing CR reference.
+   */
+  readonly spawnedByChangeRequestCode: string | null;
+  readonly dischargedByChangeRequestCode: string | null;
 }
 
 /** One policy decision — the same rows, read as documented policy positions. */
@@ -282,6 +295,8 @@ function toWireRisk(row: RiskRow, obligationTypeById: Map<number, string>): Wire
     controlViolated: row.controlViolated,
     obligationId: row.obligationId !== null ? String(row.obligationId) : null,
     obligationType: row.obligationId !== null ? (obligationTypeById.get(row.obligationId) ?? null) : null,
+    spawnedByChangeRequestCode: row.spawnedByChangeRequestId !== null ? formatChangeRequestCode(row.spawnedByChangeRequestId) : null,
+    dischargedByChangeRequestCode: row.dischargedByChangeRequestId !== null ? formatChangeRequestCode(row.dischargedByChangeRequestId) : null,
   };
 }
 

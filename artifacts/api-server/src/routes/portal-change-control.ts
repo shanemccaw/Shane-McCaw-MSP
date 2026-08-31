@@ -133,6 +133,7 @@ import {
   recordApproval,
 } from "../lib/portal-change-approvals-store";
 import { recordRejection } from "../lib/portal-change-rejection";
+import { dischargeRisksForNewChangeRequest } from "../lib/change-request-risk-discharge";
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store";
 import {
   addAttachment,
@@ -827,13 +828,33 @@ router.post(
         }
       }
 
+      // #1514 — the discharge half of the rejection-to-risk lifecycle: a fresh
+      // CR raised against the same check as a standing accepted risk IS the
+      // change that supersedes it. Non-fatal, same discipline as the two
+      // blocks above: the CR already exists and the register still renders
+      // even if this lookup fails.
+      let riskDischarged = false;
+      if (body.remediationCheckKey) {
+        try {
+          const { dischargedRiskIds } = await dischargeRisksForNewChangeRequest({
+            changeRequestId: inserted.id,
+            mspId: scope.mspId,
+            tenantId: scope.tenantId,
+            checkKey: body.remediationCheckKey.trim(),
+          });
+          riskDischarged = dischargedRiskIds.length > 0;
+        } catch (err) {
+          log.error({ err, crId: inserted.id }, "change request created but risk discharge lookup failed");
+        }
+      }
+
       const code = formatChangeRequestCode(inserted.id);
       log.info(
-        { customerId, mspId: scope.mspId, code, risk, workload, changeClass: body.changeClass, freezeException: blockingFreeze !== null },
+        { customerId, mspId: scope.mspId, code, risk, workload, changeClass: body.changeClass, freezeException: blockingFreeze !== null, riskDischarged },
         "change request raised from the customer portal",
       );
 
-      res.status(201).json({ code, risk, workload, freezeException: blockingFreeze !== null });
+      res.status(201).json({ code, risk, workload, freezeException: blockingFreeze !== null, riskDischarged });
     } catch (err) {
       log.error({ err, customerId }, "POST /portal/change-control failed");
       res.status(500).json({ error: "Failed to raise the change request" });
