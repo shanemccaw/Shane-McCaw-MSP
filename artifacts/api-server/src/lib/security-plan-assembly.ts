@@ -38,7 +38,21 @@
  * counts in the footprint prove the fact of narrowing; the statement is what a reader
  * is told about it. `scopeMissingRequiredStatement` is enforced at seal time (see
  * `msp-security-plan.ts`'s POST /versions) so a scoped document can never be sealed
- * without one; the honest view needs no statement, since nothing is narrowed.
+ * without a REAL, human-authored one.
+ *
+ * SIGNATURE SCOPE (#1564). #1563's enforcement above only covers the scoped case; the
+ * HONEST (unscoped) seal is exactly the gap #1564 names: "Signing 'our identity control
+ * posture as of this date' is a real, bounded statement. Signing 'our security posture'
+ * unqualified is one nobody should make, and the platform should not offer it as a
+ * default." An honest seal with no scope body still makes an implicit claim ("this is
+ * our full assessed posture as of the sealed date") that must itself be bounded, not
+ * left to speak for itself. `synthesizeScopeStatement` fills a canonical honest-view
+ * statement whenever none is supplied (never for the scoped case — that already fails
+ * closed via `scopeMissingRequiredStatement` before assembly runs) so the footprint's
+ * `scope.statement` is never blank on anything that reaches a seal. A scope change is
+ * never an amendment to an existing version; `security-plan-versioning.ts` only ever
+ * inserts a new one, matching #1564's "Consequence" (a scope change produces a new
+ * version, never an edit to the current one).
  */
 import {
   db,
@@ -49,6 +63,7 @@ import {
   remediationTrackerStepsTable,
   mspChangeRequestsTable,
   m365ChangeInterpretationsTable,
+  SECURITY_PLAN_SCOPE_DIMENSIONS,
   type SecurityPlanContent,
   type SecurityPlanScope,
   type SecurityPlanScopeDimension,
@@ -319,6 +334,34 @@ export function scopeMissingRequiredStatement(scope: SecurityPlanScope): boolean
 }
 
 /**
+ * Resolves the bounded statement (#1564) that goes into a footprint's `scope`. A
+ * caller-supplied `scope.statement` is used verbatim (trimmed). For the HONEST view,
+ * where #1563's `scopeMissingRequiredStatement` deliberately requires nothing, a
+ * canonical statement is synthesized so the field is never blank — #1564's point that an
+ * unscoped seal still makes an implicit, bounded claim that must be recorded, not left
+ * to speak for itself. For a SCOPED view with no statement, this also falls back to a
+ * mechanically-derived one (naming the applied dimensions) as a structural last resort —
+ * `msp-security-plan.ts`'s POST /versions already fails closed on that case via
+ * `scopeMissingRequiredStatement` before assembly ever runs, so a real, human-authored
+ * statement is what actually reaches a seal; this fallback only guards other callers
+ * (e.g. the live/unsealed GET view) against ever returning a blank one.
+ */
+export function synthesizeScopeStatement(scope: SecurityPlanScope, isHonestView: boolean): string {
+  const provided = scope.statement?.trim();
+  if (provided) return provided;
+  if (isHonestView) return "Full assessed estate — no scope narrowing applied.";
+  const dims = scope.dimensions ?? {};
+  const parts: string[] = [];
+  for (const dim of SECURITY_PLAN_SCOPE_DIMENSIONS) {
+    const values = dims[dim];
+    if (values && values.length) parts.push(`${dim}: ${values.join(", ")}`);
+  }
+  return parts.length
+    ? `Scoped to ${parts.join("; ")}. Content outside this scope is not represented in this version.`
+    : "Full assessed estate — no scope narrowing applied.";
+}
+
+/**
  * Applies `scope` to already-read raw modules and computes the #1565 filter footprint.
  * PURE — the whole #1563/#1565 mechanism lives here, decoupled from the DB reads, so it
  * is unit-testable without seeding. Every excluded row is counted into the footprint,
@@ -353,9 +396,10 @@ export function applyScopeAndFootprint(
     });
   }
 
+  const isHonestView = !scopeHasConstraints(scope);
   const footprint: SecurityPlanFilterFootprint = {
-    scope,
-    isHonestView: !scopeHasConstraints(scope),
+    scope: { ...scope, statement: synthesizeScopeStatement(scope, isHonestView) },
+    isHonestView,
     excludedByModule,
     totalExcluded,
     computedAt,

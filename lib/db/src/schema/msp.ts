@@ -6068,9 +6068,16 @@ export interface SecurityPlanModuleExclusion {
 
 /** The filter footprint that #1565 requires on every sealed/exported artifact: the
  * filters applied, what was excluded, and a count of excluded items. It is part of
- * the sealed `content` and cannot be suppressed by the filter UI. */
+ * the sealed `content` and cannot be suppressed by the filter UI.
+ *
+ * `scope.statement` is REQUIRED here (unlike the caller-facing `SecurityPlanScope`,
+ * where it is an optional hint) — #1564's "Settled" section is that a signed version
+ * must record a real, bounded statement of what it covers ("our identity control
+ * posture as of this date"), never an unqualified claim ("our security posture"). The
+ * assembly layer synthesizes one whenever the caller didn't supply it, so this field
+ * can never be empty on anything that reaches a seal. */
 export interface SecurityPlanFilterFootprint {
-  readonly scope: SecurityPlanScope;
+  readonly scope: SecurityPlanScope & { readonly statement: string };
   /** True when no scope was applied — the honest, complete-for-the-estate view. */
   readonly isHonestView: boolean;
   readonly excludedByModule: readonly SecurityPlanModuleExclusion[];

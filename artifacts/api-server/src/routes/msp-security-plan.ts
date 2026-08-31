@@ -70,6 +70,12 @@ interface WireSecurityPlanVersion {
   readonly tenantName: string;
   readonly versionNumber: number;
   readonly content: unknown;
+  /** The #1564 bounded-scope statement this version's signature (if any) attaches to —
+   * mirrored out of `content.footprint.scope.statement` so a reader/UI can show what a
+   * signature covers without parsing `content`. Never empty (see
+   * `synthesizeScopeStatement`): the platform does not offer an unqualified "our
+   * security posture" claim as a default. */
+  readonly scopeStatement: string;
   readonly createdBy: unknown;
   readonly createdAt: string;
   readonly signed: boolean;
@@ -91,6 +97,7 @@ function toWireVersion(row: MspSecurityPlanVersion): WireSecurityPlanVersion {
     tenantName: row.tenantName,
     versionNumber: row.versionNumber,
     content: row.content,
+    scopeStatement: row.content.footprint.scope.statement,
     createdBy: row.createdBy,
     createdAt: iso(row.createdAt) as string,
     signed: row.signed,
@@ -342,7 +349,10 @@ router.patch(
         return;
       }
 
-      log.info({ mspId: tenant.mspId, customerId: tenant.customerId, versionUid }, "Security Plan version signed");
+      log.info(
+        { mspId: tenant.mspId, customerId: tenant.customerId, versionUid, scopeStatement: updated.content.footprint.scope.statement },
+        "Security Plan version signed",
+      );
       res.json({ version: toWireVersion(updated) });
     } catch (err: unknown) {
       log.error({ err }, "PATCH /api/msp/security-plan/:customerId/versions/:versionUid/sign failed");

@@ -16,6 +16,7 @@ import {
   isExcludedByScope,
   scopeHasConstraints,
   scopeMissingRequiredStatement,
+  synthesizeScopeStatement,
   HONEST_SCOPE,
   type RawSecurityPlanModule,
 } from "./security-plan-assembly.ts";
@@ -127,5 +128,45 @@ describe("Security Plan filter footprint (#1565)", () => {
     expect(scoped.isHonestView).toBe(false);
     // The footprint carries the scope that produced it, so a sealed slice is self-describing.
     expect(scoped.scope.dimensions.pillar).toEqual(["identity"]);
+  });
+});
+
+describe("Security Plan signature scope statement (#1564)", () => {
+  it("never leaves the footprint's scope.statement empty, even with no scope body at all", () => {
+    // This is the exact shape POST .../versions produces when a caller seals with no
+    // `scope` field — #1564's "Settled" section is that this must still be a bounded
+    // statement, never an unqualified claim.
+    const { footprint } = applyScopeAndFootprint(modules, HONEST_SCOPE, "2026-08-31T00:00:00.000Z");
+    expect(footprint.scope.statement).toBeTruthy();
+    expect(footprint.scope.statement.length).toBeGreaterThan(0);
+  });
+
+  it("synthesizes a bounded statement for the honest (unfiltered) view", () => {
+    expect(synthesizeScopeStatement({ dimensions: {} }, true)).toBe(
+      "Full assessed estate — no scope narrowing applied.",
+    );
+  });
+
+  it("synthesizes a statement naming the applied dimensions for a scoped view", () => {
+    const statement = synthesizeScopeStatement({ dimensions: { pillar: ["identity", "data"] } }, false);
+    expect(statement).toContain("pillar: identity, data");
+  });
+
+  it("uses the caller-supplied statement verbatim (trimmed) when one is given", () => {
+    expect(
+      synthesizeScopeStatement({ dimensions: { pillar: ["identity"] }, statement: "  Identity controls only.  " }, false),
+    ).toBe("Identity controls only.");
+  });
+
+  it("ignores a blank/whitespace-only caller statement and synthesizes instead", () => {
+    expect(synthesizeScopeStatement({ dimensions: {}, statement: "   " }, true)).toBe(
+      "Full assessed estate — no scope narrowing applied.",
+    );
+  });
+
+  it("a scope change (different dimensions) produces a different statement, never an in-place edit", () => {
+    const before = applyScopeAndFootprint(modules, { dimensions: { pillar: ["identity"] } }, "t").footprint;
+    const after = applyScopeAndFootprint(modules, { dimensions: { pillar: ["data"] } }, "t").footprint;
+    expect(before.scope.statement).not.toBe(after.scope.statement);
   });
 });
