@@ -103,6 +103,14 @@ namespace BuildConsole.Services
         private DateTime? _projectedFullTarget;
         private double _projectedRatePerHour;
 
+        // ── Retry-After back-off (honor 429 rather than hammer the endpoint) ──
+        // When the usage API returns 429 with a Retry-After, we defer the next poll for
+        // that account until this moment instead of re-polling on the fixed cadence.
+        private DateTime? _primaryBackoffUntil;
+        private DateTime? _secondaryBackoffUntil;
+        // Floor applied when a 429 carries no Retry-After header.
+        private static readonly TimeSpan DefaultRateLimitBackoff = TimeSpan.FromMinutes(1);
+
         // Secondary account weekly status fields
         private bool _secondaryConfigured;
         private ClaudeUsageMeterState _secondaryLastState = ClaudeUsageMeterState.Unavailable;
@@ -151,7 +159,9 @@ namespace BuildConsole.Services
                 ActivityLog.Log(Channel, "Manual refresh requested — ignored, a poll is already in flight.");
                 return;
             }
-            ActivityLog.Log(Channel, "Manual refresh requested (status bar refresh icon).");
+            ActivityLog.Log(Channel, "Manual refresh requested (status bar refresh icon) — clearing any Retry-After back-off to force a fresh poll.");
+            _primaryBackoffUntil = null;
+            _secondaryBackoffUntil = null;
             await TickAsync();
         }
 
@@ -167,12 +177,20 @@ namespace BuildConsole.Services
                 // Poll Secondary account independently
                 await PollSecondaryAsync();
 
-                // Poll Primary account
+                // Poll Primary account — honor any active Retry-After back-off rather than hammering a throttled endpoint.
+                if (_primaryBackoffUntil.HasValue && DateTime.Now < _primaryBackoffUntil.Value)
+                {
+                    ActivityLog.Log(Channel, $"Skipping primary poll — honoring Retry-After, backing off until {_primaryBackoffUntil.Value:HH:mm:ss}; keeping last reading.");
+                    Emit((_percent.HasValue || _weeklyPercent.HasValue) ? ClaudeUsageMeterState.Ok : ClaudeUsageMeterState.Unavailable);
+                    return;
+                }
+
                 string primaryDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude");
                 var res = await PollAccountViaApiAsync(primaryDir, isSecondary: false);
 
                 if (res.success)
                 {
+                    _primaryBackoffUntil = null;
                     _percent = res.sessionPercent;
                     _resetTarget = res.sessionReset;
                     _weeklyPercent = res.weeklyPercent;
@@ -189,6 +207,13 @@ namespace BuildConsole.Services
                         UpdateWeeklyProjection(_weeklyPercent.Value, _weeklyResetTarget, _lastPoll.Value);
 
                     Emit(ClaudeUsageMeterState.Ok);
+                }
+                else if (res.rateLimited)
+                {
+                    // 429: set back-off and keep the last good reading on screen rather than clearing to an error.
+                    _primaryBackoffUntil = DateTime.Now + (res.retryAfter ?? DefaultRateLimitBackoff);
+                    ActivityLog.Log(Channel, $"Primary rate limited (429); backing off until {_primaryBackoffUntil.Value:HH:mm:ss}, keeping last reading.");
+                    Emit((_percent.HasValue || _weeklyPercent.HasValue) ? ClaudeUsageMeterState.Ok : ClaudeUsageMeterState.Unavailable);
                 }
                 else
                 {
@@ -285,6 +310,8 @@ namespace BuildConsole.Services
         {
             public bool success;
             public bool notSignedIn;
+            public bool rateLimited;
+            public TimeSpan? retryAfter;
             public string? rawJson;
             public int? sessionPercent;
             public DateTime? sessionReset;
@@ -321,7 +348,7 @@ namespace BuildConsole.Services
             if (status == HttpStatusCode.TooManyRequests)
             {
                 ActivityLog.Log(Channel, $"{accountLabel}Usage API rate limited (429). Retry-After: {retryAfter?.ToString() ?? "unspecified"}.");
-                return new ApiPollResult { success = false, notSignedIn = false, error = "rate limited (429)" };
+                return new ApiPollResult { success = false, notSignedIn = false, rateLimited = true, retryAfter = retryAfter, error = "rate limited (429)" };
             }
 
             if (status == HttpStatusCode.Unauthorized || status == HttpStatusCode.Forbidden)
@@ -582,9 +609,17 @@ namespace BuildConsole.Services
                     return;
                 }
 
+                // Honor any active Retry-After back-off rather than hammering a throttled endpoint.
+                if (_secondaryBackoffUntil.HasValue && DateTime.Now < _secondaryBackoffUntil.Value)
+                {
+                    ActivityLog.Log(Channel, $"[secondary] Skipping poll — honoring Retry-After, backing off until {_secondaryBackoffUntil.Value:HH:mm:ss}; keeping last reading.");
+                    return;
+                }
+
                 var res = await PollAccountViaApiAsync(secondaryDir, isSecondary: true);
                 if (res.success)
                 {
+                    _secondaryBackoffUntil = null;
                     _secondaryWeeklyPercent = res.weeklyPercent;
                     _secondaryWeeklyResetTarget = res.weeklyReset;
                     _secondaryLastPoll = DateTime.Now;
@@ -596,6 +631,12 @@ namespace BuildConsole.Services
 
                     if (_secondaryWeeklyPercent.HasValue)
                         UpdateSecondaryWeeklyProjection(_secondaryWeeklyPercent.Value, _secondaryWeeklyResetTarget, _secondaryLastPoll.Value);
+                }
+                else if (res.rateLimited)
+                {
+                    // 429: set back-off and keep the last good reading rather than clearing to an error.
+                    _secondaryBackoffUntil = DateTime.Now + (res.retryAfter ?? DefaultRateLimitBackoff);
+                    ActivityLog.Log(Channel, $"[secondary] rate limited (429); backing off until {_secondaryBackoffUntil.Value:HH:mm:ss}, keeping last reading.");
                 }
                 else
                 {
