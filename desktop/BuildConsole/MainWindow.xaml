@@ -61,6 +61,16 @@
                       HorizontalAlignment="Left" VerticalAlignment="Top"
                       Panel.ZIndex="-1"/>
 
+        <!-- Git #1887 — background auto-reopen of persisted OpenChatTabs (#874/#1886)
+             entries. Same off-screen-but-alive keep-alive trick PinnedHostCanvas (#972)
+             and ClaudeWebView above already rely on: each reopened tab's WebView2 is
+             parked here (nonzero size, genuinely IN the visual tree) so it actually gets
+             a Loaded event and starts real navigation immediately, instead of sitting
+             inert as a non-selected TabItem's Content would (WPF never realizes that
+             until the tab is actually selected). MainWindow.ChatReopen.cs moves each
+             child from here into its real tab the moment Shane selects it. -->
+        <Canvas x:Name="ChatReopenPreloadHost" IsHitTestVisible="False" Panel.ZIndex="-1"/>
+
         <DockPanel LastChildFill="True">
 
             <!-- ══════════════════════════════════════════════════════════════

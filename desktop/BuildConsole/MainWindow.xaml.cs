@@ -821,6 +821,18 @@ namespace BuildConsole
             // roll-up timer. RefreshHomeRollupAsync no-ops whenever the Home tab
             // isn't open, so there's no steady-state polling cost when it's closed.
             _chatTabsAtLaunch = BuildConsole.Services.BuildConsoleSettings.Load().OpenChatTabs ?? new();
+            // Git #1887 — kick off background reopening of every persisted tab NOW, as early
+            // in the loading window as possible, so real WebView2 navigation overlaps with
+            // the rest of deferred startup below rather than starting only once Shane clicks
+            // a tab later. Fire-and-forget on purpose (see ReopenPersistedChatTabsInBackgroundAsync's
+            // own doc comment in MainWindow.ChatReopen.cs for why this must never be awaited
+            // here / gate MarkShellReady). Same AppMode.IsAgent gate as the usage meter /
+            // Replit watcher just below — an agent-launched build session shouldn't spin up
+            // real claude.ai page loads any more than it should poll usage or wake Replit.
+            if (!BuildConsole.Services.AppMode.IsAgent)
+            {
+                _ = ReopenPersistedChatTabsInBackgroundAsync();
+            }
             // Git #1637 — this used to unconditionally pre-open a VISIBLE "Replit
             // Workspace" tab on every launch (OpenOrFocusReplitWorkspaceTabInternal
             // calls OpenWebTab, which creates a real tab and selects it), briefly
@@ -1853,6 +1865,17 @@ namespace BuildConsole
             // is working in; remember it so Sticky Notes' Send targets it.
             if (e.Source is TabControl changedPane && IsEditorPane(changedPane))
                 _activeEditorPane = changedPane;
+
+            // Git #1887 — this tab was opened as a background-reopen placeholder and has a
+            // real, already-loading WebView2 parked in ChatReopenPreloadHost; now that it's
+            // actually being selected (about to be attached to the live tree), swap that
+            // background one in before anything below reads GetActiveWebView()/the tab's
+            // content, so Shane sees already-loaded content rather than a fresh navigation.
+            if (e.Source is TabControl selectedPane && selectedPane.SelectedItem is TabItem selectedForSwap
+                && _pendingReopenSwap.TryGetValue(selectedForSwap, out var pendingConversationId))
+            {
+                SwapInReopenPreload(selectedForSwap, pendingConversationId);
+            }
 
             if (e.Source == EditorTabs)
             {
@@ -3014,8 +3037,24 @@ namespace BuildConsole
             };
             headerPanel.Children.Add(closeBtn);
 
-            var wv = BuildChatWebView(chat);
-            var wrappedWv = CreateChatContextWrapper(wv);
+            // Git #1887 — a genuine user-driven open (selectTab true, about to be attached
+            // to the live visual tree immediately below) reuses an already-loading/loaded
+            // background preload for this exact conversation if one exists, instead of
+            // starting a brand-new navigation. A background reopen call itself
+            // (selectTab: false) never takes it here — see the _pendingReopenSwap branch
+            // below, which defers the swap until this placeholder tab is actually selected.
+            Microsoft.Web.WebView2.Wpf.WebView2 wv;
+            FrameworkElement wrappedWv;
+            if (selectTab && TryTakeReopenPreload(chat.ConversationId, out var preloadedWv, out var preloadedWrapped))
+            {
+                wv = preloadedWv;
+                wrappedWv = preloadedWrapped;
+            }
+            else
+            {
+                wv = BuildChatWebView(chat);
+                wrappedWv = CreateChatContextWrapper(wv);
+            }
 
             // Split grid: chat WebView2 in column 0, build output pane in
             // column 1 (starts collapsed - PollChatTabBuildStateAsync opens it
@@ -3077,7 +3116,19 @@ namespace BuildConsole
             AttachTabContextMenu(newTab, EditorTabs);
             AttachTabDragHandlers(newTab);
             EditorTabs.Items.Add(newTab);
-            if (selectTab) EditorTabs.SelectedItem = newTab;
+            if (selectTab)
+            {
+                EditorTabs.SelectedItem = newTab;
+            }
+            else if (_reopenPreloadedWebViews.ContainsKey(chat.ConversationId ?? ""))
+            {
+                // Git #1887 — this background-opened placeholder has a matching background
+                // preload still loading in ChatReopenPreloadHost. Remember to swap it in the
+                // moment this tab is actually selected (EditorTabs_SelectionChanged) instead
+                // of now, since un-parking it while nothing is selected would detach it from
+                // the live visual tree and risk tearing its CoreWebView2 down.
+                _pendingReopenSwap[newTab] = chat.ConversationId!;
+            }
             PersistOpenChatTabs(); // Git #874 — remember this chat (BoardChat identity + pane) for next launch's Home roll-up
         }
 
@@ -4816,6 +4867,11 @@ namespace BuildConsole
                 _chatTabs.Remove(tabItem);
                 PersistOpenChatTabs();
             }
+            // Git #1887 — this tab may still have a background reopen preload loading for
+            // it (never selected, so never swapped in). Without this, closing it before
+            // ever clicking it would leave that WebView2 loaded and running forever,
+            // unreferenced by anything.
+            CleanupPendingReopenSwap(tabItem);
             if (_homeView != null && tabItem.Content == _homeView)
             {
                 _homeView = null;

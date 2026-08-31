@@ -57,9 +57,10 @@ namespace BuildConsole.Services
     /// the real BoardChat identity (ConversationId/Title/ClaudeUrl/EpicId/
     /// IssueGithubNumber) the app already opens chats by (see MainWindow.OpenChatTab
     /// / BoardChat) plus which of the four editor panes it was living in, so the
-    /// per-pane layout is remembered too. This is TRACKING only — the session does
-    /// NOT auto-reopen these on launch; the roll-up references them and Shane clicks
-    /// to reopen. Same %AppData%\BuildConsole\settings.json store / round-trip as
+    /// per-pane layout is remembered too. Git #1887 — the NEXT session's launch now
+    /// background-reopens each of these automatically (see MainWindow.ChatReopen.cs),
+    /// in addition to the Home "Where you left off" roll-up still referencing this
+    /// same snapshot for its manual click-to-focus list. Same %AppData%\BuildConsole\settings.json store / round-trip as
     /// every field below; a pre-#874 settings.json (no "openChatTabs" key) still
     /// deserializes with the empty-list field initializer intact.
     /// </summary>
