@@ -439,6 +439,42 @@ namespace BuildConsole.Controls
             PinnedQuestionsSection.Visibility = pins.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        /// <summary>
+        /// Git #2105 — persistence entry point for active detection. Writes each parsed question
+        /// as its OWN chat_pinned_questions row (never bundled), skipping any the DB's partial
+        /// unique index already holds open (CreatePinnedQuestionAsync returns false for a dup, not
+        /// an error). Returns how many NEW rows were created, and repaints the pinned-questions
+        /// panel when any were. Called from FloatingChatWindow's turn-idle probe flow (#2105).
+        /// </summary>
+        public async System.Threading.Tasks.Task<int> CreatePinnedQuestionsFromDetectionAsync(int chatId, IEnumerable<string> questions)
+        {
+            if (_db == null || chatId <= 0 || questions == null) return 0;
+
+            int created = 0;
+            foreach (var raw in questions)
+            {
+                var q = raw?.Trim();
+                if (string.IsNullOrEmpty(q)) continue;
+                try
+                {
+                    if (await _db.CreatePinnedQuestionAsync(chatId, q)) created++;
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("chat.floating", $"pin-detect create failed for chat {chatId}: {ex.Message}");
+                }
+            }
+
+            if (created > 0)
+            {
+                if (Dispatcher.CheckAccess())
+                    await LoadPinnedQuestionsAsync();
+                else
+                    await Dispatcher.InvokeAsync(async () => await LoadPinnedQuestionsAsync());
+            }
+            return created;
+        }
+
         private Border BuildPinnedQuestionCard(PinnedQuestion pq)
         {
             var card = new Border

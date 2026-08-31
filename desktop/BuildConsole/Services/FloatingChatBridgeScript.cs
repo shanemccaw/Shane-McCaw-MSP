@@ -155,6 +155,17 @@ namespace BuildConsole.Services
 
   var lastSent = null;
 
+  // Turn-idle detection (Git #2105) — the receive-side "turn completed" signal. The poll below
+  // already re-scrapes the last assistant turn ~1.2s; these track when its markdown STOPS
+  // changing (streaming has settled) so BT_FLOATY_TURN_IDLE is posted exactly ONCE per settled
+  // turn — a real change->stable edge event, not continuous polling. The host (#2105 active
+  // detection) uses it as the trigger to probe a chat for outstanding questions; every existing
+  // consumer ignores this message type, so it is purely additive to the #2059/#2072 bridge.
+  var idleLastMd = null;
+  var idleStableSince = 0;
+  var idleEmittedMd = null;
+  var IDLE_STABLE_MS = 2500;
+
   // Send/receive correlation gate (Git #2072).
   // The old poll posted whatever assistant turn was last in the DOM the first time it
   // saw text (lastSent === null), with NO link to a message the user actually sent. On
@@ -194,6 +205,26 @@ namespace BuildConsole.Services
       } else {
         return;
       }
+    }
+
+    // Turn-idle edge (Git #2105). Runs BEFORE the md===lastSent dedupe return below precisely
+    // because "unchanged" is the state we're watching for: when the last turn's markdown has
+    // been stable for IDLE_STABLE_MS it has settled, so emit BT_FLOATY_TURN_IDLE once. Placed
+    // after the waiting gate so a stale pre-send turn never fires idle mid-probe.
+    var nowTs = Date.now();
+    if (md !== idleLastMd) {
+      idleLastMd = md;
+      idleStableSince = nowTs;
+      idleEmittedMd = null;
+    } else if (md && idleEmittedMd !== md && (nowTs - idleStableSince) >= IDLE_STABLE_MS) {
+      idleEmittedMd = md;
+      try {
+        window.chrome.webview.postMessage(JSON.stringify({
+          type: 'BT_FLOATY_TURN_IDLE',
+          conversationId: conversationId(),
+          markdown: md
+        }));
+      } catch (e) {}
     }
 
     if (!md || md === lastSent) return;

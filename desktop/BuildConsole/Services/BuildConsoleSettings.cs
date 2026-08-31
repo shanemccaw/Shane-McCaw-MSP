@@ -402,6 +402,18 @@ namespace BuildConsole.Services
         /// <summary>Whether the floating chat window's live bridge strip was expanded when last closed. Collapsed pauses real-time capture (WebView2 throttles when hidden), so it defaults expanded.</summary>
         public bool FloatingChatBridgeExpanded { get; set; } = true;
 
+        /// <summary>
+        /// Git #2105 — active pinned-question detection. When on, each open floating-chat tab, on
+        /// every settled assistant turn (the real "turn completed" event, not polling), is probed
+        /// once — a real message asking whether it is waiting on anything from Shane — and each
+        /// distinct question in the reply is persisted as its own <c>chat_pinned_questions</c> row.
+        /// Defaults OFF: it sends real messages into real conversations (consuming Claude usage and
+        /// appearing in the transcript), so it's opt-in — flip this in %AppData%\BuildConsole\settings.json.
+        /// A per-chat cooldown and a "never re-probe the probe's own answer" gate keep it from
+        /// looping or spamming; see FloatingChatWindow's MaybeProbeForPinnedQuestionsAsync.
+        /// </summary>
+        public bool PinnedQuestionDetectionEnabled { get; set; } = false;
+
         // Git #864 — Shane: "I need you to design me a icon based popout panel
         // with web site tools like: LinkedIn, Google Analytics, Microsoft
         // Clarity... a configuration in the settings might actually be
