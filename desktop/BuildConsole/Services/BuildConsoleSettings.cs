@@ -529,6 +529,41 @@ namespace BuildConsole.Services
         /// </summary>
         public bool ConservationModeEnabled { get; set; } = false;
 
+        // ── Git #2003 — drive Conservation + account routing from the usage meter ─────
+        // Shane: "If that [usage meter] was accurate ... I would use that as the indicator
+        // basis and not have to click any buttons." These three fields turn the #1989
+        // Conservation Cap and the #1416/#1419 account routing from purely-manual toggles
+        // into meter-driven automation. ALL default to a safe, non-acting state so an
+        // upgrade never silently starts capping or re-routing builds Shane didn't ask it
+        // to: the master switch is OFF, and when it's on the automation still FAILS CLOSED
+        // on any unavailable/errored/stale reading (see UsageAutomationService). Same
+        // %AppData%\BuildConsole\settings.json store / field-initializer-as-default
+        // convention as every field above; a pre-#2003 settings.json (no key) deserializes
+        // with these defaults intact.
+
+        /// <summary>Git #2003 — master switch for meter-driven automation (auto-conservation +
+        /// headroom-aware account routing). OFF by default: the whole feature is opt-in, and while
+        /// OFF the Conservation toggle and account routing behave exactly as the manual #1989/#1419
+        /// controls did before. This is also the manual escape hatch — turning it off hands full
+        /// manual control back. When ON, automation is still only a default: it never acts on a
+        /// bad/stale reading, and a manual Conservation toggle wins for a visible window
+        /// (UsageAutomationService.ManualHoldWindow).</summary>
+        public bool UsageAutomationEnabled { get; set; } = false;
+
+        /// <summary>Git #2003 — weekly-usage percent at/above which auto-conservation ENGAGES the
+        /// #1989 cap for the account with the least headroom that a heavy build would still land on.
+        /// Default 85 (Shane's stated "Conservation auto starts at 85%"). Configurable. A value
+        /// outside 1..100 read from settings.json is clamped by UsageAutomationService rather than
+        /// disabling the feature.</summary>
+        public int AutoConservationThresholdPercent { get; set; } = 85;
+
+        /// <summary>Git #2003 — weekly-usage percent at/below which an ENGAGED auto-conservation cap
+        /// RELEASES. Deliberately well below <see cref="AutoConservationThresholdPercent"/> to provide
+        /// the required hysteresis: engaging at 85 and releasing at 85 would flap across a poll
+        /// boundary, so release only on a genuine reset (usage falling this far only happens when the
+        /// weekly window rolls over) or when the tracked reset moment passes. Default 50.</summary>
+        public int AutoConservationReleasePercent { get; set; } = 50;
+
         /// <summary>
         /// Git #1870 — Batter Up "Free flow" gate. This is a DIFFERENT gate from
         /// <see cref="QueuePaused"/>: QueuePaused stops rows LAUNCHING out of bt_build_queue;

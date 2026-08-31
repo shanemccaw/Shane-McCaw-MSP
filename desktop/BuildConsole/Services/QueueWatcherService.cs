@@ -1377,6 +1377,25 @@ namespace BuildConsole.Services
                 return;
             }
 
+            // Git #2003 — headroom-aware account routing. Before the account-injection block
+            // below reads item.Account, let meter-driven automation pick the account with more
+            // headroom for a HEAVY build (ExceedsSonnetHigh — the same predicate the cap uses).
+            // ResolveAccountForLaunch fails closed: it returns item.Account unchanged when the
+            // master switch is off, either account's reading is unavailable/errored/stale, the
+            // build isn't heavy, or an explicit per-build account choice must be respected — so
+            // this only ever narrows to a real, better account, never guesses one. Mutating the
+            // local item.Account keeps every downstream use (env injection, logging) consistent;
+            // it is not persisted back to the queue row.
+            if (!isForced)
+            {
+                string? routed = UsageAutomationService.Instance.ResolveAccountForLaunch(item.Model, item.Effort, item.Account);
+                if (!string.Equals(routed, item.Account, StringComparison.OrdinalIgnoreCase))
+                {
+                    ActivityLog.Log("watcher", $"Queue #{item.Id} ({item.Title}) account re-routed by usage automation: {item.Account ?? "primary"} → {routed ?? "primary"} (more headroom).");
+                    item.Account = routed;
+                }
+            }
+
             // Git #1203 — the launched session must be TOLD its own buildId. The
             // `--title N` header a build was queued with (and any GitHub number it
             // resolved to) is parsed off and stripped before the prompt body is stored

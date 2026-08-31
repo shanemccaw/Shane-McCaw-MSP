@@ -392,6 +392,29 @@
                                 <TextBlock x:Name="TopLocationToggleText" Text="Home" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
                             </StackPanel>
                         </Border>
+                        <!-- Git #2003 — usage-meter automation master toggle. When ON, the live
+                             per-account usage meter drives Conservation (engage/release with
+                             hysteresis) and routes heavy builds to the account with more headroom.
+                             Fails closed on any unavailable/errored/stale reading (status text
+                             states why), and a manual Conservation toggle wins for a visible window.
+                             OFF by default and OFF hands full manual control back. Green accent when
+                             actively acting on live data — distinct from the account (Blue) and
+                             Conservation (Peach) toggles. No emoji. -->
+                        <Border x:Name="TopAutomationToggleBorder"
+                                Background="{StaticResource Surface0Brush}"
+                                BorderBrush="{StaticResource Surface1Brush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="7,2"
+                                Margin="0,0,6,0"
+                                Cursor="Hand"
+                                MouseLeftButtonUp="TopAutomationToggle_Click">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="Auto:" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock x:Name="TopAutomationToggleText" Text="Off" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextBrush}" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="TopAutomationStatusText" Text="" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                            </StackPanel>
+                        </Border>
                         <!-- Git #1989 — Conservation Cap toggle. When ON, no build above Sonnet
                              High launches — it's detected and PARKED (never silently
                              downgraded) until Shane overrides it per-item or turns this off (or

@@ -317,6 +317,11 @@ namespace BuildConsole
             // deserializes that field to its C# default (false) — loads OFF, per spec.
             RefreshTopConservationToggleUi();
 
+            // Git #2003 — title-bar usage-automation toggle: reflect the persisted state on launch.
+            // A pre-#2003 settings.json (no UsageAutomationEnabled key) deserializes to false — the
+            // feature loads OFF and behaves as the pure manual controls until Shane turns it on.
+            RefreshTopAutomationUi();
+
             // Git #1986 — title-bar Home/Rental location toggle: reflect the persisted
             // LocationMode on launch. A pre-existing settings.json with no LocationMode key
             // deserializes that field to its C# default ("Home") — loads Home/unmetered, per
@@ -456,6 +461,14 @@ namespace BuildConsole
 
                 _usageMeter = new BuildConsole.Services.ClaudeUsageMeterService();
                 _usageMeter.StatusChanged += UsageMeter_StatusChanged;
+                // Git #2003 — when the automation service acts on a poll (engages/releases the cap,
+                // or flips active/inactive), repaint the Conservation toggle and the automation
+                // status text. Marshal to the UI thread — the event fires from the meter callback.
+                BuildConsole.Services.UsageAutomationService.Instance.Changed += () =>
+                {
+                    if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(new Action(OnAutomationChanged)); return; }
+                    OnAutomationChanged();
+                };
                 if (!BuildConsole.Services.AppMode.IsAgent)
                 {
                     _usageMeter.Start();
@@ -4186,6 +4199,14 @@ namespace BuildConsole
                 : "";
             TopConservationUsageText.ToolTip = status.WeeklyToolTip;
 
+            // Git #2003 — feed the real per-account reading to the automation service, which runs
+            // the auto-conservation state machine (engage/release with hysteresis, fail-closed on a
+            // stale/errored reading) and drives the account-routing decision the watcher consults at
+            // launch. Its Changed event (wired at construction) repaints the Conservation toggle and
+            // the automation status text below when it acts.
+            BuildConsole.Services.UsageAutomationService.Instance.OnMeterStatus(status);
+            RefreshTopAutomationUi();
+
             // Feed the SAME real meter reading into the startup splash's "Claude usage"
             // row (no-op once that row has already settled — the meter keeps polling for
             // the status bar long after launch).
@@ -6066,7 +6087,75 @@ namespace BuildConsole
             settings.Save();
             RefreshTopConservationToggleUi();
             BuildConsole.Services.ActivityLog.Log("build-queue", $"Conservation Cap toggled {(turningOff ? "OFF" : "ON")}.");
+            // Git #2003 — a manual toggle must win over automation for a visible window: arm the
+            // manual-hold so the next poll can't silently undo Shane's choice.
+            BuildConsole.Services.UsageAutomationService.Instance.NotifyManualConservationChange();
+            RefreshTopAutomationUi();
             if (turningOff) _ = ReleaseAllCappedAsync("toggle turned off");
+        }
+
+        // ── Title bar: usage-meter automation toggle (Git #2003) ────────────────
+        // Shane: "If that [usage meter] was accurate ... I would use that as the indicator basis
+        // and not have to click any buttons." This master switch turns the meter-driven automation
+        // (auto-conservation + headroom-aware account routing) on/off. OFF by default and OFF is the
+        // full-manual escape hatch: while off, the Conservation toggle and account routing behave
+        // exactly as the pure manual #1989/#1419 controls. When on, automation is still only a
+        // default — it fails closed on any unavailable/errored/stale reading and never overrides a
+        // manual Conservation toggle inside its hold window. See UsageAutomationService.
+        private void TopAutomationToggle_Click(object sender, MouseButtonEventArgs e)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            bool turningOn = !settings.UsageAutomationEnabled;
+            settings.UsageAutomationEnabled = turningOn;
+            settings.Save();
+            BuildConsole.Services.ActivityLog.Log("build-queue", $"Usage-meter automation toggled {(turningOn ? "ON" : "OFF")}.");
+            // Re-evaluate immediately against the last reading rather than waiting for the next poll.
+            if (_usageMeter != null) _ = _usageMeter.ManualRefreshAsync();
+            RefreshTopAutomationUi();
+        }
+
+        /// <summary>Git #2003 — the automation service acted on a poll (or flipped active/inactive);
+        /// repaint the Conservation toggle (it may have engaged/released the cap) and the automation
+        /// status text.</summary>
+        private void OnAutomationChanged()
+        {
+            RefreshTopConservationToggleUi();
+            RefreshTopAutomationUi();
+        }
+
+        /// <summary>Repaints the title-bar automation toggle + status text from the live setting and
+        /// the automation service's current active/inactive state.</summary>
+        private void RefreshTopAutomationUi()
+        {
+            if (TopAutomationToggleText == null) return; // called before InitializeComponent in edge paths
+            var svc = BuildConsole.Services.UsageAutomationService.Instance;
+            bool on = BuildConsole.Services.BuildConsoleSettings.Load().UsageAutomationEnabled;
+
+            TopAutomationToggleText.Text = on ? "On" : "Off";
+            // Green accent when acting on live data, muted when off/inactive — distinct from the
+            // account (Blue) and Conservation (Peach) toggles.
+            var state = svc.State;
+            bool acting = state == BuildConsole.Services.UsageAutomationService.AutomationState.Active;
+            TopAutomationToggleBorder.Background = on
+                ? (System.Windows.Media.Brush)FindResource("Surface1Brush")
+                : (System.Windows.Media.Brush)FindResource("Surface0Brush");
+            TopAutomationToggleBorder.BorderBrush = acting
+                ? (System.Windows.Media.Brush)FindResource("GreenBrush")
+                : on ? (System.Windows.Media.Brush)FindResource("PeachBrush")
+                     : (System.Windows.Media.Brush)FindResource("Surface1Brush");
+            TopAutomationToggleText.Foreground = acting
+                ? (System.Windows.Media.Brush)FindResource("GreenBrush")
+                : on ? (System.Windows.Media.Brush)FindResource("PeachBrush")
+                     : (System.Windows.Media.Brush)FindResource("TextBrush");
+
+            // The status text plainly states inactivity + reason (fail-closed transparency, #2003 req 3).
+            TopAutomationStatusText.Text = on ? svc.StatusText() : "";
+            TopAutomationStatusText.Foreground = acting
+                ? (System.Windows.Media.Brush)FindResource("Subtext0Brush")
+                : (System.Windows.Media.Brush)FindResource("PeachBrush");
+            TopAutomationToggleBorder.ToolTip = on
+                ? $"Usage automation: ON — {svc.StatusText()}.\n\nEngages Conservation for you when the account with the most headroom still crosses the threshold, and routes heavy builds to the account with more headroom. Fails closed: if a reading is unavailable, errored, or stale (>{(int)BuildConsole.Services.UsageAutomationService.StaleAfter.TotalMinutes}m old) it does nothing and holds the last manual state. A manual Conservation toggle wins for {(int)BuildConsole.Services.UsageAutomationService.ManualHoldWindow.TotalHours}h. Click to turn off (full manual control)."
+                : "Usage automation: OFF — the Conservation toggle and account routing are fully manual (as before). Click to let the live usage meter engage Conservation and route heavy builds to the account with more headroom automatically.";
         }
 
         /// <summary>Repaints the title-bar Conservation Cap toggle from the persisted setting.</summary>
@@ -6162,6 +6251,11 @@ namespace BuildConsole
             settings.ConservationModeEnabled = false;
             settings.Save();
             RefreshTopConservationToggleUi();
+            // Git #2003 — Drain is a manual action that turns Conservation off; arm the manual-hold
+            // so automation can't silently re-engage the cap on the next poll while the tight window
+            // Shane just declared over is still, by the numbers, above threshold.
+            BuildConsole.Services.UsageAutomationService.Instance.NotifyManualConservationChange();
+            RefreshTopAutomationUi();
 
             int released = await ReleaseAllCappedAsync("Drain");
             ToastEngine.Success("Drained", $"{released} build{(released == 1 ? "" : "s")} released back to the queue at full model. Conservation Cap turned off.");
