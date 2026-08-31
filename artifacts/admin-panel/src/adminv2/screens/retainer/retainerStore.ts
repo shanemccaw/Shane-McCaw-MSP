@@ -23,6 +23,11 @@ export interface RetainerBucket {
   rolledHours: number;
   usedHours: number;
   remainingHours: number;
+  /** Honest, uncapped hours delivered beyond retained+rolled. 0 when not over. */
+  overHours: number;
+  /** True only when genuinely over — NOT the same as remainingHours <= 0, which is
+   *  also true for a customer who used exactly their allotment. */
+  isOverMonth: boolean;
 }
 
 export interface RetainerCustomer {

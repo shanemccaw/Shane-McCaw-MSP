@@ -239,7 +239,11 @@ function SettingsCard({ customerId, settings }: { customerId: number; settings: 
 function BucketCard({ bucket, settings }: { bucket: import("./retainerStore").RetainerBucket; settings: import("./retainerStore").RetainerSettings }) {
   const total = bucket.retainedHours + bucket.rolledHours;
   const pct = total > 0 ? Math.min(100, Math.round((bucket.usedHours / total) * 100)) : 0;
-  const over = bucket.remainingHours <= 0 && total > 0;
+  // isOverMonth is the honest, uncapped signal from the server — NOT remainingHours
+  // <= 0, which is also true for a customer who used exactly their allotment (not
+  // over). Over-month is a normal state here, not an error; it just gets a
+  // different color so Shane can see it at a glance.
+  const over = bucket.isOverMonth;
   return (
     <div style={{ ...card }} data-testid="retainer-bucket">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
@@ -249,13 +253,16 @@ function BucketCard({ bucket, settings }: { bucket: import("./retainerStore").Re
       <div style={{ display: "flex", gap: 26, flexWrap: "wrap", marginBottom: 12 }}>
         <Stat label="Retained" value={`${bucket.retainedHours}h`} />
         <Stat label="Rolled over" value={`${bucket.rolledHours}h`} tone={bucket.rolledHours > 0 ? ACCENT_TEXT.amber : undefined} />
-        <Stat label="Used" value={`${bucket.usedHours}h`} />
+        <Stat label="Delivered" value={`${bucket.usedHours}h`} tone={over ? ACCENT_TEXT.danger : undefined} testid="retainer-used" />
         <Stat
           label="Remaining"
           value={`${bucket.remainingHours}h`}
           tone={over ? ACCENT_TEXT.danger : ACCENT_TEXT.green}
           testid="retainer-remaining"
         />
+        {over && (
+          <Stat label="Over" value={`${bucket.overHours}h`} tone={ACCENT_TEXT.danger} testid="retainer-over" />
+        )}
       </div>
       <div style={{ height: 8, borderRadius: 4, background: SURFACE.well, overflow: "hidden" }}>
         <div style={{ width: `${pct}%`, height: "100%", background: over ? ACCENT.danger : ACCENT.green }} />

@@ -91,6 +91,13 @@ export function bucketToWire(bucket: ReturnType<typeof computeMonthBucket>) {
     rolledHours: minutesToHours(bucket.rolledMinutes),
     usedHours: minutesToHours(bucket.usedMinutes),
     remainingHours: minutesToHours(bucket.remainingMinutes),
+    // Honest, uncapped over-month signal — see retainer-hours.ts MonthBucket.overMinutes.
+    // Over-month is a normal state, not an error: a consumer can render
+    // "{retainedHours + rolledHours}h retained · {usedHours}h delivered" and, only
+    // when isOverMonth, "{overHours}h over" — never inferred from remainingHours
+    // === 0, which is also true for a customer who used exactly their allotment.
+    overHours: minutesToHours(bucket.overMinutes),
+    isOverMonth: bucket.overMinutes > 0,
   };
 }
 

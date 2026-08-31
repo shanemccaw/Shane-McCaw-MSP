@@ -101,11 +101,32 @@ describe("computeMonthBucket — rollover", () => {
     expect(minutesToHours(aug.rolledMinutes)).toBe(8);
   });
 
-  it("floors remaining at zero on an overage", () => {
+  it("floors remaining at zero on an overage, but reports the overage honestly and uncapped", () => {
     const used = usedMinutesByPeriod([{ periodMonth: "2026-08", minutes: 900 }]); // 15h used
     const bucket = computeMonthBucket("2026-08", 480, used);
     expect(bucket.remainingMinutes).toBe(0);
     expect(minutesToHours(bucket.usedMinutes)).toBe(15);
+    // 15h delivered against 8h retained → 7h over, not silently dropped.
+    expect(minutesToHours(bucket.overMinutes)).toBe(7);
+  });
+
+  it("matches the design's own headline over-month example (10h retained · 12h delivered)", () => {
+    const used = usedMinutesByPeriod([{ periodMonth: "2026-08", minutes: 720 }]); // 12h used
+    const bucket = computeMonthBucket("2026-08", 600, used); // 10h retained, no rollover
+    expect(minutesToHours(bucket.retainedMinutes)).toBe(10);
+    expect(minutesToHours(bucket.usedMinutes)).toBe(12);
+    expect(minutesToHours(bucket.overMinutes)).toBe(2);
+    expect(bucket.remainingMinutes).toBe(0);
+  });
+
+  it("does NOT flag over-month when used exactly matches the allotment", () => {
+    // A customer who used exactly what they retained ran out (remaining = 0) but
+    // did not deliver MORE than retained — over-month must stay false here, not be
+    // inferred from remainingMinutes === 0.
+    const used = usedMinutesByPeriod([{ periodMonth: "2026-08", minutes: 480 }]);
+    const bucket = computeMonthBucket("2026-08", 480, used);
+    expect(bucket.remainingMinutes).toBe(0);
+    expect(bucket.overMinutes).toBe(0);
   });
 
   it("gives a clean bucket for a month with no prior activity", () => {
@@ -113,5 +134,18 @@ describe("computeMonthBucket — rollover", () => {
     expect(minutesToHours(bucket.rolledMinutes)).toBe(0);
     expect(minutesToHours(bucket.usedMinutes)).toBe(0);
     expect(minutesToHours(bucket.remainingMinutes)).toBe(8);
+    expect(bucket.overMinutes).toBe(0);
+  });
+
+  it("counts rolled hours toward the over-month threshold, not just the fresh allotment", () => {
+    // June retained 8h used 0 → 8h rolls to July. July retained 8h + rolled 8h =
+    // 16h available; using 20h should be 4h over, not 12h over.
+    const used = usedMinutesByPeriod([
+      { periodMonth: "2026-06", minutes: 0 },
+      { periodMonth: "2026-07", minutes: 1200 }, // 20h
+    ]);
+    const bucket = computeMonthBucket("2026-07", 480, used);
+    expect(minutesToHours(bucket.rolledMinutes)).toBe(8);
+    expect(minutesToHours(bucket.overMinutes)).toBe(4);
   });
 });

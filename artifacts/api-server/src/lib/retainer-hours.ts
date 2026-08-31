@@ -89,10 +89,18 @@ export interface MonthBucket {
   readonly retainedMinutes: number;
   /** Unused RETAINED minutes carried from last month (rolled once, then expire). */
   readonly rolledMinutes: number;
-  /** Minutes consumed this month (sum of the log). */
+  /** Minutes consumed this month (sum of the log) — the honest, uncapped "delivered" figure. */
   readonly usedMinutes: number;
-  /** retained + rolled − used, floored at 0. */
+  /** retained + rolled − used, floored at 0. This is a leftover BALANCE, never negative. */
   readonly remainingMinutes: number;
+  /**
+   * used − (retained + rolled), floored at 0. Over-month is a normal state, not an
+   * error — this is the honest, UNCAPPED amount delivered beyond what was retained,
+   * so a consumer can render "10h retained · 12h delivered" (2h over) without
+   * inferring the state from `remainingMinutes === 0`, which is also true for a
+   * customer who used exactly their allotment (not over).
+   */
+  readonly overMinutes: number;
 }
 
 /**
@@ -141,6 +149,7 @@ export function computeMonthBucket(
         rolledMinutes: rolled,
         usedMinutes: used,
         remainingMinutes: Math.max(0, retainedMinutes + rolled - used),
+        overMinutes: Math.max(0, used - (retainedMinutes + rolled)),
       };
     }
     prevRetained = retainedMinutes;
@@ -149,12 +158,14 @@ export function computeMonthBucket(
     cursor = periodAfter(cursor);
     if (++guard > 240) {
       // Unreachable in practice; a safety valve, not a real path.
+      const usedGuard = usedByPeriod.get(targetPeriod) ?? 0;
       return {
         period: targetPeriod,
         retainedMinutes,
         rolledMinutes: 0,
-        usedMinutes: usedByPeriod.get(targetPeriod) ?? 0,
-        remainingMinutes: Math.max(0, retainedMinutes - (usedByPeriod.get(targetPeriod) ?? 0)),
+        usedMinutes: usedGuard,
+        remainingMinutes: Math.max(0, retainedMinutes - usedGuard),
+        overMinutes: Math.max(0, usedGuard - retainedMinutes),
       };
     }
   }
