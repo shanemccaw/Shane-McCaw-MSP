@@ -5688,7 +5688,7 @@ namespace BuildConsole.Controls
             return tvi;
         }
 
-        #region Git #2061 — Git Board issue-hover quick-action popover
+        #region Git #2061/#2081 — Git Board issue-hover quick-action popover
         // Replaces the old plain-tooltip "static summary card" on a Git Board issue row with a
         // state-aware popover: same status pill/title/snippet info, plus ONE contextual primary
         // action matching the issue's real associated build state. State → action mapping is
@@ -5701,13 +5701,23 @@ namespace BuildConsole.Controls
         //                      isn't distinctly detected; a running build always offers the same
         //                      inline-reply -> resume-session mechanism #2036 will eventually gate
         //                      behind real detection (graceful degrade, not a second implementation).
-        //   Blocked       -> plain "waiting on #N - title" text (the #2062 ghost-entity card
-        //                      hasn't landed as of this build; this matches current behavior).
+        //   Blocked       -> no build action; overridden by the #2081 relationship picture instead.
         // Actions are dispatched through the RequestDispatchBuild/RequestCancelOrStopBuild/
         // RequestRetryBuild/RequestReplyToBuild/RequestOpenBuildChat delegates (set by MainWindow to
         // BuildQueuePanel's Quick*Async wrappers — see BuildQueuePanel.xaml.cs) so this reuses the
         // exact same _watcher/_db calls as the right-click menu's Cancel/Retry/Reply/Start Now
         // (#2030's inventory) instead of a second implementation.
+        //
+        // Git #2081 — every OPEN issue's popup (blocked or not) now also carries the full
+        // relationship picture, both directions: what blocks it (GetBlockedByAsync, ALL declared
+        // blockers with real titles, not just the sweep's cached first-open one) and — new — what
+        // IT blocks (GetBlockingAsync, the reverse). No reverse lookup existed anywhere in the app
+        // before this (checked #2030's Build Queue chain-highlight work: not landed, no bookend).
+        // GitHub's real issue-dependencies REST API turned out to already mirror `blocked_by` with
+        // a genuine `blocking` endpoint, confirmed live via `gh api .../dependencies/blocking` —
+        // one REST call per issue, not a scan over every open issue's own blocked_by. Fetched live
+        // on hover (LoadIssueRelationshipsAsync) rather than added to the periodic board sweep,
+        // since it's popup-only data, not something every row's badge needs.
 
         private static readonly TimeSpan IssueHoverShowDelay = TimeSpan.FromMilliseconds(350);
         private static readonly TimeSpan IssueHoverHideDelay = TimeSpan.FromMilliseconds(250);
@@ -5775,13 +5785,21 @@ namespace BuildConsole.Controls
 
         private void HideIssueHoverPopup()
         {
+            _issueHoverPopupGeneration++;
             if (IssueHoverPopup.IsOpen) IssueHoverPopup.IsOpen = false;
         }
+
+        /// <summary>Git #2081 — bumped on every show so a slow in-flight
+        /// <see cref="LoadIssueRelationshipsAsync"/> fetch from a PREVIOUSLY hovered issue can
+        /// detect it's stale (user moved to a different row, or the popup closed) and no-op
+        /// instead of overwriting the current popup's content with the wrong issue's data.</summary>
+        private int _issueHoverPopupGeneration;
 
         private void ShowIssueHoverPopup(GitIssue issue, FrameworkElement target)
         {
             IssueHoverPopupBody.Children.Clear();
-            IssueHoverPopupBody.Children.Add(BuildIssueHoverPopupContent(issue));
+            int generation = ++_issueHoverPopupGeneration;
+            IssueHoverPopupBody.Children.Add(BuildIssueHoverPopupContent(issue, generation));
             IssueHoverPopup.PlacementTarget = target;
             IssueHoverPopup.IsOpen = true;
         }
@@ -5801,7 +5819,7 @@ namespace BuildConsole.Controls
                 .FirstOrDefault();
         }
 
-        private UIElement BuildIssueHoverPopupContent(GitIssue issue)
+        private UIElement BuildIssueHoverPopupContent(GitIssue issue, int generation)
         {
             var root = new StackPanel();
             bool isClosed = issue.Status == "CLOSED";
@@ -5842,19 +5860,34 @@ namespace BuildConsole.Controls
                 });
             }
 
+            // Git #2081 — the full relationship picture (blocked-by AND the reverse "what this
+            // blocks" direction, both with real titles), not just #2061's single-line "waiting
+            // on #N" fallback. Fetched live on hover (GitHub's real dependencies API, both
+            // directions) since the periodic board sweep only ever cached the first still-open
+            // blocker for the badge. Seeded synchronously below from that cached field so a
+            // blocked issue isn't blank while the live fetch is in flight.
+            if (!isClosed)
+            {
+                var relPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 8) };
+                if (issue.IsBlocked && issue.BlockedByNumber.HasValue)
+                {
+                    relPanel.Children.Add(new TextBlock
+                    {
+                        Text = $"🔒 Waiting on #{issue.BlockedByNumber} — {issue.BlockedByTitle}",
+                        FontSize = 11,
+                        Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")),
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 0, 0, 2)
+                    });
+                }
+                root.Children.Add(relPanel);
+                _ = LoadIssueRelationshipsAsync(issue, relPanel, generation);
+            }
+
             // Blocked overrides any build-state action, same precedence GitDetailView/CreateIssueHeader
             // already use for the blocked dot/banner elsewhere on this row.
             if (!isClosed && issue.IsBlocked)
             {
-                root.Children.Add(new TextBlock
-                {
-                    Text = issue.BlockedByNumber.HasValue
-                        ? $"🔒 Waiting on #{issue.BlockedByNumber} — {issue.BlockedByTitle}"
-                        : "🔒 Blocked",
-                    FontSize = 11,
-                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")),
-                    TextWrapping = TextWrapping.Wrap
-                });
                 return root;
             }
 
@@ -5874,6 +5907,91 @@ namespace BuildConsole.Controls
             root.Children.Add(new Separator { Margin = new Thickness(0, 2, 0, 6) });
             root.Children.Add(BuildQuickActionArea(build));
             return root;
+        }
+
+        /// <summary>
+        /// Git #2081 — the real "full relationship picture": live-fetches BOTH directions of
+        /// GitHub's issue-dependencies API for this issue — <see cref="GitHubApiClient.GetBlockedByAsync"/>
+        /// (what blocks it, ALL declared blockers not just the sweep's cached first-open one) and
+        /// the new <see cref="GitHubApiClient.GetBlockingAsync"/> (the reverse — what THIS issue
+        /// blocks, which nothing else in the app computes yet; confirmed no #2030 chain-highlight
+        /// landed to reuse). Runs after the popup is already showing (hover popups can't block on
+        /// network), so <paramref name="generation"/> — captured at the moment this specific popup
+        /// was shown — guards against a slow response from a PREVIOUSLY hovered issue landing in
+        /// the CURRENTLY hovered issue's popup.
+        /// </summary>
+        private async System.Threading.Tasks.Task LoadIssueRelationshipsAsync(GitIssue issue, StackPanel container, int generation)
+        {
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat) return;
+
+            List<GitHubIssueResult> blockedBy;
+            List<GitHubIssueResult> blocking;
+            try
+            {
+                var gh = new GitHubApiClient(settings.GitHubPat);
+                var blockedByTask = gh.GetBlockedByAsync(issue.IssueNumber);
+                var blockingTask = gh.GetBlockingAsync(issue.IssueNumber);
+                await System.Threading.Tasks.Task.WhenAll(blockedByTask, blockingTask);
+                blockedBy = blockedByTask.Result;
+                blocking = blockingTask.Result;
+            }
+            catch
+            {
+                // Leave whatever was already seeded (the sweep's cached "waiting on #N" line, or
+                // nothing) rather than replacing it with an error — this is a hover popup, not a
+                // place to surface a network failure.
+                return;
+            }
+
+            if (generation != _issueHoverPopupGeneration) return;
+            if (!IssueHoverPopup.IsOpen) return;
+
+            container.Children.Clear();
+            AddRelationshipList(container, "🔒 Blocked by", blockedBy);
+            AddRelationshipList(container, "⛔ Blocks", blocking);
+        }
+
+        /// <summary>Renders one capped, real-title relationship list (either direction) into the
+        /// hover popup's relationships panel. Skips rendering entirely when empty — this is a
+        /// real "nothing to show" case (an issue with no declared dependency in that direction),
+        /// not a fixture/placeholder gap, so no "None" row is added.</summary>
+        private void AddRelationshipList(StackPanel container, string label, List<GitHubIssueResult> items)
+        {
+            if (items == null || items.Count == 0) return;
+
+            const int maxShown = 6;
+            container.Children.Add(new TextBlock
+            {
+                Text = label,
+                FontSize = 10,
+                FontWeight = FontWeights.Bold,
+                Foreground = GetBrush("Subtext0Brush"),
+                Margin = new Thickness(0, 4, 0, 2)
+            });
+            foreach (var item in items.Take(maxShown))
+            {
+                container.Children.Add(new TextBlock
+                {
+                    Text = $"#{item.Number} — {item.Title}",
+                    FontSize = 10.5,
+                    Foreground = item.IsClosed
+                        ? GetBrush("Subtext0Brush")
+                        : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(6, 0, 0, 2)
+                });
+            }
+            if (items.Count > maxShown)
+            {
+                container.Children.Add(new TextBlock
+                {
+                    Text = $"+{items.Count - maxShown} more",
+                    FontSize = 9.5,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    Margin = new Thickness(6, 0, 0, 4)
+                });
+            }
         }
 
         /// <summary>

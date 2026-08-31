@@ -628,7 +628,13 @@
                          StaysOpen="True" + explicit Opened/Closed dismissal pattern as
                          ManifestStepsPopup elsewhere in this file (Git #988) — a hover popover
                          additionally closes on MouseLeave (debounced) rather than only on
-                         outside-click. -->
+                         outside-click.
+                         Git #2081 — widened (was MaxWidth 380, no height cap) and body wrapped in
+                         a ScrollViewer to fit the new full relationship picture (blocked-by AND
+                         the reverse blocking direction, both with real titles, capped list length
+                         — see LoadIssueRelationshipsAsync) without letting a long dependency chain
+                         grow the popup into a full panel. Same ScrollViewer pattern as
+                         ManifestStepsFlyoutList above. -->
                     <Popup x:Name="IssueHoverPopup"
                            Placement="Right"
                            StaysOpen="True"
@@ -642,10 +648,12 @@
                                 BorderThickness="1"
                                 CornerRadius="6"
                                 Padding="10"
-                                MinWidth="260" MaxWidth="380"
+                                MinWidth="280" MaxWidth="440" MaxHeight="520"
                                 MouseEnter="IssueHoverPopup_MouseEnter"
                                 MouseLeave="IssueHoverPopup_MouseLeave">
-                            <StackPanel x:Name="IssueHoverPopupBody"/>
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="IssueHoverPopupBody"/>
+                            </ScrollViewer>
                         </Border>
                     </Popup>
                 </DockPanel>
