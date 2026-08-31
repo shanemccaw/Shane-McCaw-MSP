@@ -7,6 +7,14 @@ using NpgsqlTypes;
 
 namespace BuildConsole.Services
 {
+    /// <summary>Git #2068 — the minimal live-board info the chat-link write path needs to
+    /// self-heal when the target epic/issue hasn't been GitHub-synced into bt_epics/
+    /// bt_issues yet. The caller (LeftSidebar) builds this from data it already fetched
+    /// for the Git Board (<c>_lastBoardIssues</c> — the same source
+    /// <c>BackfillSyntheticEpicsFromBoard</c> reads for the read/grouping side, #1362) —
+    /// this DB client never makes its own network call.</summary>
+    public readonly record struct LiveBoardIssueInfo(bool IsEpic, string Title, int? ParentEpicGithubNumber);
+
     /// <summary>
     /// Direct Npgsql connection to the Neon Postgres database for all build-queue
     /// operations previously routed through the Replit API server (HTTP).
@@ -1812,8 +1820,24 @@ namespace BuildConsole.Services
         /// <summary>
         /// Links a chat to a GitHub issue directly in the Postgres database,
         /// bypassing the API server. This matches the behavior of POST /chats/assign-issue.
+        ///
+        /// Git #2068 — Step 4's epic/issue resolution used to look ONLY at the local
+        /// bt_epics/bt_issues tables. If the target hadn't been GitHub-synced into those
+        /// tables yet, both lookups came back empty and the method fell through silently:
+        /// bt_chat_issues still got its row (Step 3, unconditional), but bt_chats.epic_id/
+        /// issue_id were never set, and the caller had no way to tell — no error surfaced,
+        /// no false return value, just a link that never actually stuck. Same local-table-
+        /// staleness class #1362 fixed on the READ side (LeftSidebar.GetEpicForChat /
+        /// BackfillSyntheticEpicsFromBoard) but never applied to this write path.
+        /// <paramref name="resolveLive"/> is that same live-board-aware fallback: the
+        /// caller passes a lookup over its OWN already-fetched Git Board data
+        /// (LeftSidebar._lastBoardIssues) so a not-yet-synced epic/issue can be upserted
+        /// here (title + github_number only — real GitHub state gets picked up properly
+        /// on the next full sync) instead of silently dropped. Returns whether epic_id/
+        /// issue_id actually got resolved and persisted, so the caller can show a real
+        /// warning instead of a false-success toast when it didn't.
         /// </summary>
-        public async Task LinkChatToIssueAsync(string conversationId, int issueNumber, string? title = null)
+        public async Task<bool> LinkChatToIssueAsync(string conversationId, int issueNumber, string? title = null, Func<int, LiveBoardIssueInfo?>? resolveLive = null)
         {
             await using var conn = await OpenAsync();
 
@@ -1892,73 +1916,25 @@ namespace BuildConsole.Services
             }
 
             // Step 4: Look up if this issueNumber is an Epic or an Issue, and update bt_chats
-            const string findEpicSql = "SELECT id FROM bt_epics WHERE github_number = @issueNumber LIMIT 1";
-            int? epicId = null;
-            await using (var cmd = new NpgsqlCommand(findEpicSql, conn))
-            {
-                cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
-                var val = await cmd.ExecuteScalarAsync();
-                if (val != null && val != DBNull.Value)
-                {
-                    epicId = Convert.ToInt32(val);
-                }
-            }
-
-            if (epicId.HasValue)
-            {
-                const string updateChatEpicSql = @"
-                    UPDATE bt_chats
-                    SET epic_id = @epicId, issue_id = NULL, updated_at = NOW()
-                    WHERE id = @chatId";
-                await using (var cmd = new NpgsqlCommand(updateChatEpicSql, conn))
-                {
-                    cmd.Parameters.AddWithValue("@epicId", epicId.Value);
-                    cmd.Parameters.AddWithValue("@chatId", chatId.Value);
-                    await cmd.ExecuteNonQueryAsync();
-                }
-            }
-            else
-            {
-                const string findIssueSql = "SELECT id, epic_id FROM bt_issues WHERE github_number = @issueNumber LIMIT 1";
-                int? issueId = null;
-                int? issueEpicId = null;
-                await using (var cmd = new NpgsqlCommand(findIssueSql, conn))
-                {
-                    cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
-                    await using (var reader = await cmd.ExecuteReaderAsync())
-                    {
-                        if (await reader.ReadAsync())
-                        {
-                            issueId = reader.GetInt32(0);
-                            issueEpicId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
-                        }
-                    }
-                }
-
-                if (issueId.HasValue)
-                {
-                    const string updateChatIssueSql = @"
-                        UPDATE bt_chats
-                        SET issue_id = @issueId, epic_id = @epicId, updated_at = NOW()
-                        WHERE id = @chatId";
-                    await using (var cmd = new NpgsqlCommand(updateChatIssueSql, conn))
-                    {
-                        cmd.Parameters.AddWithValue("@issueId", issueId.Value);
-                        cmd.Parameters.Add(new NpgsqlParameter("@epicId", NpgsqlTypes.NpgsqlDbType.Integer)
-                        { Value = issueEpicId.HasValue ? (object)issueEpicId.Value : DBNull.Value });
-                        cmd.Parameters.AddWithValue("@chatId", chatId.Value);
-                        await cmd.ExecuteNonQueryAsync();
-                    }
-                }
-            }
+            // (Git #2068 — resolveLive-backed fallback lives in ResolveAndPersistChatLinkAsync)
+            var (epicId, issueId) = await ResolveAndPersistChatLinkAsync(conn, chatId.Value, issueNumber, resolveLive);
+            return epicId.HasValue || issueId.HasValue;
         }
 
         // ── UnlinkChatFromIssueAsync ──────────────────────────────────────────────
         /// <summary>
         /// Unlinks a chat from a GitHub issue directly in the Postgres database,
         /// bypassing the API server. This matches the behavior of POST /chats/unassign-issue.
+        ///
+        /// Git #2068 — the remaining-link recalculation below had the identical local-
+        /// table-only resolution bug as <see cref="LinkChatToIssueAsync"/>: when the
+        /// chat's next remaining associated number wasn't in bt_epics/bt_issues, neither
+        /// branch fired and bt_chats.epic_id/issue_id were left untouched — pointing at
+        /// the epic/issue that was JUST unlinked, a real staleness bug of its own, not
+        /// only a missed-opportunity one. Same <paramref name="resolveLive"/> fallback
+        /// as the link path.
         /// </summary>
-        public async Task UnlinkChatFromIssueAsync(string conversationId, int issueNumber)
+        public async Task UnlinkChatFromIssueAsync(string conversationId, int issueNumber, Func<int, LiveBoardIssueInfo?>? resolveLive = null)
         {
             await using var conn = await OpenAsync();
 
@@ -2014,68 +1990,155 @@ namespace BuildConsole.Services
                 }
                 else
                 {
-                    int nextIssueNum = remainingIssueNumber.Value;
-                    const string findEpicSql = "SELECT id FROM bt_epics WHERE github_number = @issueNumber LIMIT 1";
-                    int? epicId = null;
-                    await using (var cmd = new NpgsqlCommand(findEpicSql, conn))
+                    // Git #2068 — same resolveLive-backed fallback as the link path, so a
+                    // remaining associated number that isn't locally synced yet doesn't
+                    // leave bt_chats.epic_id/issue_id stale (still pointing at what was
+                    // just unlinked) instead of moving to the real remaining target.
+                    await ResolveAndPersistChatLinkAsync(conn, chatId.Value, remainingIssueNumber.Value, resolveLive);
+                }
+            }
+        }
+
+        // ── ResolveAndPersistChatLinkAsync (Git #2068) ─────────────────────────────
+        /// <summary>
+        /// Shared epic/issue resolution + bt_chats persistence for both
+        /// <see cref="LinkChatToIssueAsync"/> (Step 4) and <see cref="UnlinkChatFromIssueAsync"/>'s
+        /// remaining-link recalculation. Tries the local bt_epics/bt_issues tables first
+        /// (github_number match, exactly the original behavior); if both miss and
+        /// <paramref name="resolveLive"/> can resolve <paramref name="issueNumber"/> from the
+        /// caller's already-fetched live Git Board data, upserts a minimal bt_epics/bt_issues
+        /// row (title + github_number, real state fills in on the next full GitHub sync) so
+        /// the chat link doesn't strand — the same self-heal #1362 gave the read/grouping
+        /// side, now applied to the write side. A plain issue's own parent epic is only
+        /// resolved from the LOCAL table (bounded scope: this fixes the reported silent
+        /// drop, not a full recursive parent-chain sync) — if the parent isn't local either,
+        /// the issue is still linked, just without a parent epic grouping until a real sync
+        /// catches up. Always writes bt_chats.epic_id/issue_id to whatever was resolved
+        /// (including leaving both untouched when nothing resolved, matching prior
+        /// fall-through behavior) and returns what it resolved so the caller can tell.
+        /// </summary>
+        private static async Task<(int? EpicId, int? IssueId)> ResolveAndPersistChatLinkAsync(
+            NpgsqlConnection conn, int chatId, int issueNumber, Func<int, LiveBoardIssueInfo?>? resolveLive)
+        {
+            const string findEpicSql = "SELECT id FROM bt_epics WHERE github_number = @issueNumber LIMIT 1";
+            int? epicId = null;
+            await using (var cmd = new NpgsqlCommand(findEpicSql, conn))
+            {
+                cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                var val = await cmd.ExecuteScalarAsync();
+                if (val != null && val != DBNull.Value) epicId = Convert.ToInt32(val);
+            }
+
+            int? issueId = null;
+            int? issueEpicId = null;
+            if (!epicId.HasValue)
+            {
+                const string findIssueSql = "SELECT id, epic_id FROM bt_issues WHERE github_number = @issueNumber LIMIT 1";
+                await using (var cmd = new NpgsqlCommand(findIssueSql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                    await using var reader = await cmd.ExecuteReaderAsync();
+                    if (await reader.ReadAsync())
                     {
-                        cmd.Parameters.AddWithValue("@issueNumber", nextIssueNum);
+                        issueId = reader.GetInt32(0);
+                        issueEpicId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
+                    }
+                }
+            }
+
+            // Git #2068 — local lookup missed both tables: fall back to the caller's live
+            // Git Board data instead of silently leaving bt_chats untouched.
+            if (!epicId.HasValue && !issueId.HasValue && resolveLive != null)
+            {
+                var live = resolveLive(issueNumber);
+                if (live.HasValue)
+                {
+                    if (live.Value.IsEpic)
+                    {
+                        const string upsertEpicSql = @"
+                            INSERT INTO bt_epics (title, status, github_number)
+                            VALUES (@title, 'open', @issueNumber)
+                            ON CONFLICT (github_number) DO UPDATE SET title = EXCLUDED.title, updated_at = NOW()
+                            RETURNING id";
+                        await using var cmd = new NpgsqlCommand(upsertEpicSql, conn);
+                        cmd.Parameters.AddWithValue("@title", live.Value.Title);
+                        cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
                         var val = await cmd.ExecuteScalarAsync();
                         if (val != null && val != DBNull.Value)
                         {
                             epicId = Convert.ToInt32(val);
-                        }
-                    }
-
-                    if (epicId.HasValue)
-                    {
-                        const string updateChatEpicSql = @"
-                            UPDATE bt_chats
-                            SET epic_id = @epicId, issue_id = NULL, updated_at = NOW()
-                            WHERE id = @chatId";
-                        await using (var cmd = new NpgsqlCommand(updateChatEpicSql, conn))
-                        {
-                            cmd.Parameters.AddWithValue("@epicId", epicId.Value);
-                            cmd.Parameters.AddWithValue("@chatId", chatId.Value);
-                            await cmd.ExecuteNonQueryAsync();
+                            ActivityLog.Log("git-board.chats",
+                                $"live-board fallback: upserted bt_epics for not-yet-synced #{issueNumber} ('{live.Value.Title}') so its chat link could resolve (Git #2068)");
                         }
                     }
                     else
                     {
-                        const string findIssueSql = "SELECT id, epic_id FROM bt_issues WHERE github_number = @issueNumber LIMIT 1";
-                        int? issueId = null;
-                        int? issueEpicId = null;
-                        await using (var cmd = new NpgsqlCommand(findIssueSql, conn))
+                        // Bounded scope: only checks the LOCAL table for the parent epic —
+                        // see this method's doc comment.
+                        int? parentEpicId = null;
+                        if (live.Value.ParentEpicGithubNumber.HasValue)
                         {
-                            cmd.Parameters.AddWithValue("@issueNumber", nextIssueNum);
-                            await using (var reader = await cmd.ExecuteReaderAsync())
-                            {
-                                if (await reader.ReadAsync())
-                                {
-                                    issueId = reader.GetInt32(0);
-                                    issueEpicId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
-                                }
-                            }
+                            const string findParentEpicSql = "SELECT id FROM bt_epics WHERE github_number = @parentNumber LIMIT 1";
+                            await using var pcmd = new NpgsqlCommand(findParentEpicSql, conn);
+                            pcmd.Parameters.AddWithValue("@parentNumber", live.Value.ParentEpicGithubNumber.Value);
+                            var pval = await pcmd.ExecuteScalarAsync();
+                            if (pval != null && pval != DBNull.Value) parentEpicId = Convert.ToInt32(pval);
                         }
 
-                        if (issueId.HasValue)
+                        const string upsertIssueSql = @"
+                            INSERT INTO bt_issues (title, status, github_number, epic_id)
+                            VALUES (@title, 'backlog', @issueNumber, @epicId)
+                            ON CONFLICT (github_number) DO UPDATE SET title = EXCLUDED.title,
+                                epic_id = COALESCE(bt_issues.epic_id, EXCLUDED.epic_id), updated_at = NOW()
+                            RETURNING id, epic_id";
+                        await using var icmd = new NpgsqlCommand(upsertIssueSql, conn);
+                        icmd.Parameters.AddWithValue("@title", live.Value.Title);
+                        icmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                        icmd.Parameters.Add(new NpgsqlParameter("@epicId", NpgsqlDbType.Integer)
+                        { Value = parentEpicId.HasValue ? (object)parentEpicId.Value : DBNull.Value });
+                        await using var reader = await icmd.ExecuteReaderAsync();
+                        if (await reader.ReadAsync())
                         {
-                            const string updateChatIssueSql = @"
-                                UPDATE bt_chats
-                                SET issue_id = @issueId, epic_id = @epicId, updated_at = NOW()
-                                WHERE id = @chatId";
-                            await using (var cmd = new NpgsqlCommand(updateChatIssueSql, conn))
-                            {
-                                cmd.Parameters.AddWithValue("@issueId", issueId.Value);
-                                cmd.Parameters.Add(new NpgsqlParameter("@epicId", NpgsqlTypes.NpgsqlDbType.Integer)
-                                { Value = issueEpicId.HasValue ? (object)issueEpicId.Value : DBNull.Value });
-                                cmd.Parameters.AddWithValue("@chatId", chatId.Value);
-                                await cmd.ExecuteNonQueryAsync();
-                            }
+                            issueId = reader.GetInt32(0);
+                            issueEpicId = reader.IsDBNull(1) ? null : (int?)reader.GetInt32(1);
+                            ActivityLog.Log("git-board.chats",
+                                $"live-board fallback: upserted bt_issues for not-yet-synced #{issueNumber} ('{live.Value.Title}') so its chat link could resolve (Git #2068)");
                         }
                     }
                 }
+                else
+                {
+                    ActivityLog.Log("git-board.chats",
+                        $"chat link to #{issueNumber} persisted via bt_chat_issues only — couldn't resolve it to a local OR live-board epic/issue (Git #2068); grouping won't show it until a sync catches up");
+                }
             }
+
+            if (issueId.HasValue)
+            {
+                const string updateChatIssueSql = @"
+                    UPDATE bt_chats
+                    SET issue_id = @issueId, epic_id = @epicId, updated_at = NOW()
+                    WHERE id = @chatId";
+                await using var cmd = new NpgsqlCommand(updateChatIssueSql, conn);
+                cmd.Parameters.AddWithValue("@issueId", issueId.Value);
+                cmd.Parameters.Add(new NpgsqlParameter("@epicId", NpgsqlDbType.Integer)
+                { Value = issueEpicId.HasValue ? (object)issueEpicId.Value : DBNull.Value });
+                cmd.Parameters.AddWithValue("@chatId", chatId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            else if (epicId.HasValue)
+            {
+                const string updateChatEpicSql = @"
+                    UPDATE bt_chats
+                    SET epic_id = @epicId, issue_id = NULL, updated_at = NOW()
+                    WHERE id = @chatId";
+                await using var cmd = new NpgsqlCommand(updateChatEpicSql, conn);
+                cmd.Parameters.AddWithValue("@epicId", epicId.Value);
+                cmd.Parameters.AddWithValue("@chatId", chatId);
+                await cmd.ExecuteNonQueryAsync();
+            }
+
+            return (epicId, issueId);
         }
 
         // ── RecordChatIssueMentionsAsync / PruneClosedChatIssueMentionsAsync (Git #2066) ──

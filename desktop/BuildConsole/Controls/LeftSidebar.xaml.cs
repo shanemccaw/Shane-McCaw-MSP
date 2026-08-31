@@ -2609,6 +2609,24 @@ namespace BuildConsole.Controls
             return synthesizedEpics;
         }
 
+        /// <summary>Git #2068 — the write-side counterpart to <see cref="BackfillSyntheticEpicsFromBoard"/>:
+        /// resolves a real GitHub issue/epic number against the SAME already-fetched
+        /// <see cref="_lastBoardIssues"/> the display side reads, so
+        /// <see cref="BuildQueuePostgresClient.LinkChatToIssueAsync"/>/<c>UnlinkChatFromIssueAsync</c>
+        /// can self-heal a target that hasn't been GitHub-synced into bt_epics/bt_issues yet
+        /// instead of silently dropping the link. Passed down as a delegate rather than exposing
+        /// <c>_lastBoardIssues</c> itself, so the DB client (Services layer) never needs a
+        /// reference back into this Controls-layer state. Returns null for any number not on
+        /// the current OPEN board fetch — including a real GitHub Milestone number (a different
+        /// number namespace _lastBoardIssues never represents), which is intentional: a
+        /// milestone-only "Assign Chat to Milestone" link is correctly persisted through
+        /// bt_chat_issues alone and was never meant to resolve to a local epic/issue row.</summary>
+        public LiveBoardIssueInfo? ResolveLiveBoardIssue(int githubNumber)
+        {
+            var it = _lastBoardIssues.FirstOrDefault(i => i.Number == githubNumber);
+            return it == null ? null : new LiveBoardIssueInfo(it.IsEpic, it.Title, it.ParentNumber);
+        }
+
         /// <summary>Chats redesign — the connection/error placeholder path. Kept
         /// separate from <see cref="RenderChatsTree"/> (which renders real board
         /// data) so both share the tree-clearing + title-block reset discipline,
@@ -3388,7 +3406,16 @@ namespace BuildConsole.Controls
                 {
                     if (_db != null)
                     {
-                        await _db.LinkChatToIssueAsync(chat.ConversationId, targetNumber);
+                        bool resolved = await _db.LinkChatToIssueAsync(chat.ConversationId, targetNumber, resolveLive: ResolveLiveBoardIssue);
+                        // Git #2068 — only warn when targetNumber was actually a real board
+                        // issue/epic that failed to resolve even with the live-board fallback;
+                        // a picked milestone number is EXPECTED to leave epic_id/issue_id unset
+                        // (see ResolveLiveBoardIssue's doc comment), not an error.
+                        if (!resolved && _lastBoardIssues.Any(i => i.Number == targetNumber))
+                        {
+                            ToastEngine.Warning("Link Chat", $"Chat linked to #{targetNumber}, but it couldn't be grouped under its epic yet — try again after the Git Board refreshes.");
+                            ActivityLog.Log("git-board.assign-chat", $"chat {chat.ConversationId} linked to #{targetNumber} via bt_chat_issues only — epic/issue FK resolution failed (Git #2068)");
+                        }
                     }
                     else
                     {
@@ -3435,7 +3462,7 @@ namespace BuildConsole.Controls
                         {
                             if (_db != null)
                             {
-                                await _db.UnlinkChatFromIssueAsync(chat.ConversationId, issueNum);
+                                await _db.UnlinkChatFromIssueAsync(chat.ConversationId, issueNum, resolveLive: ResolveLiveBoardIssue);
                             }
                             else
                             {
@@ -3737,9 +3764,10 @@ namespace BuildConsole.Controls
             int targetNumber = dialog.SelectedEpicId.Value;
             try
             {
+                bool resolved = true;
                 if (_db != null)
                 {
-                    await _db.LinkChatToIssueAsync(conversationId, targetNumber, chatTitle);
+                    resolved = await _db.LinkChatToIssueAsync(conversationId, targetNumber, chatTitle, resolveLive: ResolveLiveBoardIssue);
                 }
                 else
                 {
@@ -3760,7 +3788,18 @@ namespace BuildConsole.Controls
                 }
                 ActivityLog.Log("git-board.assign-chat",
                     $"tab-level assign: chat {conversationId} -> #{targetNumber} (Git #1629)");
-                ToastEngine.Success("Assign to Issue", $"Chat linked to #{targetNumber}");
+                // Git #2068 — a real board issue/epic that still failed to resolve (even with the
+                // live-board fallback) gets an honest warning instead of a false-success toast; a
+                // picked milestone number resolving false is expected (see ResolveLiveBoardIssue).
+                if (_db != null && !resolved && _lastBoardIssues.Any(i => i.Number == targetNumber))
+                {
+                    ToastEngine.Warning("Assign to Issue", $"Chat linked to #{targetNumber}, but it couldn't be grouped under its epic yet — try again after the Git Board refreshes.");
+                    ActivityLog.Log("git-board.assign-chat", $"tab-level assign: chat {conversationId} -> #{targetNumber} linked via bt_chat_issues only — epic/issue FK resolution failed (Git #2068)");
+                }
+                else
+                {
+                    ToastEngine.Success("Assign to Issue", $"Chat linked to #{targetNumber}");
+                }
                 PopulateChatsTree(forceFresh: true);
             }
             catch (System.Exception ex)
@@ -4417,6 +4456,14 @@ namespace BuildConsole.Controls
                             {
                                 if (_db != null)
                                 {
+                                    // Git #2068 audit — deliberately NO resolveLive here: m.GithubNumber
+                                    // is a real GitHub Milestone number, a different number namespace from
+                                    // _lastBoardIssues (real issues/epics), so it was never expected to
+                                    // resolve to a local epic/issue row — bt_chat_issues (Step 3, already
+                                    // unconditional) is the sole intended persistence for a milestone-only
+                                    // link, and it already works. Passing resolveLive here would risk
+                                    // accidentally attaching the chat to an unrelated real issue that
+                                    // happens to share the same number as this milestone.
                                     await _db.LinkChatToIssueAsync(conversationId, m.GithubNumber.Value, $"[Milestone #{m.GithubNumber.Value}] {m.Title}");
                                 }
                                 else
@@ -5274,9 +5321,10 @@ namespace BuildConsole.Controls
 
                     try
                     {
+                        bool resolved = true;
                         if (_db != null)
                         {
-                            await _db.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}");
+                            resolved = await _db.LinkChatToIssueAsync(conversationId, issue.IssueNumber, $"[#{issue.IssueNumber}] {issue.RawTitle}", resolveLive: ResolveLiveBoardIssue);
                         }
                         else
                         {
@@ -5290,6 +5338,14 @@ namespace BuildConsole.Controls
                             }
                         }
                         ActivityLog.Log("git-board.assign-chat", $"assigned chat {conversationId} ({chatUrl}) -> issue #{issue.IssueNumber}");
+                        // Git #2068 — issue.IssueNumber is always a real board issue/epic here (this
+                        // menu is only ever built from a real tree node), so an unresolved link IS a
+                        // genuine problem worth surfacing, unlike the milestone-assign path above.
+                        if (_db != null && !resolved)
+                        {
+                            ToastEngine.Warning("Assign Chat to Issue", $"Chat linked to #{issue.IssueNumber}, but it couldn't be grouped under its epic yet — try again after the Git Board refreshes.");
+                            ActivityLog.Log("git-board.assign-chat", $"assigned chat {conversationId} -> issue #{issue.IssueNumber} via bt_chat_issues only — epic/issue FK resolution failed (Git #2068)");
+                        }
 
                         var targetChat = _lastBoardChats.FirstOrDefault(c => c.ConversationId == conversationId);
                         if (targetChat != null)
