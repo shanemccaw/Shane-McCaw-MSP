@@ -379,6 +379,12 @@
                                      third choice alongside (not replacing) the two split ones.
                                      Reuses the exact pre-#1829 combined "Active" criteria. -->
                                 <ComboBoxItem Content="Running &amp; Queued" Tag="RunningAndQueued"/>
+                                <!-- Git #1927 — Shane needs a standalone "Verifying" entry
+                                     distinct from "Running" above (which folds VerifyingStatus
+                                     into the broader "in motion" bucket): filters to exactly
+                                     status == VerifyingStatus, same single-status pattern as
+                                     Crashed/Parked/Done/Canceled below. -->
+                                <ComboBoxItem Content="Verifying"    Tag="Verifying"/>
                                 <!-- Git #1638 — the Park staging area: never shown under
                                      Running/Queued (that's the whole point of a
                                      staging spot the watcher can't pick up), only here. -->

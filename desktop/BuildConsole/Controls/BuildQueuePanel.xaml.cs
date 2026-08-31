@@ -1237,6 +1237,11 @@ namespace BuildConsole.Controls
                 // Running/Queued (Git #1829), reusing that pre-#1829 combined "Active" criteria
                 // verbatim: queued + running + LimitPausedStatus + VerifyingStatus.
                 "RunningAndQueued" => items.Where(i => !_manuallyHiddenQueueIds.Contains(i.Id) && (i.Status is "queued" or "running" or Services.SessionLimitAutoRestartService.LimitPausedStatus or BuildQueuePostgresClient.VerifyingStatus)).ToList(),
+                // Git #1927 — standalone Verifying filter: exactly status == VerifyingStatus,
+                // distinct from "Running" above (which folds VerifyingStatus into its broader
+                // "in motion" bucket) so a build that's done executing and just waiting on
+                // real GitHub-issue verification (Git #1469) is findable on its own.
+                "Verifying" => items.Where(i => i.Status == BuildQueuePostgresClient.VerifyingStatus && !_manuallyHiddenQueueIds.Contains(i.Id)).ToList(),
                 // Git #1877 — the orphaned-by-crash set: the exact same criteria
                 // UpdateOrphanRecoveryBanner/BtnRecoverOrphans_Click already use
                 // (status=="failed" && ExitCode==-2), just as a findable filtered view
