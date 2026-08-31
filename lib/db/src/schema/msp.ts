@@ -6764,12 +6764,27 @@ export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignm
   roleKey: text("role_key").notNull(),
   /** The wire person id this cell names (e.g. "u39"), or "" for an explicit gap. */
   ownerPersonId: text("owner_person_id").notNull().default(""),
-  /** "" | "pending" | "accepted". Only r/a ever carry acceptance; c/i never do. */
+  /**
+   * "" | "pending" | "accepted" | "declined". Only r/a ever carry acceptance;
+   * c/i never do. No DB CHECK — "declined" (#1518) is an application-layer
+   * value, matching the msp_alert-enums-are-text convention.
+   */
   acceptance: text("acceptance").notNull().default(""),
-  /** Provenance the assign flow records — who set it, when, and why. */
+  /** Provenance the ASSIGN flow records — who named this holder, when, and why. */
   setBy: text("set_by").notNull().default(""),
   setAt: text("set_at").notNull().default(""),
   setWhy: text("set_why").notNull().default(""),
+  /**
+   * Provenance the RESPOND flow records (#1518) — who actually accepted or
+   * declined this cell, and when. Deliberately separate from `setBy`/`setAt`:
+   * those record who ASSIGNED the holder, which may be a different person
+   * (the whole point of the gate is that the two are not assumed to agree
+   * until the named holder says so themselves).
+   */
+  respondedBy: text("responded_by").notNull().default(""),
+  respondedAt: text("responded_at").notNull().default(""),
+  /** Free text, set only on a decline. Empty for every other acceptance value. */
+  declineReason: text("decline_reason").notNull().default(""),
   /**
    * Precedence within one (object, role) cell — primary/second/third, etc.
    * (#1517). PRECEDENCE ONLY: every holder in a cell has identical authority: the
