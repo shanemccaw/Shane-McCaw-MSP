@@ -43,22 +43,38 @@ namespace BuildConsole.Services
     return m ? m[1] : null;
   }
 
-  // The last assistant message element. Same content selectors the context meter
-  // (ChatContextMeterScript) relies on — specific class/testid first, structural
-  // aria fallback after — so a claude.ai markup change breaks both in one place,
-  // not silently here alone.
-  function lastAssistantEl() {
+  // Every assistant turn, in document order. Same content selectors the context meter
+  // (ChatContextMeterScript) relies on — specific class/testid first, structural aria
+  // fallback after — so a claude.ai markup change breaks both in one place, not silently
+  // here alone. Returned as an array so the caller can both take the last turn AND count
+  // turns (the send/receive correlation gate below needs the count, Git #2072).
+  function assistantEls() {
     var claude = document.querySelectorAll('.font-claude-message, [data-testid="assistant-message"]');
-    if (claude.length) return claude[claude.length - 1];
-    // Fallback: assistant turns are the even aria-posinset articles (user = odd),
-    // but rather than assume parity, take the last article that is NOT a user turn.
+    if (claude.length) return Array.prototype.slice.call(claude);
+    // Fallback: assistant turns are the even aria-posinset articles (user = odd), but
+    // rather than assume parity, keep the articles that are NOT user turns, in order.
     var arts = Array.prototype.slice.call(document.querySelectorAll('[role="article"][aria-posinset]'));
-    for (var i = arts.length - 1; i >= 0; i--) {
-      var a = arts[i];
-      if (a.querySelector('.font-user-message, [data-testid="user-message"]')) continue;
-      return a;
-    }
-    return null;
+    return arts.filter(function (a) {
+      return !a.querySelector('.font-user-message, [data-testid="user-message"]');
+    });
+  }
+
+  function lastAssistantEl() {
+    var els = assistantEls();
+    return els.length ? els[els.length - 1] : null;
+  }
+
+  // Non-content controls claude.ai renders INSIDE / around a message subtree — copy,
+  // retry, thumbs, and their icon-font glyphs (often Private-Use-Area codepoints that
+  // render as tofu boxes once scraped, Git #2072). Skip these so only real message
+  // text is walked into markdown.
+  function isSkippable(el) {
+    var tag = el.tagName.toLowerCase();
+    if (tag === 'svg' || tag === 'button' || tag === 'style' || tag === 'script') return true;
+    if (el.getAttribute('aria-hidden') === 'true') return true;
+    var role = el.getAttribute('role');
+    if (role === 'button' || role === 'menu' || role === 'menuitem' || role === 'toolbar') return true;
+    return false;
   }
 
   // Minimal, dependency-free DOM -> markdown for a single assistant message subtree.
@@ -68,6 +84,7 @@ namespace BuildConsole.Services
     node.childNodes.forEach(function (c) {
       if (c.nodeType === 3) { out += c.textContent; return; }
       if (c.nodeType !== 1) return;
+      if (isSkippable(c)) return;
       var tag = c.tagName.toLowerCase();
       if (tag === 'code') { out += '`' + (c.textContent || '') + '`'; }
       else if (tag === 'strong' || tag === 'b') { out += '**' + inline(c) + '**'; }
@@ -91,6 +108,7 @@ namespace BuildConsole.Services
         return;
       }
       if (c.nodeType !== 1) return;
+      if (isSkippable(c)) return;
       var tag = c.tagName.toLowerCase();
       if (/^h[1-6]$/.test(tag)) {
         var level = parseInt(tag.charAt(1), 10);
@@ -137,10 +155,47 @@ namespace BuildConsole.Services
 
   var lastSent = null;
 
+  // Send/receive correlation gate (Git #2072).
+  // The old poll posted whatever assistant turn was last in the DOM the first time it
+  // saw text (lastSent === null), with NO link to a message the user actually sent. On
+  // an existing conversation that surfaced the PRE-EXISTING last reply as if it were the
+  // response to what you just typed — and if the send silently failed, it kept showing
+  // that stale turn indefinitely. That is the trust-critical bug this issue reports.
+  //
+  // The host arms this gate the instant it submits (BeginWait, below). While armed, poll
+  // refuses to surface the last turn until a GENUINELY NEW/changed assistant turn appears
+  // (turn count grew past the baseline, or the last turn's text changed from the baseline
+  // snapshot). So a stale pre-send reply can never masquerade as the fresh answer: you get
+  // the real new reply, or you keep seeing the host's honest "waiting" state — never a lie.
+  var waiting = false;
+  var baselineCount = 0;
+  var baselineMd = null;
+
+  window.__bcFloatyBeginWait = function () {
+    var els = assistantEls();
+    baselineCount = els.length;
+    baselineMd = els.length ? toMarkdown(els[els.length - 1]) : null;
+    waiting = true;
+    lastSent = null; // force the eventual new turn to post even if text repeats
+  };
+  window.__bcFloatyCancelWait = function () { waiting = false; };
+
   function poll() {
-    var el = lastAssistantEl();
-    if (!el) return;
+    var els = assistantEls();
+    if (!els.length) return;
+    var el = els[els.length - 1];
     var md = toMarkdown(el);
+
+    if (waiting) {
+      // Only release once a genuinely new/changed assistant turn exists. Until then,
+      // do NOT surface the stale turn that was last on screen when we sent.
+      if (els.length > baselineCount || md !== baselineMd) {
+        waiting = false;
+      } else {
+        return;
+      }
+    }
+
     if (!md || md === lastSent) return;
     lastSent = md;
     try {
@@ -206,7 +261,13 @@ namespace BuildConsole.Services
         /// floaty's whole point is to fire without switching to the tab, so unlike the Sticky
         /// Notes/LinkedIn insert this one presses Send: it clicks the real Send button when
         /// present (it also carries claude.ai's own guards), falling back to an Enter keydown.
-        /// Returns 'sent' | 'inserted-no-send' | 'no-composer' | 'error: …'.
+        ///
+        /// Critically (Git #2072), it ARMS the receive-side correlation gate
+        /// (<c>window.__bcFloatyBeginWait</c>) at the exact instant of submit — capturing the
+        /// baseline transcript BEFORE the new turn can appear — so the stale last turn can never
+        /// be surfaced as the reply. Returns 'submitted' (provisional — the host CONFIRMS the
+        /// send actually landed via <see cref="VerifySubmitScript"/> rather than trusting a
+        /// button click, which used to report a false 'sent'), 'no-composer', or 'error: …'.
         /// </summary>
         public const string SubmitScript = """
 (function () {
@@ -226,20 +287,59 @@ namespace BuildConsole.Services
         return l.indexOf('send') !== -1 && !b.disabled && b.offsetParent !== null;
       })[0] || null;
     }
-    var before = (composer.innerText || '').trim();
+    // Arm the receive-side gate with the baseline transcript BEFORE we submit, so the
+    // capture poll knows exactly which turns pre-existed and never surfaces one of them
+    // as the reply to this send.
+    if (typeof window.__bcFloatyBeginWait === 'function') { try { window.__bcFloatyBeginWait(); } catch (e) {} }
+
     var btn = findSendButton();
-    if (btn) { btn.click(); return 'sent'; }
+    if (btn) { btn.click(); return 'submitted'; }
     composer.focus();
     var opts = { bubbles: true, cancelable: true, key: 'Enter', code: 'Enter', keyCode: 13, which: 13 };
     composer.dispatchEvent(new KeyboardEvent('keydown', opts));
     composer.dispatchEvent(new KeyboardEvent('keyup', opts));
-    // If the composer still holds the same text, the Enter didn't submit.
-    var after = (composer.innerText || '').trim();
-    return (after.length > 0 && after === before) ? 'inserted-no-send' : 'sent';
+    return 'submitted';
   } catch (ex) {
     return 'error: ' + ex.message;
   }
 })();
 """;
+
+        /// <summary>
+        /// One-shot script (run via ExecuteScriptAsync a short delay AFTER
+        /// <see cref="SubmitScript"/>). Verifies the submit actually landed rather than trusting
+        /// the button click (Git #2072): a genuine claude.ai submit clears the composer, so an
+        /// empty composer is real confirmation the message left the box. Returns 'confirmed'
+        /// (composer cleared — the send took), 'unconfirmed' (the text is still sitting there —
+        /// the submit didn't take), 'no-composer', or 'error: …'. On 'unconfirmed' the host
+        /// cancels the receive-side wait gate so the pane doesn't sit waiting for a reply that
+        /// will never come.
+        /// </summary>
+        public const string VerifySubmitScript = """
+(function () {
+  try {
+    function findComposer() {
+      var c = Array.prototype.slice.call(document.querySelectorAll('div[contenteditable="true"]'))
+        .filter(function (el) { return el.offsetParent !== null; });
+      c.sort(function (a, b) { return b.offsetWidth * b.offsetHeight - a.offsetWidth * a.offsetHeight; });
+      return c[0] || null;
+    }
+    var composer = findComposer();
+    if (!composer) return 'no-composer';
+    var txt = (composer.innerText || '').replace(/[\u200B\uFEFF]/g, '').trim();
+    return txt.length === 0 ? 'confirmed' : 'unconfirmed';
+  } catch (ex) {
+    return 'error: ' + ex.message;
+  }
+})();
+""";
+
+        /// <summary>
+        /// Cancels the receive-side correlation wait gate armed by <see cref="SubmitScript"/>.
+        /// Run when the submit could not be confirmed (Git #2072) so the capture poll resumes
+        /// its normal behaviour instead of silently waiting forever for a turn that never comes.
+        /// </summary>
+        public const string CancelWaitScript =
+            "(function(){ try { if (typeof window.__bcFloatyCancelWait === 'function') window.__bcFloatyCancelWait(); } catch(e){} return 'ok'; })();";
     }
 }

@@ -48,6 +48,13 @@ namespace BuildConsole
     {
         private const string LogChannel = "chat.floating";
 
+        // The default empty-pane hint (mirrors FloatingChatWindow.xaml's EmptyHint text). Kept
+        // here so the send flow can swap in a "waiting for the reply" hint and restore this one
+        // per tab (Git #2072).
+        private const string DefaultEmptyHint =
+            "Waiting for the chat to load… send a message below and the reply will appear here.";
+        private const string WaitingForReplyHint = "Sent. Waiting for the reply…";
+
         /// <summary>
         /// Per-tab state. Each open chat gets one of these — its own bridge WebView2, its own
         /// last-captured reply, its own draft input and inline status — so switching tabs
@@ -70,6 +77,11 @@ namespace BuildConsole
             public string InputDraft = "";
             public string? InlineText;
             public bool InlineIsError;
+            /// <summary>True between a CONFIRMED send and the arrival of the genuinely new
+            /// reply (Git #2072). While set, the pane shows an honest "waiting for the reply"
+            /// hint rather than the stale pre-send turn — the capture gate refuses to surface
+            /// anything until a real new assistant turn appears.</summary>
+            public bool AwaitingReply;
 
             // The tab chip (built in RebuildTabStrip) — kept so activation can restyle it
             // without a full rebuild of the strip.
@@ -191,6 +203,7 @@ namespace BuildConsole
             else
             {
                 ResponseHost.Content = null;
+                EmptyHint.Text = tab.AwaitingReply ? WaitingForReplyHint : DefaultEmptyHint;
                 EmptyHint.Visibility = Visibility.Visible;
             }
             InputBox.Text = tab.InputDraft;
@@ -361,6 +374,9 @@ namespace BuildConsole
             {
                 var rendered = MarkdownRenderer.Render(markdown, opts);
                 tab.RenderedResponse = rendered;
+                // A real reply has arrived and been surfaced by the capture gate — we're no
+                // longer waiting (Git #2072).
+                tab.AwaitingReply = false;
                 // Only touch the shared response pane when this is the tab on screen — an
                 // inactive tab's reply is cached and shown when it's next activated.
                 if (ReferenceEquals(tab, _active))
@@ -415,11 +431,24 @@ namespace BuildConsole
                     // Clear only if the user hasn't switched tabs mid-send.
                     if (ReferenceEquals(tab, _active)) InputBox.Clear();
                     tab.InputDraft = "";
+                    // Drop the stale pre-send reply from the pane and show an honest waiting
+                    // state — the capture gate (armed at submit) fills it only when the
+                    // genuinely new reply arrives, so a silently-failed reply shows "waiting",
+                    // never a stale answer (Git #2072).
+                    tab.AwaitingReply = true;
+                    tab.LastMarkdown = null;
+                    tab.RenderedResponse = null;
+                    if (ReferenceEquals(tab, _active))
+                    {
+                        ResponseHost.Content = null;
+                        EmptyHint.Text = WaitingForReplyHint;
+                        EmptyHint.Visibility = Visibility.Visible;
+                    }
                     SetTabInline(tab, "Sent.", isError: false);
                 }
                 else if (status == "inserted-no-send")
                 {
-                    // The text is in the composer but the submit didn't take — leave the
+                    // The text is in the composer but the submit didn't confirm — leave the
                     // input so nothing is lost; Shane can press Send again or submit in-page.
                     SetTabInline(tab, "Message inserted but couldn't auto-send — try Send again, or press Enter in the page below.", isError: true);
                 }
@@ -483,13 +512,38 @@ namespace BuildConsole
                     return insert;
                 }
 
+                // Submit arms the receive-side correlation gate at the instant of submit
+                // (SubmitScript -> __bcFloatyBeginWait) so a stale pre-send turn can never be
+                // surfaced as the reply (Git #2072). It returns 'submitted' provisionally.
                 await System.Threading.Tasks.Task.Delay(220);
                 string submit = await ExecScriptString(tab, FloatingChatBridgeScript.SubmitScript);
-                if (submit == "sent")
+                if (submit == "no-composer")
+                {
+                    ActivityLog.Log(LogChannel, $"send-failed: submit no-composer ({tab.Chat.ConversationId})");
+                    return "no-composer";
+                }
+                if (submit != "submitted")
+                {
+                    ActivityLog.Log(LogChannel, $"send-failed: submit status '{submit}' ({tab.Chat.ConversationId})");
+                    return submit; // 'error: …'
+                }
+
+                // Don't trust the button click — CONFIRM the send actually landed by checking the
+                // composer cleared (Git #2072). This replaces the old false-'sent' path that
+                // reported success the instant it clicked Send.
+                await System.Threading.Tasks.Task.Delay(600);
+                string verify = await ExecScriptString(tab, FloatingChatBridgeScript.VerifySubmitScript);
+                if (verify == "confirmed")
+                {
                     ActivityLog.Log(LogChannel, $"sent message to chat {tab.Chat.ConversationId}");
-                else
-                    ActivityLog.Log(LogChannel, $"send-partial/failed: submit status '{submit}' ({tab.Chat.ConversationId})");
-                return submit;
+                    return "sent";
+                }
+
+                // Couldn't confirm — cancel the wait gate so the pane doesn't sit waiting for a
+                // reply that will never come, and report the honest partial state.
+                await ExecScriptString(tab, FloatingChatBridgeScript.CancelWaitScript);
+                ActivityLog.Log(LogChannel, $"send-partial: submit not confirmed (verify='{verify}') ({tab.Chat.ConversationId})");
+                return "inserted-no-send";
             }
             catch (Exception ex)
             {

@@ -29,6 +29,25 @@ namespace BuildConsole.Services
         private static readonly Regex BoldRegex = new(@"\*\*([^*]+)\*\*|__([^_]+)__", RegexOptions.Compiled);
         private static readonly Regex ItalicRegex = new(@"(?<!\*)\*([^*]+)\*(?!\*)|(?<!_)_([^_]+)_(?!_)", RegexOptions.Compiled);
 
+        // Codepoints that are NEVER legitimate rendered content and show up as tofu boxes
+        // in a text font: C0/C1 control chars (except tab/newline/CR), zero-width joiners/
+        // spaces, BOM/word-joiner, the Unicode replacement + object-replacement chars, and
+        // the Basic Multilingual Plane Private-Use-Area (U+E000-U+F8FF) that icon fonts map
+        // their glyphs into. When claude.ai's message DOM leaks an icon-font glyph into the
+        // scraped markdown (Git #2072) this strips it; real text, symbols and emoji (which
+        // live outside this set) are untouched.
+        private static readonly Regex UnrenderableGlyphRegex = new(
+            @"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u200B-\u200D\u2060\uFEFF\uFFFC\uFFFD\uE000-\uF8FF]",
+            RegexOptions.Compiled);
+
+        /// <summary>
+        /// Removes codepoints that can only render as tofu boxes (icon-font Private-Use-Area
+        /// glyphs, control/zero-width chars, replacement chars). Defense-in-depth for the
+        /// scraped-glyph bug (Git #2072); safe on all real content.
+        /// </summary>
+        public static string StripUnrenderableGlyphs(string text) =>
+            string.IsNullOrEmpty(text) ? (text ?? "") : UnrenderableGlyphRegex.Replace(text, "");
+
         public class RenderOptions
         {
             public Func<string, Brush>? GetBrush { get; set; }
@@ -46,6 +65,9 @@ namespace BuildConsole.Services
 
             var root = new StackPanel();
             if (string.IsNullOrWhiteSpace(markdown)) return root;
+
+            // Strip icon-font / control glyphs that would otherwise render as tofu boxes (Git #2072).
+            markdown = StripUnrenderableGlyphs(markdown);
 
             string[] lines = markdown.Replace("\r\n", "\n").Split('\n');
             int i = 0;
