@@ -78,6 +78,14 @@ namespace BuildConsole.Services
         /// </summary>
         public const string VerifyingStatus = "verifying";
 
+        /// <summary>Git #2119 — terminal status set on the ORIGINAL row when a Reply/resume spawns a
+        /// fresh <c>Reply → …</c> row to take over its session (<see cref="MarkSupersededByReplyAsync"/>).
+        /// Deliberately not in any of ApplyFilter's active buckets nor <see cref="IsActiveStatus"/>, so a
+        /// superseded row drops out of Running/Queued/RunningAndQueued and is never re-claimed — it exists
+        /// only so the original card reads "↩ REPLIED → #N" instead of sitting stuck showing stale
+        /// active status forever while the resumed work runs under a disconnected new entry.</summary>
+        public const string SupersededStatus = "superseded";
+
         private readonly string _connectionString;
 
         public BuildQueuePostgresClient(string connectionString)
@@ -205,11 +213,15 @@ namespace BuildConsole.Services
         /// </summary>
         public async Task<List<QueueItem>> GetQueueAsync()
         {
+            // Git #2119 — superseded_by_id is appended LAST (ordinal 21), read by MapRow
+            // via its FieldCount>21 guard. Only this display query needs it; every other
+            // SELECT feeding MapRow can safely omit it (see MapRow's ordinal note).
             const string sql = @"
                 SELECT id, title, prompt, model, effort, cwd,
                        github_number, blocked_by_number, blocked_by_numbers,
                        status, exit_code, session_id, resume_session_id,
-                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at,
+                       superseded_by_id
                 FROM bt_build_queue
                 ORDER BY created_at ASC";
 
@@ -755,6 +767,43 @@ namespace BuildConsole.Services
                         $"Queue #{id} session exited successfully → Verifying (GH #{num}, exit {exitCode}) — held visible in the active queue until that issue actually closes.");
                 }
             }
+        }
+
+        // ── MarkSupersededByReplyAsync ────────────────────────────────────────────
+        /// <summary>
+        /// Git #2119 — resolves the ORIGINAL queue row when a Reply/resume has spawned a fresh
+        /// <c>Reply → …</c> row (<paramref name="replacementId"/>) to take over its session. The
+        /// original is transitioned to <see cref="SupersededStatus"/> and linked to the replacement
+        /// via superseded_by_id, so the panel shows "↩ REPLIED → #N" and the card drops out of the
+        /// active queue — instead of sitting there indefinitely showing stale active status while the
+        /// real resumed work runs under a completely separate, disconnected entry.
+        ///
+        /// Deliberately scoped by the <c>status NOT IN (...)</c> guard: a row that is genuinely
+        /// <c>running</c> is left to the watcher (it will reap to done/failed on its own — never stuck
+        /// forever), and a row already in a terminal state (<c>done/failed/canceled</c>) already shows a
+        /// correct final outcome, so it must not be rewritten to "superseded" (that would erase a real
+        /// result). Only the genuinely-stuck active-but-not-running states (queued, parked, verifying,
+        /// limit-paused, capped, external, held) are resolved. Returns the number of rows changed (0 if
+        /// the guard skipped it) so the caller can log honestly.
+        /// </summary>
+        public async Task<int> MarkSupersededByReplyAsync(int originalId, int replacementId)
+        {
+            // Never let a row supersede itself (defensive — the replacement is always a fresh insert
+            // with a new id, but a bad caller must not create a self-referential dead card).
+            if (originalId == replacementId) return 0;
+
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status           = @superseded,
+                       superseded_by_id = @replacementId,
+                       updated_at       = NOW()
+                 WHERE id = @originalId
+                   AND status NOT IN ('done', 'failed', 'canceled', 'running')", conn);
+            cmd.Parameters.AddWithValue("@superseded", SupersededStatus);
+            cmd.Parameters.AddWithValue("@replacementId", replacementId);
+            cmd.Parameters.AddWithValue("@originalId", originalId);
+            return await cmd.ExecuteNonQueryAsync();
         }
 
         // ── StampBuildPidAsync ────────────────────────────────────────────────────
@@ -1494,6 +1543,10 @@ namespace BuildConsole.Services
             // github_number, blocked_by_number, blocked_by_numbers,
             // status, exit_code, session_id, resume_session_id,
             // originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
+            // Git #2119 — superseded_by_id is an OPTIONAL trailing ordinal (21): only GetQueueAsync's
+            // display query selects it. Every other SELECT stops at build_pid_started_at (FieldCount==21),
+            // so the FieldCount>21 guard below leaves SupersededById null for them rather than throwing —
+            // no need to thread the new column through all ~13 SELECTs (the #1384 fixed-ordinal minefield).
             var blockedByNumbersRaw = r.IsDBNull(8) ? null : r.GetValue(8) as int[];
             return new QueueItem
             {
@@ -1520,6 +1573,9 @@ namespace BuildConsole.Services
                 Account           = r.IsDBNull(18) ? null : r.GetString(18),
                 BuildPid          = r.IsDBNull(19) ? null : r.GetInt32(19),
                 BuildPidStartedAt = r.IsDBNull(20) ? null : r.GetFieldValue<DateTimeOffset>(20),
+                // Git #2119 — optional trailing ordinal (see the note above): present only on
+                // GetQueueAsync's display query.
+                SupersededById    = r.FieldCount > 21 && !r.IsDBNull(21) ? r.GetInt32(21) : null,
             };
         }
 

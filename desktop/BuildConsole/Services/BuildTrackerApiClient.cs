@@ -55,6 +55,12 @@ namespace BuildConsole.Services
         /// stored pid alone would eventually match an unrelated process. On restart the stored pid is
         /// only adopted when the live process's creation time matches this. Null when no pid is stored.</summary>
         public DateTimeOffset? BuildPidStartedAt { get; set; }
+        /// <summary>Git #2119 — when this row was superseded by a Reply/resume, the id of the fresh
+        /// <c>Reply → …</c> row that took over its session. Non-null iff Status == "superseded": the
+        /// original card renders "↩ REPLIED → #N" and drops out of the active queue instead of sitting
+        /// there forever showing stale active status while the resumed work runs under a disconnected
+        /// new entry. Null for every ordinary row.</summary>
+        public int? SupersededById { get; set; }
     }
 
     /// <summary>Matches POST /admin/simulator/deploy/console's real `{ ok, command, output }` response shape.</summary>

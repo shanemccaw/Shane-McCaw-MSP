@@ -4470,7 +4470,7 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   blockedByNumber: integer("blocked_by_number"),
   /** Git #813 — real multi-blocker support: null/empty means no extra blockers beyond blockedByNumber (if set). ALL of these must clear before the item is claimable. */
   blockedByNumbers: integer("blocked_by_numbers").array(),
-  /** queued | running | done | failed | canceled */
+  /** queued | running | done | failed | canceled | verifying | superseded */
   status:          text("status").notNull().default("queued"),
   /** Set by the watcher the moment it claims this row — the source of truth for "is this actually running right now," since a watcher can be killed/restarted without the DB ever finding out otherwise. */
   claimedAt:       timestamp("claimed_at", { withTimezone: true }),
@@ -4480,6 +4480,8 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
   sessionId:       text("session_id"),
   /** Git #826 — set at queue time by a Reply action: tells the watcher to launch this item with `--resume <resumeSessionId>` instead of a fresh session, with `prompt` as the reply text continuing that conversation. */
   resumeSessionId: text("resume_session_id"),
+  /** Git #2119 — set on the ORIGINAL row when a Reply/resume spawns a fresh `Reply → <title>` row to continue its session: points at that replacement row's id, and the original's status flips to `superseded`. Without this the original card sat in the queue forever showing stale active status while the real resumed work happened under a disconnected new entry. FK → bt_build_queue(id) ON DELETE SET NULL. */
+  supersededById:  integer("superseded_by_id"),
   /** Originating Claude conversation UUID (from bt_chats.conversation_id) when queued from a chat */
   originatingChatId: text("originating_chat_id"),
   /** Full Claude chat URL when queued from a chat */

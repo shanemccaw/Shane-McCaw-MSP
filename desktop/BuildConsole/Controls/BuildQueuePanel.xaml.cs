@@ -3088,6 +3088,32 @@ namespace BuildConsole.Controls
                     ToolTip = "Launched via Send to Builder — outside the 8-slot cap, not watcher-claimable."
                 };
             }
+            else if (item.Status == BuildQueuePostgresClient.SupersededStatus)
+            {
+                // Git #2119 — this row was resolved by a Reply/resume: its session was taken over by
+                // a fresh "Reply → …" row (SupersededById). Neutral violet, distinct from the active
+                // pipeline colors, so it reads as "handed off, see #N" rather than still-in-flight.
+                string replyRef = item.SupersededById.HasValue ? $" → #{item.SupersededById.Value}" : "";
+                statusPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0x24, 0x20, 0x2E)),
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xCB, 0xA6, 0xF7)),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1.5, 6, 1.5)
+                };
+                statusPill.Child = new TextBlock
+                {
+                    Text = $"↩ REPLIED{replyRef}",
+                    FontSize = 9.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xCB, 0xA6, 0xF7)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = "Replied to — its session was resumed under a new build" +
+                              (item.SupersededById.HasValue ? $" (queue #{item.SupersededById.Value})." : ".") +
+                              " This original row is closed out so it no longer sits in the active queue."
+                };
+            }
             else
             {
                 statusPill = new Border
@@ -3748,12 +3774,16 @@ namespace BuildConsole.Controls
             }
             try
             {
-                await _db.QueueBuildAsync(
+                var replyRow = await _db.QueueBuildAsync(
                     $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
                     githubNumber: null, blockedByNumbers: null,
                     resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                // Git #2119 — resolve the ORIGINAL row so its card doesn't sit stuck showing stale
+                // active status forever while the resumed work runs under this new "Reply → …" entry.
+                int superseded = await _db.MarkSupersededByReplyAsync(item.Id, replyRow.Id);
                 ActivityLog.Log("interactive-build",
-                    $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message (via Git Board hover popover).");
+                    $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message (via Git Board hover popover). New row #{replyRow.Id}" +
+                    (superseded > 0 ? $"; original #{item.Id} marked superseded → #{replyRow.Id}." : $"; original #{item.Id} left as-is (running or already terminal)."));
                 ToastEngine.Success("Reply queued", $"Resuming the session for “{item.Title}” with your message.");
             }
             catch (Exception ex)
@@ -3840,12 +3870,16 @@ namespace BuildConsole.Controls
                         // Fresh row (githubNumber: null) so we never dedupe onto — and re-queue
                         // out from under — a row that may still be running. resumeSessionId makes
                         // the watcher launch `claude --resume <sid> "<message>"`.
-                        await _db.QueueBuildAsync(
+                        var replyRow = await _db.QueueBuildAsync(
                             $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
                             githubNumber: null, blockedByNumbers: null,
                             resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                        // Git #2119 — resolve the ORIGINAL row so its card doesn't sit stuck showing
+                        // stale active status forever while the resumed work runs under the new row.
+                        int superseded = await _db.MarkSupersededByReplyAsync(item.Id, replyRow.Id);
                         ActivityLog.Log("interactive-build",
-                            $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message.");
+                            $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message. New row #{replyRow.Id}" +
+                            (superseded > 0 ? $"; original #{item.Id} marked superseded → #{replyRow.Id}." : $"; original #{item.Id} left as-is (running or already terminal)."));
                         ToastEngine.Success("Reply queued", $"Resuming the session for “{item.Title}” with your message.");
                         await RefreshAsync();
                     }
