@@ -81,8 +81,8 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
-import { db, mspRiskDecisionsTable, type CompensatingControl, type ClientApprover } from "@workspace/db";
-import { and, eq, desc, isNull } from "drizzle-orm";
+import { db, mspRiskDecisionsTable, complianceObligationsTable, complianceFrameworksTable, type CompensatingControl, type ClientApprover } from "@workspace/db";
+import { and, eq, desc, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
@@ -163,6 +163,12 @@ interface WireRisk {
   readonly liabilityValueUsd: number;
   readonly framework: string;
   readonly controlViolated: string;
+  /** The compliance_obligations.id this risk cites, when `obligation` matches
+   * the catalog (#1525). Null when there is no catalog match. */
+  readonly obligationId: string | null;
+  /** The cited authority's type (AUTHORITY_TYPES), resolved from `obligationId`.
+   * Null unless `obligationId` is set. */
+  readonly obligationType: string | null;
 }
 
 /** One policy decision — the same rows, read as documented policy positions. */
@@ -186,6 +192,12 @@ interface WirePolicyDecision {
   readonly rationale: string | null;
   readonly compensating: string | null;
   readonly check: string | null;
+  /** The compliance_obligations.id this decision cites, when `obligation`
+   * matches the catalog (#1525). Null when there is no catalog match. */
+  readonly obligationId: string | null;
+  /** The cited authority's type (AUTHORITY_TYPES), resolved from `obligationId`.
+   * Null unless `obligationId` is set. */
+  readonly obligationType: string | null;
 }
 
 type RiskRow = typeof mspRiskDecisionsTable.$inferSelect;
@@ -211,7 +223,20 @@ function compensatingSentence(controls: CompensatingControl[] | null): string | 
   return list.length ? list.join(" ") : null;
 }
 
-function toWireRisk(row: RiskRow): WireRisk {
+/** Resolves `authority_type` for a set of `compliance_obligations.id`s in one
+ * query, so listing N rows costs one extra round trip, not N. */
+async function loadObligationTypes(obligationIds: readonly number[]): Promise<Map<number, string>> {
+  const ids = [...new Set(obligationIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ obligationId: complianceObligationsTable.id, authorityType: complianceFrameworksTable.authorityType })
+    .from(complianceObligationsTable)
+    .innerJoin(complianceFrameworksTable, eq(complianceObligationsTable.frameworkId, complianceFrameworksTable.id))
+    .where(inArray(complianceObligationsTable.id, ids));
+  return new Map(rows.map((r) => [r.obligationId, r.authorityType]));
+}
+
+function toWireRisk(row: RiskRow, obligationTypeById: Map<number, string>): WireRisk {
   const acceptedAt = iso(row.acceptedAt);
   const approver = (row.clientApprover ?? null) as ClientApprover | null;
 
@@ -255,10 +280,12 @@ function toWireRisk(row: RiskRow): WireRisk {
     liabilityValueUsd: row.liabilityValueUsd,
     framework: row.framework,
     controlViolated: row.controlViolated,
+    obligationId: row.obligationId !== null ? String(row.obligationId) : null,
+    obligationType: row.obligationId !== null ? (obligationTypeById.get(row.obligationId) ?? null) : null,
   };
 }
 
-function toWirePolicyDecision(row: RiskRow): WirePolicyDecision {
+function toWirePolicyDecision(row: RiskRow, obligationTypeById: Map<number, string>): WirePolicyDecision {
   const approver = (row.clientApprover ?? null) as ClientApprover | null;
   return {
     id: row.rbdId,
@@ -278,6 +305,8 @@ function toWirePolicyDecision(row: RiskRow): WirePolicyDecision {
     rationale: row.rationale ?? null,
     compensating: compensatingSentence(row.compensatingControls),
     check: row.verificationNote ?? null,
+    obligationId: row.obligationId !== null ? String(row.obligationId) : null,
+    obligationType: row.obligationId !== null ? (obligationTypeById.get(row.obligationId) ?? null) : null,
   };
 }
 
@@ -324,7 +353,10 @@ router.get(
         )
         .orderBy(desc(mspRiskDecisionsTable.id));
 
-      res.json({ risks: rows.map(toWireRisk) });
+      const obligationTypeById = await loadObligationTypes(
+        rows.map((r) => r.obligationId).filter((id): id is number => id !== null),
+      );
+      res.json({ risks: rows.map((row) => toWireRisk(row, obligationTypeById)) });
     } catch (err: unknown) {
       log.error({ err }, "GET /portal/risk-register failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
@@ -359,10 +391,12 @@ router.get(
         )
         .orderBy(desc(mspRiskDecisionsTable.id));
 
+      const decisionRows = rows.filter((r) => (r.decisionState ?? "").trim() !== "");
+      const obligationTypeById = await loadObligationTypes(
+        decisionRows.map((r) => r.obligationId).filter((id): id is number => id !== null),
+      );
       res.json({
-        decisions: rows
-          .filter((r) => (r.decisionState ?? "").trim() !== "")
-          .map(toWirePolicyDecision),
+        decisions: decisionRows.map((row) => toWirePolicyDecision(row, obligationTypeById)),
       });
     } catch (err: unknown) {
       log.error({ err }, "GET /portal/policy-decisions failed");

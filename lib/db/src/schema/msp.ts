@@ -281,20 +281,51 @@ export type InsertTenantAddOnEntitlement = typeof tenantAddOnEntitlementsTable.$
 // NOT stored here. These tables carry only the durable scope decision + audit.
 // DDL lands via lib/db/migrations/manual/2026-08-24-compliance-framework-obligation-catalog-1256.sql.
 
-// Global regime catalog — reference data seeded once, shared across all tenants.
+// The cited-authority types an obligation can carry (Git #1525). A regulation
+// (GDPR) and a customer's own cyber-insurance schedule are both "authorities"
+// a decision can cite, but they carry materially different consequences when
+// deviated from — this is the discriminator that lets the register answer
+// "which obligations is this tenant actually subject to" instead of treating
+// every citation as the same kind of text.
+export const AUTHORITY_TYPES = ["regulation", "certification", "contract", "insurance", "internal_schedule"] as const;
+export type AuthorityType = (typeof AUTHORITY_TYPES)[number];
+
+// Global regime catalog — reference data seeded once, shared across all tenants
+// — PLUS, since #1525, MSP/tenant-authored authorities that are not global at
+// all (a customer's own insurance schedule or records policy). Global rows
+// have `mspId`/`tenantId` both null; a tenant-authored row has both set and is
+// visible only to that (mspId, tenantId) pair — it needs no
+// `tenant_compliance_scope` row because it cannot apply to any other tenant by
+// construction. `tenantId` matches the free-text M365 identifier
+// `msp_risk_decisions.tenant_id`/`policy_decisions.tenant_id` already use, not
+// `tenants.id` — this row is looked up from the same (mspId, tenantId) pair
+// `resolveTenantScope` produces for those tables, not through the Compliance
+// module's own `tenants.id`-keyed scoping.
 export const complianceFrameworksTable = pgTable("compliance_frameworks", {
   id: serial("id").primaryKey(),
   key: text("key").notNull().unique(),          // stable slug, e.g. 'gdpr', 'sox', 'pci-dss-v4'
   name: text("name").notNull(),                 // display, e.g. 'GDPR', 'PCI DSS v4.0'
   authority: text("authority"),                 // 'EU', 'SEC', 'HHS', 'PCI SSC'
   category: text("category"),                   // 'privacy' | 'financial' | 'healthcare' | 'payments'
+  /** AUTHORITY_TYPES. Defaults 'regulation' — every pre-#1525 row (GDPR, SOX,
+   * HIPAA, PCI DSS, SEC/FINRA) genuinely is one. */
+  authorityType: text("authority_type", { enum: AUTHORITY_TYPES }).notNull().default("regulation"),
   description: text("description"),
   defaultInScope: boolean("default_in_scope").notNull().default(false), // onboarding applicability hint
   active: boolean("active").notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  /** Set together with `tenantId` on a tenant-authored authority (a customer's
+   * own insurance schedule or records policy). Null on every global/seeded row. */
+  mspId: integer("msp_id").references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The M365 tenant identifier this authority is authored for. See the block
+   * comment above — matches `msp_risk_decisions.tenant_id`'s free-text
+   * convention, not `tenants.id`. Null on every global/seeded row. */
+  tenantId: text("tenant_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  index("compliance_frameworks_msp_tenant_idx").on(t.mspId, t.tenantId),
+]);
 
 export const insertComplianceFrameworkSchema = createInsertSchema(complianceFrameworksTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type ComplianceFramework = typeof complianceFrameworksTable.$inferSelect;
@@ -5582,8 +5613,16 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   registerRef: text("register_ref"),
   /** Why the decision was taken — the reasoning, shown on both pages. */
   rationale: text("rationale"),
-  /** The obligation a policy decision sits against, e.g. "GDPR Art. 5(1)(e)". */
+  /** The obligation a policy decision sits against, e.g. "GDPR Art. 5(1)(e)".
+   * Free text, predates #1525. Kept for back-compat display when `obligationId`
+   * below is null (every row written before #1525, and any writer that still
+   * only sends a citation string). */
   obligation: text("obligation"),
+  /** The cited authority this decision responds to, as a first-class reference
+   * (Git #1525) rather than a free-text guess — `compliance_obligations.id`.
+   * Null on every row written before #1525 and on any decision with no catalog
+   * match; `obligation` above stays authoritative for display in that case. */
+  obligationId: integer("obligation_id").references(() => complianceObligationsTable.id, { onDelete: "set null" }),
   /** The last verification line, e.g. "Compensating control verified on the last scan." */
   verificationNote: text("verification_note"),
   /** Policy Decisions' own lane (POLICY_DECISION_STATES: proposed / live / due).
@@ -5654,6 +5693,7 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   unique("msp_risk_decisions_msp_id_rbd_id_uidx").on(t.mspId, t.rbdId),
   index("msp_risk_decisions_tenant_check_status_idx").on(t.tenantId, t.checkKey, t.status),
   index("msp_risk_decisions_spawned_by_remediation_step_idx").on(t.spawnedByRemediationStepId),
+  index("msp_risk_decisions_obligation_id_idx").on(t.obligationId),
 ]);
 
 export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -7719,8 +7759,14 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
 
   title: text("title").notNull(),
   /** The cited authority this decision is a documented deviation from, e.g.
-   * "GDPR Art. 5(1)(e)" — first-class per #1723, not a free-text note. */
+   * "GDPR Art. 5(1)(e)". Free text at the citation level — the create form's
+   * own field — kept even once `obligationId` below is set, since the form
+   * still captures the citation as typed. */
   obligation: text("obligation").notNull(),
+  /** The cited authority as a first-class reference (Git #1525) —
+   * `compliance_obligations.id` — rather than only the free-text citation
+   * above. Null when the decision cites an authority with no catalog match. */
+  obligationId: integer("obligation_id").references(() => complianceObligationsTable.id, { onDelete: "set null" }),
   pillar: text("pillar"),
 
   owner: text("owner").notNull(),
@@ -7808,6 +7854,7 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
   index("policy_decisions_msp_id_idx").on(t.mspId),
   index("policy_decisions_tenant_id_idx").on(t.tenantId),
   index("policy_decisions_msp_tenant_idx").on(t.mspId, t.tenantId),
+  index("policy_decisions_obligation_id_idx").on(t.obligationId),
 ]);
 
 export type PolicyDecision = typeof policyDecisionsTable.$inferSelect;

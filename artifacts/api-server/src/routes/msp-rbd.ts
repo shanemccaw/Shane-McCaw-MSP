@@ -1,6 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspRiskDecisionsTable, monitorChecksTable, RISK_ACCEPTANCE_STATUSES } from "@workspace/db";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { db, mspRiskDecisionsTable, monitorChecksTable, complianceFrameworksTable, complianceObligationsTable, RISK_ACCEPTANCE_STATUSES } from "@workspace/db";
+import { eq, and, or, isNull, desc, asc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
@@ -56,6 +56,10 @@ const createRbdSchema = z.object({
   /** Optional: the monitor_checks.key this decision covers, for #1279 alert
    * suppression. Omitted/null when this is a free-standing liability record. */
   checkKey: z.string().nullable().optional(),
+  /** Optional: the compliance_obligations.id this decision cites, as a
+   * first-class reference (#1525) alongside the free-text `framework`/
+   * `obligation`. Omitted/null when no catalog entry matches the citation. */
+  obligationId: z.number().int().nullable().optional(),
 });
 
 const signRbdSchema = z.object({
@@ -90,6 +94,53 @@ router.get(
       res.json(checks);
     } catch (err: unknown) {
       log.error({ err }, "GET /api/msp/rbd/available-checks failed");
+      const msg = err instanceof Error ? err.message : String(err);
+      apiError(res, 500, ApiErrorCode.INTERNAL, msg);
+    }
+  }
+);
+
+// GET /api/msp/rbd/available-obligations
+// Read-only cited-authority catalog (Git #1525) for the RBD console's
+// obligation picker: the global/seeded catalog (`compliance_frameworks` with
+// `msp_id` null — GDPR, ISO 27001, ...) PLUS any authority this MSP has
+// authored for one of its own tenants (a customer's own insurance schedule or
+// records policy). Never another MSP's tenant-authored rows.
+router.get(
+  "/msp/rbd/available-obligations",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        res.status(403).json({ error: "MSP context required" });
+        return;
+      }
+
+      const rows = await db
+        .select({
+          obligationId: complianceObligationsTable.id,
+          citation: complianceObligationsTable.citation,
+          requires: complianceObligationsTable.requires,
+          frameworkName: complianceFrameworksTable.name,
+          authorityType: complianceFrameworksTable.authorityType,
+          tenantId: complianceFrameworksTable.tenantId,
+        })
+        .from(complianceObligationsTable)
+        .innerJoin(complianceFrameworksTable, eq(complianceObligationsTable.frameworkId, complianceFrameworksTable.id))
+        .where(
+          and(
+            eq(complianceObligationsTable.active, true),
+            eq(complianceFrameworksTable.active, true),
+            or(isNull(complianceFrameworksTable.mspId), eq(complianceFrameworksTable.mspId, mspId)),
+          ),
+        )
+        .orderBy(asc(complianceFrameworksTable.sortOrder), asc(complianceObligationsTable.sortOrder));
+
+      res.json(rows);
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/rbd/available-obligations failed");
       const msg = err instanceof Error ? err.message : String(err);
       apiError(res, 500, ApiErrorCode.INTERNAL, msg);
     }
@@ -177,6 +228,7 @@ router.post(
           expirationDate: parsedBody.data.expirationDate,
           status: parsedBody.data.status,
           checkKey: parsedBody.data.checkKey ?? null,
+          obligationId: parsedBody.data.obligationId ?? null,
         })
         .returning({ id: mspRiskDecisionsTable.id });
 

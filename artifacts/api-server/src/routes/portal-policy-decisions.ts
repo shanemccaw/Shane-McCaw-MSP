@@ -53,8 +53,8 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
-import { db, policyDecisionsTable, CLEARANCE_TRIGGER_TYPES } from "@workspace/db";
-import { and, eq, desc, isNull } from "drizzle-orm";
+import { db, policyDecisionsTable, CLEARANCE_TRIGGER_TYPES, complianceObligationsTable, complianceFrameworksTable } from "@workspace/db";
+import { and, eq, desc, isNull, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
@@ -81,6 +81,12 @@ interface WirePolicyRegisterEntry {
   readonly pillar: string | null;
   readonly title: string;
   readonly obligation: string;
+  /** The compliance_obligations.id this decision cites, when it matches the
+   * catalog (#1525). Null when the free-text `obligation` above has no match. */
+  readonly obligationId: string | null;
+  /** The cited authority's type (AUTHORITY_TYPES), resolved from `obligationId`.
+   * Null unless `obligationId` is set. */
+  readonly obligationType: string | null;
   readonly owner: string;
   readonly ownerId: string | null;
   /** NULL for a dependency-based decision (#1526) — see `clearance*` below. */
@@ -108,13 +114,28 @@ interface WirePolicyRegisterEntry {
   readonly isCleared: boolean;
 }
 
-function toWirePolicyRegisterEntry(row: PolicyDecisionRow): WirePolicyRegisterEntry {
+/** Resolves `authority_type` for a set of `compliance_obligations.id`s in one
+ * query, so listing N decisions costs one extra round trip, not N. */
+async function loadObligationTypes(obligationIds: readonly number[]): Promise<Map<number, string>> {
+  const ids = [...new Set(obligationIds)];
+  if (ids.length === 0) return new Map();
+  const rows = await db
+    .select({ obligationId: complianceObligationsTable.id, authorityType: complianceFrameworksTable.authorityType })
+    .from(complianceObligationsTable)
+    .innerJoin(complianceFrameworksTable, eq(complianceObligationsTable.frameworkId, complianceFrameworksTable.id))
+    .where(inArray(complianceObligationsTable.id, ids));
+  return new Map(rows.map((r) => [r.obligationId, r.authorityType]));
+}
+
+function toWirePolicyRegisterEntry(row: PolicyDecisionRow, obligationTypeById: Map<number, string>): WirePolicyRegisterEntry {
   return {
     id: String(row.id),
     state: row.decisionState,
     pillar: row.pillar ?? null,
     title: row.title,
     obligation: row.obligation,
+    obligationId: row.obligationId !== null ? String(row.obligationId) : null,
+    obligationType: row.obligationId !== null ? (obligationTypeById.get(row.obligationId) ?? null) : null,
     owner: row.owner,
     ownerId: row.ownerId ?? null,
     reviewCadence: row.reviewCadence ?? null,
@@ -162,7 +183,10 @@ router.get(
         )
         .orderBy(desc(policyDecisionsTable.id));
 
-      res.json({ decisions: rows.map(toWirePolicyRegisterEntry) });
+      const obligationTypeById = await loadObligationTypes(
+        rows.map((r) => r.obligationId).filter((id): id is number => id !== null),
+      );
+      res.json({ decisions: rows.map((row) => toWirePolicyRegisterEntry(row, obligationTypeById)) });
     } catch (err: unknown) {
       log.error({ err }, "GET /portal/policy-register failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
@@ -190,6 +214,11 @@ const createSchema = z
   .object({
     title: z.string().trim().min(2, "Describe the decision").max(300),
     obligation: z.string().trim().min(2, "Cite the obligation this decision responds to").max(300),
+    /** Optional: the compliance_obligations.id the `obligation` citation above
+     * resolves to, as a first-class reference (#1525). Verified below to be a
+     * real, active catalog entry either global or authored for this tenant —
+     * never trusted as-is from the client. */
+    obligationId: z.number().int().nullable().optional(),
     pillar: z.string().trim().max(100).optional(),
     owner: z.string().trim().min(1, "Assign an owner").max(200),
     ownerId: z.string().trim().max(200).optional(),
@@ -262,6 +291,34 @@ router.post(
         return;
       }
 
+      // Never trust a client-supplied FK as-is: confirm it names a real, active
+      // catalog entry that is either global or authored for THIS tenant. A
+      // mismatch is dropped to null rather than failing the whole request —
+      // the free-text `obligation` citation stays valid on its own.
+      let obligationId: number | null = null;
+      if (parsed.data.obligationId != null) {
+        const [match] = await db
+          .select({ id: complianceObligationsTable.id })
+          .from(complianceObligationsTable)
+          .innerJoin(complianceFrameworksTable, eq(complianceObligationsTable.frameworkId, complianceFrameworksTable.id))
+          .where(
+            and(
+              eq(complianceObligationsTable.id, parsed.data.obligationId),
+              eq(complianceObligationsTable.active, true),
+              eq(complianceFrameworksTable.active, true),
+              or(isNull(complianceFrameworksTable.mspId), eq(complianceFrameworksTable.mspId, scope.mspId)),
+            ),
+          );
+        if (match) {
+          obligationId = match.id;
+        } else {
+          log.info(
+            { customerId, mspId: scope.mspId, requestedObligationId: parsed.data.obligationId },
+            "policy decision obligationId did not resolve to an accessible catalog entry — dropping to null",
+          );
+        }
+      }
+
       const signedAt = new Date();
       // Server-derived, same reasoning as portal-risk-register.ts's accept
       // endpoint: the app sits behind Replit's proxy with `trust proxy` not
@@ -292,6 +349,7 @@ router.post(
           tenantId: scope.tenantId,
           title: parsed.data.title,
           obligation: parsed.data.obligation,
+          obligationId,
           pillar: parsed.data.pillar ?? null,
           owner: parsed.data.owner,
           ownerId: parsed.data.ownerId ?? null,
@@ -321,7 +379,8 @@ router.post(
         "policy decision created and signed by customer",
       );
 
-      res.status(201).json({ decision: toWirePolicyRegisterEntry(created) });
+      const obligationTypeById = await loadObligationTypes(obligationId !== null ? [obligationId] : []);
+      res.status(201).json({ decision: toWirePolicyRegisterEntry(created, obligationTypeById) });
     } catch (err: unknown) {
       log.error({ err, customerId }, "POST /portal/policy-register failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
@@ -432,7 +491,10 @@ router.patch(
         "policy decision dependency clearance manually resolved",
       );
 
-      res.json({ decision: toWirePolicyRegisterEntry(updated[0]) });
+      const obligationTypeById = await loadObligationTypes(
+        updated[0].obligationId !== null ? [updated[0].obligationId] : [],
+      );
+      res.json({ decision: toWirePolicyRegisterEntry(updated[0], obligationTypeById) });
     } catch (err: unknown) {
       log.error({ err, customerId, id }, "PATCH /portal/policy-register/:id/clearance/resolve failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
