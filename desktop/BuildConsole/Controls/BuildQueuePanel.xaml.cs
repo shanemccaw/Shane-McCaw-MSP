@@ -1376,8 +1376,48 @@ namespace BuildConsole.Controls
             if (e.Key != Key.Enter) return;
             if (QueueGraphContainer == null || _filter == "Tests") return;
             RenderQueue(ApplyFilter(_lastItems));
+            // Git #2058 — a search performed while a Build Set filter is active can come back
+            // empty (or short) not because no match exists, but because the real match is
+            // filtered out of view — same root cause as the dispatch trigger below.
+            ShowBuildSetFilterWarning("Search");
             e.Handled = true;
         }
+
+        private DispatcherTimer? _buildSetFilterWarningTimer;
+
+        /// <summary>Git #2058 — shared entry point for both trigger points named in the issue:
+        /// a search run here (see QueueSearchBox_KeyDown above) and a build dispatched elsewhere
+        /// (DispatchPanel → MainWindow → here, see <see cref="NotifyBuildDispatched"/>). No-op
+        /// when no Build Set filter is active — the whole point is to explain a filter Shane may
+        /// not remember is on, not to warn unconditionally. Uses the Popup declared in the XAML
+        /// (BuildSetFilterWarningPopup) rather than an inline Border, since a Popup renders in
+        /// its own overlay layer and genuinely cannot bump/reflow the rest of the panel — the
+        /// issue's explicit requirement.</summary>
+        private void ShowBuildSetFilterWarning(string reason)
+        {
+            if (_buildSetFilter == null || BuildSetFilterWarningPopup == null) return;
+
+            BuildSetFilterWarningText.Text = reason == "Search"
+                ? $"Filtered to \"{_buildSetFilter}\" — a real match may be hidden by this filter."
+                : $"New build landed outside the current filter — Build Set: {_buildSetFilter}";
+            BuildSetFilterWarningPopup.IsOpen = true;
+
+            _buildSetFilterWarningTimer?.Stop();
+            _buildSetFilterWarningTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+            _buildSetFilterWarningTimer.Tick += (s, e) =>
+            {
+                _buildSetFilterWarningTimer?.Stop();
+                BuildSetFilterWarningPopup.IsOpen = false;
+            };
+            _buildSetFilterWarningTimer.Start();
+        }
+
+        /// <summary>Git #2058 — MainWindow calls this after a successful dispatch (DispatchPanel's
+        /// own <c>Dispatched</c> event, which only fires on success) so the sibling queue panel can
+        /// warn if the item it just queued may be hidden by an active Build Set filter. Public
+        /// because DispatchPanel is a separate sibling control with no knowledge of this panel's
+        /// private filter state.</summary>
+        public void NotifyBuildDispatched() => ShowBuildSetFilterWarning("Dispatch");
 
         private static List<QueueItem> SortForDisplay(IEnumerable<QueueItem> items) =>
             items

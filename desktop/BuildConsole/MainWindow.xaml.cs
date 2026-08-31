@@ -533,7 +533,9 @@ namespace BuildConsole
                 _batterUpPanel.RowsAutoQueued += (_, _) => { try { _ = BuildQueuePanel.RefreshAsync(); } catch { } };
                 _batterUpPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
 
-                DispatchPanel.Dispatched += (_, _) => { try { _ = BuildQueuePanel.RefreshAsync(); } catch { } };
+                // Git #2058 — alongside the existing best-effort refresh, warn if the item just
+                // dispatched may be hidden by an active Build Set filter on the queue panel below.
+                DispatchPanel.Dispatched += (_, _) => { try { _ = BuildQueuePanel.RefreshAsync(); BuildQueuePanel.NotifyBuildDispatched(); } catch { } };
                 DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb, _sessionLimitAutoRestart, _queueWatcher);
 
                 _aiBatterUpPanel.Initialize();

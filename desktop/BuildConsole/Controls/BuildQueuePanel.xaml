@@ -450,6 +450,40 @@
                                 </TextBlock>
                             </Grid>
 
+                            <!-- Git #2058 — non-reflowing warning when a build is dispatched or a
+                                 search is run while a Build Set filter (rollup row above) is still
+                                 active: the new/matching item can genuinely exist but be hidden by
+                                 the filter, and there was no signal telling Shane why. A Popup
+                                 (same mechanism as QueueNextPopup above) renders in its own overlay
+                                 layer entirely outside this StackPanel's layout pass, so it can
+                                 never bump/reflow the rest of the panel — the explicit requirement
+                                 from the issue. Shown via ShowBuildSetFilterWarning; auto-hides
+                                 itself after a few seconds. Deliberately does NOT auto-clear the
+                                 filter (considered and rejected in favor of this warning). -->
+                            <Popup x:Name="BuildSetFilterWarningPopup"
+                                   PlacementTarget="{Binding ElementName=QueueSearchBox}"
+                                   Placement="Bottom"
+                                   StaysOpen="True"
+                                   AllowsTransparency="True"
+                                   IsOpen="False">
+                                <Border Background="#3A3200"
+                                        BorderBrush="{StaticResource YellowBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="8,6"
+                                        MaxWidth="240"
+                                        Margin="0,2,0,0">
+                                    <Border.Effect>
+                                        <DropShadowEffect Color="Black" BlurRadius="10" ShadowDepth="2" Opacity="0.35"/>
+                                    </Border.Effect>
+                                    <TextBlock x:Name="BuildSetFilterWarningText"
+                                               FontSize="10.5"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource YellowBrush}"
+                                               TextWrapping="Wrap"/>
+                                </Border>
+                            </Popup>
+
                             <!-- ── Visual Queue DAG with Canvas-based connector lines (#860) ──
                                  Git #1634 — Shane: exactly one scrollbar for the whole panel, not
                                  one here plus the outer one (~line 155). This card list used to
