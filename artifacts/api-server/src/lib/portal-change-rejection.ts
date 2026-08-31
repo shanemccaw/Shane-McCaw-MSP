@@ -236,6 +236,12 @@ async function createAssignedRiskFromRejection(
       title: full.title,
       controlViolated: full.targetResource,
       framework: "Microsoft 365 Change Control",
+      // #1514 — carried forward from the CR's own #1541 structured link so the
+      // accepted-risk suppression (#1279, keyed on tenant_id + check_key +
+      // status='active') and this build's discharge lookup can both find this
+      // row. NULL exactly when the CR itself carries none (every hand-typed
+      // wizard submission with no remediation item behind it).
+      checkKey: full.remediationCheckKey,
       rawRiskLevel: full.riskLevel,
       residualRiskLevel: full.riskLevel,
       rawRiskScore: rawScore,

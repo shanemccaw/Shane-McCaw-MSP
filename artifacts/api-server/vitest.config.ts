@@ -373,6 +373,8 @@ export default defineConfig({
       // check label > catalogue title fallback chain, never-invented money/
       // score fields, and idempotency on a repeat decline.
       "src/lib/remediation-tracker-risk-decline.test.ts",
+      "src/lib/portal-change-rejection.test.ts",
+      "src/lib/change-request-risk-discharge.test.ts",
       // #1510 — signature required on scope expansion, never on contraction:
       // the instance-set diff derivation (additions force a fresh signature,
       // subtraction-only/unchanged inherits) and the narrative/score audit
