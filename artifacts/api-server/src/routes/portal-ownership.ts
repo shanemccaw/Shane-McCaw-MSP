@@ -84,6 +84,16 @@
  * records a decision that a gap is knowingly accepted, and it stays session-only
  * for now — it is not one of the assign/handover/add flows this pass wired, and
  * saying so is more honest than half-persisting it.
+ *
+ * ── The MSP's own staff are on the roster too (#1520) ──────────────────────
+ * `people` is not only the tenant's own users. It also carries the customer's
+ * MSP staff (`mspRole` MSPAdmin/MSPOperator, resolved via `resolveCustomerMspId`
+ * — the customer's `tenants.mspId`, not `resolveTenantScope`'s stricter pair,
+ * because "who is our MSP" needs neither the M365 tenant GUID nor a live
+ * message-centre/CR row), each with `side: "MSP"`. They start assigned to
+ * nothing: the MSP is available to every cell by virtue of being the MSP, and
+ * the customer places them (or doesn't) exactly like any other person on the
+ * roster. See `lib/portal-ownership.ts`'s header for the full rationale.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -100,10 +110,15 @@ import {
   servicesTable,
   usersTable,
 } from "@workspace/db";
-import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { requireRole, type AuthUser } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope";
+import {
+  resolveCustomerId,
+  resolveCustomerMspId,
+  resolveTenantScope,
+  type TenantScope,
+} from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
 import {
@@ -169,23 +184,54 @@ export async function gatherOwnershipObjects(
   customerId: number,
   scope: TenantScope | null,
 ): Promise<OwnershipObjectsResult> {
-  const userRows: UserRow[] = await db
-    .select({
-      id: usersTable.id,
-      email: usersTable.email,
-      name: usersTable.name,
-      jobTitle: usersTable.jobTitle,
-      department: usersTable.department,
-      mspRole: usersTable.mspRole,
-    })
-    .from(usersTable)
-    .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
-    .orderBy(asc(usersTable.id));
+  const [userRows, mspId] = await Promise.all([
+    db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        jobTitle: usersTable.jobTitle,
+        department: usersTable.department,
+        mspRole: usersTable.mspRole,
+      })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
+      .orderBy(asc(usersTable.id)),
+    resolveCustomerMspId(customerId),
+  ]);
+
+  // The customer's MSP, available to every cell and assigned to none (#1520)
+  // — real MSP staff, not a fabricated "the MSP" placeholder. Same `users`
+  // table, scoped by `mspId` instead of `tenantId`.
+  const mspStaffRows: UserRow[] =
+    mspId === null
+      ? []
+      : await db
+          .select({
+            id: usersTable.id,
+            email: usersTable.email,
+            name: usersTable.name,
+            jobTitle: usersTable.jobTitle,
+            department: usersTable.department,
+            mspRole: usersTable.mspRole,
+          })
+          .from(usersTable)
+          .where(
+            and(
+              eq(usersTable.mspId, mspId),
+              eq(usersTable.isActive, true),
+              or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.mspRole, "MSPOperator")),
+            ),
+          )
+          .orderBy(asc(usersTable.id));
 
   const customerName = scope?.tenantName ?? "Your organisation";
   const sides = sidesFor(customerName);
-  const people = userRows.map((row) => toWirePerson(row, sides[0]!));
-  const emails = emailIndex(userRows);
+  const people = [
+    ...userRows.map((row) => toWirePerson(row, sides[0]!)),
+    ...mspStaffRows.map((row) => toWirePerson(row, "MSP")),
+  ];
+  const emails = emailIndex([...userRows, ...mspStaffRows]);
 
   const objects: WireOwnObject[] = [];
 
@@ -331,7 +377,9 @@ router.get(
       // ── People + objects ─────────────────────────────────────────────────
       // Suspended accounts are left out of the people list rather than shown
       // as "away": `away` holds a RETURN date, and a suspended account has no
-      // return date — it has a decision behind it.
+      // return date — it has a decision behind it. `people` includes the
+      // customer's MSP staff (side "MSP") as well as their own team (#1520) —
+      // see `gatherOwnershipObjects`.
       const { objects, people, emails, counts } = await gatherOwnershipObjects(customerId, scope);
       const customerName = scope?.tenantName ?? "Your organisation";
       const sides = sidesFor(customerName);
@@ -408,6 +456,7 @@ router.get(
           customerId,
           tenantScoped: scope !== null,
           people: people.length,
+          mspStaff: people.filter((p) => p.side === "MSP").length,
           objects: objects.length,
           counts,
           overlay: {
