@@ -73,6 +73,7 @@ import {
   Rocket,
   ExternalLink,
   FolderTree,
+  GitCompare,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -383,6 +384,10 @@ export const WORKSPACES: WorkspaceDef[] = [
           // configuration the platform can read at all, and how much of it the
           // check catalog already covers.
           { id: "del-config-resources", label: "Config Resource Model", path: "/delivery/config-resources", icon: Boxes },
+          // #1798 — the configuration report: a tenant snapshot or a diff between two,
+          // rendered as a readable document. Sits beside the model it reports over.
+          { id: "del-config-snapshots", label: "Config Snapshot Report", path: "/delivery/config-snapshots", icon: FileJson },
+          { id: "del-config-diffs", label: "Config Diff Report", path: "/delivery/config-diffs", icon: GitCompare },
         ],
       },
       {

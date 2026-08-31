@@ -35,6 +35,7 @@ import {
   configDiffResourceStatusTable,
   configDiffPropertyRulesTable,
   tenantConfigSnapshotsTable,
+  configSnapshotResourceTypesTable,
   CONFIG_DIFF_MODES,
   CONFIG_DIFF_COMPARABILITY,
   CONFIG_DIFF_CHANGE_KINDS,
@@ -114,6 +115,7 @@ router.get("/api/admin/config-diffs", requireAdmin, async (req: Request, res: Re
         changesTotal: d.changesTotal,
         changesSignificant: d.changesSignificant,
         changesIgnored: d.changesIgnored,
+        objectsPaired: d.objectsPaired,
         objectsAdded: d.objectsAdded,
         objectsRemoved: d.objectsRemoved,
         objectsIndeterminate: d.objectsIndeterminate,
@@ -244,12 +246,30 @@ router.get("/api/admin/config-diffs/:diffId/resources", requireAdmin, async (req
       where.push(sql`${configDiffResourceStatusTable.comparability} = ${comparability}`);
     }
 
-    const rows = await db.select().from(configDiffResourceStatusTable)
+    const rows = await db.select({
+      status: configDiffResourceStatusTable,
+      displayName: configSnapshotResourceTypesTable.displayName,
+      surface: configSnapshotResourceTypesTable.surface,
+      workload: configSnapshotResourceTypesTable.workload,
+    }).from(configDiffResourceStatusTable)
+      .leftJoin(configSnapshotResourceTypesTable,
+        eq(configSnapshotResourceTypesTable.resourceKey, configDiffResourceStatusTable.resourceKey))
       .where(and(...where))
-      .orderBy(asc(configDiffResourceStatusTable.resourceKey))
+      .orderBy(asc(configSnapshotResourceTypesTable.workload), asc(configDiffResourceStatusTable.resourceKey))
       .limit(clampLimit(req.query.limit));
 
-    res.json({ diffId: diff.diffId, resources: rows });
+    res.json({
+      diffId: diff.diffId,
+      resources: rows.map((r) => ({
+        ...r.status,
+        // A resource key with no registry match is a real fact (retired/renamed since
+        // collection), labelled rather than hidden — same convention as the snapshot
+        // document route.
+        displayName: r.displayName ?? r.status.resourceKey,
+        surface: r.surface ?? null,
+        workload: r.workload ?? "unregistered",
+      })),
+    });
   } catch (err) {
     log.error({ err }, "config-diffs: resource report failed");
     return apiError(res, 500, ApiErrorCode.INTERNAL,
@@ -293,12 +313,24 @@ router.get("/api/admin/config-diffs/:diffId", requireAdmin, async (req: Request,
     const limit = clampLimit(req.query.limit);
     const offset = Math.max(0, Number(req.query.offset) || 0);
 
-    const changes = await db.select().from(configDiffChangesTable)
+    const changeRows = await db.select({
+      change: configDiffChangesTable,
+      displayName: configSnapshotResourceTypesTable.displayName,
+      workload: configSnapshotResourceTypesTable.workload,
+    }).from(configDiffChangesTable)
+      .leftJoin(configSnapshotResourceTypesTable,
+        eq(configSnapshotResourceTypesTable.resourceKey, configDiffChangesTable.resourceKey))
       .where(and(...where))
       // Stored sequence, always — the total order IS the result (#1797 rule 3), so
       // re-sorting here would discard the property being guaranteed.
       .orderBy(asc(configDiffChangesTable.sequence))
       .limit(limit).offset(offset);
+
+    const changes = changeRows.map((r) => ({
+      ...r.change,
+      resourceDisplayName: r.displayName ?? r.change.resourceKey,
+      workload: r.workload ?? "unregistered",
+    }));
 
     const [{ total }] = await db.select({ total: sql<number>`count(*)::int` })
       .from(configDiffChangesTable).where(and(...where));

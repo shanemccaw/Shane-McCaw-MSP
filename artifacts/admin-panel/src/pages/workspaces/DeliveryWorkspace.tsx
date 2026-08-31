@@ -13,6 +13,8 @@ import FulfillmentTypesPage from "@/pages/FulfillmentTypes";
 import MonitorChecksPage from "@/pages/MonitorChecks";
 import MonitoringPackagesPage from "@/pages/MonitoringPackages";
 import ConfigResourceModelPage from "@/pages/ConfigResourceModel";
+import ConfigSnapshotReportPage from "@/pages/ConfigSnapshotReport";
+import ConfigDiffReportPage from "@/pages/ConfigDiffReport";
 import BaselineTemplatesPage from "@/pages/BaselineTemplates";
 import EngagementOfferRules from "@/pages/delivery/EngagementOfferRules";
 
@@ -36,6 +38,8 @@ function getContent(section: string): ReactNode {
     case "monitor-checks":       return <MonitorChecksPage />;
     case "monitoring-packages":  return <MonitoringPackagesPage />;
     case "config-resources":     return <ConfigResourceModelPage />;
+    case "config-snapshots":     return <ConfigSnapshotReportPage />;
+    case "config-diffs":         return <ConfigDiffReportPage />;
     case "baseline-templates":   return <BaselineTemplatesPage />;
     case "engagement-offers":    return <EngagementOfferRules />;
     default:                     return <ProjectsPage />;
