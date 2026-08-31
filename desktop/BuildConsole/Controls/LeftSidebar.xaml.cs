@@ -1840,6 +1840,7 @@ namespace BuildConsole.Controls
             _lastInProgressSignature = signature;
 
             var buildSw = System.Diagnostics.Stopwatch.StartNew();
+            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
             BuildBoardFromGitHub(issues, milestoneInfos!);
 
             // Git #1977 — a Focus Mode milestone that has reached 100% (all issues

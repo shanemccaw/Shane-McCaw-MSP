@@ -42,33 +42,7 @@
     </WindowChrome.WindowChrome>
 
     <Grid>
-        <!-- Git #902 — hidden background WebView2 the Replit idle watcher drives.
-             Must live in the visual tree AND stay visible-with-a-nonzero-size so
-             CoreWebView2 actually initialises (a WebView2 is an HwndHost: Opacity is
-             read-only and Visibility=Hidden/Collapsed would stop the controller from
-             ever being created). So it's a single 1x1 pixel tucked in the corner and
-             non-interactive — negligible on screen. It shares the app's WebView2
-             environment (cookies/session) via MainWindow.EnsureWebViewInitializedAsync,
-             which is what lets it click Run inside Shane's authenticated Replit session. -->
-        <wv2:WebView2 x:Name="ReplitWatcherWebView"
-                      Width="1" Height="1"
-                      IsHitTestVisible="False"
-                      HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                      Panel.ZIndex="-1"/>
 
-        <!-- Claude usage meter — its own dedicated hidden background WebView2 (a
-             SECOND one, so it never fights the Replit watcher above over the same
-             control's navigation). Same 1x1 HwndHost-alive trick: a WebView2's
-             Opacity is read-only and Visibility=Hidden/Collapsed would stop the
-             CoreWebView2 controller from ever being created, so it's a single
-             non-interactive pixel tucked in the corner. Shares the app's WebView2
-             environment (cookies/session) via EnsureWebViewInitializedAsync, which
-             is what lets it read claude.ai/settings/usage inside Shane's login. -->
-        <wv2:WebView2 x:Name="UsageMeterWebView"
-                      Width="1" Height="1"
-                      IsHitTestVisible="False"
-                      HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                      Panel.ZIndex="-1"/>
 
         <!-- Git #874 Home screen — ClaudeWebView, formerly the content of the
              hardcoded (non-closable) claude.ai TabItem, is now parked here as a

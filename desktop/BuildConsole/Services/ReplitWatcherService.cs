@@ -94,8 +94,8 @@ namespace BuildConsole.Services
             "service unavailable",
         };
 
-        private readonly WebView2 _webView;
-        private readonly Func<WebView2, Task<bool>> _ensureInitialized;
+        private readonly WebView2? _webView;
+        private readonly Func<WebView2, Task<bool>>? _ensureInitialized;
         private readonly DispatcherTimer _timer;
         private bool _busy;
         private DateTime? _lastCheck;
@@ -108,7 +108,7 @@ namespace BuildConsole.Services
         /// <summary>Delegate to open or focus the visible 'Replit Workspace' tab in MainWindow so the user can watch the wake sequence live.</summary>
         public Func<Task<WebView2?>>? OpenVisibleWorkspaceTab { get; set; }
 
-        public ReplitWatcherService(WebView2 webView, Func<WebView2, Task<bool>> ensureInitialized)
+        public ReplitWatcherService(WebView2? webView = null, Func<WebView2, Task<bool>>? ensureInitialized = null)
         {
             _webView = webView;
             _ensureInitialized = ensureInitialized;
@@ -122,10 +122,10 @@ namespace BuildConsole.Services
             var s = BuildConsoleSettings.Load();
             _timer.Stop();
 
-            if (!s.ReplitWatcherEnabled)
+            if (!s.ReplitWatcherEnabled || _webView == null)
             {
                 Emit(ReplitWatcherState.Disabled, "off");
-                ActivityLog.Log(Channel, "Watcher is OFF (Settings). No checks will run.");
+                ActivityLog.Log(Channel, "Watcher is OFF (Settings or No WebView2). No checks will run.");
                 return;
             }
 
@@ -152,7 +152,7 @@ namespace BuildConsole.Services
             _busy = true;
             try
             {
-                if (!await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
+                if (_webView == null || _ensureInitialized == null || !await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
                 {
                     Emit(ReplitWatcherState.Error, "WebView2 not ready");
                     return false;
@@ -183,7 +183,7 @@ namespace BuildConsole.Services
             _busy = true;
             try
             {
-                if (!await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
+                if (_webView == null || _ensureInitialized == null || !await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
                 {
                     Emit(ReplitWatcherState.Error, "WebView2 not ready");
                     return false;
@@ -231,7 +231,7 @@ namespace BuildConsole.Services
             _busy = true;
             try
             {
-                if (!await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
+                if (_webView == null || _ensureInitialized == null || !await _ensureInitialized(_webView) || _webView.CoreWebView2 == null)
                 {
                     Emit(ReplitWatcherState.Error, "WebView2 not ready");
                     ActivityLog.Log(Channel, "Check skipped — background WebView2 failed to initialise.");
@@ -353,7 +353,7 @@ namespace BuildConsole.Services
             Emit(ReplitWatcherState.Waking, "opening Replit dashboard…");
 
             // Open or focus the visible Replit Workspace tab so the user can watch the wake sequence live
-            WebView2 targetWv = _webView;
+            WebView2? targetWv = _webView;
             if (OpenVisibleWorkspaceTab != null)
             {
                 try
@@ -361,7 +361,7 @@ namespace BuildConsole.Services
                     var visibleWv = await OpenVisibleWorkspaceTab();
                     if (visibleWv != null)
                     {
-                        await _ensureInitialized(visibleWv);
+                        if (_ensureInitialized != null) await _ensureInitialized(visibleWv);
                         targetWv = visibleWv;
                     }
                 }
@@ -369,6 +369,12 @@ namespace BuildConsole.Services
                 {
                     ActivityLog.Log(Channel, $"Opening visible Replit tab warning: {ex.Message}");
                 }
+            }
+
+            if (targetWv == null)
+            {
+                Emit(ReplitWatcherState.Error, "No WebView2 available");
+                return;
             }
 
             // If the workspace tab is already open and on replit.com, DO NOT re-navigate/reload the page!
@@ -436,7 +442,7 @@ namespace BuildConsole.Services
         private async Task<bool> NavigateAsync(string url, WebView2? wv = null)
         {
             var target = wv ?? _webView;
-            if (target.CoreWebView2 == null) return false;
+            if (target?.CoreWebView2 == null) return false;
 
             var tcs = new TaskCompletionSource<bool>();
             void NavHandler(object? sender, CoreWebView2NavigationCompletedEventArgs args)
@@ -622,6 +628,7 @@ namespace BuildConsole.Services
         private async Task<JsonElement?> EvalAsync(string script, WebView2? wv = null)
         {
             var target = wv ?? _webView;
+            if (target?.CoreWebView2 == null) return null;
             try
             {
                 string resJson = await target.ExecuteScriptAsync(script) ?? string.Empty;

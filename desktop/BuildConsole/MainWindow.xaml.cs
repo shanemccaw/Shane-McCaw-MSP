@@ -292,10 +292,8 @@ namespace BuildConsole
             // height is ever tuned. See SizeSearchBoxToCaptionHeight for the full sizing.
             SizeSearchBoxToCaptionHeight();
 
-            // Set dark background on XAML background webviews so they never flash white
+            // Set dark background on XAML background webview so it never flashes white
             ClaudeWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
-            ReplitWatcherWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
-            UsageMeterWebView.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37);
 
             // Build completion sound mute toggle — reflect the persisted state
             // (%AppData%\BuildConsole\settings.json) in the menu checkmark on launch.
@@ -431,243 +429,134 @@ namespace BuildConsole
         {
             try
             {
-            _ = InitializeClaudeTabAsync();
+                // Phase 1: Load essential config and API clients first
+                var btConfig = BuildConsole.Services.BuildTrackerConfig.Load();
+                BuildConsole.Services.ActivityLog.Log("startup", btConfig.IsConfigured
+                    ? $"Config loaded: {btConfig.ApiBaseUrl}"
+                    : $"Config NOT found/incomplete (checked {BuildConsole.Services.BuildTrackerConfig.FindConfigPath() ?? "scripts\\build-queue-watcher.config.json"}) — panels will show 'Not connected'.");
+                _buildTrackerApi = new BuildConsole.Services.BuildTrackerApiClient(btConfig);
 
-            // Build Queue selection -> Build Log
-            BuildQueuePanel.TaskSelected += BuildQueuePanel_TaskSelected;
-
-            // Shane: "Feel free to change anything to patch how I actually work
-            // based on the Add-In." One shared API client, reading the SAME
-            // config scripts/build-queue-watcher.ps1 already uses (no separate
-            // setup step) - both the queue panel and the left sidebar's real
-            // Issues board are driven by it, same backend the extension talks to.
-            var btConfig = BuildConsole.Services.BuildTrackerConfig.Load();
-            BuildConsole.Services.ActivityLog.Log("startup", btConfig.IsConfigured
-                ? $"Config loaded: {btConfig.ApiBaseUrl}"
-                : $"Config NOT found/incomplete (checked {BuildConsole.Services.BuildTrackerConfig.FindConfigPath() ?? "scripts\\build-queue-watcher.config.json"}) — panels will show 'Not connected'.");
-            _buildTrackerApi = new BuildConsole.Services.BuildTrackerApiClient(btConfig);
-
-            // Git #817 — Shane: "Ohh I thought you build that into the WPF
-            // app." He was right to assume that - a queue with nothing
-            // claiming it isn't useful, and requiring a SEPARATE PowerShell
-            // window running scripts/build-queue-watcher.ps1 defeated the
-            // whole "everything in one window" point of this app. Same
-            // logic, now running in-process; see QueueWatcherService's own
-            // doc comment for the one real caveat (don't run both at once).
-            // Created BEFORE BuildQueuePanel.Initialize so Stop/Run Now
-            // (#820) have a real watcher to call into from the start.
-            if (_buildTrackerApi.IsConfigured)
-            {
-                // Direct Postgres connection for all queue DB operations (claim, complete,
-                // force-claim, orphan-sweep) — bypasses the API server entirely so queue
-                // state is always correct even when Replit is napping. Reads DATABASE_URL
-                // from .env.local at the repo root (already set up for local dev).
-                // Git #1985 — no longer coalesced to "" here; TryCreate fails closed on a null
-                // repo root itself (see its own doc comment) instead of silently resolving
-                // .env.local against the process cwd.
-                var repoRootForDb = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
-                _queueDb = BuildConsole.Services.BuildQueuePostgresClient.TryCreate(
-                    btConfig,
-                    repoRootForDb,
-                    msg => BuildConsole.Services.ActivityLog.Log("watcher", msg));
-
-                _queueWatcher = new BuildConsole.Services.QueueWatcherService(
-                    _buildTrackerApi, _queueDb, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
-                _queueWatcher.BuildFinished += QueueWatcher_BuildFinished;
-
-                // Session-limit auto-restart — detects the CLI's "hit your session
-                // limit · resets …" message in build output, parks those builds
-                // limit-paused, and re-queues them (resuming the global pause toggle
-                // too) 10 minutes after the parsed reset. StartAsync re-arms a
-                // persisted restart across app runs and runs the one-shot first-set
-                // bootstrap (Git #1446/#1439/#1441/#1442/#1452/#1444).
-                _sessionLimitAutoRestart = new BuildConsole.Services.SessionLimitAutoRestartService(
-                    _queueDb, () => _queueWatcher?.SetPaused(false));
-                _queueWatcher.SessionLimitAutoRestart = _sessionLimitAutoRestart;
-                _sessionLimitAutoRestart.LimitPausedResumed += count => Dispatcher.BeginInvoke(() =>
+                if (_buildTrackerApi.IsConfigured)
                 {
-                    try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
-                });
-
-                // Git #1838 — every autonomous starter below claims, launches, deploys or
-                // writes against Shane's real Postgres queue. In agent mode BuildConsole is a
-                // passive shell, so NONE of them arm — the guard is here at the arming site
-                // (not inside the service on tick 2, which is already too late). The queue DB
-                // client + watcher are still CONSTRUCTED above so BuildQueuePanel can render the
-                // queue read-only; they simply never poll or launch.
-                if (!BuildConsole.Services.AppMode.IsAgent)
-                {
-                    // Session-limit auto-restart re-arms a PERSISTED restart across app runs and
-                    // runs the first-set bootstrap — an agent instance must never resume Shane's
-                    // limit-paused builds or clear his global pause.
-                    _ = _sessionLimitAutoRestart.StartAsync();
-
-                    _queueWatcher.Start();
-
-                    // Git #898 — same "app is already open for the build queue" assumption:
-                    // start listening for remote UI-test run requests too.
-                    StartTestTriggerPoll();
-
-                    // Epic #803 — auto deploy+verify+test on build completion. Reuses the exact
-                    // endpoints trigger-deploy-and-wait.ps1 drives by hand (#911 build-complete +
-                    // #805 deploy-status) and the in-process regression sweep, fired automatically
-                    // off QueueWatcherService.BuildFinished (see QueueWatcher_BuildFinished) instead
-                    // of requiring the .ps1 + a manual test run. Injected-delegate shape mirrors
-                    // RegressionScheduleService above.
-                    // Git #1985 — was `?? ""`. An empty root would run every `git rev-parse` /
-                    // ancestor-check TryGit call in this pipeline against the process cwd instead
-                    // of the repo, which can silently produce a WRONG commit hash to verify the
-                    // deploy against — a false pass/fail on "did the deploy actually advance."
-                    // Fail loud instead: skip auto deploy+verify+test entirely rather than run it
-                    // against an unresolved root.
-                    string? postBuildRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
-                    if (string.IsNullOrWhiteSpace(postBuildRepoRoot))
-                    {
-                        BuildConsole.Services.ActivityLog.Log("testing.post-build-deploy",
-                            "Repo root unresolved — auto deploy+verify+test pipeline NOT armed this run (would otherwise verify commit hashes against the wrong directory). Check the repo-root-resolution toast/log.");
-                    }
-                    else
-                    {
-                        _postBuildDeploy = new BuildConsole.Services.PostBuildDeployPipeline(
-                            postBuildRepoRoot,
-                            () => _buildTrackerApi.PostBuildCompleteAsync(),
-                            () => _buildTrackerApi.GetDeployStatusAsync(),
-                            RunScopedManifestsAsync,
-                            SurfacePostBuildDeployOutcome);
-                    }
+                    var repoRootForDb = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                    _queueDb = BuildConsole.Services.BuildQueuePostgresClient.TryCreate(
+                        btConfig,
+                        repoRootForDb,
+                        msg => BuildConsole.Services.ActivityLog.Log("watcher", msg));
                 }
 
-                BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher, _queueDb, _sessionLimitAutoRestart);
-            }
-            else
-            {
-                BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
-            }
+                _usageMeter = new BuildConsole.Services.ClaudeUsageMeterService();
+                _usageMeter.StatusChanged += UsageMeter_StatusChanged;
+                if (!BuildConsole.Services.AppMode.IsAgent)
+                {
+                    _usageMeter.Start();
+                }
 
-            // Git #1709 — additive Batter Up board read + auto-queue panel. Feeds the SAME
-            // _queueDb.QueueBuildAsync pipeline BuildQueuePanel/chat buttons already use;
-            // never touches BuildQueuePanel itself. Works with a null _queueDb too (shows
-            // the board read-only, same "Not connected" posture as everything else here).
-            // Git #1872 — _batterUpPanel is the hoisted instance MainWindow.BatterUpTabs.cs
-            // hosts inside the Batter Up document tab; this wiring is unaffected by whether
-            // that tab is currently open.
-            _batterUpPanel.RowsAutoQueued += (_, _) =>
-            {
-                try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
-            };
-            // Git #1838 — a null queue client is already a supported, documented state
-            // (read-only board, "Not connected" posture). In agent mode we pass null so the
-            // panel still renders the Batter Up board but its own poll can NEVER auto-queue a
-            // real build (RefreshAndAutoQueueAsync only queues when queueDb != null).
-            _batterUpPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
+                _replitWatcher = new BuildConsole.Services.ReplitWatcherService();
+                _replitWatcher.StatusChanged += ReplitWatcher_StatusChanged;
+                _replitWatcher.OpenVisibleWorkspaceTab = OpenOrFocusReplitWorkspaceTabAsync;
+                if (!BuildConsole.Services.AppMode.IsAgent)
+                {
+                    _replitWatcher.ApplyConfig();
+                }
 
-            // Git #1779 — "Dispatch #___": a third door into the SAME _queueDb.QueueBuildAsync
-            // pipeline, for firing one specific issue right now regardless of its board status.
-            // Never touches BatterUpPanel/AiBatterUpPanel or BuildQueuePanel's own actions.
-            DispatchPanel.Dispatched += (_, _) =>
-            {
-                try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
-            };
-            // Git #1838 — DispatchPanel is a second door into QueueBuildAsync. In agent mode we
-            // pass null; DispatchAsync already refuses with "Not connected to the build queue
-            // database." when _db is null, so the panel renders but can't dispatch a real build.
-            DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb, _sessionLimitAutoRestart);
+                // KICK OFF STARTUP CONNECTIVITY PROBES IMMEDIATELY ON FRAME 1!
+                // This ensures the splash overlay's rows update immediately while background work runs.
+                _startupConnectivity?.Start(_buildTrackerApi, _replitWatcher, _queueDb);
 
-            // Git #1710 — additive "AI Batter Up" review panel: agent-filed findings
-            // awaiting Shane's Yes/No. Owns no queue/launch logic of its own — Yes only
-            // flips the board Status to real "Batter Up" (_batterUpPanel above picks it
-            // up on its own next refresh), No demotes to "Backlog". Never touches _queueDb.
-            // Git #1872 — _aiBatterUpPanel is the hoisted instance MainWindow.BatterUpTabs.cs
-            // hosts inside the AI Batter Up document tab.
-            _aiBatterUpPanel.Initialize();
+                // Yield execution to Dispatcher so the splash overlay paints and animates immediately
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
 
-            // Git #1872 — title-bar button counts feed off each panel's own CountChanged
-            // event (no new polling): see MainWindow.BatterUpTabs.cs.
-            WireBatterUpTitleBarCounts();
+                // Phase 2: Build Queue Panel & Queue Watcher
+                _ = InitializeClaudeTabAsync();
+                BuildQueuePanel.TaskSelected += BuildQueuePanel_TaskSelected;
 
-            // shaneapp://executeSql — the LOCAL protocol trigger (deliberately NOT
-            // over HTTP like #898; SQL runs through this app's own direct local Postgres
-            // connection, zero round-trip to the deployed api-server). Started
-            // unconditionally, even when no databaseUrl is configured, so an invocation
-            // is always logged and gets a clear error result rather than silence.
-            //
-            // Git #1838 — the pipe is BuildConsole.ShaneApp.{UserName} opened with
-            // MaxAllowedServerInstances, so a second listener could WIN a shaneapp:// URI
-            // meant for Shane's real console (TryForwardToRunningInstance can't tell the two
-            // apart). In agent mode we do NOT open the listener at all. The courier path in
-            // App.OnStartup is unaffected: a shaneapp:// launch still forwards to Shane's
-            // instance or cold-starts if none is up. If this process WAS cold-started with a
-            // pending URI and is also agent mode, agent mode wins — honour it and log the
-            // dropped URI by name rather than silently discarding it or self-promoting.
-            if (!BuildConsole.Services.AppMode.IsAgent)
-            {
-                StartShaneAppProtocolListener();
-            }
-            else if (!string.IsNullOrEmpty(App.PendingProtocolUri))
-            {
-                var droppedUri = App.PendingProtocolUri;
-                App.PendingProtocolUri = null;
-                BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
-                    $"Agent mode — NOT opening the shaneapp:// pipe listener; dropping pending cold-start URI: {droppedUri}");
-            }
+                if (_buildTrackerApi.IsConfigured)
+                {
+                    _queueWatcher = new BuildConsole.Services.QueueWatcherService(
+                        _buildTrackerApi, _queueDb, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
+                    _queueWatcher.BuildFinished += QueueWatcher_BuildFinished;
 
-            LeftSidebar.Initialize(_buildTrackerApi, _queueDb);
-            BuildLogView.Initialize(_buildTrackerApi, _queueDb);
-            TerminalView.Initialize(_buildTrackerApi);
-            MarketingLogView.Initialize("shane-mccaw-consulting", "Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐");
-            PortalLogView.Initialize("portal", "Portal", 5175, "artifacts/portal", "💼");
-            AdminLogView.Initialize("admin-panel", "Admin", 5174, "artifacts/admin-panel", "⚙️");
-            ApiServerLogView.Initialize("api-server", "API Server", 8080, "artifacts/api-server", "🖥️");
+                    _sessionLimitAutoRestart = new BuildConsole.Services.SessionLimitAutoRestartService(
+                        _queueDb, () => _queueWatcher?.SetPaused(false));
+                    _queueWatcher.SessionLimitAutoRestart = _sessionLimitAutoRestart;
+                    _sessionLimitAutoRestart.LimitPausedResumed += count => Dispatcher.BeginInvoke(() =>
+                    {
+                        try { _ = BuildQueuePanel.RefreshAsync(); } catch { }
+                    });
 
-            BuildServicesMenu();
-            StartTopServicesPoll();
+                    if (!BuildConsole.Services.AppMode.IsAgent)
+                    {
+                        _ = _sessionLimitAutoRestart.StartAsync();
+                        _queueWatcher.Start();
+                        StartTestTriggerPoll();
 
-            // Git #902 — Shane: "Replit shuts its dev mode down after ~10 min of
-            // inactivity... Can we use WebView2 to watch the site. When it sees the
-            // services off it waits 20 seconds then turns them back on." The watcher
-            // drives the hidden ReplitWatcherWebView through the SAME shared WebView2
-            // environment as every visible tab (EnsureWebViewInitializedAsync), so it
-            // clicks Run inside Shane's authenticated Replit session. ApplyConfig()
-            // starts/stops it per Settings; it re-reads Settings whenever Shane saves.
-            _replitWatcher = new BuildConsole.Services.ReplitWatcherService(
-                ReplitWatcherWebView, EnsureWebViewInitializedAsync);
-            _replitWatcher.StatusChanged += ReplitWatcher_StatusChanged;
-            _replitWatcher.OpenVisibleWorkspaceTab = OpenOrFocusReplitWorkspaceTabAsync;
-            // Git #954 — the Replit watcher's "re-apply on save" hook moved onto the
-            // Settings tab (SettingsTabView.ReplitWatcherSettingsChanged), wired per
-            // tab instance in OpenSettingsTab; the sidebar no longer owns it.
-            // Git #1838 — ApplyConfig drives a hidden WebView2 that clicks Run inside Shane's
-            // authenticated Replit session. Never arm it in agent mode.
-            if (!BuildConsole.Services.AppMode.IsAgent)
-            {
-                _replitWatcher.ApplyConfig();
-            }
+                        string? postBuildRepoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+                        if (string.IsNullOrWhiteSpace(postBuildRepoRoot))
+                        {
+                            BuildConsole.Services.ActivityLog.Log("testing.post-build-deploy",
+                                "Repo root unresolved — auto deploy+verify+test pipeline NOT armed this run. Check the repo-root-resolution toast/log.");
+                        }
+                        else
+                        {
+                            _postBuildDeploy = new BuildConsole.Services.PostBuildDeployPipeline(
+                                postBuildRepoRoot,
+                                () => _buildTrackerApi.PostBuildCompleteAsync(),
+                                () => _buildTrackerApi.GetDeployStatusAsync(),
+                                RunScopedManifestsAsync,
+                                SurfacePostBuildDeployOutcome);
+                        }
+                    }
 
-            // Claude usage meter — a background poll (same DispatcherTimer + hidden
-            // WebView2 shape as the Replit watcher) of claude.ai/settings/usage,
-            // driving its own dedicated UsageMeterWebView through the SAME shared
-            // WebView2 environment so it reads the meter inside Shane's login. Start()
-            // arms the poll + a fast display timer that ticks the ≥85% countdown
-            // smoothly between polls; the status bar just renders what it emits.
-            _usageMeter = new BuildConsole.Services.ClaudeUsageMeterService(
-                UsageMeterWebView, EnsureWebViewInitializedAsync);
-            _usageMeter.StatusChanged += UsageMeter_StatusChanged;
-            // Git #1838 — polls claude.ai/settings/usage through Shane's login. Never in agent mode.
-            if (!BuildConsole.Services.AppMode.IsAgent)
-            {
-                _usageMeter.Start();
-            }
+                    BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher, _queueDb, _sessionLimitAutoRestart);
+                }
+                else
+                {
+                    BuildQueuePanel.Initialize(_buildTrackerApi, _queueWatcher);
+                }
 
-            // #1882 — the overlay's rows + events were wired in the ctor
-            // (InitializeStartupOverlayShell). Now that the services its probes need exist
-            // (_buildTrackerApi / _replitWatcher / _queueDb), kick off the real launch
-            // probes. They run on background threads and report in via ConnectionChanged;
-            // the overlay stays up until BOTH they and the shell-ready signal settle.
-            _startupConnectivity?.Start(_buildTrackerApi, _replitWatcher, _queueDb);
+                // Yield to pump UI messages
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
 
-            // Let the freshly-painted overlay animate and show these first rows before we
-            // press on into the remaining (heavier) shell initialization below.
-            await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+                // Phase 3: Batter Up & Dispatch Panels
+                _batterUpPanel.RowsAutoQueued += (_, _) => { try { _ = BuildQueuePanel.RefreshAsync(); } catch { } };
+                _batterUpPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
+
+                DispatchPanel.Dispatched += (_, _) => { try { _ = BuildQueuePanel.RefreshAsync(); } catch { } };
+                DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb, _sessionLimitAutoRestart);
+
+                _aiBatterUpPanel.Initialize();
+                WireBatterUpTitleBarCounts();
+
+                if (!BuildConsole.Services.AppMode.IsAgent)
+                {
+                    StartShaneAppProtocolListener();
+                }
+                else if (!string.IsNullOrEmpty(App.PendingProtocolUri))
+                {
+                    var droppedUri = App.PendingProtocolUri;
+                    App.PendingProtocolUri = null;
+                    BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
+                        $"Agent mode — NOT opening the shaneapp:// pipe listener; dropping pending cold-start URI: {droppedUri}");
+                }
+
+                // Yield before heavy sidebar & view initialization
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+
+                // Phase 4: Sidebar and Log Views
+                LeftSidebar.Initialize(_buildTrackerApi, _queueDb);
+                BuildLogView.Initialize(_buildTrackerApi, _queueDb);
+                TerminalView.Initialize(_buildTrackerApi);
+                MarketingLogView.Initialize("shane-mccaw-consulting", "Marketing", 5173, "artifacts/shane-mccaw-consulting", "🌐");
+                PortalLogView.Initialize("portal", "Portal", 5175, "artifacts/portal", "💼");
+                AdminLogView.Initialize("admin-panel", "Admin", 5174, "artifacts/admin-panel", "⚙️");
+                ApiServerLogView.Initialize("api-server", "API Server", 8080, "artifacts/api-server", "🖥️");
+
+                BuildServicesMenu();
+                StartTopServicesPoll();
+
+                // Yield before final schedulers
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
 
             // Git #967 (Epic #803) — background scheduler for unattended full-suite runs.
             // Reuses the same DispatcherTimer/ApplyConfig pattern as the Replit watcher,
@@ -6283,7 +6172,7 @@ namespace BuildConsole
 
         private FrameworkElement CreateChatContextWrapper(Microsoft.Web.WebView2.Wpf.WebView2 wv)
         {
-            if (wv == ClaudeWebView || wv == ReplitWatcherWebView || wv == UsageMeterWebView) return wv;
+            if (wv == ClaudeWebView) return wv;
             if (_contextMeters.TryGetValue(wv, out var existing)) return existing.ProgressBar.Parent as FrameworkElement ?? wv;
 
             // Create Banner
