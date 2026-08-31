@@ -5693,6 +5693,109 @@ export const insertMspRbdVersionSchema = createInsertSchema(mspRbdVersionsTable)
 export type MspRbdVersion = typeof mspRbdVersionsTable.$inferSelect;
 export type InsertMspRbdVersion = typeof mspRbdVersionsTable.$inferInsert;
 
+// ── risk_instances — the RBD's line items (#1509, part of #1487) ──────────────
+//
+// Settled architecture (#1487, #1509): the RBD is a container, not a single risk
+// — one MFA risk with twenty-two accounts, not twenty-two risk records. Nobody
+// wants to manage twenty-two risk decisions for MFA. `msp_risk_decisions` is the
+// container row (one per `rbdId`, unchanged by this build); this table is the
+// many-rows-per-container line items it was always missing a home for.
+//
+// `riskDecisionId` is a real FK to the container row — unlike `msp_rbd_versions`
+// (#1508), which deliberately keys on the durable `rbdId` text because it is a
+// document-version chain that must survive a container row someday not being the
+// only shape. A line item has no such requirement: it belongs to exactly one
+// container row for its whole life, so a normal FK is the right, simpler tool
+// here. `rbdId`/`mspId` are denormalized alongside it anyway, matching every
+// other cross-table pointer on `msp_risk_decisions` (see `spawnedByRemediationStepId`
+// etc. above) — so a caller holding only the container identifier (the shape
+// `msp_rbd_versions` and the future diff logic in #1510 both use) can query
+// instances without a join.
+//
+// EACH LINE OWNS ITS OWN CLOCK. `foundAt` and `acceptedAt` are per-instance,
+// because each account/mailbox/object was found and accepted at a different
+// moment — the whole point of #1509. `acceptedAt` follows the exact
+// "never editable after the fact" contract `msp_risk_decisions.acceptedAt`
+// already established: set once, guarded at the route with a 409 on a second
+// attempt, never rewritten. Whether setting it requires a whole-document
+// signature is #1510's "signature required on scope expansion" mechanism —
+// a separate, not-yet-built issue this table does not anticipate; here it is
+// simply the per-line proof-of-when, exactly as #1509 asked for.
+//
+// THIS BUILD DOES NOT TOUCH `msp_risk_decisions.acceptedAt`'s COLUMN OR ROUTE
+// BEHAVIOR. #1509's own text is explicit that the container's single
+// `acceptedAt` "has no single meaning" once a container carries many lines
+// accepted at different times — but changing or repurposing that existing,
+// already-signed column is a destructive/behavior-changing edit to a table two
+// other routes (`msp-rbd.ts`, `portal-risk-register.ts`) already read and write,
+// which is out of scope for an additive build. The per-line truth now lives
+// here; the container's legacy single date is left exactly as-is for any risk
+// that predates this table (still a single instance, functionally).
+//
+// WHY A LINE LEFT — REMEDIATED VS. THE OBJECT CEASING TO EXIST. "We fixed nine"
+// and "thirteen users quit" are different histories the register must be able
+// to tell apart, per #1509's own text. Modeled as ONE flat `status` enum rather
+// than a separate boolean-plus-reason pair, for the identical reason
+// `remediation_tracker_steps.status` (above) is one flat enum: from the
+// register's side, "still open" and "left, and why" are the same shape of fact
+// — the current state of one line — and splitting that across parallel columns
+// is exactly what that table's own header warns against. Neither exit reason
+// requires a signature (#1509's own text) — `resolvedAt` is a plain operational
+// timestamp set by whoever recorded the exit, not a legal artifact.
+/** The two reasons a line leaves — see header. Not `"active"`: that is a state
+ * a line is in, never a reason it left. */
+export const RISK_INSTANCE_EXIT_REASONS = ["remediated", "object_removed"] as const;
+export type RiskInstanceExitReason = (typeof RISK_INSTANCE_EXIT_REASONS)[number];
+
+export const RISK_INSTANCE_STATUS = ["active", ...RISK_INSTANCE_EXIT_REASONS] as const;
+export type RiskInstanceStatus = (typeof RISK_INSTANCE_STATUS)[number];
+
+export const riskInstancesTable = pgTable("risk_instances", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The container row — see header for why this is a real FK, unlike `msp_rbd_versions.rbdId`. */
+  riskDecisionId: integer("risk_decision_id").notNull().references(() => mspRiskDecisionsTable.id, { onDelete: "cascade" }),
+  /** Denormalized container identifier, matching `msp_risk_decisions.rbdId`'s
+   * existing convention — lets a caller holding only the container id (as
+   * `msp_rbd_versions` and #1510's future diff logic do) query instances
+   * without a join. */
+  rbdId: text("rbd_id").notNull(),
+  /** What this line item covers, e.g. "jsmith@contoso.com" or "Conference Room A
+   * mailbox" — the identifying text shown per line. */
+  label: text("label").notNull(),
+  /** The underlying Graph/system identifier when one is known (object id, UPN).
+   * Free text, no FK — these are external Microsoft 365 objects, not rows in
+   * this database, matching every other external-identifier column in this
+   * table family (e.g. `msp_risk_decisions.checkKey`, `.graphEndpoint`). */
+  objectId: text("object_id"),
+  /** When this specific object was found to be covered by the risk. Required —
+   * every line has one, per #1509's own text. */
+  foundAt: timestamp("found_at", { withTimezone: true }).notNull(),
+  /** When this specific line was accepted. NULL until accepted. NEVER EDITABLE
+   * AFTER THE FACT once set — enforced at the route with a 409 on a repeat
+   * attempt, same contract as `msp_risk_decisions.acceptedAt`. */
+  acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+  /** RISK_INSTANCE_STATUS. `active` = still carried under the risk. `remediated`
+   * / `object_removed` = why it left — see header. */
+  status: text("status", { enum: RISK_INSTANCE_STATUS }).notNull().default("active"),
+  /** When `status` left `active`. NULL while active. Operational, not a
+   * signature — neither exit reason requires one (#1509). */
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  /** Free text on how/why it left, e.g. "Fixed via Conditional Access policy
+   * CA-114" or "Mailbox decommissioned 2026-08-30". NULL while active. */
+  resolutionNote: text("resolution_note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("risk_instances_msp_id_risk_decision_id_idx").on(t.mspId, t.riskDecisionId),
+  index("risk_instances_rbd_id_status_idx").on(t.rbdId, t.status),
+  index("risk_instances_risk_decision_id_idx").on(t.riskDecisionId),
+]);
+
+export const insertRiskInstanceSchema = createInsertSchema(riskInstancesTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type RiskInstance = typeof riskInstancesTable.$inferSelect;
+export type InsertRiskInstance = typeof riskInstancesTable.$inferInsert;
+
 // ── AI Dev Response Cache (#185, parent #183) ──────────────────────────────────
 // Dev-only cache of Anthropic call responses, keyed on a stable hash of that
 // call's real inputs, so iterating on a prompt in development doesn't re-spend
