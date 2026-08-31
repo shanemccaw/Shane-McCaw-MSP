@@ -67,6 +67,7 @@ namespace BuildConsole.Services
         /// </summary>
         public string DatabaseUrl { get; set; } = "";
 
+        [System.Text.Json.Serialization.JsonIgnore]
         public bool IsConfigured => !string.IsNullOrWhiteSpace(ApiBaseUrl) && !string.IsNullOrWhiteSpace(IngestToken);
 
         public static string? FindConfigPath()
@@ -248,6 +249,44 @@ namespace BuildConsole.Services
             {
                 return new BuildTrackerConfig();
             }
+        }
+
+        /// <summary>
+        /// Git #2122 — writes this config back to the SAME file <see cref="Load"/> reads
+        /// (scripts/build-queue-watcher.config.json), so a change made in Settings (e.g. the max
+        /// concurrent build slots field) persists for both this app and
+        /// build-queue-watcher.ps1's own <c>-MaxConcurrent</c> default — no second, drifting config
+        /// entry. Camel-case property names to match the hand-authored file convention (see
+        /// build-queue-watcher.config.example.json); <see cref="Load"/> itself is case-insensitive
+        /// on read regardless. If the file doesn't exist yet (a fresh checkout with only the
+        /// .example template present), writes it alongside that template instead of silently
+        /// no-oping; if even the scripts/ folder can't be located, this is a no-op.
+        /// </summary>
+        public void Save()
+        {
+            var path = FindConfigPath();
+            if (path == null)
+            {
+                var dir = new DirectoryInfo(AppDomain.CurrentDomain.BaseDirectory);
+                while (dir != null)
+                {
+                    var exampleCandidate = Path.Combine(dir.FullName, "scripts", "build-queue-watcher.config.example.json");
+                    if (File.Exists(exampleCandidate))
+                    {
+                        path = Path.Combine(dir.FullName, "scripts", "build-queue-watcher.config.json");
+                        break;
+                    }
+                    dir = dir.Parent;
+                }
+                if (path == null) return;
+            }
+
+            var json = JsonSerializer.Serialize(this, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+            File.WriteAllText(path, json);
         }
     }
 }

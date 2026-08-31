@@ -183,7 +183,9 @@ namespace BuildConsole.Services
         private readonly BuildTrackerApiClient _api;
         /// <summary>Direct Postgres client for all queue DB mutations (claim, complete, orphan-sweep). Non-null when DATABASE_URL was resolved at startup; falls back to _api HTTP calls when null (e.g. .env.local not found).</summary>
         private readonly BuildQueuePostgresClient? _db;
-        private readonly int _maxConcurrent;
+        /// <summary>Git #2122 — no longer readonly: <see cref="UpdateMaxConcurrent"/> is the live-apply
+        /// path for the Settings UI's max concurrent build slots control.</summary>
+        private int _maxConcurrent;
         /// <summary>
         /// Git #1985 — nullable on purpose. The constructor used to coalesce a null
         /// FindRepoRoot() to AppDomain.CurrentDomain.BaseDirectory (the app's own install/exe
@@ -284,6 +286,24 @@ namespace BuildConsole.Services
         /// so a manual per-item override (Start Now) can check it and refuse to launch a genuinely-full
         /// queue instead of guessing or silently exceeding it.</summary>
         public int MaxConcurrent => _maxConcurrent;
+
+        /// <summary>
+        /// Git #2122 — live-apply path for the Settings UI's max concurrent build slots control.
+        /// TickAsync re-reads <see cref="_maxConcurrent"/> fresh on every ~10s poll
+        /// (<c>freeSlots = _maxConcurrent - _running.Count</c>), and Start Now's capacity check
+        /// reads it fresh too — neither holds a stale copy across a cycle, so a change here takes
+        /// effect on the very next check with no restart required. A plain int field swap is safe
+        /// here: this is a single capacity comparison, not an invariant that spans multiple steps,
+        /// so no additional locking is needed even if a tick is concurrently mid-check. Clamped to a
+        /// minimum of 1 so a bad value from the UI can never park the whole queue.
+        /// </summary>
+        public void UpdateMaxConcurrent(int newValue)
+        {
+            int clamped = Math.Max(1, newValue);
+            int old = _maxConcurrent;
+            _maxConcurrent = clamped;
+            ActivityLog.Log("watcher", $"Max concurrent build slots changed live: {old} -> {clamped} (no restart required).");
+        }
 
         /// <summary>
         /// Git #1600 — the real, current reason each held-on-a-blocker queue item is

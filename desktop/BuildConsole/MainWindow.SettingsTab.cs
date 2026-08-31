@@ -72,6 +72,11 @@ namespace BuildConsole
             }
         }
 
+        /// <summary>Git #2122 — live-apply forwarding target for the Settings UI's max concurrent
+        /// build slots control (see SettingsTabView.BtnSaveMaxConcurrent_Click). No-ops if the
+        /// watcher hasn't been constructed yet (e.g. the build tracker API isn't configured).</summary>
+        public void UpdateMaxConcurrentBuildSlots(int value) => _queueWatcher?.UpdateMaxConcurrent(value);
+
         /// <summary>Build and add the Settings tab — same header/close/context-menu/
         /// drag recipe as AddGitDetailTab, so multi-pane drag/dock keep working.</summary>
         private void AddSettingsTab(SettingsTabView view)

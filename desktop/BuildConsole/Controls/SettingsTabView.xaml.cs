@@ -147,6 +147,10 @@ namespace BuildConsole.Controls
             DevBaseUrlDisplay.Text = cfg.GetBaseUrl(TargetEnvironment.Dev);
             StagingBaseUrlDisplay.Text = cfg.GetBaseUrl(TargetEnvironment.Staging);
             ProductionBaseUrlDisplay.Text = cfg.GetBaseUrl(TargetEnvironment.Production);
+            // Git #2122 — live watcher's own current cap wins if one is already running (e.g. it was
+            // live-applied earlier this session); otherwise fall back to the config file's value.
+            MaxConcurrentBox.Text = ((Application.Current?.MainWindow as BuildConsole.MainWindow)?.QueueWatcher?.MaxConcurrent
+                ?? cfg.MaxConcurrent).ToString();
 
             if (api == null)
             {
@@ -984,6 +988,44 @@ namespace BuildConsole.Controls
             ZohoApiTokenSavedText.Foreground = (Brush)FindResource("GreenBrush");
             ZohoApiTokenSavedText.Text = "Zoho API token saved successfully.";
             UpdateHealthDashboard();
+        }
+
+        /// <summary>
+        /// Git #2122 — persists the max concurrent build slots to
+        /// scripts\build-queue-watcher.config.json (the same file build-queue-watcher.ps1's own
+        /// -MaxConcurrent default reads) AND live-applies it to a running QueueWatcherService via
+        /// MainWindow, so it takes effect on the watcher's next ~10s poll tick with no restart.
+        /// </summary>
+        private void BtnSaveMaxConcurrent_Click(object sender, RoutedEventArgs e)
+        {
+            if (!int.TryParse(MaxConcurrentBox.Text.Trim(), out var value) || value < 1)
+            {
+                MaxConcurrentSavedText.Foreground = (Brush)FindResource("RedBrush");
+                MaxConcurrentSavedText.Text = "Enter a whole number of at least 1.";
+                return;
+            }
+
+            var cfg = BuildTrackerConfig.Load();
+            cfg.MaxConcurrent = value;
+            cfg.Save();
+
+            bool liveApplied = false;
+            try
+            {
+                var mainWindow = Application.Current?.MainWindow as BuildConsole.MainWindow;
+                if (mainWindow?.QueueWatcher != null)
+                {
+                    mainWindow.UpdateMaxConcurrentBuildSlots(value);
+                    liveApplied = true;
+                }
+            }
+            catch { /* best-effort live-apply; the file write above already succeeded */ }
+
+            MaxConcurrentSavedText.Foreground = (Brush)FindResource("GreenBrush");
+            MaxConcurrentSavedText.Text = liveApplied
+                ? $"✓ Saved and applied live — {value} max concurrent (takes effect on the watcher's next ~10s poll, no restart needed)."
+                : $"✓ Saved — {value} max concurrent. No queue watcher is running yet in this session; it will read this on next launch.";
+            ActivityLog.Log("settings.tab", $"Max concurrent build slots set to {value} (config persisted{(liveApplied ? " + live-applied" : "")}).");
         }
 
         private void BtnSaveEpicChatProjectUrl_Click(object sender, RoutedEventArgs e)
