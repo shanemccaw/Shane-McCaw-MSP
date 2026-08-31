@@ -523,7 +523,7 @@ namespace BuildConsole
                 _batterUpPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb);
 
                 DispatchPanel.Dispatched += (_, _) => { try { _ = BuildQueuePanel.RefreshAsync(); } catch { } };
-                DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb, _sessionLimitAutoRestart);
+                DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb, _sessionLimitAutoRestart, _queueWatcher);
 
                 _aiBatterUpPanel.Initialize();
                 WireBatterUpTitleBarCounts();

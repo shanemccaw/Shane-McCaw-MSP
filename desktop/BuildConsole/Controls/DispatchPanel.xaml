@@ -54,6 +54,20 @@
                        Foreground="{StaticResource Subtext0Brush}"
                        Visibility="Collapsed"/>
 
+            <!--
+                Git #1966 — the dedup guard's dead end: an inline override alongside the
+                existing "already tracked" status message, not a replacement for it. Never
+                duplicates the tracked row; ForceDispatchAsync supersedes it first.
+            -->
+            <Button x:Name="BtnForceDispatch" Content="Dispatch anyway" Padding="10,4"
+                    Margin="0,6,0,0" HorizontalAlignment="Left" FontSize="11.5"
+                    Background="{StaticResource Surface0Brush}"
+                    Foreground="{StaticResource PeachBrush}"
+                    BorderBrush="{StaticResource PeachBrush}"
+                    ToolTip="Supersede the tracked row and queue a fresh dispatch"
+                    Visibility="Collapsed"
+                    Click="BtnForceDispatch_Click"/>
+
         </StackPanel>
     </Border>
 </UserControl>
