@@ -5619,6 +5619,80 @@ export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTa
 export type MspRiskDecision = typeof mspRiskDecisionsTable.$inferSelect;
 export type InsertMspRiskDecision = typeof mspRiskDecisionsTable.$inferInsert;
 
+// ── msp_rbd_versions — the RBD's own supersession chain (#1508, part of #1487) ─
+//
+// Settled architecture (#1487, #1508): the RBD is a container (one MFA risk with
+// twenty-two accounts, not twenty-two risk records — #1509) and it is THIS
+// container, as a WHOLE document, that is the signed artifact and that versions.
+// Every change produces a new version of the whole document, signed as a whole —
+// the model Shane used at NASA. The value is handing someone a single page: this
+// is what was agreed, signed here, on this date — not a parent record plus
+// separately-signed children they must reassemble. Line items are content WITHIN
+// a signed version, not independently signed rows.
+//
+// `drift_baseline_snapshots` (below) is the explicit precedent this follows:
+// `supersededAt IS NULL` marks the current reference version; a prior version is
+// never edited or backfilled, it just stops being current the moment a newer one
+// is captured. That is the whole supersession mechanism, reused as-is rather than
+// inventing a second pattern.
+//
+// `content` is `jsonb.$type<unknown>()`, exactly like
+// `driftBaselineSnapshotsTable.config` — deliberately untyped here. The line-item
+// shape (#1509), the signature-required-on-scope-expansion diff (#1510) and the
+// role-based authority resolution (#1511) are separate, not-yet-built issues;
+// this table is the version/supersession mechanism they all attach to, not a
+// place to invent their content contract in advance. A version that re-reads
+// live child rows to render itself is not a signed document, it is a query — so
+// `content` MUST be a full, self-contained snapshot at capture time, never a
+// pointer for the reader to re-resolve.
+//
+// `rbdId` is the SAME container identifier `msp_risk_decisions.rbdId` already
+// uses today (e.g. "RBD-..."), matching the one real identifier this codebase has
+// for "one RBD" until #1509 formalizes the container/line-item split. No FK to
+// `msp_risk_decisions.id` — that table is one (soon-to-be-legacy) line-item shape
+// among what #1509 will make many; the version chain is keyed on the durable
+// container id, not on a specific row.
+//
+// `signedBy` reuses the existing `ClientApprover` shape (name/title/email/
+// signedAt/ipAddress/signatureHash) — the same signature record `msp-rbd.ts` and
+// `portal-risk-register.ts` already write, so every writer agrees on one
+// signature shape rather than keeping a second. `createdBy` reuses `MspAssessor`
+// the same way, for who authored the version on the MSP side.
+export const mspRbdVersionsTable = pgTable("msp_rbd_versions", {
+  id: serial("id").primaryKey(),
+  versionUid: uuid("version_uid").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The container identifier — matches `msp_risk_decisions.rbdId` today. */
+  rbdId: text("rbd_id").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  /** 1-based, monotonic per (mspId, rbdId). Version 1 is the first capture. */
+  versionNumber: integer("version_number").notNull(),
+  /** Full, self-contained content snapshot of the whole document at capture
+   * time. Untyped on purpose — see header. Never re-read live rows to fill it. */
+  content: jsonb("content").$type<unknown>().notNull(),
+  /** Who authored this version on the MSP side. */
+  createdBy: jsonb("created_by").$type<MspAssessor>().notNull(),
+  /** True once this version itself has been signed as a whole. A version can
+   * exist unsigned (a draft capture) before the signing flow (#1512) sets this
+   * and the two fields below. */
+  signed: boolean("signed").notNull().default(false),
+  signedBy: jsonb("signed_by").$type<ClientApprover>(),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  /** When a newer version replaced this one. NULL = the current version. Never
+   * edited or backfilled once superseded — same rule as `drift_baseline_snapshots`. */
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_rbd_versions_msp_id_rbd_id_idx").on(t.mspId, t.rbdId),
+  index("msp_rbd_versions_rbd_id_superseded_idx").on(t.rbdId, t.supersededAt),
+  unique("msp_rbd_versions_msp_id_rbd_id_version_uidx").on(t.mspId, t.rbdId, t.versionNumber),
+]);
+
+export const insertMspRbdVersionSchema = createInsertSchema(mspRbdVersionsTable).omit({ id: true, versionUid: true, createdAt: true });
+export type MspRbdVersion = typeof mspRbdVersionsTable.$inferSelect;
+export type InsertMspRbdVersion = typeof mspRbdVersionsTable.$inferInsert;
+
 // ── AI Dev Response Cache (#185, parent #183) ──────────────────────────────────
 // Dev-only cache of Anthropic call responses, keyed on a stable hash of that
 // call's real inputs, so iterating on a prompt in development doesn't re-spend
