@@ -866,6 +866,39 @@
                             </DockPanel>
                         </Border>
 
+                        <!-- Git #1884 — Auto-queue grace-period countdown banner. Extends #1883's
+                             hard readiness gate with a real delay: the queue pickup loop's launch
+                             gate isn't lifted the instant the app signals readiness, it's lifted
+                             after this countdown (or "Start now"), giving the machine a moment to
+                             settle after a genuinely heavy cold start. Docked directly under the
+                             editor-pane layout toolbar above (not overlaying the panes themselves,
+                             so it never blocks anything) and collapsed by default — it only takes
+                             up space while the countdown is actually running. Disappears the moment
+                             the countdown completes or either button is used. -->
+                        <Border x:Name="AutoQueueGraceBanner" DockPanel.Dock="Top"
+                                Visibility="Collapsed"
+                                Background="{StaticResource Surface1Brush}"
+                                Padding="8,4"
+                                BorderBrush="{StaticResource Surface2Brush}"
+                                BorderThickness="0,0,0,1">
+                            <DockPanel>
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                    <Button x:Name="BtnAutoQueueStartNow" Style="{StaticResource IconButton}"
+                                            Content="▶ Start now"
+                                            ToolTip="Skip the rest of the delay and let the build queue start now"
+                                            Click="BtnAutoQueueStartNow_Click" Margin="0,0,4,0"/>
+                                    <Button x:Name="BtnAutoQueueStop" Style="{StaticResource IconButton}"
+                                            Content="⏹ Stop"
+                                            ToolTip="Don't auto-start the queue this session — stays paused until you resume it yourself"
+                                            Click="BtnAutoQueueStop_Click"/>
+                                </StackPanel>
+                                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Foreground="{StaticResource TextBrush}">
+                                    <Run Text="⏳" Foreground="{StaticResource YellowBrush}"/>
+                                    <Run x:Name="AutoQueueGraceText" Text="Build queue auto-start in 1:30 — giving the app a moment to settle"/>
+                                </TextBlock>
+                            </DockPanel>
+                        </Border>
+
                         <!-- Editor Tab "Pinned" strip — a small always-visible strip
                              (icon + short label per pinned tab), shown only when >=1
                              tab is pinned. Clicking a strip item opens that pinned tab

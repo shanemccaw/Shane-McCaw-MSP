@@ -77,6 +77,15 @@ namespace BuildConsole
         // #1882 — guards RunDeferredStartupAsync so ContentRendered only kicks it once.
         private bool _deferredStartupBegun;
 
+        // ── Git #1884: grace-period delay + countdown banner before the auto-queue's
+        //    #1883 hard readiness gate actually lifts. Starts counting the moment the app
+        //    signals genuine readiness (AllSettled); the queue's launch gate stays closed
+        //    until this elapses, "Start now" is clicked, or "Stop" is clicked. ──
+        private static readonly TimeSpan AutoQueueGracePeriod = TimeSpan.FromSeconds(90);
+        private DispatcherTimer? _autoQueueGraceTimer;
+        private DateTime _autoQueueGraceEndUtc;
+        private bool _autoQueueGraceResolved;
+
         // ── Git #967: background scheduled regression-suite runs + on-failure push alert ──
         private BuildConsole.Services.RegressionScheduleService? _regressionScheduler;
 
@@ -483,10 +492,15 @@ namespace BuildConsole
                     // just the loading overlay visually dismissing. Wired here, BEFORE
                     // _queueWatcher.Start() is ever called below, so there's no window where a
                     // claim could slip through before this subscription exists. AllSettled may
-                    // fire on a background thread; MarkAppReady is a single volatile bool flip,
-                    // safe from any thread.
+                    // fire on a background thread, so hop to the UI thread before touching the
+                    // #1884 grace-period timer/banner below.
+                    //
+                    // Git #1884 — genuine readiness no longer lifts the launch gate immediately;
+                    // it starts a real grace-period countdown (StartAutoQueueGracePeriod), and
+                    // MarkAppReady is only actually called once that countdown elapses, or the
+                    // user clicks "Start now"/"Stop" on the banner it shows.
                     if (_startupConnectivity != null)
-                        _startupConnectivity.AllSettled += () => _queueWatcher?.MarkAppReady();
+                        _startupConnectivity.AllSettled += () => Dispatcher.BeginInvoke(new Action(StartAutoQueueGracePeriod));
 
                     _sessionLimitAutoRestart = new BuildConsole.Services.SessionLimitAutoRestartService(
                         _queueDb, () => _queueWatcher?.SetPaused(false));
@@ -5470,6 +5484,88 @@ namespace BuildConsole
             if (_postBuildDeploy != null)
                 _ = _postBuildDeploy.OnBuildFinishedAsync(queueItemId, title, exitCode, ghNum);
         }
+
+        /// <summary>
+        /// Git #1884 — called on the UI thread once the app has signaled genuine full
+        /// readiness (#1882/#1883's AllSettled). Rather than lifting the queue's launch
+        /// gate immediately, this starts a real grace-period countdown (<see
+        /// cref="AutoQueueGracePeriod"/>) and shows the non-blocking banner docked under
+        /// the editor-pane layout toolbar. The gate only actually lifts
+        /// (<see cref="QueueWatcherService.MarkAppReady"/>) once the countdown elapses,
+        /// "Start now" is clicked, or "Stop" is clicked (see
+        /// <see cref="ResolveAutoQueueGrace"/>). Runs harmlessly in Agent mode too — the
+        /// queue watcher's own pickup timer is never started there (see the caller's own
+        /// guard), so MarkAppReady/SetPaused calls here have nothing to gate; leaving the
+        /// banner visible in Agent mode is what lets it be screenshotted/clicked for
+        /// verification without ever touching Shane's real Postgres queue.
+        /// </summary>
+        private void StartAutoQueueGracePeriod()
+        {
+            if (_queueWatcher == null) return;
+
+            _autoQueueGraceResolved = false;
+            _autoQueueGraceEndUtc = DateTime.UtcNow + AutoQueueGracePeriod;
+            AutoQueueGraceBanner.Visibility = Visibility.Visible;
+            UpdateAutoQueueGraceText();
+
+            _autoQueueGraceTimer?.Stop();
+            _autoQueueGraceTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _autoQueueGraceTimer.Tick += (_, _) =>
+            {
+                if (DateTime.UtcNow >= _autoQueueGraceEndUtc)
+                {
+                    ResolveAutoQueueGrace(pauseQueue: false);
+                }
+                else
+                {
+                    UpdateAutoQueueGraceText();
+                }
+            };
+            _autoQueueGraceTimer.Start();
+
+            BuildConsole.Services.ActivityLog.Log("watcher",
+                $"App signaled genuine full readiness (#1882) — auto-queue grace period started, " +
+                $"{AutoQueueGracePeriod.TotalSeconds:0}s before the launch gate lifts (#1884).");
+        }
+
+        private void UpdateAutoQueueGraceText()
+        {
+            var remaining = _autoQueueGraceEndUtc - DateTime.UtcNow;
+            if (remaining < TimeSpan.Zero) remaining = TimeSpan.Zero;
+            AutoQueueGraceText.Text =
+                $"Build queue auto-start in {(int)remaining.TotalMinutes}:{remaining.Seconds:00} — giving the app a moment to settle";
+        }
+
+        /// <summary>
+        /// Ends the #1884 grace period exactly once — via the countdown elapsing, "Start
+        /// now", or "Stop" — hides the banner, and lifts the #1883 launch gate
+        /// (MarkAppReady). When <paramref name="pauseQueue"/> is true ("Stop" was
+        /// clicked), also pauses the queue the same way the existing manual pause toggle
+        /// does, so auto-start genuinely does not happen this session — but the gate
+        /// itself is still lifted so a later manual "Resume" (the existing pause toggle)
+        /// works normally instead of staying silently blocked forever.
+        /// </summary>
+        private void ResolveAutoQueueGrace(bool pauseQueue)
+        {
+            if (_autoQueueGraceResolved) return;
+            _autoQueueGraceResolved = true;
+
+            _autoQueueGraceTimer?.Stop();
+            _autoQueueGraceTimer = null;
+            AutoQueueGraceBanner.Visibility = Visibility.Collapsed;
+
+            _queueWatcher?.MarkAppReady();
+            if (pauseQueue)
+            {
+                _queueWatcher?.SetPaused(true);
+                BuildConsole.Services.ActivityLog.Log("watcher",
+                    "Auto-queue grace period stopped by user (#1884) — queue paused for this session, same as the manual pause toggle.");
+            }
+        }
+
+        private void BtnAutoQueueStartNow_Click(object sender, RoutedEventArgs e) => ResolveAutoQueueGrace(pauseQueue: false);
+
+        private void BtnAutoQueueStop_Click(object sender, RoutedEventArgs e) => ResolveAutoQueueGrace(pauseQueue: true);
 
         private void BtnSailorDuckMascot_Click(object sender, RoutedEventArgs e)
         {
