@@ -365,5 +365,138 @@ namespace BuildConsole.Services
         {
             public int Number { get; set; }
         }
+
+        /// <summary>Git #2103 — the real project-board "Status" options that count as the "Batter
+        /// Up family" for the re-dispatch check: the plain launch queue and the AI-filed-findings
+        /// review queue (CLAUDE.md's "Board status" section) both feed the same dispatch pipeline.</summary>
+        private static readonly string[] BatterUpFamilyStatuses = { "Batter Up", "AI Batter Up" };
+
+        /// <summary>Git #2103 — the two demotion targets the issue body names explicitly ("last
+        /// closed OR moved to Backlog/Park"). A transition to any OTHER status (e.g. "In progress")
+        /// deliberately does NOT count as leaving the family — Shane pulling an item out to Backlog
+        /// or Park is him saying "stop, this isn't working"; other statuses aren't that signal.</summary>
+        private static readonly string[] LeftFamilyTargetStatuses = { "Backlog", "Park" };
+
+        /// <summary>
+        /// Git #2103 — the real "since when should re-dispatches for this issue count" boundary:
+        /// the most recent moment it (a) transitioned from a Batter-Up-family status
+        /// (<see cref="BatterUpFamilyStatuses"/>) into Backlog or Park
+        /// (<see cref="LeftFamilyTargetStatuses"/>), or (b) was closed — whichever is later. Reads
+        /// GitHub's own real project-status timeline (`ProjectV2ItemStatusChangedEvent`, confirmed
+        /// live via `gh api graphql` introspection — not a raw field poll, an actual per-transition
+        /// history) plus `ClosedEvent`, both off the issue's `timelineItems`. Returns null when the
+        /// issue has never left the family (or was never on the board at all) — the caller then
+        /// counts every dispatch row on file for it, since there's no narrower boundary to apply.
+        /// A properly closed-and-reopened issue correctly does NOT carry its old dispatch count
+        /// forward: the close event resets the boundary.
+        /// </summary>
+        public static async Task<DateTime?> GetLastLeftBatterUpFamilyAtAsync(int issueNumber)
+        {
+            if (!IsQueryableIssueNumber(issueNumber, "view")) return null;
+
+            var parts = Repo.Split('/');
+            string owner = parts[0], name = parts[1];
+            string query = $@"query {{
+  repository(owner: ""{owner}"", name: ""{name}"") {{
+    issue(number: {issueNumber}) {{
+      timelineItems(itemTypes: [PROJECT_V2_ITEM_STATUS_CHANGED_EVENT, CLOSED_EVENT], first: 250) {{
+        nodes {{
+          __typename
+          ... on ProjectV2ItemStatusChangedEvent {{ createdAt previousStatus status }}
+          ... on ClosedEvent {{ createdAt }}
+        }}
+      }}
+    }}
+  }}
+}}";
+            var psi = new ProcessStartInfo
+            {
+                FileName = "gh",
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            psi.ArgumentList.Add("api");
+            psi.ArgumentList.Add("graphql");
+            psi.ArgumentList.Add("-f");
+            psi.ArgumentList.Add($"query={query}");
+
+            using var proc = new Process { StartInfo = psi };
+            try
+            {
+                proc.Start();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"Couldn't start gh CLI for #{issueNumber}'s board-status timeline: {ex.Message}");
+                return null;
+            }
+            string stdout = await proc.StandardOutput.ReadToEndAsync();
+            string stderr = await proc.StandardError.ReadToEndAsync();
+            await proc.WaitForExitAsync();
+            if (proc.ExitCode != 0)
+            {
+                ActivityLog.Log("github", $"gh api graphql (board-status timeline) failed for #{issueNumber} (exit {proc.ExitCode}): {stderr.Trim()}");
+                return null;
+            }
+
+            try
+            {
+                var body = System.Text.Json.JsonSerializer.Deserialize<DispatchTimelineResponse>(
+                    stdout, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (body?.Errors is { Count: > 0 } errs)
+                {
+                    ActivityLog.Log("github", $"gh api graphql (board-status timeline) returned errors for #{issueNumber}: {string.Join("; ", errs.Select(e => e.Message))}");
+                    return null;
+                }
+
+                var nodes = body?.Data?.Repository?.Issue?.TimelineItems?.Nodes ?? new List<DispatchTimelineNode>();
+                DateTime? lastLeft = null;
+                // GitHub returns timelineItems in chronological (ascending) order, so simply keep
+                // overwriting on every qualifying event — the final value is the most recent one.
+                foreach (var node in nodes)
+                {
+                    if (node.CreatedAt is not { } createdAt) continue;
+
+                    if (string.Equals(node.TypeName, "ClosedEvent", StringComparison.Ordinal))
+                    {
+                        lastLeft = createdAt.UtcDateTime;
+                    }
+                    else if (string.Equals(node.TypeName, "ProjectV2ItemStatusChangedEvent", StringComparison.Ordinal))
+                    {
+                        bool wasFamily = node.PreviousStatus != null && BatterUpFamilyStatuses.Contains(node.PreviousStatus, StringComparer.Ordinal);
+                        bool leftToTarget = node.Status != null && LeftFamilyTargetStatuses.Contains(node.Status, StringComparer.Ordinal);
+                        if (wasFamily && leftToTarget)
+                            lastLeft = createdAt.UtcDateTime;
+                    }
+                }
+                return lastLeft;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("github", $"Couldn't parse gh api graphql (board-status timeline) output for #{issueNumber}: {ex.Message}");
+                return null;
+            }
+        }
+
+        private class DispatchTimelineResponse
+        {
+            public DispatchTimelineData? Data { get; set; }
+            public List<DispatchGraphQlError>? Errors { get; set; }
+        }
+        private class DispatchGraphQlError { public string Message { get; set; } = ""; }
+        private class DispatchTimelineData { public DispatchTimelineRepo? Repository { get; set; } }
+        private class DispatchTimelineRepo { public DispatchTimelineIssue? Issue { get; set; } }
+        private class DispatchTimelineIssue { public DispatchTimelineItemsConnection? TimelineItems { get; set; } }
+        private class DispatchTimelineItemsConnection { public List<DispatchTimelineNode> Nodes { get; set; } = new(); }
+        private class DispatchTimelineNode
+        {
+            [JsonPropertyName("__typename")]
+            public string? TypeName { get; set; }
+            public DateTimeOffset? CreatedAt { get; set; }
+            public string? PreviousStatus { get; set; }
+            public string? Status { get; set; }
+        }
     }
 }

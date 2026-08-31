@@ -1638,6 +1638,17 @@ namespace BuildConsole.Services
                 WorktreeName = worktreeName,
             };
 
+            // Git #2103 — the actual dispatch call site: this is the moment a queue item's
+            // process genuinely spawns. Fires the re-dispatch toast (if warranted) and writes
+            // this dispatch's build_dispatch_log row BEFORE the process starts — never a Reply/
+            // --resume continuation (isFreshDispatch), which picks back up the same session
+            // rather than freshly dispatching the issue again.
+            bool isFreshDispatch = string.IsNullOrWhiteSpace(item.ResumeSessionId);
+            if (isFreshDispatch)
+            {
+                await TrackDispatchAsync(item);
+            }
+
             RedirectedProcessLauncher.LaunchedProcess launched;
             try
             {
@@ -1705,6 +1716,67 @@ namespace BuildConsole.Services
             if (interactive)
                 ActivityLog.Log("interactive-build", $"launched (durable-file stdout/stderr redirect + owned stdin, --input-format stream-json): {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
             ActivityLog.Log("watcher", $"Started: {item.Title} (queue #{item.Id}, {_running.Count}/{_maxConcurrent} running)");
+        }
+
+        // ── Git #2103 — re-dispatch tracking + toast ────────────────────────────
+        /// <summary>
+        /// Git #2103 — real audit found no existing "how many times has this issue been
+        /// dispatched" tracking: <c>QueueBuildAsync</c> only ever adds/reuses ONE
+        /// bt_build_queue row per issue (dedup'd on github_number), so a repeatedly-failing
+        /// build silently re-ran with nothing counting the attempts — Shane's own account:
+        /// he found out #1867 was stuck only after its 4th failed dispatch. Called from
+        /// <see cref="LaunchItem"/> right before the process actually spawns, for a genuinely
+        /// fresh dispatch only (never a Reply/--resume continuation — see the isFreshDispatch
+        /// guard at the call site). Fails open: a GitHub/DB hiccup here logs and lets the
+        /// build launch anyway — this is a heads-up toast, not a launch gate.
+        /// </summary>
+        private async Task TrackDispatchAsync(QueueItem item)
+        {
+            if (item.GithubNumber is not { } issueNumber || issueNumber <= 0) return;
+            if (_db == null) return; // HTTP-fallback mode has no direct Postgres to log/count against.
+
+            try
+            {
+                DateTime? since = await GitHubIssuesService.GetLastLeftBatterUpFamilyAtAsync(issueNumber);
+                int priorCount = await _db.CountDispatchesSinceAsync(issueNumber, since);
+                if (priorCount >= 1)
+                {
+                    int ordinal = priorCount + 1;
+                    ToastEngine.Warning(
+                        $"Re-dispatching #{issueNumber}",
+                        $"{Ordinal(ordinal)} time — no progress since last run.",
+                        TimeSpan.FromSeconds(9));
+                    ActivityLog.Log("watcher",
+                        $"Queue #{item.Id} (#{issueNumber}) — re-dispatch warning fired: {Ordinal(ordinal)} dispatch since it last left the Batter-Up-family board columns " +
+                        $"({(since.HasValue ? since.Value.ToString("u") : "never — counting all-time")}).");
+                }
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Queue #{item.Id} (#{issueNumber}) — re-dispatch check failed (non-fatal, launch continues): {ex.Message}");
+            }
+
+            try
+            {
+                await _db.LogDispatchAsync(item.Id, issueNumber);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("watcher", $"Queue #{item.Id} (#{issueNumber}) — failed to write build_dispatch_log row (non-fatal): {ex.Message}");
+            }
+        }
+
+        /// <summary>Git #2103 — "2nd", "3rd", "4th", … for the re-dispatch toast text.</summary>
+        private static string Ordinal(int n)
+        {
+            if (n % 100 is >= 11 and <= 13) return $"{n}th";
+            return (n % 10) switch
+            {
+                1 => $"{n}st",
+                2 => $"{n}nd",
+                3 => $"{n}rd",
+                _ => $"{n}th",
+            };
         }
 
         // ── Durable-file raw tailers (Git #1804) ────────────────────────────

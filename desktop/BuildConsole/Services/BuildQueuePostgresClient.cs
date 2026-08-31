@@ -720,6 +720,51 @@ namespace BuildConsole.Services
             return row;
         }
 
+        // ── Git #2103 — build_dispatch_log ──────────────────────────────────────────
+        /// <summary>
+        /// Git #2103 — writes one real dispatch row the moment a queued item's process
+        /// actually spawns (<c>QueueWatcherService.LaunchItem</c>, right before
+        /// <c>RedirectedProcessLauncher.Launch</c>). Never called for a Reply/--resume
+        /// continuation — that picks back up the SAME session rather than freshly
+        /// dispatching the issue again, and logging it would inflate the re-dispatch
+        /// count on every chat reply. <paramref name="queueItemId"/> links back to the
+        /// exact bt_build_queue row this dispatch came from, so <see cref="MarkCompleteAsync"/>
+        /// can fill in session_id/outcome on this same row later without a fragile
+        /// in-memory map that wouldn't survive an app restart mid-build.
+        /// </summary>
+        public async Task LogDispatchAsync(int queueItemId, int issueNumber)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                INSERT INTO build_dispatch_log (issue_number, queue_item_id)
+                VALUES (@issueNumber, @queueItemId)", conn);
+            cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+            cmd.Parameters.AddWithValue("@queueItemId", queueItemId);
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        /// <summary>
+        /// Git #2103 — how many real dispatches this issue has already had since
+        /// <paramref name="sinceUtc"/> (the last time it left the Batter-Up-family board
+        /// columns — see <see cref="GitHubIssuesService.GetLastLeftBatterUpFamilyAtAsync"/>).
+        /// A null <paramref name="sinceUtc"/> means it has never left the family (or GitHub
+        /// couldn't be reached to determine that) — every real dispatch row on file for this
+        /// issue counts toward the threshold.
+        /// </summary>
+        public async Task<int> CountDispatchesSinceAsync(int issueNumber, DateTime? sinceUtc)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT COUNT(*) FROM build_dispatch_log
+                 WHERE issue_number = @issueNumber
+                   AND (@since::timestamptz IS NULL OR dispatched_at > @since)", conn);
+            cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+            cmd.Parameters.Add(new NpgsqlParameter("@since", NpgsqlDbType.TimestampTz)
+            { Value = sinceUtc.HasValue ? (object)DateTime.SpecifyKind(sinceUtc.Value, DateTimeKind.Utc) : DBNull.Value });
+            var result = await cmd.ExecuteScalarAsync();
+            return result is long l ? (int)l : 0;
+        }
+
         // ── MarkCompleteAsync ─────────────────────────────────────────────────────
         /// <summary>
         /// Marks a queue row done/verifying/failed and stores the session id so a
@@ -735,7 +780,8 @@ namespace BuildConsole.Services
         public async Task MarkCompleteAsync(int id, int exitCode, string? sessionId = null)
         {
             await using var conn = await OpenAsync();
-            await using var cmd = new NpgsqlCommand(@"
+            string? newStatus = null;
+            await using (var cmd = new NpgsqlCommand(@"
                 UPDATE bt_build_queue
                    SET status        = CASE
                                           WHEN @exitCode = 0 AND github_number IS NOT NULL THEN @verifyingStatus
@@ -750,22 +796,46 @@ namespace BuildConsole.Services
                      , build_pid            = NULL
                      , build_pid_started_at = NULL
                  WHERE id = @id
-                RETURNING status, github_number", conn);
-            cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
-            cmd.Parameters.AddWithValue("@exitCode", exitCode);
-            cmd.Parameters.AddWithValue("@sessionId",
-                sessionId != null ? (object)sessionId : DBNull.Value);
-            cmd.Parameters.AddWithValue("@id", id);
-            await using var reader = await cmd.ExecuteReaderAsync();
-            if (await reader.ReadAsync())
+                RETURNING status, github_number", conn))
             {
-                var newStatus = reader.IsDBNull(0) ? "" : reader.GetString(0);
-                if (newStatus == VerifyingStatus)
+                cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+                cmd.Parameters.AddWithValue("@exitCode", exitCode);
+                cmd.Parameters.AddWithValue("@sessionId",
+                    sessionId != null ? (object)sessionId : DBNull.Value);
+                cmd.Parameters.AddWithValue("@id", id);
+                await using var reader = await cmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
                 {
-                    var num = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
-                    ActivityLog.Log("watcher",
-                        $"Queue #{id} session exited successfully → Verifying (GH #{num}, exit {exitCode}) — held visible in the active queue until that issue actually closes.");
+                    newStatus = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                    if (newStatus == VerifyingStatus)
+                    {
+                        var num = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
+                        ActivityLog.Log("watcher",
+                            $"Queue #{id} session exited successfully → Verifying (GH #{num}, exit {exitCode}) — held visible in the active queue until that issue actually closes.");
+                    }
                 }
+            }
+
+            // Git #2103 — mirror this same terminal status onto the dispatch row
+            // LogDispatchAsync wrote at launch time (queue_item_id = this row's id), so
+            // build_dispatch_log.outcome always reflects reality without a second
+            // in-memory correlation map. A Reply/--resume completion never had a dispatch
+            // row written for it (LogDispatchAsync is skipped for those), so this is a
+            // harmless no-op then — the WHERE guard only ever touches a real, still-open
+            // dispatch row.
+            if (!string.IsNullOrEmpty(newStatus))
+            {
+                await using var dispatchCmd = new NpgsqlCommand(@"
+                    UPDATE build_dispatch_log
+                       SET session_id = COALESCE(@sessionId, session_id),
+                           outcome    = @outcome
+                     WHERE queue_item_id = @id
+                       AND outcome IS NULL", conn);
+                dispatchCmd.Parameters.AddWithValue("@sessionId",
+                    sessionId != null ? (object)sessionId : DBNull.Value);
+                dispatchCmd.Parameters.AddWithValue("@outcome", newStatus);
+                dispatchCmd.Parameters.AddWithValue("@id", id);
+                await dispatchCmd.ExecuteNonQueryAsync();
             }
         }
 

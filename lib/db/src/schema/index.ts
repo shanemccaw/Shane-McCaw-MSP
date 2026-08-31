@@ -4494,6 +4494,21 @@ export const btBuildQueueTable = pgTable("bt_build_queue", {
 export type InsertBtBuildQueueItem = typeof btBuildQueueTable.$inferInsert;
 export type BtBuildQueueItem       = typeof btBuildQueueTable.$inferSelect;
 
+/** Git #2103 — one row per REAL build dispatch (a fresh claude.exe launch for a queued issue — never a Reply/--resume continuation, which picks back up the same session instead). Written by QueueWatcherService.LaunchItem right before the process spawns, so a pre-launch re-dispatch count (against the issue's real GitHub project-board status-change history) is never off-by-one. */
+export const buildDispatchLogTable = pgTable("build_dispatch_log", {
+  id:           serial("id").primaryKey(),
+  issueNumber:  integer("issue_number").notNull(),
+  /** FK -> bt_build_queue(id) — the exact queue row this dispatch came from, so MarkCompleteAsync can write session_id/outcome back onto this same row without a fragile in-memory correlation map. */
+  queueItemId:  integer("queue_item_id"),
+  dispatchedAt: timestamp("dispatched_at", { withTimezone: true }).notNull().defaultNow(),
+  sessionId:    text("session_id"),
+  /** Filled in at completion — mirrors bt_build_queue.status's terminal values (done | verifying | failed). Null while the dispatch is still running. */
+  outcome:      text("outcome"),
+});
+
+export type InsertBuildDispatchLogRow = typeof buildDispatchLogTable.$inferInsert;
+export type BuildDispatchLogRow       = typeof buildDispatchLogTable.$inferSelect;
+
 export * from "./msp";
 
 export * from "./config-state";
