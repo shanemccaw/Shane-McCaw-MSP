@@ -415,6 +415,11 @@ export default defineConfig({
       // "no Azure subscriptions" are the same empty HTTP 200 and must stay
       // distinguishable.
       "src/lib/__tests__/azure-rm.test.ts",
+      // #1797 — the configuration snapshot differ's four rules, pure: absence vs
+      // unreadability vs deletion (the false-deletion guard), property-level output
+      // measured side by side against the existing detectDrift primitive, stable
+      // ordering, and the data-driven noise ruleset's matching and precedence.
+      "src/lib/config-snapshot-differ.test.ts",
     ],
     coverage: {
       provider: "v8",
