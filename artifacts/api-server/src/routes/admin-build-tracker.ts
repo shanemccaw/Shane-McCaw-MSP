@@ -2240,17 +2240,38 @@ router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: R
       })
       .onConflictDoNothing();
 
+    // Git #2068 — this lookup only ever checked bt_epics/bt_issues, which are ONLY
+    // repopulated by a full GitHub sync (github-sync/quick-sync/sync-epic). A target
+    // that hasn't been synced yet misses both and used to fall through silently:
+    // bt_chat_issues (above) still got its row, but bt_chats.epic_id/issue_id were
+    // never set, and the response still said `ok: true` with no signal anything was
+    // incomplete — same local-table-staleness class #1362 fixed on the read/grouping
+    // side, unaddressed here until now. `resolved` below makes that failure honest
+    // instead of silent.
+    //
+    // Deliberately NOT adding a live-GitHub-fetch fallback here (unlike the desktop
+    // direct-Postgres path's LinkChatToIssueAsync, which self-heals from its caller's
+    // own already-fetched Git Board data): this endpoint's own doc comment above says
+    // issue_number can legitimately be "a real GitHub issue/epic/milestone number" —
+    // three different GitHub number namespaces sharing one wire parameter. A live
+    // GitHub fetch keyed only on the raw number can't tell a not-yet-synced epic/issue
+    // apart from an unrelated real issue that happens to share a milestone's number,
+    // and would risk syncing/linking the WRONG target. Filed as a follow-up (needs an
+    // explicit signal from the caller, e.g. an `isEpicOrIssue` flag, before it's safe
+    // to add) rather than guessed at here.
     const [epic] = await db
       .select({ id: btEpicsTable.id })
       .from(btEpicsTable)
       .where(eq(btEpicsTable.githubNumber, issue_number))
       .limit(1);
 
+    let resolved = false;
     if (epic) {
       await db
         .update(btChatsTable)
         .set({ epicId: epic.id, issueId: null, updatedAt: new Date() })
         .where(eq(btChatsTable.id, chat.id));
+      resolved = true;
     } else {
       const [issue] = await db
         .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
@@ -2262,11 +2283,12 @@ router.post("/admin/build-tracker/chats/assign-issue", ingestAuth, async (req: R
           .update(btChatsTable)
           .set({ issueId: issue.id, epicId: issue.epicId, updatedAt: new Date() })
           .where(eq(btChatsTable.id, chat.id));
+        resolved = true;
       }
     }
 
-    log.info({ conversationId: convId, issueNumber: issue_number, chatId: chat.id }, "assigned chat to issue");
-    res.json({ ok: true, conversationId: convId, issueNumber: issue_number });
+    log.info({ conversationId: convId, issueNumber: issue_number, chatId: chat.id, resolved }, "assigned chat to issue");
+    res.json({ ok: true, conversationId: convId, issueNumber: issue_number, resolved });
   } catch (err) {
     log.error({ err, conversationId: convId, issueNumber: issue_number }, "POST /chats/assign-issue failed");
     res.status(500).json({ error: "Failed to assign chat to issue" });
@@ -2308,12 +2330,16 @@ router.post("/admin/build-tracker/chats/unassign-issue", ingestAuth, async (req:
       .where(eq(btChatIssuesTable.chatId, existing[0].id))
       .limit(1);
 
+    let resolved = true;
     if (remaining.length === 0) {
       await db
         .update(btChatsTable)
         .set({ epicId: null, issueId: null, updatedAt: new Date() })
         .where(eq(btChatsTable.id, existing[0].id));
     } else {
+      // Git #2068 — same local-table-only lookup as assign-issue above, same
+      // `resolved` honesty fix; see that route's comment for why a live-GitHub-fetch
+      // fallback isn't added here.
       const nextIssueNum = remaining[0].issueNumber;
       const [epic] = await db
         .select({ id: btEpicsTable.id })
@@ -2321,11 +2347,13 @@ router.post("/admin/build-tracker/chats/unassign-issue", ingestAuth, async (req:
         .where(eq(btEpicsTable.githubNumber, nextIssueNum))
         .limit(1);
 
+      resolved = false;
       if (epic) {
         await db
           .update(btChatsTable)
           .set({ epicId: epic.id, issueId: null, updatedAt: new Date() })
           .where(eq(btChatsTable.id, existing[0].id));
+        resolved = true;
       } else {
         const [issue] = await db
           .select({ id: btIssuesTable.id, epicId: btIssuesTable.epicId })
@@ -2337,12 +2365,13 @@ router.post("/admin/build-tracker/chats/unassign-issue", ingestAuth, async (req:
             .update(btChatsTable)
             .set({ issueId: issue.id, epicId: issue.epicId, updatedAt: new Date() })
             .where(eq(btChatsTable.id, existing[0].id));
+          resolved = true;
         }
       }
     }
 
-    log.info({ conversationId: convId, issueNumber: issue_number, chatId: existing[0].id }, "unassigned chat from issue");
-    res.json({ ok: true, conversationId: convId, issueNumber: issue_number });
+    log.info({ conversationId: convId, issueNumber: issue_number, chatId: existing[0].id, resolved }, "unassigned chat from issue");
+    res.json({ ok: true, conversationId: convId, issueNumber: issue_number, resolved });
   } catch (err) {
     log.error({ err, conversationId: convId, issueNumber: issue_number }, "POST /chats/unassign-issue failed");
     res.status(500).json({ error: "Failed to unassign chat from issue" });

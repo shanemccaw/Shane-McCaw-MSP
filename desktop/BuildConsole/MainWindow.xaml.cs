@@ -2228,8 +2228,12 @@ namespace BuildConsole
             {
                 if (_queueDb != null)
                 {
-                    await _queueDb.LinkChatToIssueAsync(conversationId, issueNumber, defaultTitle);
-                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"associated chat {conversationId} -> {issueType} #{issueNumber} — BoardChat upserted (direct Postgres); refreshing Chats panel");
+                    // Git #2068 — pass LeftSidebar's own live-board resolver (the same
+                    // already-fetched _lastBoardIssues its display side reads) so a
+                    // not-yet-synced epic/issue self-heals instead of silently leaving
+                    // bt_chats.epic_id/issue_id unset.
+                    bool resolved = await _queueDb.LinkChatToIssueAsync(conversationId, issueNumber, defaultTitle, resolveLive: LeftSidebar.ResolveLiveBoardIssue);
+                    BuildConsole.Services.ActivityLog.Log("git-board.chat", $"associated chat {conversationId} -> {issueType} #{issueNumber} — BoardChat upserted (direct Postgres, epic/issue FK resolved: {resolved}); refreshing Chats panel");
                     try { LeftSidebar.PopulateChatsTree(); } catch { /* refresh is best-effort */ }
                     return;
                 }
