@@ -265,6 +265,13 @@ import adminDriftRouter from "./admin-drift";
 import adminConfigResourcesRouter from "./admin-config-resources";
 import adminConfigDiffsRouter from "./admin-config-diffs";
 import adminConfigSnapshotsRouter from "./admin-config-snapshots";
+// Git #1843 — the customer and MSP operator surfaces over configuration state.
+// Deliberately separate routers from the two admin ones above: the endpoint prefix IS
+// the audience, and mixing audiences in one artifact is the confusion at the root of
+// the five failed portal attempts.
+import portalConfigStateRouter from "./portal-config-state";
+import mspConfigStateRouter from "./msp-config-state";
+import mspConfigStateDiffsRouter from "./msp-config-state-diffs";
 import adminNavPinsRouter from "./admin-nav-pins";
 import adminBuildTrackerRouter from "./admin-build-tracker";
 
@@ -521,6 +528,9 @@ router.use(adminDriftRouter);
 router.use(adminConfigResourcesRouter);
 router.use(adminConfigDiffsRouter);
 router.use(adminConfigSnapshotsRouter);
+router.use(portalConfigStateRouter);
+router.use(mspConfigStateRouter);
+router.use(mspConfigStateDiffsRouter);
 router.use(mspExecutiveRouter);
 router.use(mspOwnershipRouter);
 router.use(mspCustomerTimelineRouter);
