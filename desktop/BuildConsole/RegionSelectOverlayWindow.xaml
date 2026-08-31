@@ -36,8 +36,8 @@
                    Foreground="White" FontSize="13" FontWeight="SemiBold"
                    Background="#80000000" Padding="6,3,6,3"/>
         <Rectangle x:Name="SelectionRect"
-                   Stroke="#89B4FA" StrokeThickness="2"
-                   Fill="#3389B4FA"
+                   Stroke="{DynamicResource AccentBrush}" StrokeThickness="2"
+                   Fill="{DynamicResource AccentWashMediumBrush}"
                    Visibility="Collapsed"/>
     </Canvas>
 </Window>

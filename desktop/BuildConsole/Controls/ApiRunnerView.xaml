@@ -101,7 +101,7 @@
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>
                                                 <DataTrigger Binding="{Binding Method}" Value="POST">
-                                                    <Setter Property="Background" Value="#2589B4FA"/>
+                                                    <Setter Property="Background" Value="#257C8CF0"/> <!-- Git #2126: was #2589B4FA (Blue wash) -->
                                                     <Setter Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
                                                     <Setter Property="BorderThickness" Value="1"/>
                                                 </DataTrigger>

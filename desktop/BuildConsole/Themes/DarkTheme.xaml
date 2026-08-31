@@ -4,19 +4,50 @@
                     xmlns:behaviors="clr-namespace:BuildConsole.Behaviors">
 
     <!-- ══════════════════════════════════════════════════════════════════
-         CATPPUCCIN MOCHA PALETTE
-         ══════════════════════════════════════════════════════════════════ -->
-    <SolidColorBrush x:Key="CrustBrush"    Color="#CC11111B"/>
-    <SolidColorBrush x:Key="MantleBrush"   Color="#CC181825"/>
-    <SolidColorBrush x:Key="BaseBrush"     Color="#661E1E2E"/>
+         PALETTE — Git #2126 retarget (2026-08-31)
+
+         The structural/semantic brushes below (backgrounds, text hierarchy,
+         accent, and the four status colors used with a genuine status
+         meaning — see StartupLoadingView.xaml.cs) now pull their Color from
+         Themes/Colors.xaml, the new single source of truth, instead of the
+         literal Catppuccin Mocha hex they carried before. Every consumer in
+         the app already references these SAME key names via StaticResource,
+         so this alone re-themes the whole app without a rename sweep.
+
+         Crust/Mantle/Base keep their original alpha channel (CC/CC/66) —
+         that transparency is a distinct, pre-existing window-chrome effect
+         unrelated to this issue — with only the RGB swapped to the new
+         Colors.xaml value (WPF Color can't compose "resource RGB + literal
+         alpha" in one attribute, so these three stay literal computed hex;
+         every other retargeted brush below references the Colors.xaml
+         resource directly).
+
+         NOT retargeted, left exactly as-is (Catppuccin Mocha originals):
+         Surface0/1/2Brush (hover/pressed tiers — #2126 defines one flat
+         Border/divider tone, not a 3-tier hover system, and inventing tiers
+         beyond the given values would be re-deriving them) and Mauve/Green/
+         Red/Peach/Yellow/Sky/Sapphire/Lavender/Teal/Pink/Flamingo/Rosewater/
+         MaroonBrush — audited and found to be used for BOTH genuine status
+         semantics (e.g. PeachBrush as LeftSidebar's TargetEnvWarningBadge,
+         GreenBrush as HomeView's ClaudeStatusDot) AND purely decorative,
+         non-status accents at other call sites (e.g. PeachBrush as
+         GraphApiDocumentView's "Execute" CTA button, HomeView's "Quick Win"
+         badge; YellowBrush as FocusModeBar's "In Progress" lightning icon).
+         Blanket-retargeting these to the four new status colors would
+         silently recolor the decorative uses too. Filed as a follow-up
+         finding (see bookend) for a site-by-site pass instead of guessing
+         here. -->
+    <SolidColorBrush x:Key="CrustBrush"    Color="#CC0D1117"/> <!-- was #CC11111B; Colors.xaml AppBackgroundColor + orig CC alpha -->
+    <SolidColorBrush x:Key="MantleBrush"   Color="#CC161B22"/> <!-- was #CC181825; Colors.xaml PanelBackgroundColor + orig CC alpha -->
+    <SolidColorBrush x:Key="BaseBrush"     Color="#661C2128"/> <!-- was #661E1E2E; Colors.xaml CardBackgroundColor + orig 66 alpha -->
     <SolidColorBrush x:Key="Surface0Brush" Color="#313244"/>
     <SolidColorBrush x:Key="Surface1Brush" Color="#45475A"/>
     <SolidColorBrush x:Key="Surface2Brush" Color="#585B70"/>
-    <SolidColorBrush x:Key="OverlayBrush"  Color="#6C7086"/>
-    <SolidColorBrush x:Key="TextBrush"     Color="#CDD6F4"/>
-    <SolidColorBrush x:Key="Subtext0Brush" Color="#BAC2DE"/>
-    <SolidColorBrush x:Key="Subtext1Brush" Color="#A6ADC8"/>
-    <SolidColorBrush x:Key="BlueBrush"     Color="#89B4FA"/>
+    <SolidColorBrush x:Key="OverlayBrush"  Color="{StaticResource TextDisabledColor}"/>  <!-- was #6C7086 -->
+    <SolidColorBrush x:Key="TextBrush"     Color="{StaticResource TextPrimaryColor}"/>    <!-- was #CDD6F4 -->
+    <SolidColorBrush x:Key="Subtext0Brush" Color="{StaticResource TextSecondaryColor}"/>  <!-- was #BAC2DE -->
+    <SolidColorBrush x:Key="Subtext1Brush" Color="{StaticResource TextSecondaryColor}"/>  <!-- was #A6ADC8 -->
+    <SolidColorBrush x:Key="BlueBrush"     Color="{StaticResource AccentColor}"/>         <!-- was #89B4FA -->
     <SolidColorBrush x:Key="MauveBrush"    Color="#CBA6F7"/>
     <SolidColorBrush x:Key="GreenBrush"    Color="#A6E3A1"/>
     <SolidColorBrush x:Key="RedBrush"      Color="#F38BA8"/>
@@ -30,6 +61,13 @@
     <SolidColorBrush x:Key="FlamingoBrush"  Color="#F2CDCD"/>
     <SolidColorBrush x:Key="RosewaterBrush" Color="#F5E0DC"/>
     <SolidColorBrush x:Key="MaroonBrush"    Color="#EBA0AC"/>
+
+    <!-- Status-semantic brushes StatusSuccessBrush/StatusErrorBrush/
+         StatusWarningBrush/StatusRunningBrush are declared once, in
+         Themes/Colors.xaml — used ONLY where a call site genuinely means
+         "success/error/warning/running", never as a decorative substitute
+         for the Catppuccin accents above. Not redeclared here to avoid a
+         duplicate resource key across the two merged dictionaries. -->
 
     <!-- ══════════════════════════════════════════════════════════════════
          AMBIENCE — shared soft depth-shadows, muted accent glows, and
@@ -55,14 +93,14 @@
     <DropShadowEffect x:Key="SoftCardShadow"  Color="#000000" BlurRadius="16" ShadowDepth="3"   Direction="270" Opacity="0.34"/>
 
     <!-- Muted accent glows (halo — ShadowDepth 0 — for genuinely active/important elements only) -->
-    <DropShadowEffect x:Key="BlueGlowFaint" Color="#89B4FA" BlurRadius="12" ShadowDepth="0" Opacity="0.22"/>
-    <DropShadowEffect x:Key="BlueGlowSoft"  Color="#89B4FA" BlurRadius="16" ShadowDepth="0" Opacity="0.32"/>
+    <DropShadowEffect x:Key="BlueGlowFaint" Color="{StaticResource AccentColor}" BlurRadius="12" ShadowDepth="0" Opacity="0.22"/> <!-- Git #2126: was #89B4FA -->
+    <DropShadowEffect x:Key="BlueGlowSoft"  Color="{StaticResource AccentColor}" BlurRadius="16" ShadowDepth="0" Opacity="0.32"/> <!-- Git #2126: was #89B4FA -->
     <DropShadowEffect x:Key="GreenGlowSoft" Color="#A6E3A1" BlurRadius="16" ShadowDepth="0" Opacity="0.30"/>
 
     <!-- Per-instance ambient blue glow for CTA buttons — x:Shared="False" hands each
          button its OWN effect instance so a hover storyboard animating one never
          mutates the others. Rest state is a whisper (0.22); hover eases it warmer. -->
-    <DropShadowEffect x:Key="CtaAmbientGlow" x:Shared="False" Color="#89B4FA" BlurRadius="12" ShadowDepth="0" Opacity="0.22"/>
+    <DropShadowEffect x:Key="CtaAmbientGlow" x:Shared="False" Color="{StaticResource AccentColor}" BlurRadius="12" ShadowDepth="0" Opacity="0.22"/> <!-- Git #2126: was #89B4FA -->
 
     <!-- Dark-to-dark gradient sheens (a whisper of top light, no bright ramp) -->
     <LinearGradientBrush x:Key="CardSheenBrush" StartPoint="0,0" EndPoint="0,1">
@@ -81,7 +119,7 @@
         <Setter Property="Background" Value="{StaticResource BaseBrush}"/>
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Setter Property="FontFamily" Value="Segoe UI"/>
-        <Setter Property="FontSize"   Value="13"/>
+        <Setter Property="FontSize"   Value="{StaticResource BodyFontSize}"/> <!-- Git #2126: was 13 -->
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
@@ -156,7 +194,7 @@
         <Setter Property="BorderBrush"     Value="{StaticResource Surface0Brush}"/>
         <Setter Property="Padding"         Value="4,2"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="FontSize"        Value="{StaticResource BodyFontSize}"/> <!-- Git #2126: was 13 -->
     </Style>
 
     <Style TargetType="{x:Type ContextMenu}">
@@ -185,7 +223,7 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Setter Property="FontFamily" Value="Segoe UI"/>
-        <Setter Property="FontSize"   Value="13"/>
+        <Setter Property="FontSize"   Value="{StaticResource BodyFontSize}"/> <!-- Git #2126: was 13 -->
         <Setter Property="Padding"    Value="10,6"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -322,7 +360,7 @@
         <Setter Property="CaretBrush"      Value="{StaticResource BlueBrush}"/>
         <Setter Property="SelectionBrush"  Value="{StaticResource BlueBrush}"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="FontSize"        Value="{StaticResource BodyFontSize}"/> <!-- Git #2126: was 13 -->
         <Setter Property="VerticalContentAlignment" Value="Center"/>
         <Style.Triggers>
             <Trigger Property="IsFocused" Value="True">
@@ -336,7 +374,7 @@
         <Setter Property="Background"      Value="{StaticResource CrustBrush}"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="FontFamily"      Value="Cascadia Code, Consolas, Courier New"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="FontSize"        Value="{StaticResource MonospaceFontSize}"/> <!-- Git #2126: was literal 13, same value -->
         <Setter Property="AcceptsReturn"   Value="True"/>
         <Setter Property="AcceptsTab"      Value="True"/>
         <Setter Property="VerticalScrollBarVisibility"   Value="Auto"/>
@@ -350,7 +388,7 @@
         <Setter Property="IsReadOnly"  Value="True"/>
         <Setter Property="Background"  Value="#0D0D17"/>
         <Setter Property="Foreground"  Value="#A6E3A1"/>
-        <Setter Property="FontSize"    Value="12"/>
+        <Setter Property="FontSize"    Value="{StaticResource MonospaceFontSize}"/> <!-- Git #2126: was 12, below the new 13px monospace minimum -->
     </Style>
 
     <!-- Search / filter TextBox (Git #2000) — ONE reusable affordance: a keyed
@@ -434,7 +472,7 @@
         <Setter Property="BorderThickness" Value="1"/>
         <Setter Property="Padding"         Value="10,5"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="FontSize"        Value="{StaticResource BodyFontSize}"/> <!-- Git #2126: was 13 -->
         <Setter Property="Cursor"          Value="Hand"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -587,7 +625,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Bd" Property="Background"  Value="#1A89B4FA"/>
+                            <Setter TargetName="Bd" Property="Background"  Value="{StaticResource AccentWashLightBrush}"/> <!-- Git #2126: was #1A89B4FA -->
                             <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource BlueBrush}"/>
                             <Setter Property="Foreground" Value="{StaticResource BlueBrush}"/>
                         </Trigger>
@@ -621,7 +659,7 @@
                             Height="48">
                         <!-- Soft blue aura on the active view's icon; eased in on select. -->
                         <Border.Effect>
-                            <DropShadowEffect x:Name="ActiveGlow" Color="#89B4FA" BlurRadius="12" ShadowDepth="0" Opacity="0"/>
+                            <DropShadowEffect x:Name="ActiveGlow" Color="{StaticResource AccentColor}" BlurRadius="12" ShadowDepth="0" Opacity="0"/> <!-- Git #2126: was #89B4FA -->
                         </Border.Effect>
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                     </Border>
@@ -677,7 +715,7 @@
         <Setter Property="Padding"         Value="8,4"/>
         <Setter Property="Height"          Value="28"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="FontSize"        Value="{StaticResource BodyFontSize}"/> <!-- Git #2126: was 13 -->
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type ComboBox}">
@@ -946,7 +984,7 @@
         <Setter Property="Height"          Value="35"/>
         <Setter Property="Margin"          Value="0"/>
         <Setter Property="FontFamily"      Value="Segoe UI"/>
-        <Setter Property="FontSize"        Value="13"/>
+        <Setter Property="FontSize"        Value="{StaticResource BodyFontSize}"/> <!-- Git #2126: was 13 -->
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="{x:Type TabItem}">
@@ -959,7 +997,7 @@
                         <!-- Soft blue aura on the active tab; opacity is eased 0↔ on
                              select so switching tabs glides instead of snapping. -->
                         <Border.Effect>
-                            <DropShadowEffect x:Name="TabGlow" Color="#89B4FA" BlurRadius="14" ShadowDepth="0" Opacity="0"/>
+                            <DropShadowEffect x:Name="TabGlow" Color="{StaticResource AccentColor}" BlurRadius="14" ShadowDepth="0" Opacity="0"/> <!-- Git #2126: was #89B4FA -->
                         </Border.Effect>
                         <ContentPresenter ContentSource="Header"
                                           VerticalAlignment="Center"
@@ -1018,7 +1056,7 @@
         <Setter Property="SelectionMode"            Value="Single"/>
         <Setter Property="AutoGenerateColumns"      Value="False"/>
         <Setter Property="FontFamily"               Value="Segoe UI"/>
-        <Setter Property="FontSize"                 Value="13"/>
+        <Setter Property="FontSize"                 Value="{StaticResource BodyFontSize}"/> <!-- Git #2126: was 13 -->
         <Setter Property="CanUserResizeRows"        Value="False"/>
         <Setter Property="HeadersVisibility"        Value="Column"/>
     </Style>
@@ -1038,7 +1076,7 @@
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Style.Triggers>
             <Trigger Property="IsSelected" Value="True">
-                <Setter Property="Background" Value="#1A89B4FA"/>
+                <Setter Property="Background" Value="{StaticResource AccentWashLightBrush}"/> <!-- Git #2126: was #1A89B4FA -->
             </Trigger>
             <Trigger Property="IsMouseOver" Value="True">
                 <Setter Property="Background" Value="#10313244"/>
@@ -1289,7 +1327,7 @@
                                 <Condition Property="IsMouseOver" Value="True"/>
                                 <Condition Property="IsSelected" Value="False"/>
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="Bd" Property="Background" Value="#1A89B4FA"/>
+                            <Setter TargetName="Bd" Property="Background" Value="{StaticResource AccentWashLightBrush}"/> <!-- Git #2126: was #1A89B4FA -->
                         </MultiTrigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>

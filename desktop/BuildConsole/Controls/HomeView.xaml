@@ -527,7 +527,7 @@
                     <StackPanel Grid.Column="4">
 
                         <!-- Interactive Hero Fox Mascot Card (Microsoft Clarity Style!) -->
-                        <Border x:Name="MascotCard" Style="{StaticResource HomeCard}" Background="#1E1E2E"
+                        <Border x:Name="MascotCard" Style="{StaticResource HomeCard}" Background="{DynamicResource BaseBrush}"
                                 BorderBrush="{StaticResource MauveBrush}" Cursor="Hand" MouseLeftButtonUp="MascotCard_Click"
                                 ToolTip="Click me for some cheer &amp; motivation!">
                             <Grid ClipToBounds="True">

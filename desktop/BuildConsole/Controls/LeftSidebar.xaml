@@ -522,7 +522,7 @@
                                     <TextBlock Text="LOCATE ➔"
                                                FontSize="9"
                                                FontWeight="Bold"
-                                               Foreground="#11111B"/>
+                                               Foreground="{DynamicResource CrustBrush}"/>
                                 </Border>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBlock Text="🎯 " FontSize="11" VerticalAlignment="Center"/>
