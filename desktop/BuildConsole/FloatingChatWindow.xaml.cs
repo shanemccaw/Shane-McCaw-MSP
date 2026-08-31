@@ -83,6 +83,19 @@ namespace BuildConsole
             /// anything until a real new assistant turn appears.</summary>
             public bool AwaitingReply;
 
+            // ── Git #2105 active pinned-question detection state ─────────────────────
+            /// <summary>True while a probe ("are you waiting on anything from Shane?") has been
+            /// sent and we're waiting for / parsing its settled answer. Blocks a second probe and,
+            /// crucially, marks the NEXT settled turn as the probe's own answer so it is parsed
+            /// rather than treated as a fresh turn to probe again (the loop-breaker).</summary>
+            public bool ProbeInFlight;
+            /// <summary>When this tab was last probed, for the per-chat cooldown that stops a genuine
+            /// conversation turn from being probed on every single reply.</summary>
+            public DateTime? LastProbeUtc;
+            /// <summary>Completed by the next BT_FLOATY_TURN_IDLE after a probe is sent — carries the
+            /// probe's settled answer markdown back to the awaiting MaybeProbeForPinnedQuestionsAsync.</summary>
+            public System.Threading.Tasks.TaskCompletionSource<string>? ProbeAnswerWaiter;
+
             // The tab chip (built in RebuildTabStrip) — kept so activation can restyle it
             // without a full rebuild of the strip.
             public Border? Chip;
@@ -294,6 +307,24 @@ namespace BuildConsole
                     if (string.IsNullOrWhiteSpace(md) || md == tab.LastMarkdown) return;
                     tab.LastMarkdown = md;
                     RenderResponse(tab, md);
+                }
+                // Git #2105 — the receive-side "turn completed" edge: the last assistant turn has
+                // settled (stopped changing). Two roles: if a probe is in flight, THIS is its
+                // answer → hand it to the awaiting parser and stop (never re-probe it); otherwise
+                // it's a genuine settled turn → maybe probe the chat for outstanding questions.
+                else if (type == "BT_FLOATY_TURN_IDLE")
+                {
+                    string md = root.TryGetProperty("markdown", out var mdEl) ? (mdEl.GetString() ?? "") : "";
+                    var waiter = tab.ProbeAnswerWaiter;
+                    if (waiter != null)
+                    {
+                        tab.ProbeAnswerWaiter = null;
+                        waiter.TrySetResult(md);
+                    }
+                    else
+                    {
+                        _ = MaybeProbeForPinnedQuestionsAsync(tab);
+                    }
                 }
                 // Git #2071 — the two callbacks IssueMentionInjector.Script needs from its host
                 // to actually resolve/open a mention, mirroring MainWindow's ChatWv_WebMessageReceived
@@ -589,6 +620,82 @@ namespace BuildConsole
             string raw = await execTask ?? "";
             try { return JsonSerializer.Deserialize<string>(raw) ?? ""; }
             catch { return raw; }
+        }
+
+        // ── Git #2105 — active pinned-question detection ─────────────────────────────
+        private static readonly TimeSpan PinProbeCooldown = TimeSpan.FromMinutes(10);
+        private static readonly TimeSpan PinProbeAnswerTimeout = TimeSpan.FromSeconds(90);
+
+        /// <summary>
+        /// Git #2105 — on a genuine settled turn (a BT_FLOATY_TURN_IDLE that is NOT a probe's own
+        /// answer), probe THIS tab once: send <see cref="Services.PinnedQuestionDetector.ProbePrompt"/>
+        /// through the same #2059/#2072 insert+submit+verify bridge, await the settled answer
+        /// (delivered back via <c>tab.ProbeAnswerWaiter</c> by the next idle edge), parse it into
+        /// DISTINCT questions and persist each as its own <c>chat_pinned_questions</c> row through
+        /// the owning <see cref="Controls.LeftSidebar"/>'s DB.
+        ///
+        /// Loop-safety is the crux: <c>ProbeInFlight</c> blocks re-entry, and because the probe's
+        /// answer arrives as the NEXT idle edge it is routed to the waiter (parsed) rather than
+        /// back here (which would probe forever). A per-chat cooldown then stops the following
+        /// genuine turns from each drawing a fresh probe. Runs only when
+        /// <see cref="BuildConsoleSettings.PinnedQuestionDetectionEnabled"/> is on — it sends real
+        /// messages into a real conversation, so it is opt-in.
+        /// </summary>
+        private async System.Threading.Tasks.Task MaybeProbeForPinnedQuestionsAsync(FloatingChatTab tab)
+        {
+            try
+            {
+                if (!BuildConsoleSettings.Load().PinnedQuestionDetectionEnabled) return;
+                if (tab.ProbeInFlight) return;
+                if (tab.Chat == null || tab.Chat.Id <= 0) return; // need the real bt_chats.id FK to persist
+                if (tab.LastProbeUtc.HasValue && (DateTime.UtcNow - tab.LastProbeUtc.Value) < PinProbeCooldown) return;
+                if (tab.Wv?.CoreWebView2 == null) return;
+
+                tab.ProbeInFlight = true;
+                var waiter = new System.Threading.Tasks.TaskCompletionSource<string>(
+                    System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+                tab.ProbeAnswerWaiter = waiter;
+
+                string status = await InsertAndSubmitAsync(tab, Services.PinnedQuestionDetector.ProbePrompt);
+                // Count even a failed send toward the cooldown so a broken/loading chat isn't hammered.
+                tab.LastProbeUtc = DateTime.UtcNow;
+                if (status != "sent")
+                {
+                    tab.ProbeAnswerWaiter = null;
+                    ActivityLog.Log(LogChannel, $"pin-detect: probe not sent ({status}) for chat {tab.Chat.ConversationId}");
+                    return;
+                }
+
+                var done = await System.Threading.Tasks.Task.WhenAny(
+                    waiter.Task, System.Threading.Tasks.Task.Delay(PinProbeAnswerTimeout));
+                if (done != waiter.Task)
+                {
+                    tab.ProbeAnswerWaiter = null; // timed out — release the gate
+                    ActivityLog.Log(LogChannel, $"pin-detect: probe answer timed out for chat {tab.Chat.ConversationId}");
+                    return;
+                }
+
+                var questions = Services.PinnedQuestionDetector.ParseQuestions(waiter.Task.Result);
+                if (questions.Count == 0)
+                {
+                    ActivityLog.Log(LogChannel, $"pin-detect: no outstanding questions for chat {tab.Chat.ConversationId}");
+                    return;
+                }
+
+                int created = _owner?.LeftSidebar != null
+                    ? await _owner.LeftSidebar.CreatePinnedQuestionsFromDetectionAsync(tab.Chat.Id, questions)
+                    : 0;
+                ActivityLog.Log(LogChannel, $"pin-detect: {created}/{questions.Count} new pin(s) from chat {tab.Chat.ConversationId}");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"pin-detect error ({tab.Chat?.ConversationId}): {ex.Message}");
+            }
+            finally
+            {
+                tab.ProbeInFlight = false;
+                tab.ProbeAnswerWaiter = null;
+            }
         }
 
         /// <summary>
