@@ -206,6 +206,29 @@ namespace BuildConsole.Services
         private readonly string _claudeExe;
         private readonly string _geminiExe;
         private readonly Dictionary<int, RunningEntry> _running = new();
+        /// <summary>
+        /// Git #2106 — reserved-slot accounting for session-limit-parked builds. When a build
+        /// hits the CLI's session limit its process genuinely exits and the reap loop removes it
+        /// from <see cref="_running"/> like any other exit — BUT the SAME build is promised back:
+        /// <see cref="SessionLimitAutoRestartService"/> flips its row 'limit-paused' → 'queued'
+        /// ~10-15 min later and the next tick relaunches it as a FRESH <see cref="_running"/>
+        /// entry, with nothing ever subtracted for the gap. Freeing the slot the instant it parked
+        /// let <c>freeSlots</c> launch a replacement, and when the original resumed the real
+        /// running count climbed past <see cref="_maxConcurrent"/> — the confirmed cause of the
+        /// 40+ queue crash (running count observed at 9/10/11/15). This set holds the queue id of
+        /// every such parked build so its slot stays counted as OCCUPIED for the whole pause:
+        /// <c>freeSlots</c> and Start Now's capacity gate both subtract <c>_reservedSlots.Count</c>
+        /// alongside <see cref="_running"/>.Count, so a soon-to-resume build is never treated as
+        /// free capacity. A reservation is released the moment the build genuinely reoccupies a
+        /// slot (removed at the top of <see cref="LaunchItem"/>) or when its row is no longer
+        /// 'limit-paused' in the DB (reconciled each tick — resume, manual cancel and delete all
+        /// leave that status). In-memory only: an app restart flows every pending build back
+        /// through the normal claim path, so there is no phantom re-add to compensate for and
+        /// nothing to persist. Mutated on the UI thread only, exactly like <see cref="_running"/>
+        /// membership (the reap loop, the reconcile step and <see cref="LaunchItem"/> all run on
+        /// the DispatcherTimer's UI thread).
+        /// </summary>
+        private readonly HashSet<int> _reservedSlots = new();
         /// <summary>Session-limit auto-restart coordinator (wired by MainWindow right after construction; null in tests). Receives RegisterLimitHit when a limit-flagged build is reaped.</summary>
         public SessionLimitAutoRestartService? SessionLimitAutoRestart { get; set; }
         /// <summary>Interactive builds that have exited but whose slot may still be on screen — kept so the Build Watch window can drain the final output tail and hold the slot in interactive-render mode (never falling back to a double-rendering file-tail). Evicted when the window dismisses the slot (ReleaseInteractive) or capped defensively.</summary>
@@ -288,6 +311,12 @@ namespace BuildConsole.Services
         }
 
         public int RunningCount => _running.Count;
+
+        /// <summary>Git #2106 — how many slots are currently reserved for session-limit-parked builds
+        /// that will auto-resume. Counted against <see cref="MaxConcurrent"/> alongside
+        /// <see cref="RunningCount"/> so a soon-to-resume build's capacity is never handed to a new
+        /// launch (see <see cref="_reservedSlots"/>).</summary>
+        public int ReservedCount => _reservedSlots.Count;
 
         /// <summary>Git #1805 — the real, configured concurrency cap (see <see cref="_maxConcurrent"/>,
         /// sourced from scripts/build-queue-watcher.config.json's maxConcurrent, default 8). Exposed
@@ -470,9 +499,13 @@ namespace BuildConsole.Services
         {
             // 1. The one thing this action must NEVER override: a genuinely full concurrency cap.
             //    Checked first, before any claim, so a full queue is never even attempted.
-            if (_running.Count >= _maxConcurrent)
+            //    Git #2106 — reserved (limit-paused, soon-to-resume) slots count against the cap
+            //    too: launching into one would overcommit the moment the parked build resumes.
+            int occupied = _running.Count + _reservedSlots.Count;
+            if (occupied >= _maxConcurrent)
             {
-                string msg = $"Not launched — genuinely at capacity ({_running.Count}/{_maxConcurrent} running). Start Now overrides waiting, never the concurrency cap itself.";
+                string reservedNote = _reservedSlots.Count > 0 ? $" + {_reservedSlots.Count} reserved for limit-paused builds resuming" : "";
+                string msg = $"Not launched — genuinely at capacity ({_running.Count} running{reservedNote}, cap {_maxConcurrent}). Start Now overrides waiting, never the concurrency cap itself.";
                 ActivityLog.Log("watcher", $"Start Now: queue #{queueItemId} ({title}) — {msg}");
                 return new StartNowResult(StartNowOutcome.AtCapacity, msg);
             }
@@ -1243,6 +1276,20 @@ namespace BuildConsole.Services
                     // HardKill deliberately left in _running (TerminateAndClose is idempotent).
                     CloseBuildJob(entry);
                     _running.Remove(id);
+
+                    // Git #2106 — a session-limit-parked build's process has just exited, so it's
+                    // leaving _running like any other exit — but SessionLimitAutoRestart is going to
+                    // RESUME this exact build (a fresh _running entry) after the reset, with nothing
+                    // ever subtracted for the gap. Reserve its slot for the whole pause so freeSlots
+                    // (and Start Now) don't hand this soon-to-resume capacity to a NEW launch and
+                    // overcommit past _maxConcurrent. Released when the build reoccupies a slot (top of
+                    // LaunchItem) or when its row is no longer 'limit-paused' in the DB (reconciled just
+                    // before freeSlots below — covers resume, cancel and delete alike).
+                    if (limitParked)
+                    {
+                        _reservedSlots.Add(id);
+                        ActivityLog.Log("session-limit", $"Reserved queue #{id}'s slot while limit-paused ({_running.Count + _reservedSlots.Count}/{_maxConcurrent} occupied incl. reserved) — its capacity is held until it resumes, so freeSlots can't overcommit.");
+                    }
                 }
 
                 // Git #1371 — periodically reclaim orphaned/finished agent worktrees in the
@@ -1266,7 +1313,35 @@ namespace BuildConsole.Services
                 // server-side claim happens, so items stay queued until resumed.
                 if (_paused) return;
 
-                int freeSlots = _maxConcurrent - _running.Count;
+                // Git #2106 — reconcile reserved slots against DB truth before computing capacity.
+                // A slot is reserved ONLY while its build is genuinely 'limit-paused' and awaiting
+                // auto-restart; the moment SessionLimitAutoRestart flips it back to 'queued' (or the
+                // user cancels/deletes it) the row leaves that status and its slot must free. Keeping
+                // _reservedSlots ⊆ {ids currently limit-paused} via IntersectWith drops
+                // resume/cancel/delete/complete in one step and keeps a still-paused build reserved,
+                // so there is no way to leak a reservation permanently. Best-effort: on a transient DB
+                // error we KEEP the existing reservations (the safe, never-overcommit direction) and
+                // reconcile next tick. Guarded on Count>0 so the common (no paused builds) case adds
+                // no DB call. _db is always non-null when any reservation exists (parking requires it).
+                if (_reservedSlots.Count > 0 && _db != null)
+                {
+                    try
+                    {
+                        var paused = await _db.GetLimitPausedAsync();
+                        var pausedIds = new HashSet<int>();
+                        foreach (var p in paused) pausedIds.Add(p.Id);
+                        int before = _reservedSlots.Count;
+                        _reservedSlots.IntersectWith(pausedIds);
+                        if (_reservedSlots.Count != before)
+                            ActivityLog.Log("session-limit", $"Released {before - _reservedSlots.Count} reserved slot(s) whose build(s) are no longer limit-paused (resumed/canceled/deleted) — {_reservedSlots.Count} still reserved.");
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("session-limit", $"Couldn't reconcile reserved slots against the DB ({ex.Message}) — keeping {_reservedSlots.Count} reservation(s) this tick (safe: never overcommits).");
+                    }
+                }
+
+                int freeSlots = _maxConcurrent - _running.Count - _reservedSlots.Count;
                 if (freeSlots <= 0) return;
 
                 List<QueueItem> next;
@@ -1360,6 +1435,13 @@ namespace BuildConsole.Services
         /// </summary>
         private async Task LaunchItem(QueueItem item, int? buildSetExpected = null, bool isForced = false)
         {
+            // Git #2106 — this build is (re)launching into a real slot now, so it must stop
+            // counting as a reserved (limit-paused) slot: from here on it's tracked in _running.
+            // Clearing it here makes the resume path exact even in the same tick its row flips
+            // 'limit-paused' → 'queued' (before that tick's DB reconcile would catch it), and is a
+            // harmless no-op for any build that was never limit-paused.
+            _reservedSlots.Remove(item.Id);
+
             var settings = BuildConsoleSettings.Load();
             bool interactive = settings.InteractiveBuilds;
 
@@ -2649,7 +2731,41 @@ namespace BuildConsole.Services
             {
                 if (t.IsCanceled) return;
                 bool close;
-                lock (_gate) close = entry.AwaitingInputSince != null && !entry.Process.HasExited;
+                bool deferForSubagents = false;
+                int activeSubagents = 0;
+                lock (_gate)
+                {
+                    bool idle = entry.AwaitingInputSince != null && !entry.Process.HasExited;
+                    activeSubagents = entry.ActiveSubagents.Count;
+                    // Git #2106 — do NOT finalize a build whose top-level turn is idle ONLY because
+                    // it's waiting on its own background sub-agent(s)/workflow(s): a Task-tool
+                    // invocation still in flight, tracked in ActiveSubagents (the same list Build
+                    // Watch's status line reads via GetActiveSubagents). Closing stdin here would
+                    // force-exit the tracked PARENT while that background work is genuinely still
+                    // running — freeing the slot and, when the sub-agent runs as its own process,
+                    // leaving it orphaned and untracked outside the concurrency system entirely
+                    // (the confirmed "claude.exe stays alive... because they have a sub agent going"
+                    // mechanism). Re-arm the idle timer instead so we re-check after another idle
+                    // interval once the sub-agent(s) finish (ActiveSubagents empties on each
+                    // tool_result via AppendEvent); a genuinely long-running agent simply keeps
+                    // deferring until it's done. The re-arm chain terminates on its own the moment
+                    // the process actually exits (HasExited flips idle→false → no further re-arm).
+                    if (idle && activeSubagents > 0)
+                    {
+                        deferForSubagents = true;
+                        close = false;
+                        ScheduleAutoFinalize(entry, id); // re-arm; caller-holds-_gate contract satisfied (we hold it here)
+                    }
+                    else
+                    {
+                        close = idle;
+                    }
+                }
+                if (deferForSubagents)
+                {
+                    ActivityLog.Log("interactive-build", $"auto-finalize deferred — {activeSubagents} background sub-agent(s)/workflow(s) still in flight for {entry.Title} (queue #{id}); re-checking after another idle interval rather than force-closing stdin mid-work.");
+                    return;
+                }
                 if (!close) return;
                 try { lock (entry.InputLock) entry.Stdin?.Close(); } catch { }
                 ActivityLog.Log("interactive-build", $"auto-finalizing idle interactive build (closing stdin so it exits): {entry.Title} (queue #{id})");
