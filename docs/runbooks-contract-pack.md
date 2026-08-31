@@ -405,10 +405,12 @@ page does not call is a sub-issue, filed at pack time — it should never reach 
 still untracked"):
 
 **`GET /api/portal/hold-windows/:holdId/events` is live, customer-scoped, fully built, and has
-zero page consumers.** Filed as **#1619**, sub-issue of #1488. #1619 wired the endpoint into
+zero page consumers.** Filed as **#1619**, sub-issue of #1488, with an identical duplicate finding
+filed from the SOPs/Runbooks side as **#1620**. #1619 wired the endpoint into
 `useRunbooks.loadHoldEvents` (the module's own data seam) and stopped at that wire contract, per
 the #1485 module order — no page exists to call it yet, since `Design/portal/` has no export for
-Active Runbooks. A customer told "extending is recorded with a reason" today still has no page
+Active Runbooks. #1620 confirmed the same wire contract already covers its own scope and required
+no separate work. A customer told "extending is recorded with a reason" today still has no page
 that shows them that record; that remains open until Design produces the export and a page wires
 `loadHoldEvents` in.
 
