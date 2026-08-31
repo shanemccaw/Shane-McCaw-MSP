@@ -2944,9 +2944,13 @@ namespace BuildConsole
                 Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center,
                 Foreground = (Brush)FindResource("BlueBrush")
             });
+            // Git #2079 — prefix with the linked Git issue number so the tab header
+            // reads "[#N] Title" (matches the [#N]/#N formats ExtractTabTitleIssueNumber
+            // already parses back out at ~line 1368 for the #1802 epic-highlight fallback).
             headerPanel.Children.Add(new TextBlock
             {
-                Text = chat.Title, FontSize = 13, Margin = new Thickness(0, 0, 6, 0),
+                Text = githubNumber.HasValue ? $"[#{githubNumber.Value}] {chat.Title}" : chat.Title,
+                FontSize = 13, Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush")
             });
 
@@ -4523,18 +4527,31 @@ namespace BuildConsole
                 currentTitle = s;
             }
 
+            // Git #2079 — the displayed title may carry a "[#N] " linked-issue
+            // prefix that OpenChatTab renders on top of chat.Title. Strip it
+            // before showing the rename dialog and re-apply it after saving so
+            // the prefix never gets baked into chat.Title/the persisted title
+            // (which would double up as "[#N] [#N] ..." next time the tab opens).
+            int? linkedGithubNumber = _chatTabs.TryGetValue(tabItem, out var tabState) ? tabState.GithubNumber : null;
+            string? issuePrefix = linkedGithubNumber.HasValue ? $"[#{linkedGithubNumber.Value}] " : null;
+            if (issuePrefix != null && currentTitle.StartsWith(issuePrefix, StringComparison.Ordinal))
+            {
+                currentTitle = currentTitle.Substring(issuePrefix.Length);
+            }
+
             var dlg = new RenameTabDialog(currentTitle) { Owner = this };
             if (dlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(dlg.NewTabName))
             {
                 string newName = dlg.NewTabName;
+                string displayName = issuePrefix != null ? issuePrefix + newName : newName;
                 if (titleBlock != null)
                 {
-                    titleBlock.Text = newName;
-                    titleBlock.ToolTip = newName;
+                    titleBlock.Text = displayName;
+                    titleBlock.ToolTip = displayName;
                 }
                 else if (tabItem.Header is string)
                 {
-                    tabItem.Header = newName;
+                    tabItem.Header = displayName;
                 }
 
                 if (tabItem.Tag is BuildConsole.Services.BoardChat chat)
