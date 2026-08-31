@@ -14,8 +14,9 @@
  * `createRbdVersion` / `signRbdVersion` rather than each re-implementing the
  * supersede-then-insert transaction.
  */
+import { randomBytes } from "node:crypto";
 import { db, mspRbdVersionsTable, type MspAssessor, type ClientApprover, type MspRbdVersion } from "@workspace/db";
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, eq, isNull, desc, gt, or } from "drizzle-orm";
 
 export interface CreateRbdVersionInput {
   mspId: number;
@@ -95,6 +96,24 @@ export async function getCurrentRbdVersion(mspId: number, rbdId: string): Promis
   return row ?? null;
 }
 
+/** One specific version by its own uid, current or superseded. Renders (#1512)
+ * need this — a superseded version must still be renderable, that is the
+ * whole point of preserving it. */
+export async function getRbdVersionByUid(mspId: number, rbdId: string, versionUid: string): Promise<MspRbdVersion | null> {
+  const [row] = await db
+    .select()
+    .from(mspRbdVersionsTable)
+    .where(
+      and(
+        eq(mspRbdVersionsTable.mspId, mspId),
+        eq(mspRbdVersionsTable.rbdId, rbdId),
+        eq(mspRbdVersionsTable.versionUid, versionUid),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 /** Every version of a container, newest first — the full supersession chain. */
 export async function listRbdVersions(mspId: number, rbdId: string): Promise<MspRbdVersion[]> {
   return db
@@ -116,11 +135,15 @@ export async function signRbdVersion(
   rbdId: string,
   versionUid: string,
   signedBy: ClientApprover,
+  /** #1512 — the actual drawn signature (base64 PNG data-URL), SOW-flow
+   * parity. Optional: the MSP-side "record an off-platform signature" caller
+   * (`msp-rbd-versions.ts`) may have no image, only the attestation fields. */
+  signatureData?: string | null,
 ): Promise<MspRbdVersion | null> {
   const signedAt = new Date();
   const updated = await db
     .update(mspRbdVersionsTable)
-    .set({ signed: true, signedBy, signedAt })
+    .set({ signed: true, signedBy, signedAt, signatureData: signatureData ?? null })
     .where(
       and(
         eq(mspRbdVersionsTable.mspId, mspId),
@@ -132,4 +155,55 @@ export async function signRbdVersion(
     )
     .returning();
   return updated[0] ?? null;
+}
+
+/**
+ * Generates (or replaces) an unauthenticated review/sign link for the
+ * CURRENT, unsigned version of a container — same shape as `msp_sows`'
+ * `shareToken`/`shareTokenExpiresAt`. Scoped to the current version only:
+ * sharing a superseded version would hand out a link to a document nobody
+ * can act on, and an already-signed version has nothing left to sign.
+ * 30-day expiry, matching the SOW flow's own convention.
+ */
+export async function generateRbdShareLink(
+  mspId: number,
+  rbdId: string,
+  versionUid: string,
+): Promise<MspRbdVersion | null> {
+  const shareToken = randomBytes(24).toString("hex");
+  const shareTokenExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+  const updated = await db
+    .update(mspRbdVersionsTable)
+    .set({ shareToken, shareTokenExpiresAt })
+    .where(
+      and(
+        eq(mspRbdVersionsTable.mspId, mspId),
+        eq(mspRbdVersionsTable.rbdId, rbdId),
+        eq(mspRbdVersionsTable.versionUid, versionUid),
+        isNull(mspRbdVersionsTable.supersededAt),
+        eq(mspRbdVersionsTable.signed, false),
+      ),
+    )
+    .returning();
+  return updated[0] ?? null;
+}
+
+/**
+ * Resolves a share token to its version, or null if the token does not
+ * exist or has expired. Does NOT check `supersededAt`/`signed` — a link
+ * generated before signing should still resolve to show the now-signed
+ * document (the public read/sign routes decide what that state means).
+ */
+export async function getRbdVersionByShareToken(shareToken: string): Promise<MspRbdVersion | null> {
+  const [row] = await db
+    .select()
+    .from(mspRbdVersionsTable)
+    .where(
+      and(
+        eq(mspRbdVersionsTable.shareToken, shareToken),
+        or(isNull(mspRbdVersionsTable.shareTokenExpiresAt), gt(mspRbdVersionsTable.shareTokenExpiresAt, new Date())),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 }
