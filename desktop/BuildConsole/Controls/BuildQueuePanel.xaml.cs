@@ -3491,6 +3491,143 @@ namespace BuildConsole.Controls
             return mi;
         }
 
+        #region Git #2061 — quick-action wrappers for the Git Board issue-hover popover
+        // Thin public wrappers around the exact same _watcher/_db/_api calls the right-click
+        // menu items below use (#2030's confirmed inventory) — LeftSidebar's new issue-hover
+        // popover (Controls/LeftSidebar.xaml.cs) calls these via delegate properties MainWindow
+        // wires up, rather than duplicating the menu's logic. Kept alongside BuildCardContextMenu
+        // so the two stay obviously in sync if either changes.
+
+        /// <summary>Same body as the "⚡ Start Now" menu item below (queued -> dispatch now,
+        /// respects the concurrency cap unlike "Run Now").</summary>
+        public async System.Threading.Tasks.Task QuickDispatchAsync(QueueItem item)
+        {
+            if (_watcher == null)
+            {
+                ToastEngine.Info("Start Now", "The in-app watcher isn't active, so Start Now can't launch locally. The background service will pick it up.");
+                return;
+            }
+            try
+            {
+                var result = await _watcher.StartNowAsync(item.Id, item.Title);
+                if (result.Outcome == Services.QueueWatcherService.StartNowOutcome.Launched)
+                    ToastEngine.Success("Start Now", result.Message);
+                else
+                    ToastEngine.Warning("Start Now", result.Message);
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Warning("Start Now", $"Couldn't launch immediately: {ex.Message}");
+            }
+            await RefreshAsync();
+        }
+
+        /// <summary>Same body as "⏹ Stop" (running) / "✕ Cancel" (queued) below, branched the
+        /// same way on item.Status.</summary>
+        public async System.Threading.Tasks.Task QuickCancelOrStopAsync(QueueItem item)
+        {
+            if (item.Status == "running")
+            {
+                bool stopped = _watcher?.TryStop(item.Id) ?? false;
+                _watcher?.ReleaseInteractive(item.Id);
+                try
+                {
+                    if (_db != null)
+                        await _db.MarkCompleteAsync(item.Id, -1);
+                    else if (_api != null)
+                        await _api.MarkQueueItemCompleteAsync(item.Id, -1);
+                }
+                catch (Exception ex) { ToastEngine.Error("Stop Build", $"Couldn't update database: {ex.Message}"); }
+                if (stopped)
+                    ToastEngine.Success("Build Stopped", $"Stopped: {item.Title}");
+                else
+                    ToastEngine.Warning("Build Stopped", $"Marked stopped in DB (no active local process handle): {item.Title}");
+            }
+            else
+            {
+                if (_db == null && _api == null)
+                {
+                    ToastEngine.Warning("Cancel", "Not connected — can't cancel.");
+                    return;
+                }
+                try
+                {
+                    bool canceled = _db != null
+                        ? await _db.CancelAsync(item.Id)
+                        : (await _api!.CancelQueueItemAsync(item.Id)).IsSuccessStatusCode;
+                    if (canceled)
+                        ToastEngine.Success("Canceled", $"Canceled: {item.Title}");
+                    else
+                        ToastEngine.Warning("Cancel", $"Couldn't cancel — it already started running: {item.Title}");
+                }
+                catch (Exception ex)
+                {
+                    ToastEngine.Error("Cancel Failed", $"Couldn't cancel: {ex.Message}");
+                }
+            }
+            await RefreshAsync();
+        }
+
+        /// <summary>Same body as "🔄 Retry (start over)" below (fresh queue row, resumeSessionId:
+        /// null — the crash-recovery "▶ Resume Session" variant stays right-click-menu-only since
+        /// it's a narrower case than this card's general Failed -> Retry action).</summary>
+        public async System.Threading.Tasks.Task QuickRetryAsync(QueueItem item)
+        {
+            if (_db == null)
+            {
+                ToastEngine.Warning("Retry", "No direct DB connection — can't retry.");
+                return;
+            }
+            try
+            {
+                var blockers = item.BlockedByNumbers ?? (item.BlockedByNumber.HasValue ? new List<int> { item.BlockedByNumber.Value } : null);
+                await _db.QueueBuildAsync(item.Title, item.Prompt, item.Model, item.Effort, item.Cwd, item.GithubNumber, blockers, null, item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                ToastEngine.Success("Re-queued", $"Re-queued: {item.Title}");
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Retry Failed", $"Couldn't re-queue build: {ex.Message}");
+            }
+            await RefreshAsync();
+        }
+
+        /// <summary>Same body as "💬 Reply…" below, minus the modal prompt dialog — the
+        /// popover's own inline text box supplies the message directly.</summary>
+        public async System.Threading.Tasks.Task QuickReplyAsync(QueueItem item, string message)
+        {
+            if (_db == null)
+            {
+                ToastEngine.Warning("Reply", "Not connected (no direct DB) — can't queue a reply.");
+                return;
+            }
+            string? sid = !string.IsNullOrWhiteSpace(item.SessionId) ? item.SessionId : _watcher?.GetSessionId(item.Id);
+            if (string.IsNullOrWhiteSpace(sid))
+            {
+                ToastEngine.Warning("Reply", "No session id captured for this build yet — nothing to resume.");
+                return;
+            }
+            try
+            {
+                await _db.QueueBuildAsync(
+                    $"Reply → {item.Title}", message, item.Model, item.Effort, item.Cwd,
+                    githubNumber: null, blockedByNumbers: null,
+                    resumeSessionId: sid, chatUrl: item.ChatUrl, buildSet: item.BuildSet, cli: item.Cli, account: item.Account);
+                ActivityLog.Log("interactive-build",
+                    $"Reply queued for queue #{item.Id} ({item.Title}) — resuming session {sid} with a {message.Length}-char message (via Git Board hover popover).");
+                ToastEngine.Success("Reply queued", $"Resuming the session for “{item.Title}” with your message.");
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Reply Failed", $"Couldn't queue the reply: {ex.Message}");
+            }
+            await RefreshAsync();
+        }
+
+        /// <summary>Same effect as the "💬 Open Originating Chat" menu item / chat badge below.</summary>
+        public void QuickOpenChat(QueueItem item) => QueueItemChatRequested?.Invoke(this, item);
+
+        #endregion
+
         private ContextMenu BuildCardContextMenu(QueueItem item)
         {
             var cm = new ContextMenu();

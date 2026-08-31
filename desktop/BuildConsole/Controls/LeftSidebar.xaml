@@ -600,6 +600,39 @@
                             </Style>
                         </TreeView.Resources>
                     </TreeView>
+
+                    <!-- Git #2061 — Git Board issue-hover quick-action popover. Hovering a Git
+                         Board issue row (IssuesTree, CreateIssueHeader) shows this instead of a
+                         plain tooltip: a state-aware card (status pill/title/snippet, same as
+                         before) plus ONE contextual primary action matching that issue's real
+                         associated build state (Queued/In progress-In flight/Done/Failed), not a
+                         generic summary every time. Must live inside THIS Grid (IssuesView), not
+                         a sibling tab's — a Popup nested under a Visibility="Collapsed" ancestor
+                         won't render when opened. PlacementTarget is set per-hover in code-behind
+                         (ShowIssueHoverPopup) to the actual hovered row element. Same
+                         StaysOpen="True" + explicit Opened/Closed dismissal pattern as
+                         ManifestStepsPopup elsewhere in this file (Git #988) — a hover popover
+                         additionally closes on MouseLeave (debounced) rather than only on
+                         outside-click. -->
+                    <Popup x:Name="IssueHoverPopup"
+                           Placement="Right"
+                           StaysOpen="True"
+                           AllowsTransparency="True"
+                           PopupAnimation="Fade"
+                           Opened="IssueHoverPopup_Opened"
+                           Closed="IssueHoverPopup_Closed">
+                        <Border x:Name="IssueHoverPopupBorder"
+                                Background="{StaticResource MantleBrush}"
+                                BorderBrush="{StaticResource Surface0Brush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="10"
+                                MinWidth="260" MaxWidth="380"
+                                MouseEnter="IssueHoverPopup_MouseEnter"
+                                MouseLeave="IssueHoverPopup_MouseLeave">
+                            <StackPanel x:Name="IssueHoverPopupBody"/>
+                        </Border>
+                    </Popup>
                 </DockPanel>
             </Grid>
             <!-- Git #954 (Epic #803) — the sidebar's Settings view is now just a
