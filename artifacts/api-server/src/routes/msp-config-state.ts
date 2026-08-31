@@ -48,6 +48,15 @@
  * ps-execution container's own code-owned catalog. Nothing on this router writes
  * configuration to a tenant, and nothing on it may: applying configuration is the
  * Config Pack path with its consent gates, break-glass gate and approval steps.
+ *
+ * ─── Path convention, and a live trap ──────────────────────────────────────────
+ * `app.ts` mounts the whole route tree at `app.use("/api", router)`, so a path
+ * registered here must NOT repeat the `/api` prefix. The sibling
+ * `admin-config-snapshots.ts` / `admin-config-diffs.ts` do repeat it and are
+ * therefore served at `/api/api/admin/config-*`, unreachable at the path their own
+ * admin-panel pages fetch — confirmed live on 2026-08-31 and filed separately. The
+ * externally-visible paths in the list above are what a caller uses; the strings
+ * below are those paths minus the mount prefix.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -113,7 +122,7 @@ function parseTenantFilter(raw: unknown): number | undefined | null {
 
 // ── GET /api/msp/config-state/tenants ────────────────────────────────────────
 
-router.get("/api/msp/config-state/tenants", requireRole("MSPOperator"),
+router.get("/msp/config-state/tenants", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -159,7 +168,7 @@ router.get("/api/msp/config-state/tenants", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/snapshots ──────────────────────────────────────
 
-router.get("/api/msp/config-state/snapshots", requireRole("MSPOperator"),
+router.get("/msp/config-state/snapshots", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -192,7 +201,7 @@ router.get("/api/msp/config-state/snapshots", requireRole("MSPOperator"),
 // Registered before the `/snapshots/:id` family purely for readability; the paths do
 // not collide.
 
-router.get("/api/msp/config-state/registry/summary", requireRole("MSPOperator"),
+router.get("/msp/config-state/registry/summary", requireRole("MSPOperator"),
   async (_req: Request, res: Response) => {
     try {
       res.json(await readResourceRegistrySummary());
@@ -202,7 +211,7 @@ router.get("/api/msp/config-state/registry/summary", requireRole("MSPOperator"),
     }
   });
 
-router.get("/api/msp/config-state/registry", requireRole("MSPOperator"),
+router.get("/msp/config-state/registry", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const transport = pickEnum(req.query.transport, CONFIG_READ_TRANSPORTS);
@@ -246,7 +255,7 @@ router.get("/api/msp/config-state/registry", requireRole("MSPOperator"),
 // ── GET /api/msp/config-state/collections/:runId ─────────────────────────────
 // Before `/snapshots/:id` in the file only for grouping; distinct path prefix.
 
-router.get("/api/msp/config-state/collections/:runId", requireRole("MSPOperator"),
+router.get("/msp/config-state/collections/:runId", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const runId = Number(req.params.runId);
@@ -333,7 +342,7 @@ router.get("/api/msp/config-state/collections/:runId", requireRole("MSPOperator"
  * READ of a tenant, not a write. Every call the collector makes is a GET or a `Get-*`
  * cmdlet; the ps-execution container will not resolve a write cmdlet at all (#209).
  */
-router.post("/api/msp/config-state/collections", requireRole("MSPOperator"),
+router.post("/msp/config-state/collections", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
@@ -418,7 +427,7 @@ router.post("/api/msp/config-state/collections", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/snapshots/:id ──────────────────────────────────
 
-router.get("/api/msp/config-state/snapshots/:id", requireRole("MSPOperator"),
+router.get("/msp/config-state/snapshots/:id", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -473,7 +482,7 @@ router.get("/api/msp/config-state/snapshots/:id", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/snapshots/:id/objects ──────────────────────────
 
-router.get("/api/msp/config-state/snapshots/:id/objects", requireRole("MSPOperator"),
+router.get("/msp/config-state/snapshots/:id/objects", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);

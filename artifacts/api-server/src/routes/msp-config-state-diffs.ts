@@ -57,6 +57,15 @@
  * Applying configuration is the Config Pack write path with its consent gates,
  * break-glass gate and approval steps; joining the two is a separate product
  * decision, recorded as an explicit non-goal on both #1797 and #1843.
+ *
+ * ─── Path convention, and a live trap ──────────────────────────────────────────
+ * `app.ts` mounts the whole route tree at `app.use("/api", router)`, so a path
+ * registered here must NOT repeat the `/api` prefix. The sibling
+ * `admin-config-snapshots.ts` / `admin-config-diffs.ts` do repeat it and are
+ * therefore served at `/api/api/admin/config-*`, unreachable at the path their own
+ * admin-panel pages fetch — confirmed live on 2026-08-31 and filed separately. The
+ * externally-visible paths in the list above are what a caller uses; the strings
+ * below are those paths minus the mount prefix.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -117,9 +126,28 @@ function pickEnum(raw: unknown, allowed: readonly string[]): string | undefined 
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Does this rejection come from violating a named constraint?
+ *
+ * Walks the `cause` chain, which is required rather than tidy: Drizzle wraps the
+ * driver error in a `_DrizzleQueryError` whose own `message` is only the SQL text and
+ * bound parameters — the constraint name lives on the pg error underneath. Matching
+ * on the wrapper's message alone silently never matches, which is exactly how the
+ * duplicate-name case returned a 500 instead of a 409 on its first live run.
+ */
+function violatesConstraint(err: unknown, constraint: string): boolean {
+  for (let e: unknown = err, depth = 0; e != null && depth < 6; depth++) {
+    const rec = e as { message?: unknown; constraint?: unknown; cause?: unknown };
+    if (rec.constraint === constraint) return true;
+    if (typeof rec.message === "string" && rec.message.includes(constraint)) return true;
+    e = rec.cause;
+  }
+  return false;
+}
+
 // ── GET /api/msp/config-state/diffs ──────────────────────────────────────────
 
-router.get("/api/msp/config-state/diffs", requireRole("MSPOperator"),
+router.get("/msp/config-state/diffs", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -185,7 +213,7 @@ router.get("/api/msp/config-state/diffs", requireRole("MSPOperator"),
 // ── GET /api/msp/config-state/diffs/rules ────────────────────────────────────
 // Registered BEFORE `/:diffId` so the literal path is not swallowed by the param route.
 
-router.get("/api/msp/config-state/diffs/rules", requireRole("MSPOperator"),
+router.get("/msp/config-state/diffs/rules", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const includeInactive = req.query.includeInactive === "true";
@@ -235,7 +263,7 @@ interface ComputeBody {
   triggerRef?: unknown;
 }
 
-router.post("/api/msp/config-state/diffs", requireRole("MSPOperator"),
+router.post("/msp/config-state/diffs", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as ComputeBody;
@@ -371,7 +399,7 @@ router.post("/api/msp/config-state/diffs", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/diffs/:diffId ──────────────────────────────────
 
-router.get("/api/msp/config-state/diffs/:diffId", requireRole("MSPOperator"),
+router.get("/msp/config-state/diffs/:diffId", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -451,7 +479,7 @@ router.get("/api/msp/config-state/diffs/:diffId", requireRole("MSPOperator"),
 
 // ── GET /api/msp/config-state/baselines ──────────────────────────────────────
 
-router.get("/api/msp/config-state/baselines", requireRole("MSPOperator"),
+router.get("/msp/config-state/baselines", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const book = await resolveConfigStateBook(req);
@@ -530,7 +558,7 @@ router.get("/api/msp/config-state/baselines", requireRole("MSPOperator"),
  * caller's claim, so a PlatformAdmin declaring a baseline for someone else's customer
  * records the right owner instead of a null.
  */
-router.post("/api/msp/config-state/baselines", requireRole("MSPOperator"),
+router.post("/msp/config-state/baselines", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
@@ -600,8 +628,7 @@ router.post("/api/msp/config-state/baselines", requireRole("MSPOperator"),
         },
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      if (/config_snapshot_baselines_msp_name_uidx/.test(message)) {
+      if (violatesConstraint(err, "config_snapshot_baselines_msp_name_uidx")) {
         return apiError(res, 409, ApiErrorCode.CONFLICT,
           "A baseline with that name already exists for this MSP. Names are the way a "
           + "baseline is referred to, so they are unique within a book.");
@@ -619,7 +646,7 @@ router.post("/api/msp/config-state/baselines", requireRole("MSPOperator"),
  * nothing. A retired baseline MUST carry its reason; the database enforces that with a
  * CHECK constraint, and so does this handler.
  */
-router.patch("/api/msp/config-state/baselines/:baselineId", requireRole("MSPOperator"),
+router.patch("/msp/config-state/baselines/:baselineId", requireRole("MSPOperator"),
   async (req: Request, res: Response) => {
     try {
       const baselineId = String(req.params.baselineId);
