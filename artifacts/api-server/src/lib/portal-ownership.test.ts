@@ -271,6 +271,7 @@ describe("formatOwnDate()", () => {
 
 describe("buildSources()", () => {
   const counts: Record<OwnObjectType, number> = {
+    workload: 3,
     service: 1,
     change: 15,
     cr: 7,
@@ -286,9 +287,10 @@ describe("buildSources()", () => {
     expect(buildSources(counts).every((s) => s.note.length > 0)).toBe(true);
   });
 
-  it("reports the real counts for the four it serves", () => {
+  it("reports the real counts for the five it serves", () => {
     const live = buildSources(counts).filter((s) => s.live);
     expect(live.map((s) => [s.type, s.count])).toEqual([
+      ["workload", 3],
       ["service", 1],
       ["change", 15],
       ["cr", 7],
