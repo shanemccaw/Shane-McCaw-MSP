@@ -21,14 +21,20 @@ namespace BuildConsole.Controls
     /// </summary>
     public partial class StartupLoadingView : UserControl
     {
-        // Catppuccin Mocha, frozen once — same palette as Themes/DarkTheme.xaml.
-        private static readonly SolidColorBrush Grey   = Frozen(0x58, 0x5B, 0x70); // Surface2
-        private static readonly SolidColorBrush Peach  = Frozen(0xFA, 0xB3, 0x87);
-        private static readonly SolidColorBrush Green  = Frozen(0xA6, 0xE3, 0xA1);
-        private static readonly SolidColorBrush Yellow = Frozen(0xF9, 0xE2, 0xAF);
-        private static readonly SolidColorBrush Red    = Frozen(0xF3, 0x8B, 0xA8);
-        private static readonly SolidColorBrush Text   = Frozen(0xCD, 0xD6, 0xF4);
-        private static readonly SolidColorBrush Subtext = Frozen(0xA6, 0xAD, 0xC8); // Subtext1
+        // Git #2126 — the four connecting/success/degraded/failed dot colors are a
+        // real status meaning (see the State switch below), so they're looked up from
+        // the app's real theme resources (Themes/Colors.xaml) instead of a second,
+        // hardcoded copy of the palette — same pattern as FocusCharacterLayer.Res().
+        // Grey (Pending/Skipped) has no status-semantic equivalent in the new palette
+        // (it means "neutral, hasn't started" — not success/error/warning/running) so
+        // it stays a local literal, same as before.
+        private static readonly SolidColorBrush Grey    = Frozen(0x58, 0x5B, 0x70); // Surface2
+        private static readonly Brush Peach  = ResOrFallback("StatusRunningBrush", Frozen(0xFA, 0xB3, 0x87));  // Connecting → in progress
+        private static readonly Brush Green  = ResOrFallback("StatusSuccessBrush", Frozen(0xA6, 0xE3, 0xA1));  // Success
+        private static readonly Brush Yellow = ResOrFallback("StatusWarningBrush", Frozen(0xF9, 0xE2, 0xAF));  // Degraded
+        private static readonly Brush Red    = ResOrFallback("StatusErrorBrush",   Frozen(0xF3, 0x8B, 0xA8));  // Failed / TimedOut
+        private static readonly Brush Text    = ResOrFallback("TextPrimaryBrush",   Frozen(0xCD, 0xD6, 0xF4));
+        private static readonly Brush Subtext = ResOrFallback("TextSecondaryBrush", Frozen(0xA6, 0xAD, 0xC8));
 
         private static SolidColorBrush Frozen(byte r, byte g, byte b)
         {
@@ -36,6 +42,10 @@ namespace BuildConsole.Controls
             br.Freeze();
             return br;
         }
+
+        /// <summary>App-level brush lookup (DarkTheme/Colors.xaml are merged at the app level), with a safe fallback.</summary>
+        private static Brush ResOrFallback(string key, Brush fallback)
+            => (Application.Current?.TryFindResource(key) as Brush) ?? fallback;
 
         private sealed class Row
         {

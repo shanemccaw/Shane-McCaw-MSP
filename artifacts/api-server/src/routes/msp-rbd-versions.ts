@@ -11,6 +11,8 @@
  *   POST  /api/msp/rbd/:rbdId/versions/:versionUid/share    — generate an unauthenticated
  *                                                    review/sign link for the current,
  *                                                    unsigned version (#1512)
+ *   GET   /api/msp/rbd/:rbdId/versions/narrative-audit — #1510's audit trail on
+ *                                                    narrative/score drift between versions
  *
  * MSP-side only, matching `msp-rbd.ts` next door — this is the authoring side.
  * There is no customer-portal counterpart in this build: #1512 ("Signed RBD
@@ -19,11 +21,13 @@
  * at the wire contract — no `artifacts/portal` page exists to wire it to yet.
  *
  * `rbdId` is the container identifier `msp_risk_decisions.rbdId` already uses
- * (e.g. "RBD-..."). This route does not validate that a `msp_risk_decisions` row
- * with that id exists — #1509 has not yet formalized the container/line-item
- * relationship, so a version can legitimately be captured for a container that
- * predates any line-item table. The transaction mechanics (supersede-then-insert,
- * sign-only-the-current-unsigned-version) live in `../lib/rbd-versioning.ts` so
+ * (e.g. "RBD-..."). `POST .../versions` DOES require a `msp_risk_decisions` row
+ * to exist for (mspId, rbdId) as of #1510 — capturing a version derives its
+ * scope/narrative snapshot from that row and from `risk_instances`, so there is
+ * no longer a "container-less" version to capture; every other route here still
+ * addresses a version purely by `rbdId`/`versionUid` with no container lookup.
+ * The transaction mechanics (supersede-then-insert, sign-only-the-current-
+ * unsigned-version, the #1510 scope diff) live in `../lib/rbd-versioning.ts` so
  * later issues that attach to this chain (#1509–#1512) reuse it rather than
  * re-implementing it.
  *
@@ -45,9 +49,12 @@ import {
   listRbdVersions,
   signRbdVersion,
   generateRbdShareLink,
+  listRbdNarrativeAudit,
 } from "../lib/rbd-versioning.ts";
+import { listRiskInstancesByRbdId } from "../lib/rbd-instances.ts";
 import { renderAndPersistRbdVersionDocument } from "../lib/rbd-document-render.ts";
-import type { MspRbdVersion } from "@workspace/db";
+import { db, mspRiskDecisionsTable, type MspRbdVersion, type MspRbdNarrativeAudit, type RbdNarrativeSnapshot } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 const log = logger.child({ channel: "tenant.portal" });
@@ -67,6 +74,21 @@ interface WireRbdVersion {
   readonly signedAt: string | null;
   /** True for exactly one version per (mspId, rbdId): the current one. */
   readonly isCurrent: boolean;
+  /** #1510 — the derived instance scope this version accepts, and the diff
+   * against the version it superseded. */
+  readonly scopeInstanceIds: number[];
+  readonly scopeAddedInstanceIds: number[];
+  readonly scopeRemovedInstanceIds: number[];
+  /** #1510 — true if this version's scope contained an addition (or it was
+   * the first version ever); false if a subtraction-only/unchanged scope let
+   * it inherit the prior signature instead. */
+  readonly requiresSignature: boolean;
+  /** #1510 — true if `signed`/`signedBy`/`signedAt` above were copied
+   * forward from the superseded version rather than captured fresh here. */
+  readonly signatureInherited: boolean;
+  readonly signatureInheritedFromVersionUid: string | null;
+  /** #1510 — the narrative/score snapshot captured with this version. */
+  readonly narrativeSnapshot: unknown;
 }
 
 function iso(value: Date | null | undefined): string | null {
@@ -85,6 +107,30 @@ function toWireVersion(row: MspRbdVersion): WireRbdVersion {
     signedBy: row.signedBy,
     signedAt: iso(row.signedAt),
     isCurrent: row.supersededAt === null,
+    scopeInstanceIds: row.scopeInstanceIds,
+    scopeAddedInstanceIds: row.scopeAddedInstanceIds,
+    scopeRemovedInstanceIds: row.scopeRemovedInstanceIds,
+    requiresSignature: row.requiresSignature,
+    signatureInherited: row.signatureInherited,
+    signatureInheritedFromVersionUid: row.signatureInheritedFromVersionUid,
+    narrativeSnapshot: row.narrativeSnapshot,
+  };
+}
+
+/** #1510 — one narrative/score audit row, on the wire. */
+interface WireRbdNarrativeAudit {
+  readonly fromVersionUid: string | null;
+  readonly toVersionUid: string;
+  readonly changedFields: unknown;
+  readonly createdAt: string;
+}
+
+function toWireNarrativeAudit(row: MspRbdNarrativeAudit): WireRbdNarrativeAudit {
+  return {
+    fromVersionUid: row.fromVersionUid,
+    toVersionUid: row.toVersionUid,
+    changedFields: row.changedFields,
+    createdAt: iso(row.createdAt) as string,
   };
 }
 
@@ -145,11 +191,55 @@ router.get(
   },
 );
 
+/**
+ * #1510 — the scope/narrative inputs `createRbdVersion`'s diff runs on, derived
+ * from the LIVE `risk_instances` and `msp_risk_decisions` rows rather than
+ * anything the client sends. This is what makes the addition/subtraction
+ * distinction undgameable: a caller can change the real scope only by actually
+ * adding/accepting/resolving line items through `msp-rbd-instances.ts`'s own
+ * routes, never by shaping this request's body. Returns null (and writes the
+ * response) if the container row doesn't exist for (mspId, rbdId).
+ */
+async function deriveScopeAndNarrative(
+  mspId: number,
+  rbdId: string,
+  res: Response,
+): Promise<{ scopeInstanceIds: number[]; narrativeSnapshot: RbdNarrativeSnapshot } | null> {
+  const [container] = await db
+    .select({
+      hazardDescription: mspRiskDecisionsTable.hazardDescription,
+      compensatingControls: mspRiskDecisionsTable.compensatingControls,
+      residualRiskScore: mspRiskDecisionsTable.residualRiskScore,
+      residualRiskLevel: mspRiskDecisionsTable.residualRiskLevel,
+    })
+    .from(mspRiskDecisionsTable)
+    .where(and(eq(mspRiskDecisionsTable.rbdId, rbdId), eq(mspRiskDecisionsTable.mspId, mspId)))
+    .limit(1);
+  if (!container) {
+    apiError(res, 404, ApiErrorCode.NOT_FOUND, "Risk-Based Decision not found");
+    return null;
+  }
+
+  const instances = await listRiskInstancesByRbdId(mspId, rbdId);
+  const scopeInstanceIds = instances.filter((i) => i.status === "active").map((i) => i.id);
+
+  return {
+    scopeInstanceIds,
+    narrativeSnapshot: {
+      hazardDescription: container.hazardDescription,
+      compensatingControls: container.compensatingControls,
+      residualRiskScore: container.residualRiskScore,
+      residualRiskLevel: container.residualRiskLevel,
+    },
+  };
+}
+
 // POST /api/msp/rbd/:rbdId/versions — capture a new version, superseding
-// whatever was current. Always succeeds (version 1 if none existed yet); there
-// is no "nothing changed" short-circuit here because #1510 (signature required
-// only on scope EXPANSION, derived by diffing instance sets) is a separate,
-// not-yet-built issue this route deliberately does not anticipate.
+// whatever was current. Always succeeds (version 1 if none existed yet).
+// #1510: the scope/narrative diff and the signature-required-vs-inherited
+// derivation run inside `createRbdVersion` itself, against
+// `scopeInstanceIds`/`narrativeSnapshot` derived here from the live
+// `risk_instances`/`msp_risk_decisions` rows — never from this request's body.
 router.post(
   "/msp/rbd/:rbdId/versions",
   requireAuth,
@@ -168,6 +258,9 @@ router.post(
         return;
       }
 
+      const derived = await deriveScopeAndNarrative(mspId, rbdId, res);
+      if (derived === null) return;
+
       const userEmail = req.user?.email || "unknown@mspplatform.com";
       const userName = req.user?.name || "MSP Assessor";
       const nowUtc = new Date().toISOString().substring(0, 19).replace("T", " ") + " UTC";
@@ -179,12 +272,50 @@ router.post(
         tenantName: parsed.data.tenantName,
         content: parsed.data.content ?? null,
         createdBy: { name: userName, upn: userEmail, timestamp: nowUtc },
+        scopeInstanceIds: derived.scopeInstanceIds,
+        narrativeSnapshot: derived.narrativeSnapshot,
       });
 
-      log.info({ mspId, rbdId, versionNumber: created.versionNumber }, "RBD version captured");
+      log.info(
+        {
+          mspId,
+          rbdId,
+          versionNumber: created.versionNumber,
+          requiresSignature: created.requiresSignature,
+          signatureInherited: created.signatureInherited,
+          added: created.scopeAddedInstanceIds.length,
+          removed: created.scopeRemovedInstanceIds.length,
+        },
+        "RBD version captured",
+      );
       res.status(201).json({ version: toWireVersion(created) });
     } catch (err: unknown) {
       log.error({ err }, "POST /api/msp/rbd/:rbdId/versions failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// GET /api/msp/rbd/:rbdId/versions/narrative-audit — #1510's audit trail on
+// narrative/score drift (hazard text, compensating controls, residual score)
+// across the version chain — the interim answer for the case that
+// deliberately requires no signature.
+router.get(
+  "/msp/rbd/:rbdId/versions/narrative-audit",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const mspId = resolveMspIdStrict(req);
+      if (mspId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "MSP context required");
+        return;
+      }
+      const rbdId = String(req.params.rbdId);
+      const rows = await listRbdNarrativeAudit(mspId, rbdId);
+      res.json({ rbdId, audit: rows.map(toWireNarrativeAudit) });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/rbd/:rbdId/versions/narrative-audit failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

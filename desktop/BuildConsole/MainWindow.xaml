@@ -86,7 +86,7 @@
                              search bar); the "Shane McCaw MSP" name stays clearly visible here. -->
                         <Border Width="24" Height="24"
                                 Margin="8,0,6,0"
-                                Background="#1A89B4FA"
+                                Background="{DynamicResource AccentWashLightBrush}"
                                 CornerRadius="4"
                                 VerticalAlignment="Center"
                                 ToolTip="Shane McCaw MSP">

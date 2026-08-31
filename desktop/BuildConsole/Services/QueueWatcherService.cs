@@ -352,6 +352,35 @@ namespace BuildConsole.Services
         /// <summary>Whether the automatic queue pickup loop is currently paused. See <see cref="SetPaused"/>.</summary>
         public bool IsPaused => _paused;
 
+        /// <summary>
+        /// Git #1883 — true once the app itself has signaled genuine full readiness (#1882's
+        /// real <c>StartupConnectivityService.AllSettled</c> signal — every launch connection
+        /// AND the "Application shell" row settled, not just the loading overlay visually
+        /// dismissing). False from construction until <see cref="MarkAppReady"/> is called.
+        /// This is a HARD gate on the pickup loop's very first claim attempt, independent of
+        /// <see cref="IsPaused"/>: Shane's report was explicit that heavy queued build
+        /// processes competing with the app's own startup work for resources is what's
+        /// killing his machine, "no matter whether the queue is running or paused". See
+        /// <see cref="TickAsync"/>.
+        /// </summary>
+        public bool IsAppReady => _appReady;
+        private volatile bool _appReady;
+
+        /// <summary>
+        /// Git #1883 — called exactly once by MainWindow when <c>StartupConnectivityService.AllSettled</c>
+        /// fires (may be on a background thread — this is a single volatile bool flip, safe from
+        /// any thread and idempotent). Lifts the hard readiness gate in <see cref="TickAsync"/> so
+        /// the pickup loop's first claim attempt can proceed. Until this is called, TickAsync still
+        /// reaps already-running/adopted builds (nothing to gate there — a fresh cold start has
+        /// none) but will never claim or launch a new queued item, regardless of <see cref="IsPaused"/>.
+        /// </summary>
+        public void MarkAppReady()
+        {
+            if (_appReady) return;
+            _appReady = true;
+            ActivityLog.Log("watcher", "App signaled genuine full readiness (#1882) — the queue pickup loop's launch gate is now lifted.");
+        }
+
         /// <summary>Raised whenever the pause state actually changes (deduped) — lets any UI reflecting the toggle stay in sync. Argument: the new paused value.</summary>
         public event Action<bool>? PausedStateChanged;
 
@@ -1168,6 +1197,15 @@ namespace BuildConsole.Services
                 // build's worktree, an unrelated/harness worktree, or one still inside its grace
                 // window; it only sweeps up agent/* worktrees whose build process is gone.
                 MaybeSweepWorktrees();
+
+                // Git #1883 — hard gate: never claim/launch a NEW queued item until the app
+                // itself has signaled genuine full readiness (see MarkAppReady). Checked
+                // BEFORE and independent of the pause toggle below — this must hold "no
+                // matter whether the queue is running or paused" (Shane's own words), since
+                // it's heavy build processes competing with the app's own startup work for
+                // resources that's the actual problem, not the pause state. Reaping (above)
+                // still runs regardless — a fresh cold start has nothing to reap anyway.
+                if (!_appReady) return;
 
                 // Global pause: reaping (above) still runs so already-running
                 // builds complete and free their slots, but the claim/launch of

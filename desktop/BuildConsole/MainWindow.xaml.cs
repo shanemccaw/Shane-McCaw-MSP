@@ -477,6 +477,17 @@ namespace BuildConsole
                         _buildTrackerApi, _queueDb, btConfig.MaxConcurrent, BuildConsole.Services.BuildTrackerConfig.FindRepoRoot());
                     _queueWatcher.BuildFinished += QueueWatcher_BuildFinished;
 
+                    // Git #1883 — the pickup loop must never claim/launch a queued item until
+                    // the app itself is genuinely, fully ready — #1882's real AllSettled signal
+                    // (every launch connection AND the "Application shell" row settled), not
+                    // just the loading overlay visually dismissing. Wired here, BEFORE
+                    // _queueWatcher.Start() is ever called below, so there's no window where a
+                    // claim could slip through before this subscription exists. AllSettled may
+                    // fire on a background thread; MarkAppReady is a single volatile bool flip,
+                    // safe from any thread.
+                    if (_startupConnectivity != null)
+                        _startupConnectivity.AllSettled += () => _queueWatcher?.MarkAppReady();
+
                     _sessionLimitAutoRestart = new BuildConsole.Services.SessionLimitAutoRestartService(
                         _queueDb, () => _queueWatcher?.SetPaused(false));
                     _queueWatcher.SessionLimitAutoRestart = _sessionLimitAutoRestart;
@@ -6256,7 +6267,11 @@ namespace BuildConsole
             bannerGrid.Children.Add(bannerText);
 
             // Git #1470 — the only way handoff ever fires: a real button Shane clicks himself.
-            // Never shown outside the critical (red) banner state; collapsed by default here.
+            // Git #1885 — this same button/handler is now also surfaced (relabeled "Start
+            // handoff chat") in the yellow (60k-85k) and peach (85k-100k) tiers below, not just
+            // critical/red — one button, one TriggerHandoffAsync call, reused rather than
+            // duplicated per tier. Collapsed by default here; each tier branch in
+            // UpdateContextMeter sets its own Content + Visibility.
             var handoffBtn = new Button
             {
                 Content = "Hand Off Now",
@@ -6484,6 +6499,12 @@ namespace BuildConsole
                 meterState.BannerText.Foreground = (Brush)FindResource("TextBrush");
                 meterState.BannerCloseBtn.Visibility = Visibility.Visible;
                 meterState.BannerCloseBtn.Foreground = (Brush)FindResource("TextBrush");
+                // Git #1885 — offer the same TriggerHandoffAsync mechanism the critical tier
+                // uses (relabeled — this tier is still dismissible/optional, not an order), so
+                // Shane can start the handoff early instead of waiting for the non-dismissible
+                // red tier to force it.
+                meterState.HandoffBtn.Content = "Start handoff chat";
+                meterState.HandoffBtn.Visibility = Visibility.Visible;
 
                 if (!meterState.BannerDismissed)
                 {
@@ -6500,6 +6521,10 @@ namespace BuildConsole
                 meterState.BannerText.Foreground = (Brush)FindResource("TextBrush");
                 meterState.BannerCloseBtn.Visibility = Visibility.Visible;
                 meterState.BannerCloseBtn.Foreground = (Brush)FindResource("TextBrush");
+                // Git #1885 — this tier is closer to critical than yellow is, so the same
+                // early-handoff offer applies here too (judgment call invited by #1885 itself).
+                meterState.HandoffBtn.Content = "Start handoff chat";
+                meterState.HandoffBtn.Visibility = Visibility.Visible;
 
                 // Re-surface banner even if user previously dismissed it in lower zone
                 meterState.Banner.Visibility = Visibility.Visible;
@@ -6517,6 +6542,7 @@ namespace BuildConsole
                 meterState.BannerText.Text = "Critical context reached! Hand off to a new chat when you're ready.";
                 meterState.BannerText.Foreground = (Brush)FindResource("MauveBrush");
                 meterState.BannerCloseBtn.Visibility = Visibility.Collapsed; // Non-dismissible — stays visible until Shane hands off.
+                meterState.HandoffBtn.Content = "Hand Off Now";
                 meterState.HandoffBtn.Visibility = Visibility.Visible;
                 meterState.Banner.Visibility = Visibility.Visible;
             }

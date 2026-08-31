@@ -1,0 +1,23 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         Git #2126 — real final typography values, copied verbatim from the
+         issue body. The app's existing default body/window FontSize (12-13)
+         was confirmed too small for all-day monitor use.
+
+         - Body text: 14px
+         - Headers/titles: 16-18px (the app already uses both 16 and 18 in
+           roughly equal measure for section headers vs. major titles — kept
+           as two named sizes rather than collapsing to one, matching what
+           was already there)
+         - Monospace (logs/code): 13px minimum, never smaller
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <sys:Double x:Key="BodyFontSize">14</sys:Double>
+    <sys:Double x:Key="SubHeaderFontSize">16</sys:Double>
+    <sys:Double x:Key="HeaderFontSize">18</sys:Double>
+    <sys:Double x:Key="MonospaceFontSize">13</sys:Double>
+
+</ResourceDictionary>

@@ -67,6 +67,14 @@ interface WireRbdVersionSummary {
   readonly signed: boolean;
   readonly signedAt: string | null;
   readonly isCurrent: boolean;
+  /** #1510 — true if this version's scope contains an addition the customer
+   * has not yet signed off on (or it's the first version ever); false means
+   * this version only dropped items from what was already signed, and the
+   * prior signature carries forward automatically. */
+  readonly requiresSignature: boolean;
+  /** #1510 — true if `signed`/`signedAt` above were inherited from the prior
+   * signed version rather than captured fresh on this one. */
+  readonly signatureInherited: boolean;
 }
 
 function iso(value: Date | null | undefined): string | null {
@@ -82,6 +90,8 @@ function toWireSummary(row: MspRbdVersion): WireRbdVersionSummary {
     signed: row.signed,
     signedAt: iso(row.signedAt),
     isCurrent: row.supersededAt === null,
+    requiresSignature: row.requiresSignature,
+    signatureInherited: row.signatureInherited,
   };
 }
 

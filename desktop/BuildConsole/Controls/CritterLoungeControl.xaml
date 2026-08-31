@@ -82,7 +82,7 @@
             <DockPanel VerticalAlignment="Top" Margin="8,6,8,0" Panel.ZIndex="200">
                 <!-- Scene Badge -->
                 <Border x:Name="SceneBadge"
-                        Background="#1E1E2E"
+                        Background="{DynamicResource BaseBrush}"
                         BorderBrush="{StaticResource BlueBrush}"
                         BorderThickness="1"
                         CornerRadius="8"

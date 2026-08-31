@@ -375,6 +375,12 @@ export default defineConfig({
       "src/lib/remediation-tracker-risk-decline.test.ts",
       "src/lib/portal-change-rejection.test.ts",
       "src/lib/change-request-risk-discharge.test.ts",
+      // #1510 — signature required on scope expansion, never on contraction:
+      // the instance-set diff derivation (additions force a fresh signature,
+      // subtraction-only/unchanged inherits) and the narrative/score audit
+      // diff, including the mixed addition+subtraction case that must still
+      // require a signature.
+      "src/lib/rbd-scope-diff.test.ts",
       // #776 (Phase 1 of epic #647): real GET endpoint for
       // tenant_check_item_details — tenantId resolution stays scoped to the
       // caller's own customerId, a requested checkKey with no collection is
