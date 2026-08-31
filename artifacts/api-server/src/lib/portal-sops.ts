@@ -284,7 +284,7 @@ export function auditResult(
  * that matters more than it looks.
  */
 export function evidenceHash(...parts: readonly string[]): string {
-  const hex = createHash("sha256").update(parts.join(" "), "utf8").digest("hex");
+  const hex = createHash("sha256").update(parts.join("\x00"), "utf8").digest("hex");
   return `${hex.slice(0, 4)}…${hex.slice(-4)}`;
 }
 

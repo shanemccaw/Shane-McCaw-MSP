@@ -467,7 +467,7 @@ router.post(
       // route's to make unilaterally.
       const ipAddress = (req.ip ?? "").trim() || null;
       const signatureHash = createHash("sha256")
-        .update([existing.rbdId, parsed.data.fullName, acceptedAt.toISOString(), parsed.data.statement].join(" "))
+        .update([existing.rbdId, parsed.data.fullName, acceptedAt.toISOString(), parsed.data.statement].join("\x00"))
         .digest("hex");
 
       const priorApprover = (existing.clientApprover ?? null) as ClientApprover | null;

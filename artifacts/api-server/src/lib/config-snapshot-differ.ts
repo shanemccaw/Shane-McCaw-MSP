@@ -237,7 +237,7 @@ export function decideRule(
  */
 export function fingerprintRuleset(rules: readonly ConfigDiffPropertyRule[]): string {
   const parts = rules
-    .map((r) => `${r.resourceKey} ${r.propertyPathPattern} ${r.action} ${r.specificity}`)
+    .map((r) => `${r.resourceKey}\x00${r.propertyPathPattern}\x00${r.action}\x00${r.specificity}`)
     .sort();
   return createHash("sha256").update(parts.join("\n"), "utf8").digest("hex");
 }
