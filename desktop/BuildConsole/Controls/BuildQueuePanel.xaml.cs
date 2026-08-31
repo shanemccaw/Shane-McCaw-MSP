@@ -3265,20 +3265,20 @@ namespace BuildConsole.Controls
             SetQueueCardTooltip(card, item);
             mainStack.Children.Add(titleBlock);
 
-            // ── Third Row: Extra info (blocker details, exit code) ──
+            // ── Third Row: Extra info (blocker ghost cards, exit code) ──
             // Git #2070: gate on the same live-filtered set BuildWaitingOnText renders,
             // not the raw declared list — otherwise this row can render with an empty
             // "waiting on" string once every declared blocker has closed.
+            // Git #2062: a bare "waiting on #N" text line left Shane to leave the card and
+            // go find #N himself. Each genuinely-open blocker now gets its own real ghost
+            // card (BuildBlockerGhostCard) inline instead — the blocker's real title/state,
+            // not just its number.
             if (LiveBlockedBy(node).Count > 0 && item.Status == "queued")
             {
-                mainStack.Children.Add(new TextBlock
+                foreach (var blockerNumber in LiveBlockedBy(node))
                 {
-                    Text = BuildWaitingOnText(node, item),
-                    FontSize = 10,
-                    FontStyle = FontStyles.Italic,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),
-                    Margin = new Thickness(1, 2, 0, 0)
-                });
+                    mainStack.Children.Add(BuildBlockerGhostCard(blockerNumber));
+                }
             }
             if (item.Status == "failed" && item.ExitCode.HasValue)
             {
@@ -3405,6 +3405,127 @@ namespace BuildConsole.Controls
         {
             if (_openIssues == null) return node.BlockedBy;
             return node.BlockedBy.Where(b => _openIssues.Contains(b)).ToList();
+        }
+
+        /// <summary>Git #2062 — typed marker on a ghost blocker card's Tag: the real DOM anchor
+        /// #2030's future click-to-highlight dependency chain system attaches to. That system is
+        /// NOT built here — this only makes sure every blocked card has a stable, discoverable
+        /// element to attach it to later, at every link in the chain, not just the two ends that
+        /// happen to already be rendered near each other. IsLiveQueueNode tells that future work
+        /// whether this ghost has a real sibling card in the same render to draw a line to.</summary>
+        private readonly record struct BlockerGhostTag(int IssueNumber, bool IsLiveQueueNode);
+
+        /// <summary>Git #2062 — a blocked build's declared blocker rendered as a real, dimmed
+        /// ghost/placeholder card (not plain "waiting on #N" text). Always built from real data:
+        /// if the blocker is itself another node in this same queue render (<see cref="_currentGraphNodes"/>),
+        /// its real title + current status (<see cref="GhostStatusLabel"/>, the same vocabulary
+        /// <see cref="CreateGraphNodeDot"/> already uses); otherwise the blocker's real GitHub
+        /// title via the existing <see cref="_issueTitleCache"/> background-fetch machinery
+        /// (<see cref="TriggerBackgroundIssueTitleQueries"/>, extended to also warm blocker
+        /// numbers) with an "OPEN" state — LiveBlockedBy already filtered this number down to a
+        /// blocker <see cref="_openIssues"/> reports genuinely still open. Never invents a title:
+        /// while the background fetch hasn't landed yet, this shows the bare issue ref only.
+        /// Minimally interactive per the #2062 scope note — clickable to jump to the blocker's
+        /// own card when it has one, but not the full chain-highlight interaction (#2030).</summary>
+        private Border BuildBlockerGhostCard(int blockerNumber)
+        {
+            var liveNode = _currentGraphNodes.FirstOrDefault(n => n.Key == blockerNumber && (n.Item != null || n.RestartItem != null));
+            bool clickable = liveNode != null;
+
+            string title;
+            string statusText;
+            Color statusColor;
+            if (liveNode != null)
+            {
+                title = liveNode.Title;
+                (statusText, statusColor) = GhostStatusLabel(liveNode);
+            }
+            else
+            {
+                string? cachedTitle;
+                lock (_issueTitleCache) { _issueTitleCache.TryGetValue(blockerNumber, out cachedTitle); }
+                title = cachedTitle ?? "";
+                statusText = "○ OPEN";
+                statusColor = Color.FromRgb(0xF3, 0x8B, 0xA8);
+            }
+
+            var card = new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x1A, 0x14, 0x18)),
+                BorderBrush = new SolidColorBrush(Color.FromArgb(0x80, 0xF3, 0x8B, 0xA8)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(6, 3, 6, 3),
+                Margin = new Thickness(1, 3, 0, 0),
+                Opacity = 0.68,
+                Cursor = clickable ? Cursors.Hand : Cursors.Arrow,
+                Tag = new BlockerGhostTag(blockerNumber, clickable),
+                ToolTip = clickable
+                    ? $"🔒 Blocked by {FormatIssueRef(blockerNumber)} — {title}\nClick to jump to its own build card."
+                    : $"🔒 Blocked by {FormatIssueRef(blockerNumber)}" + (string.IsNullOrEmpty(title) ? "" : $" — {title}") +
+                      "\nOpen on GitHub — not itself a build in this queue."
+            };
+
+            var stack = new StackPanel();
+            var topRow = new StackPanel { Orientation = Orientation.Horizontal };
+            topRow.Children.Add(new TextBlock
+            {
+                Text = statusText,
+                FontSize = 8.5,
+                FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(statusColor),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            topRow.Children.Add(new TextBlock
+            {
+                Text = " " + FormatIssueRef(blockerNumber),
+                FontSize = 8.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                Margin = new Thickness(4, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            stack.Children.Add(topRow);
+            stack.Children.Add(new TextBlock
+            {
+                Text = string.IsNullOrEmpty(title) ? "(fetching title…)" : title,
+                FontSize = 9.5,
+                FontStyle = string.IsNullOrEmpty(title) ? FontStyles.Italic : FontStyles.Normal,
+                Foreground = (Brush)Application.Current.FindResource("Subtext1Brush"),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 1, 0, 0)
+            });
+            card.Child = stack;
+
+            if (clickable)
+            {
+                card.MouseLeftButtonDown += (s, e) =>
+                {
+                    e.Handled = true;
+                    SelectNode(liveNode!);
+                };
+            }
+
+            return card;
+        }
+
+        /// <summary>Git #2062 — short status label + color for a blocker that is itself a live
+        /// node in this queue render, mirroring the exact vocabulary <see cref="CreateGraphNodeDot"/>
+        /// already uses for these same states (RUNNING/BLOCKED/DONE/etc.) — the ghost card is
+        /// showing the same real build, just inline on the blocked card instead of on the
+        /// mini-map dot.</summary>
+        private (string text, Color color) GhostStatusLabel(QueueGraphNode node)
+        {
+            if (node.IsWaitingForInput) return ("❓ ASK QUESTION", Color.FromRgb(0xF9, 0xE2, 0xAF));
+            if (node.Status == "running") return ("▶ RUNNING", Color.FromRgb(0x89, 0xB4, 0xFA));
+            if (node.Item != null && BuildConsoleSettings.Load().PausedBuildIds.Contains(node.Item.Id))
+                return ("⏸ PAUSED", Color.FromRgb(0xFA, 0xB3, 0x87));
+            if (node.IsBlocked) return ("🔒 BLOCKED", Color.FromRgb(0xF3, 0x8B, 0xA8));
+            if (node.Status == BuildQueuePostgresClient.VerifyingStatus) return ("🔎 VERIFYING", Color.FromRgb(0x74, 0xC7, 0xEC));
+            if (node.Status == "done") return ("✨ DONE", Color.FromRgb(0xA6, 0xE3, 0xA1));
+            if (node.Status == "failed") return ("✕ FAILED", Color.FromRgb(0xF3, 0x8B, 0xA8));
+            if (node.Status == "restart") return ("🔄 RESTART", Color.FromRgb(0xCB, 0xA6, 0xF7));
+            return ("⏳ UP NEXT", Color.FromRgb(0xBA, 0xB4, 0xCD));
         }
 
         private static string CapitalizeFirst(string s) =>
@@ -4532,8 +4653,12 @@ namespace BuildConsole.Controls
         {
             if (_lastItems == null || _lastItems.Count == 0) return;
 
+            // Git #2062 — also warm the cache for declared blocker numbers, not just
+            // AssociatedIssueNumbers (own issue + linked chat/epic numbers). A blocker that
+            // isn't itself a live queue node still needs its real title fetched once so its
+            // ghost card (BuildBlockerGhostCard) can show it instead of "(fetching title…)".
             var issueNumbers = _lastItems
-                .SelectMany(i => i.AssociatedIssueNumbers)
+                .SelectMany(i => i.AssociatedIssueNumbers.Concat(CleanBlockers(i)))
                 .Where(n => n > 0) // Git #1645 — never background-query a non-positive number (a --notGit local build's negative sentinel); it can only fail against `gh`.
                 .Distinct()
                 .ToList();
@@ -4581,6 +4706,14 @@ namespace BuildConsole.Controls
                     _ = Dispatcher.BeginInvoke(new Action(() =>
                     {
                         UpdateTooltipForIssue(issueNumber);
+                        // Git #2062 — a blocker ghost card shows "(fetching title…)" until its
+                        // real title lands in _issueTitleCache; if this fetch was for a declared
+                        // blocker, redraw the queue now so the card picks it up immediately
+                        // instead of waiting for the next poll tick.
+                        if (_lastItems != null && _lastItems.Any(i => CleanBlockers(i).Contains(issueNumber)))
+                        {
+                            try { RenderQueue(ApplyFilter(_lastItems)); } catch { }
+                        }
                     }));
                 }
                 else if (result.NotFound)
