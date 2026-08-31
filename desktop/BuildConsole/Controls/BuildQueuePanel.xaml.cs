@@ -3266,7 +3266,10 @@ namespace BuildConsole.Controls
             mainStack.Children.Add(titleBlock);
 
             // ── Third Row: Extra info (blocker details, exit code) ──
-            if (node.BlockedBy.Count > 0 && item.Status == "queued")
+            // Git #2070: gate on the same live-filtered set BuildWaitingOnText renders,
+            // not the raw declared list — otherwise this row can render with an empty
+            // "waiting on" string once every declared blocker has closed.
+            if (LiveBlockedBy(node).Count > 0 && item.Status == "queued")
             {
                 mainStack.Children.Add(new TextBlock
                 {
@@ -3364,7 +3367,7 @@ namespace BuildConsole.Controls
                 Epic = node.Item.GithubNumber.HasValue ? FormatIssueRef(node.Item.GithubNumber.Value) : "",
                 Task = node.Item.Title,
                 Status = node.Item.Status,
-                StatusDetails = node.BlockedBy.Count > 0
+                StatusDetails = LiveBlockedBy(node).Count > 0
                     ? CapitalizeFirst(BuildWaitingOnText(node, node.Item))
                     : "",
             });
@@ -3385,7 +3388,23 @@ namespace BuildConsole.Controls
         {
             if (item != null && (_watcher?.HeldBlockerReasons.TryGetValue(item.Id, out var reason) ?? false))
                 return reason;
-            return $"waiting on {string.Join(", ", node.BlockedBy.Select(FormatIssueRef))}";
+            return $"waiting on {string.Join(", ", LiveBlockedBy(node).Select(FormatIssueRef))}";
+        }
+
+        /// <summary>
+        /// Git #2070 — <see cref="IsGenuinelyBlocked"/> already filters a node's declared
+        /// blockers against the live <see cref="_openIssues"/> set before deciding the
+        /// 🔒 BLOCKED badge; <see cref="BuildWaitingOnText"/> was reading <c>node.BlockedBy</c>
+        /// (raw declared blockers) directly, so once a blocker closed the badge correctly
+        /// cleared but the "waiting on #N" text kept naming the closed issue. Applies the
+        /// exact same live filter here so badge and text can never disagree. Cold start
+        /// (_openIssues == null) falls back to the raw declared list, matching
+        /// IsGenuinelyBlocked's own fail-safe.
+        /// </summary>
+        private List<int> LiveBlockedBy(QueueGraphNode node)
+        {
+            if (_openIssues == null) return node.BlockedBy;
+            return node.BlockedBy.Where(b => _openIssues.Contains(b)).ToList();
         }
 
         private static string CapitalizeFirst(string s) =>
