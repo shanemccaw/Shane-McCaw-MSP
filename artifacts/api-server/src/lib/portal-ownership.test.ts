@@ -21,6 +21,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  assignEventType,
   buildSources,
   crObject,
   emailIndex,
@@ -36,6 +37,7 @@ import {
   sidesFor,
   toWireAssignment,
   toWireDelegation,
+  toWireEvent,
   toWirePerson,
   toWireRow,
   type OwnObjectType,
@@ -350,5 +352,42 @@ describe("toWireRow", () => {
     expect(
       toWireRow({ rowId: "cov-x", source: "coverage", objType: null, name: null, sub: null }),
     ).toEqual({ rowId: "cov-x", source: "coverage", objType: "", name: "", sub: "" });
+  });
+});
+
+describe("assignEventType (#1522)", () => {
+  it("is 'cleared' for an empty owner, new row or not — a gap is a gap either way", () => {
+    expect(assignEventType("", false)).toBe("cleared");
+    expect(assignEventType("", true)).toBe("cleared");
+  });
+  it("is 'assigned' the first time a real holder appears in the cell", () => {
+    expect(assignEventType("u39", false)).toBe("assigned");
+  });
+  it("is 'reassigned' when that exact holder's row already existed", () => {
+    expect(assignEventType("u39", true)).toBe("reassigned");
+  });
+});
+
+describe("toWireEvent (#1522)", () => {
+  it("passes a stored event through and formats its timestamp", () => {
+    expect(
+      toWireEvent({
+        objectId: "CR-2026-148",
+        roleKey: "a",
+        ownerPersonId: "u7",
+        eventType: "accepted",
+        actor: "Priya",
+        reason: "",
+        createdAt: new Date(Date.UTC(2026, 9, 1)),
+      }),
+    ).toEqual({
+      objectId: "CR-2026-148",
+      roleKey: "a",
+      ownerPersonId: "u7",
+      eventType: "accepted",
+      actor: "Priya",
+      reason: "",
+      at: "1 October 2026",
+    });
   });
 });

@@ -514,6 +514,64 @@ export function toWireDelegation(row: DelegationRow): WireOwnDelegation {
   };
 }
 
+/* ────────────────────────────────────────────────────────────────────────────
+   The event log — the append-only history behind one cell holder (#1522).
+
+   `portal_ownership_assignments` above is CURRENT STATE, overwritten in place on
+   every re-assert. This is the record that survives the overwrite: every write
+   route inserts an event here in the same transaction as its current-state
+   write, and nothing ever updates or deletes a row.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/** The five things that can happen to one cell holder — nothing else is recorded. */
+export type OwnEventType = "assigned" | "accepted" | "declined" | "cleared" | "reassigned";
+
+/** One append-only event as the wire shape the history endpoint sends. */
+export interface WireOwnEvent {
+  readonly objectId: string;
+  readonly roleKey: string;
+  readonly ownerPersonId: string;
+  readonly eventType: OwnEventType;
+  readonly actor: string;
+  readonly reason: string;
+  readonly at: string;
+}
+
+export interface OwnEventRow {
+  readonly objectId: string;
+  readonly roleKey: string;
+  readonly ownerPersonId: string;
+  readonly eventType: string;
+  readonly actor: string;
+  readonly reason: string;
+  readonly createdAt: Date | string;
+}
+
+export function toWireEvent(row: OwnEventRow): WireOwnEvent {
+  return {
+    objectId: row.objectId,
+    roleKey: row.roleKey,
+    ownerPersonId: row.ownerPersonId,
+    eventType: row.eventType as OwnEventType,
+    actor: row.actor,
+    reason: row.reason,
+    at: formatOwnDate(row.createdAt),
+  };
+}
+
+/**
+ * Which event an assign write represents, given whether this exact
+ * (customer, object, role, owner) row already existed. An empty `ownerPersonId`
+ * is always `cleared` — declaring a gap — regardless of whether the gap row
+ * itself is new or being re-asserted; a non-empty owner is `assigned` the first
+ * time that holder appears in the cell and `reassigned` on every re-assert
+ * after (the same holder's provenance being overwritten).
+ */
+export function assignEventType(ownerPersonId: string, rowAlreadyExisted: boolean): OwnEventType {
+  if (!ownerPersonId) return "cleared";
+  return rowAlreadyExisted ? "reassigned" : "assigned";
+}
+
 export interface OwnRowRecord {
   readonly rowId: string;
   readonly source: string;
