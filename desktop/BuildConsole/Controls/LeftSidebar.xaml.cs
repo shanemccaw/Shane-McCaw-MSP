@@ -3309,6 +3309,16 @@ namespace BuildConsole.Controls
                 RenderChatsTree();
             };
             cm.Items.Add(miToggleProgress);
+
+            // Git #2059 — open this chat in the always-on-top floating window (Phase 1
+            // of the #2035 Global Chat Drawer). Launched WITHOUT opening the chat as a
+            // tab, so Shane can fire a quick message and keep working elsewhere.
+            var miFloat = new MenuItem { Header = "🪟 Open as Floating Window" };
+            miFloat.IsEnabled = !string.IsNullOrEmpty(chat.ClaudeUrl);
+            miFloat.Click += (_, _) =>
+                (Application.Current.MainWindow as MainWindow)?.OpenFloatingChatWindow(chat);
+            cm.Items.Add(miFloat);
+
             cm.Items.Add(new Separator());
 
             // Link / Unlink chat options (many-to-many model)

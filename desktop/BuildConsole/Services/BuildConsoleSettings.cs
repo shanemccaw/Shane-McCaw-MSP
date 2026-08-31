@@ -382,6 +382,26 @@ namespace BuildConsole.Services
         /// <summary>Last height of the LinkedIn composer floaty.</summary>
         public double LinkedInComposerHeight { get; set; } = 380;
 
+        // ── Git #2059 — Floating Chat Window (Phase 1 of the #2035 Global Chat
+        // Drawer epic). Position/size of the always-on-top single-chat floaty,
+        // persisted the same debounced %AppData% round-trip as the LinkedIn /
+        // Sticky Notes floaties above so a stray close/reopen lands where Shane
+        // left it. -1 sentinels = never positioned yet (center on first open).
+        /// <summary>Last on-screen X of the floating chat window. -1 = never positioned yet (center on first open).</summary>
+        public double FloatingChatLeft { get; set; } = -1;
+
+        /// <summary>Last on-screen Y of the floating chat window. -1 = never positioned yet (center on first open).</summary>
+        public double FloatingChatTop { get; set; } = -1;
+
+        /// <summary>Last width of the floating chat window.</summary>
+        public double FloatingChatWidth { get; set; } = 380;
+
+        /// <summary>Last height of the floating chat window.</summary>
+        public double FloatingChatHeight { get; set; } = 500;
+
+        /// <summary>Whether the floating chat window's live bridge strip was expanded when last closed. Collapsed pauses real-time capture (WebView2 throttles when hidden), so it defaults expanded.</summary>
+        public bool FloatingChatBridgeExpanded { get; set; } = true;
+
         // Git #864 — Shane: "I need you to design me a icon based popout panel
         // with web site tools like: LinkedIn, Google Analytics, Microsoft
         // Clarity... a configuration in the settings might actually be
