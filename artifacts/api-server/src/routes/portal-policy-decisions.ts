@@ -36,12 +36,25 @@
  * (typed name, server-set timestamp, statement), matching the rigor of
  * `portal-risk-register.ts`'s `accept` endpoint: server-derived timestamp and
  * IP, a sha256 signature hash, never a client-supplied signing time.
+ *
+ * ── A third clock: dependency-based clearance (#1526) ──────────────────────
+ * `reviewCadence` above is the DATE clock. Some decisions ("Guest access
+ * reviews deferred until the Entra P2 licences land") clear when a DEPENDENCY
+ * resolves, not when a date arrives — no meaningful lapse, so forcing a review
+ * date onto it would manufacture a false overdue state (#1526). The create
+ * schema below accepts EXACTLY ONE of `reviewCadence` or `clearanceCondition`
+ * — never both, never neither — matching the DB's own
+ * `policy_decisions_review_xor_clearance_chk` CHECK. `clearanceTriggerType`
+ * `license_sku` is observable (`advancePolicyClearances()` in
+ * `alert-engine.ts` watches the tenant's already-collected `/subscribedSkus`
+ * data); `manual` is not, and can only be cleared via
+ * `PATCH .../:id/clearance/resolve` below.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
-import { db, policyDecisionsTable } from "@workspace/db";
-import { and, eq, desc } from "drizzle-orm";
+import { db, policyDecisionsTable, CLEARANCE_TRIGGER_TYPES } from "@workspace/db";
+import { and, eq, desc, isNull } from "drizzle-orm";
 import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
@@ -70,13 +83,29 @@ interface WirePolicyRegisterEntry {
   readonly obligation: string;
   readonly owner: string;
   readonly ownerId: string | null;
-  readonly reviewCadence: string;
+  /** NULL for a dependency-based decision (#1526) — see `clearance*` below. */
+  readonly reviewCadence: string | null;
   readonly reviewDueAt: string | null;
-  readonly reviewState: string;
+  /** NULL for a dependency-based decision — there is no on_track/due/overdue
+   * reading for a dependency, only resolved/unresolved (`isCleared`). */
+  readonly reviewState: string | null;
   readonly compensatingControl: string;
   readonly signedBy: string;
   readonly signedAt: string;
   readonly statement: string;
+  /** The dependency in plain language, e.g. "Entra P2 licences land". NULL for
+   * a date-cycled decision. */
+  readonly clearanceCondition: string | null;
+  /** CLEARANCE_TRIGGER_TYPES: 'license_sku' (platform-observable) | 'manual'
+   * (only a human mark-resolved can clear it). NULL unless `clearanceCondition`
+   * is set. */
+  readonly clearanceTriggerType: string | null;
+  readonly clearanceTriggerSkuPartNumber: string | null;
+  readonly clearanceResolvedAt: string | null;
+  readonly clearanceResolvedNote: string | null;
+  /** True once the dependency has resolved — the decision is actionable
+   * immediately at that point, with no scheduled review to wait for (#1526). */
+  readonly isCleared: boolean;
 }
 
 function toWirePolicyRegisterEntry(row: PolicyDecisionRow): WirePolicyRegisterEntry {
@@ -88,13 +117,19 @@ function toWirePolicyRegisterEntry(row: PolicyDecisionRow): WirePolicyRegisterEn
     obligation: row.obligation,
     owner: row.owner,
     ownerId: row.ownerId ?? null,
-    reviewCadence: row.reviewCadence,
+    reviewCadence: row.reviewCadence ?? null,
     reviewDueAt: iso(row.reviewDueAt),
-    reviewState: row.reviewState,
+    reviewState: row.reviewState ?? null,
     compensatingControl: row.compensatingControl,
     signedBy: row.signedBy,
     signedAt: iso(row.signedAt) as string,
     statement: row.statement,
+    clearanceCondition: row.clearanceCondition ?? null,
+    clearanceTriggerType: row.clearanceTriggerType ?? null,
+    clearanceTriggerSkuPartNumber: row.clearanceTriggerSkuPartNumber ?? null,
+    clearanceResolvedAt: iso(row.clearanceResolvedAt),
+    clearanceResolvedNote: row.clearanceResolvedNote ?? null,
+    isCleared: row.clearanceResolvedAt !== null,
   };
 }
 
@@ -143,19 +178,67 @@ router.get(
  * the same reason recorded on the accept endpoint — the person signing may
  * legitimately be signing in a role, and the account that signed is recorded
  * separately (`req.user.id`, in the log line below).
+ *
+ * `reviewCadence` XOR `clearanceCondition` (#1526) — a decision is either on a
+ * date cycle or cleared by a dependency, never both, matching the DB's own
+ * `policy_decisions_review_xor_clearance_chk`. `clearanceTriggerSkuPartNumber`
+ * is required exactly when `clearanceTriggerType === 'license_sku'` (that is
+ * the SKU `advancePolicyClearances()` watches for) and forbidden for `manual`
+ * (there is nothing for the platform to watch).
  */
-const createSchema = z.object({
-  title: z.string().trim().min(2, "Describe the decision").max(300),
-  obligation: z.string().trim().min(2, "Cite the obligation this decision responds to").max(300),
-  pillar: z.string().trim().max(100).optional(),
-  owner: z.string().trim().min(1, "Assign an owner").max(200),
-  ownerId: z.string().trim().max(200).optional(),
-  reviewCadence: z.string().trim().min(1, "Set a review cadence").max(100),
-  compensatingControl: z.string().trim().min(1, "Describe the compensating control").max(2000),
-  signerName: z.string().trim().min(2, "Type your full name to sign this decision").max(200),
-  confirmed: z.literal(true),
-  statement: z.string().trim().min(1).max(2000),
-});
+const createSchema = z
+  .object({
+    title: z.string().trim().min(2, "Describe the decision").max(300),
+    obligation: z.string().trim().min(2, "Cite the obligation this decision responds to").max(300),
+    pillar: z.string().trim().max(100).optional(),
+    owner: z.string().trim().min(1, "Assign an owner").max(200),
+    ownerId: z.string().trim().max(200).optional(),
+    reviewCadence: z.string().trim().min(1).max(100).optional(),
+    clearanceCondition: z.string().trim().min(1).max(500).optional(),
+    clearanceTriggerType: z.enum(CLEARANCE_TRIGGER_TYPES).optional(),
+    clearanceTriggerSkuPartNumber: z.string().trim().min(1).max(100).optional(),
+    compensatingControl: z.string().trim().min(1, "Describe the compensating control").max(2000),
+    signerName: z.string().trim().min(2, "Type your full name to sign this decision").max(200),
+    confirmed: z.literal(true),
+    statement: z.string().trim().min(1).max(2000),
+  })
+  .superRefine((data, ctx) => {
+    const dateBased = data.reviewCadence !== undefined;
+    const dependencyBased = data.clearanceCondition !== undefined;
+    if (dateBased === dependencyBased) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Set exactly one of reviewCadence (a date cycle) or clearanceCondition (a dependency)",
+        path: ["reviewCadence"],
+      });
+      return;
+    }
+    if (dependencyBased) {
+      if (data.clearanceTriggerType === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "clearanceTriggerType is required when clearanceCondition is set",
+          path: ["clearanceTriggerType"],
+        });
+        return;
+      }
+      const needsSku = data.clearanceTriggerType === "license_sku";
+      if (needsSku && data.clearanceTriggerSkuPartNumber === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "clearanceTriggerSkuPartNumber is required when clearanceTriggerType is 'license_sku'",
+          path: ["clearanceTriggerSkuPartNumber"],
+        });
+      }
+      if (!needsSku && data.clearanceTriggerSkuPartNumber !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "clearanceTriggerSkuPartNumber is only meaningful when clearanceTriggerType is 'license_sku'",
+          path: ["clearanceTriggerSkuPartNumber"],
+        });
+      }
+    }
+  });
 
 router.post(
   "/portal/policy-register",
@@ -196,6 +279,12 @@ router.post(
         ].join(" "))
         .digest("hex");
 
+      // #1526: date-based rows get reviewState "on_track" (nothing has computed
+      // a due date yet, matching this schema's existing convention); a
+      // dependency-based row gets no reviewState at all — there is no
+      // on_track/due/overdue reading for a dependency, only resolved/unresolved.
+      const dependencyBased = parsed.data.clearanceCondition !== undefined;
+
       const [created] = await db
         .insert(policyDecisionsTable)
         .values({
@@ -206,7 +295,11 @@ router.post(
           pillar: parsed.data.pillar ?? null,
           owner: parsed.data.owner,
           ownerId: parsed.data.ownerId ?? null,
-          reviewCadence: parsed.data.reviewCadence,
+          reviewCadence: parsed.data.reviewCadence ?? null,
+          reviewState: dependencyBased ? null : "on_track",
+          clearanceCondition: parsed.data.clearanceCondition ?? null,
+          clearanceTriggerType: parsed.data.clearanceTriggerType ?? null,
+          clearanceTriggerSkuPartNumber: parsed.data.clearanceTriggerSkuPartNumber ?? null,
           compensatingControl: parsed.data.compensatingControl,
           signedBy: parsed.data.signerName,
           signedAt,
@@ -231,6 +324,117 @@ router.post(
       res.status(201).json({ decision: toWirePolicyRegisterEntry(created) });
     } catch (err: unknown) {
       log.error({ err, customerId }, "POST /portal/policy-register failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+/**
+ * Manual mark-resolved for a dependency-based decision (#1526): the "cannot be
+ * observed" half of the two ways a clearance clears. Only ever valid for
+ * `clearanceTriggerType === 'manual'` — a `'license_sku'` row is the platform's
+ * own to resolve (`advancePolicyClearances()` in `alert-engine.ts`); forcing a
+ * manual override there would let a human clear a condition the platform
+ * itself is supposed to be the source of truth for, so it 409s instead.
+ */
+const resolveClearanceSchema = z.object({
+  note: z.string().trim().min(1, "Say how this was confirmed").max(2000),
+});
+
+router.patch(
+  "/portal/policy-register/:id/clearance/resolve",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response) => {
+    const customerId = resolveCustomerId(req);
+    const id = Number(req.params.id);
+    try {
+      if (customerId === null) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+      if (!Number.isInteger(id)) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Policy decision not found");
+        return;
+      }
+      const scope = await resolveTenantScope(customerId);
+      if (!scope) {
+        apiError(res, 403, ApiErrorCode.FORBIDDEN, "Customer context required");
+        return;
+      }
+
+      const parsed = resolveClearanceSchema.safeParse(req.body);
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid clearance resolution", parsed.error.flatten());
+        return;
+      }
+
+      // Scoped read first, same reasoning as portal-risk-register.ts's accept
+      // endpoint: a decision belonging to another tenant 404s exactly like one
+      // that does not exist.
+      const [existing] = await db
+        .select()
+        .from(policyDecisionsTable)
+        .where(
+          and(
+            eq(policyDecisionsTable.id, id),
+            eq(policyDecisionsTable.mspId, scope.mspId),
+            eq(policyDecisionsTable.tenantId, scope.tenantId),
+          ),
+        )
+        .limit(1);
+
+      if (!existing) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "Policy decision not found");
+        return;
+      }
+      if (existing.clearanceCondition === null) {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "This decision has no dependency clearance to resolve");
+        return;
+      }
+      if (existing.clearanceTriggerType !== "manual") {
+        apiError(
+          res,
+          409,
+          ApiErrorCode.CONFLICT,
+          "This decision's dependency is platform-observable and clears on its own — it cannot be marked resolved by hand",
+        );
+        return;
+      }
+      if (existing.clearanceResolvedAt !== null) {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "This decision's dependency has already been resolved");
+        return;
+      }
+
+      const resolvedAt = new Date();
+      const updated = await db
+        .update(policyDecisionsTable)
+        .set({
+          clearanceResolvedAt: resolvedAt,
+          clearanceResolvedNote: parsed.data.note,
+          updatedAt: resolvedAt,
+        })
+        .where(
+          and(
+            eq(policyDecisionsTable.id, id),
+            // The real race guard — mirrors the accept endpoint's isNull guard.
+            isNull(policyDecisionsTable.clearanceResolvedAt),
+          ),
+        )
+        .returning();
+
+      if (updated.length === 0) {
+        apiError(res, 409, ApiErrorCode.CONFLICT, "This decision's dependency has already been resolved");
+        return;
+      }
+
+      log.info(
+        { customerId, mspId: scope.mspId, policyDecisionId: id, userId: typeof req.user?.id === "number" ? req.user.id : null },
+        "policy decision dependency clearance manually resolved",
+      );
+
+      res.json({ decision: toWirePolicyRegisterEntry(updated[0]) });
+    } catch (err: unknown) {
+      log.error({ err, customerId, id }, "PATCH /portal/policy-register/:id/clearance/resolve failed");
       apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
     }
   },

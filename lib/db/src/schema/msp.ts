@@ -3451,6 +3451,12 @@ export const MSP_ALERT_CONDITION_TYPES = [
                        // has lapsed — the ACCEPTANCE stays active/valid; only
                        // the review is overdue (#1513). Count-based, evaluated
                        // by the same polling evaluateRules() loop.
+  "policy_clearance_resolved", // policy_decisions rows whose dependency-based
+                       // clearance (#1526) was just observed to resolve (a
+                       // watched licence SKU appeared in the tenant) — a
+                       // decision becoming actionable, not a failure. Neutral
+                       // "info" severity, same reasoning as purchase_completed.
+                       // Count-based, evaluated by the same polling loop.
 ] as const;
 export type MspAlertConditionType = typeof MSP_ALERT_CONDITION_TYPES[number];
 
@@ -7601,7 +7607,27 @@ export type InsertPsCapabilitySurveyResult = typeof psCapabilitySurveyResultsTab
  * RISK_REVIEW_STATES below) — these are genuinely the same operational
  * lanes, not a coincidence to preserve, so there is no reason to mint new enum
  * values that mean the same thing.
+ *
+ * ── A THIRD clock: dependency-based clearance (#1526) ──────────────────────
+ * `reviewCadence` / `reviewState` / `reviewDueAt` are the DATE clock — due on a
+ * schedule, and #1513's alert fires when it lapses. Some decisions clear on a
+ * **dependency resolving**, not a date arriving (example from #1526: "Guest
+ * access reviews deferred until the Entra P2 licences land"). That has no
+ * meaningful lapse — it is correct until the dependency resolves, however long
+ * that takes — so it must not be forced into the date clock by manufacturing an
+ * arbitrary review date, and it is NOT the acceptance/review split either
+ * (#1507): it is a genuinely third, independent condition.
+ *
+ * `clearanceCondition` (below) is what makes a row dependency-based rather than
+ * date-based; the two clocks are mutually exclusive on one row (enforced by the
+ * `policy_decisions_review_xor_clearance_chk` CHECK added in
+ * `2026-08-31-policy-decision-dependency-clearance-1526.sql`) — `reviewCadence`
+ * is therefore nullable, not required, unlike every other column authored at
+ * create time.
  */
+export const CLEARANCE_TRIGGER_TYPES = ["license_sku", "manual"] as const;
+export type PolicyClearanceTriggerType = (typeof CLEARANCE_TRIGGER_TYPES)[number];
+
 export const policyDecisionsTable = pgTable("policy_decisions", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
@@ -7619,20 +7645,51 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
   /** The "Sign it off" form's own `review` field — a cadence ("Quarterly",
    * "Annual"), not a date. Free text: no fixed cadence vocabulary has been
    * decided yet, and inventing one here would be exactly the kind of display
-   * vocabulary this schema's house style forbids. */
-  reviewCadence: text("review_cadence").notNull(),
+   * vocabulary this schema's house style forbids. NULL for a dependency-based
+   * decision (#1526) — see `clearanceCondition` below; a decision carries
+   * exactly one of the two clocks, never both. */
+  reviewCadence: text("review_cadence"),
   /** The "Sign it off" form's own `control` field. */
   compensatingControl: text("compensating_control").notNull(),
 
   /** POLICY_DECISION_STATES. Starts `live` — a signed decision is live the
    * moment it's created; there is no unsigned `proposed` row on this table. */
   decisionState: text("decision_state").notNull().default("live"),
-  /** RISK_REVIEW_STATES. Starts `on_track`; nothing has computed a due date
-   * from `reviewCadence` yet, so `reviewDueAt` stays null until that exists —
-   * served as null rather than a guessed date, matching this schema's rule
-   * that an unscheduled review is null, never defaulted. */
-  reviewState: text("review_state").notNull().default("on_track"),
+  /** RISK_REVIEW_STATES. Starts `on_track` for a date-based decision; nothing
+   * has computed a due date from `reviewCadence` yet, so `reviewDueAt` stays
+   * null until that exists — served as null rather than a guessed date,
+   * matching this schema's rule that an unscheduled review is null, never
+   * defaulted. NULL (not `on_track`) for a dependency-based decision (#1526):
+   * a dependency has no "on track/due/overdue" reading, so forcing this
+   * vocabulary onto it would manufacture a false operational state. */
+  reviewState: text("review_state"),
   reviewDueAt: timestamp("review_due_at", { withTimezone: true }),
+
+  // ── Dependency-based clearance — the third clock (#1526) ──────────────────
+  /** The dependency in plain language, e.g. "Entra P2 licences land". Non-null
+   * is what makes this row dependency-based rather than date-based; NULL for
+   * every ordinary date-cycled decision. */
+  clearanceCondition: text("clearance_condition"),
+  /** CLEARANCE_TRIGGER_TYPES. `license_sku` — the platform can observe this
+   * itself (a licence appearing in the tenant, via the already-collected
+   * `/subscribedSkus` data — see `advancePolicyClearances()` in
+   * `alert-engine.ts`). `manual` — nothing observable exists; only a human
+   * mark-resolved (`PATCH .../clearance/resolve`) can clear it. NULL unless
+   * `clearanceCondition` is set. */
+  clearanceTriggerType: text("clearance_trigger_type", { enum: CLEARANCE_TRIGGER_TYPES }),
+  /** The `skuPartNumber` to watch for when `clearanceTriggerType = 'license_sku'`
+   * (e.g. "AAD_PREMIUM_P2"). NULL otherwise. */
+  clearanceTriggerSkuPartNumber: text("clearance_trigger_sku_part_number"),
+  /** When the dependency actually resolved — set by `advancePolicyClearances()`
+   * for an observed trigger, or by the manual mark-resolved endpoint. NULL
+   * while still pending. Non-null is what makes the decision "actionable
+   * immediately" per #1526, rather than waiting on the next scheduled review
+   * (there is no scheduled review on this clock to wait for). */
+  clearanceResolvedAt: timestamp("clearance_resolved_at", { withTimezone: true }),
+  /** How it resolved — the auto-detection message ("Auto-detected: AAD_PREMIUM_P2
+   * present in tenant, collected <date>.") or the human's own note on a manual
+   * mark-resolved. NULL while unresolved. */
+  clearanceResolvedNote: text("clearance_resolved_note"),
 
   /** The name the customer TYPED at sign-off — same rigor as
    * `msp_risk_decisions.clientApprover.name` / the accept flow's `fullName`. */

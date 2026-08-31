@@ -202,8 +202,11 @@ export function matchIntuneWireSignature(
 const FULL_INTUNE_PLAN_PREFIXES = ["INTUNE_A", "INTUNE_EDU", "INTUNE_SMBIZ", "INTUNE_P"] as const;
 const BASIC_MDM_PLAN_NAMES = ["INTUNE_O365"] as const;
 
-/** The monitor checks that read `/subscribedSkus`, in preference order. */
-const SUBSCRIBED_SKU_CHECK_KEYS = [
+/** The monitor checks that read `/subscribedSkus`, in preference order.
+ * Exported for `advancePolicyClearances()` (#1526, `alert-engine.ts`), which
+ * needs the same already-collected data to detect a watched SKU landing in a
+ * tenant — no reason to keep a second copy of this list. */
+export const SUBSCRIBED_SKU_CHECK_KEYS = [
   "cost:entra-license-tier-distribution",
   "cost:license-count-by-sku",
   "cost:unused-unassigned-licenses",

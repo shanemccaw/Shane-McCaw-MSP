@@ -15,6 +15,10 @@
  *                          severity — a lapsed review is not a threshold
  *                          breach, it means a customer believes a risk is
  *                          being actively managed and nobody has looked.
+ *   policy_clearance_resolved — policy_decisions rows whose dependency-based
+ *                          clearance (#1526) just resolved because a watched
+ *                          licence SKU appeared in the tenant. "info"
+ *                          severity — this is good news, not a failure.
  *
  * De-duplication: a rule will not re-fire within its cooldownMinutes window
  * (checked against the most recent msp_alert_events row for that ruleId).
@@ -34,6 +38,7 @@ import { logger } from "./logger";
 const log = logger.child({ channel: "engine.alert" });
 import { sendWebPushToAdmins } from "./web-push";
 import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
+import { SUBSCRIBED_SKU_CHECK_KEYS } from "./service-availability";
 
 // ── Admin Panel base URL for deep-links ──────────────────────────────────────
 
@@ -186,6 +191,85 @@ async function advanceRiskReviewClock(): Promise<number> {
   return parseInt(res.rows[0]?.n ?? "0", 10);
 }
 
+/**
+ * The observable half of #1526's dependency-based policy clearance: for every
+ * still-unresolved `policy_decisions` row whose dependency IS something the
+ * platform can watch (`clearance_trigger_type = 'license_sku'`), check the
+ * tenant's most recently collected `/subscribedSkus` snapshot
+ * (`tenant_check_item_details`, same source `readIntuneEntitlement()` in
+ * `service-availability.ts` reads — no new Graph call) for the watched
+ * `skuPartNumber`. The moment it is present, the decision resolves
+ * immediately (#1526: "actionable immediately... rather than waiting for the
+ * next scheduled review") rather than sitting until someone happens to look.
+ *
+ * `manual`-triggered rows are untouched here — they can only be cleared by a
+ * human via `PATCH /api/portal/policy-register/:id/clearance/resolve`.
+ *
+ * Returns the count of decisions resolved in THIS run (not the total
+ * outstanding) — a resolution is a one-off event to alert on, not a standing
+ * backlog like `risk_review_overdue`'s count of currently-overdue rows.
+ */
+async function advancePolicyClearances(): Promise<number> {
+  const pending = await pool.query<{
+    id: number;
+    tenant_id: string;
+    clearance_trigger_sku_part_number: string;
+  }>(
+    `SELECT id, tenant_id, clearance_trigger_sku_part_number
+       FROM policy_decisions
+      WHERE clearance_trigger_type = 'license_sku'
+        AND clearance_resolved_at IS NULL
+        AND clearance_trigger_sku_part_number IS NOT NULL`,
+  );
+
+  let resolvedCount = 0;
+  for (const row of pending.rows) {
+    let items: unknown;
+    let collectedAt: Date | null = null;
+    try {
+      const snapshot = await pool.query<{ items: unknown; collected_at: Date }>(
+        `SELECT items, collected_at
+           FROM tenant_check_item_details
+          WHERE tenant_id = $1
+            AND status = 'ok'
+            AND items_omitted = false
+            AND check_key = ANY($2::text[])
+          ORDER BY collected_at DESC
+          LIMIT 1`,
+        [row.tenant_id, SUBSCRIBED_SKU_CHECK_KEYS as readonly string[]],
+      );
+      items = snapshot.rows[0]?.items;
+      collectedAt = snapshot.rows[0]?.collected_at ?? null;
+    } catch (err) {
+      log.warn({ err, tenantId: row.tenant_id }, "alert-engine: policy clearance SKU lookup failed");
+      continue;
+    }
+    if (!Array.isArray(items)) continue;
+
+    const present = (items as Array<Record<string, unknown>>).some(
+      (raw) => raw?.skuPartNumber === row.clearance_trigger_sku_part_number,
+    );
+    if (!present) continue;
+
+    const note = `Auto-detected: ${row.clearance_trigger_sku_part_number} present in tenant` +
+      (collectedAt ? `, collected ${collectedAt.toISOString()}.` : ".");
+
+    const result = await pool.query(
+      `UPDATE policy_decisions
+          SET clearance_resolved_at = NOW(), clearance_resolved_note = $1, updated_at = NOW()
+        WHERE id = $2
+          AND clearance_resolved_at IS NULL`,
+      [note, row.id],
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      resolvedCount++;
+      log.info({ policyDecisionId: row.id, tenantId: row.tenant_id, sku: row.clearance_trigger_sku_part_number }, "policy decision dependency clearance auto-resolved");
+    }
+  }
+
+  return resolvedCount;
+}
+
 async function evalJobFailureRate(windowMinutes: number): Promise<number> {
   // Count failed portal workflow runs as a proxy for background job failures
   const res = await pool.query<{ n: string }>(
@@ -210,6 +294,7 @@ async function getConditionValue(
       case "event_bus_backlog":  return await evalEventBusBacklog(windowMinutes);
       case "job_failure_rate":   return await evalJobFailureRate(windowMinutes);
       case "risk_review_overdue": return await advanceRiskReviewClock();
+      case "policy_clearance_resolved": return await advancePolicyClearances();
       default:                   return 0;
     }
   } catch (err) {
@@ -416,6 +501,8 @@ function buildSummary(conditionType: string, value: number, windowMinutes: numbe
       return `${value} background job${value !== 1 ? "s" : ""} failed in the last ${windowMinutes} minutes.`;
     case "risk_review_overdue":
       return `${value} risk acceptance review${value !== 1 ? "s are" : " is"} overdue. The acceptance${value !== 1 ? "s remain" : " remains"} active — only the review has lapsed.`;
+    case "policy_clearance_resolved":
+      return `${value} policy decision${value !== 1 ? "s" : ""} just had ${value !== 1 ? "their" : "its"} dependency clear and ${value !== 1 ? "are" : "is"} now actionable.`;
     default:
       return `Alert condition "${conditionType}" triggered with value ${value}.`;
   }
