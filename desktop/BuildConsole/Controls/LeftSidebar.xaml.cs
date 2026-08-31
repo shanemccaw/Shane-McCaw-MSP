@@ -3202,6 +3202,39 @@ namespace BuildConsole.Controls
                 }
             }
 
+            // Git #2066 — noisy "mentioned in this chat's text" pills, visually distinct
+            // (muted, no title/state lookup) from the deliberate linked-issue pills above.
+            // Only shows numbers not already covered by a real link, so the same issue
+            // never renders twice.
+            if (chat.MentionedIssueNumbers != null && chat.MentionedIssueNumbers.Count > 0)
+            {
+                var mentionedOnly = chat.MentionedIssueNumbers
+                    .Where(n => chat.AssociatedIssueNumbers == null || !chat.AssociatedIssueNumbers.Contains(n))
+                    .Distinct()
+                    .OrderBy(n => n)
+                    .ToList();
+
+                foreach (var issueNum in mentionedOnly)
+                {
+                    var mentionBorder = new Border
+                    {
+                        Background = GetBrush("MantleBrush"),
+                        CornerRadius = new CornerRadius(3),
+                        Padding = new Thickness(5, 1, 5, 1),
+                        Margin = new Thickness(0, 0, 4, 4),
+                        ToolTip = $"#{issueNum} — mentioned in this chat (auto-detected, not a deliberate link)"
+                    };
+                    mentionBorder.Child = new TextBlock
+                    {
+                        Text = $"#{issueNum}",
+                        FontSize = 10.5,
+                        Foreground = GetBrush("Subtext0Brush"),
+                        VerticalAlignment = VerticalAlignment.Center
+                    };
+                    chips.Children.Add(mentionBorder);
+                }
+            }
+
             // Render nested build reports under this chat
             var queueItems = GetQueueItems?.Invoke() ?? Array.Empty<QueueItem>();
             var chatBuilds = queueItems

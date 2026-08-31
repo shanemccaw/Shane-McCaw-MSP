@@ -17,6 +17,11 @@ namespace BuildConsole.Services
     ///   (CSP forbids inline event handlers). Now the close button is a permanent real DOM
     ///   element wired with addEventListener — it is never rebuilt via innerHTML — and only
     ///   the inner content area is updated when the tooltip refreshes.
+    ///
+    /// Git #2066 — every scan also reports the full set of #NNN numbers it finds
+    /// (BT_ISSUE_MENTIONS_SCAN, delta-only after the first report) so MainWindow can
+    /// maintain a live per-chat "every issue this chat has ever mentioned" registry —
+    /// a separate, noisy signal from the deliberate bt_chat_issues association table.
     /// </summary>
     public static class IssueMentionInjector
     {
@@ -245,6 +250,39 @@ namespace BuildConsole.Services
   /* ── Debounced scanner ────────────────────────────────────────── */
   var _timer = null;
 
+  /* Git #2066 — the full, noisy "every #NNN this chat has ever mentioned" registry.
+     Reuses this exact detector (one detector, two consumers: the underline/tooltip
+     above, and this batch report) rather than parsing the DOM a second time. Reported
+     numbers are remembered per page-load so a re-scan (streaming text, re-renders)
+     only posts the NEW delta, not the whole set again on every debounce tick. */
+  var _reportedMentionNums = {};
+
+  function conversationIdFromUrl() {
+    var m = /\/chat\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/.exec(location.pathname);
+    return m ? m[1] : null;
+  }
+
+  function reportMentionsIfAny() {
+    var convId = conversationIdFromUrl();
+    if (!convId) return;
+    var els = document.querySelectorAll('.bc-issue-mention[data-bc-num]');
+    var fresh = [];
+    for (var i = 0; i < els.length; i++) {
+      var num = parseInt(els[i].getAttribute('data-bc-num'), 10);
+      if (!num || _reportedMentionNums[num]) continue;
+      _reportedMentionNums[num] = true;
+      fresh.push(num);
+    }
+    if (fresh.length === 0) return;
+    try {
+      window.chrome.webview.postMessage(JSON.stringify({
+        type: 'BT_ISSUE_MENTIONS_SCAN',
+        conversationId: convId,
+        numbers: fresh
+      }));
+    } catch (e) {}
+  }
+
   function runScan() {
     _timer = null;
     appendTip();
@@ -260,6 +298,7 @@ namespace BuildConsole.Services
       if (ISSUE_RE.test(txt) || SQL_RE.test(txt)) batch.push(node);
     }
     batch.forEach(decorateTextNode);
+    reportMentionsIfAny();
   }
 
   function scheduleOrReset() {

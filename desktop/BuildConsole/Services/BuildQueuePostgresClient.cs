@@ -1733,6 +1733,23 @@ namespace BuildConsole.Services
                 }
             }
 
+            // 4. Git #2066 — attach the noisy auto-detected mention registry, keyed by
+            // each chat's own ClaudeUrl (already computed above at row-build time).
+            try
+            {
+                var mentionsByUrl = await GetChatIssueMentionsAsync();
+                foreach (var chat in chatsTemp)
+                {
+                    if (mentionsByUrl.TryGetValue(chat.ClaudeUrl, out var nums))
+                        chat.MentionedIssueNumbers = nums;
+                }
+            }
+            catch (PostgresException pex) when (pex.SqlState == PostgresErrorCodes.UndefinedTable)
+            {
+                // Migration not run yet — leave MentionedIssueNumbers empty rather than
+                // failing the whole Chats panel load over an optional signal.
+            }
+
             board.Chats = chatsTemp;
             return board;
         }
@@ -2059,6 +2076,74 @@ namespace BuildConsole.Services
                     }
                 }
             }
+        }
+
+        // ── RecordChatIssueMentionsAsync / PruneClosedChatIssueMentionsAsync (Git #2066) ──
+        /// <summary>
+        /// Upserts the noisy, auto-detected "every #NNN this chat has mentioned" registry
+        /// (bt_chat_mentioned_issues) — fed by IssueMentionInjector.cs's batch scan report,
+        /// NOT the deliberate bt_chat_issues association table. Keyed on the chat's own URL
+        /// text so a mention can be recorded even for a chat never explicitly linked to
+        /// anything. Safe to call repeatedly with overlapping numbers (ON CONFLICT bumps
+        /// last_seen_at only).
+        /// </summary>
+        public async Task RecordChatIssueMentionsAsync(string chatUrl, IReadOnlyCollection<int> issueNumbers)
+        {
+            if (string.IsNullOrWhiteSpace(chatUrl) || issueNumbers == null || issueNumbers.Count == 0) return;
+
+            await using var conn = await OpenAsync();
+            const string sql = @"
+                INSERT INTO bt_chat_mentioned_issues (chat_url, issue_number, first_seen_at, last_seen_at)
+                VALUES (@chatUrl, @issueNumber, NOW(), NOW())
+                ON CONFLICT (chat_url, issue_number) DO UPDATE SET last_seen_at = NOW()";
+
+            foreach (var issueNumber in issueNumbers)
+            {
+                await using var cmd = new NpgsqlCommand(sql, conn);
+                cmd.Parameters.AddWithValue("@chatUrl", chatUrl);
+                cmd.Parameters.AddWithValue("@issueNumber", issueNumber);
+                await cmd.ExecuteNonQueryAsync();
+            }
+        }
+
+        /// <summary>
+        /// Auto-removal on close (Git #2066) — deletes every tracked mention whose issue
+        /// number is not in the real open-issue set GitHub just reported. Called off the
+        /// SAME <c>LeftSidebar.GitBoardOpenIssuesRefreshed</c> event BuildWatch/BuildQueuePanel
+        /// already consume for their own closed-issue eviction — no second poll invented.
+        /// Returns the number of rows removed.
+        /// </summary>
+        public async Task<int> PruneClosedChatIssueMentionsAsync(IReadOnlyCollection<int> openIssueNumbers)
+        {
+            await using var conn = await OpenAsync();
+            const string sql = @"
+                DELETE FROM bt_chat_mentioned_issues
+                WHERE NOT (issue_number = ANY(@openNumbers))";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@openNumbers", (openIssueNumbers ?? Array.Empty<int>()).ToArray());
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
+        /// <summary>Chat-URL → tracked mention numbers, for GetBoardAsync to attach onto each BoardChat.</summary>
+        public async Task<Dictionary<string, List<int>>> GetChatIssueMentionsAsync()
+        {
+            var result = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+            await using var conn = await OpenAsync();
+            const string sql = "SELECT chat_url, issue_number FROM bt_chat_mentioned_issues";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var url = reader.GetString(0);
+                var num = reader.GetInt32(1);
+                if (!result.TryGetValue(url, out var list))
+                {
+                    list = new List<int>();
+                    result[url] = list;
+                }
+                list.Add(num);
+            }
+            return result;
         }
 
         public async Task UpdateModelAndEffortAsync(int id, string? model, string? effort, string? status = null)

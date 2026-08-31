@@ -691,6 +691,26 @@ namespace BuildConsole
             // second consumer of the exact fetch Build Watch already gets above.
             LeftSidebar.GitBoardOpenIssuesRefreshed += (s, openNumbers) => BuildQueuePanel?.ApplyOpenIssueSet(openNumbers);
 
+            // Git #2066 — third consumer of the same free open-issue set: prune any
+            // tracked chat-mention (bt_chat_mentioned_issues) whose issue number is no
+            // longer in it, i.e. the issue closed in Git since the last board refresh.
+            // Same "real close-detection mechanism already used elsewhere" the issue
+            // asked for reused, not a second poll invented for this feature.
+            LeftSidebar.GitBoardOpenIssuesRefreshed += async (s, openNumbers) =>
+            {
+                if (_queueDb == null) return;
+                try
+                {
+                    int pruned = await _queueDb.PruneClosedChatIssueMentionsAsync(openNumbers);
+                    if (pruned > 0)
+                        ActivityLog.Log("chat.issue-mention", $"Pruned {pruned} tracked mention(s) whose issue closed in Git");
+                }
+                catch (Exception ex)
+                {
+                    ActivityLog.Log("chat.issue-mention", $"Prune-on-close FAILED (will retry next board refresh): {ex.Message}");
+                }
+            };
+
             // Git #1813 — same event-piggyback pattern as the two hooks just above:
             // a Git Board refresh (manual button or startup) just proved GitHub is
             // reachable and fetched a fresh open-issue set, so ride that same
@@ -7139,6 +7159,32 @@ namespace BuildConsole
                 else if (type == "BT_UNHOVER_ISSUE")
                 {
                     // Tooltip hide is handled entirely in JS; nothing to do on the C# side.
+                }
+                // ── Git #2066: live per-chat "every #NNN this chat has mentioned" registry ──
+                else if (type == "BT_ISSUE_MENTIONS_SCAN")
+                {
+                    string? convId = Str("conversationId");
+                    if (string.IsNullOrWhiteSpace(convId)) return;
+                    if (!root.TryGetProperty("numbers", out var numsEl) || numsEl.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+
+                    var numbers = new List<int>();
+                    foreach (var x in numsEl.EnumerateArray())
+                    {
+                        if (x.ValueKind == System.Text.Json.JsonValueKind.Number && x.TryGetInt32(out var n) && n > 0)
+                            numbers.Add(n);
+                    }
+                    if (numbers.Count == 0 || _queueDb == null) return;
+
+                    string chatUrl = $"https://claude.ai/chat/{convId}";
+                    try
+                    {
+                        await _queueDb.RecordChatIssueMentionsAsync(chatUrl, numbers);
+                        ActivityLog.Log("chat.issue-mention", $"BT_ISSUE_MENTIONS_SCAN {chatUrl}: {string.Join(", ", numbers.Select(n => $"#{n}"))}");
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("chat.issue-mention", $"BT_ISSUE_MENTIONS_SCAN FAILED for {chatUrl}: {ex.Message}");
+                    }
                 }
                 else if (type == "BT_OPEN_SQL_FILE")
                 {

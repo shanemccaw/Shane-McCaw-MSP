@@ -102,6 +102,11 @@ namespace BuildConsole.Services
         public int? IssueGithubNumber { get; set; }
         /// <summary>All GitHub issue/epic/milestone numbers associated with this chat (many-to-many join table bt_chat_issues).</summary>
         public List<int> AssociatedIssueNumbers { get; set; } = new();
+        /// <summary>Git #2066 — the noisy, auto-detected "every #NNN this chat has ever mentioned"
+        /// registry (bt_chat_mentioned_issues), scraped client-side by IssueMentionInjector.cs.
+        /// Deliberately separate from <see cref="AssociatedIssueNumbers"/>: this one is many,
+        /// changing, and never authoritative. Populated only by the direct-Postgres board path.</summary>
+        public List<int> MentionedIssueNumbers { get; set; } = new();
         public string ClaudeUrl { get; set; } = "";
         public DateTime? UpdatedAt { get; set; }
         /// <summary>Soft-hidden from the default Chats panel view — the real row + all associations stay intact. Reversible via Unarchive.</summary>

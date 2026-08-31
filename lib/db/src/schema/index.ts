@@ -4421,6 +4421,33 @@ export type InsertBtChatIssue = typeof btChatIssuesTable.$inferInsert;
 export type BtChatIssue       = typeof btChatIssuesTable.$inferSelect;
 
 /**
+ * Git #2066 — the noisy, auto-detected signal: every `#NNN` a chat's own text has ever
+ * contained, scraped client-side by IssueMentionInjector.cs (Git #1253) and reported here
+ * on every debounced DOM scan. Deliberately NOT the same table as bt_chat_issues above —
+ * that one is a deliberate/authoritative association (explicit Link/Unlink actions,
+ * epic_id resolution fallback); this one is many, changing, and never authoritative.
+ * Keyed on the chat's own URL text (not a bt_chats FK) so a mention can be recorded even
+ * for a chat that has never been explicitly linked to anything. Auto-pruned by MainWindow
+ * off the same `GitBoardOpenIssuesRefreshed` open-issue-set event the rest of the app
+ * already uses to react to an issue closing.
+ */
+export const btChatMentionedIssuesTable = pgTable("bt_chat_mentioned_issues", {
+  id:              serial("id").primaryKey(),
+  /** Full https://claude.ai/chat/<uuid> — matches BoardChat.ClaudeUrl. */
+  chatUrl:         text("chat_url").notNull(),
+  issueNumber:     integer("issue_number").notNull(),
+  firstSeenAt:     timestamp("first_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt:      timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => ({
+  chatIssueUnique: uniqueIndex("bt_chat_mentioned_issues_chat_issue_unique").on(table.chatUrl, table.issueNumber),
+  chatUrlIdx:      index("bt_chat_mentioned_issues_chat_url_idx").on(table.chatUrl),
+  issueNumberIdx:  index("bt_chat_mentioned_issues_issue_number_idx").on(table.issueNumber),
+}));
+
+export type InsertBtChatMentionedIssue = typeof btChatMentionedIssuesTable.$inferInsert;
+export type BtChatMentionedIssue       = typeof btChatMentionedIssuesTable.$inferSelect;
+
+/**
  * Git #790 — Shane: "if we could really build me a true queued up build...
  * that would speed up my development time like mad." A build he's not
  * ready to launch yet (or is deliberately queuing behind another one) sits
