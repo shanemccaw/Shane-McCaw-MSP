@@ -33,6 +33,17 @@ namespace BuildConsole.Services
         public bool AlreadyTracked { get; init; }
         /// <summary>Set true only on the refresh pass that actually inserted a fresh queue row for this item.</summary>
         public bool JustAutoQueued { get; set; }
+        /// <summary>
+        /// Git #1997 — when this item DOES have a `bt_build_queue` row but that row is terminal with
+        /// no work landed (failed / canceled), the item is NOT dropped from the panel — it reappears
+        /// here carrying the dead row's status, so a build that died in the queue can never go
+        /// invisible in both places. Null on a normal Up-Next row (no dedup row, or the dedup row is
+        /// still live / already done — those are hidden, not shown).
+        /// </summary>
+        public string? TrackedTerminalStatus { get; init; }
+        /// <summary>Git #1997 — the id of the dead <see cref="TrackedTerminalStatus"/> row, so a manual
+        /// Queue click re-queues that exact row (reuseRowId) instead of inserting a duplicate.</summary>
+        public int? TrackedTerminalRowId { get; init; }
     }
 
     /// <summary>
@@ -119,11 +130,15 @@ namespace BuildConsole.Services
         /// queueable). Displayed rows always carry <c>AlreadyTracked = false</c> /
         /// <c>JustAutoQueued = false</c>, exactly as the old method's returned rows did.
         /// </summary>
-        public static async Task<List<BatterUpRow>> RefreshAsync(
+        public static async Task<(List<BatterUpRow> Rows, int SuppressedCount)> RefreshAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
             var boardItems = await gh.GetBatterUpIssuesAsync();
             var rows = new List<BatterUpRow>();
+            // Git #1997 — count of items genuinely hidden this pass because they hold a LIVE (or
+            // already-landed) queue row. Surfaced in the panel header so "nothing in this lane" and
+            // "everything in this lane is hidden" are distinguishable at a glance.
+            int suppressedCount = 0;
 
             foreach (var item in boardItems)
             {
@@ -149,15 +164,34 @@ namespace BuildConsole.Services
 
                 var (model, effort, buildSet, prompt) = parsed!.Value;
 
+                string? trackedTerminalStatus = null;
+                int? trackedTerminalRowId = null;
                 if (queueDb != null)
                 {
                     var existing = await queueDb.FindDedupCandidateAsync(item.Number, prompt);
                     if (existing != null)
                     {
-                        // Git #1808 — genuinely tracked in bt_build_queue now; the Build Queue
-                        // panel is the only place this belongs from here on, not shown here
-                        // forever with a TRACKED badge.
-                        continue;
+                        // Git #1997 — #1808 dropped ANY item with a dedup row, silently, with no way
+                        // back. Reconcile against the row's real status first: hide it ONLY while that
+                        // row is genuinely live (queued/parked/running/verifying/…) or already landed
+                        // ("done"). A row that died in the queue with no work landed (failed/canceled)
+                        // must NOT keep the item invisible — it reappears here instead, carrying the
+                        // dead status, so it is never gone from both Batter Up and the Build Queue.
+                        bool dead = string.Equals(existing.Status, "failed", StringComparison.OrdinalIgnoreCase)
+                                 || string.Equals(existing.Status, "canceled", StringComparison.OrdinalIgnoreCase);
+                        if (!dead)
+                        {
+                            suppressedCount++;
+                            log($"Batter Up #{item.Number} \"{item.Title}\" — hidden: tracked in bt_build_queue " +
+                                $"(row {existing.Id}, status={existing.Status}). {suppressedCount} tracked+hidden so far this pass.");
+                            continue;
+                        }
+
+                        // Dead row — reappear rather than vanish.
+                        trackedTerminalStatus = existing.Status;
+                        trackedTerminalRowId = existing.Id;
+                        log($"Batter Up #{item.Number} \"{item.Title}\" — reappearing: dedup row {existing.Id} is " +
+                            $"'{existing.Status}' (terminal, no work landed); shown for re-queue instead of staying hidden.");
                     }
                 }
 
@@ -175,10 +209,12 @@ namespace BuildConsole.Services
                     OpenBlockedByNumbers = openBlockedByNumbers,
                     AlreadyTracked = false,
                     JustAutoQueued = false,
+                    TrackedTerminalStatus = trackedTerminalStatus,
+                    TrackedTerminalRowId = trackedTerminalRowId,
                 });
             }
 
-            return rows;
+            return (rows, suppressedCount);
         }
 
         /// <summary>
@@ -193,14 +229,33 @@ namespace BuildConsole.Services
         /// tracked (dedup hit), or the insert failed (logged, not thrown — same stance as before).
         /// </summary>
         public static async Task<bool> QueueRowAsync(
-            BuildQueuePostgresClient? queueDb, BatterUpRow row, Action<string> log)
+            BuildQueuePostgresClient? queueDb, BatterUpRow row, Action<string> log,
+            bool allowRequeueTerminal = false)
         {
             if (queueDb == null || !row.HasBuildComment || row.Prompt == null)
                 return false;
 
             var existing = await queueDb.FindDedupCandidateAsync(row.Number, row.Prompt);
+            int? reuseRowId = null;
             if (existing != null)
-                return false; // already tracked — dedup guard against a double-click / a peer pass
+            {
+                // Git #1997 — a row that reappeared in Batter Up because its queue row died
+                // (failed/canceled) can be re-queued from here ONLY on an explicit manual click
+                // (allowRequeueTerminal), by reusing that exact terminal row (reuseRowId) rather
+                // than piling up a duplicate. This deliberately does NOT fire from free-flow
+                // auto-queue (allowRequeueTerminal=false there), so a failing build can't loop:
+                // fail → reappear → auto-requeue → fail. Any live/landed row still short-circuits.
+                bool dead = BuildQueuePostgresClient.IsTerminalStatus(existing.Status)
+                            && !string.Equals(existing.Status, "done", StringComparison.OrdinalIgnoreCase);
+                if (allowRequeueTerminal && dead)
+                {
+                    reuseRowId = existing.Id;
+                }
+                else
+                {
+                    return false; // already tracked — dedup guard against a double-click / a peer pass
+                }
+            }
 
             try
             {
@@ -212,8 +267,10 @@ namespace BuildConsole.Services
                     cwd: null,
                     githubNumber: row.Number,
                     blockedByNumbers: row.BlockedByNumbers,
-                    buildSet: row.BuildSet);
-                log($"Batter Up #{row.Number} \"{row.Title}\" — auto-queued (model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
+                    buildSet: row.BuildSet,
+                    reuseRowId: reuseRowId);
+                log($"Batter Up #{row.Number} \"{row.Title}\" — {(reuseRowId != null ? $"re-queued (reused dead row {reuseRowId})" : "auto-queued")} " +
+                    $"(model={row.Model ?? "default"}, effort={row.Effort ?? "default"}, buildSet={row.BuildSet ?? "none"}" +
                     (row.BlockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", row.BlockedByNumbers)}" : "") + ").");
                 return true;
             }
@@ -233,10 +290,10 @@ namespace BuildConsole.Services
         /// setting is on) invokes this; with the gate off the panel calls <see cref="RefreshAsync"/>
         /// alone and queues nothing.
         /// </summary>
-        public static async Task<(List<BatterUpRow> Rows, int JustQueuedCount)> RefreshAndAutoQueueAsync(
+        public static async Task<(List<BatterUpRow> Rows, int JustQueuedCount, int SuppressedCount)> RefreshAndAutoQueueAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
-            var resolved = await RefreshAsync(gh, queueDb, log);
+            var (resolved, suppressedCount) = await RefreshAsync(gh, queueDb, log);
             var rows = new List<BatterUpRow>();
             int justQueuedCount = 0;
 
@@ -257,10 +314,13 @@ namespace BuildConsole.Services
 
                 // Not queued (dedup already handled by RefreshAsync's own drop, or a queue
                 // failure that was logged, not thrown) — keep it visible, exactly as before.
+                // Git #1997 — a reappeared terminal row (TrackedTerminalStatus != null) also lands
+                // here: free-flow does NOT re-queue it (QueueRowAsync above passes no
+                // allowRequeueTerminal), so it stays visible for a manual re-queue rather than looping.
                 rows.Add(row);
             }
 
-            return (rows, justQueuedCount);
+            return (rows, justQueuedCount, suppressedCount);
         }
     }
 }

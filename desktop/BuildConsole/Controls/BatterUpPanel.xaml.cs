@@ -133,7 +133,11 @@ namespace BuildConsole.Controls
             try
             {
                 queued = await Services.BatterUpQueueService.QueueRowAsync(
-                    _db, r, msg => Services.ActivityLog.Log("batter-up", msg));
+                    _db, r, msg => Services.ActivityLog.Log("batter-up", msg),
+                    // Git #1997 — a manual Queue click on a row that reappeared because its prior
+                    // queue row died (failed/canceled) re-queues that exact row. Explicit click only;
+                    // free-flow never sets this, so a failing build can't auto-loop.
+                    allowRequeueTerminal: r.TrackedTerminalStatus != null);
             }
             catch (Exception ex)
             {
@@ -186,19 +190,21 @@ namespace BuildConsole.Controls
                 var gh = new Services.GitHubApiClient(settings.GitHubPat);
                 List<Services.BatterUpRow> rows;
                 int justQueuedCount = 0;
+                int suppressedCount = 0;
                 try
                 {
                     if (freeFlow)
                     {
-                        (rows, justQueuedCount) = await Services.BatterUpQueueService.RefreshAndAutoQueueAsync(
+                        (rows, justQueuedCount, suppressedCount) = await Services.BatterUpQueueService.RefreshAndAutoQueueAsync(
                             gh, _db, msg => Services.ActivityLog.Log("batter-up", msg));
                     }
                     else
                     {
-                        rows = await Services.BatterUpQueueService.RefreshAsync(
+                        (rows, suppressedCount) = await Services.BatterUpQueueService.RefreshAsync(
                             gh, _db, msg => Services.ActivityLog.Log("batter-up", msg));
                         Services.ActivityLog.Log("batter-up",
-                            $"Refresh (Free flow OFF — gated) — {rows.Count} board item(s) listed, none queued.");
+                            $"Refresh (Free flow OFF — gated) — {rows.Count} board item(s) listed, none queued" +
+                            (suppressedCount > 0 ? $"; {suppressedCount} tracked+hidden." : "."));
                     }
                 }
                 catch (Exception ex)
@@ -238,7 +244,12 @@ namespace BuildConsole.Controls
                 // suffix ("· gated" / "· free flow") makes a paused feed unmistakable so
                 // Shane never assumes builds are flowing when they aren't.
                 string mode = freeFlow ? "free flow" : "gated";
-                TxtCount.Text = rows.Count == 0 ? $"— none · {mode}" : $"({rows.Count}) · {mode}";
+                // Git #1997 — surface the tracked+hidden count so "nothing in this lane" (— none) is
+                // distinguishable at a glance from "everything in this lane is hidden" (— none · N
+                // tracked, hidden). Without this, a fully-suppressed lane looked identical to an empty
+                // one, which is exactly how #1994 went invisible.
+                string hidden = suppressedCount > 0 ? $" · {suppressedCount} tracked, hidden" : "";
+                TxtCount.Text = (rows.Count == 0 ? $"— none · {mode}" : $"({rows.Count}) · {mode}") + hidden;
                 TxtEmpty.Visibility = Visibility.Collapsed;
                 SetCount(rows.Count);
 
@@ -404,6 +415,13 @@ namespace BuildConsole.Controls
                     Color.FromRgb(0x21, 0x22, 0x34), Color.FromRgb(0x6C, 0x70, 0x86), Color.FromRgb(0xBA, 0xB4, 0xCD));
             if (r.IsBlocked)
                 return BuildQueuePanel.BuildStatusPill("🔒 BLOCKED",
+                    Color.FromRgb(0x3A, 0x1E, 0x26), Color.FromRgb(0xF3, 0x8B, 0xA8), Color.FromRgb(0xF3, 0x8B, 0xA8));
+            if (r.TrackedTerminalStatus != null)
+                // Git #1997 — its queue row died (failed/canceled) and it reappeared here rather than
+                // going invisible in both places. Distinct red pill so a dead build reads as needing a
+                // re-queue, not as a fresh Up-Next item.
+                return BuildQueuePanel.BuildStatusPill(
+                    string.Equals(r.TrackedTerminalStatus, "canceled", StringComparison.OrdinalIgnoreCase) ? "↺ CANCELED" : "↺ FAILED",
                     Color.FromRgb(0x3A, 0x1E, 0x26), Color.FromRgb(0xF3, 0x8B, 0xA8), Color.FromRgb(0xF3, 0x8B, 0xA8));
             if (r.JustAutoQueued)
                 return BuildQueuePanel.BuildStatusPill("✨ QUEUED",
