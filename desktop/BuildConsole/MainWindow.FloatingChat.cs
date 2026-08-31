@@ -38,13 +38,23 @@ namespace BuildConsole
                     return;
                 }
 
-                var win = new FloatingChatWindow(chat, this)
-                {
-                    Owner = this
-                };
+                // Git #2074 — deliberately NOT Owner = this. An owned window's
+                // activation/z-order is coupled to its owner in WPF, which is why
+                // interacting with the floaty was pulling MainWindow (and Build Watch,
+                // also owned by MainWindow) into view — defeating the point of a
+                // lightweight always-on-top window meant to stay out of the way.
+                // ForceTopmost() already handles always-on-top independently via
+                // SetWindowPos(HWND_TOPMOST). The only real behavior Owner provided that
+                // still needs replacing is auto-close-with-app, so that's done explicitly
+                // below via MainWindow's own Closed event instead.
+                var win = new FloatingChatWindow(chat, this);
                 win.Closed += (_, _) =>
                 {
                     if (ReferenceEquals(_floatingChatWindow, win)) _floatingChatWindow = null;
+                };
+                this.Closed += (_, _) =>
+                {
+                    try { if (win.IsLoaded) win.Close(); } catch { }
                 };
                 _floatingChatWindow = win;
                 win.Show();
