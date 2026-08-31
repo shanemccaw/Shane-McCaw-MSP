@@ -98,6 +98,66 @@
       "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
       "body": { "objectId": "{{crCode}}", "roleKey": "c", "ownerPersonId": "{{crOwnerId}}" },
       "expect": { "status": 200, "jsonPath": "$.assignment.acceptance", "value": "" }
+    },
+    {
+      "name": "API10 (#1517) -- a SECOND, distinct holder joins the same Consulted cell (the gap owner \"\" is itself a valid distinct holder under the #1515 unique key). It is appended at the END of the cell's precedence rather than replacing API8's holder -- order 1, not 0.",
+      "sessionTag": "1517-reorder",
+      "method": "POST",
+      "path": "/api/portal/ownership/assign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "objectId": "{{crCode}}", "roleKey": "c", "ownerPersonId": "" },
+      "expect": { "status": 200, "jsonPath": "$.assignment.order", "value": 1 }
+    },
+    {
+      "name": "API11 (#1517) -- re-asserting API8's ORIGINAL holder (same objectId/roleKey/ownerPersonId) overwrites that row's provenance but leaves its precedence exactly where it was -- still order 0, not bumped to the end.",
+      "sessionTag": "1517-reorder",
+      "method": "POST",
+      "path": "/api/portal/ownership/assign",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "objectId": "{{crCode}}", "roleKey": "c", "ownerPersonId": "{{crOwnerId}}" },
+      "expect": { "status": 200, "jsonPath": "$.assignment.order", "value": 0 }
+    },
+    {
+      "name": "API12 (#1517) -- REORDER: flip the cell's precedence so the gap holder \"\" leads and the real person is second. Precedence only -- this changes nothing about who may act, only the informational order.",
+      "sessionTag": "1517-reorder",
+      "method": "POST",
+      "path": "/api/portal/ownership/reorder",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "objectId": "{{crCode}}", "roleKey": "c", "order": ["", "{{crOwnerId}}"] },
+      "expect": { "status": 200, "jsonPath": "$.ok", "value": true }
+    },
+    {
+      "name": "API13 (#1517) -- REORDER PERSISTED: read the overlay back and confirm the gap holder is now rank 0 for this cell -- the reorder wrote through to the same table the GET reads, not just to the response it echoed.",
+      "sessionTag": "1517-reorder",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.overlay.assignments[?(@.objectId=='{{crCode}}' && @.roleKey=='c' && @.ownerPersonId=='')].order",
+        "value": 0
+      }
+    },
+    {
+      "name": "API14 (#1517) -- ...and the real person's holder in that same cell moved to rank 1, so the reorder is a genuine swap, not both rows independently defaulting to 0.",
+      "sessionTag": "1517-reorder",
+      "method": "GET",
+      "path": "/api/portal/ownership",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": {
+        "status": 200,
+        "jsonPath": "$.overlay.assignments[?(@.objectId=='{{crCode}}' && @.roleKey=='c' && @.ownerPersonId=='{{crOwnerId}}')].order",
+        "value": 1
+      }
+    },
+    {
+      "name": "API15 (#1517) -- a reorder that omits one of the cell's real current holders is rejected rather than silently corrupting the omitted row's rank.",
+      "sessionTag": "1517-reorder",
+      "method": "POST",
+      "path": "/api/portal/ownership/reorder",
+      "headers": { "Authorization": "Bearer {{authToken}}", "Content-Type": "application/json" },
+      "body": { "objectId": "{{crCode}}", "roleKey": "c", "order": ["{{crOwnerId}}"] },
+      "expect": { "status": 400 }
     }
   ],
   "uiSteps": [

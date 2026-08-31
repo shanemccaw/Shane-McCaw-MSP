@@ -433,6 +433,14 @@ export interface WireOwnAssignment {
   readonly setBy: string;
   readonly setAt: string;
   readonly setWhy: string;
+  /**
+   * Precedence within this (objectId, roleKey) cell — 0 is first/primary, 1 is
+   * second, and so on (#1517). Informational only: every holder in a cell has
+   * identical authority, and nothing reads this to activate, escalate or route
+   * — it exists so the UI can render "primary / second / third" and so a
+   * customer can reorder a cell (`POST /portal/ownership/reorder`) explicitly.
+   */
+  readonly order: number;
 }
 
 /** One stored handover as the wire shape the overlay sends. */
@@ -472,6 +480,7 @@ export interface AssignmentRow {
   readonly setBy: string | null;
   readonly setAt: string | null;
   readonly setWhy: string | null;
+  readonly orderRank?: number | null;
 }
 
 export function toWireAssignment(row: AssignmentRow): WireOwnAssignment {
@@ -483,6 +492,7 @@ export function toWireAssignment(row: AssignmentRow): WireOwnAssignment {
     setBy: row.setBy ?? "",
     setAt: row.setAt ?? "",
     setWhy: row.setWhy ?? "",
+    order: row.orderRank ?? 0,
   };
 }
 

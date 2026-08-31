@@ -6502,6 +6502,20 @@ export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignm
   setBy: text("set_by").notNull().default(""),
   setAt: text("set_at").notNull().default(""),
   setWhy: text("set_why").notNull().default(""),
+  /**
+   * Precedence within one (object, role) cell — primary/second/third, etc.
+   * (#1517). PRECEDENCE ONLY: every holder in a cell has identical authority: the
+   * primary handing work to the third in line ("Rodney, go sign that RBD") is
+   * normal, not an exception. There is no succession/activation/timeout logic
+   * anywhere that reads this column — it exists solely so the UI can render a
+   * stable "who's first" order and so a customer can reorder it explicitly
+   * (`POST /portal/ownership/reorder`) without losing a row's acceptance/
+   * provenance, which a delete-and-reinsert would. Assigning a NEW holder to a
+   * cell appends at the end (max + 1 for that cell); re-asserting an existing
+   * holder leaves their rank untouched. Not unique — a reorder writes ranks
+   * transactionally but two ranks briefly existing is not a correctness bug here.
+   */
+  orderRank: integer("order_rank").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
@@ -6510,9 +6524,8 @@ export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignm
   // does not survive practice — NASA runs three A's on M365 — so R, A, C and I are
   // all potentially many. The unique key therefore carries `ownerPersonId`: it still
   // forbids the SAME holder appearing twice in one cell, but permits distinct holders
-  // to co-exist. Ordering of A holders (primary/second/third — informational only,
-  // #1517) is preserved by insertion order via the `id` serial, which the read orders
-  // by. The `""` gap value is itself a valid distinct holder under this key.
+  // to co-exist. Precedence within a cell is `orderRank` (#1517), not insertion order.
+  // The `""` gap value is itself a valid distinct holder under this key.
   uniqueIndex("portal_ownership_assignments_customer_object_role_owner_idx").on(
     t.customerId,
     t.objectId,

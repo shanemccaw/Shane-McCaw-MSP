@@ -308,6 +308,31 @@ describe("toWireAssignment", () => {
       setBy: "",
       setAt: "",
       setWhy: "",
+      order: 0,
+    });
+  });
+
+  it("passes the stored precedence through (#1517) — a missing orderRank defaults to 0, not to a truthy default", () => {
+    expect(
+      toWireAssignment({
+        objectId: "CR-2026-148",
+        roleKey: "a",
+        ownerPersonId: "u7",
+        acceptance: "pending",
+        setBy: "Priya",
+        setAt: "1 October 2026",
+        setWhy: "Changed on the ownership page",
+        orderRank: 2,
+      }),
+    ).toEqual({
+      objectId: "CR-2026-148",
+      roleKey: "a",
+      ownerPersonId: "u7",
+      acceptance: "pending",
+      setBy: "Priya",
+      setAt: "1 October 2026",
+      setWhy: "Changed on the ownership page",
+      order: 2,
     });
   });
 });

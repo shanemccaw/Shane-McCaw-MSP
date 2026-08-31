@@ -99,7 +99,7 @@ import {
   servicesTable,
   usersTable,
 } from "@workspace/db";
-import { and, asc, eq, gt, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
 
 import { requireRole, type AuthUser } from "../middlewares/requireAuth";
 import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
@@ -325,10 +325,13 @@ router.get(
             setBy: portalOwnershipAssignmentsTable.setBy,
             setAt: portalOwnershipAssignmentsTable.setAt,
             setWhy: portalOwnershipAssignmentsTable.setWhy,
+            orderRank: portalOwnershipAssignmentsTable.orderRank,
           })
           .from(portalOwnershipAssignmentsTable)
           .where(eq(portalOwnershipAssignmentsTable.customerId, customerId))
-          .orderBy(asc(portalOwnershipAssignmentsTable.id)),
+          // Precedence within a cell is `orderRank` (#1517), not insertion order —
+          // `id` is only the tiebreaker for two holders inserted at the same rank.
+          .orderBy(asc(portalOwnershipAssignmentsTable.orderRank), asc(portalOwnershipAssignmentsTable.id)),
         db
           .select({
             fromPersonId: portalOwnershipDelegationsTable.fromPersonId,
@@ -444,6 +447,12 @@ function actingName(req: Request): string {
  * provenance/acceptance. Acceptance follows the client's own rules
  * (`initialAcceptance`). The conflict target must match that four-column unique
  * index exactly, or Postgres rejects the ON CONFLICT clause.
+ *
+ * A NEW holder is appended to the end of their cell's precedence (#1517):
+ * `orderRank` is computed in the same INSERT as one-past that cell's current
+ * max, atomic with the insert itself. Re-asserting an EXISTING holder leaves
+ * their rank exactly where it was — `orderRank` is deliberately absent from the
+ * conflict's `set`, so overwriting provenance never reshuffles precedence.
  */
 router.post(
   "/portal/ownership/assign",
@@ -465,9 +474,23 @@ router.post(
     const setAt = formatOwnDate(new Date());
 
     try {
-      await db
+      const [row] = await db
         .insert(portalOwnershipAssignmentsTable)
-        .values({ customerId, objectId, roleKey, ownerPersonId, acceptance, setBy, setAt, setWhy: WRITE_WHY })
+        .values({
+          customerId,
+          objectId,
+          roleKey,
+          ownerPersonId,
+          acceptance,
+          setBy,
+          setAt,
+          setWhy: WRITE_WHY,
+          orderRank: sql`(SELECT COALESCE(MAX(${portalOwnershipAssignmentsTable.orderRank}), -1) + 1
+            FROM ${portalOwnershipAssignmentsTable}
+            WHERE ${portalOwnershipAssignmentsTable.customerId} = ${customerId}
+              AND ${portalOwnershipAssignmentsTable.objectId} = ${objectId}
+              AND ${portalOwnershipAssignmentsTable.roleKey} = ${roleKey})`,
+        })
         .onConflictDoUpdate({
           target: [
             portalOwnershipAssignmentsTable.customerId,
@@ -476,12 +499,22 @@ router.post(
             portalOwnershipAssignmentsTable.ownerPersonId,
           ],
           set: { acceptance, setBy, setAt, setWhy: WRITE_WHY, updatedAt: new Date() },
-        });
+        })
+        .returning({ orderRank: portalOwnershipAssignmentsTable.orderRank });
 
       log.info({ customerId, objectId, roleKey, hasOwner: !!ownerPersonId }, "portal ownership cell assigned");
       res.json({
         ok: true,
-        assignment: toWireAssignment({ objectId, roleKey, ownerPersonId, acceptance, setBy, setAt, setWhy: WRITE_WHY }),
+        assignment: toWireAssignment({
+          objectId,
+          roleKey,
+          ownerPersonId,
+          acceptance,
+          setBy,
+          setAt,
+          setWhy: WRITE_WHY,
+          orderRank: row?.orderRank ?? 0,
+        }),
       });
     } catch (err) {
       log.error(
@@ -489,6 +522,85 @@ router.post(
         "portal ownership assign failed",
       );
       res.status(500).json({ error: "That assignment could not be saved." });
+    }
+  },
+);
+
+/**
+ * Reorder the holders of one matrix cell — precedence only (#1517). `order` is
+ * the FULL new sequence of `ownerPersonId`s for this (objectId, roleKey) cell,
+ * primary first. It must name exactly the cell's current holders, no more and
+ * no fewer: a partial list would leave the rows it omits at a stale rank
+ * relative to the ones it moved, which is not a reorder, it's corruption of the
+ * ones left out. Every holder in a cell carries identical authority regardless
+ * of rank — this endpoint changes nothing about who MAY act, only the
+ * informational order the UI renders them in.
+ */
+router.post(
+  "/portal/ownership/reorder",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = scopedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const objectId = bodyStr(body.objectId);
+    const roleKeyRaw = body.roleKey;
+    const orderRaw = body.order;
+    if (!objectId || !isOwnRoleKey(roleKeyRaw) || !Array.isArray(orderRaw) || orderRaw.length === 0) {
+      res.status(400).json({ error: "objectId, a valid roleKey (r|a|c|i) and a non-empty order array are required" });
+      return;
+    }
+    const roleKey: OwnRoleKey = roleKeyRaw;
+    const order = orderRaw.map((v) => bodyStr(v));
+    if (order.some((id) => !id) || new Set(order).size !== order.length) {
+      res.status(400).json({ error: "order must be distinct, non-empty ownerPersonIds" });
+      return;
+    }
+
+    try {
+      const existing = await db
+        .select({ ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId })
+        .from(portalOwnershipAssignmentsTable)
+        .where(
+          and(
+            eq(portalOwnershipAssignmentsTable.customerId, customerId),
+            eq(portalOwnershipAssignmentsTable.objectId, objectId),
+            eq(portalOwnershipAssignmentsTable.roleKey, roleKey),
+          ),
+        );
+      const existingIds = new Set(existing.map((r) => r.ownerPersonId));
+      const orderIds = new Set(order);
+      const sameSet = existingIds.size === orderIds.size && [...existingIds].every((id) => orderIds.has(id));
+      if (!sameSet) {
+        res.status(400).json({ error: "order must name exactly this cell's current holders" });
+        return;
+      }
+
+      await db.transaction(async (tx) => {
+        for (let i = 0; i < order.length; i++) {
+          await tx
+            .update(portalOwnershipAssignmentsTable)
+            .set({ orderRank: i, updatedAt: new Date() })
+            .where(
+              and(
+                eq(portalOwnershipAssignmentsTable.customerId, customerId),
+                eq(portalOwnershipAssignmentsTable.objectId, objectId),
+                eq(portalOwnershipAssignmentsTable.roleKey, roleKey),
+                eq(portalOwnershipAssignmentsTable.ownerPersonId, order[i]!),
+              ),
+            );
+        }
+      });
+
+      log.info({ customerId, objectId, roleKey, holders: order.length }, "portal ownership cell reordered");
+      res.json({ ok: true });
+    } catch (err) {
+      log.error(
+        { customerId, objectId, roleKey, err: err instanceof Error ? err.message : String(err) },
+        "portal ownership reorder failed",
+      );
+      res.status(500).json({ error: "That order could not be saved." });
     }
   },
 );
