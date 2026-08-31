@@ -172,16 +172,47 @@ namespace BuildConsole.Services
                 return report;
             }
 
-            report.Step = step;
-            report.Total = Math.Max(total, step);
-            report.CurrentLabel = label?.Trim() ?? string.Empty;
+            string trimmedLabel = label?.Trim() ?? string.Empty;
+
+            // Whether this call represents a genuinely new milestone — the SAME criterion the
+            // history-dedupe below uses — decided BEFORE any state is mutated, so the effective-step
+            // derivation right after can tell "new checkpoint" from "duplicate re-report" apart.
+            bool isNewMilestone = report.History.Count == 0
+                || report.History[^1].Step != step
+                || report.History[^1].Label != trimmedLabel;
+
+            // Git #2033 — self-heal a stuck explicit step. If an agent calls reportProgress once per
+            // phase with a fresh label each time but never advances `step` (e.g. always passing
+            // step=0), this must not freeze the top progress bar while its own checklist history
+            // genuinely grows — the history already advances correctly (see the dedupe below, keyed
+            // on label change), only report.Step was wired straight to the raw, possibly-stuck agent
+            // value. Derive a floor from the count of distinct milestones already recorded (own +1
+            // when this call itself adds a new one) that never regresses and never sits below real
+            // progress already made. The raw agent value always wins when it's already correct or
+            // higher — this only kicks in when it's stuck. Left off the checklist-bridge path
+            // (isExplicit=false): that path already computes a real done/total from actual checklist
+            // state, where a genuine "0 of N done" is not a stuck value to correct.
+            int effectiveStep = step;
+            if (isExplicit)
+            {
+                int historyFloor = report.History.Count + (isNewMilestone ? 1 : 0);
+                effectiveStep = Math.Max(step, historyFloor);
+            }
+
+            report.Step = effectiveStep;
+            report.Total = Math.Max(total, effectiveStep);
+            report.CurrentLabel = trimmedLabel;
             report.LastReportedAtUtc = DateTime.UtcNow;
 
             // Mark previous steps in history as not current
             foreach (var h in report.History) h.IsCurrent = false;
 
-            // Add step to history if not duplicate of last step
-            if (report.History.Count == 0 || report.History[^1].Step != step || report.History[^1].Label != report.CurrentLabel)
+            // Add step to history if not duplicate of last step. History rows deliberately keep the
+            // RAW `step` (not `effectiveStep`) so `isNewMilestone`'s dedupe comparison above stays
+            // raw-vs-raw on the next call — comparing it against the corrected value would make every
+            // call look "new" forever once a single correction has made report.Step diverge from the
+            // agent's own raw step.
+            if (isNewMilestone)
             {
                 report.History.Add(new ProgressStepEntry
                 {
@@ -204,8 +235,11 @@ namespace BuildConsole.Services
 
             string est = report.EstimatedRemainingText;
             string src = isExplicit ? "reportProgress" : "checklist-bridge";
+            // Keep the raw agent-supplied step visible in the log even when the effective step above
+            // overrode it — this is the diagnostic trail for #2033, not just the corrected display value.
+            string stepLog = effectiveStep != step ? $"{effectiveStep}/{report.Total} (raw step={step})" : $"{effectiveStep}/{report.Total}";
             ActivityLog.Log(LogChannel,
-                $"[{src}] build #{queueItemId}: step {step}/{report.Total} ({report.Percent:0}%) — '{report.CurrentLabel}' [{est}]");
+                $"[{src}] build #{queueItemId}: step {stepLog} ({report.Percent:0}%) — '{report.CurrentLabel}' [{est}]");
 
             // Dispatch event onto UI thread
             if (Application.Current?.Dispatcher != null)

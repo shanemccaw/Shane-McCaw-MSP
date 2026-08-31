@@ -1006,10 +1006,16 @@ shaneapp://reportProgress?buildId=<int>&step=<int>&total=<int>&label=<url-encode
 | Query param | Required | Meaning |
 |-------------|----------|---------|
 | `buildId` (or `queueId`) | **yes** | Numeric ID of the running build / queue item. |
-| `step` | **yes** | 1-based index of the active milestone step (e.g. `1`, `2`, `3`). |
+| `step` | **yes** | 1-based index of the active milestone step (e.g. `1`, `2`, `3`) — **never `0`.** If you genuinely don't know your final total step count in advance, still send your best current 1-based estimate (and update `total` as it firms up) rather than defaulting to `0` as a placeholder. |
 | `total` | **yes** | Total count of planned milestones (e.g. `3` or `4`). |
 | `label` | **yes** | Human-readable phase label (e.g. "Investigation & Research"). |
 | `src` | no | Caller tag, logged in the `build.progress` channel. |
+
+**Defense-in-depth (Git #2033):** `BuildProgressTracker.Report()` also self-heals this in code —
+if `step` is ever stuck (e.g. always `0`) across successive calls with changing `label`s, the
+tracker derives an effective step from the count of distinct milestones actually recorded, so the
+top progress bar advances alongside the real, growing checklist history instead of freezing at
+0%. Send a real 1-based `step` anyway; don't rely on the self-heal as your primary path.
 
 ### CLI helper script
 Agents can invoke the lightweight helper directly from terminal:
