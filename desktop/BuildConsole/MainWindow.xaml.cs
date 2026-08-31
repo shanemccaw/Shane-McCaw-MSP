@@ -746,6 +746,16 @@ namespace BuildConsole
             };
             LeftSidebar.GetQueueItems = () => BuildQueuePanel.CurrentQueueItems;
 
+            // Git #2061 — Git Board issue-hover popover's quick-action button wires straight
+            // through to BuildQueuePanel's Quick*Async wrappers (same _watcher/_db calls the
+            // right-click menu's Start Now/Cancel/Stop/Retry/Reply items use — #2030's inventory),
+            // same delegate-property wiring pattern as GetQueueItems just above.
+            LeftSidebar.RequestDispatchBuild = item => BuildQueuePanel.QuickDispatchAsync(item);
+            LeftSidebar.RequestCancelOrStopBuild = item => BuildQueuePanel.QuickCancelOrStopAsync(item);
+            LeftSidebar.RequestRetryBuild = item => BuildQueuePanel.QuickRetryAsync(item);
+            LeftSidebar.RequestReplyToBuild = (item, message) => BuildQueuePanel.QuickReplyAsync(item, message);
+            LeftSidebar.RequestOpenBuildChat = item => BuildQueuePanel.QuickOpenChat(item);
+
             // Git #840 — clicking an issue now opens (or focuses) the native
             // GitDetailView document tab — the same tab GitDetailTabRequested
             // opens — so there is one source of truth for issue details.

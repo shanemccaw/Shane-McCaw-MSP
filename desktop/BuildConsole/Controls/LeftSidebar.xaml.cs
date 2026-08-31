@@ -287,6 +287,17 @@ namespace BuildConsole.Controls
         public Func<string?>? GetActiveChatUrl { get; set; }
         public Func<IReadOnlyList<QueueItem>>? GetQueueItems { get; set; }
 
+        /// <summary>Git #2061 — set by MainWindow to the matching BuildQueuePanel.Quick*Async
+        /// wrapper, so the Git Board issue-hover popover's single primary action button can
+        /// trigger the exact same effect as the equivalent right-click menu item (#2030's
+        /// inventory) without LeftSidebar needing a direct reference to BuildQueuePanel or its
+        /// private _watcher/_db fields. Same delegate-property pattern as GetQueueItems above.</summary>
+        public Func<QueueItem, System.Threading.Tasks.Task>? RequestDispatchBuild { get; set; }
+        public Func<QueueItem, System.Threading.Tasks.Task>? RequestCancelOrStopBuild { get; set; }
+        public Func<QueueItem, System.Threading.Tasks.Task>? RequestRetryBuild { get; set; }
+        public Func<QueueItem, string, System.Threading.Tasks.Task>? RequestReplyToBuild { get; set; }
+        public Action<QueueItem>? RequestOpenBuildChat { get; set; }
+
         private bool _isPinned = true;
 
         private void BtnPinSidebar_Click(object sender, RoutedEventArgs e)
@@ -4923,6 +4934,15 @@ namespace BuildConsole.Controls
                 };
             }
 
+            // Git #2061 — Git Board issue-hover quick-action popover. p has no explicit
+            // Background, so without one WPF only hit-tests the individual child elements
+            // (badges/title), not the gaps between them, which would make MouseEnter/Leave
+            // flicker as the cursor drifts across the row. Transparent gives the whole row a
+            // stable hit-test surface for the hover mechanism below.
+            p.Background = Brushes.Transparent;
+            header.MouseEnter += (s, e) => ScheduleIssueHoverShow(issue, header);
+            header.MouseLeave += (s, e) => ScheduleIssueHoverHide();
+
             string nodeKey = $"issue:{issue.IssueNumber}";
             var tvi = new TreeViewItem
             {
@@ -5285,6 +5305,338 @@ namespace BuildConsole.Controls
             tvi.ContextMenu = cm;
             return tvi;
         }
+
+        #region Git #2061 — Git Board issue-hover quick-action popover
+        // Replaces the old plain-tooltip "static summary card" on a Git Board issue row with a
+        // state-aware popover: same status pill/title/snippet info, plus ONE contextual primary
+        // action matching the issue's real associated build state. State → action mapping is
+        // #2061's own confirmed table:
+        //   Queued        -> Dispatch (Start Now semantics, respects the concurrency cap)
+        //   In progress / In flight -> real progress bar (BuildProgressTracker, #2033) + Cancel/Stop
+        //   Done          -> Open build
+        //   Failed        -> Retry
+        //   Has a question -> #2036 (Chats panel question/ask tracking) isn't built yet, so this
+        //                      isn't distinctly detected; a running build always offers the same
+        //                      inline-reply -> resume-session mechanism #2036 will eventually gate
+        //                      behind real detection (graceful degrade, not a second implementation).
+        //   Blocked       -> plain "waiting on #N - title" text (the #2062 ghost-entity card
+        //                      hasn't landed as of this build; this matches current behavior).
+        // Actions are dispatched through the RequestDispatchBuild/RequestCancelOrStopBuild/
+        // RequestRetryBuild/RequestReplyToBuild/RequestOpenBuildChat delegates (set by MainWindow to
+        // BuildQueuePanel's Quick*Async wrappers — see BuildQueuePanel.xaml.cs) so this reuses the
+        // exact same _watcher/_db calls as the right-click menu's Cancel/Retry/Reply/Start Now
+        // (#2030's inventory) instead of a second implementation.
+
+        private static readonly TimeSpan IssueHoverShowDelay = TimeSpan.FromMilliseconds(350);
+        private static readonly TimeSpan IssueHoverHideDelay = TimeSpan.FromMilliseconds(250);
+        private DispatcherTimer? _issueHoverShowTimer;
+        private DispatcherTimer? _issueHoverHideTimer;
+        private bool _issueHoverPointerInsidePopup;
+
+        private void ScheduleIssueHoverShow(GitIssue issue, FrameworkElement target)
+        {
+            CancelIssueHoverHide();
+            _issueHoverShowTimer?.Stop();
+            _issueHoverShowTimer = new DispatcherTimer { Interval = IssueHoverShowDelay };
+            _issueHoverShowTimer.Tick += (s, e) =>
+            {
+                _issueHoverShowTimer?.Stop();
+                ShowIssueHoverPopup(issue, target);
+            };
+            _issueHoverShowTimer.Start();
+        }
+
+        private void CancelIssueHoverShow()
+        {
+            _issueHoverShowTimer?.Stop();
+            _issueHoverShowTimer = null;
+        }
+
+        private void ScheduleIssueHoverHide()
+        {
+            CancelIssueHoverShow();
+            _issueHoverHideTimer?.Stop();
+            _issueHoverHideTimer = new DispatcherTimer { Interval = IssueHoverHideDelay };
+            _issueHoverHideTimer.Tick += (s, e) =>
+            {
+                _issueHoverHideTimer?.Stop();
+                if (!_issueHoverPointerInsidePopup)
+                    HideIssueHoverPopup();
+            };
+            _issueHoverHideTimer.Start();
+        }
+
+        private void CancelIssueHoverHide()
+        {
+            _issueHoverHideTimer?.Stop();
+            _issueHoverHideTimer = null;
+        }
+
+        private void IssueHoverPopup_MouseEnter(object sender, MouseEventArgs e)
+        {
+            _issueHoverPointerInsidePopup = true;
+            CancelIssueHoverHide();
+        }
+
+        private void IssueHoverPopup_MouseLeave(object sender, MouseEventArgs e)
+        {
+            _issueHoverPointerInsidePopup = false;
+            ScheduleIssueHoverHide();
+        }
+
+        private void IssueHoverPopup_Opened(object sender, EventArgs e) { }
+
+        private void IssueHoverPopup_Closed(object sender, EventArgs e)
+        {
+            IssueHoverPopupBody.Children.Clear();
+        }
+
+        private void HideIssueHoverPopup()
+        {
+            if (IssueHoverPopup.IsOpen) IssueHoverPopup.IsOpen = false;
+        }
+
+        private void ShowIssueHoverPopup(GitIssue issue, FrameworkElement target)
+        {
+            IssueHoverPopupBody.Children.Clear();
+            IssueHoverPopupBody.Children.Add(BuildIssueHoverPopupContent(issue));
+            IssueHoverPopup.PlacementTarget = target;
+            IssueHoverPopup.IsOpen = true;
+        }
+
+        /// <summary>Same lookup GitDetailView.LoadIssue already does for its embedded build pane
+        /// (most-recently-updated QueueItem whose GithubNumber matches) — reused here via the
+        /// cheap in-memory GetQueueItems delegate instead of a fresh DB/API round trip.</summary>
+        private QueueItem? FindAssociatedBuild(int issueNumber)
+        {
+            var items = GetQueueItems?.Invoke() ?? Array.Empty<QueueItem>();
+            return items
+                .Where(i => i.GithubNumber == issueNumber)
+                .OrderByDescending(i => i.UpdatedAt ?? DateTimeOffset.MinValue)
+                .FirstOrDefault();
+        }
+
+        private UIElement BuildIssueHoverPopupContent(GitIssue issue)
+        {
+            var root = new StackPanel();
+            bool isClosed = issue.Status == "CLOSED";
+
+            var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+            headerRow.Children.Add(new Border
+            {
+                Background = isClosed ? GetBrush("GreenBrush") : GetBrush("BlueBrush"),
+                CornerRadius = new CornerRadius(3),
+                Padding = new Thickness(4, 1, 4, 1),
+                Margin = new Thickness(0, 0, 6, 0),
+                Child = new TextBlock { Text = isClosed ? "CLOSED" : "OPEN", FontSize = 9, FontWeight = FontWeights.Bold, Foreground = Brushes.Black }
+            });
+            headerRow.Children.Add(new TextBlock { Text = $"#{issue.IssueNumber}", FontWeight = FontWeights.Bold, Foreground = GetBrush("PeachBrush") });
+            root.Children.Add(headerRow);
+
+            root.Children.Add(new TextBlock
+            {
+                Text = issue.Title,
+                FontWeight = FontWeights.SemiBold,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = GetBrush("TextBrush"),
+                Margin = new Thickness(0, 0, 0, 4)
+            });
+
+            if (!string.IsNullOrWhiteSpace(issue.Body))
+            {
+                string snippet = issue.Body.Replace("\r", " ").Replace("\n", " ").Trim();
+                if (snippet.Length > 160) snippet = snippet.Substring(0, 160).TrimEnd() + "…";
+                root.Children.Add(new TextBlock
+                {
+                    Text = snippet,
+                    FontSize = 10,
+                    Foreground = GetBrush("Subtext0Brush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 0, 0, 8)
+                });
+            }
+
+            // Blocked overrides any build-state action, same precedence GitDetailView/CreateIssueHeader
+            // already use for the blocked dot/banner elsewhere on this row.
+            if (!isClosed && issue.IsBlocked)
+            {
+                root.Children.Add(new TextBlock
+                {
+                    Text = issue.BlockedByNumber.HasValue
+                        ? $"🔒 Waiting on #{issue.BlockedByNumber} — {issue.BlockedByTitle}"
+                        : "🔒 Blocked",
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")),
+                    TextWrapping = TextWrapping.Wrap
+                });
+                return root;
+            }
+
+            var build = FindAssociatedBuild(issue.IssueNumber);
+            if (build == null) return root;
+
+            root.Children.Add(new Separator { Margin = new Thickness(0, 2, 0, 6) });
+            root.Children.Add(BuildQuickActionArea(build));
+            return root;
+        }
+
+        private UIElement BuildQuickActionArea(QueueItem build)
+        {
+            var panel = new StackPanel();
+
+            switch (build.Status)
+            {
+                case "queued":
+                    panel.Children.Add(new TextBlock { Text = "⏳ Queued", FontSize = 11, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 0, 6) });
+                    panel.Children.Add(MakeQuickActionButton("⚡ Dispatch Now", async () =>
+                    {
+                        if (RequestDispatchBuild != null) await RequestDispatchBuild(build);
+                    }));
+                    break;
+
+                case "running":
+                {
+                    var progress = BuildProgressTracker.GetProgress(build.Id);
+                    if (progress != null && progress.Total > 0)
+                    {
+                        panel.Children.Add(new ProgressBar { Minimum = 0, Maximum = 100, Value = progress.Percent, Height = 8, Margin = new Thickness(0, 0, 0, 4) });
+                        panel.Children.Add(new TextBlock
+                        {
+                            Text = $"{progress.Step}/{progress.Total} ({progress.Percent:0}%) — {(string.IsNullOrWhiteSpace(progress.CurrentLabel) ? "Running…" : progress.CurrentLabel)}",
+                            FontSize = 10,
+                            Foreground = GetBrush("Subtext0Brush"),
+                            TextWrapping = TextWrapping.Wrap,
+                            Margin = new Thickness(0, 0, 0, 6)
+                        });
+                        if (progress.IsStale)
+                        {
+                            panel.Children.Add(new TextBlock { Text = "⚠ " + progress.StalenessText, FontSize = 10, Foreground = GetBrush("PeachBrush"), Margin = new Thickness(0, 0, 0, 6) });
+                        }
+                    }
+                    else
+                    {
+                        panel.Children.Add(new TextBlock { Text = "▶ Running…", FontSize = 11, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 0, 6) });
+                    }
+
+                    panel.Children.Add(MakeQuickActionButton("⏹ Cancel / Stop", async () =>
+                    {
+                        if (RequestCancelOrStopBuild != null) await RequestCancelOrStopBuild(build);
+                    }));
+
+                    panel.Children.Add(BuildInlineReplyBox(build));
+                    break;
+                }
+
+                case "done":
+                    panel.Children.Add(new TextBlock { Text = "✅ Done", FontSize = 11, Foreground = GetBrush("GreenBrush"), Margin = new Thickness(0, 0, 0, 6) });
+                    panel.Children.Add(MakeQuickActionButton("📄 Open Build", () =>
+                    {
+                        RequestOpenBuildChat?.Invoke(build);
+                        return System.Threading.Tasks.Task.CompletedTask;
+                    }));
+                    break;
+
+                case "failed":
+                    panel.Children.Add(new TextBlock { Text = "✕ Failed", FontSize = 11, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")), Margin = new Thickness(0, 0, 0, 6) });
+                    panel.Children.Add(MakeQuickActionButton("🔄 Retry", async () =>
+                    {
+                        if (RequestRetryBuild != null) await RequestRetryBuild(build);
+                    }));
+                    break;
+
+                default:
+                    // parked / external / capped / limit-paused / verifying — not one of #2061's 6
+                    // canonical states; a plain status readout + the universal open-chat fallback
+                    // keeps the card honest rather than forcing it into the wrong bucket.
+                    panel.Children.Add(new TextBlock { Text = build.Status.ToUpperInvariant(), FontSize = 11, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 0, 6) });
+                    panel.Children.Add(MakeQuickActionButton("💬 Open Chat", () =>
+                    {
+                        RequestOpenBuildChat?.Invoke(build);
+                        return System.Threading.Tasks.Task.CompletedTask;
+                    }));
+                    break;
+            }
+
+            return panel;
+        }
+
+        private Button MakeQuickActionButton(string label, Func<System.Threading.Tasks.Task> onClick)
+        {
+            var btn = new Button { Content = label, Padding = new Thickness(8, 3, 8, 3), HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 4) };
+            btn.Click += async (s, e) =>
+            {
+                btn.IsEnabled = false;
+                try { await onClick(); }
+                finally { HideIssueHoverPopup(); }
+            };
+            return btn;
+        }
+
+        /// <summary>Graceful degrade for #2061's "Has a question -> inline answer field -> resume
+        /// session" state: #2036 (the mechanism that would detect a specific pending question) isn't
+        /// built yet, so this is always offered on a running build rather than gated behind
+        /// detection that doesn't exist. Sends through the same resume-session path as the
+        /// right-click menu's "Reply..." item (BuildQueuePanel.QuickReplyAsync); that method already
+        /// no-ops with a toast if the build has no captured session id yet.</summary>
+        private UIElement BuildInlineReplyBox(QueueItem build)
+        {
+            var wrap = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
+            var box = new TextBox
+            {
+                FontSize = 10,
+                Padding = new Thickness(4),
+                Margin = new Thickness(0, 0, 0, 4),
+                TextWrapping = TextWrapping.Wrap,
+                AcceptsReturn = false
+            };
+            const string replyPlaceholder = "Reply and resume this session…";
+            TextBoxHelper_SetPlaceholder(box, replyPlaceholder);
+            var sendBtn = new Button { Content = "💬 Send Reply", Padding = new Thickness(8, 3, 8, 3), HorizontalAlignment = HorizontalAlignment.Left };
+            sendBtn.Click += async (s, e) =>
+            {
+                var message = box.Text?.Trim();
+                if (string.IsNullOrWhiteSpace(message) || message == replyPlaceholder) return;
+                sendBtn.IsEnabled = false;
+                try
+                {
+                    if (RequestReplyToBuild != null) await RequestReplyToBuild(build, message);
+                }
+                finally
+                {
+                    HideIssueHoverPopup();
+                }
+            };
+            wrap.Children.Add(box);
+            wrap.Children.Add(sendBtn);
+            return wrap;
+        }
+
+        /// <summary>No dedicated watermark/placeholder control exists in this codebase's WPF
+        /// controls — a minimal focus-swap placeholder so the reply box isn't blank with no hint.</summary>
+        private void TextBoxHelper_SetPlaceholder(TextBox box, string placeholder)
+        {
+            box.Text = placeholder;
+            box.Foreground = GetBrush("Subtext0Brush");
+            box.GotFocus += (s, e) =>
+            {
+                if (box.Text == placeholder)
+                {
+                    box.Text = "";
+                    box.Foreground = GetBrush("TextBrush");
+                }
+            };
+            box.LostFocus += (s, e) =>
+            {
+                if (string.IsNullOrWhiteSpace(box.Text))
+                {
+                    box.Text = placeholder;
+                    box.Foreground = GetBrush("Subtext0Brush");
+                }
+            };
+        }
+
+        #endregion
 
         private static TreeViewItem? FindIssueTreeViewItem(ItemCollection items, int issueNumber)
         {
