@@ -12,6 +12,14 @@
  * the last signed one) and diffs them by item id, per module. No DB access here, so the
  * comparison itself is unit-testable without seeding — `computeSecurityPlanDrift` is the
  * whole guarantee; `getSecurityPlanDrift` just wires it to the real reads.
+ *
+ * #1567's constraint on exactly this diff: mechanically comparing derived module DATA
+ * across two snapshots is legitimate ("this section's underlying data changed since
+ * signing, a new version is due"); asserting that the authored PROSE is now stale or
+ * inaccurate is not — whether a sealed sentence is still true is a human judgment, not
+ * a diff. `computeSecurityPlanDrift` enforces this structurally by never reading
+ * `SecurityPlanContent.prose` at all — only `modules` (real source-table rows) are
+ * compared. See the "prose never drifts" case in security-plan-drift.test.ts.
  */
 import type { SecurityPlanAssembledItem, SecurityPlanContent, SecurityPlanDrift, SecurityPlanModuleDrift } from "@workspace/db";
 import { getLastSignedSecurityPlanVersion } from "./security-plan-versioning.ts";

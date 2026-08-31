@@ -228,6 +228,13 @@ router.get(
 // alongside its drift from the last SIGNED version (#1562). Always the honest view on
 // the live side, regardless of any scope query params: drift answers "what actually
 // changed since the signature," not "what changed within whatever slice was asked for."
+//
+// #1567: this is mechanical DATA drift only — added/removed/changed rows across the
+// seven source modules. There is deliberately no field here asserting the authored
+// prose is stale, current or accurate; `computeSecurityPlanDrift` never reads `.prose`
+// at all. Whether a sealed sentence is still true is a human judgment a diff cannot
+// make, and a false "up to date" on a document heading to an insurer is worse than no
+// signal — so the platform does not claim one.
 router.get(
   "/msp/security-plan/:customerId/drift",
   requireAuth,

@@ -4,6 +4,10 @@
  *
  * `computeSecurityPlanDrift` never touches the database — it diffs two already-
  * assembled `SecurityPlanContent` snapshots by item id, per module.
+ *
+ * Also proves #1567's constraint: the diff is data-only. Authored prose is never
+ * compared, so the platform can never assert (correctly or falsely) that prose is
+ * stale — see "prose differing... produces no drift" below.
  */
 import { describe, it, expect } from "vitest";
 import { computeSecurityPlanDrift } from "./security-plan-drift.ts";
@@ -17,7 +21,7 @@ function moduleOf(key: string, items: SecurityPlanAssembledItem[]): SecurityPlan
   return { key, label: key, sourceIssue: "#0000", total: items.length, excludedCount: 0, items };
 }
 
-function content(modules: SecurityPlanAssembledModule[]): SecurityPlanContent {
+function content(modules: SecurityPlanAssembledModule[], prose: string | null = null): SecurityPlanContent {
   return {
     customerId: 1,
     tenantId: "tenant-1",
@@ -31,7 +35,7 @@ function content(modules: SecurityPlanAssembledModule[]): SecurityPlanContent {
       totalExcluded: 0,
       computedAt: "2026-08-31T00:00:00.000Z",
     },
-    prose: null,
+    prose,
   };
 }
 
@@ -93,5 +97,19 @@ describe("Security Plan drift (#1562)", () => {
     const sops = drift.modules.find((m) => m.moduleKey === "sops")!;
     expect(sops.removed.map((i) => i.id)).toEqual(["s-1"]);
     expect(drift.totalRemoved).toBe(1);
+  });
+
+  // #1567 — the platform can mechanically detect that a section's underlying DATA
+  // changed since sealing, but it cannot and must not detect (or assert) that the
+  // authored PROSE is now stale or inaccurate. Prose differing between the live and
+  // last-signed snapshots — with every module's data byte-for-byte identical — must
+  // never surface as drift.
+  it("prose differing between live and last-signed produces no drift — data drift only, never prose staleness", () => {
+    const sameModules = [moduleOf("risk", [item("r-1")])];
+    const signed = content(sameModules, "All privileged accounts require MFA.");
+    const live = content(sameModules, "All privileged accounts require MFA, except break-glass.");
+    const drift = computeSecurityPlanDrift(live, signed, SIGNED_META);
+    expect(drift.modules).toEqual([]);
+    expect(drift.totalAdded + drift.totalRemoved + drift.totalChanged).toBe(0);
   });
 });
