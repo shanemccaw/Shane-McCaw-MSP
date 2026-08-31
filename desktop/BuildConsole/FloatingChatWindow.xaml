@@ -11,16 +11,21 @@
         AllowsTransparency="True"
         Background="Transparent">
 
-    <!-- Git #2059 — Floating Chat Window, Phase 1 of the #2035 Global Chat Drawer
-         epic. Always-on-top single-chat floaty, same borderless/DragMove shape as
-         the #937 Sticky Notes / #973 LinkedIn floaties. The formatted latest
-         assistant reply renders as RichText (MarkdownRenderer output) in the main
-         area; a compact live "bridge" strip at the bottom hosts the real claude.ai
-         WebView2 (kept visible so its DOM scraper runs at full speed — WebView2
-         throttles a hidden control) and is the send/receive engine. Quick-send
-         input fires into the chat's real composer via the existing DOM-injection
-         technique (FloatingChatBridgeScript) and submits, so Shane never has to
-         switch to the tab. -->
+    <!-- Git #2059 (Phase 1) / #2065 (Phase 2) — Floating Chat Window, part of the
+         #2035 Global Chat Drawer epic. Always-on-top floaty, same borderless/DragMove
+         shape as the #937 Sticky Notes / #973 LinkedIn floaties. Phase 2 adds TABS:
+         more than one chat can be open at once (the "would need to support tabs so I
+         could have more than one chat open" ask). Each tab is its own chat session
+         reusing the SAME bridge #2059 built (FloatingChatBridgeScript) — one
+         ChatSafeWebView2 per tab, all living in the BridgeHost grid, but only the
+         ACTIVE tab's WebView2 is Visible; the rest are Collapsed, which throttles
+         them (WebView2 throttles a hidden control) and pauses their capture until
+         reactivated — the exact per-tab equivalent of Phase 1's "collapse pauses
+         capture". The formatted latest assistant reply for the active tab renders as
+         RichText (MarkdownRenderer output) in the main area; the compact live "bridge"
+         strip at the bottom hosts the active chat's real claude.ai WebView2. Quick-send
+         fires into that chat's real composer via the existing DOM-injection technique
+         and submits, so Shane never has to switch to the tab. -->
     <Border Background="{StaticResource MantleBrush}"
             BorderBrush="{StaticResource Surface0Brush}"
             BorderThickness="1"
@@ -28,13 +33,14 @@
         <Grid Margin="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition x:Name="BridgeRow" Height="170"/>
             </Grid.RowDefinitions>
 
-            <!-- Header strip: chat title + collapse-bridge + close; doubles as drag handle -->
+            <!-- Header strip: active chat title + collapse-bridge + close; doubles as drag handle -->
             <Border x:Name="HeaderStrip" Grid.Row="0"
                     Background="{StaticResource CrustBrush}"
                     CornerRadius="6,6,0,0"
@@ -75,9 +81,23 @@
                 </Grid>
             </Border>
 
-            <!-- Latest assistant reply, rendered as RichText (MarkdownRenderer output
-                 injected into ResponseHost in code-behind). -->
-            <ScrollViewer Grid.Row="1"
+            <!-- Tab strip (#2065). One chip per open chat, horizontally scrollable.
+                 Chips are built in code-behind (RebuildTabStrip) so their brushes track
+                 the active tab. Hidden entirely when only one chat is open, so a
+                 single-chat floaty still reads as the lightweight Phase-1 window. -->
+            <Border x:Name="TabStripBorder" Grid.Row="1"
+                    Background="{StaticResource CrustBrush}"
+                    Visibility="Collapsed">
+                <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                              VerticalScrollBarVisibility="Disabled"
+                              Padding="4,3,4,0">
+                    <StackPanel x:Name="TabStripPanel" Orientation="Horizontal"/>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Active tab's latest assistant reply, rendered as RichText (MarkdownRenderer
+                 output injected into ResponseHost in code-behind). -->
+            <ScrollViewer Grid.Row="2"
                           x:Name="ResponseScroll"
                           Margin="6,6,6,4"
                           VerticalScrollBarVisibility="Auto"
@@ -94,8 +114,8 @@
                 </Grid>
             </ScrollViewer>
 
-            <!-- Quick-send input -->
-            <Grid Grid.Row="2" Margin="6,0,6,2">
+            <!-- Quick-send input (fires into the active tab's chat) -->
+            <Grid Grid.Row="3" Margin="6,0,6,2">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
@@ -123,22 +143,28 @@
                         Click="BtnSend_Click"/>
             </Grid>
 
-            <!-- Inline status/error (empty by default) -->
-            <TextBlock x:Name="InlineMessage" Grid.Row="3"
+            <!-- Inline status/error for the active tab (empty by default) -->
+            <TextBlock x:Name="InlineMessage" Grid.Row="4"
                        Margin="8,0,8,4"
                        FontSize="11"
                        TextWrapping="Wrap"
                        Visibility="Collapsed"
                        Foreground="{StaticResource Subtext1Brush}"/>
 
-            <!-- Live bridge strip: the real claude.ai WebView2 (added in code-behind).
-                 Kept visible by default so its scraper runs at full speed. -->
-            <Border x:Name="BridgeHost" Grid.Row="4"
+            <!-- Live bridge strip: one real claude.ai WebView2 PER open tab (added in
+                 code-behind). All tabs' WebView2s live here stacked; only the ACTIVE
+                 tab's is Visible, the rest Collapsed — a Collapsed WebView2 is throttled
+                 so its scraper pauses, which is precisely the mechanism Phase 1 used for
+                 the whole-strip collapse, now applied per-tab. The active one is kept
+                 visible so its scraper runs at full speed. -->
+            <Border Grid.Row="5"
                     Margin="6,0,6,8"
                     BorderBrush="{StaticResource Surface0Brush}"
                     BorderThickness="1"
                     CornerRadius="4"
-                    ClipToBounds="True"/>
+                    ClipToBounds="True">
+                <Grid x:Name="BridgeHost"/>
+            </Border>
         </Grid>
     </Border>
 </Window>

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
@@ -12,36 +14,75 @@ using BuildConsole.Services;
 namespace BuildConsole
 {
     /// <summary>
-    /// Git #2059 — Floating Chat Window, Phase 1 of the #2035 Global Chat Drawer epic.
+    /// Git #2059 (Phase 1) / #2065 (Phase 2) — Floating Chat Window, part of the #2035
+    /// Global Chat Drawer epic.
     ///
     /// A real WPF window OWNED/launched by BuildConsole (via
     /// <see cref="MainWindow.OpenFloatingChatWindow"/>), floating and always-on-top so it
-    /// stays usable while Design / the M365 admin center / anything else has focus. It opens
-    /// ONE chat at a time. Send/receive go through the EXISTING WebView2 → DOM-injection
-    /// bridge already used for chat bridging in this app — this window does NOT invent a new
-    /// mechanism: it hosts a real claude.ai <see cref="Controls.ChatSafeWebView2"/> (the same
-    /// control every chat tab uses, sharing the same WebView2 environment/login via
-    /// <see cref="MainWindow.EnsureWebViewInitializedAsync"/>) and drives it with
-    /// <see cref="FloatingChatBridgeScript"/> — the composer-insert technique from
+    /// stays usable while Design / the M365 admin center / anything else has focus.
+    ///
+    /// Phase 2 adds TABS: more than one chat can be open in the same window at once. Each
+    /// tab is its own chat session that reuses the SAME bridge Phase 1 built — this window
+    /// does NOT invent a new mechanism. Every tab hosts its own real claude.ai
+    /// <see cref="Controls.ChatSafeWebView2"/> (the same control every chat tab uses, sharing
+    /// the same WebView2 environment/login via <see cref="MainWindow.EnsureWebViewInitializedAsync"/>)
+    /// driven by <see cref="FloatingChatBridgeScript"/> — the composer-insert technique from
     /// StickyNotesComposerInsertScript (#937/#940) to SEND, and the context-meter's own
     /// selectors to RECEIVE the latest assistant reply, rendered as RichText via
     /// <see cref="MarkdownRenderer"/>.
     ///
-    /// Explicitly OUT of scope for Phase 1 (deferred to later phases on #2035): tabs,
-    /// side dock, progress/checklist extraction, screenshot paste, OCR, self-purging gallery.
+    /// WebView2 throttle constraint (measured, carried from Phase 1): a hidden WebView2 is
+    /// throttled, so its scraper pauses. This window keeps EVERY tab's WebView2 alive in the
+    /// shared BridgeHost grid but makes only the ACTIVE tab's WebView2 Visible; all inactive
+    /// tabs' WebView2s are Collapsed, which throttles them and pauses their capture until the
+    /// tab is reactivated. That is the exact per-tab equivalent of Phase 1's "collapsing the
+    /// bridge strip pauses live capture" — an inactive tab does not update its rendered reply
+    /// until you switch back to it, at which point its 1.2s poll resumes and catches up. Each
+    /// WebView2 initialises its CoreWebView2 while it is the visible/active tab (a newly opened
+    /// chat becomes active immediately), so nothing has to initialise while Collapsed.
+    ///
+    /// Explicitly OUT of scope for Phase 2 (deferred to later phases on #2035): side dock /
+    /// progress extraction, screenshot paste, OCR, self-purging gallery, Shelf park/restore.
     /// </summary>
     public partial class FloatingChatWindow : Window
     {
         private const string LogChannel = "chat.floating";
 
-        private readonly BoardChat _chat;
+        /// <summary>
+        /// Per-tab state. Each open chat gets one of these — its own bridge WebView2, its own
+        /// last-captured reply, its own draft input and inline status — so switching tabs
+        /// restores exactly what that chat looked like without re-scraping or losing an unsent
+        /// draft. The WebView2 is created lazily the first time the tab is activated (always
+        /// while visible), then kept alive for the life of the tab.
+        /// </summary>
+        private sealed class FloatingChatTab
+        {
+            public FloatingChatTab(BoardChat chat) { Chat = chat; }
+
+            public BoardChat Chat { get; }
+            public Controls.ChatSafeWebView2? Wv;
+            public bool Initialized;
+            public string? LastMarkdown;
+            /// <summary>The rendered MarkdownRenderer output, cached so re-activating the tab
+            /// restores the reply instantly. Null until the first reply is captured.</summary>
+            public FrameworkElement? RenderedResponse;
+            /// <summary>Unsent composer text, preserved across tab switches.</summary>
+            public string InputDraft = "";
+            public string? InlineText;
+            public bool InlineIsError;
+
+            // The tab chip (built in RebuildTabStrip) — kept so activation can restyle it
+            // without a full rebuild of the strip.
+            public Border? Chip;
+        }
+
         private readonly MainWindow? _owner;
         private readonly DispatcherTimer _saveDebounce;
-        private Controls.ChatSafeWebView2? _wv;
+        private readonly List<FloatingChatTab> _tabs = new();
+        private FloatingChatTab? _active;
         private bool _loaded;
         private bool _bridgeExpanded = true;
         private double _bridgeHeight = 170;
-        private string? _lastMarkdown;
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
@@ -52,12 +93,9 @@ namespace BuildConsole
 
         public FloatingChatWindow(BoardChat chat, MainWindow? owner)
         {
-            _chat = chat ?? throw new ArgumentNullException(nameof(chat));
+            if (chat == null) throw new ArgumentNullException(nameof(chat));
             _owner = owner;
             InitializeComponent();
-
-            HeaderTitle.Text = string.IsNullOrWhiteSpace(chat.Title) ? "Chat" : chat.Title;
-            Title = HeaderTitle.Text;
 
             _saveDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
             _saveDebounce.Tick += (s, e) => { _saveDebounce.Stop(); PersistBounds(); };
@@ -78,61 +116,148 @@ namespace BuildConsole
             _bridgeExpanded = settings.FloatingChatBridgeExpanded;
             ApplyBridgeState();
 
+            // Seed the first tab (activated once the window loads and the shared WebView2
+            // environment is ready).
+            _tabs.Add(new FloatingChatTab(chat));
+
             Loaded += async (s, e) =>
             {
                 _loaded = true;
                 ForceTopmost();
-                await InitBridgeAsync();
+                RebuildTabStrip();
+                await ActivateTabAsync(_tabs[0]);
             };
             Deactivated += (s, e) => ForceTopmost();
             LocationChanged += (s, e) => ScheduleSave();
             SizeChanged += (s, e) => ScheduleSave();
             Closed += (s, e) =>
             {
-                try { _wv?.Dispose(); } catch { }
+                foreach (var t in _tabs)
+                {
+                    try { t.Wv?.Dispose(); } catch { }
+                }
             };
         }
 
-        // ── Bridge (WebView2 engine) ────────────────────────────────────────────
-        private async System.Threading.Tasks.Task InitBridgeAsync()
+        /// <summary>True if this window already has a tab for <paramref name="conversationId"/>.</summary>
+        public bool HasChat(string conversationId) =>
+            _tabs.Any(t => string.Equals(t.Chat.ConversationId, conversationId, StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>
+        /// Add a chat as a new tab (or, if it's already open, just bring it forward). Called by
+        /// <see cref="MainWindow.OpenFloatingChatWindow"/> when the floaty is already up, so a
+        /// second "Open as Floating Window" stacks a tab instead of replacing the window.
+        /// </summary>
+        public async void AddOrActivateChat(BoardChat chat)
         {
+            if (chat == null || string.IsNullOrWhiteSpace(chat.ClaudeUrl)) return;
+            var existing = _tabs.FirstOrDefault(t =>
+                string.Equals(t.Chat.ConversationId, chat.ConversationId, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+            {
+                await ActivateTabAsync(existing);
+                Activate();
+                return;
+            }
+
+            var tab = new FloatingChatTab(chat);
+            _tabs.Add(tab);
+            RebuildTabStrip();
+            ActivityLog.Log(LogChannel, $"added tab for {chat.Title} ({chat.ConversationId}); {_tabs.Count} tab(s) open");
+            await ActivateTabAsync(tab);
+            Activate();
+        }
+
+        // ── Tab activation / switching ───────────────────────────────────────────
+        private async System.Threading.Tasks.Task ActivateTabAsync(FloatingChatTab tab)
+        {
+            if (tab == null) return;
+
+            // Stash the outgoing tab's live UI state, then throttle its bridge by collapsing it.
+            if (_active != null && !ReferenceEquals(_active, tab))
+            {
+                _active.InputDraft = InputBox.Text;
+                if (_active.Wv != null) _active.Wv.Visibility = Visibility.Collapsed;
+            }
+
+            _active = tab;
+
+            // Restore this tab's rendered reply (or the waiting hint), draft, and inline status.
+            if (tab.RenderedResponse != null)
+            {
+                ResponseHost.Content = tab.RenderedResponse;
+                EmptyHint.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                ResponseHost.Content = null;
+                EmptyHint.Visibility = Visibility.Visible;
+            }
+            InputBox.Text = tab.InputDraft;
+            InputBox.CaretIndex = InputBox.Text.Length;
+            if (!string.IsNullOrEmpty(tab.InlineText))
+                ShowInlineMessage(tab.InlineText!, tab.InlineIsError);
+            else
+                ClearInlineMessage();
+
+            HeaderTitle.Text = string.IsNullOrWhiteSpace(tab.Chat.Title) ? "Chat" : tab.Chat.Title;
+            Title = HeaderTitle.Text;
+            RestyleChips();
+
+            // Lazily create/init this tab's bridge (always while it is the visible tab, so
+            // CoreWebView2 initialisation has a realised HWND), then make it visible so its
+            // scraper resumes. An already-initialised tab just flips back to Visible.
+            await EnsureTabBridgeAsync(tab);
+            if (tab.Wv != null) tab.Wv.Visibility = Visibility.Visible;
+        }
+
+        // ── Bridge (WebView2 engine) — one per tab ───────────────────────────────
+        private async System.Threading.Tasks.Task EnsureTabBridgeAsync(FloatingChatTab tab)
+        {
+            if (tab.Initialized) return;
+            tab.Initialized = true; // guard against re-entrancy while the async init is in flight
             try
             {
-                _wv = new Controls.ChatSafeWebView2
+                var wv = new Controls.ChatSafeWebView2
                 {
-                    DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37)
+                    DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 24, 24, 37),
+                    Visibility = Visibility.Visible
                 };
-                BridgeHost.Child = _wv;
+                tab.Wv = wv;
+                BridgeHost.Children.Add(wv);
 
-                bool ready = await MainWindow.EnsureWebViewInitializedAsync(_wv);
-                if (!ready || _wv.CoreWebView2 == null)
+                bool ready = await MainWindow.EnsureWebViewInitializedAsync(wv);
+                if (!ready || wv.CoreWebView2 == null)
                 {
-                    ShowInlineMessage("Couldn't start the chat bridge (WebView2 unavailable).", isError: true);
-                    ActivityLog.Log(LogChannel, $"bridge-init-failed for chat {_chat.ConversationId}");
+                    SetTabInline(tab, "Couldn't start the chat bridge (WebView2 unavailable).", isError: true);
+                    ActivityLog.Log(LogChannel, $"bridge-init-failed for chat {tab.Chat.ConversationId}");
                     return;
                 }
 
                 // AddScriptToExecuteOnDocumentCreatedAsync MUST run before navigation
                 // (Git #816) — a script added after nav starts only applies to the NEXT one.
-                await _wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(FloatingChatBridgeScript.CaptureScript);
-                _wv.WebMessageReceived -= Bridge_WebMessageReceived;
-                _wv.WebMessageReceived += Bridge_WebMessageReceived;
+                await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(FloatingChatBridgeScript.CaptureScript);
+                // Route each tab's frames to that tab regardless of which tab is active — an
+                // inactive (throttled) tab may still post a frame, and it should update its own
+                // cached reply, never the active tab's.
+                wv.WebMessageReceived += (s, e) => OnBridgeMessage(tab, e);
 
-                if (!string.IsNullOrWhiteSpace(_chat.ClaudeUrl))
-                    _wv.CoreWebView2.Navigate(_chat.ClaudeUrl);
+                if (!string.IsNullOrWhiteSpace(tab.Chat.ClaudeUrl))
+                    wv.CoreWebView2.Navigate(tab.Chat.ClaudeUrl);
                 else
-                    ShowInlineMessage("This chat has no URL to open.", isError: true);
+                    SetTabInline(tab, "This chat has no URL to open.", isError: true);
 
-                ActivityLog.Log(LogChannel, $"opened floating chat window for {_chat.Title} ({_chat.ClaudeUrl})");
+                ActivityLog.Log(LogChannel, $"opened floating chat tab for {tab.Chat.Title} ({tab.Chat.ClaudeUrl})");
             }
             catch (Exception ex)
             {
-                ShowInlineMessage("Chat bridge failed to start.", isError: true);
-                ActivityLog.Log(LogChannel, $"bridge-init-error for chat {_chat.ConversationId}: {ex.Message}");
+                tab.Initialized = false; // allow a retry on the next activation
+                SetTabInline(tab, "Chat bridge failed to start.", isError: true);
+                ActivityLog.Log(LogChannel, $"bridge-init-error for chat {tab.Chat.ConversationId}: {ex.Message}");
             }
         }
 
-        private void Bridge_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
+        private void OnBridgeMessage(FloatingChatTab tab, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
         {
             string raw;
             try { raw = e.TryGetWebMessageAsString(); }
@@ -147,27 +272,33 @@ namespace BuildConsole
                 if (typeEl.GetString() != "BT_FLOATY_RESPONSE") return;
 
                 string md = root.TryGetProperty("markdown", out var mdEl) ? (mdEl.GetString() ?? "") : "";
-                if (string.IsNullOrWhiteSpace(md) || md == _lastMarkdown) return;
-                _lastMarkdown = md;
-                RenderResponse(md);
+                if (string.IsNullOrWhiteSpace(md) || md == tab.LastMarkdown) return;
+                tab.LastMarkdown = md;
+                RenderResponse(tab, md);
             }
             catch { /* a malformed frame is not fatal — the next poll re-posts */ }
         }
 
-        private void RenderResponse(string markdown)
+        private void RenderResponse(FloatingChatTab tab, string markdown)
         {
             var opts = new MarkdownRenderer.RenderOptions
             {
                 GetBrush = key => (Brush)FindResource(key),
                 OnUrlClick = url => { try { _owner?.OpenWebTab(url, "Web", ""); } catch { } },
-                OnFileClick = _ => { /* Phase 1: no in-floaty file open */ },
+                OnFileClick = _ => { /* no in-floaty file open (deferred on #2035) */ },
             };
             try
             {
-                ResponseHost.Content = MarkdownRenderer.Render(markdown, opts);
-                EmptyHint.Visibility = Visibility.Collapsed;
-                // Keep the freshest text in view as a reply streams in.
-                ResponseScroll.ScrollToBottom();
+                var rendered = MarkdownRenderer.Render(markdown, opts);
+                tab.RenderedResponse = rendered;
+                // Only touch the shared response pane when this is the tab on screen — an
+                // inactive tab's reply is cached and shown when it's next activated.
+                if (ReferenceEquals(tab, _active))
+                {
+                    ResponseHost.Content = rendered;
+                    EmptyHint.Visibility = Visibility.Collapsed;
+                    ResponseScroll.ScrollToBottom();
+                }
             }
             catch (Exception ex)
             {
@@ -190,32 +321,35 @@ namespace BuildConsole
 
         private async System.Threading.Tasks.Task SendAsync()
         {
+            var tab = _active;
+            if (tab == null) return;
+
             var text = InputBox.Text;
             if (string.IsNullOrWhiteSpace(text))
             {
-                ShowInlineMessage("Nothing to send.", isError: true);
+                SetTabInline(tab, "Nothing to send.", isError: true);
                 return;
             }
-            if (_wv?.CoreWebView2 == null)
+            if (tab.Wv?.CoreWebView2 == null)
             {
-                ShowInlineMessage("Chat bridge isn't ready yet.", isError: true);
+                SetTabInline(tab, "Chat bridge isn't ready yet.", isError: true);
                 return;
             }
 
             BtnSend.IsEnabled = false;
             try
             {
-                string insert = await ExecScriptString(FloatingChatBridgeScript.BuildInsertScript(text));
+                string insert = await ExecScriptString(tab, FloatingChatBridgeScript.BuildInsertScript(text));
                 if (insert == "no-composer")
                 {
-                    ShowInlineMessage("Couldn't find the chat composer — is the conversation still loading?", isError: true);
-                    ActivityLog.Log(LogChannel, $"send-failed: no-composer ({_chat.ConversationId})");
+                    SetTabInline(tab, "Couldn't find the chat composer — is the conversation still loading?", isError: true);
+                    ActivityLog.Log(LogChannel, $"send-failed: no-composer ({tab.Chat.ConversationId})");
                     return;
                 }
                 if (insert != "inserted")
                 {
-                    ShowInlineMessage("Send failed while inserting the message.", isError: true);
-                    ActivityLog.Log(LogChannel, $"send-failed: insert status '{insert}' ({_chat.ConversationId})");
+                    SetTabInline(tab, "Send failed while inserting the message.", isError: true);
+                    ActivityLog.Log(LogChannel, $"send-failed: insert status '{insert}' ({tab.Chat.ConversationId})");
                     return;
                 }
 
@@ -223,31 +357,33 @@ namespace BuildConsole
                 // batches asynchronously, then submit as a separate call (ExecuteScriptAsync
                 // does not await a Promise, so this can't be one round-trip).
                 await System.Threading.Tasks.Task.Delay(220);
-                string submit = await ExecScriptString(FloatingChatBridgeScript.SubmitScript);
+                string submit = await ExecScriptString(tab, FloatingChatBridgeScript.SubmitScript);
 
                 if (submit == "sent")
                 {
-                    InputBox.Clear();
-                    ShowInlineMessage("Sent.", isError: false);
-                    ActivityLog.Log(LogChannel, $"sent message to chat {_chat.ConversationId}");
+                    // Clear only if the user hasn't switched tabs mid-send.
+                    if (ReferenceEquals(tab, _active)) InputBox.Clear();
+                    tab.InputDraft = "";
+                    SetTabInline(tab, "Sent.", isError: false);
+                    ActivityLog.Log(LogChannel, $"sent message to chat {tab.Chat.ConversationId}");
                 }
                 else if (submit == "inserted-no-send")
                 {
                     // The text is in the composer but the submit didn't take — leave the
                     // input so nothing is lost; Shane can press Send again or submit in-page.
-                    ShowInlineMessage("Message inserted but couldn't auto-send — try Send again, or press Enter in the page below.", isError: true);
-                    ActivityLog.Log(LogChannel, $"send-partial: inserted-no-send ({_chat.ConversationId})");
+                    SetTabInline(tab, "Message inserted but couldn't auto-send — try Send again, or press Enter in the page below.", isError: true);
+                    ActivityLog.Log(LogChannel, $"send-partial: inserted-no-send ({tab.Chat.ConversationId})");
                 }
                 else
                 {
-                    ShowInlineMessage("Send failed while submitting.", isError: true);
-                    ActivityLog.Log(LogChannel, $"send-failed: submit status '{submit}' ({_chat.ConversationId})");
+                    SetTabInline(tab, "Send failed while submitting.", isError: true);
+                    ActivityLog.Log(LogChannel, $"send-failed: submit status '{submit}' ({tab.Chat.ConversationId})");
                 }
             }
             catch (Exception ex)
             {
-                ShowInlineMessage("Send failed.", isError: true);
-                ActivityLog.Log(LogChannel, $"send-error ({_chat.ConversationId}): {ex.Message}");
+                SetTabInline(tab, "Send failed.", isError: true);
+                ActivityLog.Log(LogChannel, $"send-error ({tab.Chat.ConversationId}): {ex.Message}");
             }
             finally
             {
@@ -255,20 +391,145 @@ namespace BuildConsole
             }
         }
 
-        private async System.Threading.Tasks.Task<string> ExecScriptString(string js)
+        private async System.Threading.Tasks.Task<string> ExecScriptString(FloatingChatTab tab, string js)
         {
-            if (_wv?.CoreWebView2 == null) return "error: no-webview";
-            string raw = await _wv.CoreWebView2.ExecuteScriptAsync(js) ?? "";
+            if (tab.Wv?.CoreWebView2 == null) return "error: no-webview";
+            string raw = await tab.Wv.CoreWebView2.ExecuteScriptAsync(js) ?? "";
             try { return JsonSerializer.Deserialize<string>(raw) ?? ""; }
             catch { return raw; }
         }
 
+        // ── Tab strip UI ─────────────────────────────────────────────────────────
+        private void RebuildTabStrip()
+        {
+            TabStripPanel.Children.Clear();
+            // A single-chat floaty stays the lightweight Phase-1 window — no strip.
+            TabStripBorder.Visibility = _tabs.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
+            if (_tabs.Count <= 1) return;
+
+            foreach (var tab in _tabs)
+            {
+                var chip = BuildChip(tab);
+                tab.Chip = chip;
+                TabStripPanel.Children.Add(chip);
+            }
+            RestyleChips();
+        }
+
+        private Border BuildChip(FloatingChatTab tab)
+        {
+            var label = new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(tab.Chat.Title) ? "Chat" : tab.Chat.Title,
+                FontSize = 11,
+                MaxWidth = 130,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("TextBrush")
+            };
+            Grid.SetColumn(label, 0);
+
+            var close = new Button
+            {
+                Content = "✕",
+                FontSize = 9,
+                Padding = new Thickness(3, 0, 3, 0),
+                Margin = new Thickness(5, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+                Style = (Style)FindResource("IconButton"),
+                ToolTip = "Close this tab"
+            };
+            close.Click += (s, e) => { e.Handled = true; CloseTab(tab); };
+            Grid.SetColumn(close, 1);
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.Children.Add(label);
+            grid.Children.Add(close);
+
+            var chip = new Border
+            {
+                CornerRadius = new CornerRadius(5, 5, 0, 0),
+                Padding = new Thickness(9, 4, 6, 4),
+                Margin = new Thickness(0, 0, 3, 0),
+                Cursor = Cursors.Hand,
+                Child = grid
+            };
+            chip.MouseLeftButtonUp += async (s, e) => { await ActivateTabAsync(tab); };
+            return chip;
+        }
+
+        private void RestyleChips()
+        {
+            foreach (var tab in _tabs)
+            {
+                if (tab.Chip == null) continue;
+                bool isActive = ReferenceEquals(tab, _active);
+                tab.Chip.Background = (Brush)FindResource(isActive ? "BaseBrush" : "MantleBrush");
+                tab.Chip.BorderBrush = (Brush)FindResource(isActive ? "BlueBrush" : "Surface0Brush");
+                tab.Chip.BorderThickness = new Thickness(1, 1, 1, isActive ? 0 : 1);
+                if (tab.Chip.Child is Grid g && g.Children.Count > 0 && g.Children[0] is TextBlock tb)
+                {
+                    tb.FontWeight = isActive ? FontWeights.SemiBold : FontWeights.Normal;
+                    tb.Foreground = (Brush)FindResource(isActive ? "TextBrush" : "Subtext1Brush");
+                }
+            }
+        }
+
+        private async void CloseTab(FloatingChatTab tab)
+        {
+            if (!_tabs.Contains(tab)) return;
+
+            // Closing the last tab closes the window.
+            if (_tabs.Count == 1)
+            {
+                Close();
+                return;
+            }
+
+            int idx = _tabs.IndexOf(tab);
+            _tabs.Remove(tab);
+            try
+            {
+                if (tab.Wv != null)
+                {
+                    BridgeHost.Children.Remove(tab.Wv);
+                    tab.Wv.Dispose();
+                }
+            }
+            catch { }
+            ActivityLog.Log(LogChannel, $"closed tab {tab.Chat.ConversationId}; {_tabs.Count} tab(s) left");
+
+            RebuildTabStrip();
+
+            if (ReferenceEquals(_active, tab))
+            {
+                _active = null;
+                var next = _tabs[Math.Min(idx, _tabs.Count - 1)];
+                await ActivateTabAsync(next);
+            }
+        }
+
         // ── Chrome / window plumbing ─────────────────────────────────────────────
+        private void SetTabInline(FloatingChatTab tab, string message, bool isError)
+        {
+            tab.InlineText = message;
+            tab.InlineIsError = isError;
+            if (ReferenceEquals(tab, _active)) ShowInlineMessage(message, isError);
+        }
+
         public void ShowInlineMessage(string message, bool isError)
         {
             InlineMessage.Text = message;
             InlineMessage.Foreground = (Brush)FindResource(isError ? "RedBrush" : "GreenBrush");
             InlineMessage.Visibility = Visibility.Visible;
+        }
+
+        private void ClearInlineMessage()
+        {
+            InlineMessage.Text = "";
+            InlineMessage.Visibility = Visibility.Collapsed;
         }
 
         private void Header_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

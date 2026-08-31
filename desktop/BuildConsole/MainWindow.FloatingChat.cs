@@ -5,19 +5,20 @@ using BuildConsole.Services;
 namespace BuildConsole
 {
     /// <summary>
-    /// Git #2059 — Floating Chat Window (Phase 1 of the #2035 Global Chat Drawer epic).
-    /// MainWindow owns/launches the always-on-top single-chat floaty; Phase 1 keeps ONE
-    /// open at a time (opening a different chat replaces it), matching the issue's
-    /// explicit single-chat scope.
+    /// Git #2059 (Phase 1) / #2065 (Phase 2) — Floating Chat Window (#2035 Global Chat
+    /// Drawer epic). MainWindow owns/launches the always-on-top floaty. Phase 2 lets it hold
+    /// MORE THAN ONE chat at once: opening a chat while the floaty is already up adds a TAB
+    /// (or brings that chat's existing tab forward) rather than replacing the window.
     /// </summary>
     public partial class MainWindow
     {
         private FloatingChatWindow? _floatingChatWindow;
 
         /// <summary>
-        /// Opens (or re-points) the always-on-top floating window for <paramref name="chat"/>.
-        /// Phase 1 opens ONE chat at a time — an already-open floaty is closed first so a new
-        /// one takes its place, rather than accumulating windows (tabs are a later phase).
+        /// Opens the always-on-top floating chat window for <paramref name="chat"/>. If the
+        /// floaty is already open, the chat is added as a new tab (or its existing tab is
+        /// activated) — the Phase-2 multi-chat behavior. If it's not open yet, a fresh window
+        /// is created with this chat as its first tab.
         /// </summary>
         public void OpenFloatingChatWindow(BoardChat chat)
         {
@@ -29,20 +30,17 @@ namespace BuildConsole
 
             try
             {
-                // Same chat already floating? Just bring it forward.
+                // Already open? Add this chat as a tab (or focus its existing tab).
                 if (_floatingChatWindow != null && _floatingChatWindow.IsLoaded)
                 {
+                    _floatingChatWindow.AddOrActivateChat(chat);
                     _floatingChatWindow.Activate();
-                    if (ReferenceEquals(_floatingChatWindow.Tag, chat.ConversationId))
-                        return;
-                    _floatingChatWindow.Close();
-                    _floatingChatWindow = null;
+                    return;
                 }
 
                 var win = new FloatingChatWindow(chat, this)
                 {
-                    Owner = this,
-                    Tag = chat.ConversationId
+                    Owner = this
                 };
                 win.Closed += (_, _) =>
                 {
