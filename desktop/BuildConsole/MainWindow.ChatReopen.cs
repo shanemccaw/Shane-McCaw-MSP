@@ -50,6 +50,28 @@ namespace BuildConsole
         private const double ReopenParkOffscreenY = -20000d;
 
         /// <summary>
+        /// Git #2130 kill switch. Returns true only when the #1887 background preload is
+        /// explicitly re-enabled — either the BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD env
+        /// var is truthy (a one-run override that doesn't touch settings.json), or the
+        /// persisted <see cref="BuildConsole.Services.BuildConsoleSettings.EnableChatReopenPreload"/>
+        /// toggle is on. Default (missing env var + default-false setting) is OFF.
+        /// </summary>
+        private static bool ChatReopenPreloadEnabled()
+        {
+            var env = Environment.GetEnvironmentVariable("BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD");
+            if (!string.IsNullOrWhiteSpace(env))
+            {
+                var v = env.Trim();
+                if (v == "1" || v.Equals("true", StringComparison.OrdinalIgnoreCase) || v.Equals("yes", StringComparison.OrdinalIgnoreCase))
+                    return true;
+                if (v == "0" || v.Equals("false", StringComparison.OrdinalIgnoreCase) || v.Equals("no", StringComparison.OrdinalIgnoreCase))
+                    return false;
+            }
+            try { return BuildConsole.Services.BuildConsoleSettings.Load().EnableChatReopenPreload; }
+            catch { return false; }
+        }
+
+        /// <summary>
         /// Kicks off reopening every tab persisted in OpenChatTabs at the previous launch.
         /// Deliberately fire-and-forget from RunDeferredStartupAsync — NOT awaited, and NOT
         /// wired into _startupConnectivity/MarkShellReady(). The #1882 overlay must never
@@ -69,6 +91,21 @@ namespace BuildConsole
         /// </summary>
         private async Task ReopenPersistedChatTabsInBackgroundAsync()
         {
+            // Git #2130 — KILL SWITCH. This background preload path (real off-screen
+            // WebView2 navigation for every persisted tab, kicked off inside the loading
+            // window) was found to lock up Shane's machine and drain the build queue on a
+            // real cold start. Default OFF: unless explicitly re-enabled, no-op here at the
+            // single entry point so nothing is created, navigated, or parked in
+            // ChatReopenPreloadHost. Manual tab-reopen-on-click (Home "Resume Chat") is a
+            // separate path and is unaffected. Re-enable via the settings toggle or the
+            // BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD=1 env var once root-caused.
+            if (!ChatReopenPreloadEnabled())
+            {
+                ActivityLog.Log(ChatReopenChannel,
+                    "Git #2130: background chat-tab auto-reopen preload is DISABLED (kill switch) — skipping. Tabs still reopen on manual click.");
+                return;
+            }
+
             var toReopen = _chatTabsAtLaunch
                 .Where(p => !string.IsNullOrWhiteSpace(p.ClaudeUrl) && !string.IsNullOrWhiteSpace(p.ConversationId))
                 .ToList();

@@ -515,6 +515,21 @@ namespace BuildConsole.Services
         public bool QueuePaused { get; set; } = false;
 
         /// <summary>
+        /// Git #2130 — KILL SWITCH for #1887's background chat-tab auto-reopen preload
+        /// (<c>MainWindow.ReopenPersistedChatTabsInBackgroundAsync</c> /
+        /// <c>ChatReopenPreloadHost</c>). OFF by default (and for any settings.json written
+        /// before this field existed — a missing key deserializes to false here) after that
+        /// feature was found to lock up Shane's machine and drain the build queue on a real
+        /// cold start with several tabs persisted. When false, the whole background-preload
+        /// path no-ops cleanly at its entry point; manual tab-reopen-on-click (the existing
+        /// Home-screen "Resume Chat" path) is unaffected and keeps working. Set true only to
+        /// re-enable the preload once its startup-contention root cause is fixed.
+        /// The env var <c>BUILDCONSOLE_ENABLE_CHAT_REOPEN_PRELOAD=1</c> can force it on for a
+        /// single run without editing settings.json.
+        /// </summary>
+        public bool EnableChatReopenPreload { get; set; } = false;
+
+        /// <summary>
         /// Git #1989 — Conservation Cap toggle, title bar. OFF by default (and for any
         /// pre-existing settings.json written before this field existed — missing JSON
         /// keys deserialize to the C# default here, which is false/off) — a session that
