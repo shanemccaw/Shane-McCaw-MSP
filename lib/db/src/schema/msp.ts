@@ -2936,6 +2936,12 @@ export const REPORT_DOC_TYPES = [
   "data_exposure_risk_report",
   "license_optimization_report",
   "license_waste_report",
+  // #1512 — the rendered, signable RBD document. Deterministic template render
+  // of a `msp_rbd_versions.content` snapshot, never an AI generation — see
+  // `rbd-document-render.ts`. Distinct from the report-builder's AI-authored
+  // types above, but stored through the same `msp_report_runs` machinery
+  // rather than a parallel render path.
+  "risk_decision_document",
 ] as const;
 export type ReportDocType = typeof REPORT_DOC_TYPES[number];
 
@@ -3001,12 +3007,19 @@ export const mspReportRunsTable = pgTable("msp_report_runs", {
   workflowRunId: uuid("workflow_run_id"),
   triggeredByUserId: integer("triggered_by_user_id"),
   generatedAt: timestamp("generated_at", { withTimezone: true }),
+  /** #1512 — set only for `docType = "risk_decision_document"` runs: the
+   * `msp_rbd_versions.versionUid` this run rendered. No FK by design, same
+   * convention as `customerId` above — a version render must never be blocked
+   * by, or block, the version row's own lifecycle. Lets a caller look up "the
+   * persisted render for version X" without a parallel storage table. */
+  rbdVersionUid: uuid("rbd_version_uid"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_report_runs_msp_id_idx").on(t.mspId),
   index("msp_report_runs_def_id_idx").on(t.definitionId),
   index("msp_report_runs_status_idx").on(t.status),
+  index("msp_report_runs_rbd_version_uid_idx").on(t.rbdVersionUid),
 ]);
 
 export type MspReportRun = typeof mspReportRunsTable.$inferSelect;
@@ -5693,6 +5706,18 @@ export const mspRbdVersionsTable = pgTable("msp_rbd_versions", {
   signed: boolean("signed").notNull().default(false),
   signedBy: jsonb("signed_by").$type<ClientApprover>(),
   signedAt: timestamp("signed_at", { withTimezone: true }),
+  /** #1512 — the actual drawn signature, base64 PNG data-URL. Same shape as
+   * `msp_sows.signatureData`; `signedBy.signatureHash` (above) is a tamper-
+   * evidence hash of the acceptance facts, not the image itself — this is the
+   * genuinely missing piece of SOW-flow parity, added here rather than a
+   * second signature table. Null until signed. */
+  signatureData: text("signature_data"),
+  /** #1512 — unauthenticated review/sign link token, same mechanism as
+   * `msp_sows.shareToken`. Null until an MSP operator explicitly generates one
+   * for this version (`POST .../share`) — a version is reachable by an
+   * authenticated CustomerUser without ever needing a token. */
+  shareToken: text("share_token").unique(),
+  shareTokenExpiresAt: timestamp("share_token_expires_at", { withTimezone: true }),
   /** When a newer version replaced this one. NULL = the current version. Never
    * edited or backfilled once superseded — same rule as `drift_baseline_snapshots`. */
   supersededAt: timestamp("superseded_at", { withTimezone: true }),
@@ -5700,6 +5725,7 @@ export const mspRbdVersionsTable = pgTable("msp_rbd_versions", {
 }, (t) => [
   index("msp_rbd_versions_msp_id_rbd_id_idx").on(t.mspId, t.rbdId),
   index("msp_rbd_versions_rbd_id_superseded_idx").on(t.rbdId, t.supersededAt),
+  index("msp_rbd_versions_share_token_idx").on(t.shareToken),
   unique("msp_rbd_versions_msp_id_rbd_id_version_uidx").on(t.mspId, t.rbdId, t.versionNumber),
 ]);
 
