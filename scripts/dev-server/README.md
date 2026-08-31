@@ -223,6 +223,39 @@ restart.
 > the subset), rather than doing zero-downtime per-service supervision — the
 > targeting decides *which* services run, not independent per-service uptime.
 
+## Shared-store protection (Git #1988)
+
+A worktree's `node_modules` dirs are junctions into the **shared main-checkout
+store**. Any `pnpm install` run inside a worktree writes THROUGH those junctions
+into the store every session shares, with link/shim paths anchored to the
+installing worktree — when that worktree is cleaned up, every other session's
+toolchain breaks (incidents #1951 #1955 #1959 #1964 #1967 #1974). Three
+enforced layers replace what used to be only a documented convention:
+
+1. **Fail-closed install gate** — the root `.pnpmfile.cjs` (`preResolution` +
+   `readPackage`, both proven on pnpm 11.13.0 to fire on every install variant,
+   incl. headless) refuses any install where a workspace `node_modules` is a
+   junction resolving outside the workspace root — no override. In a
+   junction-free linked worktree it refuses unless `WORKTREE_ISOLATED_INSTALL=1`
+   (a deliberate fully-local install that touches nothing shared).
+2. **No silent auto-installs** — `verifyDepsBeforeRun: false` in
+   `pnpm-workspace.yaml`. pnpm 11's built-in default is `"install"`, which is
+   what fired #1951's poisoning install as a side effect of a plain `pnpm
+   vitest`. Installs are always deliberate now.
+3. **Detection everywhere, repair only on request** — `store-doctor.mjs` scans
+   the shared store for foreign (worktree-anchored) links, dangling links and
+   poisoned `.bin` shims. `provision-worktree.mjs` runs the scan at provisioning
+   (result on `storeHealth`, loud warning in human mode);
+   `removeWorktreeSafe` re-scans after every removal into `cleanups.log`
+   (`storeAfterRemoval`) so a poisoning is pinned to the removal that exposed
+   it. Repair is **only** `node scripts/dev-server/store-doctor.mjs --repair` —
+   explicit by design; an automatic repair would hide the recurrence.
+
+Teardown is also hardened: junction unlinking is lstat-based (dangling junctions
+are unlinked too), and `removeWorktreeSafe` REFUSES to delete a worktree while
+any junction it found could not be removed — it marks the worktree stale instead
+of risking a delete-through into the real store.
+
 ## Reading live server logs
 
 `dev-all.mjs` streams stdout/stderr to **rotating log files** as well as the
@@ -271,6 +304,7 @@ stale-lock recovery.
 | `provision-worktree.mjs` | Create an isolated agent worktree off origin/main. |
 | `bootstrap-server.mjs` | Create/launch the dedicated dev-server checkout. |
 | `link-deps.mjs` | Junction `node_modules` + `lib/*/dist` into a worktree (Windows recipe). |
+| `store-doctor.mjs` | **Git #1988** — scan the shared main-checkout `node_modules` for links/`.bin` shims that resolve into a worktree or dangle; `--repair` is the ONLY (explicit, never automatic) repair path. |
 | `selftest.mjs` | Cross-process verification of the whole mechanism. |
 | `verify-branch-merged.mjs` | **Git #1447 Part 1** — `git merge-base --is-ancestor` check a session runs before writing a DONE bookend, to confirm its own branch actually landed on main (not just that the local worktree looks clean). |
 | `check-stranded-branches.mjs` | **Git #1447 Part 2** — sweeps every `agent/*` branch against main and reports which have commits main doesn't have ("stranded"). Deliberately separate from the worktree-lifecycle orphan sweep above — different question, different terminology. |

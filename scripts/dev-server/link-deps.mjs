@@ -17,9 +17,23 @@
 // the real store.
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, existsSync, statSync, mkdirSync, copyFileSync } from "node:fs";
+import { readdirSync, existsSync, statSync, lstatSync, mkdirSync, copyFileSync } from "node:fs";
 import path from "node:path";
 import { isWindows } from "./config.mjs";
+
+/**
+ * Reparse-point (junction OR symlink) detection via lstat, which — unlike
+ * existsSync/statSync — does NOT follow the link, so it still detects a junction
+ * whose target is gone (Git #1988: existsSync-based checks skipped exactly those
+ * dangling junctions and left them live through worktree removal).
+ */
+export function isReparsePoint(p) {
+  try {
+    return lstatSync(p).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
 
 /** Directories (relative to repo root) that hold a node_modules worth linking. */
 function nodeModulesHosts(repoRoot) {
@@ -86,11 +100,14 @@ export function linkDeps(repoRoot, worktreePath) {
   return created;
 }
 
-/** Remove junctions created by linkDeps. rmdir removes only the link, not target. */
+/** Remove junctions created by linkDeps. rmdir removes only the link, not target.
+ *  Git #1988: keyed off lstat (isReparsePoint), not existsSync — a junction whose
+ *  target is already gone must STILL be unlinked, and a real directory (e.g. from a
+ *  deliberate WORKTREE_ISOLATED_INSTALL) must never be rmdir'd here. */
 export function unlinkDeps(links) {
   for (const link of links) {
     try {
-      if (existsSync(link) && statSync(link).isDirectory()) {
+      if (isReparsePoint(link)) {
         execFileSync("cmd", ["/c", "rmdir", link], { stdio: "ignore" });
       }
     } catch {
@@ -149,9 +166,22 @@ export function copyEnvFiles(repoRoot, worktreePath) {
   return { copied, skipped, missing: names.length === 0 };
 }
 
-/** Finds and unlinks all node_modules and dist junctions inside a worktree path. */
+/**
+ * Finds and unlinks all node_modules and dist junctions inside a worktree path.
+ *
+ * Git #1988 changes:
+ *   * detection is lstat-based (isReparsePoint) so DANGLING junctions are unlinked
+ *     too — the old existsSync check followed the link and skipped them, leaving a
+ *     live reparse point in place for the subsequent worktree removal;
+ *   * real directories are never touched (an agent may have deliberately created a
+ *     local node_modules via WORKTREE_ISOLATED_INSTALL — worktree removal handles it);
+ *   * returns { unlinked, remaining }: `remaining` lists reparse points that were
+ *     found but could NOT be removed. Callers MUST refuse to delete the worktree
+ *     while `remaining` is non-empty — removal tooling that follows reparse points
+ *     would delete THROUGH them into the real shared store (the header warning).
+ */
 export function findAndUnlinkWorktreeJunctions(worktreePath) {
-  if (!isWindows()) return [];
+  if (!isWindows()) return { unlinked: [], remaining: [] };
   const hosts = [""]; // worktree root itself
   for (const group of ["artifacts", "lib", "lib/integrations", "scripts"]) {
     const dir = path.join(worktreePath, group);
@@ -182,14 +212,15 @@ export function findAndUnlinkWorktreeJunctions(worktreePath) {
   }
 
   const unlinked = [];
+  const remaining = [];
   for (const rel of rels) {
     const link = path.join(worktreePath, rel);
+    if (!isReparsePoint(link)) continue;
     try {
-      if (existsSync(link) && statSync(link).isDirectory()) {
-        execFileSync("cmd", ["/c", "rmdir", link], { stdio: "ignore" });
-        unlinked.push(link);
-      }
+      execFileSync("cmd", ["/c", "rmdir", link], { stdio: "ignore" });
     } catch {}
+    if (isReparsePoint(link)) remaining.push(link);
+    else unlinked.push(link);
   }
-  return unlinked;
+  return { unlinked, remaining };
 }

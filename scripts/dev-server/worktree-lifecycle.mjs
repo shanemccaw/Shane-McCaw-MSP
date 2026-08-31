@@ -45,6 +45,7 @@ import {
 } from "./git.mjs";
 import { pidAlive } from "./lock.mjs";
 import { findAndUnlinkWorktreeJunctions } from "./link-deps.mjs";
+import { scanSharedStore } from "./store-doctor.mjs";
 
 // markWorktreeStale() drops this untracked marker into a retained worktree; it is
 // BuildConsole bookkeeping, never real work, so preservation must not count it as "dirty".
@@ -362,12 +363,31 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
   // remove, branch delete). Best-effort; never blocks removal.
   const preservation = preserveWorktreeWork(config, wtPath, rec);
 
+  // Git #1988 — junctions MUST all be gone before anything destructive runs; removal
+  // tooling that follows reparse points deletes THROUGH them into the shared store
+  // (link-deps.mjs header warning). If any junction survives the unlink attempt
+  // (e.g. a process holds a handle on it), removal is REFUSED: the worktree is
+  // marked stale and retained instead of gambling the shared store on it.
   let junctionsUnlinked = [];
   if (existsSync(wtPath)) {
+    let remaining = [];
     try {
-      junctionsUnlinked = findAndUnlinkWorktreeJunctions(wtPath);
+      const r = findAndUnlinkWorktreeJunctions(wtPath);
+      junctionsUnlinked = r.unlinked;
+      remaining = r.remaining;
     } catch (e) {
       console.warn(`[worktree-cleanup] Warning: unlinking junctions for ${wtPath} hit: ${e.message}`);
+      remaining = [`(junction enumeration failed: ${e.message})`];
+    }
+    if (remaining.length > 0) {
+      const detail = remaining.join(", ");
+      markWorktreeStale(config, wtPath, {
+        reason: `removal refused: ${remaining.length} junction(s) could not be unlinked (${detail}) — removing now could delete through into the shared store (Git #1988)`,
+      });
+      throw new Error(
+        `Refusing to remove ${wtPath}: ${remaining.length} live junction(s) could not be unlinked (${detail}). ` +
+          `Close whatever holds them open and re-run cleanup.`
+      );
     }
   }
 
@@ -413,6 +433,31 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
   // Remove tracking record
   removeWorktreeRecord(config, nameOrPath);
 
+  // Git #1988 — canary: after every removal, verify the SHARED store still resolves
+  // inside the main checkout (per #1964's post-cleanup verification suggestion). This
+  // pins the timeline of any future poisoning to the removal that exposed it, in the
+  // durable cleanups.log, instead of surfacing a session later. Detection only —
+  // repair is exclusively the explicit `store-doctor.mjs --repair` operation.
+  let storeAfterRemoval = null;
+  try {
+    const scan = scanSharedStore(config.mainRepoRoot);
+    storeAfterRemoval = {
+      clean: scan.clean,
+      foreign: scan.foreignLinks.length,
+      dangling: scan.danglingLinks.length,
+      poisonedBins: scan.poisonedBins.length,
+    };
+    if (!scan.clean) {
+      console.warn(
+        `[worktree-cleanup] WARNING: shared store at ${config.mainRepoRoot} is POISONED after removing ${wtPath} ` +
+          `(foreign=${scan.foreignLinks.length}, dangling=${scan.danglingLinks.length}, poisonedBins=${scan.poisonedBins.length}). ` +
+          `Diagnose with: node scripts/dev-server/store-doctor.mjs (Git #1988)`
+      );
+    }
+  } catch (e) {
+    storeAfterRemoval = { error: e.message };
+  }
+
   const logEntry = {
     action: "removed",
     path: wtPath,
@@ -423,6 +468,7 @@ export function removeWorktreeSafe(config, nameOrPath, { reason = "completed bui
     branchDeleted,
     rescuedBranch: preservation.rescueBranch || null,
     rescuedWip: preservation.wip || null,
+    storeAfterRemoval,
   };
   appendCleanupLog(config, logEntry);
 

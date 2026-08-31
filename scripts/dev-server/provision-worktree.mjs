@@ -32,6 +32,7 @@ import { pathToFileURL } from "node:url";
 import { loadConfig, isWindows } from "./config.mjs";
 import { git, resolveCommit, shortSha, listWorktrees } from "./git.mjs";
 import { linkDeps, copyEnvFiles } from "./link-deps.mjs";
+import { scanSharedStore } from "./store-doctor.mjs";
 import {
   registerWorktree,
   getWorktreeRecord,
@@ -75,6 +76,25 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
   const baseCommit = resolveCommit(repo, base);
   if (!baseCommit) {
     return { ok: false, error: `base ref '${base}' does not resolve. Try: git fetch origin main` };
+  }
+
+  // Git #1988 — check the SHARED store this worktree is about to junction into, so a
+  // poisoned store is visible at provisioning time (seconds) instead of mid-session as
+  // an inexplicable tsc/vitest failure. Detection only: provisioning proceeds either
+  // way (blocking every build on a poisoned store would strand the whole queue), but
+  // the result rides on the returned object and the human path prints it loudly.
+  // Repair stays the explicit `store-doctor.mjs --repair` operation, never automatic.
+  let storeHealth = null;
+  try {
+    const scan = scanSharedStore(repo);
+    storeHealth = {
+      clean: scan.clean,
+      foreign: scan.foreignLinks.length,
+      dangling: scan.danglingLinks.length,
+      poisonedBins: scan.poisonedBins.length,
+    };
+  } catch (e) {
+    storeHealth = { error: e.message };
   }
 
   // --- Idempotency: if the path already exists, reuse it if it is a real worktree. ---
@@ -129,6 +149,7 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
         reused: true,
         recordId: rec?.id || null,
         envFiles: envResult,
+        storeHealth,
       };
     }
     return {
@@ -193,7 +214,22 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
     reused: false,
     recordId: rec?.id || null,
     envFiles: envResult,
+    storeHealth,
   };
+}
+
+/** Git #1988 — loud, human-readable warning when the shared store the worktree
+ *  junctions into is poisoned (foreign/dangling links or worktree-anchored shims). */
+function logStoreHealth(storeHealth) {
+  if (!storeHealth) return;
+  if (storeHealth.error) {
+    console.warn(`  ! shared-store check failed: ${storeHealth.error}`);
+    return;
+  }
+  if (storeHealth.clean) return;
+  console.warn(`  !!! SHARED STORE POISONED (Git #1988): foreign=${storeHealth.foreign}, dangling=${storeHealth.dangling}, poisonedBins=${storeHealth.poisonedBins}`);
+  console.warn(`  !!! This worktree junctions into that store — tsc/vitest/builds may fail here through no fault of this session.`);
+  console.warn(`  !!! Diagnose with: node scripts/dev-server/store-doctor.mjs   (repair is explicit: --repair)`);
 }
 
 /** Log (filenames only, never contents) which local env files were copied/skipped/missing. */
@@ -234,6 +270,7 @@ function main() {
   // Git #1646 — moved out of provisionWorktree() itself (see comments there); only
   // the human-readable path prints this, so --json output stays pure JSON.
   if (res.envFiles) logEnvCopy(res.envFiles);
+  logStoreHealth(res.storeHealth);
 
   console.log(res.reused ? `Reused existing worktree` : `Created worktree`);
   console.log(`  path   : ${res.path}`);

@@ -69,6 +69,16 @@ catalog:
 
 autoInstallPeers: false
 
+# Git #1988 — kill pnpm's silent auto-install. pnpm 11.13.0's BUILT-IN default for
+# verify-deps-before-run is "install" (verified in the installed bundle), meaning any
+# `pnpm run` / `pnpm <script>` first checks dep status and silently runs a full install
+# on drift. Inside an agent worktree (node_modules junctioned to the shared main
+# checkout) that auto-install is what wrote worktree-anchored links into the shared
+# store (#1951's "Recreating ...node_modules" log — the mechanism behind #1988).
+# On the metered connection it is also an unrequested download. Installs here are
+# always deliberate, never a side effect of running a script.
+verifyDepsBeforeRun: false
+
 onlyBuiltDependencies:
   - '@swc/core'
   - esbuild
