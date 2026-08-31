@@ -41,6 +41,11 @@ namespace BuildConsole.Services
             public BuildProcessHandle Process = null!;
             /// <summary>The owned stdin writer over the pipe's write end — null when <c>redirectStdin</c> was false.</summary>
             public StreamWriter? StdIn;
+            /// <summary>Git #1792 — the per-build Windows Job Object this process (and every descendant it
+            /// spawns) is assigned to, so the whole tree can be reaped together at the build's completion.
+            /// Null if the OS refused to create/assign the job — the build still runs, just without the
+            /// Job-Object cleanup backstop (degrades to the pre-#1792 tree-walk-only behavior).</summary>
+            public WindowsJobObject? Job;
         }
 
         /// <summary>
@@ -112,7 +117,12 @@ namespace BuildConsole.Services
                 string commandLine = BuildCommandLine(exePath, args);
                 envBlock = BuildEnvironmentBlock(envOverrides);
 
-                uint flags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT;
+                // Git #1792 — CREATE_SUSPENDED so we can assign the process to its Job Object BEFORE
+                // it runs a single instruction. Assigning after an unsuspended start leaves a race
+                // window in which the child could spawn a grandchild that escapes the job — exactly
+                // the detached-grandchild class this fix exists to close. CREATE_NO_WINDOW is kept
+                // untouched: this is about cleanup, not window visibility.
+                uint flags = CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED;
 
                 var ok = CreateProcess(
                     lpApplicationName: exePath,
@@ -128,6 +138,21 @@ namespace BuildConsole.Services
                 if (!ok)
                     throw new Win32Exception(Marshal.GetLastWin32Error(), $"CreateProcess failed for {exePath}");
 
+                // Git #1792 — while the process is still suspended, assign it to a per-build Job
+                // Object so every process it ever spawns (its node.exe tool-execution grandchildren
+                // included) is a job member from the very first instruction. Then resume the primary
+                // thread. Job creation/assignment is best-effort: on failure the build still runs
+                // (just without the cleanup backstop), but the thread MUST be resumed regardless or
+                // the build would hang forever suspended — so ResumeThread is unconditional.
+                WindowsJobObject? job = WindowsJobObject.CreateWithKillOnClose();
+                if (job != null && !job.Assign(pi.hProcess))
+                {
+                    job.DetachWithoutKill(); // couldn't assign — drop the empty job, don't leak the handle
+                    job = null;
+                }
+                if (ResumeThread(pi.hThread) == unchecked((uint)-1))
+                    ActivityLog.Log("watcher", $"ResumeThread failed (win32 {Marshal.GetLastWin32Error()}) for {exePath} — the launched build may be stuck suspended.");
+
                 // The child now owns its own copies of the inherited handles; drop ours.
                 CloseHandle(pi.hThread);
 
@@ -135,6 +160,7 @@ namespace BuildConsole.Services
                 var result = new LaunchedProcess
                 {
                     Process = new BuildProcessHandle(procHandle, (int)pi.dwProcessId),
+                    Job = job,
                 };
 
                 if (redirectStdin)
@@ -286,6 +312,7 @@ namespace BuildConsole.Services
 
         private const uint STARTF_USESTDHANDLES = 0x00000100;
         private const uint CREATE_NO_WINDOW = 0x08000000;
+        private const uint CREATE_SUSPENDED = 0x00000004;
         private const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
         private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
         private const uint HANDLE_FLAG_INHERIT = 0x00000001;
@@ -362,6 +389,11 @@ namespace BuildConsole.Services
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool CloseHandle(IntPtr hObject);
+
+        // Git #1792 — resumes the primary thread of a CREATE_SUSPENDED process after Job Object
+        // assignment. Returns the thread's previous suspend count, or (DWORD)-1 on failure.
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint ResumeThread(IntPtr hThread);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]

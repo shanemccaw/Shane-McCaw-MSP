@@ -120,6 +120,14 @@ namespace BuildConsole.Services
             /// C:\wt\&lt;name&gt; path) used to merge-back / mark-stale / clean it up.</summary>
             public string? WorktreeName;
 
+            /// <summary>Git #1792 — the per-build Windows Job Object this build's process (and every
+            /// process it spawns, including detached node.exe grandchildren) is assigned to at launch.
+            /// Torn down (<see cref="WindowsJobObject.TerminateAndClose"/>) the moment this build entry
+            /// is reaped/stopped, guaranteeing no spawned process survives the build. Null for ADOPTED
+            /// builds (launched by a prior app instance — no job we own) and when job creation failed.
+            /// Only touched on the UI thread, same as _running membership.</summary>
+            public WindowsJobObject? JobObject;
+
             // ── Interactive (BuildConsole owns stdin/stdout) fields ──────────
             /// <summary>True when this build was launched in the interactive redirected-stdin mode (owned by this app instance). Legacy/foreign builds are false and behave exactly as before.</summary>
             public bool Interactive;
@@ -424,6 +432,7 @@ namespace BuildConsole.Services
             finally
             {
                 entry.TailCts?.Cancel(); // Git #1804 — stop the durable-file tailer for this build.
+                CloseBuildJob(entry);    // Git #1792 — reap the Job Object (this path removes from _running, so the reap loop won't).
                 _running.Remove(queueItemId);
             }
             ActivityLog.Log("watcher", $"Stopped: {entry.Title} (queue #{queueItemId})");
@@ -1032,6 +1041,45 @@ namespace BuildConsole.Services
             }
         }
 
+        // ── Git #1792 — per-build Job Object teardown ───────────────────────────
+        /// <summary>
+        /// Reaps a build's Windows Job Object — terminating every process still running under it
+        /// (claude.exe and any node.exe grandchildren it spawned, detached or not) and releasing the
+        /// handle. Called on the natural-completion reap path AND the explicit cancel/hard-kill paths.
+        /// Idempotent (the underlying <see cref="WindowsJobObject.TerminateAndClose"/> guards against a
+        /// double call), so it's safe that HardKill leaves the entry in _running for the reap loop to
+        /// process again. No-op when there is no owned job (adopted builds / job-create failure).
+        /// </summary>
+        private static void CloseBuildJob(RunningEntry entry)
+        {
+            try { entry.JobObject?.TerminateAndClose(); }
+            catch (Exception ex) { ActivityLog.Log("watcher", $"Job Object teardown failed for '{entry.Title}': {ex.Message}"); }
+        }
+
+        /// <summary>
+        /// Git #1792 correction — called on BuildConsole's graceful shutdown. Strips the kill-on-close
+        /// limit from every still-running build's Job Object and releases the handles WITHOUT killing
+        /// the members, so closing the app never terminates in-progress builds (the #1804 durable-file
+        /// design already lets them survive the app closing; the Job Object must not undo that). The
+        /// per-build job is otherwise scoped strictly to that build's own completion — never to the
+        /// app's process lifetime.
+        /// </summary>
+        public void DetachAllJobsForShutdown()
+        {
+            foreach (var entry in _running.Values)
+            {
+                try { entry.JobObject?.DetachWithoutKill(); }
+                catch (Exception ex) { ActivityLog.Log("watcher", $"Job Object detach-on-shutdown failed for '{entry.Title}': {ex.Message}"); }
+            }
+            foreach (var entry in _retained.Values)
+            {
+                // Retained entries' processes have already exited, but detach defensively so no handle
+                // is left holding a kill-on-close over anything the OS might still be tearing down.
+                try { entry.JobObject?.DetachWithoutKill(); }
+                catch { }
+            }
+        }
+
         private async Task TickAsync()
         {
             // A tick can take longer than 10s (network latency, a slow
@@ -1189,6 +1237,11 @@ namespace BuildConsole.Services
                             TrimRetained();
                         }
                     }
+                    // Git #1792 — the build process has exited (HasExited gated entry above); reap its
+                    // Job Object so any node.exe grandchild it left orphaned dies with it. This is the
+                    // cleanup the natural-completion path never did before, and it also covers entries
+                    // HardKill deliberately left in _running (TerminateAndClose is idempotent).
+                    CloseBuildJob(entry);
                     _running.Remove(id);
                 }
 
@@ -1581,6 +1634,7 @@ namespace BuildConsole.Services
             }
             entry.Process = launched.Process;
             entry.Stdin = launched.StdIn;
+            entry.JobObject = launched.Job; // Git #1792 — reaped when this build entry completes/stops.
 
             // Tail the durable raw files into the same output pipeline the old in-process pipe fed.
             StartRawTailers(entry, item.Id);
@@ -2444,7 +2498,13 @@ namespace BuildConsole.Services
         private void HardKill(RunningEntry entry, int id, string reason)
         {
             try { if (!entry.Process.HasExited) entry.Process.Kill(entireProcessTree: true); }
-            catch (Exception ex) { ActivityLog.Log("interactive-build", $"hard kill failed for queue #{id}: {ex.Message}"); return; }
+            catch (Exception ex) { ActivityLog.Log("interactive-build", $"hard kill failed for queue #{id}: {ex.Message} — falling through to the Job Object backstop."); }
+            // Git #1792 — reap the Job Object immediately: this catches any node.exe grandchild the
+            // tree-walk above missed (detached before its parent exited) AND, if Kill itself threw,
+            // TerminateJobObject is the real backstop that still takes the whole tree down. Idempotent,
+            // so the reap loop (which still sees this entry — it's deliberately left in _running below)
+            // calling CloseBuildJob again is a harmless no-op.
+            CloseBuildJob(entry);
             // Deliberately left in _running so TickAsync observes HasExited and
             // reports the real (kill) exit code exactly like any other exit —
             // completion + BuildFinished stay intact.

@@ -1196,6 +1196,14 @@ namespace BuildConsole
             }
             catch { /* best-effort teardown on shutdown */ }
 
+            // Git #1792 — strip the kill-on-close limit from every still-running build's Job Object and
+            // release the handles WITHOUT killing the members, so closing BuildConsole never terminates
+            // in-progress builds. The #1804 durable-file redirect already lets a build survive the app
+            // closing; the per-build Job Object must not undo that (it's scoped to each build's OWN
+            // completion, not the app's lifetime). Verified requirement, not assumed.
+            try { _queueWatcher?.DetachAllJobsForShutdown(); }
+            catch { /* best-effort — a failure here must never block app shutdown */ }
+
             base.OnClosed(e);
         }
 
