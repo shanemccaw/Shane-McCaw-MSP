@@ -1688,6 +1688,7 @@ namespace BuildConsole.Services
                         var convId = reader.IsDBNull(1) ? "" : reader.GetString(1);
                         var chat = new BoardChat
                         {
+                            Id = id,
                             ConversationId = convId,
                             Title = reader.IsDBNull(2) ? "" : reader.GetString(2),
                             EpicId = reader.IsDBNull(3) ? null : reader.GetInt32(3),
@@ -2224,6 +2225,87 @@ namespace BuildConsole.Services
             {
                 cmd.Parameters.AddWithValue("@status", status);
             }
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // ── Pinned Questions (Git #2104, Phase 1 of #2036) ──────────────────────
+        // A pin ties a question back to the chat it belongs to (chat_pinned_questions.chat_id
+        // -> bt_chats.id, same FK shape as bt_chat_issues). Detection — asking chats for
+        // outstanding questions — is explicitly OUT of scope (#2105); this build only needs
+        // real CRUD so the UI/resolve mechanism can be proven end to end via a manual/debug
+        // create path. "Persists until resolved, silent auto-purge on stale/redundant, no
+        // archive list" (the issue's own words) is implemented as: reads only ever return
+        // unresolved rows, resolving stamps resolved_at then a purge sweep deletes every
+        // already-resolved row immediately — there is no history/archive table or view to
+        // browse — and a partial unique index (chat_id, question_text) WHERE resolved_at IS
+        // NULL rejects a redundant duplicate pin at the DB layer rather than in C#.
+
+        public async Task<List<PinnedQuestion>> GetOpenPinnedQuestionsAsync()
+        {
+            await using var conn = await OpenAsync();
+            await PurgeResolvedPinnedQuestionsAsync(conn);
+
+            const string sql = @"
+                SELECT p.id, p.chat_id, p.question_text, p.created_at, c.conversation_id, c.title
+                FROM chat_pinned_questions p
+                JOIN bt_chats c ON c.id = p.chat_id
+                WHERE p.resolved_at IS NULL
+                ORDER BY p.created_at ASC";
+            var result = new List<PinnedQuestion>();
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                result.Add(new PinnedQuestion
+                {
+                    Id = reader.GetInt32(0),
+                    ChatId = reader.GetInt32(1),
+                    QuestionText = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    CreatedAt = reader.GetDateTime(3),
+                    ConversationId = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                    ChatTitle = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                });
+            }
+            return result;
+        }
+
+        /// <summary>Manual/debug create path (#2104) — Phase 2 detection (#2105) will call the
+        /// same method once it exists. Returns false (no-op, not an error) when an identical
+        /// unresolved pin already exists for this chat — the partial unique index below rejects
+        /// the redundant insert at the DB layer.</summary>
+        public async Task<bool> CreatePinnedQuestionAsync(int chatId, string questionText)
+        {
+            await using var conn = await OpenAsync();
+            const string sql = @"
+                INSERT INTO chat_pinned_questions (chat_id, question_text)
+                VALUES (@chatId, @questionText)
+                ON CONFLICT (chat_id, question_text) WHERE resolved_at IS NULL DO NOTHING
+                RETURNING id";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@chatId", chatId);
+            cmd.Parameters.AddWithValue("@questionText", questionText.Trim());
+            var val = await cmd.ExecuteScalarAsync();
+            return val != null && val != DBNull.Value;
+        }
+
+        /// <summary>Marks a pin resolved then immediately purges it — see the region header
+        /// above for why there's no separate archive of resolved pins.</summary>
+        public async Task ResolvePinnedQuestionAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            const string sql = "UPDATE chat_pinned_questions SET resolved_at = NOW() WHERE id = @id";
+            await using (var cmd = new NpgsqlCommand(sql, conn))
+            {
+                cmd.Parameters.AddWithValue("@id", id);
+                await cmd.ExecuteNonQueryAsync();
+            }
+            await PurgeResolvedPinnedQuestionsAsync(conn);
+        }
+
+        private static async Task PurgeResolvedPinnedQuestionsAsync(NpgsqlConnection conn)
+        {
+            const string sql = "DELETE FROM chat_pinned_questions WHERE resolved_at IS NOT NULL";
+            await using var cmd = new NpgsqlCommand(sql, conn);
             await cmd.ExecuteNonQueryAsync();
         }
 

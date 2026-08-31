@@ -125,5 +125,50 @@ namespace BuildConsole
                 return "error: " + ex.Message;
             }
         }
+
+        /// <summary>
+        /// Git #2104 — posts <paramref name="text"/> into the SPECIFIC chat <paramref name="chat"/>
+        /// identifies, opening/activating it in the floating window if it isn't already open
+        /// (adding a tab rather than replacing, same as <see cref="OpenFloatingChatWindow"/>). Unlike
+        /// <see cref="SendToActiveChatAsync"/> (#2063), which fires into whatever chat happens to be
+        /// active, this is for a caller — the pinned-question resolve flow — that knows exactly which
+        /// chat the reply belongs to and must not let it land in the wrong one. Reuses the same #2059
+        /// send+submit bridge via <see cref="FloatingChatWindow.SendToChatAsync"/> — no new mechanism.
+        /// </summary>
+        public async System.Threading.Tasks.Task<string> SendToChatAsync(BoardChat chat, string text)
+        {
+            if (chat == null || string.IsNullOrWhiteSpace(chat.ClaudeUrl)) return "no-chat-url";
+
+            if (_floatingChatWindow != null && _floatingChatWindow.IsLoaded)
+                return await _floatingChatWindow.SendToChatAsync(chat, text);
+
+            try
+            {
+                var win = new FloatingChatWindow(chat, this);
+                var loadedTcs = new System.Threading.Tasks.TaskCompletionSource<bool>();
+                RoutedEventHandler onLoaded = null!;
+                onLoaded = (_, _) => { win.Loaded -= onLoaded; loadedTcs.TrySetResult(true); };
+                win.Loaded += onLoaded;
+                win.Closed += (_, _) =>
+                {
+                    if (ReferenceEquals(_floatingChatWindow, win)) _floatingChatWindow = null;
+                };
+                this.Closed += (_, _) =>
+                {
+                    try { if (win.IsLoaded) win.Close(); } catch { }
+                };
+                _floatingChatWindow = win;
+                win.Show();
+                win.Activate();
+                await loadedTcs.Task;
+
+                return await win.SendToChatAsync(chat, text);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("chat.floating", $"pin-resolve: failed to open floating chat window for {chat.ConversationId}: {ex.Message}");
+                return "error: " + ex.Message;
+            }
+        }
     }
 }

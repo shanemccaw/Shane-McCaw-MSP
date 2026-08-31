@@ -96,6 +96,10 @@ namespace BuildConsole.Services
 
     public class BoardChat
     {
+        /// <summary>The real bt_chats.id integer PK — used to key rows in join/child tables
+        /// (bt_chat_issues, chat_pinned_questions #2104). Only populated by the direct-Postgres
+        /// board path (GetBoardAsync); 0 elsewhere.</summary>
+        public int Id { get; set; }
         public string ConversationId { get; set; } = "";
         public string Title { get; set; } = "";
         public int? EpicId { get; set; }
@@ -129,6 +133,19 @@ namespace BuildConsole.Services
         /// "database not ready" state rather than silently rendering as if every chat were
         /// scoped to Primary — same rule as #1472.</summary>
         public bool AccountColumnMissing { get; set; }
+    }
+
+    /// <summary>Git #2104 — one open row from chat_pinned_questions, joined with its owning
+    /// chat's conversation_id/title so the Pinned Questions panel can render + resolve it
+    /// without a second round trip. See <see cref="BuildQueuePostgresClient.GetOpenPinnedQuestionsAsync"/>.</summary>
+    public class PinnedQuestion
+    {
+        public int Id { get; set; }
+        public int ChatId { get; set; }
+        public string ConversationId { get; set; } = "";
+        public string ChatTitle { get; set; } = "";
+        public string QuestionText { get; set; } = "";
+        public DateTime CreatedAt { get; set; }
     }
 
     /// <summary>Git #829 — matches GET /admin/build-tracker/issues's real row shape.</summary>

@@ -82,6 +82,21 @@
                  ══════════════════════════════════ -->
             <Grid x:Name="ChatsView" DockPanel.Dock="Top">
                 <DockPanel>
+                    <!-- Git #2104 — Pinned Questions (Phase 1 of #2036). One card per open
+                         question, its own inline reply field; sending resolves the pin by
+                         posting the reply into the REAL originating chat via the #2059
+                         WebView2 bridge (SendToChatAsync — the specific chat, never "whatever's
+                         active"). Basic/default styling — real Design output is pending #2102
+                         and does not block this build. Collapsed entirely when there are no
+                         open pins so a quiet Chats panel stays quiet. -->
+                    <Border x:Name="PinnedQuestionsSection" DockPanel.Dock="Top" Padding="8,6,8,0" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="📌 PINNED QUESTIONS" FontSize="10" FontWeight="Bold"
+                                       Foreground="{StaticResource Subtext0Brush}" Margin="2,0,0,4"/>
+                            <StackPanel x:Name="PinnedQuestionsHost"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Chats tree redesign — mirrors #984's UI Automation manifest tree
                          (Shane's favourite panel): the same overlay-placeholder search box
                          above the tree, color-coded-by-epic groups, count badges, and a

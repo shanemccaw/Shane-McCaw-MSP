@@ -409,7 +409,170 @@ namespace BuildConsole.Controls
             ActivityLog.Log("git-board.chats",
                 "Chats panel [manual Refresh click]: forcing a fresh board fetch + repaint, bypassing the unchanged-signature short-circuit (Git #1629)");
             PopulateChatsTree(forceFresh: true);
+            _ = LoadPinnedQuestionsAsync();
         }
+
+        #region Git #2104 — Pinned Questions (Phase 1 of #2036)
+        // One card per OPEN chat_pinned_questions row, rendered directly above the Chats tree
+        // (PinnedQuestionsSection/-Host in LeftSidebar.xaml). Detection (#2105) doesn't exist
+        // yet, so today the only way a pin appears is the "📌 Pin a Question…" manual/debug
+        // context-menu item added to each chat card below — this section only needs to prove
+        // the render + resolve mechanism works end to end, not detect anything itself.
+
+        private async System.Threading.Tasks.Task LoadPinnedQuestionsAsync()
+        {
+            if (_db == null) return;
+            List<PinnedQuestion> pins;
+            try
+            {
+                pins = await _db.GetOpenPinnedQuestionsAsync();
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("chat.floating", $"pinned-questions load failed: {ex.Message}");
+                return;
+            }
+
+            PinnedQuestionsHost.Children.Clear();
+            foreach (var pq in pins)
+                PinnedQuestionsHost.Children.Add(BuildPinnedQuestionCard(pq));
+            PinnedQuestionsSection.Visibility = pins.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private Border BuildPinnedQuestionCard(PinnedQuestion pq)
+        {
+            var card = new Border
+            {
+                Background = GetBrush("Surface0Brush"),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 6, 8, 6),
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+
+            var content = new StackPanel();
+
+            content.Children.Add(new TextBlock
+            {
+                Text = string.IsNullOrWhiteSpace(pq.ChatTitle) ? "Chat" : pq.ChatTitle,
+                FontSize = 10,
+                FontWeight = FontWeights.Bold,
+                Foreground = GetBrush("Subtext1Brush"),
+                TextTrimming = TextTrimming.CharacterEllipsis
+            });
+
+            content.Children.Add(new TextBlock
+            {
+                Text = pq.QuestionText,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = GetBrush("TextBrush"),
+                Margin = new Thickness(0, 3, 0, 6)
+            });
+
+            var replyRow = new Grid();
+            replyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            replyRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var replyBox = new TextBox
+            {
+                Height = 26,
+                FontSize = 11,
+                Padding = new Thickness(6, 4, 6, 4),
+                VerticalContentAlignment = VerticalAlignment.Center,
+                Background = GetBrush("MantleBrush"),
+                Foreground = GetBrush("TextBrush"),
+                BorderBrush = GetBrush("Surface1Brush"),
+                CaretBrush = GetBrush("TextBrush")
+            };
+            Grid.SetColumn(replyBox, 0);
+            replyRow.Children.Add(replyBox);
+
+            var sendBtn = new Button
+            {
+                Content = "Reply",
+                Style = (Style)FindResource("PrimaryButton"),
+                Padding = new Thickness(10, 3, 10, 3),
+                Margin = new Thickness(4, 0, 0, 0)
+            };
+            Grid.SetColumn(sendBtn, 1);
+            replyRow.Children.Add(sendBtn);
+            content.Children.Add(replyRow);
+
+            var inlineStatus = new TextBlock
+            {
+                FontSize = 10,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                Visibility = Visibility.Collapsed
+            };
+            content.Children.Add(inlineStatus);
+
+            async System.Threading.Tasks.Task ResolveViaReplyAsync()
+            {
+                var text = replyBox.Text?.Trim() ?? "";
+                if (string.IsNullOrEmpty(text)) return;
+
+                sendBtn.IsEnabled = false;
+                replyBox.IsEnabled = false;
+                try
+                {
+                    var chat = new BoardChat
+                    {
+                        Id = pq.ChatId,
+                        ConversationId = pq.ConversationId,
+                        Title = pq.ChatTitle,
+                        ClaudeUrl = $"https://claude.ai/chat/{pq.ConversationId}"
+                    };
+
+                    var mw = Application.Current.MainWindow as MainWindow;
+                    string status = mw != null ? await mw.SendToChatAsync(chat, text) : "no-main-window";
+
+                    if (status == "sent")
+                    {
+                        if (_db != null) await _db.ResolvePinnedQuestionAsync(pq.Id);
+                        ActivityLog.Log("chat.floating", $"pin #{pq.Id} resolved via reply to chat {pq.ConversationId}");
+                        await LoadPinnedQuestionsAsync();
+                        return; // card is gone — nothing left to update on it
+                    }
+
+                    string msg = status switch
+                    {
+                        "inserted-no-send" => "Reply typed but couldn't auto-send — try again, or send it in the chat directly.",
+                        "no-composer" => "Couldn't find the chat composer — is the conversation still loading?",
+                        "no-chat" or "no-chat-url" or "no-main-window" => "Couldn't open this chat to reply.",
+                        _ => $"Send failed ({status}).",
+                    };
+                    inlineStatus.Text = msg;
+                    inlineStatus.Foreground = GetBrush("RedBrush");
+                    inlineStatus.Visibility = Visibility.Visible;
+                }
+                catch (Exception ex)
+                {
+                    inlineStatus.Text = $"Send failed: {ex.Message}";
+                    inlineStatus.Foreground = GetBrush("RedBrush");
+                    inlineStatus.Visibility = Visibility.Visible;
+                }
+                finally
+                {
+                    sendBtn.IsEnabled = true;
+                    replyBox.IsEnabled = true;
+                }
+            }
+
+            sendBtn.Click += async (_, _) => await ResolveViaReplyAsync();
+            replyBox.PreviewKeyDown += async (s, e) =>
+            {
+                if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
+                {
+                    e.Handled = true;
+                    await ResolveViaReplyAsync();
+                }
+            };
+
+            card.Child = content;
+            return card;
+        }
+        #endregion
 
         public void ExpandPanel()
         {
@@ -457,6 +620,7 @@ namespace BuildConsole.Controls
             // Auto-load Chats tree & UI Automation manifests
             PopulateChatsTree();
             PopulateManifestsList();
+            _ = LoadPinnedQuestionsAsync();
 
             if (api.IsConfigured)
             {
@@ -475,6 +639,7 @@ namespace BuildConsole.Controls
                     // which hits the LOCAL DEV SERVER (GET /extension/board), not
                     // GitHub, so it doesn't consume the shared 5,000/hr rate limit.
                     PopulateChatsTree();
+                    _ = LoadPinnedQuestionsAsync();
                 };
                 _pollTimer.Start();
                 ActivityLog.Log("git-board.traffic",
@@ -3380,6 +3545,98 @@ namespace BuildConsole.Controls
             miFloat.Click += (_, _) =>
                 (Application.Current.MainWindow as MainWindow)?.OpenFloatingChatWindow(chat);
             cm.Items.Add(miFloat);
+
+            // Git #2104 — manual/debug create path for the pinned-questions system (#2036).
+            // Detection (asking chats for outstanding questions) is Phase 2 (#2105) and doesn't
+            // exist yet; this is the "simple manual/debug path" the issue calls for so the pin
+            // UI + resolve mechanism can be proven end to end without waiting on detection.
+            var miPin = new MenuItem { Header = "📌 Pin a Question..." };
+            miPin.IsEnabled = chat.Id > 0 && _db != null;
+            miPin.Click += async (_, _) =>
+            {
+                if (_db == null || chat.Id <= 0) return;
+
+                var inputWin = new Window
+                {
+                    Title = "Pin a Question",
+                    Width = 420,
+                    Height = 190,
+                    WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                    Owner = Application.Current.MainWindow,
+                    Background = GetBrush("BaseBrush"),
+                    BorderBrush = GetBrush("Surface0Brush"),
+                    BorderThickness = new Thickness(1),
+                    ResizeMode = ResizeMode.NoResize
+                };
+
+                var grid = new Grid { Margin = new Thickness(14) };
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var label = new TextBlock
+                {
+                    Text = $"Question to pin against \"{chat.Title}\":",
+                    Foreground = GetBrush("TextBrush"),
+                    Margin = new Thickness(0, 0, 0, 8),
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap
+                };
+                Grid.SetRow(label, 0);
+                grid.Children.Add(label);
+
+                var txtInput = new TextBox
+                {
+                    AcceptsReturn = true,
+                    Height = 60,
+                    TextWrapping = TextWrapping.Wrap,
+                    Background = GetBrush("MantleBrush"),
+                    Foreground = GetBrush("TextBrush"),
+                    BorderBrush = GetBrush("Surface0Brush"),
+                    CaretBrush = GetBrush("TextBrush"),
+                    Padding = new Thickness(6, 4, 6, 4),
+                    Margin = new Thickness(0, 0, 0, 12)
+                };
+                Grid.SetRow(txtInput, 1);
+                grid.Children.Add(txtInput);
+
+                var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+                var btnCancel = new Button { Content = "Cancel", Padding = new Thickness(12, 4, 12, 4), Margin = new Thickness(0, 0, 8, 0) };
+                var btnPin = new Button { Content = "Pin", Style = (Style)FindResource("PrimaryButton"), Padding = new Thickness(12, 4, 12, 4) };
+                btnCancel.Click += (s2, e2) => inputWin.DialogResult = false;
+                btnPin.Click += (s2, e2) => inputWin.DialogResult = true;
+                buttonPanel.Children.Add(btnCancel);
+                buttonPanel.Children.Add(btnPin);
+                Grid.SetRow(buttonPanel, 2);
+                grid.Children.Add(buttonPanel);
+
+                inputWin.Content = grid;
+                txtInput.Focus();
+
+                if (inputWin.ShowDialog() == true)
+                {
+                    var question = txtInput.Text?.Trim() ?? "";
+                    if (string.IsNullOrEmpty(question)) return;
+                    try
+                    {
+                        bool created = await _db.CreatePinnedQuestionAsync(chat.Id, question);
+                        if (created)
+                        {
+                            ActivityLog.Log("chat.floating", $"pinned a question on chat {chat.ConversationId}: {question}");
+                            await LoadPinnedQuestionsAsync();
+                        }
+                        else
+                        {
+                            ToastEngine.Warning("Pin a Question", "An identical open pin already exists on this chat.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        ToastEngine.Error("Pin a Question", $"Couldn't pin the question: {ex.Message}");
+                    }
+                }
+            };
+            cm.Items.Add(miPin);
 
             cm.Items.Add(new Separator());
 

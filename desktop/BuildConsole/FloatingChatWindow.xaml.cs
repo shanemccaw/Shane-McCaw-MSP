@@ -591,6 +591,41 @@ namespace BuildConsole
             catch { return raw; }
         }
 
+        /// <summary>
+        /// Git #2104 — resolves the SPECIFIC chat <paramref name="chat"/> identifies (adding it
+        /// as a tab, or activating its existing tab, exactly like <see cref="AddOrActivateChat"/>)
+        /// then sends+submits <paramref name="text"/> into THAT tab. Unlike <see
+        /// cref="SendToActiveTabAsync"/> (#2063), which always targets whatever tab happens to be
+        /// on screen, a pinned-question reply must land in the chat the question came from — never
+        /// "whatever's active" — so this resolves the tab by conversation id first. Reuses the same
+        /// insert+submit+verify mechanism (<see cref="InsertAndSubmitAsync"/>) unchanged; no new
+        /// bridge. Returns 'sent' | 'inserted-no-send' | 'no-composer' | 'no-chat' | 'error: …'.
+        /// </summary>
+        public async System.Threading.Tasks.Task<string> SendToChatAsync(BoardChat chat, string text)
+        {
+            if (chat == null || string.IsNullOrWhiteSpace(chat.ConversationId)) return "no-chat";
+
+            var tab = _tabs.FirstOrDefault(t =>
+                string.Equals(t.Chat.ConversationId, chat.ConversationId, StringComparison.OrdinalIgnoreCase));
+            if (tab == null)
+            {
+                tab = new FloatingChatTab(chat);
+                _tabs.Add(tab);
+                RebuildTabStrip();
+            }
+            await ActivateTabAsync(tab);
+
+            // The bridge's CoreWebView2 only initialises while the tab is realised/visible
+            // (EnsureTabBridgeAsync, kicked off by ActivateTabAsync above) — give it a bounded
+            // moment to finish rather than assuming it's ready the instant we return.
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (tab.Wv?.CoreWebView2 == null && DateTime.UtcNow < deadline)
+                await System.Threading.Tasks.Task.Delay(200);
+            if (tab.Wv?.CoreWebView2 == null) return "no-composer";
+
+            return await SendToActiveTabAsync(text);
+        }
+
         // ── Tab strip UI ─────────────────────────────────────────────────────────
         private void RebuildTabStrip()
         {
