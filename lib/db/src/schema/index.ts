@@ -2920,6 +2920,11 @@ export interface WfNode {
     // a visible node — this is the ONLY way a snapshot is produced, so there is no
     // bare scheduler behind it. Manual trigger for now; cadence is a later decision.
     | "config_snapshot_collect"
+    // Tenant configuration snapshot DIFFER (#1797). One engine serving drift,
+    // baseline assessment, tenant compare and Dev->Test->Prod promotion; the mode
+    // labels the pair rather than branching the comparison. Computes differences
+    // only — there is deliberately no apply path.
+    | "config_snapshot_diff"
     // Sales Offer Engine
     | "sales_offer_generate" | "sales_offer_score" | "sales_offer_violation"
     | "sales_offer_escalate" | "sales_offer_resolve"

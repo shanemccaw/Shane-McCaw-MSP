@@ -258,6 +258,7 @@ import mspRbdRouter from "./msp-rbd";
 import mspRbdVersionsRouter from "./msp-rbd-versions";
 import adminDriftRouter from "./admin-drift";
 import adminConfigResourcesRouter from "./admin-config-resources";
+import adminConfigDiffsRouter from "./admin-config-diffs";
 import adminNavPinsRouter from "./admin-nav-pins";
 import adminBuildTrackerRouter from "./admin-build-tracker";
 
@@ -508,6 +509,7 @@ router.use(mspRbdRouter);
 router.use(mspRbdVersionsRouter);
 router.use(adminDriftRouter);
 router.use(adminConfigResourcesRouter);
+router.use(adminConfigDiffsRouter);
 router.use(mspExecutiveRouter);
 router.use(mspCustomerTimelineRouter);
 router.use(mspLaunchControlRouter);

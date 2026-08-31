@@ -60,6 +60,9 @@ import {
   documentTypesTable,
   checkoutSessionsTable,
   assessmentSowAgreementsTable,
+  // #1797 — the diff mode vocabulary, validated on the `config_snapshot_diff` node.
+  CONFIG_DIFF_MODES,
+  type ConfigDiffMode,
   type PsScriptPermissions,
   type WfGraph,
   type WfNode,
@@ -8908,6 +8911,117 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
               ? `config_snapshot_collect precondition failed: ${cscErr.message}`
               : `config_snapshot_collect failed: ${cscErr instanceof Error ? cscErr.message : String(cscErr)}`,
             tenantId: cscTenantId,
+          };
+        }
+        break;
+      }
+
+      // ── config_snapshot_diff (Git #1797) ───────────────────────────────────
+      // Computes the property-level difference between two snapshots and stores
+      // it. The same standing rule as its sibling above: every automated process
+      // is a visible Workflow Engine node, so there is no cron path that could
+      // compute drift invisibly. Cadence is still nobody's decision here — the
+      // node exists and is manually triggerable.
+      //
+      // Safe to run in dry-run, unlike `config_snapshot_collect`: this node makes
+      // NO tenant call at all. It reads the snapshot store and writes the diff
+      // store, both local tables. The dry-run branch below therefore does the real
+      // comparison and simply declines to persist a NEW result, reusing a stored
+      // one when the cache already holds the answer.
+      //
+      // COMPUTES ONLY. #1797 forbids an apply/remediate path here — `promotion`
+      // means computing the difference between two environments, never applying
+      // it. Applying configuration is the Config Pack write path with its consent
+      // and break-glass gates, and joining the two is a separate decision.
+      //
+      // NEVER sets nodeError for an incomplete diff. A pair where 1,203 resources
+      // could not be compared is a real, useful answer about the 155 that could —
+      // `isComplete` says honestly whether the picture is whole. nodeError is for
+      // the comparison genuinely not happening: a snapshot that does not exist, is
+      // still running, or a mode/tenant pairing that is a category error.
+      case "config_snapshot_diff": {
+        const csdNum = (v: unknown): number | undefined => {
+          const raw = typeof v === "string" ? interp(v, payload) : v;
+          const n = Number(raw);
+          return Number.isInteger(n) && n > 0 ? n : undefined;
+        };
+        const csdBase = csdNum(node.data.baseSnapshotRowId) ?? csdNum(payload.baseSnapshotRowId);
+        const csdHead = csdNum(node.data.headSnapshotRowId) ?? csdNum(payload.headSnapshotRowId);
+        const csdModeRaw = (interp(node.data.mode as string | undefined, payload)
+          ?? (payload.mode != null ? String(payload.mode) : undefined)
+          ?? "drift").trim();
+
+        if (!csdBase || !csdHead) {
+          nodeError = true;
+          output = {
+            error: "config_snapshot_diff: baseSnapshotRowId and headSnapshotRowId are required "
+              + "and must be tenant_config_snapshots.id integers",
+            baseSnapshotRowId: csdBase ?? null,
+            headSnapshotRowId: csdHead ?? null,
+          };
+          break;
+        }
+        if (!(CONFIG_DIFF_MODES as readonly string[]).includes(csdModeRaw)) {
+          nodeError = true;
+          output = {
+            error: `config_snapshot_diff: mode must be one of ${CONFIG_DIFF_MODES.join(", ")}`,
+            mode: csdModeRaw,
+          };
+          break;
+        }
+
+        const { diffSnapshots, SnapshotNotDiffableError } =
+          await import("./config-snapshot-differ");
+
+        try {
+          const csdResult = await diffSnapshots({
+            mode: csdModeRaw as ConfigDiffMode,
+            baseSnapshotRowId: csdBase,
+            headSnapshotRowId: csdHead,
+            trigger: "workflow",
+            triggerRef: interp(node.data.triggerRef as string | undefined, payload)
+              ?? `wf-run-${runId}-node-${node.id}`,
+            wfRunId: runId,
+            resourceKeys: ((): string[] | undefined => {
+              const raw = interp(node.data.resourceKeys as string | undefined, payload);
+              const parts = raw?.split(",").map((p) => p.trim()).filter(Boolean);
+              return parts && parts.length > 0 ? parts : undefined;
+            })(),
+            // In dry-run, serve a stored answer if there is one and never replace it.
+            useCache: true,
+          });
+
+          output = {
+            dryRun: dryRun || undefined,
+            diffId: csdResult.diffId,
+            diffRowId: csdResult.diffRowId,
+            mode: csdResult.mode,
+            fromCache: csdResult.fromCache,
+            status: csdResult.status,
+            isComplete: csdResult.isComplete,
+            resourceTypesCompared: csdResult.resourceTypesCompared,
+            resourceTypesPartial: csdResult.resourceTypesPartial,
+            resourceTypesNotComparable: csdResult.resourceTypesNotComparable,
+            objectsPaired: csdResult.objectsPaired,
+            objectsAdded: csdResult.objectsAdded,
+            objectsRemoved: csdResult.objectsRemoved,
+            objectsIndeterminate: csdResult.objectsIndeterminate,
+            objectsUnpairable: csdResult.objectsUnpairable,
+            changesTotal: csdResult.changesTotal,
+            changesSignificant: csdResult.changesSignificant,
+            changesIgnored: csdResult.changesIgnored,
+            truncated: csdResult.truncated,
+            durationMs: csdResult.durationMs,
+          };
+        } catch (csdErr) {
+          nodeError = true;
+          output = {
+            error: csdErr instanceof SnapshotNotDiffableError
+              ? `config_snapshot_diff refused the pair: ${csdErr.message}`
+              : `config_snapshot_diff failed: ${csdErr instanceof Error ? csdErr.message : String(csdErr)}`,
+            baseSnapshotRowId: csdBase,
+            headSnapshotRowId: csdHead,
+            mode: csdModeRaw,
           };
         }
         break;
