@@ -10,15 +10,21 @@
  *                                                                     SIGNED version (#1562)
  *   GET   /api/msp/security-plan/:customerId/versions              — the full seal chain
  *   GET   /api/msp/security-plan/:customerId/versions/current       — the current sealed version
- *   POST  /api/msp/security-plan/:customerId/versions              — seal a new version,
- *                                                                     superseding the current one
+ *   POST  /api/msp/security-plan/:customerId/draft/freeze           — freeze the assembled
+ *                                                                     state to author prose
+ *                                                                     against (#1566)
+ *   GET   /api/msp/security-plan/:customerId/draft                  — the in-progress draft
+ *   PATCH /api/msp/security-plan/:customerId/draft/prose            — edit one prose section
+ *   POST  /api/msp/security-plan/:customerId/versions              — seal the frozen draft as
+ *                                                                     a new version, superseding
+ *                                                                     the current one (#1566)
  *   PATCH /api/msp/security-plan/:customerId/versions/:versionUid/sign — sign a version as a whole
  *
  * MSP-side, matching `msp-rbd-versions.ts` next door — this is the authoring/sealing
  * side. Per #1561 the MSP writes and signs the plan of record FOR a tenant and the
  * customer reads it; the customer-facing read/sign surface is a separate, not-yet-built
- * concern. SCOPE STOP on #1561/#1562 ends this build at the wire contract — there is no
- * `Design/portal` export and no `artifacts/portal` page to wire it to yet.
+ * concern. SCOPE STOP on #1561/#1562/#1566 ends this build at the wire contract — there
+ * is no `Design/portal` export and no `artifacts/portal` page to wire it to yet.
  *
  * #1562 settles the "cumulative vs live" tension: a version is assembled, frozen and
  * signed at a point in time; the live view sits ALONGSIDE it, showing drift from the
@@ -35,6 +41,13 @@
  * OUTCOME filter (severity, accepted/open, pass/fail). FOOTPRINT (#1565): the assembly
  * always attaches a filter footprint, and sealing snapshots it into the version so it
  * cannot be suppressed by a UI.
+ *
+ * AUTHORING SEQUENCE (#1566) is fixed by the issue, not a choice made here: freeze the
+ * assembled state -> write/revise prose against that frozen state -> seal and sign as
+ * ONE version. `POST /draft/freeze` chooses scope and captures the frozen snapshot;
+ * `PATCH /draft/prose` edits sections against it; `POST /versions` now SEALS THE DRAFT
+ * (it no longer re-assembles live or accepts inline prose/scope) and deletes it. A seal
+ * attempted with no draft frozen is a 409 — there is nothing fixed to seal yet.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
@@ -51,8 +64,16 @@ import {
   signSecurityPlanVersion,
 } from "../lib/security-plan-versioning.ts";
 import {
+  freezeSecurityPlanDraft,
+  getSecurityPlanDraft,
+  updateSecurityPlanDraftProse,
+  deleteSecurityPlanDraft,
+} from "../lib/security-plan-draft.ts";
+import {
   SECURITY_PLAN_SCOPE_DIMENSIONS,
+  SECURITY_PLAN_PROSE_SECTIONS,
   type MspSecurityPlanVersion,
+  type MspSecurityPlanDraft,
   type SecurityPlanScope,
   type SecurityPlanScopeDimension,
 } from "@workspace/db";
@@ -104,6 +125,29 @@ function toWireVersion(row: MspSecurityPlanVersion): WireSecurityPlanVersion {
     signedBy: row.signedBy,
     signedAt: iso(row.signedAt),
     isCurrent: row.supersededAt === null,
+  };
+}
+
+/** The Security Plan's in-progress draft, on the wire (#1566) — the frozen assembled
+ * state plus the prose being authored against it. */
+interface WireSecurityPlanDraft {
+  readonly customerId: number;
+  readonly frozenContent: unknown;
+  readonly frozenAt: string;
+  /** `SecurityPlanProse` — the four sections, each carrying its own
+   * `editedInThisVersion` relative to the plan's last version (the carry-forward
+   * baseline fixed when this draft was created). */
+  readonly prose: unknown;
+  readonly updatedAt: string;
+}
+
+function toWireDraft(row: MspSecurityPlanDraft): WireSecurityPlanDraft {
+  return {
+    customerId: row.customerId,
+    frozenContent: row.frozenContent,
+    frozenAt: iso(row.frozenAt) as string,
+    prose: row.prose,
+    updatedAt: iso(row.updatedAt) as string,
   };
 }
 
@@ -242,16 +286,107 @@ router.get(
   },
 );
 
-const sealVersionSchema = z.object({
-  /** Optional scope for a scoped seal (#1563). Absent → the honest, unfiltered view. */
+const freezeDraftSchema = z.object({
+  /** Optional scope for the frozen assembly (#1563). Absent → the honest, unfiltered view. */
   scope: scopeSchema.optional(),
-  /** Authored narrative owned by this module (#1561), sealed verbatim into the snapshot. */
-  prose: z.string().nullable().optional(),
 });
 
-// POST /api/msp/security-plan/:customerId/versions — seal a new version. Assembles the
-// document NOW (optionally scoped), snapshots it whole (incl. the #1565 footprint), and
-// supersedes whatever was current. There is no "nothing changed" short-circuit.
+// POST /api/msp/security-plan/:customerId/draft/freeze — #1566 step 1 of the fixed
+// authoring sequence: freeze the assembled state now (optionally scoped) so prose can
+// be written/revised against a state that will not move underneath the author. The
+// first freeze for a plan also seeds the draft's prose by carrying forward the plan's
+// current version's prose (#1566: carried forward by default). A later re-freeze
+// (e.g. to pick up a source-module edit before sealing) only refreshes the frozen
+// snapshot — it never touches the prose already being authored.
+router.post(
+  "/msp/security-plan/:customerId/draft/freeze",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const tenant = await resolveOwnedTenant(req, res);
+      if (!tenant) return;
+
+      const parsed = freezeDraftSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid freeze payload", parsed.error.flatten());
+        return;
+      }
+      const scope: SecurityPlanScope = parsed.data.scope ?? { dimensions: {} };
+
+      const draft = await freezeSecurityPlanDraft(tenant, scope);
+      log.info({ mspId: tenant.mspId, customerId: tenant.customerId }, "Security Plan draft frozen");
+      res.status(201).json({ draft: toWireDraft(draft) });
+    } catch (err: unknown) {
+      log.error({ err }, "POST /api/msp/security-plan/:customerId/draft/freeze failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// GET /api/msp/security-plan/:customerId/draft — the in-progress draft, or 404 if
+// nothing has been frozen yet (the caller must POST .../draft/freeze first).
+router.get(
+  "/msp/security-plan/:customerId/draft",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const tenant = await resolveOwnedTenant(req, res);
+      if (!tenant) return;
+      const draft = await getSecurityPlanDraft(tenant.mspId, tenant.customerId);
+      if (!draft) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "No draft — freeze the assembled state first");
+        return;
+      }
+      res.json({ draft: toWireDraft(draft) });
+    } catch (err: unknown) {
+      log.error({ err }, "GET /api/msp/security-plan/:customerId/draft failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+const proseEditSchema = z.object({
+  section: z.enum(SECURITY_PLAN_PROSE_SECTIONS),
+  text: z.string(),
+});
+
+// PATCH /api/msp/security-plan/:customerId/draft/prose — #1566 step 2: edit one prose
+// section against the frozen state. `editedInThisVersion` is computed server-side by
+// diffing against the carry-forward baseline — never accepted from the client.
+router.patch(
+  "/msp/security-plan/:customerId/draft/prose",
+  requireAuth,
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const tenant = await resolveOwnedTenant(req, res);
+      if (!tenant) return;
+      const parsed = proseEditSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid prose edit payload", parsed.error.flatten());
+        return;
+      }
+      const draft = await updateSecurityPlanDraftProse(tenant.mspId, tenant.customerId, parsed.data.section, parsed.data.text);
+      if (!draft) {
+        apiError(res, 404, ApiErrorCode.NOT_FOUND, "No draft — freeze the assembled state first");
+        return;
+      }
+      res.json({ draft: toWireDraft(draft) });
+    } catch (err: unknown) {
+      log.error({ err }, "PATCH /api/msp/security-plan/:customerId/draft/prose failed");
+      apiError(res, 500, ApiErrorCode.INTERNAL, err instanceof Error ? err.message : String(err));
+    }
+  },
+);
+
+// POST /api/msp/security-plan/:customerId/versions — #1566 step 3: seal the frozen
+// draft as a new version — the draft's `frozenContent` (modules/footprint) plus its
+// `prose`, combined into ONE `SecurityPlanContent` snapshot — and delete the draft.
+// No live re-assembly and no inline scope/prose here: the authoring sequence is fixed
+// (freeze -> author prose against that frozen state -> seal), so a seal with no frozen
+// draft is a 409, not a fallback to "assemble now."
 router.post(
   "/msp/security-plan/:customerId/versions",
   requireAuth,
@@ -261,18 +396,20 @@ router.post(
       const tenant = await resolveOwnedTenant(req, res);
       if (!tenant) return;
 
-      const parsed = sealVersionSchema.safeParse(req.body ?? {});
-      if (!parsed.success) {
-        apiError(res, 400, ApiErrorCode.VALIDATION, "Invalid seal payload", parsed.error.flatten());
+      const draft = await getSecurityPlanDraft(tenant.mspId, tenant.customerId);
+      if (!draft) {
+        apiError(
+          res,
+          409,
+          ApiErrorCode.CONFLICT,
+          "No frozen draft to seal — POST .../draft/freeze, then author prose, before sealing (#1566)",
+        );
         return;
       }
-      const scope: SecurityPlanScope = parsed.data.scope ?? { dimensions: {} };
-      const prose = parsed.data.prose ?? null;
 
-      // #1563: a scoped seal becomes a document someone can be handed — it must state
-      // what it covers and what it deliberately does not, not just carry the #1565
-      // exclusion counts. The honest (unscoped) seal needs no statement.
-      if (scopeMissingRequiredStatement(scope)) {
+      // #1563: a scoped seal must state what it covers and what it deliberately does
+      // not. Checked against the scope captured at freeze time, not re-derived here.
+      if (scopeMissingRequiredStatement(draft.frozenContent.footprint.scope)) {
         apiError(
           res,
           400,
@@ -282,7 +419,7 @@ router.post(
         return;
       }
 
-      const document = await assembleSecurityPlan(tenant, scope, prose);
+      const document = { ...draft.frozenContent, prose: draft.prose };
 
       const userEmail = req.user?.email || "unknown@mspplatform.com";
       const userName = req.user?.name || "MSP Assessor";
@@ -296,6 +433,8 @@ router.post(
         content: document,
         createdBy: { name: userName, upn: userEmail, timestamp: nowUtc },
       });
+
+      await deleteSecurityPlanDraft(tenant.mspId, tenant.customerId);
 
       log.info(
         { mspId: tenant.mspId, customerId: tenant.customerId, versionNumber: created.versionNumber, totalExcluded: document.footprint.totalExcluded },

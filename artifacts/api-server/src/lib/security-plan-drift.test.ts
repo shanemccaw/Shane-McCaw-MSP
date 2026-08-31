@@ -24,7 +24,13 @@ function content(modules: SecurityPlanAssembledModule[]): SecurityPlanContent {
     tenantName: "Tenant One",
     assembledAt: "2026-08-31T00:00:00.000Z",
     modules,
-    footprint: { scope: { dimensions: {} }, isHonestView: true, excludedByModule: [], totalExcluded: 0, computedAt: "2026-08-31T00:00:00.000Z" },
+    footprint: {
+      scope: { dimensions: {}, statement: "Full assessed estate — no scope narrowing applied." },
+      isHonestView: true,
+      excludedByModule: [],
+      totalExcluded: 0,
+      computedAt: "2026-08-31T00:00:00.000Z",
+    },
     prose: null,
   };
 }

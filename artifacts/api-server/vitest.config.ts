@@ -5,6 +5,7 @@ export default defineConfig({
     include: [
       "src/lib/security-plan-assembly.test.ts",
       "src/lib/security-plan-drift.test.ts",
+      "src/lib/security-plan-prose.test.ts",
       "src/lib/repo-source-nul-byte-guard.test.ts",
       "src/lib/drift-collector.test.ts",
       "src/lib/drift-check-specs.test.ts",

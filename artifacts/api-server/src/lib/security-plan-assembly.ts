@@ -70,6 +70,7 @@ import {
   type SecurityPlanAssembledItem,
   type SecurityPlanAssembledModule,
   type SecurityPlanFilterFootprint,
+  type SecurityPlanProse,
 } from "@workspace/db";
 import { and, eq, desc } from "drizzle-orm";
 import type { TenantScope } from "./portal-customer-scope.ts";
@@ -415,7 +416,7 @@ export function applyScopeAndFootprint(
 export async function assembleSecurityPlan(
   tenant: TenantScope,
   scope: SecurityPlanScope = HONEST_SCOPE,
-  prose: string | null = null,
+  prose: SecurityPlanProse | null = null,
 ): Promise<SecurityPlanContent> {
   const rawModules = await Promise.all([
     readPolicyDecisions(tenant),

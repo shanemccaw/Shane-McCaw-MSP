@@ -6111,9 +6111,46 @@ export interface SecurityPlanAssembledItem {
   readonly framework: string | null;
 }
 
+// ── Authored prose (#1566, formalizing the #1561 stub) ──────────────────────────────
+//
+// "A real security plan carries scope, methodology, exclusions and an executive
+// summary — content no module owns." These four sections are the ONLY data the
+// Security Plan itself authors (everything else in `SecurityPlanContent` is read from
+// another module). `scope` here is prose describing what the engagement covers in
+// plain language, distinct from — but naturally paired with — `SecurityPlanScope`
+// (#1563), the machine-readable dimension filter; a scoped seal's `scope.statement`
+// is one required sentence, while this `scope` prose section is the fuller narrative.
+//
+// Authoring sequence (#1566, fixed by the issue, not a re-architecture): freeze the
+// assembled state → write/revise prose against that frozen state → seal and sign as
+// ONE version. Never write prose over a live view that can move underneath the
+// author. `msp_security_plan_drafts` (below) is the frozen-state holding pen between
+// "freeze" and "seal"; sealing consumes it and clears it.
+//
+// Versioning (#1566's other half): scope/methodology/exclusions barely change between
+// versions; the executive summary changes every time. "If every version demands a
+// full rewrite, nobody will produce versions" — so every section is CARRIED FORWARD
+// BY DEFAULT from the plan's last version, and `editedInThisVersion` marks only the
+// sections actually touched while authoring the version being sealed now.
+export const SECURITY_PLAN_PROSE_SECTIONS = ["scope", "methodology", "exclusions", "executiveSummary"] as const;
+export type SecurityPlanProseSection = (typeof SECURITY_PLAN_PROSE_SECTIONS)[number];
+
+/** One prose section's text, plus whether it was edited while authoring the version
+ * currently being drafted/sealed (`true`) vs. carried forward verbatim from the plan's
+ * last version (`false`). Computed by diffing against the carry-forward baseline
+ * captured when the draft was created — never hand-set by the client. */
+export interface SecurityPlanProseSectionContent {
+  readonly text: string;
+  readonly editedInThisVersion: boolean;
+}
+
+/** The four authored sections, keyed by `SecurityPlanProseSection`. */
+export type SecurityPlanProse = Record<SecurityPlanProseSection, SecurityPlanProseSectionContent>;
+
 /** The full assembled Security Plan document — what the live view returns and what a
  * sealed version snapshots into `content`. Self-contained: every value here was read
- * from a real source table at assembly time. */
+ * from a real source table at assembly time, except `prose`, which this module itself
+ * authors. */
 export interface SecurityPlanContent {
   readonly customerId: number;
   readonly tenantId: string;
@@ -6121,9 +6158,11 @@ export interface SecurityPlanContent {
   readonly assembledAt: string;
   readonly modules: readonly SecurityPlanAssembledModule[];
   readonly footprint: SecurityPlanFilterFootprint;
-  /** Authored narrative owned by this module (#1561). Null until prose is authored;
-   * the prose sub-issue formalizes its structure — carried through verbatim here. */
-  readonly prose: string | null;
+  /** Authored narrative owned by this module (#1561, formalized #1566). Null only for
+   * a version sealed before #1566 shipped; every version sealed through the draft flow
+   * carries a fully-populated `SecurityPlanProse` (empty text is a valid, authored
+   * "nothing to say," distinct from this legacy null). */
+  readonly prose: SecurityPlanProse | null;
 }
 
 /** One item's state/detail as of a snapshot, for a changed-row drift entry (#1562). */
@@ -6201,6 +6240,52 @@ export const mspSecurityPlanVersionsTable = pgTable("msp_security_plan_versions"
 export const insertMspSecurityPlanVersionSchema = createInsertSchema(mspSecurityPlanVersionsTable).omit({ id: true, versionUid: true, createdAt: true });
 export type MspSecurityPlanVersion = typeof mspSecurityPlanVersionsTable.$inferSelect;
 export type InsertMspSecurityPlanVersion = typeof mspSecurityPlanVersionsTable.$inferInsert;
+
+// ── msp_security_plan_drafts — the frozen-state holding pen (#1566) ─────────────────
+//
+// The authoring sequence #1566 fixes: freeze assembled state → write/revise prose
+// against that frozen state → seal and sign as one version. One draft row per Security
+// Plan `(mspId, customerId)` — a plan being authored has exactly one draft in
+// progress, never a stack of them. `frozenContent` is captured once per "freeze" call
+// (re-freezing REPLACES it, but never touches `prose`, so refreshing the frozen
+// assembly can never lose in-progress authoring). `baselineProse` is captured ONCE,
+// the moment the draft row is first created — the carry-forward snapshot of the
+// plan's last version's prose — and is never mutated again; it is what `prose` edits
+// are diffed against to compute `editedInThisVersion`. Sealing (`createSecurityPlanVersion`
+// via the route) consumes this row — copies `frozenContent.*` + `prose` into the new
+// `msp_security_plan_versions` row — then DELETES it, so the next authoring cycle
+// starts with a fresh freeze and a fresh carry-forward baseline from the version that
+// was just sealed.
+export const mspSecurityPlanDraftsTable = pgTable("msp_security_plan_drafts", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** Same container key as `msp_security_plan_versions.customerId` — a `tenants.id`. */
+  customerId: integer("customer_id").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  /** The assembled document as it was at the moment of freeze (or the last re-freeze) —
+   * modules/footprint/scope, exactly `SecurityPlanContent`'s shape. Its own `.prose` is
+   * always null; prose lives in the `prose` column below so a re-freeze never clobbers it. */
+  frozenContent: jsonb("frozen_content").$type<SecurityPlanContent>().notNull(),
+  frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull(),
+  /** The carry-forward baseline captured once, when this draft row was first created —
+   * the last version's prose, every section's `editedInThisVersion` forced false. Never
+   * mutated after creation; edits are diffed against THIS, not against `prose`'s own
+   * previous value, so toggling a section back to its baseline text correctly clears
+   * `editedInThisVersion` again. */
+  baselineProse: jsonb("baseline_prose").$type<SecurityPlanProse>().notNull(),
+  /** The prose actually being authored. Starts equal to `baselineProse` and is updated
+   * section-by-section as the author edits. */
+  prose: jsonb("prose").$type<SecurityPlanProse>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("msp_security_plan_drafts_msp_customer_uidx").on(t.mspId, t.customerId),
+]);
+
+export const insertMspSecurityPlanDraftSchema = createInsertSchema(mspSecurityPlanDraftsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type MspSecurityPlanDraft = typeof mspSecurityPlanDraftsTable.$inferSelect;
+export type InsertMspSecurityPlanDraft = typeof mspSecurityPlanDraftsTable.$inferInsert;
 
 // ── risk_instances — the RBD's line items (#1509, part of #1487) ──────────────
 //
