@@ -35,6 +35,22 @@
  * produce a page with no gaps on it. That would be inventing an agreement
  * nobody made: Consulted means asked before the window opens, and no row in
  * this database says anyone was. They stay empty until something records them.
+ *
+ * ── The MSP is available, never assigned by default (#1520) ────────────────
+ * A customer's MSP is available to every one of that customer's cells, by
+ * virtue of being their MSP — never placed into one by default. There is no
+ * MSP template, no standard position, no per-customer override: the customer
+ * decides placement entirely, and every placement (R on everything, A on
+ * everything, nowhere at all) is equally valid.
+ *
+ * "Available" means MSP staff (`usersTable` rows scoped by the customer's
+ * `tenants.mspId` rather than by `tenantId`, with `mspRole` MSPAdmin or
+ * MSPOperator) appear in `people` as real named individuals with
+ * `side: "MSP"` — the same `toWirePerson` shape a customer's own team gets,
+ * just a different roster. They start on no cell; a customer places one by
+ * assigning them like anyone else on the roster. There is deliberately no
+ * separate "the MSP" pseudo-person: that would be a fabricated entity with no
+ * row behind it, which is exactly what this file exists to refuse to do.
  */
 
 /** The four names, in the matrix's own column order. */
@@ -153,6 +169,10 @@ export function personRoleLabel(
       return "Free account";
     case "ServiceAccount":
       return "Service account";
+    case "MSPAdmin":
+      return "MSP Admin";
+    case "MSPOperator":
+      return "MSP Operator";
     default:
       return "Team member";
   }

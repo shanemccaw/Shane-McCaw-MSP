@@ -96,6 +96,43 @@ describe("personRoleLabel()", () => {
     expect(personRoleLabel(null, null, "Assessment")).toBe("Assessment access");
     expect(personRoleLabel(null, null, null)).toBe("Team member");
   });
+
+  it("labels MSP staff readably (#1520)", () => {
+    expect(personRoleLabel(null, null, "MSPAdmin")).toBe("MSP Admin");
+    expect(personRoleLabel(null, null, "MSPOperator")).toBe("MSP Operator");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The MSP's own staff on the roster — available to every cell, assigned to
+// none (#1520)
+// ---------------------------------------------------------------------------
+
+describe("MSP staff as real people, side MSP", () => {
+  const MSP_STAFF: UserRow[] = [
+    { id: 90, email: "priya@msp.example.com", name: "Priya Raman", jobTitle: null, department: null, mspRole: "MSPAdmin" },
+    { id: 91, email: "dan@msp.example.com", name: "Dan Kessler", jobTitle: null, department: null, mspRole: "MSPOperator" },
+  ];
+  const mspPeople = MSP_STAFF.map((u) => toWirePerson(u, "MSP"));
+
+  it("uses the same real-person shape as a customer's own team, just a different side", () => {
+    expect(mspPeople.map((p) => p.side)).toEqual(["MSP", "MSP"]);
+    expect(mspPeople.map((p) => p.id)).toEqual(["u90", "u91"]);
+    expect(mspPeople.map((p) => p.role)).toEqual(["MSP Admin", "MSP Operator"]);
+  });
+
+  it("id-spaces cannot collide with the customer's own roster — one users table, one id space", () => {
+    const combined = [...PEOPLE, ...mspPeople];
+    expect(new Set(combined.map((p) => p.id)).size).toBe(combined.length);
+  });
+
+  it("resolves by email or name identically to a customer team member, once merged onto the roster", () => {
+    const combinedRows = [...USERS, ...MSP_STAFF];
+    const combinedPeople = [...PEOPLE, ...mspPeople];
+    const combinedEmails = emailIndex(combinedRows);
+    expect(resolvePersonId("priya@msp.example.com", combinedPeople, combinedEmails)).toBe("u90");
+    expect(resolvePersonId("Dan Kessler", combinedPeople, combinedEmails)).toBe("u91");
+  });
 });
 
 // ---------------------------------------------------------------------------

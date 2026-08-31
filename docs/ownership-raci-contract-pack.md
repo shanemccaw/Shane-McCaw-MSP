@@ -24,8 +24,8 @@ Sources:
 |---|---|---|
 | `customer.id` | `number` | CURRENT — `tenants.id` off the JWT |
 | `customer.name` | `string` | CURRENT — `resolveTenantScope(customerId).tenantName`, falls back to `"Your organisation"` |
-| `sides` | `string[]` | CURRENT shape, `sidesFor()` (`lib/portal-ownership.ts:116`) always returns `[customerName, "MSP", "External"]" — but no real person is ever returned with side `"MSP"` or `"External"` (see §4). The three-value list itself is real; two of its three values are currently unreachable. |
-| `people` | `WireOwnPerson[]` | CURRENT for customer-tenant users only — see below |
+| `sides` | `string[]` | CURRENT shape, `sidesFor()` (`lib/portal-ownership.ts:116`) always returns `[customerName, "MSP", "External"]"`. `"MSP"` is now reachable — real MSP staff are returned with that side (`#1520`, built). `"External"` is still never emitted — no source for it exists. |
+| `people` | `WireOwnPerson[]` | CURRENT — the customer's own tenant users **plus** the customer's MSP staff (`#1520`, built) — see below |
 | `objects` | `WireOwnObject[]` | CURRENT for 4 of 7 declared types — see §4 |
 | `sources` | `WireOwnSource[]` | CURRENT, `buildSources()` (`lib/portal-ownership.ts:384`) |
 | `currentUserId` / `currentUserName` | `string` | CURRENT — resolved from the JWT email against the people list |
@@ -34,14 +34,14 @@ Sources:
 
 ### `WireOwnPerson` (`lib/portal-ownership.ts:70`)
 
-Source: `users WHERE tenant_id = customerId AND is_active = true` (`routes/portal-ownership.ts:190-201`).
+Source: `users WHERE tenant_id = customerId AND is_active = true` (`routes/portal-ownership.ts:190-201`), **plus** `users WHERE msp_id = resolveCustomerMspId(customerId) AND msp_role IN ('MSPAdmin','MSPOperator') AND is_active = true` (`routes/portal-ownership.ts`, `#1520`, built). Same table, same `personIdForUser` id space — one query per side, concatenated.
 
 | Field | Type | CURRENT / DECIDED |
 |---|---|---|
 | `id` | `string` | CURRENT — `"u" + users.id` (`personIdForUser`, `lib/portal-ownership.ts:126`) |
 | `name` | `string` | CURRENT — `users.name`, falls back to `users.email` |
-| `role` | `string` | CURRENT — `personRoleLabel()` (`lib/portal-ownership.ts:138`): `job_title` → `department` → an `mspRole`-keyed label → `"Team member"` |
-| `side` | `string` | CURRENT, but **every real row is the customer's own name** (`sides[0]`, `routes/portal-ownership.ts:205`). No user row is ever labelled `"MSP"` or `"External"` — the MSP has no person source at all (DECIDED to add, `#1520`) |
+| `role` | `string` | CURRENT — `personRoleLabel()` (`lib/portal-ownership.ts:138`): `job_title` → `department` → an `mspRole`-keyed label (`"MSP Admin"` / `"MSP Operator"` added for `#1520`) → `"Team member"` |
+| `side` | `string` | CURRENT — the customer's own name (`sides[0]`) for tenant users; `"MSP"` for MSP staff (`#1520`, built). No row is ever labelled `"External"` — no source for it exists. |
 | `kind` | `"Person" \| "Group" \| "Vendor"` | Type is CURRENT (all three named on the wire); **every real row is hardcoded `"Person"`** (`toWirePerson`, `lib/portal-ownership.ts:183`). `"Group"` and `"Vendor"` never appear on live data — DECIDED to need real production, `#1516` (C/I holding groups) |
 | `away` | `string` | Field exists and is read client-side (`OwnershipMatrix.tsx:1583`, `settingsModel.ts:61`), but **no column anywhere stores it** — always `""` on live data. Not partial-built: `#1517` records OOO/absence tracking as an explicit **non-goal**, so this field has no path to becoming real, not merely an unfinished one |
 | `deputy` | `string` | Same as `away` — always `""` on live data, read by the same client panels. Distinct from the delegation *table* (§3), which does model a handover; this per-person field is not fed by it |
@@ -102,22 +102,26 @@ layer assembles, not rows a constraint could point at.
 - **`portal_ownership_delegations`** (`:4750`) — `fromPersonId → toPersonId, until (free text), scope ("all" or an object-type key), done`. Models a reactive person-to-person handover with automatic revert (`done` flips, row never deletes). Its continued existence at all is an **OPEN GAP with an issue but no decision** — `#1524` records the case for dropping it (multi-holder A + no absence tracking make most of it structural) *and* the case for keeping it (customer-side dated cover is genuinely used) without resolving either way.
 - **`portal_ownership_rows`** (`:4778`) — hand-added matrix rows, `source: "custom" | "coverage"`.
 
-## 4. The MSP-as-holder gap (blocks `#1520`, `#1521`)
+## 4. The MSP-as-holder gap — CLOSED for `#1520`, still open for `#1521`
 
-The people list is built exclusively from `users WHERE tenant_id = customerId AND
-is_active = true` (`routes/portal-ownership.ts:190-201`), and a stored
-name/email that matches nobody on that list resolves to `""` rather than being
-minted into a new person (`resolvePersonId`, `lib/portal-ownership.ts:206-218`) —
-deliberately: "a matrix cell naming someone absent from [the roster] would be
-unactionable, which is worse than an honest blank." **Consequence, stated
-directly: MSP staff cannot appear on the matrix at all today**, because they do
-not share the customer's `tenant_id`. `#1520` (MSP is available to every matrix,
-assigned to none, no default template) and `#1521` (cross-customer "what do I hold
-everywhere" view) are both DECIDED architecture with **no code yet** — a second
-person source and a merged holder concept do not exist. `usersTable.mspRole` is
-already selected in the same read (`routes/portal-ownership.ts:197`), so the side
-distinction the eventual merge needs is already available data, per `#1520`'s own
-note.
+**Built (`#1520`).** The people list is no longer built exclusively from `users
+WHERE tenant_id = customerId AND is_active = true`. It is now that query **plus**
+a second one — `users WHERE msp_id = resolveCustomerMspId(customerId) AND
+msp_role IN ('MSPAdmin','MSPOperator') AND is_active = true`
+(`routes/portal-ownership.ts`) — concatenated into one `people` array, MSP rows
+carrying `side: "MSP"`. `resolveCustomerMspId` (`lib/portal-customer-scope.ts`)
+resolves `tenants.mspId` directly rather than through `resolveTenantScope`,
+because the owning MSP needs neither the M365 tenant GUID nor a live MSP-era row
+to be known. A stored name/email still resolves to `""` when it matches nobody
+on the now-merged roster (`resolvePersonId`, `lib/portal-ownership.ts:206-218`)
+— the "no minted person" guard is unchanged, it now just checks a wider real
+roster. MSP staff start on no cell; the customer places them like anyone else.
+There is no MSP template and no default — that is `#1520`'s own settled
+decision, restated in `lib/portal-ownership.ts`'s header.
+
+`#1521` (cross-customer "what do I hold everywhere" MSP view) remains DECIDED
+architecture with **no code yet** — `portal_ownership_assignments` is still
+customer-keyed with no cross-tenant read path, and this pass did not add one.
 
 ## 5. Object-type scope — `OwnObjectType` (`lib/portal-ownership.ts:44`)
 
@@ -209,7 +213,8 @@ to prevent):
   what order; humans decide who acts.
 - **No MSP template/default cell propagates to a customer's matrix** — the MSP is
   available to every matrix by virtue of being the MSP, never assigned by default
-  (`#1520`).
+  (`#1520`, built — MSP staff now appear as real candidate holders, seeded into
+  no cell).
 
 ## 8. Cross-surface edges touching this module
 
@@ -220,8 +225,9 @@ Per `#1577`'s incremental cross-surface map (built as each module's pack lands):
   act at any time, an RBD signature never waits on one specific individual. This
   was blocked on whether risks are even RACI'd objects — settled yes by `#1523`,
   then refined same-day to "risk acceptance is authorised by whoever holds A on
-  the *service* the risk's finding belongs to," not a per-risk assignment. Still
-  blocked on `#1520` (MSP holders not appearing on the matrix at all).
+  the *service* the risk's finding belongs to," not a per-risk assignment. `#1520`
+  (MSP holders not appearing on the matrix at all) is now built, so an MSP staffer
+  can be the A this depends on; this edge is otherwise unchanged by this pass.
 - **`msp_change_requests.requested_by` / `.approved_by`** are the only two real
   stored RACI names anywhere in the schema, shared with
   `portal-change-control.ts`'s own change-request register.
@@ -239,7 +245,7 @@ Per `#1577`'s incremental cross-surface map (built as each module's pack lands):
 | 5 | Acceptance gate is universal + symmetric across the tenant boundary (MSP included) | DECIDED, partially built (gate logic for r/a exists; cross-boundary + notification do not) | `#1518` |
 | 6 | Whether C also carries the acceptance gate | **OPEN, undecided** | `#1518` (open sub-thread) |
 | 7 | Decline is a resting state with a required reason field, separate from `setWhy` | DECIDED, not built (no `"declined"` value exists anywhere) | `#1519` |
-| 8 | MSP available to every matrix, assigned to none, no default template | DECIDED, not built (no MSP person source exists) | `#1520` |
+| 8 | MSP available to every matrix, assigned to none, no default template | DECIDED, **built** — MSP staff merged into `people` with `side: "MSP"`, no default assignment | `#1520` |
 | 9 | Cross-customer "what do I hold everywhere" MSP view | DECIDED, not built (`portal_ownership_assignments` is customer-keyed with no cross-tenant read path) | `#1521` |
 | 10 | Per-cell append-only event log (assigned/accepted/declined/cleared/reassigned); current state becomes derived, not stored | DECIDED, not built (current tables ARE the record today) | `#1522` |
 | 11 | Governance artifacts + M365 estate objects both belong on the matrix | DECIDED | `#1523` |
