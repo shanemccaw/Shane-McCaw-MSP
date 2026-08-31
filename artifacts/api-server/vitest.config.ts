@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     include: [
+      "src/lib/security-plan-assembly.test.ts",
       "src/lib/repo-source-nul-byte-guard.test.ts",
       "src/lib/drift-collector.test.ts",
       "src/lib/drift-check-specs.test.ts",

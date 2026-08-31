@@ -1,0 +1,380 @@
+/**
+ * security-plan-assembly.ts — the Security Plan's assembled view (#1561, part of
+ * #1495/#1485).
+ *
+ * The Security Plan owns almost no data. It READS what the other eight modules
+ * produce and presents them as one document:
+ *
+ *   Policy Decisions   (#1490) — policy_decisions
+ *   Risk Register      (#1487) — msp_risk_decisions
+ *   Ownership / RACI    (#1491) — portal_ownership_rows
+ *   SOPs / Runbooks     (#1493) — msp_sops
+ *   Remediation         (#1489) — remediation_tracker_steps
+ *   Change Control      (#1486) — msp_change_requests
+ *   Microsoft Changes   (#1494) — m365_change_interpretations
+ *
+ * Every row here is read from a real source table for the caller's own tenant —
+ * nothing is fabricated, and an empty module is an honest empty (a real query that
+ * returned zero rows), never a fixture fallback.
+ *
+ * SCOPE (#1563). A caller may narrow which parts of the estate the plan covers, but
+ * scope operates ONLY on DIMENSIONS (control family = `pillar`, `framework`), NEVER
+ * on OUTCOME (severity, accepted/open, pass/fail). This module deliberately exposes
+ * no outcome filter. A row is excluded by a scoped dimension ONLY when it CARRIES a
+ * value for that dimension that is not in the allowed set — a row that cannot be
+ * classified by the dimension is RETAINED, never silently dropped, because dropping
+ * by absence is exactly the hiding #1563 forbids. `pillar` and `framework` are the
+ * only two dimensions with real, consistent backing columns today (on
+ * policy_decisions / msp_risk_decisions); #1563's third example, `business_unit`,
+ * has no source column and is intentionally not offered rather than faked.
+ *
+ * FOOTPRINT (#1565). The assembly always computes a filter footprint — which filters
+ * were applied, what was excluded, and a per-module count — and returns it as part of
+ * the document. When a version is sealed, that footprint is snapshotted into the
+ * sealed `content` and cannot be suppressed by any UI.
+ */
+import {
+  db,
+  policyDecisionsTable,
+  mspRiskDecisionsTable,
+  portalOwnershipRowsTable,
+  mspSopsTable,
+  remediationTrackerStepsTable,
+  mspChangeRequestsTable,
+  m365ChangeInterpretationsTable,
+  type SecurityPlanContent,
+  type SecurityPlanScope,
+  type SecurityPlanScopeDimension,
+  type SecurityPlanAssembledItem,
+  type SecurityPlanAssembledModule,
+  type SecurityPlanFilterFootprint,
+} from "@workspace/db";
+import { and, eq, desc } from "drizzle-orm";
+import type { TenantScope } from "./portal-customer-scope.ts";
+
+/** An item before scope is applied — carries its dimension classification so scope
+ * can decide inclusion without re-reading the row. */
+type RawItem = SecurityPlanAssembledItem;
+
+/** One module's full (unscoped) contribution, before scope is applied. Exported so
+ * the scope/footprint mechanics can be unit-tested without seeding the database — the
+ * #1563/#1565 guarantees are pure functions of these rows and a scope. */
+export interface RawSecurityPlanModule {
+  key: string;
+  label: string;
+  sourceIssue: string;
+  items: RawItem[];
+}
+type RawModule = RawSecurityPlanModule;
+
+function str(v: unknown): string | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return s.length ? s : null;
+}
+
+/**
+ * True when `item` is excluded by `scope`. A dimension excludes an item only when the
+ * item HAS a value for that dimension and that value is not in the dimension's allowed
+ * set. An item with a null value for a scoped dimension is never excluded by it.
+ *
+ * Exported for the #1563 guarantee test: scope narrows on a dimension VALUE, never on an
+ * outcome, and an unclassifiable row is retained rather than silently dropped.
+ */
+export function isExcludedByScope(item: RawItem, scope: SecurityPlanScope): boolean {
+  const dims = scope.dimensions ?? {};
+  for (const dim of Object.keys(dims) as SecurityPlanScopeDimension[]) {
+    const allowed = dims[dim];
+    if (!allowed || allowed.length === 0) continue; // no constraint on this dimension
+    const value = item[dim]; // "pillar" | "framework" both exist on SecurityPlanAssembledItem
+    if (value === null) continue; // unclassifiable by this dimension → retained
+    if (!allowed.includes(value)) return true;
+  }
+  return false;
+}
+
+// ── Per-module readers. Each returns the FULL (unscoped) set for the tenant. ────────
+
+async function readPolicyDecisions(scope: TenantScope): Promise<RawModule> {
+  const rows = await db
+    .select({
+      id: policyDecisionsTable.id,
+      title: policyDecisionsTable.title,
+      pillar: policyDecisionsTable.pillar,
+      obligation: policyDecisionsTable.obligation,
+      decisionState: policyDecisionsTable.decisionState,
+      reviewState: policyDecisionsTable.reviewState,
+    })
+    .from(policyDecisionsTable)
+    .where(and(eq(policyDecisionsTable.mspId, scope.mspId), eq(policyDecisionsTable.tenantId, scope.tenantId)))
+    .orderBy(desc(policyDecisionsTable.id));
+  return {
+    key: "policy",
+    label: "Policy Decisions",
+    sourceIssue: "#1490",
+    items: rows.map((r) => ({
+      id: `policy-${r.id}`,
+      title: r.title,
+      state: str(r.decisionState),
+      detail: str(r.reviewState) ? `Review: ${r.reviewState}` : str(r.obligation),
+      pillar: str(r.pillar),
+      framework: null,
+    })),
+  };
+}
+
+async function readRiskRegister(scope: TenantScope): Promise<RawModule> {
+  const rows = await db
+    .select({
+      id: mspRiskDecisionsTable.id,
+      title: mspRiskDecisionsTable.title,
+      pillar: mspRiskDecisionsTable.pillar,
+      framework: mspRiskDecisionsTable.framework,
+      rawRiskLevel: mspRiskDecisionsTable.rawRiskLevel,
+      residualRiskLevel: mspRiskDecisionsTable.residualRiskLevel,
+      status: mspRiskDecisionsTable.status,
+    })
+    .from(mspRiskDecisionsTable)
+    .where(and(eq(mspRiskDecisionsTable.mspId, scope.mspId), eq(mspRiskDecisionsTable.tenantId, scope.tenantId)))
+    .orderBy(desc(mspRiskDecisionsTable.id));
+  return {
+    key: "risk",
+    label: "Risk Register",
+    sourceIssue: "#1487",
+    items: rows.map((r) => ({
+      id: `risk-${r.id}`,
+      title: r.title,
+      state: str(r.status),
+      detail: `Raw ${str(r.rawRiskLevel) ?? "?"} → residual ${str(r.residualRiskLevel) ?? "?"}`,
+      pillar: str(r.pillar),
+      framework: str(r.framework),
+    })),
+  };
+}
+
+async function readOwnership(scope: TenantScope): Promise<RawModule> {
+  const rows = await db
+    .select({
+      id: portalOwnershipRowsTable.id,
+      rowId: portalOwnershipRowsTable.rowId,
+      objType: portalOwnershipRowsTable.objType,
+      name: portalOwnershipRowsTable.name,
+      sub: portalOwnershipRowsTable.sub,
+    })
+    .from(portalOwnershipRowsTable)
+    .where(eq(portalOwnershipRowsTable.customerId, scope.customerId))
+    .orderBy(desc(portalOwnershipRowsTable.id));
+  return {
+    key: "ownership",
+    label: "Ownership / RACI",
+    sourceIssue: "#1491",
+    items: rows.map((r) => ({
+      id: `ownership-${r.id}`,
+      title: str(r.name) ?? r.rowId,
+      state: str(r.objType),
+      detail: str(r.sub),
+      pillar: null,
+      framework: null,
+    })),
+  };
+}
+
+async function readSops(scope: TenantScope): Promise<RawModule> {
+  // SOPs are the MSP's procedure library (msp-wide, msp_id only — no tenant_id).
+  const rows = await db
+    .select({
+      id: mspSopsTable.id,
+      sopId: mspSopsTable.sopId,
+      title: mspSopsTable.title,
+      category: mspSopsTable.category,
+      automationType: mspSopsTable.automationType,
+      versionStatus: mspSopsTable.versionStatus,
+    })
+    .from(mspSopsTable)
+    .where(eq(mspSopsTable.mspId, scope.mspId))
+    .orderBy(desc(mspSopsTable.id));
+  return {
+    key: "sops",
+    label: "SOPs & Runbooks",
+    sourceIssue: "#1493",
+    items: rows.map((r) => ({
+      id: `sop-${r.id}`,
+      title: r.title,
+      state: str(r.versionStatus),
+      // `category` is the SOP library's own taxonomy, not the pillar dimension, so it
+      // is shown as detail rather than mapped onto `pillar` (which would conflate two
+      // different vocabularies and make a `pillar` scope dishonest).
+      detail: [str(r.category), str(r.automationType)].filter(Boolean).join(" · ") || null,
+      pillar: null,
+      framework: null,
+    })),
+  };
+}
+
+async function readRemediation(scope: TenantScope): Promise<RawModule> {
+  const rows = await db
+    .select({
+      id: remediationTrackerStepsTable.id,
+      stepId: remediationTrackerStepsTable.stepId,
+      status: remediationTrackerStepsTable.status,
+      verificationState: remediationTrackerStepsTable.verificationState,
+    })
+    .from(remediationTrackerStepsTable)
+    .where(eq(remediationTrackerStepsTable.customerId, scope.customerId))
+    .orderBy(desc(remediationTrackerStepsTable.id));
+  return {
+    key: "remediation",
+    label: "Remediation",
+    sourceIssue: "#1489",
+    items: rows.map((r) => ({
+      id: `remediation-${r.id}`,
+      title: r.stepId,
+      state: str(r.status),
+      detail: str(r.verificationState) ? `Verification: ${r.verificationState}` : null,
+      pillar: null,
+      framework: null,
+    })),
+  };
+}
+
+async function readChangeControl(scope: TenantScope): Promise<RawModule> {
+  const rows = await db
+    .select({
+      id: mspChangeRequestsTable.id,
+      title: mspChangeRequestsTable.title,
+      changeClass: mspChangeRequestsTable.changeClass,
+      riskLevel: mspChangeRequestsTable.riskLevel,
+      status: mspChangeRequestsTable.status,
+      category: mspChangeRequestsTable.category,
+    })
+    .from(mspChangeRequestsTable)
+    .where(and(eq(mspChangeRequestsTable.mspId, scope.mspId), eq(mspChangeRequestsTable.tenantId, scope.tenantId)))
+    .orderBy(desc(mspChangeRequestsTable.id));
+  return {
+    key: "change_control",
+    label: "Change Control",
+    sourceIssue: "#1486",
+    items: rows.map((r) => ({
+      id: `change-${r.id}`,
+      title: r.title,
+      state: str(r.status),
+      detail: [str(r.changeClass), str(r.riskLevel), str(r.category)].filter(Boolean).join(" · ") || null,
+      pillar: null,
+      framework: null,
+    })),
+  };
+}
+
+async function readMicrosoftChanges(scope: TenantScope): Promise<RawModule> {
+  const rows = await db
+    .select({
+      id: m365ChangeInterpretationsTable.id,
+      title: m365ChangeInterpretationsTable.title,
+      changeClass: m365ChangeInterpretationsTable.changeClass,
+      status: m365ChangeInterpretationsTable.status,
+      controllable: m365ChangeInterpretationsTable.controllable,
+    })
+    .from(m365ChangeInterpretationsTable)
+    .where(eq(m365ChangeInterpretationsTable.mspId, scope.mspId))
+    .orderBy(desc(m365ChangeInterpretationsTable.id));
+  return {
+    key: "microsoft_changes",
+    label: "Microsoft Changes",
+    sourceIssue: "#1494",
+    items: rows.map((r) => ({
+      id: `m365-${r.id}`,
+      title: r.title,
+      state: str(r.status),
+      detail: [str(r.changeClass), str(r.controllable) ? `controllable: ${r.controllable}` : null].filter(Boolean).join(" · ") || null,
+      pillar: null,
+      framework: null,
+    })),
+  };
+}
+
+/** The empty (honest, unfiltered) scope — the default view. */
+export const HONEST_SCOPE: SecurityPlanScope = { dimensions: {} };
+
+export function scopeHasConstraints(scope: SecurityPlanScope): boolean {
+  const dims = scope.dimensions ?? {};
+  return (Object.keys(dims) as SecurityPlanScopeDimension[]).some((d) => (dims[d]?.length ?? 0) > 0);
+}
+
+/**
+ * Applies `scope` to already-read raw modules and computes the #1565 filter footprint.
+ * PURE — the whole #1563/#1565 mechanism lives here, decoupled from the DB reads, so it
+ * is unit-testable without seeding. Every excluded row is counted into the footprint,
+ * and the footprint travels with the returned modules so a sealed snapshot always
+ * carries proof of what was cut.
+ */
+export function applyScopeAndFootprint(
+  rawModules: readonly RawSecurityPlanModule[],
+  scope: SecurityPlanScope,
+  computedAt: string = new Date().toISOString(),
+): { modules: SecurityPlanAssembledModule[]; footprint: SecurityPlanFilterFootprint } {
+  const modules: SecurityPlanAssembledModule[] = [];
+  const excludedByModule: { moduleKey: string; excludedCount: number }[] = [];
+  let totalExcluded = 0;
+
+  for (const m of rawModules) {
+    const inScope: SecurityPlanAssembledItem[] = [];
+    let excluded = 0;
+    for (const item of m.items) {
+      if (isExcludedByScope(item, scope)) excluded += 1;
+      else inScope.push(item);
+    }
+    totalExcluded += excluded;
+    excludedByModule.push({ moduleKey: m.key, excludedCount: excluded });
+    modules.push({
+      key: m.key,
+      label: m.label,
+      sourceIssue: m.sourceIssue,
+      total: inScope.length,
+      excludedCount: excluded,
+      items: inScope,
+    });
+  }
+
+  const footprint: SecurityPlanFilterFootprint = {
+    scope,
+    isHonestView: !scopeHasConstraints(scope),
+    excludedByModule,
+    totalExcluded,
+    computedAt,
+  };
+
+  return { modules, footprint };
+}
+
+/**
+ * Assembles the whole Security Plan for one tenant, applying `scope` and computing the
+ * #1565 filter footprint. `scope` defaults to the honest (unfiltered) view.
+ */
+export async function assembleSecurityPlan(
+  tenant: TenantScope,
+  scope: SecurityPlanScope = HONEST_SCOPE,
+  prose: string | null = null,
+): Promise<SecurityPlanContent> {
+  const rawModules = await Promise.all([
+    readPolicyDecisions(tenant),
+    readRiskRegister(tenant),
+    readOwnership(tenant),
+    readSops(tenant),
+    readRemediation(tenant),
+    readChangeControl(tenant),
+    readMicrosoftChanges(tenant),
+  ]);
+
+  const nowIso = new Date().toISOString();
+  const { modules, footprint } = applyScopeAndFootprint(rawModules, scope, nowIso);
+
+  return {
+    customerId: tenant.customerId,
+    tenantId: tenant.tenantId,
+    tenantName: tenant.tenantName,
+    assembledAt: nowIso,
+    modules,
+    footprint,
+    prose,
+  };
+}

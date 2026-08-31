@@ -5858,6 +5858,156 @@ export const insertMspRbdVersionSchema = createInsertSchema(mspRbdVersionsTable)
 export type MspRbdVersion = typeof mspRbdVersionsTable.$inferSelect;
 export type InsertMspRbdVersion = typeof mspRbdVersionsTable.$inferInsert;
 
+// ── Security Plan: the assembled view over the eight modules (#1561, part of #1495/#1485) ─
+//
+// Settled architecture (#1561, #1562): the Security Plan OWNS almost no data. It is
+// an assembled view that READS what the other modules produce — Policy Decisions
+// (#1490), Risk Register (#1487), Ownership/RACI (#1491), SOPs/Runbooks (#1493),
+// Remediation (#1489), Change Control (#1486) and Microsoft Changes (#1494) — and
+// then VERSIONS and SEALS that assembly at a point in time. The only data it owns is
+// the authored prose (a separate sub-issue) and THESE version records.
+//
+// #1562 says this is "the RBD pattern one level up." So `msp_security_plan_versions`
+// is deliberately `msp_rbd_versions` (above) with the same supersession mechanism —
+// `supersededAt IS NULL` marks the current version, a prior version is never edited
+// or backfilled — rather than a second sealing/signing stack. `signedBy` reuses
+// `ClientApprover` and `createdBy` reuses `MspAssessor`, exactly as the RBD chain
+// does, so every writer agrees on one signature shape.
+//
+// The difference from RBD is what the sealed artifact must carry, which comes from
+// two sibling issues:
+//   • #1563 — a sealed version may be SCOPED (which parts of the estate it covers),
+//     but scope operates only on DIMENSIONS (control family / framework), NEVER on
+//     OUTCOME (severity, accepted/open, pass/fail). `scope` records the dimension
+//     selection; there is no field here that could express an outcome filter.
+//   • #1565 — the artifact carries a FILTER FOOTPRINT stating what was excluded and
+//     a count, and that footprint is PART OF THE SEALED SNAPSHOT (`content`), so a
+//     reader always knows they are holding a slice. It cannot be suppressed by a UI.
+//
+// `content` is a full, self-contained snapshot of the assembled document (every
+// module's contributed rows AS THEY WERE at seal time) plus the applied scope and
+// the computed footprint — never a pointer for the reader to re-resolve against live
+// rows, for the same reason `msp_rbd_versions.content` is (a re-reading version is a
+// query, not a signed document). Its TypeScript shape is `SecurityPlanContent`.
+//
+// The container is one Security Plan PER CUSTOMER TENANT, so the version chain is
+// keyed on `(mspId, customerId)` where `customerId` is a `tenants.id` — the same id
+// space `portal_security_plans` and every portal-owned table use. `tenantId` /
+// `tenantName` are carried denormalized for the sealed record, matching the RBD chain.
+
+/** A legitimate scope dimension (#1563). SCOPE narrows which parts of the estate a
+ * plan covers; it operates ONLY on these dimensions, never on an OUTCOME (severity,
+ * accepted/open, pass/fail). `business_unit` from #1563's examples is intentionally
+ * absent: no source table carries a business-unit column, and inventing one to filter
+ * on would be fabricated data. Extend this union only when a real backing column exists. */
+export const SECURITY_PLAN_SCOPE_DIMENSIONS = ["pillar", "framework"] as const;
+export type SecurityPlanScopeDimension = (typeof SECURITY_PLAN_SCOPE_DIMENSIONS)[number];
+
+/** The scope selection applied to an assembled/sealed plan (#1563). A dimension maps
+ * to the set of allowed values for it; a row is excluded by a dimension ONLY when it
+ * carries a value for that dimension not in the allowed set — a row that cannot be
+ * classified by the dimension is retained, never silently dropped. An empty/absent
+ * object is the HONEST (unfiltered) view, which is the default, not a separate mode. */
+export interface SecurityPlanScope {
+  readonly dimensions: Partial<Record<SecurityPlanScopeDimension, readonly string[]>>;
+  /** A short human statement of what this scope claims to cover, carried onto the
+   * document per #1563 ("every filtered view carries its own scope statement"). */
+  readonly statement?: string;
+}
+
+/** One module's excluded-by-scope tally, for the filter footprint (#1565). */
+export interface SecurityPlanModuleExclusion {
+  readonly moduleKey: string;
+  readonly excludedCount: number;
+}
+
+/** The filter footprint that #1565 requires on every sealed/exported artifact: the
+ * filters applied, what was excluded, and a count of excluded items. It is part of
+ * the sealed `content` and cannot be suppressed by the filter UI. */
+export interface SecurityPlanFilterFootprint {
+  readonly scope: SecurityPlanScope;
+  /** True when no scope was applied — the honest, complete-for-the-estate view. */
+  readonly isHonestView: boolean;
+  readonly excludedByModule: readonly SecurityPlanModuleExclusion[];
+  readonly totalExcluded: number;
+  /** ISO timestamp the footprint was computed. */
+  readonly computedAt: string;
+}
+
+/** One assembled module's contribution to the plan — real rows read from that
+ * module's own tables, plus counts. Never fabricated. `items` is that module's
+ * in-scope rows in a small, uniform display shape; `excludedCount` is how many the
+ * scope removed (mirrored into the footprint). */
+export interface SecurityPlanAssembledModule {
+  readonly key: string;
+  readonly label: string;
+  /** The GitHub issue that owns this source module, e.g. "#1487". */
+  readonly sourceIssue: string;
+  readonly total: number;
+  readonly excludedCount: number;
+  readonly items: readonly SecurityPlanAssembledItem[];
+}
+
+/** A single assembled row in a uniform, honest shape. `pillar`/`framework` carry the
+ * dimension values used for scope classification (null when the source row has none). */
+export interface SecurityPlanAssembledItem {
+  readonly id: string;
+  readonly title: string;
+  readonly state: string | null;
+  readonly detail: string | null;
+  readonly pillar: string | null;
+  readonly framework: string | null;
+}
+
+/** The full assembled Security Plan document — what the live view returns and what a
+ * sealed version snapshots into `content`. Self-contained: every value here was read
+ * from a real source table at assembly time. */
+export interface SecurityPlanContent {
+  readonly customerId: number;
+  readonly tenantId: string;
+  readonly tenantName: string;
+  readonly assembledAt: string;
+  readonly modules: readonly SecurityPlanAssembledModule[];
+  readonly footprint: SecurityPlanFilterFootprint;
+  /** Authored narrative owned by this module (#1561). Null until prose is authored;
+   * the prose sub-issue formalizes its structure — carried through verbatim here. */
+  readonly prose: string | null;
+}
+
+export const mspSecurityPlanVersionsTable = pgTable("msp_security_plan_versions", {
+  id: serial("id").primaryKey(),
+  versionUid: uuid("version_uid").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The container: one Security Plan per customer tenant. A `tenants.id`, no FK — the
+   * same convention `portal_security_plans.customer_id` follows. */
+  customerId: integer("customer_id").notNull(),
+  /** Denormalized M365 tenant identifier + display name, sealed into the record. */
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  /** 1-based, monotonic per (mspId, customerId). Version 1 is the first seal. */
+  versionNumber: integer("version_number").notNull(),
+  /** Full, self-contained assembled-document snapshot (`SecurityPlanContent`),
+   * including the #1565 filter footprint. Never re-read live rows to fill it. */
+  content: jsonb("content").$type<SecurityPlanContent>().notNull(),
+  /** Who sealed this version on the MSP side. */
+  createdBy: jsonb("created_by").$type<MspAssessor>().notNull(),
+  signed: boolean("signed").notNull().default(false),
+  signedBy: jsonb("signed_by").$type<ClientApprover>(),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  /** When a newer version replaced this one. NULL = the current version. Never
+   * edited or backfilled once superseded — same rule as `msp_rbd_versions`. */
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_security_plan_versions_msp_id_customer_id_idx").on(t.mspId, t.customerId),
+  index("msp_security_plan_versions_customer_superseded_idx").on(t.customerId, t.supersededAt),
+  unique("msp_security_plan_versions_msp_customer_version_uidx").on(t.mspId, t.customerId, t.versionNumber),
+]);
+
+export const insertMspSecurityPlanVersionSchema = createInsertSchema(mspSecurityPlanVersionsTable).omit({ id: true, versionUid: true, createdAt: true });
+export type MspSecurityPlanVersion = typeof mspSecurityPlanVersionsTable.$inferSelect;
+export type InsertMspSecurityPlanVersion = typeof mspSecurityPlanVersionsTable.$inferInsert;
+
 // ── risk_instances — the RBD's line items (#1509, part of #1487) ──────────────
 //
 // Settled architecture (#1487, #1509): the RBD is a container, not a single risk
