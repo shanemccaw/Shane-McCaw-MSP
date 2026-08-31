@@ -18,6 +18,14 @@ namespace BuildConsole
         /// </summary>
         internal static string? PendingProtocolUri;
         /// <summary>
+        /// Git #1889 — true when THIS process is a --dev/--agent cold start that exists solely to
+        /// courier one shaneapp:// payload (report-progress, executeSql, runTest, …) to whatever
+        /// happens to be running, not a deliberate agent verification/screenshot launch. Set once in
+        /// OnStartup; MainWindow reads it to decide whether to actually run the pending URI (instead
+        /// of dropping it, agent mode's normal behavior) and to exit once that one job is done.
+        /// </summary>
+        internal static bool QuietProtocolCourierLaunch;
+        /// <summary>
         /// Git #830 — Shane: "Is there a way to make push notifications from
         /// Claude.ai work in this WebView2 browser?" An unpackaged (non-MSIX)
         /// Win32 app has no App User Model ID by default, and Windows uses
@@ -64,7 +72,44 @@ namespace BuildConsole
             // that path still forwards+Shutdowns without a window exactly as before.
             Services.AppMode.Initialize(e.Args);
 
+            // Git #1889 — the forward attempt above just failed (no listener answered inside its
+            // 2s window: genuinely nothing running yet, OR a primary that's momentarily
+            // unreachable — mid ShanesBuild-deploy stop/relaunch, or the pipe's serial accept loop
+            // racing heavy concurrent shaneapp:// traffic). Either way, THIS process still has to
+            // do the real work the URI asked for (MainWindow drains PendingProtocolUri once ready),
+            // so it can't just Shutdown() like the successful-forward branch above. But its whole
+            // purpose here is couriering ONE payload for an already-running (or about-to-be-running)
+            // primary — it was never meant to be seen, so it must not grab Shane's screen or focus
+            // while it does that. A bare --agent/--dev launch with NO protocol payload is a
+            // different, deliberate use case (Git #1838: an agent verifying/screenshotting the UI
+            // itself) and keeps today's visible-shell behavior unchanged — parking IT off-screen
+            // would defeat the one thing it was launched for.
+            QuietProtocolCourierLaunch = Services.AppMode.IsAgent && protocolUri != null;
+            if (QuietProtocolCourierLaunch)
+            {
+                StartupUri = null; // build/show the window ourselves below instead of WPF's default (CenterScreen, Maximized, activated)
+            }
+
             base.OnStartup(e);
+
+            if (QuietProtocolCourierLaunch)
+            {
+                // Same "park off-screen, ShowActivated=false, never Activate()" idiom
+                // TestRunnerWindow already uses for the identical reason (Git #857: "tests should
+                // never interrupt me"). DWM still composites an off-screen Normal window, so nothing
+                // downstream (WebView2, etc.) is starved the way a Minimized/Hidden window would be —
+                // it's just never where Shane can see it, and Windows never gives it the foreground.
+                var window = new MainWindow
+                {
+                    WindowStartupLocation = WindowStartupLocation.Manual,
+                    WindowState = WindowState.Normal,
+                    ShowActivated = false,
+                    Left = SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth + 200,
+                    Top = Math.Max(SystemParameters.VirtualScreenTop, 0),
+                };
+                MainWindow = window;
+                window.Show();
+            }
 
             // Git #1978 — resolve and cache the repo root ONCE here, at cold start while the
             // working tree is quiet, before MainWindow's ctor uses it for the queue DB / worktree

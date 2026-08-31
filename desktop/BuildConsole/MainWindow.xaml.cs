@@ -545,10 +545,26 @@ namespace BuildConsole
                 }
                 else if (!string.IsNullOrEmpty(App.PendingProtocolUri))
                 {
-                    var droppedUri = App.PendingProtocolUri;
+                    var pendingUri = App.PendingProtocolUri;
                     App.PendingProtocolUri = null;
+                    if (App.QuietProtocolCourierLaunch)
+                    {
+                        // Git #1889 — this cold start's ONLY job was couriering this one payload
+                        // (SQL, a test run, a progress report, …) — still never opening the ongoing
+                        // pipe listener (agent mode must never be able to intercept a FUTURE URI
+                        // meant for the real primary instance), but the URI it was actually launched
+                        // WITH must run, not be silently dropped, or every shaneapp:// caller that
+                        // races a cold start loses its result. Once it's handled, the process has
+                        // nothing left to do — exit rather than leave a parked-off-screen instance
+                        // sitting around indefinitely.
+                        BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
+                            "Quiet --dev cold start — handling its one shaneapp:// URI without opening the pipe listener, then exiting.");
+                        await HandleShaneAppUriAsync(pendingUri!);
+                        System.Windows.Application.Current.Shutdown(0);
+                        return;
+                    }
                     BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
-                        $"Agent mode — NOT opening the shaneapp:// pipe listener; dropping pending cold-start URI: {droppedUri}");
+                        $"Agent mode — NOT opening the shaneapp:// pipe listener; dropping pending cold-start URI: {pendingUri}");
                 }
 
                 // Yield before heavy sidebar & view initialization

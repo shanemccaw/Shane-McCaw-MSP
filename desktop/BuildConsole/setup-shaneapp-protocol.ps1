@@ -65,7 +65,15 @@ if (-not (Test-Path $ExePath)) {
 
 $protocolKey = "HKCU:\Software\Classes\shaneapp"
 $commandKey  = "$protocolKey\shell\open\command"
-$command     = "`"$ExePath`" `"%1`""
+# Git #1889 — every shaneapp:// launch is by definition a build/agent-context trigger
+# (report-progress.mjs's pipe-fallback, and every executeSql/runTest/executeScan/
+# executeCmdlet/reportProgress invocation in AGENT_PROTOCOLS.md), never Shane opening
+# the app himself — his own always-open instance is a plain no-arg launch that never
+# goes through this registry command. A literal trailing --dev makes App.OnStartup
+# treat any cold start this command produces as a passive, non-interrupting instance
+# (see App.xaml.cs / Services/AppMode.cs) instead of a full autonomous, focus-stealing
+# one, without requiring every individual caller to remember to pass it.
+$command     = "`"$ExePath`" `"%1`" --dev"
 
 New-Item -Path $protocolKey -Force | Out-Null
 Set-ItemProperty -Path $protocolKey -Name "(Default)" -Value "URL:ShaneApp Protocol"
