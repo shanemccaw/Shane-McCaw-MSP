@@ -1914,17 +1914,26 @@ namespace BuildConsole
                     // visible title before GetEpicForChat/tabState/chat
                     // tracking catches up. Same title-parsing fallback as the
                     // untracked-tab case below.
+                    int? titleFallbackNumber = null;
                     if (resolvedEpic == null)
                     {
-                        var titleNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(selectedTab));
-                        if (titleNumber.HasValue)
+                        titleFallbackNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(selectedTab));
+                        if (titleFallbackNumber.HasValue)
                         {
-                            resolvedEpic = LeftSidebar.GetEpicByGithubNumber(titleNumber.Value);
+                            resolvedEpic = LeftSidebar.GetEpicByGithubNumber(titleFallbackNumber.Value);
                         }
                     }
 
                     int? epicId = resolvedEpic?.Id;
-                    int? epicGithubNumber = resolvedEpic?.GithubNumber;
+                    // Git #1905 — #1802's remaining gap: it fed the highlight only
+                    // resolvedEpic?.GithubNumber, so a title number that parsed fine but
+                    // wasn't in the epics-only cache (_chatEpicById) produced null and
+                    // SetActiveEpicGithubNumber(null) CLEARED the Git Board highlight — the
+                    // exact "not scoping down to #1202" symptom Shane reported. The board
+                    // tree matches the active epic by raw IssueNumber (RenderTree), not by
+                    // epics-dict membership, so fall back to the raw parsed number: scope to
+                    // [#N] whenever the title carries one, even if GetEpicByGithubNumber missed.
+                    int? epicGithubNumber = resolvedEpic?.GithubNumber ?? titleFallbackNumber;
                     string? epicTitle = resolvedEpic?.Title;
 
                     BuildQueuePanel.SetActiveChatEpic(epicId, epicGithubNumber, epicTitle);
@@ -1943,17 +1952,23 @@ namespace BuildConsole
                     // as the BoardChat last-resort fallback above rather than
                     // unconditionally clearing the highlight.
                     BuildConsole.Services.BoardEpic? untrackedEpic = null;
+                    int? untrackedTitleNumber = null;
                     if (EditorTabs.SelectedItem is TabItem untrackedTab)
                     {
-                        var titleNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(untrackedTab));
-                        if (titleNumber.HasValue)
+                        untrackedTitleNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(untrackedTab));
+                        if (untrackedTitleNumber.HasValue)
                         {
-                            untrackedEpic = LeftSidebar.GetEpicByGithubNumber(titleNumber.Value);
+                            untrackedEpic = LeftSidebar.GetEpicByGithubNumber(untrackedTitleNumber.Value);
                         }
                     }
 
-                    BuildQueuePanel.SetActiveChatEpic(untrackedEpic?.Id, untrackedEpic?.GithubNumber, untrackedEpic?.Title);
-                    LeftSidebar.SetActiveEpicGithubNumber(untrackedEpic?.GithubNumber);
+                    // Git #1905 — same raw-number fallback as the tracked branch above:
+                    // scope the Git Board to the title's number even when it isn't in the
+                    // epics-only cache. SetActiveChatEpic is a no-op collapse when epicId is
+                    // null (it early-returns), so passing the raw number there is harmless.
+                    int? untrackedGithubNumber = untrackedEpic?.GithubNumber ?? untrackedTitleNumber;
+                    BuildQueuePanel.SetActiveChatEpic(untrackedEpic?.Id, untrackedGithubNumber, untrackedEpic?.Title);
+                    LeftSidebar.SetActiveEpicGithubNumber(untrackedGithubNumber);
                 }
             }
         }
@@ -4721,6 +4736,20 @@ namespace BuildConsole
                 }
             }
 
+            // Git #1905 — same audit gap as TriggerHandoffAsync had: this resolver (used
+            // by the "Start a new chat on Epic #N" context menu, both its label and
+            // StartSuccessorChat) had no title-text fallback, so a tab clearly titled
+            // `[#1202]` with stale/empty tracked github fields silently fell through to
+            // null and forced Shane through the NewChatEpicDialog prompt. Parse the visible
+            // title as a last resort, same ExtractTabTitleIssueNumber path #1802 and the
+            // handoff fix use; prefer the canonical epic mapping, else the raw title number.
+            var titleNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(tabItem));
+            if (titleNumber.HasValue)
+            {
+                var titleEpic = LeftSidebar.GetEpicByGithubNumber(titleNumber.Value);
+                return titleEpic?.GithubNumber ?? titleNumber.Value;
+            }
+
             return null;
         }
 
@@ -6607,6 +6636,29 @@ namespace BuildConsole
                     if (resolvedEpic != null)
                     {
                         targetIssue = resolvedEpic.GithubNumber;
+                    }
+                }
+
+                // Git #1905 — Shane: "Hand Off Now" fails with "chat has no associated
+                // epic" on a tab whose title literally shows `[#1202]`. The entire chain
+                // above is nested under `if (chat != null)` and depends on
+                // GetEpicForChat / tabState.GithubNumber / chat.IssueGithubNumber — every
+                // one of which can be null or stale — and it's skipped outright when the
+                // tab isn't a tracked BoardChat at all. The tab's visible title still
+                // carries the real issue number, so parse it out as a last resort, the
+                // SAME ExtractTabTitleIssueNumber fallback #1802 built for the Working-epic
+                // highlight. Prefer the canonical epic mapping when the number is a known
+                // epic; otherwise the number on the title is itself a valid handoff target,
+                // so a stale/empty bt_epics cache never turns a clearly-numbered tab back
+                // into "no associated epic". Covers BOTH the chat==null case and the
+                // chat!=null-but-chain-empty case the issue calls out.
+                if (!targetIssue.HasValue)
+                {
+                    var titleNumber = ExtractTabTitleIssueNumber(ExtractTabTitle(oldTab));
+                    if (titleNumber.HasValue)
+                    {
+                        var titleEpic = LeftSidebar.GetEpicByGithubNumber(titleNumber.Value);
+                        targetIssue = titleEpic?.GithubNumber ?? titleNumber.Value;
                     }
                 }
 
