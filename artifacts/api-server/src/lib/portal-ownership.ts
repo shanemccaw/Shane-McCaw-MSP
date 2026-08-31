@@ -35,6 +35,22 @@
  * produce a page with no gaps on it. That would be inventing an agreement
  * nobody made: Consulted means asked before the window opens, and no row in
  * this database says anyone was. They stay empty until something records them.
+ *
+ * ── The MSP is available, never assigned by default (#1520) ────────────────
+ * A customer's MSP is available to every one of that customer's cells, by
+ * virtue of being their MSP — never placed into one by default. There is no
+ * MSP template, no standard position, no per-customer override: the customer
+ * decides placement entirely, and every placement (R on everything, A on
+ * everything, nowhere at all) is equally valid.
+ *
+ * "Available" means MSP staff (`usersTable` rows scoped by the customer's
+ * `tenants.mspId` rather than by `tenantId`, with `mspRole` MSPAdmin or
+ * MSPOperator) appear in `people` as real named individuals with
+ * `side: "MSP"` — the same `toWirePerson` shape a customer's own team gets,
+ * just a different roster. They start on no cell; a customer places one by
+ * assigning them like anyone else on the roster. There is deliberately no
+ * separate "the MSP" pseudo-person: that would be a fabricated entity with no
+ * row behind it, which is exactly what this file exists to refuse to do.
  */
 
 /** The four names, in the matrix's own column order. */
@@ -153,6 +169,10 @@ export function personRoleLabel(
       return "Free account";
     case "ServiceAccount":
       return "Service account";
+    case "MSPAdmin":
+      return "MSP Admin";
+    case "MSPOperator":
+      return "MSP Operator";
     default:
       return "Team member";
   }
@@ -512,6 +532,64 @@ export function toWireDelegation(row: DelegationRow): WireOwnDelegation {
     scope: row.scope ?? "all",
     done: row.done,
   };
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   The event log — the append-only history behind one cell holder (#1522).
+
+   `portal_ownership_assignments` above is CURRENT STATE, overwritten in place on
+   every re-assert. This is the record that survives the overwrite: every write
+   route inserts an event here in the same transaction as its current-state
+   write, and nothing ever updates or deletes a row.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/** The five things that can happen to one cell holder — nothing else is recorded. */
+export type OwnEventType = "assigned" | "accepted" | "declined" | "cleared" | "reassigned";
+
+/** One append-only event as the wire shape the history endpoint sends. */
+export interface WireOwnEvent {
+  readonly objectId: string;
+  readonly roleKey: string;
+  readonly ownerPersonId: string;
+  readonly eventType: OwnEventType;
+  readonly actor: string;
+  readonly reason: string;
+  readonly at: string;
+}
+
+export interface OwnEventRow {
+  readonly objectId: string;
+  readonly roleKey: string;
+  readonly ownerPersonId: string;
+  readonly eventType: string;
+  readonly actor: string;
+  readonly reason: string;
+  readonly createdAt: Date | string;
+}
+
+export function toWireEvent(row: OwnEventRow): WireOwnEvent {
+  return {
+    objectId: row.objectId,
+    roleKey: row.roleKey,
+    ownerPersonId: row.ownerPersonId,
+    eventType: row.eventType as OwnEventType,
+    actor: row.actor,
+    reason: row.reason,
+    at: formatOwnDate(row.createdAt),
+  };
+}
+
+/**
+ * Which event an assign write represents, given whether this exact
+ * (customer, object, role, owner) row already existed. An empty `ownerPersonId`
+ * is always `cleared` — declaring a gap — regardless of whether the gap row
+ * itself is new or being re-asserted; a non-empty owner is `assigned` the first
+ * time that holder appears in the cell and `reassigned` on every re-assert
+ * after (the same holder's provenance being overwritten).
+ */
+export function assignEventType(ownerPersonId: string, rowAlreadyExisted: boolean): OwnEventType {
+  if (!ownerPersonId) return "cleared";
+  return rowAlreadyExisted ? "reassigned" : "assigned";
 }
 
 export interface OwnRowRecord {

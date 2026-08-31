@@ -81,3 +81,24 @@ export async function resolveTenantScope(customerId: number): Promise<TenantScop
     primaryDomain: (tenant.domain ?? "").trim(),
   };
 }
+
+/**
+ * `tenants.mspId` alone, for callers that need the owning MSP but not the
+ * M365 tenant identifier `resolveTenantScope` also gates on (#1520). A
+ * customer's MSP is real and known the moment their `tenants` row exists —
+ * unlike the MSP-era tables, nothing about "who is our MSP" depends on the
+ * M365 tenant GUID ever having been captured. Gating that on an unrelated
+ * identifier would hide a real answer for no reason, so this resolves
+ * independently and fails closed only on what it actually needs: the tenant
+ * row existing and carrying an `mspId`.
+ */
+export async function resolveCustomerMspId(customerId: number): Promise<number | null> {
+  const [tenant] = await db
+    .select({ mspId: tenantsTable.mspId })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, customerId))
+    .limit(1);
+
+  if (!tenant || typeof tenant.mspId !== "number") return null;
+  return tenant.mspId;
+}

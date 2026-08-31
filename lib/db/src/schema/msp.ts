@@ -2936,6 +2936,12 @@ export const REPORT_DOC_TYPES = [
   "data_exposure_risk_report",
   "license_optimization_report",
   "license_waste_report",
+  // #1512 — the rendered, signable RBD document. Deterministic template render
+  // of a `msp_rbd_versions.content` snapshot, never an AI generation — see
+  // `rbd-document-render.ts`. Distinct from the report-builder's AI-authored
+  // types above, but stored through the same `msp_report_runs` machinery
+  // rather than a parallel render path.
+  "risk_decision_document",
 ] as const;
 export type ReportDocType = typeof REPORT_DOC_TYPES[number];
 
@@ -3001,12 +3007,19 @@ export const mspReportRunsTable = pgTable("msp_report_runs", {
   workflowRunId: uuid("workflow_run_id"),
   triggeredByUserId: integer("triggered_by_user_id"),
   generatedAt: timestamp("generated_at", { withTimezone: true }),
+  /** #1512 — set only for `docType = "risk_decision_document"` runs: the
+   * `msp_rbd_versions.versionUid` this run rendered. No FK by design, same
+   * convention as `customerId` above — a version render must never be blocked
+   * by, or block, the version row's own lifecycle. Lets a caller look up "the
+   * persisted render for version X" without a parallel storage table. */
+  rbdVersionUid: uuid("rbd_version_uid"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_report_runs_msp_id_idx").on(t.mspId),
   index("msp_report_runs_def_id_idx").on(t.definitionId),
   index("msp_report_runs_status_idx").on(t.status),
+  index("msp_report_runs_rbd_version_uid_idx").on(t.rbdVersionUid),
 ]);
 
 export type MspReportRun = typeof mspReportRunsTable.$inferSelect;
@@ -3457,6 +3470,11 @@ export const MSP_ALERT_CONDITION_TYPES = [
                        // decision becoming actionable, not a failure. Neutral
                        // "info" severity, same reasoning as purchase_completed.
                        // Count-based, evaluated by the same polling loop.
+  "policy_review_overdue", // policy_decisions (Git #2024) rows whose review
+                       // clock has lapsed — same "review is overdue, the
+                       // signed decision remains LIVE" contract as
+                       // risk_review_overdue, extended to Policy Decisions'
+                       // own table per #1527. Count-based, same polling loop.
 ] as const;
 export type MspAlertConditionType = typeof MSP_ALERT_CONDITION_TYPES[number];
 
@@ -5570,7 +5588,10 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   verificationNote: text("verification_note"),
   /** Policy Decisions' own lane (POLICY_DECISION_STATES: proposed / live / due).
    * `expired` was removed on #1527 — a decision past its review date is still
-   * `live` with an overdue `reviewState`, it did not lapse. */
+   * `live` with an overdue `reviewState`, it did not lapse. Kept in sync with
+   * `reviewState` by alert-engine.ts's `advanceRiskReviewClock` (#1527) on
+   * rows where it is already set: `due` mirrors a due review, `overdue`
+   * collapses back to `live`. */
   decisionState: text("decision_state"),
 
   // ── The acceptance itself ──────────────────────────────────────────────────
@@ -5699,6 +5720,18 @@ export const mspRbdVersionsTable = pgTable("msp_rbd_versions", {
   signed: boolean("signed").notNull().default(false),
   signedBy: jsonb("signed_by").$type<ClientApprover>(),
   signedAt: timestamp("signed_at", { withTimezone: true }),
+  /** #1512 — the actual drawn signature, base64 PNG data-URL. Same shape as
+   * `msp_sows.signatureData`; `signedBy.signatureHash` (above) is a tamper-
+   * evidence hash of the acceptance facts, not the image itself — this is the
+   * genuinely missing piece of SOW-flow parity, added here rather than a
+   * second signature table. Null until signed. */
+  signatureData: text("signature_data"),
+  /** #1512 — unauthenticated review/sign link token, same mechanism as
+   * `msp_sows.shareToken`. Null until an MSP operator explicitly generates one
+   * for this version (`POST .../share`) — a version is reachable by an
+   * authenticated CustomerUser without ever needing a token. */
+  shareToken: text("share_token").unique(),
+  shareTokenExpiresAt: timestamp("share_token_expires_at", { withTimezone: true }),
   /** When a newer version replaced this one. NULL = the current version. Never
    * edited or backfilled once superseded — same rule as `drift_baseline_snapshots`. */
   supersededAt: timestamp("superseded_at", { withTimezone: true }),
@@ -5706,6 +5739,7 @@ export const mspRbdVersionsTable = pgTable("msp_rbd_versions", {
 }, (t) => [
   index("msp_rbd_versions_msp_id_rbd_id_idx").on(t.mspId, t.rbdId),
   index("msp_rbd_versions_rbd_id_superseded_idx").on(t.rbdId, t.supersededAt),
+  index("msp_rbd_versions_share_token_idx").on(t.shareToken),
   unique("msp_rbd_versions_msp_id_rbd_id_version_uidx").on(t.mspId, t.rbdId, t.versionNumber),
 ]);
 
@@ -6659,6 +6693,56 @@ export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignm
 
 export type PortalOwnershipAssignment = typeof portalOwnershipAssignmentsTable.$inferSelect;
 export type InsertPortalOwnershipAssignment = typeof portalOwnershipAssignmentsTable.$inferInsert;
+
+/** The five things that can happen to one cell holder — nothing else is recorded. */
+export const OWN_EVENT_TYPES = ["assigned", "accepted", "declined", "cleared", "reassigned"] as const;
+export type OwnershipEventType = typeof OWN_EVENT_TYPES[number];
+
+/**
+ * The append-only history behind one matrix cell holder (#1522).
+ *
+ * `portal_ownership_assignments` is CURRENT STATE — one row per
+ * (customer, object, role, owner), overwritten on every re-assert. This table is
+ * the record that survives the overwrite: every assign / accept / decline / clear
+ * / reassign is inserted here and NEVER updated or deleted, so "who held A when
+ * this RBD was signed" is a replay of this log as of a date, not a question the
+ * current-state table can answer once a later event has overwritten it.
+ *
+ * Rows are never mutated after insert — there is deliberately no `updatedAt` and
+ * no route that touches an existing row. `ownerPersonId` of "" is a real value,
+ * same as the assignments table: an event clearing a cell to a gap is itself a
+ * holder-less event, not the absence of one.
+ */
+export const portalOwnershipEventsTable = pgTable("portal_ownership_events", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  /** The matrix object's opaque wire id, as assembled by the read layer. */
+  objectId: text("object_id").notNull(),
+  /** One of r | a | c | i. */
+  roleKey: text("role_key").notNull(),
+  /** The wire person id this event is about (e.g. "u39"), or "" for a gap. */
+  ownerPersonId: text("owner_person_id").notNull().default(""),
+  eventType: text("event_type", { enum: OWN_EVENT_TYPES }).notNull(),
+  /** Who performed the action — display name or email, same provenance as `setBy`. */
+  actor: text("actor").notNull().default(""),
+  /** Free-text reason, where one applies (e.g. a decline reason). "" when none. */
+  reason: text("reason").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("portal_ownership_events_customer_id_idx").on(t.customerId),
+  // The cell-history lookup: every event for one (object, role, owner) holder, in
+  // order. `createdAt` is the replay axis; `id` only tiebreaks same-timestamp inserts.
+  index("portal_ownership_events_cell_idx").on(
+    t.customerId,
+    t.objectId,
+    t.roleKey,
+    t.ownerPersonId,
+  ),
+]);
+
+export type PortalOwnershipEvent = typeof portalOwnershipEventsTable.$inferSelect;
+export type InsertPortalOwnershipEvent = typeof portalOwnershipEventsTable.$inferInsert;
 
 /**
  * A dated handover of one person's work to another. It annotates the matrix, it
@@ -7653,15 +7737,26 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
   compensatingControl: text("compensating_control").notNull(),
 
   /** POLICY_DECISION_STATES. Starts `live` — a signed decision is live the
-   * moment it's created; there is no unsigned `proposed` row on this table. */
+   * moment it's created; there is no unsigned `proposed` row on this table.
+   * Kept in sync with `reviewState` by alert-engine.ts's
+   * `advancePolicyReviewClock` (#1527): `due` mirrors a due review, `overdue`
+   * collapses back to `live` — the decision never itself shows as lapsed. */
   decisionState: text("decision_state").notNull().default("live"),
   /** RISK_REVIEW_STATES. Starts `on_track` for a date-based decision; nothing
    * has computed a due date from `reviewCadence` yet, so `reviewDueAt` stays
    * null until that exists — served as null rather than a guessed date,
    * matching this schema's rule that an unscheduled review is null, never
-   * defaulted. NULL (not `on_track`) for a dependency-based decision (#1526):
-   * a dependency has no "on track/due/overdue" reading, so forcing this
-   * vocabulary onto it would manufacture a false operational state. */
+   * defaulted. Once set, advanced by alert-engine.ts's
+   * `advancePolicyReviewClock` (#1527), which also feeds the
+   * `policy_review_overdue` alert to the MSP — but no writer computes the
+   * initial `reviewDueAt` from `reviewCadence` yet (filed as its own finding;
+   * parsing free-text cadence into a due date is a real product decision, not
+   * ordinary backend work). NULL — not `on_track`, and never defaulted — for a
+   * dependency-based decision (#1526): a dependency has no "on track/due/
+   * overdue" reading, so forcing this vocabulary onto it would manufacture a
+   * false operational state, and `advancePolicyReviewClock` never touches a row
+   * with `review_due_at IS NULL` (every dependency-based row), so the two
+   * clocks stay genuinely independent on one table. */
   reviewState: text("review_state"),
   reviewDueAt: timestamp("review_due_at", { withTimezone: true }),
 

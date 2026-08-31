@@ -625,11 +625,28 @@
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" TextWrapping="Wrap" VerticalAlignment="Center"
                                        Foreground="{StaticResource ChatPane.Muted6}" FontStyle="Italic" FontSize="12.5"
                                        Text="Adopted after a console restart — its live input channel is gone. Streaming and Stop still work; use Resume Session to talk to it again."/>
-                            <Button Grid.Column="1" Click="StopButton_Click" IsEnabled="{Binding CanStop}"
+                            <!-- Git #1878 — one-click resume, no trip to Build Queue's context menu required. -->
+                            <Button Grid.Column="1" Click="ResumeButton_Click"
+                                    Height="36" Padding="14,0" Margin="10,0,0,0" VerticalAlignment="Center"
+                                    Background="{StaticResource ChatPane.Primary}" BorderThickness="0"
+                                    Cursor="Hand">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="▶ Resume Session" Foreground="White" FontWeight="SemiBold" FontSize="13"/>
+                                </StackPanel>
+                            </Button>
+                            <Button Grid.Column="2" Click="StopButton_Click" IsEnabled="{Binding CanStop}"
                                     Visibility="{Binding CanStop, Converter={StaticResource BoolVis}}"
                                     Height="36" Padding="14,0" Margin="10,0,0,0" VerticalAlignment="Center"
                                     Background="{StaticResource ChatPane.DangerFill}" BorderBrush="{StaticResource ChatPane.DangerBorder}" BorderThickness="1"

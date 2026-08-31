@@ -84,6 +84,16 @@
  * records a decision that a gap is knowingly accepted, and it stays session-only
  * for now — it is not one of the assign/handover/add flows this pass wired, and
  * saying so is more honest than half-persisting it.
+ *
+ * ── The MSP's own staff are on the roster too (#1520) ──────────────────────
+ * `people` is not only the tenant's own users. It also carries the customer's
+ * MSP staff (`mspRole` MSPAdmin/MSPOperator, resolved via `resolveCustomerMspId`
+ * — the customer's `tenants.mspId`, not `resolveTenantScope`'s stricter pair,
+ * because "who is our MSP" needs neither the M365 tenant GUID nor a live
+ * message-centre/CR row), each with `side: "MSP"`. They start assigned to
+ * nothing: the MSP is available to every cell by virtue of being the MSP, and
+ * the customer places them (or doesn't) exactly like any other person on the
+ * roster. See `lib/portal-ownership.ts`'s header for the full rationale.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -95,17 +105,24 @@ import {
   portalHoldWindowsTable,
   portalOwnershipAssignmentsTable,
   portalOwnershipDelegationsTable,
+  portalOwnershipEventsTable,
   portalOwnershipRowsTable,
   servicesTable,
   usersTable,
 } from "@workspace/db";
-import { and, asc, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or, sql } from "drizzle-orm";
 
 import { requireRole, type AuthUser } from "../middlewares/requireAuth";
-import { resolveCustomerId, resolveTenantScope } from "../lib/portal-customer-scope";
+import {
+  resolveCustomerId,
+  resolveCustomerMspId,
+  resolveTenantScope,
+  type TenantScope,
+} from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
 import {
+  assignEventType,
   buildSources,
   crObject,
   emailIndex,
@@ -119,6 +136,7 @@ import {
   sidesFor,
   toWireAssignment,
   toWireDelegation,
+  toWireEvent,
   toWirePerson,
   toWireRow,
   type OwnObjectType,
@@ -145,6 +163,179 @@ const router: IRouter = Router();
  * never silently truncated.
  */
 const MAX_CHANGES = 25;
+
+export interface OwnershipObjectsResult {
+  readonly objects: WireOwnObject[];
+  readonly people: WireOwnPerson[];
+  readonly emails: ReadonlyMap<string, string>;
+  readonly counts: Record<OwnObjectType, number>;
+}
+
+/**
+ * Assembles one customer's real matrix objects — service / change / cr /
+ * freeze, exactly as `GET /portal/ownership` builds them for that customer's
+ * own page. Factored out so a cross-customer reader (the MSP "what do I hold,
+ * everywhere" view, #1521) can resolve a matched assignment's object id back
+ * to a real name/type without re-deriving this logic per caller. Pure DB
+ * reads, no auth/scoping decision of its own — the caller supplies an
+ * already-resolved `customerId` and `scope`.
+ */
+export async function gatherOwnershipObjects(
+  customerId: number,
+  scope: TenantScope | null,
+): Promise<OwnershipObjectsResult> {
+  const [userRows, mspId] = await Promise.all([
+    db
+      .select({
+        id: usersTable.id,
+        email: usersTable.email,
+        name: usersTable.name,
+        jobTitle: usersTable.jobTitle,
+        department: usersTable.department,
+        mspRole: usersTable.mspRole,
+      })
+      .from(usersTable)
+      .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
+      .orderBy(asc(usersTable.id)),
+    resolveCustomerMspId(customerId),
+  ]);
+
+  // The customer's MSP, available to every cell and assigned to none (#1520)
+  // — real MSP staff, not a fabricated "the MSP" placeholder. Same `users`
+  // table, scoped by `mspId` instead of `tenantId`.
+  const mspStaffRows: UserRow[] =
+    mspId === null
+      ? []
+      : await db
+          .select({
+            id: usersTable.id,
+            email: usersTable.email,
+            name: usersTable.name,
+            jobTitle: usersTable.jobTitle,
+            department: usersTable.department,
+            mspRole: usersTable.mspRole,
+          })
+          .from(usersTable)
+          .where(
+            and(
+              eq(usersTable.mspId, mspId),
+              eq(usersTable.isActive, true),
+              or(eq(usersTable.mspRole, "MSPAdmin"), eq(usersTable.mspRole, "MSPOperator")),
+            ),
+          )
+          .orderBy(asc(usersTable.id));
+
+  const customerName = scope?.tenantName ?? "Your organisation";
+  const sides = sidesFor(customerName);
+  const people = [
+    ...userRows.map((row) => toWirePerson(row, sides[0]!)),
+    ...mspStaffRows.map((row) => toWirePerson(row, "MSP")),
+  ];
+  const emails = emailIndex([...userRows, ...mspStaffRows]);
+
+  const objects: WireOwnObject[] = [];
+
+  const serviceRows = await db
+    .select({
+      id: clientServicesTable.id,
+      name: servicesTable.name,
+      status: clientServicesTable.status,
+      nextMilestone: clientServicesTable.nextMilestone,
+    })
+    .from(clientServicesTable)
+    .innerJoin(usersTable, eq(usersTable.id, clientServicesTable.clientUserId))
+    .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
+    .where(eq(usersTable.tenantId, customerId))
+    .orderBy(asc(clientServicesTable.id));
+  for (const row of serviceRows) objects.push(serviceObject(row));
+
+  const holdRows = await db
+    .select({
+      id: portalHoldWindowsTable.id,
+      holdKey: portalHoldWindowsTable.holdKey,
+      title: portalHoldWindowsTable.title,
+      gates: portalHoldWindowsTable.gates,
+    })
+    .from(portalHoldWindowsTable)
+    .where(
+      and(
+        eq(portalHoldWindowsTable.customerId, customerId),
+        isNull(portalHoldWindowsTable.closedAt),
+      ),
+    )
+    .orderBy(asc(portalHoldWindowsTable.id));
+
+  let changeCount = 0;
+  let crCount = 0;
+
+  if (scope) {
+    const changeRows = await db
+      .select({
+        graphMessageId: mspMessageCenterItemsTable.graphMessageId,
+        title: mspMessageCenterItemsTable.title,
+        category: mspMessageCenterItemsTable.category,
+        isMajorChange: mspMessageCenterItemsTable.isMajorChange,
+        services: mspMessageCenterItemsTable.services,
+        actionRequiredByDateTime: mspMessageCenterItemsTable.actionRequiredByDateTime,
+      })
+      .from(mspMessageCenterItemsTable)
+      .where(
+        and(
+          eq(mspMessageCenterItemsTable.mspId, scope.mspId),
+          eq(mspMessageCenterItemsTable.tenantId, scope.tenantId),
+          gt(mspMessageCenterItemsTable.actionRequiredByDateTime, new Date()),
+        ),
+      )
+      .orderBy(asc(mspMessageCenterItemsTable.actionRequiredByDateTime))
+      .limit(MAX_CHANGES);
+    for (const row of changeRows) objects.push(messageCentreObject(row));
+    changeCount = changeRows.length;
+
+    const crRows = await db
+      .select({
+        id: mspChangeRequestsTable.id,
+        title: mspChangeRequestsTable.title,
+        status: mspChangeRequestsTable.status,
+        scheduledFor: mspChangeRequestsTable.scheduledFor,
+        requestedBy: mspChangeRequestsTable.requestedBy,
+        approvedBy: mspChangeRequestsTable.approvedBy,
+      })
+      .from(mspChangeRequestsTable)
+      .where(
+        and(
+          eq(mspChangeRequestsTable.mspId, scope.mspId),
+          eq(mspChangeRequestsTable.tenantId, scope.tenantId),
+        ),
+      )
+      .orderBy(asc(mspChangeRequestsTable.id));
+    for (const row of crRows) {
+      objects.push(
+        crObject(
+          row,
+          formatChangeRequestCode(row.id),
+          displayStatus(row.status, row.approvedBy),
+          resolvePersonId(row.requestedBy, people, emails),
+          resolvePersonId(row.approvedBy, people, emails),
+        ),
+      );
+    }
+    crCount = crRows.length;
+  }
+
+  for (const row of holdRows) objects.push(holdWindowObject(row));
+
+  const counts: Record<OwnObjectType, number> = {
+    service: serviceRows.length,
+    change: changeCount,
+    cr: crCount,
+    freeze: holdRows.length,
+    control: 0,
+    incident: 0,
+    announce: 0,
+  };
+
+  return { objects, people, emails, counts };
+}
 
 export interface WireOwnershipPayload {
   readonly customer: { readonly id: number; readonly name: string };
@@ -183,129 +374,15 @@ router.get(
     try {
       const scope = await resolveTenantScope(customerId);
 
-      // ── The people list ───────────────────────────────────────────────────
-      // The tenant's own active users. Suspended accounts are left out rather
-      // than shown as "away": `away` holds a RETURN date, and a suspended
-      // account has no return date — it has a decision behind it.
-      const userRows: UserRow[] = await db
-        .select({
-          id: usersTable.id,
-          email: usersTable.email,
-          name: usersTable.name,
-          jobTitle: usersTable.jobTitle,
-          department: usersTable.department,
-          mspRole: usersTable.mspRole,
-        })
-        .from(usersTable)
-        .where(and(eq(usersTable.tenantId, customerId), eq(usersTable.isActive, true)))
-        .orderBy(asc(usersTable.id));
-
+      // ── People + objects ─────────────────────────────────────────────────
+      // Suspended accounts are left out of the people list rather than shown
+      // as "away": `away` holds a RETURN date, and a suspended account has no
+      // return date — it has a decision behind it. `people` includes the
+      // customer's MSP staff (side "MSP") as well as their own team (#1520) —
+      // see `gatherOwnershipObjects`.
+      const { objects, people, emails, counts } = await gatherOwnershipObjects(customerId, scope);
       const customerName = scope?.tenantName ?? "Your organisation";
       const sides = sidesFor(customerName);
-      const people = userRows.map((row) => toWirePerson(row, sides[0]!));
-      const emails = emailIndex(userRows);
-
-      // ── The objects ───────────────────────────────────────────────────────
-      const objects: WireOwnObject[] = [];
-
-      const serviceRows = await db
-        .select({
-          id: clientServicesTable.id,
-          name: servicesTable.name,
-          status: clientServicesTable.status,
-          nextMilestone: clientServicesTable.nextMilestone,
-        })
-        .from(clientServicesTable)
-        .innerJoin(usersTable, eq(usersTable.id, clientServicesTable.clientUserId))
-        .innerJoin(servicesTable, eq(servicesTable.id, clientServicesTable.serviceId))
-        .where(eq(usersTable.tenantId, customerId))
-        .orderBy(asc(clientServicesTable.id));
-      for (const row of serviceRows) objects.push(serviceObject(row));
-
-      const holdRows = await db
-        .select({
-          id: portalHoldWindowsTable.id,
-          holdKey: portalHoldWindowsTable.holdKey,
-          title: portalHoldWindowsTable.title,
-          gates: portalHoldWindowsTable.gates,
-        })
-        .from(portalHoldWindowsTable)
-        .where(
-          and(
-            eq(portalHoldWindowsTable.customerId, customerId),
-            isNull(portalHoldWindowsTable.closedAt),
-          ),
-        )
-        .orderBy(asc(portalHoldWindowsTable.id));
-
-      let changeCount = 0;
-      let crCount = 0;
-
-      if (scope) {
-        const changeRows = await db
-          .select({
-            graphMessageId: mspMessageCenterItemsTable.graphMessageId,
-            title: mspMessageCenterItemsTable.title,
-            category: mspMessageCenterItemsTable.category,
-            isMajorChange: mspMessageCenterItemsTable.isMajorChange,
-            services: mspMessageCenterItemsTable.services,
-            actionRequiredByDateTime: mspMessageCenterItemsTable.actionRequiredByDateTime,
-          })
-          .from(mspMessageCenterItemsTable)
-          .where(
-            and(
-              eq(mspMessageCenterItemsTable.mspId, scope.mspId),
-              eq(mspMessageCenterItemsTable.tenantId, scope.tenantId),
-              gt(mspMessageCenterItemsTable.actionRequiredByDateTime, new Date()),
-            ),
-          )
-          .orderBy(asc(mspMessageCenterItemsTable.actionRequiredByDateTime))
-          .limit(MAX_CHANGES);
-        for (const row of changeRows) objects.push(messageCentreObject(row));
-        changeCount = changeRows.length;
-
-        const crRows = await db
-          .select({
-            id: mspChangeRequestsTable.id,
-            title: mspChangeRequestsTable.title,
-            status: mspChangeRequestsTable.status,
-            scheduledFor: mspChangeRequestsTable.scheduledFor,
-            requestedBy: mspChangeRequestsTable.requestedBy,
-            approvedBy: mspChangeRequestsTable.approvedBy,
-          })
-          .from(mspChangeRequestsTable)
-          .where(
-            and(
-              eq(mspChangeRequestsTable.mspId, scope.mspId),
-              eq(mspChangeRequestsTable.tenantId, scope.tenantId),
-            ),
-          )
-          .orderBy(asc(mspChangeRequestsTable.id));
-        for (const row of crRows) {
-          objects.push(
-            crObject(
-              row,
-              formatChangeRequestCode(row.id),
-              displayStatus(row.status, row.approvedBy),
-              resolvePersonId(row.requestedBy, people, emails),
-              resolvePersonId(row.approvedBy, people, emails),
-            ),
-          );
-        }
-        crCount = crRows.length;
-      }
-
-      for (const row of holdRows) objects.push(holdWindowObject(row));
-
-      const counts: Record<OwnObjectType, number> = {
-        service: serviceRows.length,
-        change: changeCount,
-        cr: crCount,
-        freeze: holdRows.length,
-        control: 0,
-        incident: 0,
-        announce: 0,
-      };
 
       const callerEmail = ((req.user as { email?: string } | undefined)?.email ?? "").toLowerCase();
       const currentUserId = callerEmail ? (emails.get(callerEmail) ?? "") : "";
@@ -379,6 +456,7 @@ router.get(
           customerId,
           tenantScoped: scope !== null,
           people: people.length,
+          mspStaff: people.filter((p) => p.side === "MSP").length,
           objects: objects.length,
           counts,
           overlay: {
@@ -453,6 +531,11 @@ function actingName(req: Request): string {
  * max, atomic with the insert itself. Re-asserting an EXISTING holder leaves
  * their rank exactly where it was — `orderRank` is deliberately absent from the
  * conflict's `set`, so overwriting provenance never reshuffles precedence.
+ *
+ * The same transaction appends one row to `portal_ownership_events` (#1522) —
+ * `cleared` for an empty owner, `assigned` the first time this holder appears in
+ * the cell, `reassigned` on every re-assert after. That table is append-only and
+ * is the record this current-state row cannot be once a later write overwrites it.
  */
 router.post(
   "/portal/ownership/assign",
@@ -474,33 +557,59 @@ router.post(
     const setAt = formatOwnDate(new Date());
 
     try {
-      const [row] = await db
-        .insert(portalOwnershipAssignmentsTable)
-        .values({
+      const orderRank = await db.transaction(async (tx) => {
+        const [existing] = await tx
+          .select({ id: portalOwnershipAssignmentsTable.id })
+          .from(portalOwnershipAssignmentsTable)
+          .where(
+            and(
+              eq(portalOwnershipAssignmentsTable.customerId, customerId),
+              eq(portalOwnershipAssignmentsTable.objectId, objectId),
+              eq(portalOwnershipAssignmentsTable.roleKey, roleKey),
+              eq(portalOwnershipAssignmentsTable.ownerPersonId, ownerPersonId),
+            ),
+          );
+
+        const [row] = await tx
+          .insert(portalOwnershipAssignmentsTable)
+          .values({
+            customerId,
+            objectId,
+            roleKey,
+            ownerPersonId,
+            acceptance,
+            setBy,
+            setAt,
+            setWhy: WRITE_WHY,
+            orderRank: sql`(SELECT COALESCE(MAX(${portalOwnershipAssignmentsTable.orderRank}), -1) + 1
+              FROM ${portalOwnershipAssignmentsTable}
+              WHERE ${portalOwnershipAssignmentsTable.customerId} = ${customerId}
+                AND ${portalOwnershipAssignmentsTable.objectId} = ${objectId}
+                AND ${portalOwnershipAssignmentsTable.roleKey} = ${roleKey})`,
+          })
+          .onConflictDoUpdate({
+            target: [
+              portalOwnershipAssignmentsTable.customerId,
+              portalOwnershipAssignmentsTable.objectId,
+              portalOwnershipAssignmentsTable.roleKey,
+              portalOwnershipAssignmentsTable.ownerPersonId,
+            ],
+            set: { acceptance, setBy, setAt, setWhy: WRITE_WHY, updatedAt: new Date() },
+          })
+          .returning({ orderRank: portalOwnershipAssignmentsTable.orderRank });
+
+        await tx.insert(portalOwnershipEventsTable).values({
           customerId,
           objectId,
           roleKey,
           ownerPersonId,
-          acceptance,
-          setBy,
-          setAt,
-          setWhy: WRITE_WHY,
-          orderRank: sql`(SELECT COALESCE(MAX(${portalOwnershipAssignmentsTable.orderRank}), -1) + 1
-            FROM ${portalOwnershipAssignmentsTable}
-            WHERE ${portalOwnershipAssignmentsTable.customerId} = ${customerId}
-              AND ${portalOwnershipAssignmentsTable.objectId} = ${objectId}
-              AND ${portalOwnershipAssignmentsTable.roleKey} = ${roleKey})`,
-        })
-        .onConflictDoUpdate({
-          target: [
-            portalOwnershipAssignmentsTable.customerId,
-            portalOwnershipAssignmentsTable.objectId,
-            portalOwnershipAssignmentsTable.roleKey,
-            portalOwnershipAssignmentsTable.ownerPersonId,
-          ],
-          set: { acceptance, setBy, setAt, setWhy: WRITE_WHY, updatedAt: new Date() },
-        })
-        .returning({ orderRank: portalOwnershipAssignmentsTable.orderRank });
+          eventType: assignEventType(ownerPersonId, existing !== undefined),
+          actor: setBy,
+          reason: WRITE_WHY,
+        });
+
+        return row?.orderRank ?? 0;
+      });
 
       log.info({ customerId, objectId, roleKey, hasOwner: !!ownerPersonId }, "portal ownership cell assigned");
       res.json({
@@ -513,7 +622,7 @@ router.post(
           setBy,
           setAt,
           setWhy: WRITE_WHY,
-          orderRank: row?.orderRank ?? 0,
+          orderRank,
         }),
       });
     } catch (err) {
@@ -610,6 +719,13 @@ router.post(
  * assigned (that is the only way it is pending on real data), so a hit updates
  * exactly the one row and a miss reports `matched: false` rather than inventing
  * an owner it does not know.
+ *
+ * `ownerPersonId` is optional in the body for backward compatibility with a
+ * caller that predates the multi-holder cell (#1515): when given, only that
+ * holder's row is accepted; when omitted every holder currently in the cell is
+ * (the pre-#1515 shape, where a cell held exactly one row). Every row actually
+ * updated gets its own `accepted` event (#1522) — one per holder, not one per
+ * request, because a bulk accept genuinely accepted more than one holder.
  */
 router.post(
   "/portal/ownership/accept",
@@ -618,27 +734,53 @@ router.post(
     const customerId = scopedCustomerId(req, res);
     if (customerId === null) return;
 
-    const objectId = bodyStr((req.body as Record<string, unknown>)?.objectId);
-    const roleKeyRaw = (req.body as Record<string, unknown>)?.roleKey;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const objectId = bodyStr(body.objectId);
+    const roleKeyRaw = body.roleKey;
+    const ownerPersonIdRaw = body.ownerPersonId;
+    const hasOwnerFilter = typeof ownerPersonIdRaw === "string";
     if (!objectId || !isOwnRoleKey(roleKeyRaw)) {
       res.status(400).json({ error: "objectId and a valid roleKey (r|a|c|i) are required" });
       return;
     }
+    const roleKey: OwnRoleKey = roleKeyRaw;
+    const actor = actingName(req);
 
     try {
-      const updated = await db
-        .update(portalOwnershipAssignmentsTable)
-        .set({ acceptance: "accepted", updatedAt: new Date() })
-        .where(
-          and(
-            eq(portalOwnershipAssignmentsTable.customerId, customerId),
-            eq(portalOwnershipAssignmentsTable.objectId, objectId),
-            eq(portalOwnershipAssignmentsTable.roleKey, roleKeyRaw),
-          ),
-        )
-        .returning({ id: portalOwnershipAssignmentsTable.id });
+      const conditions = [
+        eq(portalOwnershipAssignmentsTable.customerId, customerId),
+        eq(portalOwnershipAssignmentsTable.objectId, objectId),
+        eq(portalOwnershipAssignmentsTable.roleKey, roleKey),
+      ];
+      if (hasOwnerFilter) {
+        conditions.push(eq(portalOwnershipAssignmentsTable.ownerPersonId, bodyStr(ownerPersonIdRaw)));
+      }
 
-      log.info({ customerId, objectId, roleKey: roleKeyRaw, matched: updated.length > 0 }, "portal ownership cell accepted");
+      const updated = await db.transaction(async (tx) => {
+        const rows = await tx
+          .update(portalOwnershipAssignmentsTable)
+          .set({ acceptance: "accepted", updatedAt: new Date() })
+          .where(and(...conditions))
+          .returning({ ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId });
+
+        if (rows.length > 0) {
+          await tx.insert(portalOwnershipEventsTable).values(
+            rows.map((r) => ({
+              customerId,
+              objectId,
+              roleKey,
+              ownerPersonId: r.ownerPersonId,
+              eventType: "accepted" as const,
+              actor,
+              reason: "",
+            })),
+          );
+        }
+
+        return rows;
+      });
+
+      log.info({ customerId, objectId, roleKey, matched: updated.length > 0 }, "portal ownership cell accepted");
       res.json({ ok: true, matched: updated.length > 0 });
     } catch (err) {
       log.error(
@@ -785,6 +927,66 @@ router.post(
         "portal ownership add-row failed",
       );
       res.status(500).json({ error: "That row could not be saved." });
+    }
+  },
+);
+
+/**
+ * One cell's full append-only history (#1522) — every `assigned` / `accepted` /
+ * `declined` / `cleared` / `reassigned` event ever recorded for it, oldest
+ * first, so a reader can replay who held it as of any date. `objectId` and
+ * `roleKey` are required query params; `ownerPersonId` narrows to one holder's
+ * history within the cell when given, otherwise every holder's events for that
+ * (object, role) come back together.
+ */
+router.get(
+  "/portal/ownership/events",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = scopedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const objectId = bodyStr(req.query.objectId);
+    const roleKeyRaw = req.query.roleKey;
+    if (!objectId || !isOwnRoleKey(roleKeyRaw)) {
+      res.status(400).json({ error: "objectId and a valid roleKey (r|a|c|i) are required" });
+      return;
+    }
+    const roleKey: OwnRoleKey = roleKeyRaw;
+
+    const conditions = [
+      eq(portalOwnershipEventsTable.customerId, customerId),
+      eq(portalOwnershipEventsTable.objectId, objectId),
+      eq(portalOwnershipEventsTable.roleKey, roleKey),
+    ];
+    const ownerPersonId = bodyStr(req.query.ownerPersonId);
+    if (typeof req.query.ownerPersonId === "string") {
+      conditions.push(eq(portalOwnershipEventsTable.ownerPersonId, ownerPersonId));
+    }
+
+    try {
+      const rows = await db
+        .select({
+          objectId: portalOwnershipEventsTable.objectId,
+          roleKey: portalOwnershipEventsTable.roleKey,
+          ownerPersonId: portalOwnershipEventsTable.ownerPersonId,
+          eventType: portalOwnershipEventsTable.eventType,
+          actor: portalOwnershipEventsTable.actor,
+          reason: portalOwnershipEventsTable.reason,
+          createdAt: portalOwnershipEventsTable.createdAt,
+        })
+        .from(portalOwnershipEventsTable)
+        .where(and(...conditions))
+        .orderBy(asc(portalOwnershipEventsTable.createdAt), asc(portalOwnershipEventsTable.id));
+
+      log.info({ customerId, objectId, roleKey, events: rows.length }, "portal ownership cell history served");
+      res.json({ events: rows.map(toWireEvent) });
+    } catch (err) {
+      log.error(
+        { customerId, objectId, roleKey, err: err instanceof Error ? err.message : String(err) },
+        "portal ownership cell history failed",
+      );
+      res.status(500).json({ error: "That cell's history could not be loaded." });
     }
   },
 );

@@ -739,3 +739,116 @@ export const tenantConfigSnapshotResourceStatusTable = pgTable("tenant_config_sn
 
 export type TenantConfigSnapshotResourceStatus = typeof tenantConfigSnapshotResourceStatusTable.$inferSelect;
 export type InsertTenantConfigSnapshotResourceStatus = typeof tenantConfigSnapshotResourceStatusTable.$inferInsert;
+
+// ── 5. The baseline registry — which snapshot is the KNOWN-GOOD one (Git #1843) ──
+
+/**
+ * What a registered baseline is FOR. Two values, and both name a differ entry point
+ * that already exists in `config-snapshot-differ.ts` — this is not a display
+ * vocabulary:
+ *
+ *  - known_good        the reference a tenant is assessed against →
+ *                      `diffAgainstBaseline` (`mode: 'baseline_assessment'`).
+ *  - promotion_source  the source environment a target is promoted from →
+ *                      `diffPromotion` (`mode: 'promotion'`). Distinct from
+ *                      `known_good` because a promotion source is a *different
+ *                      tenant's* configuration, and the differ enforces that
+ *                      difference with a CHECK constraint on `config_diffs`.
+ *
+ * There is deliberately no `approved` / `signed_off` value. Approval is a workflow
+ * state this platform records elsewhere, and duplicating it here would let a
+ * baseline claim an approval nothing produced.
+ */
+export const CONFIG_BASELINE_PURPOSES = ["known_good", "promotion_source"] as const;
+export type ConfigBaselinePurpose = typeof CONFIG_BASELINE_PURPOSES[number];
+
+/**
+ * Names a specific, already-collected snapshot as the reference for assessment or
+ * promotion.
+ *
+ * ─── Why this table has to exist ────────────────────────────────────────────────
+ * #1797 landed `diffAgainstBaseline(knownGoodSnapshotRowId, currentSnapshotRowId)`
+ * and #1843 has to serve "assess a tenant against a baseline" over HTTP. Nothing in
+ * the store said WHICH snapshot is the known-good one — `tenant_config_snapshots`
+ * carries no baseline flag, and `drift_baseline_snapshots` is a different thing
+ * entirely (the drift engine's per-domain `(text tenant_id, domain_key)` config blob,
+ * 4 rows, no relationship to the full-fidelity snapshot store). Without a registry
+ * "assess against a baseline" degenerates into "diff two snapshots you happened to
+ * remember the row ids of", which is `tenant_compare` under a different name.
+ *
+ * So the baseline is a NAMED POINTER at real stored evidence, and nothing more. It
+ * holds no configuration of its own: everything it asserts is `snapshot_row_id`, and
+ * the snapshot it points at is immutable by database trigger. A baseline therefore
+ * cannot drift away from what was actually observed.
+ *
+ * ─── Deletion semantics, chosen deliberately ────────────────────────────────────
+ * `snapshot_row_id` is `NO ACTION` (checked at end-of-statement), not `CASCADE` and
+ * not `RESTRICT`:
+ *
+ *  - not CASCADE, because retention-deleting a snapshot that something was being
+ *    assessed against would silently remove the reference and leave every past
+ *    assessment unexplainable.
+ *  - not RESTRICT, because RESTRICT fires immediately and would abort the legitimate
+ *    whole-tenant cascade (`tenants` → snapshots AND baselines in one statement).
+ *
+ * `NO ACTION` gives exactly the wanted behaviour: deleting a referenced snapshot on
+ * its own fails loudly; deleting the whole tenant succeeds, because the baseline row
+ * is gone by the time the constraint is checked.
+ *
+ * ─── Scoping ───────────────────────────────────────────────────────────────────
+ * `msp_id` is carried explicitly rather than resolved through `tenant_id` on every
+ * read. An operator surface lists baselines for its own MSP's book, and a join to
+ * `tenants` to discover that is a join that can be forgotten. The column is the
+ * predicate.
+ */
+export const configSnapshotBaselinesTable = pgTable("config_snapshot_baselines", {
+  id: serial("id").primaryKey(),
+  baselineId: uuid("baseline_id").notNull().defaultRandom(),
+
+  /** The MSP whose operators may see and use this baseline. The scoping predicate. */
+  mspId: integer("msp_id").notNull(),
+  /** The tenant the referenced snapshot was collected FROM. */
+  tenantId: integer("tenant_id").notNull()
+    .references(() => tenantsTable.id, { onDelete: "cascade" }),
+  /**
+   * The snapshot this baseline IS. Immutable by trigger, so the baseline's content
+   * cannot change underneath an assessment. See the deletion note in the header.
+   */
+  snapshotRowId: integer("snapshot_row_id").notNull(),
+
+  /** Operator-chosen label. Unique within an MSP so it can be referenced by name. */
+  name: text("name").notNull(),
+  description: text("description"),
+  purpose: text("purpose", { enum: CONFIG_BASELINE_PURPOSES }).notNull(),
+
+  /**
+   * Retired rather than deleted, so an assessment run months ago against a baseline
+   * nobody uses now is still explainable. A retired baseline MUST say why — same
+   * rule the completeness table enforces, for the same reason.
+   */
+  isActive: boolean("is_active").notNull().default(true),
+  retiredAt: timestamp("retired_at", { withTimezone: true }),
+  retiredReason: text("retired_reason"),
+
+  declaredByUserId: integer("declared_by_user_id"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("config_snapshot_baselines_uuid_uidx").on(t.baselineId),
+  /** Referenceable by name within one MSP's book. */
+  uniqueIndex("config_snapshot_baselines_msp_name_uidx").on(t.mspId, t.name),
+  /** "Which baselines can this operator choose from" — the list read. */
+  index("config_snapshot_baselines_msp_active_idx").on(t.mspId, t.isActive),
+  /** "Is this snapshot spoken for" — checked before a retention delete. */
+  index("config_snapshot_baselines_snapshot_idx").on(t.snapshotRowId),
+
+  check(
+    "config_snapshot_baselines_retired_needs_reason",
+    sql`(is_active = true AND retired_at IS NULL AND retired_reason IS NULL)
+        OR (is_active = false AND retired_at IS NOT NULL AND retired_reason IS NOT NULL)`,
+  ),
+  check("config_snapshot_baselines_name_not_blank", sql`length(btrim(name)) > 0`),
+]);
+
+export type ConfigSnapshotBaseline = typeof configSnapshotBaselinesTable.$inferSelect;
+export type InsertConfigSnapshotBaseline = typeof configSnapshotBaselinesTable.$inferInsert;

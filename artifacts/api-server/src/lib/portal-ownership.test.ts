@@ -21,6 +21,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  assignEventType,
   buildSources,
   crObject,
   emailIndex,
@@ -36,6 +37,7 @@ import {
   sidesFor,
   toWireAssignment,
   toWireDelegation,
+  toWireEvent,
   toWirePerson,
   toWireRow,
   type OwnObjectType,
@@ -93,6 +95,43 @@ describe("personRoleLabel()", () => {
     expect(personRoleLabel(null, null, "CustomerUser")).toBe("Team member");
     expect(personRoleLabel(null, null, "Assessment")).toBe("Assessment access");
     expect(personRoleLabel(null, null, null)).toBe("Team member");
+  });
+
+  it("labels MSP staff readably (#1520)", () => {
+    expect(personRoleLabel(null, null, "MSPAdmin")).toBe("MSP Admin");
+    expect(personRoleLabel(null, null, "MSPOperator")).toBe("MSP Operator");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The MSP's own staff on the roster — available to every cell, assigned to
+// none (#1520)
+// ---------------------------------------------------------------------------
+
+describe("MSP staff as real people, side MSP", () => {
+  const MSP_STAFF: UserRow[] = [
+    { id: 90, email: "priya@msp.example.com", name: "Priya Raman", jobTitle: null, department: null, mspRole: "MSPAdmin" },
+    { id: 91, email: "dan@msp.example.com", name: "Dan Kessler", jobTitle: null, department: null, mspRole: "MSPOperator" },
+  ];
+  const mspPeople = MSP_STAFF.map((u) => toWirePerson(u, "MSP"));
+
+  it("uses the same real-person shape as a customer's own team, just a different side", () => {
+    expect(mspPeople.map((p) => p.side)).toEqual(["MSP", "MSP"]);
+    expect(mspPeople.map((p) => p.id)).toEqual(["u90", "u91"]);
+    expect(mspPeople.map((p) => p.role)).toEqual(["MSP Admin", "MSP Operator"]);
+  });
+
+  it("id-spaces cannot collide with the customer's own roster — one users table, one id space", () => {
+    const combined = [...PEOPLE, ...mspPeople];
+    expect(new Set(combined.map((p) => p.id)).size).toBe(combined.length);
+  });
+
+  it("resolves by email or name identically to a customer team member, once merged onto the roster", () => {
+    const combinedRows = [...USERS, ...MSP_STAFF];
+    const combinedPeople = [...PEOPLE, ...mspPeople];
+    const combinedEmails = emailIndex(combinedRows);
+    expect(resolvePersonId("priya@msp.example.com", combinedPeople, combinedEmails)).toBe("u90");
+    expect(resolvePersonId("Dan Kessler", combinedPeople, combinedEmails)).toBe("u91");
   });
 });
 
@@ -350,5 +389,42 @@ describe("toWireRow", () => {
     expect(
       toWireRow({ rowId: "cov-x", source: "coverage", objType: null, name: null, sub: null }),
     ).toEqual({ rowId: "cov-x", source: "coverage", objType: "", name: "", sub: "" });
+  });
+});
+
+describe("assignEventType (#1522)", () => {
+  it("is 'cleared' for an empty owner, new row or not — a gap is a gap either way", () => {
+    expect(assignEventType("", false)).toBe("cleared");
+    expect(assignEventType("", true)).toBe("cleared");
+  });
+  it("is 'assigned' the first time a real holder appears in the cell", () => {
+    expect(assignEventType("u39", false)).toBe("assigned");
+  });
+  it("is 'reassigned' when that exact holder's row already existed", () => {
+    expect(assignEventType("u39", true)).toBe("reassigned");
+  });
+});
+
+describe("toWireEvent (#1522)", () => {
+  it("passes a stored event through and formats its timestamp", () => {
+    expect(
+      toWireEvent({
+        objectId: "CR-2026-148",
+        roleKey: "a",
+        ownerPersonId: "u7",
+        eventType: "accepted",
+        actor: "Priya",
+        reason: "",
+        createdAt: new Date(Date.UTC(2026, 9, 1)),
+      }),
+    ).toEqual({
+      objectId: "CR-2026-148",
+      roleKey: "a",
+      ownerPersonId: "u7",
+      eventType: "accepted",
+      actor: "Priya",
+      reason: "",
+      at: "1 October 2026",
+    });
   });
 });
