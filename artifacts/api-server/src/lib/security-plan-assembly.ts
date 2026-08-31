@@ -32,6 +32,13 @@
  * were applied, what was excluded, and a per-module count — and returns it as part of
  * the document. When a version is sealed, that footprint is snapshotted into the
  * sealed `content` and cannot be suppressed by any UI.
+ *
+ * STATEMENT (#1563's other requirement). A scoped view also carries a human
+ * `scope.statement` — what it covers and what it deliberately does not. The exclusion
+ * counts in the footprint prove the fact of narrowing; the statement is what a reader
+ * is told about it. `scopeMissingRequiredStatement` is enforced at seal time (see
+ * `msp-security-plan.ts`'s POST /versions) so a scoped document can never be sealed
+ * without one; the honest view needs no statement, since nothing is narrowed.
  */
 import {
   db,
@@ -298,6 +305,17 @@ export const HONEST_SCOPE: SecurityPlanScope = { dimensions: {} };
 export function scopeHasConstraints(scope: SecurityPlanScope): boolean {
   const dims = scope.dimensions ?? {};
   return (Object.keys(dims) as SecurityPlanScopeDimension[]).some((d) => (dims[d]?.length ?? 0) > 0);
+}
+
+/**
+ * True when `scope` narrows on a dimension but carries no human statement of what it
+ * covers and what it deliberately does not — #1563's first "to build" requirement
+ * ("every filtered view carries its own scope statement"), which the footprint's
+ * exclusion counts alone do not satisfy. The honest (unconstrained) scope never needs
+ * a statement; there is nothing being narrowed to explain.
+ */
+export function scopeMissingRequiredStatement(scope: SecurityPlanScope): boolean {
+  return scopeHasConstraints(scope) && !(scope.statement && scope.statement.trim().length > 0);
 }
 
 /**

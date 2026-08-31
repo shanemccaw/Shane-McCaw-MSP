@@ -15,6 +15,7 @@ import {
   applyScopeAndFootprint,
   isExcludedByScope,
   scopeHasConstraints,
+  scopeMissingRequiredStatement,
   HONEST_SCOPE,
   type RawSecurityPlanModule,
 } from "./security-plan-assembly.ts";
@@ -80,6 +81,25 @@ describe("Security Plan scope filtering (#1563)", () => {
     expect(out.flatMap((m) => m.items).length).toBe(5);
     expect(footprint.totalExcluded).toBe(0);
     expect(footprint.isHonestView).toBe(true);
+  });
+
+  it("requires a scope statement on a constrained scope, but not on the honest view", () => {
+    // Honest view: nothing is narrowed, so nothing needs explaining.
+    expect(scopeMissingRequiredStatement(HONEST_SCOPE)).toBe(false);
+
+    // Constrained with no statement, an empty statement, or a whitespace-only one — all
+    // still missing the requirement.
+    expect(scopeMissingRequiredStatement({ dimensions: { pillar: ["identity"] } })).toBe(true);
+    expect(scopeMissingRequiredStatement({ dimensions: { pillar: ["identity"] }, statement: "" })).toBe(true);
+    expect(scopeMissingRequiredStatement({ dimensions: { pillar: ["identity"] }, statement: "   " })).toBe(true);
+
+    // Constrained WITH a real statement satisfies it.
+    expect(
+      scopeMissingRequiredStatement({
+        dimensions: { pillar: ["identity"] },
+        statement: "Identity controls only — the estate's identity posture for this audit.",
+      }),
+    ).toBe(false);
   });
 });
 

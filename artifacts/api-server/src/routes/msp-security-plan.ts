@@ -34,7 +34,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { resolveTenantScope, type TenantScope } from "../lib/portal-customer-scope.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
-import { assembleSecurityPlan } from "../lib/security-plan-assembly.ts";
+import { assembleSecurityPlan, scopeMissingRequiredStatement } from "../lib/security-plan-assembly.ts";
 import {
   createSecurityPlanVersion,
   getCurrentSecurityPlanVersion,
@@ -231,6 +231,19 @@ router.post(
       }
       const scope: SecurityPlanScope = parsed.data.scope ?? { dimensions: {} };
       const prose = parsed.data.prose ?? null;
+
+      // #1563: a scoped seal becomes a document someone can be handed — it must state
+      // what it covers and what it deliberately does not, not just carry the #1565
+      // exclusion counts. The honest (unscoped) seal needs no statement.
+      if (scopeMissingRequiredStatement(scope)) {
+        apiError(
+          res,
+          400,
+          ApiErrorCode.VALIDATION,
+          "A scoped seal must carry a scope statement — what it covers and what it deliberately does not (#1563)",
+        );
+        return;
+      }
 
       const document = await assembleSecurityPlan(tenant, scope, prose);
 
