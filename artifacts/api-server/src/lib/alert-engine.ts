@@ -5,11 +5,16 @@
  * interval and delivers alerts via Exchange Online email and browser push.
  *
  * Alert conditions:
- *   dlq_backlog       — unresolved DLQ items ≥ threshold
- *   billing_failure   — MSP subscriptions with active payment_failed_at
- *   sla_breach        — fulfillment_queue rows overdue past window
- *   event_bus_backlog — webhook delivery failures in last N minutes
- *   job_failure_rate  — background jobs in failed state in last N minutes
+ *   dlq_backlog          — unresolved DLQ items ≥ threshold
+ *   billing_failure      — MSP subscriptions with active payment_failed_at
+ *   sla_breach           — fulfillment_queue rows overdue past window
+ *   event_bus_backlog    — webhook delivery failures in last N minutes
+ *   job_failure_rate     — background jobs in failed state in last N minutes
+ *   risk_review_overdue  — msp_risk_decisions rows whose review clock (#1507)
+ *                          has lapsed (#1513). Distinct "review_lapsed"
+ *                          severity — a lapsed review is not a threshold
+ *                          breach, it means a customer believes a risk is
+ *                          being actively managed and nobody has looked.
  *
  * De-duplication: a rule will not re-fire within its cooldownMinutes window
  * (checked against the most recent msp_alert_events row for that ruleId).
@@ -123,6 +128,64 @@ async function evalEventBusBacklog(windowMinutes: number): Promise<number> {
   return parseInt(res.rows[0]?.n ?? "0", 10);
 }
 
+// The lead time before a scheduled review counts as "due" rather than
+// "on_track" — an operational reminder window, not a legal deadline (only
+// `overdue`, i.e. past `review_due_at`, is what this rule alerts the MSP on).
+const RISK_REVIEW_DUE_LEAD_DAYS = 14;
+
+/**
+ * Advances `msp_risk_decisions.review_state` (#1507's review clock) for every
+ * still-`active` acceptance with a scheduled `review_due_at`, then returns the
+ * count currently `overdue` — the value `risk_review_overdue` alerts on.
+ *
+ * This is the operational writer #1507 explicitly left unbuilt ("the
+ * operational writer belongs to later sub-issues... #1513 overdue-review
+ * alerting"). Three transitions, all idempotent (`IS DISTINCT FROM` guards so
+ * re-running never touches `updated_at` on a row already in the right state):
+ *   - past `review_due_at`                      → overdue
+ *   - within RISK_REVIEW_DUE_LEAD_DAYS of it     → due
+ *   - further out than that lead window          → on_track (covers a review
+ *     pushed back out after being due/overdue)
+ *
+ * The acceptance's own `status` is never touched here — a lapsed review is a
+ * flag on a still-active acceptance, never a lapsed acceptance (#1507).
+ */
+async function advanceRiskReviewClock(): Promise<number> {
+  await pool.query(
+    `UPDATE msp_risk_decisions
+        SET review_state = 'overdue', updated_at = NOW()
+      WHERE status = 'active'
+        AND review_due_at IS NOT NULL
+        AND review_due_at < NOW()
+        AND review_state IS DISTINCT FROM 'overdue'`,
+  );
+  await pool.query(
+    `UPDATE msp_risk_decisions
+        SET review_state = 'due', updated_at = NOW()
+      WHERE status = 'active'
+        AND review_due_at IS NOT NULL
+        AND review_due_at >= NOW()
+        AND review_due_at < NOW() + ($1 * INTERVAL '1 day')
+        AND review_state IS DISTINCT FROM 'due'`,
+    [RISK_REVIEW_DUE_LEAD_DAYS],
+  );
+  await pool.query(
+    `UPDATE msp_risk_decisions
+        SET review_state = 'on_track', updated_at = NOW()
+      WHERE status = 'active'
+        AND review_due_at IS NOT NULL
+        AND review_due_at >= NOW() + ($1 * INTERVAL '1 day')
+        AND review_state IS DISTINCT FROM 'on_track'`,
+    [RISK_REVIEW_DUE_LEAD_DAYS],
+  );
+
+  const res = await pool.query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM msp_risk_decisions
+      WHERE status = 'active' AND review_state = 'overdue'`,
+  );
+  return parseInt(res.rows[0]?.n ?? "0", 10);
+}
+
 async function evalJobFailureRate(windowMinutes: number): Promise<number> {
   // Count failed portal workflow runs as a proxy for background job failures
   const res = await pool.query<{ n: string }>(
@@ -146,6 +209,7 @@ async function getConditionValue(
       case "sla_breach":         return await evalSlaBreaches();
       case "event_bus_backlog":  return await evalEventBusBacklog(windowMinutes);
       case "job_failure_rate":   return await evalJobFailureRate(windowMinutes);
+      case "risk_review_overdue": return await advanceRiskReviewClock();
       default:                   return 0;
     }
   } catch (err) {
@@ -177,7 +241,13 @@ function buildAlertEmailHtml(opts: {
   deepLinkPath: string | null;
   baseUrl: string;
 }): string {
-  const color = opts.severity === "critical" ? "#DC2626" : "#D97706";
+  // "review_lapsed" gets its own color (violet) rather than sharing critical's
+  // red or warning's/info's amber — it is a deliberately distinct severity
+  // (#1513), not a graver or lesser ordinary alert.
+  const color =
+    opts.severity === "critical" ? "#DC2626" :
+    opts.severity === "review_lapsed" ? "#7C3AED" :
+    "#D97706";
   const badgeLabel = opts.severity.toUpperCase();
   const deepLink = opts.deepLinkPath
     ? `<p style="margin-top:16px"><a href="${opts.baseUrl}${opts.deepLinkPath}" style="background:#0078D4;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px">View in Admin Panel →</a></p>`
@@ -344,6 +414,8 @@ function buildSummary(conditionType: string, value: number, windowMinutes: numbe
       return `${value} outbound webhook deliveries failed in the last ${windowMinutes} minutes.`;
     case "job_failure_rate":
       return `${value} background job${value !== 1 ? "s" : ""} failed in the last ${windowMinutes} minutes.`;
+    case "risk_review_overdue":
+      return `${value} risk acceptance review${value !== 1 ? "s are" : " is"} overdue. The acceptance${value !== 1 ? "s remain" : " remains"} active — only the review has lapsed.`;
     default:
       return `Alert condition "${conditionType}" triggered with value ${value}.`;
   }

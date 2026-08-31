@@ -1071,7 +1071,7 @@ const SYSTEM_WORKFLOWS: SystemWorkflowSeed[] = [
   },
   {
     name: "__system__: Alert Rule Evaluation",
-    description: "Runs every 5 minutes to evaluate platform alert rules (DLQ backlog, billing failures, SLA breaches, event bus backlog, job failure rate) and deliver alerts via Exchange Online email and browser push. Replaces the old alert-engine.ts setInterval poller.",
+    description: "Runs every 5 minutes to evaluate platform alert rules (DLQ backlog, billing failures, SLA breaches, event bus backlog, job failure rate, overdue risk-acceptance reviews — #1513) and deliver alerts via Exchange Online email and browser push. Replaces the old alert-engine.ts setInterval poller.",
     triggerType: "schedule",
     cron: "*/5 * * * *",
     graph: {

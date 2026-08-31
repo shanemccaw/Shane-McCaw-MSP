@@ -3447,12 +3447,26 @@ export const MSP_ALERT_CONDITION_TYPES = [
   "purchase_completed",// discrete sale/checkout event — fired directly via
                        // fireEventRule() (#665), never evaluated by the
                        // polling evaluateRules() loop like the others above
+  "risk_review_overdue", // msp_risk_decisions rows whose review clock (#1507)
+                       // has lapsed — the ACCEPTANCE stays active/valid; only
+                       // the review is overdue (#1513). Count-based, evaluated
+                       // by the same polling evaluateRules() loop.
 ] as const;
 export type MspAlertConditionType = typeof MSP_ALERT_CONDITION_TYPES[number];
 
 // "info" (#665): a completed sale is a neutral, non-alarming event — forcing it
 // into "warning"/"critical" would miscategorise it against every other rule.
-export const MSP_ALERT_SEVERITIES = ["warning", "critical", "info"] as const;
+//
+// "review_lapsed" (#1513): a lapsed risk-acceptance review is a DIFFERENT
+// failure from a threshold breach — the customer currently believes a risk is
+// being actively managed, and nobody has looked. Deliberately not reused as
+// "warning"/"critical" so it never sorts in with an ordinary operational
+// alert (settled requirement on #1513). This severity is specific to the
+// msp_alert_rules/msp_alert_events platform alert engine and is unrelated to
+// CUSTOMER_ALERT_SEVERITIES below (#1942 fixes that vocabulary at exactly
+// three values for the customer-facing catalogue; this is the internal MSP
+// ops alert engine, a different table and a different audience).
+export const MSP_ALERT_SEVERITIES = ["warning", "critical", "info", "review_lapsed"] as const;
 export type MspAlertSeverity = typeof MSP_ALERT_SEVERITIES[number];
 
 export const mspAlertRulesTable = pgTable("msp_alert_rules", {
