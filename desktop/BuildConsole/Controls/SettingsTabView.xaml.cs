@@ -70,6 +70,7 @@ namespace BuildConsole.Controls
 
             EncouragementCrittersEnabledCheck.IsChecked = savedSettings.EncouragementCrittersEnabled;
             ShowUsageReadoutCheck.IsChecked = savedSettings.ShowUsageReadout;
+            PinnedQuestionDetectionEnabledCheck.IsChecked = savedSettings.PinnedQuestionDetectionEnabled;
 
             // Git #1986 — Home/Rental location gate. Only "Rental" (case-insensitive) reads as
             // metered; every other value, including a missing/corrupt setting, seeds Home (index 0),
@@ -120,6 +121,18 @@ namespace BuildConsole.Controls
             settings.ShowUsageReadout = ShowUsageReadoutCheck.IsChecked == true;
             settings.Save();
             try { (Application.Current?.MainWindow as BuildConsole.MainWindow)?.RefreshUsageReadoutVisibility(); } catch { /* best-effort */ }
+        }
+
+        /// <summary>Git #2124 — persists whether active Pinned Question detection (#2105) is
+        /// enabled. Read fresh via <see cref="BuildConsoleSettings.Load"/> on every probe attempt
+        /// in <see cref="BuildConsole.FloatingChatWindow.MaybeProbeForPinnedQuestionsAsync"/>, so
+        /// this takes effect immediately — no restart, no live-apply plumbing needed.</summary>
+        private void PinnedQuestionDetectionEnabledCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_loadingSettings) return;
+            var settings = BuildConsoleSettings.Load();
+            settings.PinnedQuestionDetectionEnabled = PinnedQuestionDetectionEnabledCheck.IsChecked == true;
+            settings.Save();
         }
 
         /// <summary>Git #1986 — persists the Home/Rental location and refreshes the title-bar
