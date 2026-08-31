@@ -2101,6 +2101,7 @@ namespace BuildConsole.Controls
 
             _buildPane.SendRequested += HandleBuildSend;
             _buildPane.StopRequested += HandleBuildStop;
+            _buildPane.ResumeRequested += HandleBuildResume;
 
             _buildContainer.Children.Clear();
             _buildContainer.Children.Add(_buildPane);
@@ -2253,6 +2254,50 @@ namespace BuildConsole.Controls
             if (Application.Current.MainWindow is MainWindow mw && mw.QueueWatcher is QueueWatcherService w)
             {
                 _ = w.RequestStopAsync(_buildPaneItemId);
+            }
+        }
+
+        /// <summary>
+        /// Git #1878 — "▶ Resume Session" clicked from the AdoptedReadOnly composer note (raised by
+        /// ChatSessionPane.ResumeRequested). Same dispatch as BuildQueuePanel's "▶ Resume Session
+        /// (crash recovery)" context-menu item: re-queues the ORIGINAL prompt with resumeSessionId
+        /// set, so --resume picks the conversation back up — not HandleBuildSend's continuation path
+        /// (which replaces the prompt with typed text), since there's no composer text here.
+        /// </summary>
+        private async void HandleBuildResume()
+        {
+            if (_buildPaneItemId == 0) return;
+
+            BuildQueuePostgresClient? db = null;
+            QueueWatcherService? watcher = null;
+            if (Application.Current.MainWindow is MainWindow mw)
+            {
+                db = mw.QueueDb;
+                watcher = mw.QueueWatcher;
+            }
+            if (db == null) return;
+
+            string? sessionId = _buildPaneSessionId ?? watcher?.GetSessionId(_buildPaneItemId);
+            if (string.IsNullOrEmpty(sessionId)) return;
+
+            try
+            {
+                await db.QueueBuildAsync(
+                    _associatedBuild?.Title ?? "Build",
+                    _associatedBuild?.Prompt ?? "",
+                    _associatedBuild?.Model ?? "claude-sonnet-5",
+                    _associatedBuild?.Effort ?? "normal",
+                    _associatedBuild?.Cwd ?? BuildTrackerConfig.FindRepoRoot(),
+                    _loadedIssue?.IssueNumber,
+                    _associatedBuild?.BlockedByNumbers,
+                    resumeSessionId: sessionId,
+                    buildSet: _associatedBuild?.BuildSet, cli: _associatedBuild?.Cli, account: _associatedBuild?.Account);
+                ToastEngine.Success("Resuming", $"Resuming from where it left off: {_associatedBuild?.Title ?? "Build"}");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"Resume failed: {ex.Message}");
+                ToastEngine.Error("Resume Failed", $"Couldn't resume: {ex.Message}");
             }
         }
 

@@ -293,6 +293,7 @@ namespace BuildConsole
             slot.Pane = new ChatSessionPane();
             slot.Pane.SendRequested += text => SendSlotInput(slot, text);
             slot.Pane.StopRequested += () => StopSlot(slot);
+            slot.Pane.ResumeRequested += () => ResumeAdoptedSlot(slot);
             slot.Pane.DismissRequested += () =>
             {
                 ClearSlot(slot, "dismissed");
@@ -1779,6 +1780,29 @@ namespace BuildConsole
             _ = _watcher.RequestStopAsync(slot.QueueItemId);
             slot.LastInteractiveState = null;
             ApplyInteractiveState(slot, InteractiveInputState.Stopped);
+        }
+
+        /// <summary>
+        /// Git #1878 — "▶ Resume Session" clicked from the AdoptedReadOnly composer note (raised by
+        /// ChatSessionPane.ResumeRequested). Same dispatch as BuildQueuePanel's "▶ Resume Session
+        /// (crash recovery)" context-menu item (line ~4187): re-queues the ORIGINAL prompt with
+        /// resumeSessionId set, so --resume picks the conversation back up. Deliberately NOT the
+        /// SendSlotInput continuation path (which replaces the prompt with typed text and prefixes
+        /// "Continue: ") — this is a plain one-click resume, no typed guidance required.
+        /// </summary>
+        private async void ResumeAdoptedSlot(BuildWatchSlot slot)
+        {
+            if (_db == null || string.IsNullOrEmpty(slot.SessionId)) return;
+            try
+            {
+                await _db.QueueBuildAsync(slot.Title, slot.Prompt, slot.Model, slot.Effort, slot.Cwd, slot.GithubNumber,
+                    slot.BlockedByNumbers, resumeSessionId: slot.SessionId, buildSet: slot.BuildSet, cli: slot.Cli, account: slot.Account);
+                ToastEngine.Success("Resuming", $"Resuming from where it left off: {slot.Title}");
+            }
+            catch (Exception ex)
+            {
+                ToastEngine.Error("Resume Failed", $"Couldn't resume: {ex.Message}");
+            }
         }
 
         /// <summary>Ticks the composer footer's "Running for Nm Ss" label for every occupied slot — spec: "ticking every second while RunState is Running" (kept ticking for terminal slots too, showing total elapsed since Build Watch started watching).</summary>

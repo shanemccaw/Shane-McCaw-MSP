@@ -30,6 +30,10 @@ namespace BuildConsole.Controls
         public event Action<string>? SendRequested;
         public event Action? StopRequested;
         public event Action? DismissRequested;
+        /// <summary>Git #1878 — "▶ Resume Session" clicked from the AdoptedReadOnly composer note. The host
+        /// (BuildWatchWindow slot / GitDetailView build pane) owns the queue item's real fields, so it performs
+        /// the actual QueueBuildAsync resume dispatch — this control has no knowledge of the queue itself.</summary>
+        public event Action? ResumeRequested;
 
         private Popup? _autoCompletePopup;
         private ListBox? _autoCompleteList;
@@ -249,10 +253,11 @@ namespace BuildConsole.Controls
             Clipboard.SetText(sb.ToString());
         }
 
-        // ── Composer: send / stop / dismiss ─────────────────────────────
+        // ── Composer: send / stop / dismiss / resume ─────────────────────
         private void SendButton_Click(object sender, RoutedEventArgs e) => TrySend();
         private void StopButton_Click(object sender, RoutedEventArgs e) => StopRequested?.Invoke();
         private void DismissButton_Click(object sender, RoutedEventArgs e) => DismissRequested?.Invoke();
+        private void ResumeButton_Click(object sender, RoutedEventArgs e) => ResumeRequested?.Invoke();
 
         private void TrySend()
         {
