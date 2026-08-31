@@ -5563,11 +5563,85 @@ namespace BuildConsole.Controls
             }
 
             var build = FindAssociatedBuild(issue.IssueNumber);
-            if (build == null) return root;
+            if (build == null)
+            {
+                // Git #2063 — this used to show nothing at all: no tracked build row exists
+                // for this issue, so DispatchPanel's own "No build prompt found" dead-end had
+                // no equivalent here either. Same fix, same target: dispatch it if a BUILD:
+                // comment already exists, else ask the currently active chat to write one.
+                root.Children.Add(new Separator { Margin = new Thickness(0, 2, 0, 6) });
+                root.Children.Add(MakeQuickActionButton("⚡ Dispatch (asks active chat if no BUILD: yet)", async () =>
+                    await DispatchOrAskActiveChatAsync(issue)));
+                return root;
+            }
 
             root.Children.Add(new Separator { Margin = new Thickness(0, 2, 0, 6) });
             root.Children.Add(BuildQuickActionArea(build));
             return root;
+        }
+
+        /// <summary>
+        /// Git #2063 — the Git Board hover popover's no-tracked-build-row branch above mirrors
+        /// DispatchPanel.DispatchAsync's own fetch+parse+queue path (not a second implementation
+        /// of the parser or the queue insert): if a `BUILD:` comment already exists, queue it
+        /// exactly as the Dispatch box would; if not, ask whatever chat is CURRENTLY ACTIVE (not
+        /// necessarily the epic-linked chat — Shane just decided "this is ready" in some active
+        /// chat right before hovering this card) to write and post one, via the same #2059
+        /// send+submit bridge <see cref="MainWindow.SendToActiveChatAsync"/> wraps.
+        /// </summary>
+        private async System.Threading.Tasks.Task DispatchOrAskActiveChatAsync(GitIssue issue)
+        {
+            var settings = BuildConsoleSettings.Load();
+            if (!settings.HasGitHubPat)
+            {
+                ToastEngine.Error("Dispatch", "No GitHub PAT configured — set one in Settings.");
+                return;
+            }
+
+            var gh = new GitHubApiClient(settings.GitHubPat);
+            var (rawComment, parsed) = await BatterUpQueueService.FindBuildCommentAsync(gh, issue.IssueNumber);
+
+            if (rawComment == null || parsed == null)
+            {
+                var mainWindow = Application.Current.MainWindow as MainWindow;
+                string askStatus = mainWindow != null
+                    ? await mainWindow.SendToActiveChatAsync(ActiveChatBuildRequestHelper.BuildAskMessage(issue.IssueNumber, issue.Title))
+                    : "no-active-chat";
+                var (message, isError) = ActiveChatBuildRequestHelper.DescribeStatus(askStatus, issue.IssueNumber);
+                if (isError) ToastEngine.Warning("Dispatch", message); else ToastEngine.Success("Dispatch", message);
+                ActivityLog.Log("dispatch", $"Dispatch #{issue.IssueNumber} (Git Board) — ask-active-chat status: {askStatus}");
+                return;
+            }
+
+            if (_db == null)
+            {
+                ToastEngine.Error("Dispatch", "Not connected to the build queue database.");
+                return;
+            }
+
+            var (model, effort, buildSet, prompt) = parsed.Value;
+            var existing = await _db.FindDedupCandidateAsync(issue.IssueNumber, prompt);
+            if (existing != null)
+            {
+                ToastEngine.Info("Dispatch", $"#{issue.IssueNumber} is already tracked (status: {existing.Status}).");
+                return;
+            }
+
+            var blockers = await gh.GetBlockedByAsync(issue.IssueNumber);
+            var blockedByNumbers = blockers.Select(b => b.Number).ToList();
+
+            await _db.QueueBuildAsync(
+                title: issue.Title,
+                prompt: prompt,
+                model: model,
+                effort: effort,
+                cwd: null,
+                githubNumber: issue.IssueNumber,
+                blockedByNumbers: blockedByNumbers,
+                buildSet: buildSet);
+
+            ToastEngine.Success("Dispatch", $"#{issue.IssueNumber} \"{issue.Title}\" queued.");
+            ActivityLog.Log("dispatch", $"Dispatch #{issue.IssueNumber} \"{issue.Title}\" (Git Board) — queued.");
         }
 
         private UIElement BuildQuickActionArea(QueueItem build)

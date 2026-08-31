@@ -66,5 +66,64 @@ namespace BuildConsole
                 ToastEngine.Error("Floating Chat", $"Couldn't open the floating chat window: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// Git #2063 — routes <paramref name="text"/> to whatever chat is CURRENTLY ACTIVE, not
+        /// necessarily the epic-linked chat: the floating chat window's active tab if one is
+        /// open (both real usage patterns this exists for — the Dispatch box and the Git Board
+        /// hover popover — fire right after Shane was just interacting with a chat there), else
+        /// the main editor area's active Claude.ai tab via the existing #937/#940 injection.
+        /// Reuses the SAME send+submit scripts #2059 already established (<see
+        /// cref="FloatingChatBridgeScript.BuildInsertScript"/> / <see
+        /// cref="FloatingChatBridgeScript.SubmitScript"/>) for both paths — no new bridge.
+        /// Returns 'sent' | 'inserted-no-send' | 'no-composer' | 'no-active-chat' | 'error: …'
+        /// so the caller can show an honest result rather than assuming success.
+        /// </summary>
+        public async System.Threading.Tasks.Task<string> SendToActiveChatAsync(string text)
+        {
+            if (_floatingChatWindow != null && _floatingChatWindow.IsLoaded)
+                return await _floatingChatWindow.SendToActiveTabAsync(text);
+
+            var (wv, tab) = GetActiveEditorTabWebView();
+            if (wv?.CoreWebView2 == null) return "no-active-chat";
+
+            string url = "";
+            try { url = wv.Source?.ToString() ?? ""; } catch { }
+            bool isClaudeChat = tab?.Tag is BoardChat || url.Contains("claude.ai", StringComparison.OrdinalIgnoreCase);
+            if (!isClaudeChat) return "no-active-chat";
+
+            string insert;
+            try
+            {
+                string raw = await wv.ExecuteScriptAsync(FloatingChatBridgeScript.BuildInsertScript(text)) ?? "";
+                insert = System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? "";
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("dispatch", $"send-to-active-chat insert error: {ex.Message}");
+                return "error: " + ex.Message;
+            }
+            if (insert != "inserted")
+            {
+                ActivityLog.Log("dispatch", $"send-to-active-chat insert failed: '{insert}' ({url})");
+                return insert;
+            }
+
+            await System.Threading.Tasks.Task.Delay(220);
+            try
+            {
+                string raw = await wv.ExecuteScriptAsync(FloatingChatBridgeScript.SubmitScript) ?? "";
+                string submit = System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? "";
+                ActivityLog.Log("dispatch", submit == "sent"
+                    ? $"send-to-active-chat sent ({url})"
+                    : $"send-to-active-chat submit status '{submit}' ({url})");
+                return submit;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("dispatch", $"send-to-active-chat submit error: {ex.Message}");
+                return "error: " + ex.Message;
+            }
+        }
     }
 }

@@ -181,8 +181,22 @@ namespace BuildConsole.Controls
                 var (rawComment, parsed) = await Services.BatterUpQueueService.FindBuildCommentAsync(gh, issueNumber);
                 if (rawComment == null || parsed == null)
                 {
-                    ShowStatus($"No build prompt found on #{issueNumber} yet.", (Brush)Application.Current.FindResource("RedBrush"));
-                    Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} \"{issue.Title}\" — no BUILD: comment found, nothing queued.");
+                    // Git #2063 — rather than dead-ending here, ask whatever chat is CURRENTLY
+                    // ACTIVE (not necessarily the epic-linked chat — Shane just decided "this is
+                    // ready" in some active chat right before hitting Dispatch) to write and post
+                    // the BUILD: comment itself, via the same #2059 send+submit bridge.
+                    ShowStatus($"No build prompt found on #{issueNumber} yet — asking the active chat…",
+                        (Brush)Application.Current.FindResource("Subtext0Brush"));
+                    Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} \"{issue.Title}\" — no BUILD: comment found, asking active chat.");
+
+                    var mainWindow = Application.Current.MainWindow as MainWindow;
+                    string askStatus = mainWindow != null
+                        ? await mainWindow.SendToActiveChatAsync(Services.ActiveChatBuildRequestHelper.BuildAskMessage(issueNumber, issue.Title))
+                        : "no-active-chat";
+
+                    var (message, isError) = Services.ActiveChatBuildRequestHelper.DescribeStatus(askStatus, issueNumber);
+                    ShowStatus(message, (Brush)Application.Current.FindResource(isError ? "RedBrush" : "BlueBrush"));
+                    Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — ask-active-chat status: {askStatus}");
                     return;
                 }
 

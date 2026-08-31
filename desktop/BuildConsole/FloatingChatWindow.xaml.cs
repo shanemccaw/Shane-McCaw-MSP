@@ -409,55 +409,92 @@ namespace BuildConsole
             BtnSend.IsEnabled = false;
             try
             {
-                string insert = await ExecScriptString(tab, FloatingChatBridgeScript.BuildInsertScript(text));
-                if (insert == "no-composer")
-                {
-                    SetTabInline(tab, "Couldn't find the chat composer — is the conversation still loading?", isError: true);
-                    ActivityLog.Log(LogChannel, $"send-failed: no-composer ({tab.Chat.ConversationId})");
-                    return;
-                }
-                if (insert != "inserted")
-                {
-                    SetTabInline(tab, "Send failed while inserting the message.", isError: true);
-                    ActivityLog.Log(LogChannel, $"send-failed: insert status '{insert}' ({tab.Chat.ConversationId})");
-                    return;
-                }
-
-                // Give claude.ai's Send button a tick to enable off the input event it
-                // batches asynchronously, then submit as a separate call (ExecuteScriptAsync
-                // does not await a Promise, so this can't be one round-trip).
-                await System.Threading.Tasks.Task.Delay(220);
-                string submit = await ExecScriptString(tab, FloatingChatBridgeScript.SubmitScript);
-
-                if (submit == "sent")
+                string status = await InsertAndSubmitAsync(tab, text);
+                if (status == "sent")
                 {
                     // Clear only if the user hasn't switched tabs mid-send.
                     if (ReferenceEquals(tab, _active)) InputBox.Clear();
                     tab.InputDraft = "";
                     SetTabInline(tab, "Sent.", isError: false);
-                    ActivityLog.Log(LogChannel, $"sent message to chat {tab.Chat.ConversationId}");
                 }
-                else if (submit == "inserted-no-send")
+                else if (status == "inserted-no-send")
                 {
                     // The text is in the composer but the submit didn't take — leave the
                     // input so nothing is lost; Shane can press Send again or submit in-page.
                     SetTabInline(tab, "Message inserted but couldn't auto-send — try Send again, or press Enter in the page below.", isError: true);
-                    ActivityLog.Log(LogChannel, $"send-partial: inserted-no-send ({tab.Chat.ConversationId})");
+                }
+                else if (status == "no-composer")
+                {
+                    SetTabInline(tab, "Couldn't find the chat composer — is the conversation still loading?", isError: true);
                 }
                 else
                 {
-                    SetTabInline(tab, "Send failed while submitting.", isError: true);
-                    ActivityLog.Log(LogChannel, $"send-failed: submit status '{submit}' ({tab.Chat.ConversationId})");
+                    SetTabInline(tab, "Send failed while inserting/submitting the message.", isError: true);
                 }
-            }
-            catch (Exception ex)
-            {
-                SetTabInline(tab, "Send failed.", isError: true);
-                ActivityLog.Log(LogChannel, $"send-error ({tab.Chat.ConversationId}): {ex.Message}");
             }
             finally
             {
                 BtnSend.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Git #2063 — programmatic send+submit into the CURRENTLY ACTIVE tab, for an automated
+        /// caller (e.g. DispatchPanel asking this chat to write and post a `BUILD:` comment when
+        /// none exists yet) rather than a user-typed message. Same insert+submit path <see
+        /// cref="SendAsync"/> uses, so it carries the identical send-side confirmation guarantee
+        /// (and identical send-side risk) as the manual Send button — see <see
+        /// cref="InsertAndSubmitAsync"/>. Returns 'sent' | 'inserted-no-send' | 'no-composer' |
+        /// 'no-active-tab' | 'error: …' so the caller can show an honest result instead of
+        /// assuming success.
+        /// </summary>
+        public async System.Threading.Tasks.Task<string> SendToActiveTabAsync(string text)
+        {
+            var tab = _active;
+            if (tab == null) return "no-active-tab";
+            if (tab.Wv?.CoreWebView2 == null) return "no-composer";
+
+            string status = await InsertAndSubmitAsync(tab, text);
+            if (status == "sent")
+            {
+                SetTabInline(tab, "Sent.", isError: false);
+                ActivityLog.Log(LogChannel, $"sent programmatic request to chat {tab.Chat.ConversationId}");
+            }
+            return status;
+        }
+
+        /// <summary>
+        /// The real insert-then-submit mechanic shared by the manual Send button (<see
+        /// cref="SendAsync"/>) and the programmatic <see cref="SendToActiveTabAsync"/>: insert
+        /// via <see cref="FloatingChatBridgeScript.BuildInsertScript"/>, give claude.ai's Send
+        /// button a tick to enable off the input event it batches asynchronously, then submit via
+        /// <see cref="FloatingChatBridgeScript.SubmitScript"/> as a separate call (ExecuteScriptAsync
+        /// does not await a returned Promise, so this can't be one round-trip). Every outcome is
+        /// logged here so both callers get the same audit trail.
+        /// </summary>
+        private async System.Threading.Tasks.Task<string> InsertAndSubmitAsync(FloatingChatTab tab, string text)
+        {
+            try
+            {
+                string insert = await ExecScriptString(tab, FloatingChatBridgeScript.BuildInsertScript(text));
+                if (insert != "inserted")
+                {
+                    ActivityLog.Log(LogChannel, $"send-failed: insert status '{insert}' ({tab.Chat.ConversationId})");
+                    return insert;
+                }
+
+                await System.Threading.Tasks.Task.Delay(220);
+                string submit = await ExecScriptString(tab, FloatingChatBridgeScript.SubmitScript);
+                if (submit == "sent")
+                    ActivityLog.Log(LogChannel, $"sent message to chat {tab.Chat.ConversationId}");
+                else
+                    ActivityLog.Log(LogChannel, $"send-partial/failed: submit status '{submit}' ({tab.Chat.ConversationId})");
+                return submit;
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"send-error ({tab.Chat.ConversationId}): {ex.Message}");
+                return "error: " + ex.Message;
             }
         }
 
