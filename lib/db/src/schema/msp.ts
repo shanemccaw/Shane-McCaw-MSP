@@ -7269,6 +7269,17 @@ export const PS_CAPABILITY_SURVEY_STATUSES = [
 
 export const PS_CAPABILITY_SURVEY_RUN_STATUSES = ["running", "completed", "failed"] as const;
 
+/**
+ * Git #1853 — the epistemic label for a shape that did NOT come from this survey's
+ * own live execution. Deliberately one member: `property_names` non-null already
+ * means "observed live" without needing a value to say so, so the only state this
+ * column ever needs to distinguish is "derived, not observed" — never collapsed
+ * into the live column, per Shane's decision on #1853 (option 2, DSC-derived,
+ * distinctly labelled). Mirrors `SNAPSHOT_SHAPE_PROVENANCE` in config-snapshots.ts.
+ */
+export const PS_SURVEY_SHAPE_DERIVATION = ["derived_from_dsc"] as const;
+export type PsSurveyShapeDerivation = typeof PS_SURVEY_SHAPE_DERIVATION[number];
+
 /** One execution of the survey against one tenant, through one container revision. */
 export const psCapabilitySurveyRunsTable = pgTable("ps_capability_survey_runs", {
   id: serial("id").primaryKey(),
@@ -7328,6 +7339,30 @@ export const psCapabilitySurveyResultsTable = pgTable("ps_capability_survey_resu
   mandatoryParamNames: jsonb("mandatory_param_names").$type<string[]>(),
   parameterCount: integer("parameter_count"),
   observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+
+  /**
+   * Git #1853 — a property set for an `ok` cmdlet whose `property_names` is null
+   * (the tenant genuinely has zero instances, so nothing was there to read a shape
+   * off). Sourced from Microsoft365DSC's own resource definitions (matched via
+   * `config_resources.read_cmdlets`, Shane's recorded decision on #1853), never
+   * inferred from a similarly-named cmdlet. NULL means either `property_names` is
+   * already populated (nothing to derive) or no DSC match was found — see
+   * `derivation_gap_reason` for the latter. `derive-ps-shapes-from-dsc.mjs` is the
+   * only writer; it never touches `property_names` itself.
+   */
+  derivedPropertyNames: jsonb("derived_property_names").$type<string[]>(),
+  /** Which `config_resources.resource_key`(s) the derived property set came from. */
+  derivedFromM365dscResources: jsonb("derived_from_m365dsc_resources").$type<string[]>(),
+  /** Always `derived_from_dsc` when `derived_property_names` is set — see the type comment. */
+  shapeDerivation: text("shape_derivation", { enum: PS_SURVEY_SHAPE_DERIVATION }),
+  /**
+   * Why an `ok`, still-shapeless cmdlet has no derived shape either: no
+   * Microsoft365DSC resource declares it as a read cmdlet, or the resource(s) that
+   * do declare it publish zero non-connection properties. A recorded gap, not a
+   * silent omission — Shane's #1853 instruction.
+   */
+  derivationGapReason: text("derivation_gap_reason"),
+  shapeDerivedAt: timestamp("shape_derived_at", { withTimezone: true }),
 }, (t) => [
   uniqueIndex("ps_capability_survey_results_run_session_cmdlet_uidx").on(t.runId, t.sessionType, t.cmdletName),
   index("ps_capability_survey_results_status_idx").on(t.status),

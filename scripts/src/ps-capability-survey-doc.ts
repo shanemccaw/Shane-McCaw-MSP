@@ -70,6 +70,10 @@ interface ResultRow {
   property_names: string[] | null;
   min_mandatory_param_count: number | null;
   mandatory_param_names: string[] | null;
+  derived_property_names: string[] | null;
+  derived_from_m365dsc_resources: string[] | null;
+  shape_derivation: string | null;
+  derivation_gap_reason: string | null;
 }
 
 /** Pipe and newline are the only characters that can break a GFM table cell. */
@@ -128,7 +132,9 @@ async function main(): Promise<void> {
     const { rows: results } = await pool.query<ResultRow>(
       `SELECT session_type, module_name, cmdlet_name, verb, status, reason, error_message,
               item_count, elapsed_ms, invoked_with, output_type_name, property_names,
-              min_mandatory_param_count, mandatory_param_names
+              min_mandatory_param_count, mandatory_param_names,
+              derived_property_names, derived_from_m365dsc_resources, shape_derivation,
+              derivation_gap_reason
          FROM ps_capability_survey_results
         WHERE run_id = $1
         ORDER BY session_type, cmdlet_name`,
@@ -221,6 +227,82 @@ async function main(): Promise<void> {
         out.push(
           `| \`${cell(r.cmdlet_name)}\` | ${r.item_count ?? "—"} | ${r.elapsed_ms ?? "—"} | ${cell(r.invoked_with)} | ${cell(r.output_type_name ? r.output_type_name.replace(/^Deserialized\./, "") : null)} | ${cell(propText)} |`,
         );
+      }
+      out.push("");
+    }
+
+    // ── Git #1853: DSC-derived shapes for the shapeless `ok` cmdlets ─────────
+    // A NEW section, appended rather than edited into the table above (Shane's
+    // instruction on #1853: record corrected coverage as a new section, not by
+    // editing prior reasoning). The "— (returned no items, so no shape observed)"
+    // cells above are untouched and still literally true — this section adds a
+    // second, clearly-labelled source of shape for the same rows.
+    const okRows = results.filter((r) => r.status === "ok");
+    const shapeless = okRows.filter((r) => (r.property_names ?? []).length === 0);
+    const derived = shapeless.filter((r) => r.shape_derivation === "derived_from_dsc");
+    const gapped = shapeless.filter((r) => r.derivation_gap_reason);
+
+    out.push("## DSC-derived shapes for shapeless cmdlets (Git #1853)");
+    out.push("");
+    out.push(
+      `Of the ${shapeless.length} \`ok\` cmdlets above with no live-observed shape (the tenant genuinely ` +
+        "has zero instances of that resource), Shane's recorded decision on #1853 was to derive a property " +
+        "set for as many as possible from Microsoft365DSC's own resource definitions — **matched, never " +
+        "guessed**: only an exact cmdlet-name match against a DSC resource's declared read cmdlets counts, " +
+        "never a similarly-named resource or a family resemblance. A DSC-derived shape is a DIFFERENT " +
+        "epistemic state from an observed one and is labelled `derived_from_dsc` everywhere it is stored — " +
+        "it is never written into `property_names` and never overrides a live observation.",
+    );
+    out.push("");
+    out.push(
+      "**Real match rate — not 130 of 130.** " +
+        `${derived.length} of ${shapeless.length} (${((derived.length / (shapeless.length || 1)) * 100).toFixed(1)}%) ` +
+        "matched a Microsoft365DSC resource with a real, non-connection property set. " +
+        `${gapped.length} did not, and are recorded below with the exact reason rather than left silently unlabeled.`,
+    );
+    out.push("");
+    out.push("| Session | Shapeless | DSC-derived | No match |");
+    out.push("|---|---:|---:|---:|");
+    for (const session of sessions) {
+      const s = shapeless.filter((r) => r.session_type === session);
+      const d = derived.filter((r) => r.session_type === session);
+      const g = gapped.filter((r) => r.session_type === session);
+      out.push(`| \`${session}\` | ${s.length} | ${d.length} | ${g.length} |`);
+    }
+    out.push(`| **all** | **${shapeless.length}** | **${derived.length}** | **${gapped.length}** |`);
+    out.push("");
+
+    out.push("### Cmdlets with a DSC-derived shape");
+    out.push("");
+    if (derived.length === 0) {
+      out.push("_None._");
+      out.push("");
+    } else {
+      out.push("| Session | Cmdlet | Source DSC resource(s) | Derived properties |");
+      out.push("|---|---|---|---|");
+      for (const r of derived) {
+        const resources = (r.derived_from_m365dsc_resources ?? []).join(", ");
+        const props = truncate((r.derived_property_names ?? []).join(", "), 700);
+        out.push(`| \`${r.session_type}\` | \`${cell(r.cmdlet_name)}\` | ${cell(resources)} | ${cell(props)} |`);
+      }
+      out.push("");
+    }
+
+    out.push("### Cmdlets with no DSC match — the honest gap");
+    out.push("");
+    out.push(
+      "Every row here was checked against Microsoft365DSC's full read-cmdlet catalog and genuinely has no " +
+        "match. Not inferred, not left blank — recorded.",
+    );
+    out.push("");
+    if (gapped.length === 0) {
+      out.push("_None._");
+      out.push("");
+    } else {
+      out.push("| Session | Cmdlet | Reason |");
+      out.push("|---|---|---|");
+      for (const r of gapped) {
+        out.push(`| \`${r.session_type}\` | \`${cell(r.cmdlet_name)}\` | ${cell(truncate(r.derivation_gap_reason ?? "", 300))} |`);
       }
       out.push("");
     }

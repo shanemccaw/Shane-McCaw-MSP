@@ -13,12 +13,16 @@ out of scope — see the issue.
 ```bash
 node scripts/config-state/fetch-sources.mjs          # cache the 3 published sources
 node scripts/config-state/build-resource-model.mjs   # build + reconcile + map checks
+node scripts/config-state/derive-ps-shapes-from-dsc.mjs # #1853 — derive shapes for shapeless PS survey cmdlets
 node scripts/config-state/verify-sample.mjs          # live READ-ONLY sample (testbed only)
 node scripts/config-state/build-snapshot-registry.mjs # #1795 — populate the snapshot registry
 ```
 
-Steps 1–2 need no tenant credentials. Step 3 uses `MT_APP_CLIENT_ID` /
-`MT_APP_CLIENT_SECRET` and refuses to run against a tenant not flagged `is_testbed`. Step 3
+Steps 1–2 need no tenant credentials. Step 3 (`derive-ps-shapes-from-dsc.mjs`) reads only
+what's already in the local database — `config_resources`/`config_resource_properties` from
+step 2 and `ps_capability_survey_results` from #1793's survey — and needs no tenant
+credentials either. Step 4 uses `MT_APP_CLIENT_ID` /
+`MT_APP_CLIENT_SECRET` and refuses to run against a tenant not flagged `is_testbed`. Step 4
 also calls `detect-property-divergence.mjs` (Git #1846) itself, so the
 `$metadata`-vs-observed divergence table stays current on every sample; re-run
 `node scripts/config-state/render-property-divergence-doc.mjs` afterwards to regenerate the
@@ -50,6 +54,8 @@ rebuilt model.
 | `detect-property-divergence.mjs` | Git #1846 — recomputes `config_resource_property_divergence` from whatever is currently in `config_resource_samples`: properties Graph returned live with no matching `graph-metadata` property row, classified `version_gap` (declared in the other Graph version) vs `undeclared_anywhere` (declared in neither). Keyed on the stable `resource_key`, not the volatile `config_resources.id`, so a model rebuild can't cascade-delete it (see #1895) |
 | `render-property-divergence-doc.mjs` | Git #1846 — regenerates the generated section of `docs/graph-resource-model.md` from `config_resource_property_divergence` |
 | `build-snapshot-registry.mjs` | Git #1795 — populates `config_snapshot_resource_types`, the snapshot store's registry of what the collector may collect. Derives the **identity strategy** no published source states (Graph CSDL `<Key>` resolved through `BaseType` inheritance; DSC `Identity`/MOF Key parameters), marks a type non-collectable when identity is `unresolved` or its transport has no executor, and labels shape provenance `observed_live` vs `derived_from_dsc` per #1853. UPSERT only, never DELETE |
+| `reconcile-ps-survey.mjs` | Git #1865 — reconciles powershell-transport `config_resources.availability` against #1793's real survey results (an `ok` cmdlet upgrades a derived verdict to live-confirmed; a negative status downgrades it). Availability only — not shape |
+| `derive-ps-shapes-from-dsc.mjs` | Git #1853 — for the `ok` survey cmdlets whose `property_names` is null (the tenant has zero instances of that resource), matches the cmdlet against `config_resources.read_cmdlets` (powershell transport) and copies the matched resource's non-connection `config_resource_properties` names onto new `ps_capability_survey_results` columns (`derived_property_names`, `derived_from_m365dsc_resources`, `shape_derivation`), labelled `derived_from_dsc` and never written into `property_names`. Unmatched cmdlets get `derivation_gap_reason` instead of being left silently unlabeled. Safely re-runnable; run after `build-resource-model.mjs` so it sees the current DSC-derived model |
 | `db.mjs` | Direct local Postgres connection via `DATABASE_URL`, plus chunked multi-row insert |
 
 ## Things worth knowing before changing any of this
