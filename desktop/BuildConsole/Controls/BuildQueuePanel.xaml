@@ -411,11 +411,15 @@
                             </ComboBox>
 
                             <!-- Git #950 - Shane: "Add a search box so I can search direct
-                                 Git numbers." Live substring filter on GithubNumber (see
-                                 QueueSearchBox_TextChanged); layers on top of the filter chip
-                                 above, clears to the full sorted list when emptied. The grey
-                                 placeholder is the standard WPF overlay-TextBlock trick (no
-                                 native placeholder), shown only while the box is empty. -->
+                                 Git numbers." Substring filter on GithubNumber; layers on top
+                                 of the filter chip above, clears to the full sorted list when
+                                 emptied. The grey placeholder is the standard WPF
+                                 overlay-TextBlock trick (no native placeholder), shown only
+                                 while the box is empty.
+                                 Git #2028 — genuine submit-on-Enter only: TextChanged just
+                                 tracks the raw text for the placeholder trigger below; the
+                                 actual search (QueueSearchBox_KeyDown) fires exactly once,
+                                 only on Enter — never mid-type, not even debounced. -->
                             <Grid Margin="0,0,0,8">
                                 <TextBox x:Name="QueueSearchBox"
                                          Style="{StaticResource SearchTextBox}"
@@ -424,7 +428,8 @@
                                          FontSize="12"
                                          VerticalContentAlignment="Center"
                                          Background="{StaticResource Surface0Brush}"
-                                         TextChanged="QueueSearchBox_TextChanged"/>
+                                         TextChanged="QueueSearchBox_TextChanged"
+                                         KeyDown="QueueSearchBox_KeyDown"/>
                                 <TextBlock IsHitTestVisible="False"
                                            Text="Search # (e.g. 94)"
                                            FontSize="12"

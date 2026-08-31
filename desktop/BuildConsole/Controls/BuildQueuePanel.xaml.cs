@@ -1337,7 +1337,8 @@ namespace BuildConsole.Controls
 
             if (QueueSearchBox != null && !string.IsNullOrEmpty(QueueSearchBox.Text))
                 QueueSearchBox.Text = "";
-            else if (QueueGraphContainer != null && _filter != "Tests")
+
+            if (QueueGraphContainer != null && _filter != "Tests")
                 RenderQueue(ApplyFilter(_lastItems));
 
             var node = _currentGraphNodes.FirstOrDefault(n => n.Item?.Id == id);
@@ -1360,29 +1361,22 @@ namespace BuildConsole.Controls
 
         private string _queueSearch = "";
 
-        // Git #1833 — Shane: with hundreds of builds, "All" + search fired the full
-        // ApplyFilter+RenderQueue pipeline (swimlane/DAG lane assignment, full WPF cards)
-        // on every single keystroke. Debounce so only the settled query actually renders.
-        private DispatcherTimer? _queueSearchDebounceTimer;
-        private static readonly TimeSpan QueueSearchDebounceInterval = TimeSpan.FromMilliseconds(250);
-
+        // Git #2028 — Shane: even the #1833 debounce still fires mid-type (just delayed
+        // until a settled pause). Real requirement is genuine submit-on-Enter — typing
+        // "1234" does nothing until Enter is pressed, then it searches exactly once.
+        // TextChanged only tracks the raw text (for the placeholder DataTrigger binding);
+        // it never itself triggers ApplyFilter/RenderQueue.
         private void QueueSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
             _queueSearch = QueueSearchBox.Text ?? "";
-            if (QueueGraphContainer == null || _filter == "Tests") return;
+        }
 
-            if (_queueSearchDebounceTimer == null)
-            {
-                _queueSearchDebounceTimer = new DispatcherTimer { Interval = QueueSearchDebounceInterval };
-                _queueSearchDebounceTimer.Tick += (_, _) =>
-                {
-                    _queueSearchDebounceTimer!.Stop();
-                    RenderQueue(ApplyFilter(_lastItems));
-                };
-            }
-            // Reset on every keystroke — only a settled pause actually triggers a render.
-            _queueSearchDebounceTimer.Stop();
-            _queueSearchDebounceTimer.Start();
+        private void QueueSearchBox_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter) return;
+            if (QueueGraphContainer == null || _filter == "Tests") return;
+            RenderQueue(ApplyFilter(_lastItems));
+            e.Handled = true;
         }
 
         private static List<QueueItem> SortForDisplay(IEnumerable<QueueItem> items) =>
