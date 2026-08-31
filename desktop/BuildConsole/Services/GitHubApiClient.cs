@@ -357,6 +357,28 @@ namespace BuildConsole.Services
         }
 
         /// <summary>
+        /// Git #2081 — the REVERSE direction of <see cref="GetBlockedByAsync"/>: every issue
+        /// that declares THIS issue as its own `blocked_by` dependency, i.e. what this issue
+        /// blocks. GitHub's real issue-dependencies API mirrors `blocked_by` with a genuine
+        /// `blocking` endpoint (confirmed live: a closed-issue's `issue_dependencies_summary`
+        /// reports a non-zero `blocking` count that matches this call's result count) — a
+        /// single REST call per issue, not a scan over every open issue's own `blocked_by`.
+        /// </summary>
+        public async Task<List<GitHubIssueResult>> GetBlockingAsync(int number)
+        {
+            try
+            {
+                var blocking = await GetConditionalAsync<List<GitHubIssueResult>>(
+                    $"repos/{Owner}/{Repo}/issues/{number}/dependencies/blocking");
+                return blocking ?? new List<GitHubIssueResult>();
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+            {
+                return new List<GitHubIssueResult>();
+            }
+        }
+
+        /// <summary>
         /// Git #845 (Git Board Phase 7) — sets a real GitHub issue-dependency
         /// link via the same `POST /issues/{n}/dependencies/blocked_by`
         /// endpoint CLAUDE.md's blocked-label workflow already uses. The API
