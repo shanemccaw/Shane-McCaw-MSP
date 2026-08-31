@@ -347,18 +347,74 @@ const isScalarArray = (v: unknown): v is unknown[] =>
   Array.isArray(v) && v.every(isScalar);
 
 /**
- * The key an array-of-objects member is paired on, if the whole array can be keyed.
- * Returns null unless EVERY member carries the same key property with a distinct value —
- * a partially-keyed array cannot be paired by key without guessing, and guessing is what
- * produces false churn.
+ * How strongly a property NAME reads as an identifier. `NOT_A_KEY_NAME` means the name
+ * carries no identifier signal at all, which disqualifies the property outright — see
+ * `arrayMemberKey` for why one signal is not enough.
  */
-function arrayMemberKey(arr: unknown[]): string | null {
-  for (const prop of ["id", "Id", "ID", "identity", "Identity", "key", "Key", "name", "Name"]) {
-    if (!arr.every((m) => isPlainObject(m) && isScalar(m[prop]) && m[prop] !== null)) continue;
-    const seen = new Set(arr.map((m) => String((m as Record<string, unknown>)[prop])));
-    if (seen.size === arr.length) return prop;
-  }
-  return null;
+const NOT_A_KEY_NAME = 99;
+function keyNameRank(name: string): number {
+  const lower = name.toLowerCase();
+  if (lower === "id") return 0;
+  if (lower === "identity") return 1;
+  if (lower.endsWith("id")) return 2;      // keyId, objectId, appId, …
+  if (lower === "key" || lower === "name") return 3;
+  if (lower.endsWith("key") || lower.endsWith("name")) return 4;
+  return NOT_A_KEY_NAME;
+}
+
+/**
+ * The property an array-of-objects is paired on, or null if it cannot be keyed.
+ *
+ * TWO INDEPENDENT SIGNALS MUST AGREE, and neither alone is sufficient:
+ *
+ *   the DATA   the property is present on every member of BOTH sides, scalar and non-null
+ *              throughout, and unique within each side. Requiring both sides is the
+ *              point — a property unique in one and repeated in the other pairs members
+ *              ambiguously, and a partially-keyed array cannot be keyed without guessing.
+ *
+ *   the NAME   the property reads as an identifier (`keyNameRank` below `NOT_A_KEY_NAME`).
+ *
+ * Requiring the data alone is too weak, and the failure is not hypothetical — it is what
+ * a test here drove out. In `[{a: 1}]` vs `[{a: 2}]`, `a` is trivially "unique" because
+ * each side has one member, so a data-only rule keys on it and reports the member
+ * REMOVED and a different one ADDED. The truth is that a single member's `a` changed
+ * from 1 to 2. Vacuous uniqueness is not evidence of identity.
+ *
+ * Requiring the name alone is what the live run disproved. A fixed candidate list
+ * ("id", "Identity", "key", "name") missed `passwordCredentials[].keyId` on
+ * `/applications`, so two credentials that had merely SWAPPED POSITIONS between snapshot
+ * 8 and snapshot 10 were reported as eight property changes across both — displayName,
+ * hint, keyId, startDateTime and endDateTime each "changing" into the other credential's
+ * value. Every one of those was false. Ranking names by SHAPE rather than listing them
+ * finds `keyId` without anyone having anticipated it, and does the same for the next
+ * shape nobody anticipates.
+ *
+ * Ties break by rank then alphabetically, so the choice is deterministic — rule 3 would
+ * be violated by a key that varied between runs.
+ */
+function arrayMemberKey(a: unknown[], b: unknown[]): string | null {
+  if (a.length === 0 || b.length === 0) return null;
+  if (!a.every(isPlainObject) || !b.every(isPlainObject)) return null;
+
+  const usableIn = (arr: Record<string, unknown>[], prop: string): boolean => {
+    const values = new Set<string>();
+    for (const m of arr) {
+      const v = m[prop];
+      if (v === null || v === undefined || !isScalar(v)) return false;
+      values.add(String(v));
+    }
+    return values.size === arr.length;
+  };
+
+  const objectsA = a as Record<string, unknown>[];
+  const objectsB = b as Record<string, unknown>[];
+  const candidates = Object.keys(objectsA[0])
+    .filter((prop) => keyNameRank(prop) !== NOT_A_KEY_NAME)
+    .filter((prop) => usableIn(objectsA, prop) && usableIn(objectsB, prop));
+
+  if (candidates.length === 0) return null;
+  candidates.sort((x, y) => (keyNameRank(x) - keyNameRank(y)) || (x < y ? -1 : x > y ? 1 : 0));
+  return candidates[0];
 }
 
 /**
@@ -433,10 +489,7 @@ export function compareValues(
 
   // Arrays of objects (or mixed): pair by key where the array supports it, else by index.
   if (Array.isArray(oldValue) && Array.isArray(newValue)) {
-    const keyProp = arrayMemberKey(oldValue) && arrayMemberKey(newValue)
-      && arrayMemberKey(oldValue) === arrayMemberKey(newValue)
-      ? arrayMemberKey(oldValue)
-      : null;
+    const keyProp = arrayMemberKey(oldValue, newValue);
 
     if (keyProp) {
       const index = (arr: unknown[]) =>
@@ -568,6 +621,16 @@ export interface DiffSnapshotsOptions {
    * Default true — a diff of two immutable snapshots under an unchanged ruleset cannot
    * have a different answer, so recomputing 50,000 objects would burn time to reproduce
    * a row that is already there.
+   *
+   * `false` means RECOMPUTE AND REPLACE: any stored diff for that exact key is deleted
+   * first and a fresh one written. It has to, because (base, head, mode, fingerprint) is
+   * UNIQUE — a second row for the same key is precisely what the cache exists to prevent.
+   *
+   * Replacing is sound in a way that editing a sealed diff would not be. A diff is not
+   * primary evidence: it is DERIVED from two immutable snapshots under a recorded
+   * ruleset, so discarding one and recomputing must yield the same answer — that is what
+   * determinism means, and `verify-1797-differ.ts --determinism` checks it rather than
+   * assuming it. The snapshots themselves, which ARE primary evidence, are never touched.
    */
   useCache?: boolean;
   onProgress?: (e: { resourceKey: string; done: number; total: number }) => void;
@@ -656,13 +719,27 @@ export async function diffSnapshots(opts: DiffSnapshotsOptions): Promise<DiffSna
     .where(eq(configDiffPropertyRulesTable.isActive, true));
   const rulesetFingerprint = fingerprintRuleset(rules);
 
-  if (opts.useCache !== false) {
-    const [cached] = await db.select().from(configDiffsTable).where(and(
-      eq(configDiffsTable.baseSnapshotRowId, opts.baseSnapshotRowId),
-      eq(configDiffsTable.headSnapshotRowId, opts.headSnapshotRowId),
-      eq(configDiffsTable.mode, opts.mode),
-      eq(configDiffsTable.rulesetFingerprint, rulesetFingerprint),
-    )).limit(1);
+  const sameKey = and(
+    eq(configDiffsTable.baseSnapshotRowId, opts.baseSnapshotRowId),
+    eq(configDiffsTable.headSnapshotRowId, opts.headSnapshotRowId),
+    eq(configDiffsTable.mode, opts.mode),
+    eq(configDiffsTable.rulesetFingerprint, rulesetFingerprint),
+  );
+
+  if (opts.useCache === false) {
+    // Recompute-and-replace. The key is UNIQUE, so a fresh insert cannot coexist with the
+    // stored row — see `useCache` for why discarding a derived result is sound where
+    // editing a sealed one would not be. Deleting the header cascades to its children,
+    // and the immutability trigger permits exactly that cascade.
+    const removed = await db.delete(configDiffsTable).where(sameKey).returning({ id: configDiffsTable.id });
+    if (removed.length > 0) {
+      log.info(
+        { diffRowIds: removed.map((r) => r.id), mode: opts.mode },
+        "config diff: replacing stored diff for this pair (useCache=false)",
+      );
+    }
+  } else {
+    const [cached] = await db.select().from(configDiffsTable).where(sameKey).limit(1);
     if (cached && cached.status === "sealed") {
       log.info({ diffRowId: cached.id, mode: opts.mode }, "config diff: served from cache");
       return {

@@ -250,6 +250,86 @@ describe("#1797 rule 2 — property-level, not object-level", () => {
       expect(now[0].path).toBe("p[0].a");
     });
 
+    it("derives the key from the data — the real /applications passwordCredentials case", () => {
+      // Straight from the live #1797 run against the testbed. Two app credentials merely
+      // SWAPPED POSITIONS between snapshot 8 and snapshot 10. Under a fixed candidate
+      // list ("id", "Identity", "key", "name") `keyId` was not a candidate, so the two
+      // were paired positionally and produced EIGHT false property changes — displayName,
+      // hint, keyId, startDateTime and endDateTime each "changing" into the other
+      // credential's value. Nothing had changed.
+      const credA = {
+        keyId: "c0d288e5-76c9-4b6f-9cbf-9d790f69b451", displayName: "Replit Azure",
+        hint: "KTy", startDateTime: "2026-06-20T16:22:44.849Z", endDateTime: "2027-06-20T16:22:44.849Z",
+      };
+      const credB = {
+        keyId: "eb4ae967-bacf-4255-81b6-f444ef2c3021", displayName: "Replit ShaneMcCaw.com",
+        hint: "HOz", startDateTime: "2026-06-23T00:12:35.704Z", endDateTime: "2028-06-22T00:12:35.704Z",
+      };
+
+      const positional = detectDrift(
+        { passwordCredentials: [credA, credB] },
+        { passwordCredentials: [credB, credA] },
+      );
+      expect(positional.length).toBe(10); // the false churn, measured
+
+      const now = diffObjects(
+        { passwordCredentials: [credA, credB] },
+        { passwordCredentials: [credB, credA] },
+      );
+      expect(now).toHaveLength(0); // a swap of identical members is not a change
+    });
+
+    it("a real edit inside a data-keyed member is still found, at its leaf", () => {
+      const now = diffObjects(
+        { passwordCredentials: [{ keyId: "k1", hint: "AAA" }, { keyId: "k2", hint: "BBB" }] },
+        { passwordCredentials: [{ keyId: "k2", hint: "BBB" }, { keyId: "k1", hint: "ZZZ" }] },
+      );
+      expect(now).toHaveLength(1);
+      expect(now[0]).toMatchObject({
+        kind: "property_changed", path: "passwordCredentials[keyId=k1].hint",
+        oldValue: "AAA", newValue: "ZZZ",
+      });
+    });
+
+    it("refuses to key on an id-shaped property that is not unique on BOTH sides", () => {
+      // `itemId` reads as an identifier and IS unique in base, but repeats in head.
+      // Pairing on it would be ambiguous, so the engine must fall back to position.
+      const now = diffObjects(
+        { p: [{ itemId: "x", v: 1 }, { itemId: "y", v: 2 }] },
+        { p: [{ itemId: "x", v: 1 }, { itemId: "x", v: 3 }] },
+      );
+      expect(now.length).toBeGreaterThan(0);
+      expect(now.every((c) => /^p\[\d+\]/.test(c.path))).toBe(true);
+    });
+
+    it("refuses to key on a property whose NAME carries no identifier signal", () => {
+      // Both `colour` and `v` are unique on both sides, so a data-only rule would key on
+      // one of them and report a swap as two removals plus two additions. The name is the
+      // second signal that stops it.
+      const now = diffObjects(
+        { p: [{ colour: "red", v: 1 }, { colour: "blue", v: 2 }] },
+        { p: [{ colour: "blue", v: 2 }, { colour: "red", v: 1 }] },
+      );
+      expect(now.every((c) => /^p\[\d+\]/.test(c.path))).toBe(true);
+    });
+
+    it("vacuous uniqueness in a one-member array is not treated as identity", () => {
+      // `itemId` is trivially unique when there is one member. Keying on it would report
+      // the member REMOVED and a different one ADDED; the truth is that it changed.
+      const now = diffObjects({ p: [{ itemId: "a", v: 1 }] }, { p: [{ itemId: "a", v: 2 }] });
+      expect(now).toHaveLength(1);
+      expect(now[0]).toMatchObject({ kind: "property_changed", path: "p[itemId=a].v" });
+    });
+
+    it("prefers an id-shaped key deterministically when several properties qualify", () => {
+      const now = diffObjects(
+        { p: [{ keyId: "a", label: "one", v: 1 }, { keyId: "b", label: "two", v: 2 }] },
+        { p: [{ keyId: "b", label: "two", v: 2 }, { keyId: "a", label: "one", v: 9 }] },
+      );
+      expect(now).toHaveLength(1);
+      expect(now[0].path).toBe("p[keyId=a].v");
+    });
+
     it("a keyed member appearing is reported at its own key path", () => {
       const now = diffObjects(
         { Rules: [{ id: "r1", Action: "Allow" }] },

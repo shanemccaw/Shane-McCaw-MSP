@@ -90,3 +90,6 @@ desktop/BuildConsole/shaneapp-*.result.json
 
 # Git #1812 — local-only running log from check-dev-app-registration-drift.mjs.
 scripts/azure/app-registration-drift.log
+
+# Scratch bundles produced by artifacts/api-server/run-script.mjs (Git #1797)
+artifacts/api-server/.run-script-*/
