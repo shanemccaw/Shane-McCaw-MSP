@@ -30,23 +30,30 @@ unnecessary; a plain `git add build-journal/<id>.md && git commit` is safe.
 ```markdown
 # #<id> — <short title>
 
-- **Status:** ⏳ IN FLIGHT      <!-- flip to: ✅ DONE  (or leave IN FLIGHT if abandoned) -->
+- **Status:** ⏳ IN FLIGHT 2026-08-31T23:23:47Z      <!-- flip to: ✅ DONE <timestamp>  (or leave IN FLIGHT if abandoned) -->
 - **Scope:** platform | buildconsole | both
 - **Started:** <YYYY-MM-DD>
 - **Commit(s):** <real hash(es) — fill at DONE>
 
 ## Log
-- <YYYY-MM-DD> ⏳ IN FLIGHT — <the step you're about to do>
-- <YYYY-MM-DD> ✅ DONE — <what actually shipped, verification result, honest gaps>
+- <UTC ISO8601> ⏳ IN FLIGHT — <the step you're about to do>
+- <UTC ISO8601> ✅ DONE — <what actually shipped, verification result, honest gaps>
 ```
+
+**Every status line — the top `Status:` field and every `## Log` entry — carries a
+UTC ISO 8601 timestamp alongside the status (Git #2131), not just once at file
+creation.** A bookend can be edited more than once in one session (IN FLIGHT →
+BLOCKED → IN FLIGHT → DONE), and each transition needs its own timestamp so a fresh
+session or Shane can tell current state from a stale leftover at a glance.
 
 ## The two bookend moments (unchanged intent, new mechanism)
 
 1. **First thing the session does, before any other work:** create
-   `build-journal/<id>.md` with `Status: ⏳ IN FLIGHT` and the opening `Log` line.
-   Commit it immediately as its own small standalone commit.
-2. **After all real work is tested & typechecked:** flip `Status:` to `✅ DONE`,
-   fill in the real commit hash(es), append a `✅ DONE` log line. Commit.
+   `build-journal/<id>.md` with `Status: ⏳ IN FLIGHT <timestamp>` and the opening
+   `Log` line. Commit it immediately as its own small standalone commit.
+2. **After all real work is tested & typechecked:** flip `Status:` to
+   `✅ DONE <timestamp>`, fill in the real commit hash(es), append a timestamped
+   `✅ DONE` log line. Commit.
 
 If a session is abandoned/crashes, its file is left at `⏳ IN FLIGHT` — that's the
 record. Do not clean up or delete other sessions' stale IN FLIGHT files.

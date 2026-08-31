@@ -94,12 +94,21 @@ for the full format; a session touching several issues writes one file per issue
 ### Step 1 — first thing the session does, before any other work
 
 Create `build-journal/<id>.md` for the work you're about to do, with `Status: ⏳ IN
-FLIGHT` and an opening `Log` line (use the template in `build-journal/README.md`):
+FLIGHT` and an opening `Log` line (use the template in `build-journal/README.md`).
+**Every status line carries a UTC ISO 8601 timestamp alongside the status (Git
+#2131)** — not just once at file creation, but on every status transition, since a
+bookend can be edited more than once in one session:
 
 ```
-- **Status:** ⏳ IN FLIGHT
+- **Status:** ⏳ IN FLIGHT 2026-08-31T23:23:47Z
 - **Scope:** platform | buildconsole | both
 ```
+
+The same applies to `desktop/BuildConsole/BUILD_LOG.md` for BuildConsole's own work,
+and to a `🛑 BLOCKED` status line, if one is ever written. This exists so a fresh
+session (or Shane) can tell at a glance whether a status is current or a stale
+leftover re-read as current state — the same real confusion #2131 traces to #1511
+and #1522.
 
 Commit that single new file immediately, as its own small standalone commit — not
 bundled with the real work that follows. A plain `git add build-journal/<id>.md &&
@@ -131,12 +140,13 @@ touch were already dirty when you arrived, name them in the completion comment a
 Once verified, flip that file's status to:
 
 ```
-- **Status:** ✅ DONE
+- **Status:** ✅ DONE 2026-08-31T23:58:00Z
 ```
 
 fill in the real commit hash(es) of the work, and append a `✅ DONE — …` log line
-recording what shipped and the honest verification result. Commit that update —
-either as part of the final commit or immediately after it.
+(itself timestamped, same as every other status line) recording what shipped and
+the honest verification result. Commit that update — either as part of the final
+commit or immediately after it.
 
 If the work is abandoned, fails, or the session ends before this step, the file is
 left at `⏳ IN FLIGHT` — that is the record. Do not go back and clean up or delete
@@ -421,6 +431,28 @@ none are parsed (the line is treated as prompt text). Recognized flags:
 | `--blocked-by <n,n,...>` / `--block-by <n,...>` | GitHub / local blockers that must clear before this build runs. |
 | `--buildSet <name>` | **Build Set** — group this build with every other build sharing the same `<name>` so the local dev server restarts ONCE, after the whole set finishes, instead of once per build. |
 | `--account <primary\|secondary>` | **Multi-account routing (Git #1416)** — which Claude account this build launches against. `secondary` runs Claude Code with `CLAUDE_CONFIG_DIR` pointed at the configured secondary config dir (Shane's overflow Pro account, set in BuildConsole Settings → General); omitted/`primary` uses the default account. Sequential overflow only — never concurrent, no automatic failover. Also selectable per-build via the Edit Build Prompt dialog's Account dropdown. |
+
+### The `BUILD:` comment itself carries a `Posted:` timestamp (Git #2131)
+
+The `--flag value` line above is the *last* line before the real prompt body. Above that sits the
+`BUILD:` header line the comment opens with, and — as of #2131 — a mandatory second line right
+under it:
+
+```
+BUILD: model=claude-sonnet-5 effort=medium buildSet=BuildConsole
+Posted: 2026-08-31T23:23:47Z
+
+--model claude-sonnet-5 --effort medium --title 2131 --buildSet BuildConsole
+
+<the real, self-contained build prompt>
+```
+
+`Posted:` is UTC ISO 8601 (`<YYYY-MM-DDTHH:MM:SSZ>`), stamped at the moment the comment is
+written. This exists so a fresh session — or Shane — can tell at a glance whether a `BUILD:`
+comment is current or a stale leftover being re-pasted from an earlier run; old report text
+getting re-read as current state caused real confusion on #1511 and #1522. A comment written
+before this rule has no `Posted:` line — that's a legacy comment, not a parse failure; nothing
+backfills it.
 
 ### `--buildSet` — when and why to use it
 

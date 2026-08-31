@@ -6035,7 +6035,7 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            var (model, effort, buildSet, prompt) = parsed.Value;
+            var (model, effort, buildSet, _, prompt) = parsed.Value;
             var existing = await _db.FindDedupCandidateAsync(issue.IssueNumber, prompt);
             if (existing != null)
             {

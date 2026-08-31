@@ -219,7 +219,7 @@ namespace BuildConsole.Controls
                     return;
                 }
 
-                var (model, effort, buildSet, prompt) = parsed.Value;
+                var (model, effort, buildSet, _, prompt) = parsed.Value;
 
                 var blockers = await gh.GetBlockedByAsync(issueNumber);
                 var blockedByNumbers = blockers.Select(b => b.Number).ToList();
@@ -353,7 +353,7 @@ namespace BuildConsole.Controls
                     return;
                 }
 
-                var (model, effort, buildSet, prompt) = parsed.Value;
+                var (model, effort, buildSet, _, prompt) = parsed.Value;
 
                 var blockers = await gh.GetBlockedByAsync(issueNumber);
                 var blockedByNumbers = blockers.Select(b => b.Number).ToList();

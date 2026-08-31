@@ -16,9 +16,10 @@ namespace BuildConsole.Services
             return $"This is ready to build. Please write and post a `BUILD:` comment on GitHub " +
                    $"issue #{issueNumber} (\"{issueTitle}\") so it can be dispatched — follow this " +
                    $"repo's build-prompt header convention from CLAUDE.md (a `BUILD: model=... " +
-                   $"effort=...` line, then the `--model ... --effort ... --title {issueNumber}` " +
-                   $"flags line, then the real build prompt body), post it with `gh issue comment " +
-                   $"{issueNumber} --body \"...\"`, then confirm here once it's posted.";
+                   $"effort=...` line, then a `Posted: <UTC ISO8601>` line, then the `--model ... " +
+                   $"--effort ... --title {issueNumber}` flags line, then the real build prompt " +
+                   $"body), post it with `gh issue comment {issueNumber} --body \"...\"`, then " +
+                   $"confirm here once it's posted.";
         }
 
         /// <summary>

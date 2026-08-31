@@ -22,7 +22,7 @@ Channel: <existing taxonomy channel, or note "N/A — no runtime code">
 
 ## Implementation Prompt Requirements
 - [ ] Name this task: "IN FLIGHT: <descriptive name>"
-- [ ] PLATFORM_BUILD.md updated: ⏳ IN FLIGHT at start, ✅ DONE with commit hash at end
+- [ ] `build-journal/<id>.md` updated: `⏳ IN FLIGHT <UTC ISO8601>` at start, `✅ DONE <UTC ISO8601>` with commit hash at end (every status line carries its own timestamp — Git #2131)
 - [ ] Commit directly to main, own changes only
 - [ ] Plan file phase table status updated
 - [ ] Issue created with `gh issue create --assignee shanemccaw`

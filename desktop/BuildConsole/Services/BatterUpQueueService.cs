@@ -18,6 +18,10 @@ namespace BuildConsole.Services
         public string? Model { get; init; }
         public string? Effort { get; init; }
         public string? BuildSet { get; init; }
+        /// <summary>Git #2131 — the `Posted: &lt;UTC ISO8601&gt;` line's parsed value, when the `BUILD:`
+        /// comment carries one. Null for a legacy comment written before #2131 with no `Posted:`
+        /// line — never backfilled, so its absence stays visible rather than being papered over.</summary>
+        public DateTime? Posted { get; init; }
         /// <summary>Git #1870 — the resolved `BUILD:` comment prompt body, carried on the row so the
         /// manual per-row queue action (BatterUpPanel) can queue it without re-reading GitHub. Null
         /// when this item has no `BUILD:` comment yet (<see cref="HasBuildComment"/> is false).</summary>
@@ -66,12 +70,16 @@ namespace BuildConsole.Services
         /// Parses a `BUILD:` comment body:
         /// <code>
         /// BUILD: model=claude-sonnet-5 effort=high buildSet=Portal
+        /// Posted: 2026-08-31T23:23:47Z
         /// &lt;the rest of the comment is the self-contained prompt&gt;
         /// </code>
+        /// The `Posted:` line (Git #2131) is optional — a legacy comment written before it was
+        /// required has none, and that's not a parse failure, just a null <c>Posted</c>. When
+        /// present it is consumed here so it never leaks into the returned <c>Prompt</c> text.
         /// Returns null if <paramref name="commentBody"/> doesn't start with a `BUILD:`
         /// header line, or the header line has no prompt text following it.
         /// </summary>
-        public static (string? Model, string? Effort, string? BuildSet, string Prompt)? ParseBuildComment(string commentBody)
+        public static (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? ParseBuildComment(string commentBody)
         {
             if (string.IsNullOrWhiteSpace(commentBody)) return null;
 
@@ -95,17 +103,35 @@ namespace BuildConsole.Services
                 else if (string.Equals(key, "buildSet", StringComparison.OrdinalIgnoreCase)) buildSet = val;
             }
 
-            var prompt = string.Join("\n", lines.Skip(headerIdx + 1)).Trim();
+            int promptStartIdx = headerIdx + 1;
+            DateTime? posted = null;
+            if (promptStartIdx < lines.Length)
+            {
+                var nextLine = lines[promptStartIdx].TrimStart();
+                if (nextLine.StartsWith("Posted:", StringComparison.OrdinalIgnoreCase))
+                {
+                    var postedRaw = nextLine.Substring("Posted:".Length).Trim();
+                    if (DateTime.TryParse(postedRaw, null,
+                        System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                        out var parsedPosted))
+                    {
+                        posted = parsedPosted;
+                    }
+                    promptStartIdx++;
+                }
+            }
+
+            var prompt = string.Join("\n", lines.Skip(promptStartIdx)).Trim();
             if (prompt.Length == 0) return null;
 
-            return (model, effort, buildSet, prompt);
+            return (model, effort, buildSet, posted, prompt);
         }
 
         /// <summary>
         /// Real GitHub issue comments, most-recent-first, so an updated `BUILD:` comment
         /// (Shane editing launch params after the fact) wins over an older one.
         /// </summary>
-        public static async Task<(string? RawComment, (string? Model, string? Effort, string? BuildSet, string Prompt)? Parsed)>
+        public static async Task<(string? RawComment, (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? Parsed)>
             FindBuildCommentAsync(GitHubApiClient gh, int issueNumber)
         {
             var comments = await gh.GetIssueCommentsAsync(issueNumber);
@@ -162,7 +188,7 @@ namespace BuildConsole.Services
                     continue;
                 }
 
-                var (model, effort, buildSet, prompt) = parsed!.Value;
+                var (model, effort, buildSet, posted, prompt) = parsed!.Value;
 
                 string? trackedTerminalStatus = null;
                 int? trackedTerminalRowId = null;
@@ -203,6 +229,7 @@ namespace BuildConsole.Services
                     Model = model,
                     Effort = effort,
                     BuildSet = buildSet,
+                    Posted = posted,
                     Prompt = prompt,
                     HasBuildComment = true,
                     BlockedByNumbers = blockedByNumbers,
