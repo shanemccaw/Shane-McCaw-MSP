@@ -1,7 +1,7 @@
 {
   "feature": "Customer Portal v2 -- the OWNERSHIP matrix (/portal-v2/ownership), now reading REAL TENANT DATA from GET /api/portal/ownership instead of the ownershipData.ts design fixture. Four names (Responsible / Accountable / Consulted / Informed) against the customer's own objects: their purchased services, their Microsoft changes with an action still due, their change requests, and their open hold windows -- plus the people list, which is their own active users. This manifest proves the DOM shows what the ENDPOINT returned, not what a fixture contains: every row id, person id and person name it asserts against is EXTRACTED FROM THE API RESPONSE at run time and interpolated into the selector, so the test cannot pass against a stale fixture and does not have to be re-pinned when the tenant's data changes. It ALSO proves the matrix's WRITE actions now persist: a cell assigned through the real POST route is read back off the matrix after a full page reload (API7-API9 + OWN49-OWN50).",
   "baseUrl": "{{DEPLOY_URL}}",
-  "lastVerifiedAgainstCommit": "f78c0b611",
+  "lastVerifiedAgainstCommit": "03589ebd6",
   "notes": [
     "THE LOGIN BLOCK IS NOT OPTIONAL. /portal-v2/* sits behind ProtectedRoute; a probe that skips the five login steps hits the login screen and every assertion fails for a reason unrelated to the page.",
     "UI ROUTE SHAPE: msp-portal's outer WouterRouter has base '/portal' and SlugScope nests a second router at '/{slug}', so the real URL is /portal/{slug}/portal-v2/ownership. App.tsx declares '/portal-v2/ownership/:type' and '/portal-v2/ownership' BEFORE '/portal-v2/:pillar' so the param route cannot swallow them.",
