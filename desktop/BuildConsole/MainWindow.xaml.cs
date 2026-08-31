@@ -7115,54 +7115,60 @@ namespace BuildConsole
 
                     if (senderWv == null) return;
 
-                    // Resolve from cache first, live-fetch as fallback
-                    string tipTitle  = "Unknown";
-                    string tipStatus = "OPEN";
-                    bool   tipEpic   = false;
-
-                    var cached = LeftSidebar.BuildDetailIssue(n);
-                    if (cached != null)
-                    {
-                        tipTitle  = cached.RawTitle;
-                        tipStatus = cached.Status;
-                        tipEpic   = cached.IsEpic;
-                    }
-                    else
-                    {
-                        var settings = BuildConsole.Services.BuildConsoleSettings.Load();
-                        if (settings.HasGitHubPat)
-                        {
-                            try
-                            {
-                                var ghClient = new BuildConsole.Services.GitHubApiClient(settings.GitHubPat);
-                                var detail   = await ghClient.GetIssueAsync(n);
-                                if (detail != null)
-                                {
-                                    tipTitle  = detail.Title;
-                                    tipStatus = string.Equals(detail.State, "closed",
-                                        StringComparison.OrdinalIgnoreCase) ? "CLOSED" : "OPEN";
-                                }
-                            }
-                            catch { /* best-effort; keep defaults */ }
-                        }
-                    }
-
-                    // Push back to the WebView — JS will update the already-visible "Loading…" tip
+                    // Git #2080 — resolution (cache/live-fetch) + the state-aware action payload
+                    // (Dispatch/Cancel/Retry/Open/Reply, same classification #2061 built for the
+                    // Git Board popover) now share one implementation with FloatingChatWindow.
                     try
                     {
-                        string js = $"window.__btShowIssueTip && window.__btShowIssueTip(" +
-                                    $"{n}," +
-                                    $"{JsLiteral(tipTitle)}," +
-                                    $"{JsLiteral(tipStatus)}," +
-                                    $"{(tipEpic ? "true" : "false")});";
+                        string js = await BuildConsole.Services.ChatMentionPopupHelper.BuildShowTipScriptAsync(n, LeftSidebar);
                         await senderWv.ExecuteScriptAsync(js);
-                        ActivityLog.Log("chat.issue-mention", $"BT_HOVER_ISSUE #{n}: '{tipTitle}' ({tipStatus}{(tipEpic ? ", epic" : "")})");
+                        ActivityLog.Log("chat.issue-mention", $"BT_HOVER_ISSUE #{n}");
                     }
                     catch { }
                 }
                 else if (type == "BT_UNHOVER_ISSUE")
                 {
                     // Tooltip hide is handled entirely in JS; nothing to do on the C# side.
+                }
+                // ── Git #2080: chat-mention popup's state-aware action buttons ────────────
+                else if (type == "BT_ISSUE_ACTION")
+                {
+                    int? issueNum = Int("number");
+                    int? buildId  = Int("buildId");
+                    string? action = Str("action");
+                    if (!issueNum.HasValue || issueNum.Value <= 0 || string.IsNullOrWhiteSpace(action)) return;
+                    int n = issueNum.Value;
+
+                    ActivityLog.Log("chat.issue-mention",
+                        $"BT_ISSUE_ACTION #{n}: {action}{(buildId.HasValue ? $" (build {buildId})" : "")}");
+
+                    if (action == "dispatchask")
+                    {
+                        var issue = LeftSidebar.BuildDetailIssue(n)
+                            ?? new BuildConsole.Controls.GitIssue { IssueNumber = n, Title = $"#{n}", RawTitle = $"#{n}" };
+                        await LeftSidebar.DispatchOrAskActiveChatAsync(issue);
+                        return;
+                    }
+
+                    var build = buildId.HasValue
+                        ? BuildQueuePanel.CurrentQueueItems.FirstOrDefault(i => i.Id == buildId.Value)
+                        : LeftSidebar.FindAssociatedBuild(n);
+                    if (build == null) return;
+
+                    switch (action)
+                    {
+                        case "dispatch": await BuildQueuePanel.QuickDispatchAsync(build); break;
+                        case "cancel": await BuildQueuePanel.QuickCancelOrStopAsync(build); break;
+                        case "retry": await BuildQueuePanel.QuickRetryAsync(build); break;
+                        case "openbuild":
+                        case "openchat": BuildQueuePanel.QuickOpenChat(build); break;
+                        case "reply":
+                        {
+                            string? message = Str("message");
+                            if (!string.IsNullOrWhiteSpace(message)) await BuildQueuePanel.QuickReplyAsync(build, message);
+                            break;
+                        }
+                    }
                 }
                 // ── Git #2066: live per-chat "every #NNN this chat has mentioned" registry ──
                 else if (type == "BT_ISSUE_MENTIONS_SCAN")

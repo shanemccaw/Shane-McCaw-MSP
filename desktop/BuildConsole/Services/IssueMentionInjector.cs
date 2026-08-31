@@ -68,6 +68,24 @@ namespace BuildConsole.Services
 
   var _tipNum = 0, _tipVisible = false;
 
+  /* Git #2080 — the tip now hosts real interactive buttons (Dispatch/Cancel/Retry/Open/Reply),
+     not just a close button, so a bare "mouseleave the underline -> hide" would make them
+     unreachable: the mouse has to cross the gap between the underlined text and the tip below
+     it. Same debounced show/hide pattern LeftSidebar's native IssueHoverPopup already uses
+     (ScheduleIssueHoverHide/CancelIssueHoverHide) — hide is delayed and cancelled if the pointer
+     lands back on the tip itself. */
+  var _hideTimer = null;
+  function cancelHide() { if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; } }
+  function scheduleHide() {
+    cancelHide();
+    _hideTimer = setTimeout(function () {
+      tip.style.opacity = '0';
+      _tipVisible = false;
+    }, 250);
+  }
+  tip.addEventListener('mouseenter', cancelHide);
+  tip.addEventListener('mouseleave', scheduleHide);
+
   function escHtml(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
@@ -90,8 +108,58 @@ namespace BuildConsole.Services
     _tipVisible = true;
   }
 
-  /* Called by MainWindow after resolving issue data */
-  window.__btShowIssueTip = function (number, title, status, isEpic) {
+  /* Git #2080 \u2014 state-aware action buttons, posting BT_ISSUE_ACTION back to the host. Reused
+     by both the sender-tab lookup in MainWindow.ChatWv_WebMessageReceived and
+     FloatingChatWindow.OnBridgeMessage; those handlers call the exact same
+     BuildQueuePanel.Quick*Async methods #2061 built for the Git Board popover \u2014 this file only
+     renders the buttons and posts the click. */
+  function postIssueAction(action, buildId, message) {
+    try {
+      window.chrome.webview.postMessage(JSON.stringify({
+        type: 'BT_ISSUE_ACTION', number: _tipNum, action: action, buildId: buildId, message: message
+      }));
+    } catch (e) {}
+  }
+
+  var ACTION_BTN_STYLE = 'padding:4px 10px;margin:2px 6px 2px 0;border-radius:5px;border:1px solid #45475A;'
+    + 'background:#313244;color:#CDD6F4;font-size:11px;font-family:inherit;cursor:pointer';
+
+  function renderActions(actions) {
+    if (!actions) return '';
+    if (actions.blocked) {
+      var by = actions.blocked.number
+        ? ('Waiting on #' + actions.blocked.number + (actions.blocked.title ? ' \u2014 ' + escHtml(actions.blocked.title) : ''))
+        : 'Blocked';
+      return '<div style="margin-top:6px;font-size:11px;color:#F38BA8">\ud83d\udd12 ' + by + '</div>';
+    }
+    if (actions.noBuildDispatch) {
+      return '<hr style="border:none;border-top:1px solid #313244;margin:6px 0">'
+        + '<button type="button" class="bc-issue-action" data-bc-action="dispatchask" style="' + ACTION_BTN_STYLE + '">'
+        + '\u26a1 Dispatch (asks active chat if no BUILD: yet)</button>';
+    }
+    if (!actions.build) return '';
+    var b = actions.build;
+    var html = '<hr style="border:none;border-top:1px solid #313244;margin:6px 0">'
+      + '<div style="font-size:11px;color:#BAC2DE;margin-bottom:4px">' + escHtml(b.statusText) + '</div>';
+    if (typeof b.progressPercent === 'number') {
+      html += '<div style="background:#313244;border-radius:4px;height:6px;overflow:hidden;margin-bottom:4px">'
+        + '<div style="background:#89B4FA;height:100%;width:' + b.progressPercent + '%"></div></div>';
+      if (b.progressLabel) html += '<div style="font-size:10px;color:#585B70;margin-bottom:6px">' + escHtml(b.progressLabel) + '</div>';
+      if (b.stale && b.staleText) html += '<div style="font-size:10px;color:#FAB387;margin-bottom:6px">\u26a0 ' + escHtml(b.staleText) + '</div>';
+    }
+    html += '<button type="button" class="bc-issue-action" data-bc-action="' + b.actionKind + '" data-bc-build="' + b.id + '" style="' + ACTION_BTN_STYLE + '">'
+      + escHtml(b.actionLabel) + '</button>';
+    if (b.allowReply) {
+      html += '<div style="margin-top:6px;display:flex;gap:4px">'
+        + '<input type="text" class="bc-issue-reply-input" placeholder="Reply and resume\u2026" '
+        + 'style="flex:1;min-width:0;padding:4px 6px;border-radius:4px;border:1px solid #45475A;background:#181825;color:#CDD6F4;font-size:11px;font-family:inherit">'
+        + '<button type="button" class="bc-issue-reply-send" data-bc-build="' + b.id + '" style="' + ACTION_BTN_STYLE + ';margin:0">\ud83d\udcac Send</button></div>';
+    }
+    return html;
+  }
+
+  /* Called by MainWindow/FloatingChatWindow after resolving issue + action data */
+  window.__btShowIssueTip = function (number, title, status, isEpic, actions) {
     if (_tipNum !== number || !_tipVisible) return;
     var anchor = document.querySelector('.bc-issue-mention[data-bc-num="' + number + '"]:hover');
     if (!anchor) return;
@@ -100,7 +168,36 @@ namespace BuildConsole.Services
       ? '<span style="color:#F38BA8;font-size:11px;font-weight:600">\u25cf CLOSED</span>'
       : '<span style="color:#A6E3A1;font-size:11px;font-weight:600">\u25cf OPEN</span>';
     tipBody.innerHTML = icon + ' <strong style="color:#89B4FA">#' + number + '</strong> '
-      + badge + '<br><span style="color:#BAC2DE">' + escHtml(title) + '</span>';
+      + badge + '<br><span style="color:#BAC2DE">' + escHtml(title) + '</span>'
+      + renderActions(actions);
+
+    var actionBtn = tipBody.querySelector('.bc-issue-action');
+    if (actionBtn) {
+      actionBtn.addEventListener('click', function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        var buildIdAttr = actionBtn.getAttribute('data-bc-build');
+        postIssueAction(actionBtn.getAttribute('data-bc-action'), buildIdAttr ? parseInt(buildIdAttr, 10) : null, null);
+        cancelHide();
+        tip.style.opacity = '0';
+        _tipVisible = false;
+      });
+    }
+    var replyBtn = tipBody.querySelector('.bc-issue-reply-send');
+    var replyInput = tipBody.querySelector('.bc-issue-reply-input');
+    if (replyBtn && replyInput) {
+      replyInput.addEventListener('mousedown', function (ev) { ev.stopPropagation(); });
+      replyInput.addEventListener('keydown', function (ev) { ev.stopPropagation(); });
+      replyBtn.addEventListener('click', function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        var message = (replyInput.value || '').trim();
+        if (!message) return;
+        postIssueAction('reply', parseInt(replyBtn.getAttribute('data-bc-build'), 10), message);
+        cancelHide();
+        tip.style.opacity = '0';
+        _tipVisible = false;
+      });
+    }
+
     positionTip(anchor);
     requestAnimationFrame(function () { tip.style.opacity = '1'; });
   };
@@ -120,6 +217,7 @@ namespace BuildConsole.Services
       + 'transition:background .12s,border-color .12s';
 
     span.addEventListener('mouseenter', function () {
+      cancelHide();
       span.style.background  = 'rgba(137,180,250,.13)';
       span.style.borderColor = '#CBA6F7';
       _tipNum     = num;
@@ -134,13 +232,13 @@ namespace BuildConsole.Services
     span.addEventListener('mouseleave', function () {
       span.style.background  = '';
       span.style.borderColor = '#89B4FA';
-      tip.style.opacity = '0';
-      _tipVisible = false;
+      scheduleHide();
     });
 
     span.addEventListener('click', function (ev) {
       ev.preventDefault();
       ev.stopPropagation();
+      cancelHide();
       tip.style.opacity = '0';
       _tipVisible = false;
       try { window.chrome.webview.postMessage(JSON.stringify({ type: 'BT_OPEN_ISSUE', number: num })); } catch(e) {}

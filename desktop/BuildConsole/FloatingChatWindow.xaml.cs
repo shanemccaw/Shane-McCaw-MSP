@@ -311,6 +311,14 @@ namespace BuildConsole
                         _ = _owner?.OpenGitDetailByNumberAsync(n);
                     }
                 }
+                // Git #2080 — the same state-aware action buttons #2061 added to the Git Board
+                // popover, now on this window's chat-mention popup too. HandleIssueActionAsync
+                // mirrors MainWindow.ChatWv_WebMessageReceived's BT_ISSUE_ACTION handling exactly
+                // (same LeftSidebar/BuildQueuePanel calls via _owner) — one execution path, two hosts.
+                else if (type == "BT_ISSUE_ACTION")
+                {
+                    _ = HandleIssueActionAsync(root);
+                }
             }
             catch { /* a malformed frame is not fatal — the next poll re-posts */ }
         }
@@ -319,47 +327,57 @@ namespace BuildConsole
         {
             if (tab.Wv?.CoreWebView2 == null) return;
 
-            string tipTitle = "Unknown";
-            string tipStatus = "OPEN";
-            bool tipEpic = false;
-
-            var cached = _owner?.LeftSidebar?.BuildDetailIssue(n);
-            if (cached != null)
-            {
-                tipTitle = cached.RawTitle;
-                tipStatus = cached.Status;
-                tipEpic = cached.IsEpic;
-            }
-            else
-            {
-                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
-                if (settings.HasGitHubPat)
-                {
-                    try
-                    {
-                        var ghClient = new BuildConsole.Services.GitHubApiClient(settings.GitHubPat);
-                        var detail = await ghClient.GetIssueAsync(n);
-                        if (detail != null)
-                        {
-                            tipTitle = detail.Title;
-                            tipStatus = string.Equals(detail.State, "closed", StringComparison.OrdinalIgnoreCase) ? "CLOSED" : "OPEN";
-                        }
-                    }
-                    catch { /* best-effort; keep defaults */ }
-                }
-            }
-
             try
             {
-                string js = "window.__btShowIssueTip && window.__btShowIssueTip(" +
-                            $"{n}," +
-                            $"{JsonSerializer.Serialize(tipTitle)}," +
-                            $"{JsonSerializer.Serialize(tipStatus)}," +
-                            $"{(tipEpic ? "true" : "false")});";
+                string js = await BuildConsole.Services.ChatMentionPopupHelper.BuildShowTipScriptAsync(n, _owner?.LeftSidebar);
                 await tab.Wv.CoreWebView2.ExecuteScriptAsync(js);
-                ActivityLog.Log(LogChannel, $"BT_HOVER_ISSUE #{n}: '{tipTitle}' ({tipStatus}{(tipEpic ? ", epic" : "")}) (floating chat)");
+                ActivityLog.Log(LogChannel, $"BT_HOVER_ISSUE #{n} (floating chat)");
             }
             catch { }
+        }
+
+        private async System.Threading.Tasks.Task HandleIssueActionAsync(JsonElement root)
+        {
+            if (_owner?.LeftSidebar == null || _owner?.BuildQueuePanel == null) return;
+
+            int? issueNum = root.TryGetProperty("number", out var numEl) && numEl.ValueKind == JsonValueKind.Number ? numEl.GetInt32() : (int?)null;
+            int? buildId  = root.TryGetProperty("buildId", out var bidEl) && bidEl.ValueKind == JsonValueKind.Number ? bidEl.GetInt32() : (int?)null;
+            string? action = root.TryGetProperty("action", out var actEl) && actEl.ValueKind == JsonValueKind.String ? actEl.GetString() : null;
+            if (!issueNum.HasValue || issueNum.Value <= 0 || string.IsNullOrWhiteSpace(action)) return;
+            int n = issueNum.Value;
+
+            ActivityLog.Log(LogChannel, $"BT_ISSUE_ACTION #{n}: {action}{(buildId.HasValue ? $" (build {buildId})" : "")} (floating chat)");
+
+            var leftSidebar = _owner!.LeftSidebar!;
+            var buildQueuePanel = _owner!.BuildQueuePanel!;
+
+            if (action == "dispatchask")
+            {
+                var issue = leftSidebar.BuildDetailIssue(n)
+                    ?? new BuildConsole.Controls.GitIssue { IssueNumber = n, Title = $"#{n}", RawTitle = $"#{n}" };
+                await leftSidebar.DispatchOrAskActiveChatAsync(issue);
+                return;
+            }
+
+            var build = buildId.HasValue
+                ? buildQueuePanel.CurrentQueueItems.FirstOrDefault(i => i.Id == buildId.Value)
+                : leftSidebar.FindAssociatedBuild(n);
+            if (build == null) return;
+
+            switch (action)
+            {
+                case "dispatch": await buildQueuePanel.QuickDispatchAsync(build); break;
+                case "cancel": await buildQueuePanel.QuickCancelOrStopAsync(build); break;
+                case "retry": await buildQueuePanel.QuickRetryAsync(build); break;
+                case "openbuild":
+                case "openchat": buildQueuePanel.QuickOpenChat(build); break;
+                case "reply":
+                {
+                    string? message = root.TryGetProperty("message", out var msgEl) && msgEl.ValueKind == JsonValueKind.String ? msgEl.GetString() : null;
+                    if (!string.IsNullOrWhiteSpace(message)) await buildQueuePanel.QuickReplyAsync(build, message);
+                    break;
+                }
+            }
         }
 
         private void RenderResponse(FloatingChatTab tab, string markdown)

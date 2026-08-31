@@ -5495,8 +5495,11 @@ namespace BuildConsole.Controls
 
         /// <summary>Same lookup GitDetailView.LoadIssue already does for its embedded build pane
         /// (most-recently-updated QueueItem whose GithubNumber matches) — reused here via the
-        /// cheap in-memory GetQueueItems delegate instead of a fresh DB/API round trip.</summary>
-        private QueueItem? FindAssociatedBuild(int issueNumber)
+        /// cheap in-memory GetQueueItems delegate instead of a fresh DB/API round trip.
+        /// Git #2080 — internal (not private) so MainWindow/FloatingChatWindow's chat-mention
+        /// hover popup can reuse this exact lookup via <see cref="BuildChatMentionActionPayload"/>
+        /// instead of a second implementation.</summary>
+        internal QueueItem? FindAssociatedBuild(int issueNumber)
         {
             var items = GetQueueItems?.Invoke() ?? Array.Empty<QueueItem>();
             return items
@@ -5588,8 +5591,10 @@ namespace BuildConsole.Controls
         /// necessarily the epic-linked chat — Shane just decided "this is ready" in some active
         /// chat right before hovering this card) to write and post one, via the same #2059
         /// send+submit bridge <see cref="MainWindow.SendToActiveChatAsync"/> wraps.
+        /// Git #2080 — internal so the chat-mention popup's "no tracked build" action can call
+        /// this exact same path instead of re-implementing it.
         /// </summary>
-        private async System.Threading.Tasks.Task DispatchOrAskActiveChatAsync(GitIssue issue)
+        internal async System.Threading.Tasks.Task DispatchOrAskActiveChatAsync(GitIssue issue)
         {
             var settings = BuildConsoleSettings.Load();
             if (!settings.HasGitHubPat)
@@ -5646,82 +5651,125 @@ namespace BuildConsole.Controls
 
         private UIElement BuildQuickActionArea(QueueItem build)
         {
+            // Git #2080 — status→action classification lives in the shared
+            // IssueQuickActionResolver now (reused verbatim by the chat-mention popup's HTML
+            // renderer via BuildChatMentionActionPayload below); this method only turns that
+            // classification into WPF widgets.
             var panel = new StackPanel();
+            var state = IssueQuickActionResolver.Resolve(build);
 
-            switch (build.Status)
+            Brush statusBrush = build.Status switch
             {
-                case "queued":
-                    panel.Children.Add(new TextBlock { Text = "⏳ Queued", FontSize = 11, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 0, 6) });
-                    panel.Children.Add(MakeQuickActionButton("⚡ Dispatch Now", async () =>
-                    {
-                        if (RequestDispatchBuild != null) await RequestDispatchBuild(build);
-                    }));
-                    break;
+                "done" => GetBrush("GreenBrush"),
+                "failed" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")),
+                _ => GetBrush("Subtext0Brush")
+            };
+            panel.Children.Add(new TextBlock { Text = state.StatusText, FontSize = 11, Foreground = statusBrush, Margin = new Thickness(0, 0, 0, 6) });
 
-                case "running":
+            if (build.Status == "running")
+            {
+                if (state.ProgressPercent.HasValue)
                 {
-                    var progress = BuildProgressTracker.GetProgress(build.Id);
-                    if (progress != null && progress.Total > 0)
+                    panel.Children.Add(new ProgressBar { Minimum = 0, Maximum = 100, Value = state.ProgressPercent.Value, Height = 8, Margin = new Thickness(0, 0, 0, 4) });
+                    panel.Children.Add(new TextBlock
                     {
-                        panel.Children.Add(new ProgressBar { Minimum = 0, Maximum = 100, Value = progress.Percent, Height = 8, Margin = new Thickness(0, 0, 0, 4) });
-                        panel.Children.Add(new TextBlock
-                        {
-                            Text = $"{progress.Step}/{progress.Total} ({progress.Percent:0}%) — {(string.IsNullOrWhiteSpace(progress.CurrentLabel) ? "Running…" : progress.CurrentLabel)}",
-                            FontSize = 10,
-                            Foreground = GetBrush("Subtext0Brush"),
-                            TextWrapping = TextWrapping.Wrap,
-                            Margin = new Thickness(0, 0, 0, 6)
-                        });
-                        if (progress.IsStale)
-                        {
-                            panel.Children.Add(new TextBlock { Text = "⚠ " + progress.StalenessText, FontSize = 10, Foreground = GetBrush("PeachBrush"), Margin = new Thickness(0, 0, 0, 6) });
-                        }
+                        Text = state.ProgressLabel,
+                        FontSize = 10,
+                        Foreground = GetBrush("Subtext0Brush"),
+                        TextWrapping = TextWrapping.Wrap,
+                        Margin = new Thickness(0, 0, 0, 6)
+                    });
+                    if (state.IsStale)
+                    {
+                        panel.Children.Add(new TextBlock { Text = "⚠ " + state.StalenessText, FontSize = 10, Foreground = GetBrush("PeachBrush"), Margin = new Thickness(0, 0, 0, 6) });
                     }
-                    else
-                    {
-                        panel.Children.Add(new TextBlock { Text = "▶ Running…", FontSize = 11, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 0, 6) });
-                    }
-
-                    panel.Children.Add(MakeQuickActionButton("⏹ Cancel / Stop", async () =>
-                    {
-                        if (RequestCancelOrStopBuild != null) await RequestCancelOrStopBuild(build);
-                    }));
-
-                    panel.Children.Add(BuildInlineReplyBox(build));
-                    break;
                 }
+            }
 
-                case "done":
-                    panel.Children.Add(new TextBlock { Text = "✅ Done", FontSize = 11, Foreground = GetBrush("GreenBrush"), Margin = new Thickness(0, 0, 0, 6) });
-                    panel.Children.Add(MakeQuickActionButton("📄 Open Build", () =>
-                    {
-                        RequestOpenBuildChat?.Invoke(build);
-                        return System.Threading.Tasks.Task.CompletedTask;
-                    }));
-                    break;
+            panel.Children.Add(MakeQuickActionButton(state.ActionLabel, () => DispatchQuickAction(state.ActionKind, build)));
 
-                case "failed":
-                    panel.Children.Add(new TextBlock { Text = "✕ Failed", FontSize = 11, Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F38BA8")), Margin = new Thickness(0, 0, 0, 6) });
-                    panel.Children.Add(MakeQuickActionButton("🔄 Retry", async () =>
-                    {
-                        if (RequestRetryBuild != null) await RequestRetryBuild(build);
-                    }));
-                    break;
-
-                default:
-                    // parked / external / capped / limit-paused / verifying — not one of #2061's 6
-                    // canonical states; a plain status readout + the universal open-chat fallback
-                    // keeps the card honest rather than forcing it into the wrong bucket.
-                    panel.Children.Add(new TextBlock { Text = build.Status.ToUpperInvariant(), FontSize = 11, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 0, 0, 6) });
-                    panel.Children.Add(MakeQuickActionButton("💬 Open Chat", () =>
-                    {
-                        RequestOpenBuildChat?.Invoke(build);
-                        return System.Threading.Tasks.Task.CompletedTask;
-                    }));
-                    break;
+            if (state.AllowReply)
+            {
+                panel.Children.Add(BuildInlineReplyBox(build));
             }
 
             return panel;
+        }
+
+        /// <summary>Executes an <see cref="IssueQuickActionKind"/> resolved by
+        /// <see cref="IssueQuickActionResolver"/> through the exact same
+        /// RequestDispatchBuild/RequestCancelOrStopBuild/RequestRetryBuild/RequestOpenBuildChat
+        /// delegates #2061 wired to BuildQueuePanel.Quick*Async — the single place both this
+        /// popover's button and (indirectly, via BuildChatMentionActionPayload's ActionKind
+        /// string) the chat-mention popup's BT_ISSUE_ACTION handler agree on what each kind
+        /// means.</summary>
+        private async System.Threading.Tasks.Task DispatchQuickAction(IssueQuickActionKind kind, QueueItem build)
+        {
+            switch (kind)
+            {
+                case IssueQuickActionKind.Dispatch:
+                    if (RequestDispatchBuild != null) await RequestDispatchBuild(build);
+                    break;
+                case IssueQuickActionKind.Cancel:
+                    if (RequestCancelOrStopBuild != null) await RequestCancelOrStopBuild(build);
+                    break;
+                case IssueQuickActionKind.Retry:
+                    if (RequestRetryBuild != null) await RequestRetryBuild(build);
+                    break;
+                case IssueQuickActionKind.OpenBuild:
+                case IssueQuickActionKind.OpenChat:
+                    RequestOpenBuildChat?.Invoke(build);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Git #2080 — the chat-mention hover popup (IssueMentionInjector, HTML/JS in the
+        /// claude.ai WebView2) needs the SAME state-aware action data as
+        /// <see cref="BuildIssueHoverPopupContent"/> renders as WPF above, without a second
+        /// implementation of the resolution: same blocked-overrides-build-state precedence, same
+        /// <see cref="FindAssociatedBuild"/> lookup, same <see cref="IssueQuickActionResolver"/>
+        /// classification. Returns a plain serializable payload; the WebView host
+        /// (MainWindow/FloatingChatWindow) JSON-serializes it and hands it to the JS
+        /// <c>__btShowIssueTip</c> callback, which renders HTML buttons that post a
+        /// BT_ISSUE_ACTION message back — the actual Quick*Async calls happen host-side (see
+        /// MainWindow.ChatWv_WebMessageReceived), reusing the exact same wrappers
+        /// <see cref="DispatchQuickAction"/> uses, not a second execution path.
+        /// </summary>
+        internal ChatMentionActionPayload BuildChatMentionActionPayload(GitIssue issue)
+        {
+            bool isClosed = issue.Status == "CLOSED";
+
+            if (!isClosed && issue.IsBlocked)
+            {
+                return new ChatMentionActionPayload
+                {
+                    Blocked = new ChatMentionBlocked { Number = issue.BlockedByNumber, Title = issue.BlockedByTitle }
+                };
+            }
+
+            var build = FindAssociatedBuild(issue.IssueNumber);
+            if (build == null)
+            {
+                return new ChatMentionActionPayload { NoBuildDispatch = true };
+            }
+
+            var state = IssueQuickActionResolver.Resolve(build);
+            return new ChatMentionActionPayload
+            {
+                Build = new ChatMentionBuild
+                {
+                    Id = build.Id,
+                    StatusText = state.StatusText,
+                    ActionKind = state.ActionKind.ToString().ToLowerInvariant(),
+                    ActionLabel = state.ActionLabel,
+                    AllowReply = state.AllowReply,
+                    ProgressPercent = state.ProgressPercent,
+                    ProgressLabel = state.ProgressLabel,
+                    Stale = state.IsStale,
+                    StaleText = state.StalenessText
+                }
+            };
         }
 
         private Button MakeQuickActionButton(string label, Func<System.Threading.Tasks.Task> onClick)
