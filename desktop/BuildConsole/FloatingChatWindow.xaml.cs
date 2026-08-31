@@ -237,6 +237,10 @@ namespace BuildConsole
                 // AddScriptToExecuteOnDocumentCreatedAsync MUST run before navigation
                 // (Git #816) — a script added after nav starts only applies to the NEXT one.
                 await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(FloatingChatBridgeScript.CaptureScript);
+                // Git #2071 — also inject the issue-mention highlighter (Git #1253) that
+                // underlines #NNN tokens in Claude's responses and lets Shane hover/click
+                // them, same as MainWindow's InjectBuilderButtonsAsync.
+                await wv.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(BuildConsole.Services.IssueMentionInjector.Script);
                 // Route each tab's frames to that tab regardless of which tab is active — an
                 // inactive (throttled) tab may still post a frame, and it should update its own
                 // cached reply, never the active tab's.
@@ -269,14 +273,80 @@ namespace BuildConsole
                 using var doc = JsonDocument.Parse(raw);
                 var root = doc.RootElement;
                 if (!root.TryGetProperty("type", out var typeEl)) return;
-                if (typeEl.GetString() != "BT_FLOATY_RESPONSE") return;
+                var type = typeEl.GetString();
 
-                string md = root.TryGetProperty("markdown", out var mdEl) ? (mdEl.GetString() ?? "") : "";
-                if (string.IsNullOrWhiteSpace(md) || md == tab.LastMarkdown) return;
-                tab.LastMarkdown = md;
-                RenderResponse(tab, md);
+                if (type == "BT_FLOATY_RESPONSE")
+                {
+                    string md = root.TryGetProperty("markdown", out var mdEl) ? (mdEl.GetString() ?? "") : "";
+                    if (string.IsNullOrWhiteSpace(md) || md == tab.LastMarkdown) return;
+                    tab.LastMarkdown = md;
+                    RenderResponse(tab, md);
+                }
+                // Git #2071 — the two callbacks IssueMentionInjector.Script needs from its host
+                // to actually resolve/open a mention, mirroring MainWindow's ChatWv_WebMessageReceived
+                // handling of the same message types (Git #1253).
+                else if (type == "BT_HOVER_ISSUE")
+                {
+                    if (root.TryGetProperty("number", out var numEl) && numEl.TryGetInt32(out var n) && n > 0)
+                        _ = ResolveAndShowIssueTipAsync(tab, n);
+                }
+                else if (type == "BT_OPEN_ISSUE")
+                {
+                    if (root.TryGetProperty("number", out var numEl) && numEl.TryGetInt32(out var n) && n > 0)
+                    {
+                        ActivityLog.Log(LogChannel, $"BT_OPEN_ISSUE #{n} (floating chat)");
+                        _ = _owner?.OpenGitDetailByNumberAsync(n);
+                    }
+                }
             }
             catch { /* a malformed frame is not fatal — the next poll re-posts */ }
+        }
+
+        private async System.Threading.Tasks.Task ResolveAndShowIssueTipAsync(FloatingChatTab tab, int n)
+        {
+            if (tab.Wv?.CoreWebView2 == null) return;
+
+            string tipTitle = "Unknown";
+            string tipStatus = "OPEN";
+            bool tipEpic = false;
+
+            var cached = _owner?.LeftSidebar?.BuildDetailIssue(n);
+            if (cached != null)
+            {
+                tipTitle = cached.RawTitle;
+                tipStatus = cached.Status;
+                tipEpic = cached.IsEpic;
+            }
+            else
+            {
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                if (settings.HasGitHubPat)
+                {
+                    try
+                    {
+                        var ghClient = new BuildConsole.Services.GitHubApiClient(settings.GitHubPat);
+                        var detail = await ghClient.GetIssueAsync(n);
+                        if (detail != null)
+                        {
+                            tipTitle = detail.Title;
+                            tipStatus = string.Equals(detail.State, "closed", StringComparison.OrdinalIgnoreCase) ? "CLOSED" : "OPEN";
+                        }
+                    }
+                    catch { /* best-effort; keep defaults */ }
+                }
+            }
+
+            try
+            {
+                string js = "window.__btShowIssueTip && window.__btShowIssueTip(" +
+                            $"{n}," +
+                            $"{JsonSerializer.Serialize(tipTitle)}," +
+                            $"{JsonSerializer.Serialize(tipStatus)}," +
+                            $"{(tipEpic ? "true" : "false")});";
+                await tab.Wv.CoreWebView2.ExecuteScriptAsync(js);
+                ActivityLog.Log(LogChannel, $"BT_HOVER_ISSUE #{n}: '{tipTitle}' ({tipStatus}{(tipEpic ? ", epic" : "")}) (floating chat)");
+            }
+            catch { }
         }
 
         private void RenderResponse(FloatingChatTab tab, string markdown)
