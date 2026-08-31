@@ -3451,6 +3451,11 @@ export const MSP_ALERT_CONDITION_TYPES = [
                        // has lapsed — the ACCEPTANCE stays active/valid; only
                        // the review is overdue (#1513). Count-based, evaluated
                        // by the same polling evaluateRules() loop.
+  "policy_review_overdue", // policy_decisions (Git #2024) rows whose review
+                       // clock has lapsed — same "review is overdue, the
+                       // signed decision remains LIVE" contract as
+                       // risk_review_overdue, extended to Policy Decisions'
+                       // own table per #1527. Count-based, same polling loop.
 ] as const;
 export type MspAlertConditionType = typeof MSP_ALERT_CONDITION_TYPES[number];
 
@@ -5564,7 +5569,10 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   verificationNote: text("verification_note"),
   /** Policy Decisions' own lane (POLICY_DECISION_STATES: proposed / live / due).
    * `expired` was removed on #1527 — a decision past its review date is still
-   * `live` with an overdue `reviewState`, it did not lapse. */
+   * `live` with an overdue `reviewState`, it did not lapse. Kept in sync with
+   * `reviewState` by alert-engine.ts's `advanceRiskReviewClock` (#1527) on
+   * rows where it is already set: `due` mirrors a due review, `overdue`
+   * collapses back to `live`. */
   decisionState: text("decision_state"),
 
   // ── The acceptance itself ──────────────────────────────────────────────────
@@ -7675,12 +7683,20 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
   compensatingControl: text("compensating_control").notNull(),
 
   /** POLICY_DECISION_STATES. Starts `live` — a signed decision is live the
-   * moment it's created; there is no unsigned `proposed` row on this table. */
+   * moment it's created; there is no unsigned `proposed` row on this table.
+   * Kept in sync with `reviewState` by alert-engine.ts's
+   * `advancePolicyReviewClock` (#1527): `due` mirrors a due review, `overdue`
+   * collapses back to `live` — the decision never itself shows as lapsed. */
   decisionState: text("decision_state").notNull().default("live"),
   /** RISK_REVIEW_STATES. Starts `on_track`; nothing has computed a due date
    * from `reviewCadence` yet, so `reviewDueAt` stays null until that exists —
    * served as null rather than a guessed date, matching this schema's rule
-   * that an unscheduled review is null, never defaulted. */
+   * that an unscheduled review is null, never defaulted. Once set, advanced by
+   * alert-engine.ts's `advancePolicyReviewClock` (#1527), which also feeds the
+   * `policy_review_overdue` alert to the MSP — but no writer computes the
+   * initial `reviewDueAt` from `reviewCadence` yet (filed as its own finding;
+   * parsing free-text cadence into a due date is a real product decision, not
+   * ordinary backend work). */
   reviewState: text("review_state").notNull().default("on_track"),
   reviewDueAt: timestamp("review_due_at", { withTimezone: true }),
 

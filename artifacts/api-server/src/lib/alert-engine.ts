@@ -15,6 +15,10 @@
  *                          severity — a lapsed review is not a threshold
  *                          breach, it means a customer believes a risk is
  *                          being actively managed and nobody has looked.
+ *   policy_review_overdue — policy_decisions (Git #2024) rows whose review
+ *                          clock has lapsed — same contract as
+ *                          risk_review_overdue, extended to Policy
+ *                          Decisions' own table (#1527).
  *
  * De-duplication: a rule will not re-fire within its cooldownMinutes window
  * (checked against the most recent msp_alert_events row for that ruleId).
@@ -149,6 +153,14 @@ const RISK_REVIEW_DUE_LEAD_DAYS = 14;
  *
  * The acceptance's own `status` is never touched here — a lapsed review is a
  * flag on a still-active acceptance, never a lapsed acceptance (#1507).
+ *
+ * Also syncs `decision_state` (Policy Decisions' own lane, on rows where it is
+ * already set — most `msp_risk_decisions` rows are plain risk acceptances and
+ * leave it NULL, untouched) off the same clock, per #1527's design sentence:
+ * "overdue reviews surface as an operational flag on a decision that remains
+ * LIVE" — `due` mirrors a due review, `overdue` COLLAPSES back to `live`
+ * (there is no fourth `overdue` value in POLICY_DECISION_STATES; that is the
+ * point of #1527 — the decision never shows as lapsed, only the review does).
  */
 async function advanceRiskReviewClock(): Promise<number> {
   await pool.query(
@@ -178,10 +190,88 @@ async function advanceRiskReviewClock(): Promise<number> {
         AND review_state IS DISTINCT FROM 'on_track'`,
     [RISK_REVIEW_DUE_LEAD_DAYS],
   );
+  await pool.query(
+    `UPDATE msp_risk_decisions
+        SET decision_state = 'due', updated_at = NOW()
+      WHERE status = 'active'
+        AND decision_state IS NOT NULL
+        AND review_state = 'due'
+        AND decision_state IS DISTINCT FROM 'due'`,
+  );
+  await pool.query(
+    `UPDATE msp_risk_decisions
+        SET decision_state = 'live', updated_at = NOW()
+      WHERE status = 'active'
+        AND decision_state IS NOT NULL
+        AND review_state IN ('overdue', 'on_track')
+        AND decision_state IS DISTINCT FROM 'live'`,
+  );
 
   const res = await pool.query<{ n: string }>(
     `SELECT COUNT(*)::text AS n FROM msp_risk_decisions
       WHERE status = 'active' AND review_state = 'overdue'`,
+  );
+  return parseInt(res.rows[0]?.n ?? "0", 10);
+}
+
+/**
+ * Same operational writer as `advanceRiskReviewClock`, applied to
+ * `policy_decisions` (Git #2024) — Policy Decisions' own table, extending
+ * #1513's overdue-review alerting to it (#1527's third "to build" bullet,
+ * unsatisfied until now: #2024's own table post-dates #1513 in the commit
+ * graph and was never wired into this evaluator).
+ *
+ * No `status = 'active'` filter — unlike `msp_risk_decisions`, a
+ * `policy_decisions` row has no unsigned intermediate state; it is signed and
+ * live the moment it exists (see the table's own schema comment), so every
+ * row is eligible once it has a `review_due_at`.
+ *
+ * `review_due_at` is NULL on every row today — nothing yet computes it from
+ * the free-text `review_cadence` field (a real, separate gap, filed as its
+ * own finding rather than invented here). Until something schedules a
+ * review, this evaluator legitimately finds nothing to advance — same
+ * "served as null, never guessed" contract the schema itself documents.
+ */
+async function advancePolicyReviewClock(): Promise<number> {
+  await pool.query(
+    `UPDATE policy_decisions
+        SET review_state = 'overdue', updated_at = NOW()
+      WHERE review_due_at IS NOT NULL
+        AND review_due_at < NOW()
+        AND review_state IS DISTINCT FROM 'overdue'`,
+  );
+  await pool.query(
+    `UPDATE policy_decisions
+        SET review_state = 'due', updated_at = NOW()
+      WHERE review_due_at IS NOT NULL
+        AND review_due_at >= NOW()
+        AND review_due_at < NOW() + ($1 * INTERVAL '1 day')
+        AND review_state IS DISTINCT FROM 'due'`,
+    [RISK_REVIEW_DUE_LEAD_DAYS],
+  );
+  await pool.query(
+    `UPDATE policy_decisions
+        SET review_state = 'on_track', updated_at = NOW()
+      WHERE review_due_at IS NOT NULL
+        AND review_due_at >= NOW() + ($1 * INTERVAL '1 day')
+        AND review_state IS DISTINCT FROM 'on_track'`,
+    [RISK_REVIEW_DUE_LEAD_DAYS],
+  );
+  await pool.query(
+    `UPDATE policy_decisions
+        SET decision_state = 'due', updated_at = NOW()
+      WHERE review_state = 'due'
+        AND decision_state IS DISTINCT FROM 'due'`,
+  );
+  await pool.query(
+    `UPDATE policy_decisions
+        SET decision_state = 'live', updated_at = NOW()
+      WHERE review_state IN ('overdue', 'on_track')
+        AND decision_state IS DISTINCT FROM 'live'`,
+  );
+
+  const res = await pool.query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM policy_decisions WHERE review_state = 'overdue'`,
   );
   return parseInt(res.rows[0]?.n ?? "0", 10);
 }
@@ -210,6 +300,7 @@ async function getConditionValue(
       case "event_bus_backlog":  return await evalEventBusBacklog(windowMinutes);
       case "job_failure_rate":   return await evalJobFailureRate(windowMinutes);
       case "risk_review_overdue": return await advanceRiskReviewClock();
+      case "policy_review_overdue": return await advancePolicyReviewClock();
       default:                   return 0;
     }
   } catch (err) {
@@ -416,6 +507,8 @@ function buildSummary(conditionType: string, value: number, windowMinutes: numbe
       return `${value} background job${value !== 1 ? "s" : ""} failed in the last ${windowMinutes} minutes.`;
     case "risk_review_overdue":
       return `${value} risk acceptance review${value !== 1 ? "s are" : " is"} overdue. The acceptance${value !== 1 ? "s remain" : " remains"} active — only the review has lapsed.`;
+    case "policy_review_overdue":
+      return `${value} policy decision review${value !== 1 ? "s are" : " is"} overdue. The decision${value !== 1 ? "s remain" : " remains"} LIVE — only the review has lapsed.`;
     default:
       return `Alert condition "${conditionType}" triggered with value ${value}.`;
   }
