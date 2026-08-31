@@ -4465,3 +4465,5 @@ export * from "./msp";
 export * from "./config-state";
 
 export * from "./config-snapshots";
+
+export * from "./config-diffs";
