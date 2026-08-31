@@ -460,10 +460,25 @@ namespace BuildConsole.Services
 
         /// <summary>Fire-and-forget wrapper for the now-async <see cref="LaunchItem"/> — used by the
         /// non-awaiting entry points (Run Now, Build Watch resume). Observes any exception so an
-        /// unawaited launch (e.g. a worktree-provisioning hiccup, Git #1371) can't crash the app.</summary>
+        /// unawaited launch (e.g. a worktree-provisioning hiccup, Git #1371) can't crash the app.
+        ///
+        /// Git #1881 — both callers (<see cref="ForceLaunch"/>, <see cref="LaunchItemExplicit"/>) are
+        /// invoked directly from UI-thread event handlers (a context-menu Click, or a DispatcherTimer
+        /// tick) via `_ = SafeLaunch(...)`. Any C# async method's body runs SYNCHRONOUSLY on the
+        /// calling thread up to its first genuinely-suspending await — and <see cref="LaunchItem"/>'s
+        /// own tail, <see cref="RedirectedProcessLauncher.Launch"/>, is a plain synchronous method (a
+        /// direct Win32 CreateProcess call with no async overload), so it — along with everything
+        /// before LaunchItem's first await when worktree isolation is off or an explicit --cwd is set
+        /// — genuinely blocked the UI thread. A live repro (real CreateProcess calls against the real
+        /// claude.exe on this machine) measured this synchronous cost at ~50-200ms per launch, worse
+        /// under real-world antivirus/IO contention — a real, reproducible UI stutter on every Run Now
+        /// click. Task.Run hands the entire LaunchItem body to a thread-pool thread immediately, so
+        /// SafeLaunch (and therefore ForceLaunch/LaunchItemExplicit) returns control to the caller
+        /// right away, exactly like the required fix describes: the actual process-start work happens
+        /// in the background, same as the normal queue-pickup path is meant to.</summary>
         private async Task SafeLaunch(QueueItem item, int? buildSetExpected = null, bool isForced = false)
         {
-            try { await LaunchItem(item, buildSetExpected, isForced); }
+            try { await Task.Run(() => LaunchItem(item, buildSetExpected, isForced)); }
             catch (Exception ex) { ActivityLog.Log("watcher", $"LaunchItem threw for queue #{item.Id} ({item.Title}): {ex.Message}"); }
         }
 
