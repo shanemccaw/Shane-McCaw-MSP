@@ -1,5 +1,6 @@
 /**
- * rbd-versioning.ts — the RBD supersession-chain mechanism (#1508, part of #1487).
+ * rbd-versioning.ts — the RBD supersession-chain mechanism (#1508, part of #1487),
+ * plus the signature-required-on-scope-expansion derivation (#1510).
  *
  * The RBD is a container, and it is the WHOLE container document — not its
  * individual line items — that is the signed, versioned artifact. Every change
@@ -8,15 +9,40 @@
  * existing supersession chain exactly (see `msp_rbd_versions`'s schema header for
  * the full architecture note).
  *
- * This module is the one place that mechanism lives, so the not-yet-built issues
- * that attach to it — #1509 (line items), #1510 (signature-required-on-expansion),
- * #1511 (role-based authority), #1512 (signed document render + capture) — call
- * `createRbdVersion` / `signRbdVersion` rather than each re-implementing the
- * supersede-then-insert transaction.
+ * This module is the one place that mechanism lives, so the issues that attach to
+ * it — #1509 (line items), #1510 (signature-required-on-expansion, this file's
+ * `computeRbdScopeDiff`/`diffNarrativeSnapshot`), #1511 (role-based authority),
+ * #1512 (signed document render + capture) — call `createRbdVersion` /
+ * `signRbdVersion` rather than each re-implementing the supersede-then-insert
+ * transaction.
+ *
+ * ── #1510: signature required on scope expansion, never on contraction ────────
+ *
+ * The derivation itself (`computeRbdScopeDiff`, `diffNarrativeSnapshot`) lives
+ * in `./rbd-scope-diff.ts` — kept free of any `@workspace/db` dependency so it
+ * stays trivially unit-testable. Read that module's header for the full
+ * architecture note (why the distinction is derived rather than a flag a
+ * caller sets, and why this makes "a new instance is never silently absorbed
+ * under an old signature" true by construction). This file is the DB
+ * orchestration around it: running the diff inside the supersede-then-insert
+ * transaction, and inheriting or requiring a signature accordingly.
  */
 import { randomBytes } from "node:crypto";
-import { db, mspRbdVersionsTable, type MspAssessor, type ClientApprover, type MspRbdVersion } from "@workspace/db";
+import {
+  db,
+  mspRbdVersionsTable,
+  mspRbdNarrativeAuditTable,
+  type MspAssessor,
+  type ClientApprover,
+  type MspRbdVersion,
+  type MspRbdNarrativeAudit,
+  type RbdNarrativeSnapshot,
+} from "@workspace/db";
 import { and, eq, isNull, desc, gt, or } from "drizzle-orm";
+import { computeRbdScopeDiff, diffNarrativeSnapshot } from "./rbd-scope-diff.ts";
+
+export { computeRbdScopeDiff, diffNarrativeSnapshot } from "./rbd-scope-diff.ts";
+export type { RbdVersionScopeDiff, RbdNarrativeFieldChange } from "./rbd-scope-diff.ts";
 
 export interface CreateRbdVersionInput {
   mspId: number;
@@ -27,6 +53,14 @@ export interface CreateRbdVersionInput {
    * the reader to re-resolve against live rows. */
   content: unknown;
   createdBy: MspAssessor;
+  /** #1510 — every `risk_instances.id` this version accepts as in-scope.
+   * Callers MUST derive this from the live `risk_instances` table (active
+   * instances at capture time), never from client-supplied JSON — see this
+   * module's own header for why. */
+  scopeInstanceIds: number[];
+  /** #1510 — the narrative/score fields at capture time, likewise
+   * server-derived from `msp_risk_decisions`, never client-supplied. */
+  narrativeSnapshot: RbdNarrativeSnapshot;
 }
 
 /**
@@ -35,11 +69,19 @@ export interface CreateRbdVersionInput {
  * observe two "current" (supersededAt IS NULL) versions of the same container at
  * once, nor a moment with zero current versions between the supersede and the
  * insert.
+ *
+ * #1510: also runs the scope diff against the version being superseded and
+ * either requires a fresh signature (addition present, or first version ever)
+ * or inherits the superseded version's own signature (subtraction-only/
+ * unchanged scope AND that version was itself signed). Narrative/score drift is
+ * diffed independently and, if any changed, recorded as one
+ * `msp_rbd_narrative_audit` row in the same transaction — never gates capture,
+ * never requires a signature.
  */
 export async function createRbdVersion(input: CreateRbdVersionInput): Promise<MspRbdVersion> {
   return db.transaction(async (tx) => {
     const [current] = await tx
-      .select({ id: mspRbdVersionsTable.id, versionNumber: mspRbdVersionsTable.versionNumber })
+      .select()
       .from(mspRbdVersionsTable)
       .where(
         and(
@@ -58,6 +100,9 @@ export async function createRbdVersion(input: CreateRbdVersionInput): Promise<Ms
         .where(eq(mspRbdVersionsTable.id, current.id));
     }
 
+    const scopeDiff = computeRbdScopeDiff(current ? current.scopeInstanceIds : null, input.scopeInstanceIds);
+    const inheritSignature = !scopeDiff.requiresSignature && current !== undefined && current.signed;
+
     const [inserted] = await tx
       .insert(mspRbdVersionsTable)
       .values({
@@ -68,15 +113,46 @@ export async function createRbdVersion(input: CreateRbdVersionInput): Promise<Ms
         versionNumber: (current?.versionNumber ?? 0) + 1,
         content: input.content,
         createdBy: input.createdBy,
-        signed: false,
-        signedBy: null,
-        signedAt: null,
+        scopeInstanceIds: input.scopeInstanceIds,
+        scopeAddedInstanceIds: scopeDiff.added,
+        scopeRemovedInstanceIds: scopeDiff.removed,
+        requiresSignature: scopeDiff.requiresSignature,
+        narrativeSnapshot: input.narrativeSnapshot,
+        signed: inheritSignature,
+        signedBy: inheritSignature ? current!.signedBy : null,
+        signedAt: inheritSignature ? current!.signedAt : null,
+        signatureData: inheritSignature ? current!.signatureData : null,
+        signatureInherited: inheritSignature,
+        signatureInheritedFromVersionUid: inheritSignature ? current!.versionUid : null,
         supersededAt: null,
       })
       .returning();
 
+    const narrativeChanges = diffNarrativeSnapshot(
+      current ? (current.narrativeSnapshot as RbdNarrativeSnapshot) : null,
+      input.narrativeSnapshot,
+    );
+    if (narrativeChanges.length > 0) {
+      await tx.insert(mspRbdNarrativeAuditTable).values({
+        mspId: input.mspId,
+        rbdId: input.rbdId,
+        fromVersionUid: current?.versionUid ?? null,
+        toVersionUid: inserted.versionUid,
+        changedFields: narrativeChanges,
+      });
+    }
+
     return inserted;
   });
+}
+
+/** #1510 — the narrative/score audit trail for a container, newest first. */
+export async function listRbdNarrativeAudit(mspId: number, rbdId: string): Promise<MspRbdNarrativeAudit[]> {
+  return db
+    .select()
+    .from(mspRbdNarrativeAuditTable)
+    .where(and(eq(mspRbdNarrativeAuditTable.mspId, mspId), eq(mspRbdNarrativeAuditTable.rbdId, rbdId)))
+    .orderBy(desc(mspRbdNarrativeAuditTable.createdAt));
 }
 
 /** The current (`supersededAt IS NULL`) version of a container, or null if none

@@ -5553,6 +5553,25 @@ export interface ClientApprover {
 }
 
 /**
+ * The narrative/score fields captured with each `msp_rbd_versions` row
+ * (#1510, part of #1487) — the exact set the settled architecture names as
+ * able to change WITHOUT a scope change: "a narrative-only revision - hazard
+ * text, compensating controls, residual score - with the instance set
+ * untouched requires no signature by the letter of the rule." Captured
+ * verbatim from `msp_risk_decisions` at version-capture time (server-derived,
+ * never client-supplied — see `rbd-versioning.ts`'s `computeRbdScopeDiff`
+ * header for why) so `diffNarrativeSnapshot` can compare consecutive
+ * versions and produce the audit trail #1510 asks for as the interim answer
+ * (no signature requirement added here, on purpose).
+ */
+export interface RbdNarrativeSnapshot {
+  hazardDescription: string;
+  compensatingControls: CompensatingControl[];
+  residualRiskScore: number;
+  residualRiskLevel: string;
+}
+
+/**
  * The ACCEPTANCE's own lifecycle — where the liability transfer has got to.
  *
  * `expired` was removed here on #1507. An acceptance is a signed fact and does
@@ -5846,6 +5865,56 @@ export const mspRbdVersionsTable = pgTable("msp_rbd_versions", {
   /** When a newer version replaced this one. NULL = the current version. Never
    * edited or backfilled once superseded — same rule as `drift_baseline_snapshots`. */
   supersededAt: timestamp("superseded_at", { withTimezone: true }),
+
+  // ── Signature-required-on-scope-expansion (#1510, part of #1487) ──────────
+  //
+  // Settled architecture: nobody consents to being safer. Additions present
+  // in the instance set => a fresh signature is required; subtractions only
+  // (or no change) => the prior version's signature is INHERITED onto this
+  // one, and a version row is still recorded. The distinction is DERIVED by
+  // `rbd-versioning.ts`'s `computeRbdScopeDiff`, comparing `scopeInstanceIds`
+  // against the version being superseded — never a flag a caller sets, so it
+  // cannot be gamed. See that module's header for the full mechanism,
+  // including why a new instance can never be silently absorbed under an old
+  // signature: any addition forces `requiresSignature: true` on the version
+  // that would otherwise inherit, so an unsigned addition is never covered by
+  // a prior signature no matter how the version was captured.
+  /** The full set of `risk_instances.id` this version accepts as in-scope —
+   * every currently-`active` line item at capture time. What the addition/
+   * subtraction diff runs on. Server-derived from the live table, never
+   * client-supplied. */
+  scopeInstanceIds: integer("scope_instance_ids").array().notNull().default([]),
+  /** `scopeInstanceIds` minus the version being superseded's own — ids newly
+   * carried by this version. Non-empty here always forces `requiresSignature`. */
+  scopeAddedInstanceIds: integer("scope_added_instance_ids").array().notNull().default([]),
+  /** The version being superseded's `scopeInstanceIds` minus this version's —
+   * ids no longer carried (remediated or object-removed). Never forces a
+   * signature on its own. */
+  scopeRemovedInstanceIds: integer("scope_removed_instance_ids").array().notNull().default([]),
+  /** The derivation's own output: true when this version's scope contains an
+   * addition (or it is the very first version ever captured for the
+   * container — nothing yet to inherit from). False for a subtraction-only
+   * or unchanged scope, in which case `signed`/`signedBy`/`signedAt`/
+   * `signatureData` below are copied forward automatically rather than left
+   * for a human to re-sign. */
+  requiresSignature: boolean("requires_signature").notNull().default(true),
+  /** True when this version's `signed`/`signedBy`/`signedAt`/`signatureData`
+   * were copied forward from the version it superseded (subtraction-only /
+   * unchanged scope, and that prior version was itself signed) rather than
+   * captured fresh at this version. */
+  signatureInherited: boolean("signature_inherited").notNull().default(false),
+  /** Traceability pointer to the version a copied-forward signature actually
+   * came from. No FK — same convention as every other cross-version/
+   * cross-table reference in this file that is not the primary container
+   * link (e.g. `msp_risk_decisions.spawnedByRemediationStepId`). NULL unless
+   * `signatureInherited` is true. */
+  signatureInheritedFromVersionUid: uuid("signature_inherited_from_version_uid"),
+  /** Verbatim narrative/score snapshot at capture time — see
+   * `RbdNarrativeSnapshot`'s own header. Compared against the version being
+   * superseded's own snapshot to produce `msp_rbd_narrative_audit` rows,
+   * regardless of whether the scope changed. */
+  narrativeSnapshot: jsonb("narrative_snapshot").$type<RbdNarrativeSnapshot>().notNull(),
+
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("msp_rbd_versions_msp_id_rbd_id_idx").on(t.mspId, t.rbdId),
@@ -5857,6 +5926,41 @@ export const mspRbdVersionsTable = pgTable("msp_rbd_versions", {
 export const insertMspRbdVersionSchema = createInsertSchema(mspRbdVersionsTable).omit({ id: true, versionUid: true, createdAt: true });
 export type MspRbdVersion = typeof mspRbdVersionsTable.$inferSelect;
 export type InsertMspRbdVersion = typeof mspRbdVersionsTable.$inferInsert;
+
+// ── msp_rbd_narrative_audit — the #1510 audit trail on narrative/score drift ──
+//
+// The settled architecture deliberately does NOT require a signature when a
+// version's instance scope is untouched but its narrative/score fields moved
+// (hazard text, compensating controls, residual score) — "a residual score
+// could move under a signature given when it read differently." This table is
+// the interim answer the issue asks for: every time `createRbdVersion`
+// captures a new version whose `narrativeSnapshot` differs from the version it
+// superseded, the changed fields are recorded here, so that drift is catchable
+// even though it never blocks capture and never requires re-signature. One row
+// per version transition that actually changed something narrative — no row
+// when nothing narrative moved (a pure scope change, or truly nothing changed).
+export const mspRbdNarrativeAuditTable = pgTable("msp_rbd_narrative_audit", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The container identifier — same convention as `msp_rbd_versions.rbdId`. */
+  rbdId: text("rbd_id").notNull(),
+  /** The version being superseded, or NULL when this is the very first
+   * version captured (nothing to diff against). */
+  fromVersionUid: uuid("from_version_uid"),
+  /** The version this audit row belongs to. */
+  toVersionUid: uuid("to_version_uid").notNull(),
+  /** `{ field, previousValue, newValue }[]` — only the fields that actually
+   * changed, from `RbdNarrativeSnapshot`'s own keys. */
+  changedFields: jsonb("changed_fields").$type<Array<{ field: string; previousValue: unknown; newValue: unknown }>>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_rbd_narrative_audit_msp_id_rbd_id_idx").on(t.mspId, t.rbdId),
+  index("msp_rbd_narrative_audit_to_version_uid_idx").on(t.toVersionUid),
+]);
+
+export const insertMspRbdNarrativeAuditSchema = createInsertSchema(mspRbdNarrativeAuditTable).omit({ id: true, createdAt: true });
+export type MspRbdNarrativeAudit = typeof mspRbdNarrativeAuditTable.$inferSelect;
+export type InsertMspRbdNarrativeAudit = typeof mspRbdNarrativeAuditTable.$inferInsert;
 
 // ── Security Plan: the assembled view over the eight modules (#1561, part of #1495/#1485) ─
 //
