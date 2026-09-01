@@ -215,6 +215,20 @@ your DONE bookend**, so the trail from build to finding is readable without a se
 
 **You never close an issue** — not your own, not one you filed. Closing is Shane's call.
 
+### A NOT_PLANNED closure always carries a real explanatory comment (Git #2167)
+
+An issue was closed `NOT_PLANNED` with zero comment, and a later session found the bare
+closure with no way to tell why — was it superseded, a duplicate, a decision that changed,
+or a mistake? Nothing in the issue said.
+
+**Any session/chat that performs a `NOT_PLANNED` closure must post a real comment on that
+issue, in the same action, explaining the actual decision** — what changed, and what it's
+superseded by if applicable. A silent `NOT_PLANNED` closure is never acceptable, the same
+way a silent status-label flip elsewhere in this file is never acceptable. This is
+independent of the "you never close an issue" rule above: if a closure happens at all —
+by Shane directly, or by a session acting on his explicit instruction — it does not happen
+without the comment.
+
 ### Board status — "AI Batter Up," not Backlog (Git #1708)
 
 Every new issue you file under this section gets its project board status set to **"AI Batter
