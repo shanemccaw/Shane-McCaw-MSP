@@ -25,6 +25,22 @@ namespace BuildConsole
         /// of dropping it, agent mode's normal behavior) and to exit once that one job is done.
         /// </summary>
         internal static bool QuietProtocolCourierLaunch;
+
+        /// <summary>
+        /// Git #2141 — process-wide single-instance ownership token. <c>Global\</c> so it is
+        /// path-independent: a second launch from ANY folder (dev build output, the deployed
+        /// ShanesBuild folder, a worktree, wherever) still collides with the same name. The FIRST
+        /// process to start owns it; every later one sees <c>createdNew==false</c>. Held for the
+        /// whole process lifetime — a static field so the GC never collects it out from under us.
+        /// </summary>
+        internal const string SingleInstanceMutexName = @"Global\ShaneMcCawBuildConsole_SingleInstance";
+        /// <summary>
+        /// Git #2141 — distinct non-zero exit code a blocked second instance exits with, so a
+        /// calling script/agent can detect the refusal programmatically, not just from the text.
+        /// </summary>
+        internal const int SingleInstanceRefusedExitCode = 10;
+        private static System.Threading.Mutex? _singleInstanceMutex;
+
         /// <summary>
         /// Git #830 — Shane: "Is there a way to make push notifications from
         /// Claude.ai work in this WebView2 browser?" An unpackaged (non-MSIX)
@@ -53,6 +69,37 @@ namespace BuildConsole
             // always-open build-queue instance — is completely unaffected.
             string? protocolUri = e.Args?.FirstOrDefault(a =>
                 a != null && a.StartsWith(Services.ShaneAppProtocol.Scheme + "://", StringComparison.OrdinalIgnoreCase));
+
+            // ── Single-instance guard (Git #2141) ─────────────────────────────────────
+            // EMERGENCY hard guard: a second FULL BuildConsole.exe launch on top of Shane's
+            // live session directly interrupts his active work (this exe manages his real
+            // queue). A named SYSTEM mutex is the ownership token — the FIRST process to start
+            // owns it; any later one sees createdNew==false and is refused a window here,
+            // BEFORE the shaneapp:// branch below and before base.OnStartup can build anything.
+            //
+            // Deliberate carve-out — a launch carrying a shaneapp:// URI is NOT a rival window:
+            // it is a transient protocol courier (reportProgress / executeSql / runTest, …)
+            // whose whole job is to forward that URI to the already-running instance over the
+            // pipe below and exit WITHOUT ever drawing a window. Refusing it here would silently
+            // break every agent protocol (report-progress.mjs itself falls back to a protocol
+            // launch), so the guard refuses only launches with NO protocol URI — a plain no-arg
+            // double-click / `dotnet run` / an agent running the exe directly to verify the UI.
+            // (A courier that finds nothing running becomes the cold-start owner:
+            // createdNew==true, so it is never refused.)
+            _singleInstanceMutex = new System.Threading.Mutex(true, SingleInstanceMutexName, out bool createdNew);
+            if (!createdNew && protocolUri == null)
+            {
+                // Bring Shane's real window forward, tell any agent reading this to stop, and
+                // exit with a distinct code — without building a window (same "clear StartupUri,
+                // skip MainWindow, Shutdown" idiom the successful-forward courier branch uses).
+                TryActivateRunningInstance();
+                WriteSingleInstanceRefusal();
+                Environment.ExitCode = SingleInstanceRefusedExitCode;
+                StartupUri = null;
+                Shutdown(SingleInstanceRefusedExitCode);
+                return;
+            }
+
             if (protocolUri != null)
             {
                 if (Services.ShaneAppProtocol.TryForwardToRunningInstance(protocolUri))
@@ -137,6 +184,58 @@ namespace BuildConsole
 
             // Catch unobserved async Task exceptions
             TaskScheduler.UnobservedTaskException += TaskScheduler_UnobservedTaskException;
+        }
+
+        /// <summary>
+        /// Git #2141 — ask the already-running BuildConsole to bring its real MainWindow to the
+        /// foreground, by couriering a <c>shaneapp://activate</c> message over the SAME per-user
+        /// named pipe every other protocol invocation uses (never a second parallel pipe). The
+        /// running instance's listener handles "activate" in MainWindow.HandleShaneAppUriAsync.
+        /// Best-effort: a missing/unreachable listener (e.g. the live instance is in agent mode
+        /// and isn't listening) is not fatal — the refusal below still fires either way.
+        /// </summary>
+        private static void TryActivateRunningInstance()
+        {
+            try
+            {
+                Services.ShaneAppProtocol.TryForwardToRunningInstance(
+                    Services.ShaneAppProtocol.Scheme + "://activate?src=single-instance-guard");
+            }
+            catch { /* foregrounding is best-effort; never block the refusal path */ }
+        }
+
+        /// <summary>
+        /// Git #2141 — the unmissable refusal, written for an AI agent to read, not just Shane.
+        /// Goes to <see cref="Console.Error"/> (seen when an agent runs the exe from an attached
+        /// console/terminal) AND <see cref="Services.ActivityLog"/> (durable on disk regardless of
+        /// whether any console is attached).
+        /// </summary>
+        private static void WriteSingleInstanceRefusal()
+        {
+            string message =
+                "====================================================================\n" +
+                " BUILDCONSOLE REFUSED TO LAUNCH — A LIVE SESSION IS ALREADY RUNNING\n" +
+                "====================================================================\n" +
+                "BuildConsole is already running on this machine and a second instance\n" +
+                "was just blocked.\n" +
+                "\n" +
+                "IF YOU ARE AN AI AGENT: STOP. Do NOT run, build-and-run (`dotnet run`),\n" +
+                "or relaunch BuildConsole.exe. Shane has a live session open right now and\n" +
+                "launching a second instance interrupts his active work. This is a HARD\n" +
+                "RULE, not a suggestion. Do not retry, and do not look for another way to\n" +
+                "start it. Shane's real window has been brought to the foreground for him.\n" +
+                "This process is exiting with code " + SingleInstanceRefusedExitCode + ".\n" +
+                "====================================================================";
+            try { Console.Error.WriteLine(message); Console.Error.Flush(); } catch { }
+            try
+            {
+                Services.ActivityLog.Log("system.core",
+                    "Single-instance guard (#2141): blocked a second BuildConsole launch on top of a live " +
+                    "session; foregrounded the running instance and refused with exit code " +
+                    SingleInstanceRefusedExitCode + ". Directive written to Console.Error telling any AI " +
+                    "agent NOT to run/relaunch BuildConsole.exe.");
+            }
+            catch { }
         }
 
         private void App_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)

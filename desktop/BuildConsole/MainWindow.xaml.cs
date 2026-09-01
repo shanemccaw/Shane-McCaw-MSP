@@ -9303,6 +9303,40 @@ namespace BuildConsole
         private void TopShaneAppIndicator_Click(object sender, MouseButtonEventArgs e) => StreamingConsoleWindow.OpenOrFocus();
         private void OpenStreamingConsole_Click(object sender, RoutedEventArgs e) => StreamingConsoleWindow.OpenOrFocus();
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        /// <summary>
+        /// Git #2141 — bring Shane's real MainWindow to the foreground in response to a
+        /// <c>shaneapp://activate</c> courier from a blocked second instance. Restores a minimized
+        /// window, then forces foreground via the Topmost toggle + <see cref="SetForegroundWindow"/>
+        /// (WPF's <c>Activate()</c> alone is unreliable when another process just asked for focus).
+        /// Runs on the UI thread (HandleShaneAppUriAsync is dispatched there); best-effort, never throws.
+        /// </summary>
+        private void ActivateMainWindowFromProtocol()
+        {
+            try
+            {
+                if (WindowState == WindowState.Minimized)
+                    WindowState = WindowState.Normal;
+                Show();
+                Activate();
+                Topmost = true;
+                Topmost = false;
+                Focus();
+                var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (handle != IntPtr.Zero)
+                    SetForegroundWindow(handle);
+                BuildConsole.Services.ActivityLog.Log("system.core",
+                    "Single-instance guard (#2141): brought MainWindow to the foreground for Shane at a blocked second instance's request.");
+            }
+            catch (Exception ex)
+            {
+                BuildConsole.Services.ActivityLog.Log("system.core",
+                    $"Single-instance guard (#2141): foreground activation failed (non-fatal): {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Handles one shaneapp:// invocation on the UI thread: logs it (source,
         /// action, real outcome), reads the payload from the temp file the URI
@@ -9338,6 +9372,18 @@ namespace BuildConsole
                 string src = string.IsNullOrWhiteSpace(req.Source) ? "unknown" : req.Source!;
                 BuildConsole.Services.ActivityLog.Log(ch,
                     $"Parsed: action='{req.Action}' src='{src}' ref='{req.Ref ?? "(none)"}'.");
+
+                // activate → Git #2141: a blocked SECOND instance couriered this to ask the real,
+                // already-running window to come to the foreground. No payload, no stream run —
+                // just restore-if-minimized + SetForegroundWindow, on the UI thread we're already
+                // on. Extends the existing pipe rather than a second parallel channel.
+                if (string.Equals(req.Action, "activate", StringComparison.OrdinalIgnoreCase))
+                {
+                    BuildConsole.Services.ActivityLog.Log(ch,
+                        $"Routing action 'activate' to foreground handler (src='{src}').");
+                    ActivateMainWindowFromProtocol();
+                    return;
+                }
 
                 // runTest / uiTest → run a whole test manifest IN-PROCESS through the same
                 // RunManifestAsync pipeline Play Test uses (MainWindow.ShaneAppRunTest.cs).
@@ -9441,7 +9487,7 @@ namespace BuildConsole
                 if (!string.Equals(req.Action, "executeSql", StringComparison.OrdinalIgnoreCase))
                 {
                     BuildConsole.Services.ActivityLog.Log(ch,
-                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / executeCmdlet / deployPsExecution / psExecutionRevision / reportProgress are handled. Ignoring.");
+                        $"Unsupported action '{req.Action}' — only executeSql / runTest / uiTest / runPowerShell / runScan / executeScan / executeCmdlet / deployPsExecution / psExecutionRevision / reportProgress / activate are handled. Ignoring.");
                     return;
                 }
 
