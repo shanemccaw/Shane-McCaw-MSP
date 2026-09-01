@@ -10,6 +10,22 @@
 //     artifacts/* and lib/*), not just root + one app, or Rollup fails to
 //     resolve cross-package imports.
 //
+// PER-PACKAGE @workspace LINKING (Git #2152). A wholesale junction of a host's
+// node_modules is correct ONLY for a host that holds nothing but third-party
+// packages. For a host that also holds an `@workspace/<lib-pkg>` scope (the
+// in-repo lib/* packages -- artifacts/api-server, admin-panel, portal,
+// msp-website, shane-mccaw-consulting, lib/dashboard-canvas, scripts), a wholesale
+// junction is WRONG: a Windows junction redirects the WHOLE directory atomically
+// into the main checkout, so `node_modules/@workspace/db` (a relative symlink
+// `..\..\..\..\lib\db`, resolved from its PHYSICAL location) lands on MAIN's
+// lib/db/src, not this worktree's own edited lib/db/src. #2151 proved that breaks
+// `tsc`/typecheck; #2152's Phase 1 proved it breaks REAL Node runtime resolution
+// too (`import.meta.resolve("@workspace/db/schema")` from a worktree consumer
+// resolved into the main checkout). So for such a host we build a REAL node_modules
+// in the worktree: every top-level entry is junctioned from main as before, EXCEPT
+// `@workspace`, whose entries are junctioned directly at THIS worktree's own
+// lib/<pkg>. Third-party junctioning is otherwise unchanged. See linkDeps().
+//
 // lib/*/dist is NOT junctioned (Git #2117 -- it used to be, alongside
 // node_modules, per the TS6305 note this comment previously carried). Junctioning
 // dist from the main checkout means a worktree session's own edits to lib/*/src are
@@ -20,11 +36,15 @@
 //
 // CLEANUP ORDER MATTERS: always `rmdir` the node_modules junctions FIRST, then
 // remove the worktree. Removing a worktree while junctions remain deletes THROUGH
-// them into the real store. (lib/*/dist is now a real, worktree-owned directory --
-// removing the worktree removes it too, no junction hazard there.)
+// them into the real store. For a per-package host the wholesale junction is gone,
+// replaced by a real node_modules dir full of INNER junctions -- those inner
+// reparse points (top-level third-party entries AND each @workspace/<pkg>) must be
+// unlinked too, or the recursive worktree removal follows them into the shared
+// store (findAndUnlinkWorktreeJunctions handles this, Git #2152). (lib/*/dist is a
+// real, worktree-owned directory -- removing the worktree removes it too.)
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, existsSync, statSync, lstatSync, mkdirSync, copyFileSync, readFileSync } from "node:fs";
+import { readdirSync, existsSync, statSync, lstatSync, mkdirSync, copyFileSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { isWindows } from "./config.mjs";
 
@@ -93,26 +113,150 @@ function junction(linkPath, targetPath) {
 }
 
 /**
+ * True if this host's node_modules holds an `@workspace` scope dir (the in-repo
+ * lib/* packages). ONLY these hosts need per-package linking (Git #2152); every
+ * other host is safe to wholesale-junction as before.
+ */
+function hostHasWorkspaceScope(repoRoot, hostRel) {
+  return existsSync(path.join(repoRoot, hostRel, "node_modules", "@workspace"));
+}
+
+/**
+ * Resolve THIS worktree's own directory for an `@workspace/<pkg>` entry, so the
+ * junction points at the worktree's editable lib/<pkg> src rather than main's.
+ * Prefer re-anchoring the main entry's real target under the worktree (handles any
+ * lib layout precisely); fall back to the conventional lib/<pkg> then
+ * lib/integrations/<pkg> only if main's link is missing/dangling/foreign (e.g. a
+ * store poisoned per #1988). Returns null if no worktree lib dir can be found.
+ */
+function worktreeLibForPkg(repoRoot, worktreePath, mainScopeDir, pkg) {
+  // 1. Re-anchor main's healthy target (realpathSync follows the reparse point to
+  //    the real dir, e.g. <main>\lib\db); only trust it if it lives UNDER the repo.
+  try {
+    const real = realpathSync(path.join(mainScopeDir, pkg));
+    const rel = path.relative(repoRoot, real);
+    if (rel && !rel.startsWith("..") && !path.isAbsolute(rel)) {
+      const cand = path.join(worktreePath, rel);
+      if (existsSync(path.join(cand, "package.json"))) return cand;
+    }
+  } catch {
+    /* fall through to conventional layout */
+  }
+  // 2. Conventional layout (all @workspace pkgs live flat under lib/ in this repo).
+  for (const rel of [path.join("lib", pkg), path.join("lib", "integrations", pkg)]) {
+    const cand = path.join(worktreePath, rel);
+    if (existsSync(path.join(cand, "package.json"))) return cand;
+  }
+  return null;
+}
+
+/**
+ * Per-package link a host that holds an `@workspace` scope (Git #2152). Builds a
+ * REAL node_modules in the worktree: every top-level entry junctioned from main
+ * (third-party dep symlinks-to-dirs, scope dirs like @types, .bin -- all
+ * directories, proven to resolve correctly even when the main entry is itself a
+ * relative symlink into the shared root .pnpm store), EXCEPT `@workspace`, whose
+ * entries are junctioned at THIS worktree's own lib/<pkg>. A rare non-directory
+ * top-level entry is copied. All created junctions are pushed to `created` so
+ * cleanup can unlink them.
+ */
+function linkHostPerPackage(repoRoot, worktreePath, hostRel, target, link, created) {
+  mkdirSync(link, { recursive: true });
+  let entries;
+  try {
+    entries = readdirSync(target);
+  } catch (e) {
+    console.warn(`  ! could not read ${hostRel}/node_modules: ${e.message}`);
+    return;
+  }
+  for (const name of entries) {
+    const srcEntry = path.join(target, name);
+    const dstEntry = path.join(link, name);
+    if (existsSync(dstEntry)) continue;
+
+    if (name === "@workspace") {
+      mkdirSync(dstEntry, { recursive: true });
+      let pkgs;
+      try {
+        pkgs = readdirSync(srcEntry);
+      } catch (e) {
+        console.warn(`  ! could not read ${hostRel}/node_modules/@workspace: ${e.message}`);
+        continue;
+      }
+      for (const pkg of pkgs) {
+        const dstPkg = path.join(dstEntry, pkg);
+        if (existsSync(dstPkg)) continue;
+        const wtLib = worktreeLibForPkg(repoRoot, worktreePath, srcEntry, pkg);
+        if (!wtLib) {
+          console.warn(`  ! @workspace/${pkg}: no worktree lib dir found — skipped (would fall back to main)`);
+          continue;
+        }
+        try {
+          junction(dstPkg, wtLib);
+          created.push(dstPkg);
+        } catch (e) {
+          console.warn(`  ! could not junction @workspace/${pkg}: ${e.message}`);
+        }
+      }
+      continue;
+    }
+
+    // Non-@workspace entry: junction it wholesale from main if it's a directory
+    // (statSync follows links; a dangling link throws and is skipped), else copy.
+    let st;
+    try {
+      st = statSync(srcEntry);
+    } catch {
+      continue;
+    }
+    if (st.isDirectory()) {
+      try {
+        junction(dstEntry, srcEntry);
+        created.push(dstEntry);
+      } catch (e) {
+        console.warn(`  ! could not junction ${hostRel}/node_modules/${name}: ${e.message}`);
+      }
+    } else {
+      try {
+        copyFileSync(srcEntry, dstEntry);
+      } catch (e) {
+        console.warn(`  ! could not copy ${hostRel}/node_modules/${name}: ${e.message}`);
+      }
+    }
+  }
+}
+
+/**
  * Link all dependency dirs from repoRoot into worktreePath.
  * Returns the list of link paths created (for later cleanup).
+ *
+ * A host with no in-repo @workspace scope is wholesale-junctioned as before (one
+ * junction). A host that holds @workspace packages is linked per-package so those
+ * packages resolve to the worktree's own lib/*, not main's (Git #2152).
  */
 export function linkDeps(repoRoot, worktreePath) {
   if (!isWindows()) {
     throw new Error("linkDeps currently implements the Windows junction recipe only.");
   }
   const created = [];
-  const rels = nodeModulesHosts(repoRoot).map((h) => path.posix.join(h, "node_modules"));
-  for (const rel of rels) {
+  for (const host of nodeModulesHosts(repoRoot)) {
+    const rel = path.posix.join(host, "node_modules");
     const target = path.join(repoRoot, rel);
     const link = path.join(worktreePath, rel);
     if (existsSync(link)) continue; // already linked / present
-    mkdirSync(path.dirname(link), { recursive: true });
-    try {
-      junction(link, target);
-      created.push(link);
-    } catch (e) {
-      console.warn(`  ! could not junction ${rel}: ${e.message}`);
+
+    if (!hostHasWorkspaceScope(repoRoot, host)) {
+      mkdirSync(path.dirname(link), { recursive: true });
+      try {
+        junction(link, target);
+        created.push(link);
+      } catch (e) {
+        console.warn(`  ! could not junction ${rel}: ${e.message}`);
+      }
+      continue;
     }
+
+    linkHostPerPackage(repoRoot, worktreePath, host, target, link, created);
   }
   return created;
 }
@@ -230,7 +374,55 @@ export function copyEnvFiles(repoRoot, worktreePath) {
  *     found but could NOT be removed. Callers MUST refuse to delete the worktree
  *     while `remaining` is non-empty — removal tooling that follows reparse points
  *     would delete THROUGH them into the real shared store (the header warning).
+ *
+ * Git #2152: a host with an @workspace scope is now a REAL node_modules dir full of
+ * INNER junctions (each top-level third-party entry, plus each @workspace/<pkg>),
+ * not a single wholesale junction. Such a real dir must be descended one level (and
+ * two levels for @workspace) to unlink every inner reparse point — otherwise the
+ * recursive worktree removal that follows would delete THROUGH those inner
+ * junctions into the shared store. We only ever descend into REAL directories
+ * (never into a reparse point, which would traverse into main).
  */
+function tryUnlinkReparse(link, unlinked, remaining) {
+  try {
+    execFileSync("cmd", ["/c", "rmdir", link], { stdio: "ignore" });
+  } catch {}
+  if (isReparsePoint(link)) remaining.push(link);
+  else unlinked.push(link);
+}
+
+/** Unlink inner junctions inside a REAL per-package node_modules (Git #2152):
+ *  top-level reparse points, plus one level deeper under a real @workspace dir. */
+function unlinkInnerJunctions(nmDir, unlinked, remaining) {
+  let children;
+  try {
+    children = readdirSync(nmDir);
+  } catch {
+    return;
+  }
+  for (const child of children) {
+    const cp = path.join(nmDir, child);
+    if (isReparsePoint(cp)) {
+      tryUnlinkReparse(cp, unlinked, remaining);
+      continue;
+    }
+    if (child === "@workspace") {
+      let pkgs;
+      try {
+        pkgs = readdirSync(cp);
+      } catch {
+        continue;
+      }
+      for (const pkg of pkgs) {
+        const pp = path.join(cp, pkg);
+        if (isReparsePoint(pp)) tryUnlinkReparse(pp, unlinked, remaining);
+      }
+    }
+    // Any other real subdir is worktree-owned content, left for the recursive
+    // removal to delete safely (it holds no reparse points of ours).
+  }
+}
+
 export function findAndUnlinkWorktreeJunctions(worktreePath) {
   if (!isWindows()) return { unlinked: [], remaining: [] };
   const hosts = [""]; // worktree root itself
@@ -248,30 +440,41 @@ export function findAndUnlinkWorktreeJunctions(worktreePath) {
     } catch {}
   }
 
-  const rels = [];
-  for (const h of hosts) {
-    rels.push(path.posix.join(h, "node_modules"));
-  }
+  const nmRels = hosts.map((h) => path.posix.join(h, "node_modules"));
+  const distRels = [];
   for (const group of ["lib", "lib/integrations"]) {
     const dir = path.join(worktreePath, group);
     if (!existsSync(dir)) continue;
     try {
       for (const name of readdirSync(dir)) {
-        rels.push(path.posix.join(group, name, "dist"));
+        distRels.push(path.posix.join(group, name, "dist"));
       }
     } catch {}
   }
 
   const unlinked = [];
   const remaining = [];
-  for (const rel of rels) {
+  // node_modules: a wholesale junction is rmdir'd directly; a REAL per-package dir
+  // (Git #2152) is descended to unlink its inner junctions instead.
+  for (const rel of nmRels) {
+    const link = path.join(worktreePath, rel);
+    if (isReparsePoint(link)) {
+      tryUnlinkReparse(link, unlinked, remaining);
+      continue;
+    }
+    let isDir = false;
+    try {
+      isDir = statSync(link).isDirectory();
+    } catch {
+      isDir = false;
+    }
+    if (isDir) unlinkInnerJunctions(link, unlinked, remaining);
+  }
+  // lib/*/dist: only ever a junction (or a real worktree-owned dir left as-is).
+  for (const rel of distRels) {
     const link = path.join(worktreePath, rel);
     if (!isReparsePoint(link)) continue;
-    try {
-      execFileSync("cmd", ["/c", "rmdir", link], { stdio: "ignore" });
-    } catch {}
-    if (isReparsePoint(link)) remaining.push(link);
-    else unlinked.push(link);
+    tryUnlinkReparse(link, unlinked, remaining);
   }
   return { unlinked, remaining };
 }

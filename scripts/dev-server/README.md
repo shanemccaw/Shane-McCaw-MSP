@@ -59,6 +59,15 @@ node scripts/dev-server/bootstrap-server.mjs --link --launch
   longer junctioned from the main repo, since that made a worktree's own
   schema/type edits invisible to `tsc`/`pnpm typecheck`). Omit `--link` and run
   `pnpm install` at the repo root yourself instead.
+  * **Per-package `@workspace` linking (Git #2152):** a host whose `node_modules`
+    holds an `@workspace/<lib-pkg>` scope (the in-repo `lib/*` packages) is NOT
+    wholesale-junctioned — a Windows junction redirects the whole directory into
+    the main checkout, so `@workspace/db` would resolve to main's `lib/db/src`
+    rather than this worktree's own edited source (broken at both `tsc` typecheck
+    **and** real Node runtime resolution). Instead such a host gets a REAL
+    `node_modules`: every third-party entry junctioned from main as before, but
+    each `@workspace/<pkg>` junctioned directly at this worktree's own `lib/<pkg>`.
+    Hosts with no `@workspace` scope stay a single wholesale junction.
 * `--launch` starts `dev-all.mjs`. Re-running bootstrap is safe/idempotent.
 
 Default server worktree: `C:\dev-server` (short path — the deep `Design/_ds/...`
