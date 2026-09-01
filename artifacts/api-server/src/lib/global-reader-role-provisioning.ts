@@ -2,10 +2,39 @@
  * global-reader-role-provisioning.ts
  *
  * #1130 (part of #1128): assigns the built-in Entra **Global Reader** directory
- * role to the READ app registration's (MT_APP_CLIENT_ID) service principal,
- * tenant-wide, using the WRITE app's (MT_APP_WRITE_CLIENT_ID) elevated consent.
- * Prerequisite for adopting the orphaned checks #1129 found — two of them need
- * Global Reader-level directory read the READ app does not otherwise carry.
+ * role to the **ps-execution app registration's** (PS_EXECUTION_APP_CLIENT_ID)
+ * per-tenant service principal, tenant-wide, using the WRITE app's
+ * (MT_APP_WRITE_CLIENT_ID) elevated consent. Prerequisite for adopting the
+ * orphaned checks #1129 found — two of them (`exchange:auto-forwarding-rules`,
+ * `compliance:audit-log-retention`) run as PowerShell inside the ca-ps-execution
+ * container and need Global Reader-level directory read that app does not
+ * otherwise carry.
+ *
+ * ── WHICH service principal, and why not MT_APP_CLIENT_ID (Gap 3 / #2161) ────
+ * This is subtle and got the role assigned to the wrong principal once already.
+ * The env var name `MT_APP_CLIENT_ID` holds *different app registrations in
+ * different runtimes*:
+ *   • api-server            MT_APP_CLIENT_ID = 4743b130-… → SP 6bae4b49-… (the
+ *                           READ app; runs the `graph` executor checks). Live
+ *                           check 2026-09-01: this SP holds NO directory roles.
+ *   • ps-execution container MT_APP_CLIENT_ID = 9ea2e409-… → SP 1c640fe8-… (runs
+ *                           the `powershell`/Exchange/Purview/Teams checks via
+ *                           mt-app-cert; entrypoint.ps1:71, README.md:186). Live
+ *                           check 2026-09-01: this SP holds Global Reader
+ *                           (granted manually by #1483).
+ * The checks that actually need Global Reader run in the CONTAINER as the
+ * 9ea2e409 app. But this provisioning module runs in the api-server process,
+ * where `process.env.MT_APP_CLIENT_ID` is 4743b130 — so resolving that env var
+ * (the pre-#2161 behavior) targeted SP 6bae4b49, which neither runs those checks
+ * nor is the SP #1483 elevated. It therefore granted Global Reader to the wrong
+ * principal and left every freshly-onboarded tenant's container PowerShell
+ * checks failing exactly as before onboarding.
+ * The fix: resolve the ps-execution app explicitly via PS_EXECUTION_APP_CLIENT_ID
+ * (the container's own MT_APP_CLIENT_ID value, 9ea2e409-…), falling back to
+ * MT_APP_CLIENT_ID only for a unified deployment where both are the same app.
+ * The resolved appId + which env var supplied it is recorded in the step detail
+ * and audit metadata so a wrong target is visible in the trail, not silent.
+ * See docs/tenant-permission-model.md.
  *
  * Global Reader is READ-ONLY: it grants tenant-wide read of directory objects
  * and cannot modify anything. The WRITE app is used only because *assigning* a
@@ -90,18 +119,37 @@ function failedResult(steps: GlobalReaderProvisioningResult["steps"], servicePri
 }
 
 /**
- * Resolves the READ app's own service principal object id INSIDE the target
- * tenant's directory. A multi-tenant app registration gets a distinct SP
+ * Which app registration's service principal should carry Global Reader.
+ * Prefers PS_EXECUTION_APP_CLIENT_ID (the ps-execution container's app — the one
+ * that actually runs the PowerShell checks needing the role); falls back to
+ * MT_APP_CLIENT_ID only for a unified deployment where they are the same app.
+ * See the Gap 3 / #2161 note in this file's header.
+ */
+function resolveTargetAppClientId(): { clientId: string; sourceVar: string } | null {
+  const psExec = process.env.PS_EXECUTION_APP_CLIENT_ID;
+  if (psExec) return { clientId: psExec, sourceVar: "PS_EXECUTION_APP_CLIENT_ID" };
+  const mtApp = process.env.MT_APP_CLIENT_ID;
+  if (mtApp) return { clientId: mtApp, sourceVar: "MT_APP_CLIENT_ID (fallback — set PS_EXECUTION_APP_CLIENT_ID to be explicit)" };
+  return null;
+}
+
+/**
+ * Resolves the ps-execution app's own service principal object id INSIDE the
+ * target tenant's directory. A multi-tenant app registration gets a distinct SP
  * object per tenant, so this can't be a static env var — it's a live read
  * (uses the `graph` read consent, guaranteed present by the time this runs).
+ * Returns the resolved SP id plus the appId/env-var it was resolved from, so the
+ * exact target is auditable (Gap 3 / #2161).
  */
-async function resolveMtAppServicePrincipalId(tenantId: string): Promise<string | null> {
-  const clientId = process.env.MT_APP_CLIENT_ID;
-  if (!clientId) return null;
-  const res = await graphFetchForTenant(tenantId, `/servicePrincipals?$filter=appId eq '${clientId}'&$select=id,appId`);
-  if (!res.ok) return null;
+async function resolveTargetServicePrincipalId(
+  tenantId: string,
+): Promise<{ servicePrincipalId: string | null; clientId: string | null; sourceVar: string | null }> {
+  const target = resolveTargetAppClientId();
+  if (!target) return { servicePrincipalId: null, clientId: null, sourceVar: null };
+  const res = await graphFetchForTenant(tenantId, `/servicePrincipals?$filter=appId eq '${target.clientId}'&$select=id,appId`);
+  if (!res.ok) return { servicePrincipalId: null, clientId: target.clientId, sourceVar: target.sourceVar };
   const body = (await res.json()) as { value?: Array<{ id: string }> };
-  return body.value?.[0]?.id ?? null;
+  return { servicePrincipalId: body.value?.[0]?.id ?? null, clientId: target.clientId, sourceVar: target.sourceVar };
 }
 
 /**
@@ -122,12 +170,14 @@ export async function provisionGlobalReaderForTenant(
   let servicePrincipalId: string | null = null;
 
   try {
-    // ── Step 0: resolve the READ app's SP object id in this tenant (read-only) ──
+    // ── Step 0: resolve the ps-execution app's SP object id in this tenant (read-only) ──
     try {
-      servicePrincipalId = await resolveMtAppServicePrincipalId(tenantId);
+      const resolved = await resolveTargetServicePrincipalId(tenantId);
+      servicePrincipalId = resolved.servicePrincipalId;
+      const via = resolved.clientId ? `appId=${resolved.clientId} via ${resolved.sourceVar}` : "no target app client id configured (PS_EXECUTION_APP_CLIENT_ID / MT_APP_CLIENT_ID both unset)";
       steps.resolveServicePrincipal = servicePrincipalId
-        ? { status: "succeeded", detail: servicePrincipalId }
-        : { status: "failed", detail: "read app service principal not found in this tenant's directory (or MT_APP_CLIENT_ID unset)" };
+        ? { status: "succeeded", detail: `SP ${servicePrincipalId} (${via})` }
+        : { status: "failed", detail: `ps-execution app service principal not found in this tenant's directory (${via})` };
     } catch (err) {
       steps.resolveServicePrincipal = { status: "failed", detail: err instanceof Error ? err.message : String(err) };
     }
@@ -279,7 +329,7 @@ export async function getGlobalReaderProvisioningState(tenantId: string, custome
   let roleAssigned = false;
   let roleAssignedSource: GlobalReaderProvisioningState["roleAssignedSource"] = "none";
   try {
-    const spId = await resolveMtAppServicePrincipalId(tenantId);
+    const { servicePrincipalId: spId } = await resolveTargetServicePrincipalId(tenantId);
     if (spId) {
       const res = await graphFetchForTenant(
         tenantId,
