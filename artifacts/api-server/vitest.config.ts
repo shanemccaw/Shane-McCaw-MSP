@@ -22,6 +22,7 @@ export default defineConfig({
       "src/lib/doc-gate-coverage.test.ts",
       "src/lib/portal-ownership.test.ts",
       "src/lib/msp-ownership-book.test.ts",
+      "src/lib/security-plan-cross-tenant.test.ts",
       "src/lib/lead-intent.test.ts",
       "src/lib/free-scan-prospect.test.ts",
       "src/lib/portal-sops.test.ts",
