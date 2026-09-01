@@ -175,8 +175,11 @@ namespace BuildConsole
         // ── Git #2110: floaty live Build Queue Map window ───────────────────────
         private BuildQueueMapWindow? _buildQueueMap;
 
-        // ── Git #2135: isolated Build Queue Design Canvas window ─────────────────
-        private BuildQueueDesignWindow? _buildQueueDesign;
+        // ── Git #2135/#2137: Build Queue Design Canvas — now a genuinely separate
+        //    exe (BuildQueueDesignPreview) launched as its own process, so iterating
+        //    its design can never rebuild THIS running BuildConsole.exe. We track the
+        //    launched process only to avoid spawning duplicates. ───────────────────
+        private System.Diagnostics.Process? _buildQueueDesignProc;
 
         // ── Git #1472: floaty Visual Test Tracker window (separate from Sticky Notes) ──
         private VisualTestTrackerWindow? _visualTestTracker;
@@ -1637,31 +1640,89 @@ namespace BuildConsole
         }
 
         /// <summary>
-        /// Git #2135 (Epic #1788) — toggles the isolated Build Queue Design Canvas window.
-        /// Same open-or-close-on-toggle + Owner=this lifecycle as Build Watch (#980) and the
-        /// Build Queue Map (#2110) above, so it closes cleanly with the app and never
-        /// orphans. Passes the shared queue Postgres client so the canvas reads the exact
-        /// same live queue (via GetQueueAsync) every other panel reads — real Build Sets,
-        /// items, and blockers, never fixture data. This window is deliberately a separate,
-        /// visually-isolated scaffold Shane iterates on directly, with zero shared styles
-        /// that could leak a change back into the real, running BuildQueuePanel.
+        /// Git #2135 → #2137 (Epic #1788) — opens the Build Queue Design Canvas.
+        ///
+        /// #2135 landed this as an in-process window inside BuildConsole.csproj, which
+        /// meant recompiling to iterate its design rebuilt the SAME BuildConsole.exe this
+        /// live instance runs. #2137 extracted it into a genuinely separate project/exe
+        /// (BuildQueueDesignPreview) with its own build output, so Shane can rebuild and
+        /// re-run the design as often as he likes with zero risk to the running console.
+        ///
+        /// This 🎨 button therefore now LAUNCHES that separate exe as its own process
+        /// (which builds its own live BuildQueuePostgresClient from the same config /
+        /// DATABASE_URL) rather than constructing a window in-process. It's tracked only
+        /// to avoid spawning duplicates on repeated clicks; closing the preview is done
+        /// from the preview window itself.
         /// </summary>
         private void ToggleBuildQueueDesign()
         {
-            if (_buildQueueDesign != null)
+            try
             {
-                _buildQueueDesign.Close(); // Closed handler nulls the ref and logs "close"
-                return;
-            }
+                if (_buildQueueDesignProc is { HasExited: false })
+                {
+                    BuildConsole.Services.ActivityLog.Log(
+                        "build-queue-design", "already open (pid " + _buildQueueDesignProc.Id + ")");
+                    return;
+                }
 
-            _buildQueueDesign = new BuildQueueDesignWindow(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb) { Owner = this };
-            _buildQueueDesign.Closed += (s, e) =>
+                var exe = FindBuildQueueDesignPreviewExe();
+                if (exe == null)
+                {
+                    ToastEngine.Warning("Build Queue — Design Canvas",
+                        "Couldn't find BuildQueueDesignPreview.exe — build the BuildQueueDesignPreview project first.");
+                    BuildConsole.Services.ActivityLog.Log("build-queue-design", "exe not found");
+                    return;
+                }
+
+                _buildQueueDesignProc = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = exe,
+                    WorkingDirectory = System.IO.Path.GetDirectoryName(exe)!,
+                    UseShellExecute = true,
+                });
+                BuildConsole.Services.ActivityLog.Log("build-queue-design", "launched " + exe);
+            }
+            catch (Exception ex)
             {
-                _buildQueueDesign = null;
-                BuildConsole.Services.ActivityLog.Log("build-queue-design", "close");
-            };
-            _buildQueueDesign.Show();
-            BuildConsole.Services.ActivityLog.Log("build-queue-design", "open");
+                ToastEngine.Warning("Build Queue — Design Canvas", "Launch failed: " + ex.Message);
+                BuildConsole.Services.ActivityLog.Log("build-queue-design", "launch failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Git #2137 — locate the separate BuildQueueDesignPreview.exe. Prefers a copy
+        /// deployed side-by-side with the running BuildConsole.exe, then falls back to the
+        /// sibling project's build output under the repo root (newest build wins). Returns
+        /// null if it hasn't been built yet.
+        /// </summary>
+        private static string? FindBuildQueueDesignPreviewExe()
+        {
+            const string exeName = "BuildQueueDesignPreview.exe";
+
+            // 1) Side-by-side with this exe (a real side-by-side deploy).
+            var side = System.IO.Path.Combine(AppContext.BaseDirectory, exeName);
+            if (System.IO.File.Exists(side)) return side;
+
+            // 2) desktop/BuildQueueDesignPreview/bin/<cfg>/net8.0-windows/ under the repo
+            //    root — the normal `dotnet build` output; pick the most recently built.
+            var repoRoot = BuildConsole.Services.BuildTrackerConfig.FindRepoRoot();
+            if (!string.IsNullOrWhiteSpace(repoRoot))
+            {
+                var binRoot = System.IO.Path.Combine(repoRoot, "desktop", "BuildQueueDesignPreview", "bin");
+                if (System.IO.Directory.Exists(binRoot))
+                {
+                    string? best = null;
+                    DateTime bestTime = DateTime.MinValue;
+                    foreach (var f in System.IO.Directory.EnumerateFiles(
+                                 binRoot, exeName, System.IO.SearchOption.AllDirectories))
+                    {
+                        var t = System.IO.File.GetLastWriteTimeUtc(f);
+                        if (t > bestTime) { bestTime = t; best = f; }
+                    }
+                    if (best != null) return best;
+                }
+            }
+            return null;
         }
 
         /// <summary>

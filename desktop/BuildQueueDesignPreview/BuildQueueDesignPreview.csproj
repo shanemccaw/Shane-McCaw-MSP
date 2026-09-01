@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       Git #2137 (Epic #1788 — Build Console → Build Queue Panel) — a GENUINELY
+       separate WPF project for the Build Queue "Design Canvas" window that #2135
+       first landed inside BuildConsole.csproj.
+
+       Why this project exists (the real fix #2135 could not deliver): #2135 gave
+       the window RUNTIME/style isolation (its XAML can't leak into the live
+       BuildQueuePanel). It did NOT give it COMPILE/DEPLOY isolation — the window
+       was still part of BuildConsole.csproj, so recompiling to iterate the design
+       rebuilt the SAME BuildConsole.exe Shane's live, actively-running instance
+       uses to manage his real dispatched builds (best case a file-lock error,
+       worst case overwriting the binary under a running process).
+
+       This project produces its OWN standalone BuildQueueDesignPreview.exe, in its
+       OWN bin/ output directory, so Shane can compile and re-run the design window
+       as many times as he wants with zero possibility of touching the live
+       BuildConsole process.
+
+       Share, don't duplicate: everything real is pulled from BuildConsole via the
+       ProjectReference below —
+         • the data-access layer (BuildQueuePostgresClient / QueueItem / the config
+           + status-policy types the window reads), and
+         • the #2126 color/typography TOKEN dictionaries (Themes/Colors.xaml +
+           Typography.xaml), merged in App.xaml via a pack URI into the referenced
+           assembly, exactly the two dicts #2135 shared by DynamicResource.
+       No source is copied; the moved window (BuildQueueDesignWindow.xaml/.cs) is
+       the only code that physically lives here.
+
+       NOT wired as anyone's default startup — this stays a separate exe Shane
+       launches deliberately (VS / `dotnet run` / the ActivityBar 🎨 button, which
+       #2137 re-points to launch THIS exe). A deliberate cutover comes later.
+       ════════════════════════════════════════════════════════════════════ -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+    <ApplicationIcon>..\BuildConsole\app.ico</ApplicationIcon>
+    <!-- Distinct assembly name → distinct exe, so it can never collide with or
+         overwrite BuildConsole.exe. -->
+    <AssemblyName>BuildQueueDesignPreview</AssemblyName>
+    <RootNamespace>BuildQueueDesignPreview</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Share BuildConsole's real code + the #2126 token dictionaries. This is a
+         reference to a WinExe project; the SDK treats it as an assembly reference
+         (BuildConsole's own entry point is never invoked from here — this project
+         has its own App/Main). -->
+    <ProjectReference Include="..\BuildConsole\BuildConsole.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Same app.ico as BuildConsole, linked (not copied) so the window's
+         Icon="app.ico" resolves as a WPF Resource inside THIS assembly without
+         duplicating the binary on disk. -->
+    <Resource Include="..\BuildConsole\app.ico" Link="app.ico" />
+  </ItemGroup>
+
+</Project>
