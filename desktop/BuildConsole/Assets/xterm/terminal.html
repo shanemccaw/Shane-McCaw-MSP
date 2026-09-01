@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<!--
+  Git #2149 — xterm.js host surface for the embedded interactive Claude Code
+  terminal. Rendered inside a WebView2 in BuildConsole's Controls/ClaudeTerminalView.
+  xterm.js is the same VT emulator VS Code's integrated terminal uses; it renders
+  the full ANSI stream a ConPTY-hosted `claude` session emits.
+
+  Bridge (all messages are JSON strings):
+    C#  → JS : PostWebMessageAsString  { type:'output', b64:'<base64 utf-8 pty bytes>' }
+    C#  → JS : PostWebMessageAsString  { type:'clear' }
+    JS  → C# : postMessage             { type:'ready' }
+    JS  → C# : postMessage             { type:'input',  data:'<utf-8 keystrokes>' }
+    JS  → C# : postMessage             { type:'resize', cols:N, rows:M }
+    JS  → C# : postMessage             { type:'copy',   data:'<selected text>' }   (native WPF Clipboard.SetText)
+    JS  → C# : postMessage             { type:'paste' }                            (C# reads WPF Clipboard, writes to pty)
+
+  Copy/paste is deliberately routed through C# so it uses Windows' native
+  clipboard exactly like any other WPF control — the whole point of #2149.
+-->
+<html>
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="xterm.css" />
+  <style>
+    html, body { height: 100%; margin: 0; padding: 0; background: #0a0c10; overflow: hidden; }
+    #term { position: absolute; top: 0; left: 0; right: 0; bottom: 0; padding: 6px; box-sizing: border-box; }
+    .xterm .xterm-viewport { overflow-y: auto; }
+  </style>
+  <script src="xterm.js"></script>
+  <script src="addon-fit.js"></script>
+</head>
+<body>
+  <div id="term"></div>
+  <script>
+    (function () {
+      var host = window.chrome && window.chrome.webview;
+
+      function post(obj) { if (host) host.postMessage(JSON.stringify(obj)); }
+
+      var term = new Terminal({
+        cursorBlink: true,
+        allowProposedApi: true,
+        fontFamily: 'Cascadia Code, Cascadia Mono, Consolas, monospace',
+        fontSize: 13,
+        scrollback: 10000,
+        // Palette mirrors the shell's terminal background (Brush.Bg.Terminal #0A0C10)
+        // and Catppuccin-ish text so it reads consistently inside BuildConsole.
+        theme: {
+          background: '#0a0c10',
+          foreground: '#c9d1d9',
+          cursor: '#7c8cf0',
+          selectionBackground: '#33415580'
+        }
+      });
+
+      var fit = new FitAddon.FitAddon();
+      term.loadAddon(fit);
+      term.open(document.getElementById('term'));
+
+      function doFit() {
+        try {
+          fit.fit();
+          post({ type: 'resize', cols: term.cols, rows: term.rows });
+        } catch (e) { /* not laid out yet */ }
+      }
+
+      // Keystrokes → pty. xterm already encodes arrows/fn/ctrl as the right
+      // VT sequences, so this is exactly what a real terminal would send.
+      term.onData(function (data) { post({ type: 'input', data: data }); });
+
+      // Native-feeling copy/paste, handled BEFORE xterm sees the key:
+      //   Ctrl+C  → copy the selection if there is one (via WPF clipboard),
+      //             otherwise fall through so ^C reaches the pty as interrupt.
+      //   Ctrl+V  → paste from the WPF clipboard.
+      //   Ctrl+Shift+C / Ctrl+Shift+V → always copy / always paste (terminal-standard).
+      term.attachCustomKeyEventHandler(function (e) {
+        if (e.type !== 'keydown') return true;
+        var ctrl = e.ctrlKey, shift = e.shiftKey;
+        if (ctrl && !e.altKey && (e.key === 'c' || e.key === 'C')) {
+          var sel = term.getSelection();
+          if (shift) { if (sel) post({ type: 'copy', data: sel }); return false; }
+          if (sel && sel.length > 0) { post({ type: 'copy', data: sel }); term.clearSelection(); return false; }
+          return true; // no selection → let ^C interrupt claude
+        }
+        if (ctrl && !e.altKey && (e.key === 'v' || e.key === 'V')) { post({ type: 'paste' }); return false; }
+        return true;
+      });
+
+      // Right-click pastes, like a classic Windows console.
+      term.element.addEventListener('contextmenu', function (e) { e.preventDefault(); post({ type: 'paste' }); });
+
+      // Paste is routed through C# (WPF clipboard) exclusively; suppress xterm's
+      // own DOM paste on its hidden textarea so a Ctrl+V can't paste twice.
+      if (term.textarea) term.textarea.addEventListener('paste', function (e) { e.preventDefault(); });
+
+      // C# → JS.
+      function onMessage(raw) {
+        var msg;
+        try { msg = JSON.parse(raw); } catch (e) { return; }
+        if (msg.type === 'output') {
+          var bin = atob(msg.b64);
+          var bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          term.write(bytes);
+        } else if (msg.type === 'clear') {
+          term.clear();
+        }
+      }
+      if (host) host.addEventListener('message', function (e) { onMessage(e.data); });
+
+      window.addEventListener('resize', doFit);
+      // Tell C# we're ready to receive output and start the session.
+      requestAnimationFrame(function () { doFit(); term.focus(); post({ type: 'ready' }); });
+    })();
+  </script>
+</body>
+</html>

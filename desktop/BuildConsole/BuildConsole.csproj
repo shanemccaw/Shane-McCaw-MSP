@@ -55,6 +55,10 @@
          at runtime (BuildCompletionSoundService falls back to this file when
          Settings has no custom BuildCompleteSoundPath). -->
     <None Include="Assets\Sounds\taskCompleted.mp3" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Git #2149 — vendored xterm.js terminal surface for the embedded Claude
+         Code terminal (Controls/ClaudeTerminalView). Served to the WebView2 via
+         SetVirtualHostNameToFolderMapping, so it must sit alongside the exe. -->
+    <None Include="Assets\xterm\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- ════════════════════════════════════════════════════════════════════

@@ -1062,6 +1062,12 @@
                             <ctrl:TerminalView x:Name="TerminalView"/>
                         </TabItem>
 
+                        <!-- Git #2149 — embedded interactive Claude Code terminal (ConPTY + xterm.js),
+                             real native copy/paste. Lazily starts its session when first shown. -->
+                        <TabItem Header="Claude">
+                            <ctrl:ClaudeTerminalView x:Name="ClaudeTerminalView"/>
+                        </TabItem>
+
                         <TabItem Header="Marketing" x:Name="TabMarketing">
                             <ctrl:ServiceLogView x:Name="MarketingLogView"/>
                         </TabItem>

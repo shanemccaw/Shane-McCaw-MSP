@@ -1,0 +1,62 @@
+<UserControl x:Class="BuildConsole.Controls.ClaudeTerminalView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf">
+
+    <!-- Git #2149 — embedded interactive Claude Code terminal.
+         A real ConPTY-hosted shell (see Services/PtySession.cs) rendered by
+         xterm.js inside a WebView2, so `claude`'s full interactive TUI runs
+         exactly as it would in Windows Terminal — with native copy/paste. -->
+    <Grid Background="{StaticResource CrustBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- toolbar -->
+            <RowDefinition Height="*"/>     <!-- terminal surface -->
+        </Grid.RowDefinitions>
+
+        <!-- ── Toolbar ── -->
+        <Border Grid.Row="0"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,5">
+            <DockPanel LastChildFill="True">
+                <Button x:Name="LaunchClaudeButton"
+                        DockPanel.Dock="Left"
+                        Content="Launch claude"
+                        Style="{StaticResource ChipButton}"
+                        ToolTip="Type 'claude' into the session and start it"
+                        Click="LaunchClaude_Click"/>
+                <Button x:Name="RestartButton"
+                        DockPanel.Dock="Left"
+                        Content="Restart shell"
+                        Style="{StaticResource ChipButton}"
+                        ToolTip="Kill and restart the underlying PowerShell session"
+                        Click="Restart_Click"/>
+                <TextBlock x:Name="StatusText"
+                           DockPanel.Dock="Right"
+                           Text="starting…"
+                           FontSize="11"
+                           Foreground="{StaticResource Subtext1Brush}"
+                           VerticalAlignment="Center"
+                           Margin="10,0,4,0"/>
+                <TextBlock DockPanel.Dock="Left"
+                           Text="cwd:"
+                           FontSize="11"
+                           Foreground="{StaticResource Subtext1Brush}"
+                           VerticalAlignment="Center"
+                           Margin="8,0,4,0"/>
+                <TextBox x:Name="CwdBox"
+                         FontFamily="Cascadia Code, Consolas"
+                         FontSize="11"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Foreground="{StaticResource TextBrush}"
+                         VerticalContentAlignment="Center"
+                         IsReadOnly="True"/>
+            </DockPanel>
+        </Border>
+
+        <!-- ── Terminal surface (xterm.js in WebView2) ── -->
+        <wv2:WebView2 x:Name="TerminalWebView" Grid.Row="1"/>
+    </Grid>
+</UserControl>
