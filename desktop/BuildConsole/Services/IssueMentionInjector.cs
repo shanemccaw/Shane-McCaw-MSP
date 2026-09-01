@@ -191,8 +191,12 @@ namespace BuildConsole.Services
     var badge = status === 'CLOSED'
       ? '<span style="color:#F38BA8;font-size:11px;font-weight:600">\u25cf CLOSED</span>'
       : '<span style="color:#A6E3A1;font-size:11px;font-weight:600">\u25cf OPEN</span>';
+    var epicBadge = isEpic
+      ? '<span style="background:#F9E2AF;color:#1E1E2E;font-size:11px;font-weight:800;letter-spacing:0.5px;' +
+        'padding:2px 7px;border-radius:4px;margin-right:6px;box-shadow:0 0 0 1px #F9E2AF88">EPIC</span>'
+      : '';
     tipBody.innerHTML = icon + ' <strong style="color:#89B4FA">#' + number + '</strong> '
-      + badge + '<br><span style="color:#BAC2DE">' + escHtml(title) + '</span>'
+      + epicBadge + badge + '<br><span style="color:#BAC2DE">' + escHtml(title) + '</span>'
       + renderActions(actions);
 
     var actionBtn = tipBody.querySelector('.bc-issue-action');
