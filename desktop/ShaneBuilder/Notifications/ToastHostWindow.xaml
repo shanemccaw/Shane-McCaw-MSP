@@ -1,0 +1,21 @@
+<Window x:Class="ShaneBuilder.ToastHostWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Notifications"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Focusable="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Shared, always-on-top, transparent host for the app's toast notifications. It is sized to
+         its content (SizeToContent) so only the actual toast cards intercept the mouse — the rest of
+         the screen top stays clickable — and is parked centred at the mid-top of the work area by the
+         code-behind. Never shown modally and never activated (ShowActivated="False" + SWP_NOACTIVATE),
+         so it can never steal focus or lock the UI. New toasts append to the stack below. -->
+    <StackPanel x:Name="ToastStack" Margin="12"/>
+</Window>

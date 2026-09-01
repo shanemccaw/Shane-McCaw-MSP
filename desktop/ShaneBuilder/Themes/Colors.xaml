@@ -146,4 +146,16 @@
     <SolidColorBrush x:Key="Brush.Alert.Locked" Color="#FB7185"/>
     <SolidColorBrush x:Key="Brush.Alert.Critical" Color="#F87171"/>
 
+    <!-- 12. Toast Notifications (Git #2174, port of BuildConsole's ToastEngine) —
+         no dedicated Info/Warning entries exist in the #2147 doc, so these are
+         aliases onto existing real tokens above rather than new hex values:
+         Success/Error reuse the section 11 alert colors verbatim, Info reuses
+         the section 4 primary accent, and Warning reuses the section 8 focus-
+         nudge mid-escalation amber (the closest existing "heads-up, not yet
+         critical" tone in the palette). -->
+    <StaticResource x:Key="Brush.Toast.Info" ResourceKey="Brush.Accent.Primary"/>
+    <StaticResource x:Key="Brush.Toast.Success" ResourceKey="Brush.Alert.Success"/>
+    <StaticResource x:Key="Brush.Toast.Warning" ResourceKey="Brush.FocusNudge.Quiet30m.Fg"/>
+    <StaticResource x:Key="Brush.Toast.Error" ResourceKey="Brush.Alert.Danger.Border"/>
+
 </ResourceDictionary>
