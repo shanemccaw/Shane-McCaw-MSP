@@ -1887,6 +1887,10 @@ namespace BuildConsole
                     if (promoted.Count > 0)
                         ActivityLog.Log("github", $"Build Watch ({source}): {promoted.Count} Verifying item(s) promoted to Done — " +
                             string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
+
+                    // Git #2136 — reconcile Verifying rows whose real board Status column moved off
+                    // Verifying (Park/Crashed/Done). Git is the database; the #1867 recurrence fix.
+                    await BuildConsole.Services.BoardStatusSync.ReconcileVerifyingAgainstBoardAsync(_db, $"Build Watch {source}");
                 }
                 catch (Exception ex)
                 {

@@ -86,6 +86,22 @@
                                        Foreground="{StaticResource BlueBrush}"
                                        VerticalAlignment="Center"/>
                         </Button>
+                        <!-- Git #2136 — Board Reconcile: opens the cleanup/migration window that
+                             surfaces every local Verifying/Parked/Crashed/limit-paused row against
+                             its REAL current GitHub board Status, so a stale local row (the #1867
+                             pattern) can be migrated to the matching board column or dismissed. -->
+                        <Button x:Name="BtnBoardReconcile"
+                                Style="{StaticResource IconButton}"
+                                ToolTip="Board reconcile — review local Verifying/Parked/Crashed rows against the real GitHub board (Git #2136)"
+                                Padding="6,4"
+                                Margin="0,0,3,0"
+                                Click="BtnBoardReconcile_Click">
+                            <TextBlock Text="&#xE895;"
+                                       FontFamily="Segoe MDL2 Assets, Segoe UI Symbol"
+                                       FontSize="11"
+                                       Foreground="{StaticResource MauveBrush}"
+                                       VerticalAlignment="Center"/>
+                        </Button>
                         <!-- Git #1480 — paste a full build prompt (headers + body) straight into
                              the queue without going through a chat tab first. Opens the same
                              EditBuildPromptDialog the chat-injected "Edit Build" button uses, so

@@ -906,6 +906,24 @@ namespace BuildConsole.Controls
         /// own reset-timer restart, for a build that died some other way and never got
         /// flagged/parked by the live watcher path.
         /// </summary>
+        // Git #2136 — opens the Board Reconcile cleanup/migration window: every local
+        // Verifying/Parked/Crashed/limit-paused row against its REAL current GitHub board Status,
+        // so a stale local row (the #1867 pattern) can be migrated to the matching board column or
+        // dismissed. Non-modal (owned) so Shane can keep working the queue while reviewing.
+        private void BtnBoardReconcile_Click(object sender, RoutedEventArgs e)
+        {
+            if (_db == null)
+            {
+                ToastEngine.Warning("Board Reconcile", "No direct DB connection — can't read local workflow rows.");
+                return;
+            }
+            var win = new BuildConsole.StaleStateReconcileWindow(_db)
+            {
+                Owner = Window.GetWindow(this),
+            };
+            win.Show();
+        }
+
         private async void BtnRecoverSessionLimit_Click(object sender, RoutedEventArgs e)
         {
             if (_sessionLimitAutoRestart == null)
@@ -3634,27 +3652,10 @@ namespace BuildConsole.Controls
         /// PAT is configured.
         /// </summary>
         private static void SyncGitHubParkStatus(int? githubNumber, string optionId, string actionLabel)
-        {
-            if (!githubNumber.HasValue) return;
-            var settings = BuildConsoleSettings.Load();
-            if (!settings.HasGitHubPat) return;
-            var num = githubNumber.Value;
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    var client = new GitHubApiClient(settings.GitHubPat);
-                    bool moved = await client.SetIssueStatusByNumberAsync(num, optionId);
-                    ActivityLog.Log("build-queue", moved
-                        ? $"{actionLabel}: moved Git #{num}'s board status."
-                        : $"{actionLabel}: Git #{num} isn't on the project board — nothing to move.");
-                }
-                catch (Exception ex)
-                {
-                    ActivityLog.Log("build-queue", $"{actionLabel}: couldn't move Git #{num}'s board status: {ex.Message}");
-                }
-            });
-        }
+            // Git #2136 — now delegates to the shared BoardStatusSync.Mirror primitive so Park,
+            // Verifying and Crashed all move the board through one code path (no divergent copy of
+            // the fire-and-forget/settings/log shape). Behaviour is unchanged for Park.
+            => Services.BoardStatusSync.Mirror(githubNumber, optionId, actionLabel, "build-queue");
 
         /// <summary>
         /// Shane: "All builds no matter their status should be able to be parked" —

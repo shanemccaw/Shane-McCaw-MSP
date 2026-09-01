@@ -3787,6 +3787,11 @@ namespace BuildConsole
                                     $"Verifying → Done [Home-tab open/refresh]: {promoted.Count} queue item(s) — " +
                                     string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
                             }
+
+                            // Git #2136 — same manual-refresh moment reconciles any Verifying row
+                            // whose REAL board Status column moved off Verifying (Shane parked /
+                            // crashed / marked it Done). Git is the database; this is the #1867 fix.
+                            await BuildConsole.Services.BoardStatusSync.ReconcileVerifyingAgainstBoardAsync(_queueDb, "Home-tab refresh");
                         }
                     }
                     catch { /* keep the last-known open-issue set */ }

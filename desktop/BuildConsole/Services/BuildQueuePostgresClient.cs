@@ -777,10 +777,11 @@ namespace BuildConsole.Services
         /// github_number has nothing to poll, so it falls straight through to "done"
         /// exactly as before.
         /// </summary>
-        public async Task MarkCompleteAsync(int id, int exitCode, string? sessionId = null)
+        public async Task<(string Status, int? GithubNumber)> MarkCompleteAsync(int id, int exitCode, string? sessionId = null)
         {
             await using var conn = await OpenAsync();
             string? newStatus = null;
+            int? githubNumber = null;
             await using (var cmd = new NpgsqlCommand(@"
                 UPDATE bt_build_queue
                    SET status        = CASE
@@ -807,11 +808,14 @@ namespace BuildConsole.Services
                 if (await reader.ReadAsync())
                 {
                     newStatus = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                    // Git #2136 — always capture github_number (not only in the verifying branch)
+                    // so the watcher can mirror the resulting durable state onto the real board:
+                    // exit 0 + github# → Verifying column, non-zero exit → Crashed column.
+                    githubNumber = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
                     if (newStatus == VerifyingStatus)
                     {
-                        var num = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
                         ActivityLog.Log("watcher",
-                            $"Queue #{id} session exited successfully → Verifying (GH #{num}, exit {exitCode}) — held visible in the active queue until that issue actually closes.");
+                            $"Queue #{id} session exited successfully → Verifying (GH #{githubNumber}, exit {exitCode}) — held visible in the active queue until that issue actually closes.");
                     }
                 }
             }
@@ -837,6 +841,10 @@ namespace BuildConsole.Services
                 dispatchCmd.Parameters.AddWithValue("@id", id);
                 await dispatchCmd.ExecuteNonQueryAsync();
             }
+
+            // Git #2136 — hand the resulting durable status + issue number back so the caller
+            // (the watcher's completion reap) can mirror it onto the real board.
+            return (newStatus ?? "", githubNumber);
         }
 
         // ── MarkSupersededByReplyAsync ────────────────────────────────────────────
@@ -945,6 +953,164 @@ namespace BuildConsole.Services
             }
             return promoted;
         }
+
+        // ── ReconcileVerifyingAgainstBoardAsync (Git #2136) ──────────────────────
+        /// <summary>
+        /// Git #2136 — the real #1867 fix. <see cref="PromoteVerifyingToDoneAsync"/> only
+        /// clears a Verifying row when its issue actually CLOSES; it never noticed Shane
+        /// moving the issue elsewhere (a milestone deferral in #1867's case), so the stale
+        /// local 'verifying' row re-surfaced across six dispatch cycles. Under this issue's
+        /// "Git IS the database, Kanban columns not labels" model, the real board Status
+        /// column is now authoritative for the durable Verifying decision, and this method
+        /// reconciles each local Verifying row against it:
+        ///
+        ///   board "Park"    → local 'parked'   (Shane deferred/blocked it — mirror the board)
+        ///   board "Crashed" → local 'failed'
+        ///   board "Done"    → local 'done'
+        ///   board "Verifying" / any active / null / not-on-board / GitHub error
+        ///                   → leave 'verifying' untouched (FAIL CLOSED, same #1600 discipline)
+        ///
+        /// So the moment Shane parks/defers a stuck Verifying issue on the board (his intended
+        /// go-forward workflow), the local row stops disagreeing on the very next manual
+        /// refresh — no separate local-DB cleanup action, ever. Fail-closed per row: an
+        /// unreachable board read or an issue not on the project leaves that row exactly as it
+        /// was, so a transient GitHub hiccup can never wrongly clear a genuinely-verifying row.
+        /// Runs on the same manual-refresh moment as PromoteVerifyingToDoneAsync (no new
+        /// polling), and the Verifying set is tiny, so the per-row board reads are cheap.
+        /// Returns every row it actually reconciled, for honest logging.
+        /// </summary>
+        public async Task<List<(int Id, int GithubNumber, string NewStatus, string BoardStatus)>>
+            ReconcileVerifyingAgainstBoardAsync(GitHubApiClient gh)
+        {
+            var reconciled = new List<(int, int, string, string)>();
+            await using var conn = await OpenAsync();
+
+            var candidates = new List<(int Id, int GithubNumber)>();
+            await using (var fetchCmd = new NpgsqlCommand(@"
+                SELECT id, github_number FROM bt_build_queue
+                WHERE status = @verifyingStatus AND github_number IS NOT NULL", conn))
+            {
+                fetchCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+                await using var reader = await fetchCmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                    candidates.Add((reader.GetInt32(0), reader.GetInt32(1)));
+            }
+
+            foreach (var (id, num) in candidates)
+            {
+                string? boardStatus;
+                try
+                {
+                    var board = await gh.GetIssueBoardStatusAsync(num);
+                    boardStatus = board?.StatusName;
+                }
+                catch (Exception ex)
+                {
+                    // Fail closed — a board read error must never clear a verifying row.
+                    ActivityLog.Log("board-sync", $"Reconcile: couldn't read GH #{num}'s board status ({ex.Message}) — leaving queue #{id} Verifying.");
+                    continue;
+                }
+
+                // Map the authoritative board column to the local terminal status it implies.
+                // Only these three explicit "moved out of the verifying pipeline" columns act;
+                // Verifying / Batter Up / AI Batter Up / Backlog / null / off-board all leave it.
+                string? newStatus = boardStatus switch
+                {
+                    "Park" => "parked",
+                    "Crashed" => "failed",
+                    "Done" => "done",
+                    _ => null,
+                };
+                if (newStatus == null) continue;
+
+                await using var updateCmd = new NpgsqlCommand(@"
+                    UPDATE bt_build_queue
+                       SET status = @newStatus, updated_at = NOW()
+                     WHERE id = @id AND status = @verifyingStatus", conn);
+                updateCmd.Parameters.AddWithValue("@newStatus", newStatus);
+                updateCmd.Parameters.AddWithValue("@id", id);
+                updateCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+                if (await updateCmd.ExecuteNonQueryAsync() > 0)
+                {
+                    reconciled.Add((id, num, newStatus, boardStatus!));
+                    ActivityLog.Log("board-sync",
+                        $"Queue #{id}: GH #{num} board Status is '{boardStatus}' (not Verifying) → local row reconciled Verifying → '{newStatus}'. Git is the database.");
+                }
+            }
+            return reconciled;
+        }
+
+        // ── Stale-state cleanup / migration window (Git #2136) ───────────────────
+        /// <summary>The local queue statuses this issue's cleanup window surfaces — every
+        /// DURABLE workflow state that, under the new "Git IS the database" model, ought to be
+        /// reflected by a real board Status column rather than living only as a local string
+        /// that can silently drift from GitHub reality (the #1867 class). 'limit-paused' is
+        /// included because it is surfaced/paired with Park in the same UI, even though it is a
+        /// transient auto-restart state rather than a board column of its own.</summary>
+        public static readonly string[] StaleWorkflowStatuses =
+            { VerifyingStatus, "parked", "failed", Services.SessionLimitAutoRestartService.LimitPausedStatus };
+
+        /// <summary>
+        /// Git #2136 — every local row currently sitting in one of the durable workflow states
+        /// (<see cref="StaleWorkflowStatuses"/>). Feeds the cleanup/migration window, which shows
+        /// each row's local status alongside its REAL current GitHub board Status so Shane can
+        /// migrate it to the matching board column or dismiss a genuinely-stale row. Read-only.
+        /// </summary>
+        public async Task<List<QueueItem>> GetStaleWorkflowStateRowsAsync()
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, title, prompt, model, effort, cwd,
+                       github_number, blocked_by_number, blocked_by_numbers,
+                       status, exit_code, session_id, resume_session_id,
+                       originating_chat_id, chat_url, updated_at, build_set, cli, account, build_pid, build_pid_started_at
+                FROM bt_build_queue
+                WHERE status = ANY(@statuses)
+                ORDER BY updated_at DESC", conn);
+            cmd.Parameters.AddWithValue("@statuses", StaleWorkflowStatuses);
+            var items = new List<QueueItem>();
+            await using (var reader = await cmd.ExecuteReaderAsync())
+            {
+                while (await reader.ReadAsync())
+                    items.Add(MapRow(reader));
+            }
+            await PopulateAssociatedIssueNumbersAsync(items, conn);
+            return items;
+        }
+
+        /// <summary>
+        /// Git #2136 — the cleanup window's "Dismiss" action: a stale local row (like #1867 —
+        /// the real decision already happened on GitHub) is set to 'canceled' so it drops out of
+        /// every active view. Deliberately does NOT touch the GitHub board — whatever real
+        /// decision Shane already made there stands; this only stops the LOCAL cache from
+        /// re-surfacing a stale opinion. Guarded to the stale states so a live 'running'/'queued'
+        /// row can never be dismissed out from under the watcher. Returns true when a row changed.
+        /// </summary>
+        public async Task<bool> DismissRowAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status = 'canceled', updated_at = NOW()
+                 WHERE id = @id AND status = ANY(@statuses)", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@statuses", StaleWorkflowStatuses);
+            return await cmd.ExecuteNonQueryAsync() > 0;
+        }
+
+        /// <summary>
+        /// Git #2136 — maps a local durable workflow status to the real board Status option id it
+        /// should occupy (the "Migrate to board column" action). Returns null for a status with no
+        /// distinct board column (e.g. limit-paused, a transient auto-restart state). Kept here,
+        /// next to the statuses themselves, so the mapping has one home.
+        /// </summary>
+        public static string? BoardOptionIdForLocalStatus(string? status) => status switch
+        {
+            VerifyingStatus => GitHubApiClient.VerifyingOptionId,
+            "failed" => GitHubApiClient.CrashedOptionId,
+            "parked" => GitHubApiClient.ParkOptionId,
+            _ => null,
+        };
 
         // ── Build Sets ────────────────────────────────────────────────────────────
         /// <summary>Total number of queue rows in a build set (the wave size) — the

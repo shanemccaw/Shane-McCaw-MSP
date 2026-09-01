@@ -1898,6 +1898,13 @@ namespace BuildConsole.Controls
                             string.Join(", ", promoted.Select(p => $"#{p.Id} (GH #{p.GithubNumber})")));
                         VerifyingIssuesPromoted?.Invoke(this, EventArgs.Empty);
                     }
+
+                    // Git #2136 — also reconcile Verifying rows whose real board Status column
+                    // moved off Verifying (Park/Crashed/Done), not only the issue-closed case.
+                    // Git is the database; this is the #1867 recurrence fix.
+                    int reconciled = await BuildConsole.Services.BoardStatusSync.ReconcileVerifyingAgainstBoardAsync(_db, "Git Board refresh");
+                    if (reconciled > 0)
+                        VerifyingIssuesPromoted?.Invoke(this, EventArgs.Empty);
                 }
                 catch (Exception ex)
                 {

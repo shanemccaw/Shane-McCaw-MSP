@@ -829,6 +829,10 @@ namespace BuildConsole.Services
                     else
                         await _api.MarkQueueItemCompleteAsync(item.Id, -2);
                     orphaned++;
+                    // Git #2136 — a genuinely-orphaned (process-gone, exit -2) build is a real
+                    // crash: mirror it to the Crashed board column, same durable-state principle
+                    // as the completion reap above. Fire-and-forget.
+                    BoardStatusSync.Mirror(item.GithubNumber, GitHubApiClient.CrashedOptionId, "Crashed (orphaned)", "watcher");
                     ActivityLog.Log("watcher", $"Orphaned queue #{item.Id} ({item.Title}) marked failed -2 — its process is gone (pid {(item.BuildPid?.ToString() ?? "none stored")}). Resume Session (if a session id was captured) or Retry to re-queue; the Build Queue panel's 'Recover All' banner does every orphan at once.");
                 }
                 catch (Exception ex) { ActivityLog.Log("watcher", $"Couldn't mark orphaned queue item {item.Id} failed: {ex.Message}"); }
@@ -1179,8 +1183,18 @@ namespace BuildConsole.Services
                         {
                             if (_db != null)
                             {
-                                await _db.MarkCompleteAsync(id, exitCode, entry.SessionId);
+                                var outcome = await _db.MarkCompleteAsync(id, exitCode, entry.SessionId);
                                 ActivityLog.Log("watcher", $"Reported completion of queue item {id} to Postgres.");
+
+                                // Git #2136 — mirror the resulting DURABLE decision onto the real
+                                // project board (Git IS the database): exit 0 on a real issue lands
+                                // Verifying, a genuine failure lands Crashed. Fire-and-forget — it
+                                // must never block or throw in the reap loop. A local-only build
+                                // (status 'done', no github_number) has nothing to move.
+                                if (outcome.Status == BuildQueuePostgresClient.VerifyingStatus)
+                                    BoardStatusSync.Mirror(outcome.GithubNumber, GitHubApiClient.VerifyingOptionId, "Verifying", "watcher");
+                                else if (outcome.Status == "failed")
+                                    BoardStatusSync.Mirror(outcome.GithubNumber, GitHubApiClient.CrashedOptionId, "Crashed", "watcher");
                             }
                             else
                             {

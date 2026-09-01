@@ -872,6 +872,28 @@ namespace BuildConsole.Services
         public const string ParkOptionId = "19cfa11c";
 
         /// <summary>
+        /// Git #2136 — "Verifying" as a real board Status column, the direct application of
+        /// Shane's "Git IS the database, Kanban columns not labels" decision to the #1469
+        /// Verifying gate. A build that exits 0 with a real github_number is mirrored here
+        /// (see <see cref="Services.BoardStatusSync"/>, fired from the watcher's completion
+        /// reap) so the durable "done in code, awaiting the issue actually closing" decision
+        /// lives on GitHub, not only in a local Postgres row that can silently disagree with
+        /// reality (the #1867 recurrence). Added as a real option on the same Status field via
+        /// `updateProjectV2Field` (passing every existing option's id so none are re-created —
+        /// see the projectv2-updatefield memory). Id confirmed live: 1ac1c7b2.
+        /// </summary>
+        public const string VerifyingOptionId = "1ac1c7b2";
+
+        /// <summary>
+        /// Git #2136 — "Crashed" as a real board Status column: a build that failed (non-zero
+        /// exit) or whose process died and was reaped as an orphan (exit -2). Same mirror
+        /// mechanism as <see cref="VerifyingOptionId"/>, fired from the watcher's completion /
+        /// orphan-sweep paths, so a genuine build failure is a visible, durable board state
+        /// rather than a local-only 'failed' row. Id confirmed live: 6c8640a8.
+        /// </summary>
+        public const string CrashedOptionId = "6c8640a8";
+
+        /// <summary>
         /// Git #1710 — every real, OPEN issue currently sitting in the project board's
         /// "AI Batter Up" status: agent-filed findings awaiting Shane's Yes/No. Same
         /// paginated project-items GraphQL read as <see cref="GetBatterUpIssuesAsync"/>,
