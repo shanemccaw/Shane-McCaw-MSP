@@ -219,19 +219,6 @@
                     <TextBlock Text="&#x1F5FA;" FontSize="16"/>
                 </Button>
 
-                <!-- Git #2135 (Epic #1788) — Build Queue Design Canvas: a NEW, genuinely
-                     isolated redesign-scaffold window for the Build Queue, showing the same
-                     REAL live queue (Build Sets, items, blockers) with a fresh look Shane
-                     edits directly to iterate the design — zero risk to the running panel.
-                     Same floaty open/close toggle shape as Build Watch / the Queue Map. -->
-                <Button x:Name="BtnBuildQueueDesign"
-                        Style="{StaticResource IconButton}"
-                        Width="48" Height="44"
-                        ToolTip="Build Queue — Design Canvas: isolated redesign preview of the queue, real data (floaty)"
-                        Click="BtnBuildQueueDesign_Click">
-                    <TextBlock Text="&#x1F3A8;" FontSize="16"/>
-                </Button>
-
                 <!-- Git #1472 — Shane: per-page checkbox + notes + fast WebView2 screenshots
                      with history, for testing pages in the WebView2 tab. A NEW standalone
                      floaty, separate from Sticky Notes above. -->
