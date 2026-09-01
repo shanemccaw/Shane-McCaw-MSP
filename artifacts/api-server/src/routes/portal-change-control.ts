@@ -721,6 +721,17 @@ router.post(
         return;
       }
 
+      // #1761 — a wizard-raised Standard change is genuinely pre-approved (see
+      // materializeApprovalsForChange's `stages === 0` branch below), so it needs
+      // a real `approvedBy` at creation the same way the catalog `execute` route
+      // (portal-change-catalog.ts) sets its own signed approver — otherwise
+      // displayStatus() has nothing to key "Approved" off of and the CR is stuck
+      // showing "Pending approval" forever despite the ledger already saying
+      // approved. No catalog item exists on this path, so the name mirrors the
+      // one materializeApprovalsForChange's own stages === 0 branch writes into
+      // cr_approvals when no approvedBy is supplied.
+      const wizardApprovedBy = body.changeClass === "Standard" ? "Standard change — pre-approved" : null;
+
       const [inserted] = await db
         .insert(mspChangeRequestsTable)
         .values({
@@ -764,6 +775,7 @@ router.post(
           // correct fail-closed outcome rather than a 400 on an otherwise valid
           // change submission.
           remediationCheckKey: body.remediationCheckKey?.trim() || null,
+          approvedBy: wizardApprovedBy,
         })
         .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
 
@@ -797,7 +809,7 @@ router.post(
             changeClass: storedChangeClass(body.changeClass),
             riskLevel: storedRiskLevel(risk),
             status: "pending_approval",
-            approvedBy: null,
+            approvedBy: wizardApprovedBy,
             requestedBy,
             createdAt: inserted.createdAt,
           },
