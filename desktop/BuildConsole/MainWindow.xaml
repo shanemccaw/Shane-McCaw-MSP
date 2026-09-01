@@ -172,6 +172,9 @@
 
                             <MenuItem Header="_Terminal" Click="OpenTerminal_Click">
                                 <MenuItem Header="Open Terminal"   Click="OpenTerminal_Click" InputGestureText="Ctrl+`"/>
+                                <!-- Git #2156 — Claude terminal moved out of the cramped bottom
+                                     panel strip; opens as a full center-pane document tab instead. -->
+                                <MenuItem Header="Open Claude Terminal" Click="OpenClaudeTerminal_Click"/>
                                 <Separator/>
                                 <MenuItem Header="git status"      Click="GitChip_Click" Tag="git status"/>
                                 <MenuItem Header="git pull"        Click="GitChip_Click" Tag="git pull"/>
@@ -1060,12 +1063,6 @@
 
                         <TabItem Header="Terminal">
                             <ctrl:TerminalView x:Name="TerminalView"/>
-                        </TabItem>
-
-                        <!-- Git #2149 — embedded interactive Claude Code terminal (ConPTY + xterm.js),
-                             real native copy/paste. Lazily starts its session when first shown. -->
-                        <TabItem Header="Claude">
-                            <ctrl:ClaudeTerminalView x:Name="ClaudeTerminalView"/>
                         </TabItem>
 
                         <TabItem Header="Marketing" x:Name="TabMarketing">
