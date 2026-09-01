@@ -40,7 +40,7 @@
         <Grid Grid.Row="1">
             <TextBox x:Name="OutputBox"
                      Style="{StaticResource TerminalOutputBox}"
-                     Text="BuildConsole Terminal — commands run on the Replit dev server&#x0A;Type a command or click a chip above."
+                     Text="BuildConsole Terminal — commands run on this local machine&#x0A;Type a command or click a chip above."
                      VerticalScrollBarVisibility="Auto"
                      IsReadOnly="True">
                 <!-- Git #945 — heavy-mouse-user right-click menu; no ContextMenu existed here before. -->
@@ -87,7 +87,7 @@
                         FontFamily="Segoe MDL2 Assets"
                         FontSize="14"
                         Style="{StaticResource IconButton}"
-                        ToolTip="Run on the Replit server (Enter)"
+                        ToolTip="Run locally (Enter)"
                         Click="Send_Click"
                         Margin="6,0,0,0"/>
                 <!-- Command input -->

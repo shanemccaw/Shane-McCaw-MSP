@@ -6,17 +6,12 @@ using System.Windows.Input;
 namespace BuildConsole.Controls
 {
     /// <summary>
-    /// Shane: "that terminal is supposed to send the commands to the Replit
-    /// server." Was previously wired to a LOCAL PowerShell process on
-    /// Shane's own machine (RedirectStandard{Input,Output,Error}) — real
-    /// output, but the wrong machine. Now a real POST to the SAME free-text
-    /// deploy-console endpoint the admin panel's own floating console
-    /// already uses (`POST /admin/simulator/deploy/console`,
-    /// `admin-deploy-console.ts`): the command runs via child_process.exec
-    /// ON the Replit dev server itself (cwd = repo root), and the real
-    /// stdout/stderr comes back over HTTP. One command per round-trip (no
-    /// persistent shell/session state server-side — each Send is its own
-    /// exec), same as that endpoint's own contract.
+    /// A real, persistent local <c>powershell.exe</c> process on Shane's own machine
+    /// (RedirectStandard{Input,Output,Error}), started once per view and kept alive
+    /// across commands — not a remote/Replit shell and not a per-command HTTP round-trip.
+    /// Each Send writes a line to the process's redirected stdin and its real stdout/stderr
+    /// streams back into the output pane, so shell state (cwd, env vars) persists between
+    /// commands the same way an interactive terminal would.
     /// </summary>
     public partial class TerminalView : UserControl
     {
