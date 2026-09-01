@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <script src="./doc-page.js"></script>
+  <style>doc-page:not(:defined){visibility:hidden}</style>
+</helmet>
+<doc-page margin="0.7in">
+  <div style="font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#1a1a1a">
+    <div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#8b949e;margin-bottom:6px">App Shell v2 — Design Reference</div>
+    <h1 style="font-size:26px;font-weight:800;margin:0 0 4px;letter-spacing:-.01em">Color Palette</h1>
+    <p style="font-size:12.5px;color:#555;margin:0 0 26px;max-width:640px">Every color used in App Shell v2, grouped by role. Hex values are exact — use them as-is when building the WPF ResourceDictionary. Suggested resource keys follow a <code style="background:#eee;padding:1px 5px;border-radius:3px">Brush.Category.Name</code> convention; rename to match existing WPF theme conventions if one exists.</p>
+
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">1. Base Shell — Backgrounds</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">App / Window Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#0d1117</div><div style="font-size:9px;color:#999">Brush.Bg.Window</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#161b22;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Panel / Header Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#161b22</div><div style="font-size:9px;color:#999">Brush.Bg.Panel</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#12151c;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Card / Flyout Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#12151c</div><div style="font-size:9px;color:#999">Brush.Bg.Card</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#111219;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Scroll Region Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#111219</div><div style="font-size:9px;color:#999">Brush.Bg.Scroll</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0a0c10;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Terminal / Deepest Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#0a0c10</div><div style="font-size:9px;color:#999">Brush.Bg.Terminal</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#1c2128;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Chip / Input Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#1c2128</div><div style="font-size:9px;color:#999">Brush.Bg.Chip</div></div>
+    </div>
+
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">2. Borders &amp; Dividers</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;border:2px solid #21262d"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Hairline Border</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#21262d</div><div style="font-size:9px;color:#999">Brush.Border.Default</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;border:2px solid #30363d"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Strong Border</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#30363d</div><div style="font-size:9px;color:#999">Brush.Border.Strong</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;border:2px solid #262c36"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Card Border</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#262c36</div><div style="font-size:9px;color:#999">Brush.Border.Card</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;border:2px solid #2e3742"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Popover Border</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#2e3742</div><div style="font-size:9px;color:#999">Brush.Border.Popover</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;border:2px solid #333a46"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Menu / Hover Border</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#333a46</div><div style="font-size:9px;color:#999">Brush.Border.Hover</div></div>
+    </div>
+
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">3. Text</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#e6edf3;font-weight:800;font-size:15px;border:1px solid #333">Aa</div><div style="font-size:11px;font-weight:700;margin-top:5px">Heading / Bright Text</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#e6edf3</div><div style="font-size:9px;color:#999">Brush.Text.Heading</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#c9d1d9;font-weight:600;font-size:15px;border:1px solid #333">Aa</div><div style="font-size:11px;font-weight:700;margin-top:5px">Primary Body Text</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#c9d1d9</div><div style="font-size:9px;color:#999">Brush.Text.Primary</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#8b949e;font-weight:600;font-size:15px;border:1px solid #333">Aa</div><div style="font-size:11px;font-weight:700;margin-top:5px">Muted / Secondary Text</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#8b949e</div><div style="font-size:9px;color:#999">Brush.Text.Muted</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#576069;font-weight:600;font-size:15px;border:1px solid #333">Aa</div><div style="font-size:11px;font-weight:700;margin-top:5px">Dim / Disabled Text</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#576069</div><div style="font-size:9px;color:#999">Brush.Text.Dim</div></div>
+    </div>
+
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">4. Primary Accents</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#7c8cf0"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Indigo — Links / Focus</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#7c8cf0</div><div style="font-size:9px;color:#999">Brush.Accent.Primary</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#fde047"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Yellow — Issue/Build #</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#fde047</div><div style="font-size:9px;color:#999">Brush.Accent.IssueNum</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#6a8fb5"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Steel Blue — Active State</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#6a8fb5</div><div style="font-size:9px;color:#999">Brush.Accent.Active</div></div>
+    </div>
+
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">5. Epic Accent Palette</h2>
+    <p style="font-size:11px;color:#777;margin:0 0 10px">One fixed accent per epic — used for dots, borders, tile icons, and tab underlines throughout the shell.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#4f8ff0"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Build Console</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#4f8ff0</div><div style="font-size:9px;color:#999">Brush.Epic.BuildConsole</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#a374ea"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Customer Portal</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#a374ea</div><div style="font-size:9px;color:#999">Brush.Epic.Portal</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#e2b039"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Application Core</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#e2b039</div><div style="font-size:9px;color:#999">Brush.Epic.AppCore</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#4caf6e"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Marketing Site</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#4caf6e</div><div style="font-size:9px;color:#999">Brush.Epic.Marketing</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#e2678a"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Admin Panel</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#e2678a</div><div style="font-size:9px;color:#999">Brush.Epic.AdminPanel</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#37b8b0"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Portal Admin</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#37b8b0</div><div style="font-size:9px;color:#999">Brush.Epic.PortalAdmin</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#e2593f"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Gate / Secondary</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#e2593f</div><div style="font-size:9px;color:#999">Brush.Epic.Gate</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#6b7280"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Manifest UX (archived)</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#6b7280</div><div style="font-size:9px;color:#999">Brush.Epic.Archived</div></div>
+    </div>
+
+    <div style="break-inside:avoid">
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">6. Build / Queue Status Colors</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#7fb08a"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Running</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#7fb08a</div><div style="font-size:9px;color:#999">Brush.Status.Running</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#c08a84"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Blocked</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#c08a84</div><div style="font-size:9px;color:#999">Brush.Status.Blocked</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#8b949e"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Up Next / Queued</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#8b949e</div><div style="font-size:9px;color:#999">Brush.Status.Queued</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#b87d76"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Crashed</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#b87d76</div><div style="font-size:9px;color:#999">Brush.Status.Crashed</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#a394b0"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Parked</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#a394b0</div><div style="font-size:9px;color:#999">Brush.Status.Parked</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#b09a4a"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Capped</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#b09a4a</div><div style="font-size:9px;color:#999">Brush.Status.Capped</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#7da7cd"></div><div style="font-size:11px;font-weight:700;margin-top:5px">External</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#7da7cd</div><div style="font-size:9px;color:#999">Brush.Status.External</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#5f9e6d"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Done</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#5f9e6d</div><div style="font-size:9px;color:#999">Brush.Status.Done</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#576069"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Cancelled</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#576069</div><div style="font-size:9px;color:#999">Brush.Status.Cancelled</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#9b8fc4"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Tests</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#9b8fc4</div><div style="font-size:9px;color:#999">Brush.Status.Tests</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#8fa7c4"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Verifying</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#8fa7c4</div><div style="font-size:9px;color:#999">Brush.Status.Verifying</div></div>
+    </div>
+    </div>
+
+    <div style="break-inside:avoid">
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">7. Next-Up Build State (fg / bg / border triples)</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="border-bottom:1.5px solid #1a1a1a;text-align:left"><th style="padding:6px 8px">State</th><th style="padding:6px 8px">Swatch</th><th style="padding:6px 8px">Foreground</th><th style="padding:6px 8px">Background</th><th style="padding:6px 8px">Border</th></tr></thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">No Build</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#1e2338;border:1px solid #2d375a"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#8fa7c4</td><td style="padding:6px 8px;font-family:Consolas,monospace">#1e2338</td><td style="padding:6px 8px;font-family:Consolas,monospace">#2d375a</td></tr>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">Failed</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#450a0a;border:1px solid #991b1b"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#e8a8a5</td><td style="padding:6px 8px;font-family:Consolas,monospace">#450a0a</td><td style="padding:6px 8px;font-family:Consolas,monospace">#991b1b</td></tr>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">Canceled</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#1e2024;border:1px solid #333a46"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#9aa1ac</td><td style="padding:6px 8px;font-family:Consolas,monospace">#1e2024</td><td style="padding:6px 8px;font-family:Consolas,monospace">#333a46</td></tr>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">Needs Review</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#2c2308;border:1px solid #5c4a12"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#e2b039</td><td style="padding:6px 8px;font-family:Consolas,monospace">#2c2308</td><td style="padding:6px 8px;font-family:Consolas,monospace">#5c4a12</td></tr>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">Parked</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#211f2e;border:1px solid #3d3552"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#c4b5da</td><td style="padding:6px 8px;font-family:Consolas,monospace">#211f2e</td><td style="padding:6px 8px;font-family:Consolas,monospace">#3d3552</td></tr>
+        <tr><td style="padding:6px 8px;font-weight:700">Blocked</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#2e101a;border:1px solid #541b2c"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#fb7185</td><td style="padding:6px 8px;font-family:Consolas,monospace">#2e101a</td><td style="padding:6px 8px;font-family:Consolas,monospace">#541b2c</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div style="break-inside:avoid">
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">8. Focus Nudge Escalation (quiet-timer stages)</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="border-bottom:1.5px solid #1a1a1a;text-align:left"><th style="padding:6px 8px">Stage</th><th style="padding:6px 8px">Swatch</th><th style="padding:6px 8px">Foreground</th><th style="padding:6px 8px">Background</th><th style="padding:6px 8px">Border</th></tr></thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">On Track</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#161b22;border:1px solid #30363d"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#576069</td><td style="padding:6px 8px;font-family:Consolas,monospace">#161b22</td><td style="padding:6px 8px;font-family:Consolas,monospace">#30363d</td></tr>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">Quiet 10m</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#131c2b;border:1px solid #28405c"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#8fa7c4</td><td style="padding:6px 8px;font-family:Consolas,monospace">#131c2b</td><td style="padding:6px 8px;font-family:Consolas,monospace">#28405c</td></tr>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">Quiet 15m</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#241d0c;border:1px solid #4a3a13"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#e2b039</td><td style="padding:6px 8px;font-family:Consolas,monospace">#241d0c</td><td style="padding:6px 8px;font-family:Consolas,monospace">#4a3a13</td></tr>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">Quiet 30m</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#271a0c;border:1px solid #523714"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#e2984a</td><td style="padding:6px 8px;font-family:Consolas,monospace">#271a0c</td><td style="padding:6px 8px;font-family:Consolas,monospace">#523714</td></tr>
+        <tr style="border-bottom:1px solid #ddd"><td style="padding:6px 8px;font-weight:700">Quiet 45m</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#2a1710;border:1px solid #5c2f18"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#e2703f</td><td style="padding:6px 8px;font-family:Consolas,monospace">#2a1710</td><td style="padding:6px 8px;font-family:Consolas,monospace">#5c2f18</td></tr>
+        <tr><td style="padding:6px 8px;font-weight:700">Quiet 60m+ (Loud)</td><td style="padding:6px 8px"><div style="width:60px;height:20px;border-radius:4px;background:#2e1310;border:1px solid #6b241c"></div></td><td style="padding:6px 8px;font-family:Consolas,monospace">#e8564a</td><td style="padding:6px 8px;font-family:Consolas,monospace">#2e1310</td><td style="padding:6px 8px;font-family:Consolas,monospace">#6b241c</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">9. Release Gate Accent (purple)</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#c084fc"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Gate Icon / Label</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#c084fc</div><div style="font-size:9px;color:#999">Brush.Gate.Accent</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#161320;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Gate Card Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#161320</div><div style="font-size:9px;color:#999">Brush.Gate.Bg</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;border:2px solid #3d2f52"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Gate Card Border</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#3d2f52</div><div style="font-size:9px;color:#999">Brush.Gate.Border</div></div>
+    </div>
+
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">10. Claude Chat Pane (warm dark — distinct sub-theme)</h2>
+    <p style="font-size:11px;color:#777;margin:0 0 10px">The embedded Claude.ai webview uses a warm off-black palette, not the shell's cool navy palette. Keep it visually separate — this is the one place in the app that intentionally breaks from the base shell colors.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#1a1a19;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Header / Composer Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#1a1a19</div><div style="font-size:9px;color:#999">Brush.Claude.Bg.Chrome</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#1e1e1c;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Message Area Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#1e1e1c</div><div style="font-size:9px;color:#999">Brush.Claude.Bg.Content</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#2a2a27;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Bubble / Input Pill Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#2a2a27</div><div style="font-size:9px;color:#999">Brush.Claude.Bg.Bubble</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#302f2d;border:1px solid #333"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Share Button Bg</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#302f2d</div><div style="font-size:9px;color:#999">Brush.Claude.Bg.Button</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;border:2px solid #3a3a37"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Input Border</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#3a3a37</div><div style="font-size:9px;color:#999">Brush.Claude.Border</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#d97757"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Coral Accent</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#d97757</div><div style="font-size:9px;color:#999">Brush.Claude.Accent</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#ece9e4;font-weight:700;font-size:15px;border:1px solid #333">Aa</div><div style="font-size:11px;font-weight:700;margin-top:5px">Bright Text</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#ece9e4</div><div style="font-size:9px;color:#999">Brush.Claude.Text.Bright</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#dedbd5;font-weight:600;font-size:15px;border:1px solid #333">Aa</div><div style="font-size:11px;font-weight:700;margin-top:5px">Assistant Text</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#dedbd5</div><div style="font-size:9px;color:#999">Brush.Claude.Text.Body</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#0d1117;display:flex;align-items:center;justify-content:center;color:#7a7975;font-weight:600;font-size:15px;border:1px solid #333">Aa</div><div style="font-size:11px;font-weight:700;margin-top:5px">Muted / Timestamp</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#7a7975</div><div style="font-size:9px;color:#999">Brush.Claude.Text.Muted</div></div>
+    </div>
+
+    <h2 style="font-size:15px;font-weight:800;border-bottom:2px solid #1a1a1a;padding-bottom:5px;margin:28px 0 12px">11. Semantic / Alert Colors</h2>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px 12px">
+      <div><div style="height:52px;border-radius:6px;background:#3a0d0d;border:2px solid #e8746f"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Blocker Banner</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#3a0d0d / #e8746f</div><div style="font-size:9px;color:#999">Brush.Alert.Danger</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#34d399"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Success</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#34d399</div><div style="font-size:9px;color:#999">Brush.Alert.Success</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#fb7185"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Danger / Locked</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#fb7185</div><div style="font-size:9px;color:#999">Brush.Alert.Locked</div></div>
+      <div><div style="height:52px;border-radius:6px;background:#f87171"></div><div style="font-size:11px;font-weight:700;margin-top:5px">Critical Path</div><div style="font-family:Consolas,monospace;font-size:10px;color:#666">#f87171</div><div style="font-size:9px;color:#999">Brush.Alert.Critical</div></div>
+    </div>
+
+    <div style="margin-top:32px;padding-top:14px;border-top:1px solid #ccc;font-size:10px;color:#999">App Shell v2 — Color Palette Reference · Generated for WPF theming</div>
+  </div>
+</doc-page>
+</x-dc>
+</body>
+</html>
