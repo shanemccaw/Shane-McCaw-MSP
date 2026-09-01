@@ -92,12 +92,36 @@ echo === Stopping running BuildQueueDesignPreview instance (if any) ===
 powershell -NoProfile -Command ^
   "Get-Process -Name BuildQueueDesignPreview -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*\BuildQueueDesignPreview\*' } | Stop-Process -Force"
 
-echo === Deploying to %OUT_DIR% ===
-robocopy "%BUILD_OUT%" "%OUT_DIR%" /E /W:5
+REM DANGER, real and already bit Shane once: because this project references
+REM BuildConsole.csproj (an Exe/WinExe project), the .NET SDK copies
+REM BuildConsole's own apphost .exe into THIS project's build output as a
+REM "local" dependency of the reference - a real, fully-functional copy of
+REM the LIVE app sitting right next to BuildQueueDesignPreview.exe. Running
+REM that stray copy starts a second real BuildConsole instance against the
+REM live queue with no single-instance guard (yet - see #2141), which is
+REM exactly what caused the 16-concurrent-build incident. Never let it reach
+REM the deploy folder.
+echo === Deploying to %OUT_DIR% (excluding stray BuildConsole.exe) ===
+robocopy "%BUILD_OUT%" "%OUT_DIR%" /E /W:5 /XF BuildConsole.exe BuildConsole.pdb
 if %ERRORLEVEL% GEQ 8 (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%NOTIFY_PS1%" -Title "BuildQueueDesignPreview Deploy - Error" -Message "Deploy failed - robocopy exit code %ERRORLEVEL% copying %BUILD_OUT% to %OUT_DIR%."
   exit /b 1
 )
+
+REM Active cleanup, not just prevention: purge any BuildConsole.exe/.pdb that
+REM already made it into the deploy folder or the raw build output from a
+REM PRIOR run, before this fix existed. Belt and suspenders - the /XF above
+REM stops future copies, this removes any that are already sitting there.
+if exist "%OUT_DIR%\BuildConsole.exe" (
+  echo === Removing stray BuildConsole.exe already present in %OUT_DIR% ===
+  del /f /q "%OUT_DIR%\BuildConsole.exe"
+)
+if exist "%OUT_DIR%\BuildConsole.pdb" del /f /q "%OUT_DIR%\BuildConsole.pdb"
+if exist "%BUILD_OUT%\BuildConsole.exe" (
+  echo === Removing stray BuildConsole.exe from raw build output %BUILD_OUT% ===
+  del /f /q "%BUILD_OUT%\BuildConsole.exe"
+)
+if exist "%BUILD_OUT%\BuildConsole.pdb" del /f /q "%BUILD_OUT%\BuildConsole.pdb"
 
 echo === Relaunching BuildQueueDesignPreview ===
 start "" "%OUT_DIR%\BuildQueueDesignPreview.exe"

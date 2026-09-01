@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -112,7 +112,7 @@ namespace BuildConsole.Services
                 {
                     var postedRaw = nextLine.Substring("Posted:".Length).Trim();
                     if (DateTime.TryParse(postedRaw, null,
-                        System.Globalization.DateTimeStyles.RoundtripKind | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
                         out var parsedPosted))
                     {
                         posted = parsedPosted;
