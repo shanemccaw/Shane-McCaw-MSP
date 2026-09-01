@@ -128,9 +128,12 @@ import {
   type TenantScope,
 } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
+import { resolveGateMode } from "../lib/portal-ownership-policy";
+import { notifyOwnershipPending } from "../lib/notification-center";
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
 import { groupEnabledServicePlansByWorkload } from "../lib/tenant-workloads.ts";
 import {
+  actorMayRespond,
   assignEventType,
   buildSources,
   crObject,
@@ -140,6 +143,7 @@ import {
   initialAcceptance,
   isOwnRoleKey,
   messageCentreObject,
+  personIdForUser,
   resolvePersonId,
   serviceObject,
   sidesFor,
@@ -391,6 +395,12 @@ export interface WireOwnershipPayload {
    * who has never written, which is a true empty overlay, not a missing one.
    */
   readonly overlay: WireOwnershipOverlay;
+  /**
+   * This customer's acceptance-gate enforcement level (#2162, redo of #1518):
+   * "strict" gates every R/A cell on acceptance, "loose" (the default) does
+   * not. Read-only here — set via `PUT /portal/settings/ownership/policy`.
+   */
+  readonly gateMode: "strict" | "loose";
 }
 
 router.get(
@@ -412,7 +422,10 @@ router.get(
       // return date — it has a decision behind it. `people` includes the
       // customer's MSP staff (side "MSP") as well as their own team (#1520) —
       // see `gatherOwnershipObjects`.
-      const { objects, people, emails, counts } = await gatherOwnershipObjects(customerId, scope);
+      const [{ objects, people, emails, counts }, gateMode] = await Promise.all([
+        gatherOwnershipObjects(customerId, scope),
+        resolveGateMode(customerId),
+      ]);
       const customerName = scope?.tenantName ?? "Your organisation";
       const sides = sidesFor(customerName);
 
@@ -481,6 +494,7 @@ router.get(
         currentUserName: currentUser?.name ?? "",
         tenantScoped: scope !== null,
         overlay,
+        gateMode,
       };
 
       log.info(
@@ -584,7 +598,8 @@ router.post(
       return;
     }
     const roleKey: OwnRoleKey = roleKeyRaw;
-    const acceptance = initialAcceptance(ownerPersonId, roleKey);
+    const gateMode = await resolveGateMode(customerId);
+    const acceptance = initialAcceptance(ownerPersonId, roleKey, gateMode);
     const setBy = actingName(req);
     const setAt = formatOwnDate(new Date());
 
@@ -643,7 +658,14 @@ router.post(
         return row?.orderRank ?? 0;
       });
 
-      log.info({ customerId, objectId, roleKey, hasOwner: !!ownerPersonId }, "portal ownership cell assigned");
+      log.info({ customerId, objectId, roleKey, gateMode, hasOwner: !!ownerPersonId }, "portal ownership cell assigned");
+
+      // Best-effort — strict mode only, since loose mode never produces a
+      // `pending` cell to notify about (#2162).
+      if (acceptance === "pending" && (roleKey === "r" || roleKey === "a")) {
+        void notifyOwnershipPending({ customerId, ownerPersonId, objectId, roleKey });
+      }
+
       res.json({
         ok: true,
         assignment: toWireAssignment({
@@ -771,6 +793,7 @@ router.post(
     const roleKeyRaw = body.roleKey;
     const ownerPersonIdRaw = body.ownerPersonId;
     const hasOwnerFilter = typeof ownerPersonIdRaw === "string";
+    const ownerPersonId = hasOwnerFilter ? bodyStr(ownerPersonIdRaw) : "";
     if (!objectId || !isOwnRoleKey(roleKeyRaw)) {
       res.status(400).json({ error: "objectId and a valid roleKey (r|a|c|i) are required" });
       return;
@@ -779,19 +802,31 @@ router.post(
     const actor = actingName(req);
 
     try {
+      // Actor-must-equal-owner (#2162, strict mode only) — #1518's gate is
+      // that whoever is NAMED must agree themselves; without this, any
+      // tenant user could accept on anyone's behalf. Loose mode has no
+      // acceptance step, so every actor passes. A bulk accept (no
+      // `ownerPersonId` filter) is only meaningful in loose mode, so strict
+      // requires the filter to be present and to name the caller.
+      const gateMode = await resolveGateMode(customerId);
+      if (gateMode === "strict" && !actorMayRespond(gateMode, ownerPersonId, personIdForUser(req.user!.id))) {
+        res.status(403).json({ error: "Only the named holder may accept this cell." });
+        return;
+      }
+
       const conditions = [
         eq(portalOwnershipAssignmentsTable.customerId, customerId),
         eq(portalOwnershipAssignmentsTable.objectId, objectId),
         eq(portalOwnershipAssignmentsTable.roleKey, roleKey),
       ];
       if (hasOwnerFilter) {
-        conditions.push(eq(portalOwnershipAssignmentsTable.ownerPersonId, bodyStr(ownerPersonIdRaw)));
+        conditions.push(eq(portalOwnershipAssignmentsTable.ownerPersonId, ownerPersonId));
       }
 
       const updated = await db.transaction(async (tx) => {
         const rows = await tx
           .update(portalOwnershipAssignmentsTable)
-          .set({ acceptance: "accepted", updatedAt: new Date() })
+          .set({ acceptance: "accepted", respondedBy: actor, respondedAt: formatOwnDate(new Date()), updatedAt: new Date() })
           .where(and(...conditions))
           .returning({ ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId });
 
@@ -812,7 +847,7 @@ router.post(
         return rows;
       });
 
-      log.info({ customerId, objectId, roleKey, matched: updated.length > 0 }, "portal ownership cell accepted");
+      log.info({ customerId, objectId, roleKey, gateMode, matched: updated.length > 0 }, "portal ownership cell accepted");
       res.json({ ok: true, matched: updated.length > 0 });
     } catch (err) {
       log.error(
@@ -820,6 +855,93 @@ router.post(
         "portal ownership accept failed",
       );
       res.status(500).json({ error: "That acceptance could not be saved." });
+    }
+  },
+);
+
+/**
+ * Decline a pending cell (#2162, redo of #1518). Symmetric with `/accept`:
+ * same required fields, same actor-must-equal-owner gate in strict mode, same
+ * optional `ownerPersonId` filter for a multi-holder cell. Unlike accept, a
+ * decline records WHY (`declineReason`) — accepting needs no reason; declining
+ * a role someone was just named to is exactly the case a reader later wants
+ * an explanation for (see the #1518 migration's own header).
+ */
+router.post(
+  "/portal/ownership/decline",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = scopedCustomerId(req, res);
+    if (customerId === null) return;
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const objectId = bodyStr(body.objectId);
+    const roleKeyRaw = body.roleKey;
+    const ownerPersonIdRaw = body.ownerPersonId;
+    const hasOwnerFilter = typeof ownerPersonIdRaw === "string";
+    const ownerPersonId = hasOwnerFilter ? bodyStr(ownerPersonIdRaw) : "";
+    const declineReason = bodyStr(body.reason);
+    if (!objectId || !isOwnRoleKey(roleKeyRaw)) {
+      res.status(400).json({ error: "objectId and a valid roleKey (r|a|c|i) are required" });
+      return;
+    }
+    const roleKey: OwnRoleKey = roleKeyRaw;
+    const actor = actingName(req);
+
+    try {
+      const gateMode = await resolveGateMode(customerId);
+      if (gateMode === "strict" && !actorMayRespond(gateMode, ownerPersonId, personIdForUser(req.user!.id))) {
+        res.status(403).json({ error: "Only the named holder may decline this cell." });
+        return;
+      }
+
+      const conditions = [
+        eq(portalOwnershipAssignmentsTable.customerId, customerId),
+        eq(portalOwnershipAssignmentsTable.objectId, objectId),
+        eq(portalOwnershipAssignmentsTable.roleKey, roleKey),
+      ];
+      if (hasOwnerFilter) {
+        conditions.push(eq(portalOwnershipAssignmentsTable.ownerPersonId, ownerPersonId));
+      }
+
+      const updated = await db.transaction(async (tx) => {
+        const rows = await tx
+          .update(portalOwnershipAssignmentsTable)
+          .set({
+            acceptance: "declined",
+            declineReason,
+            respondedBy: actor,
+            respondedAt: formatOwnDate(new Date()),
+            updatedAt: new Date(),
+          })
+          .where(and(...conditions))
+          .returning({ ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId });
+
+        if (rows.length > 0) {
+          await tx.insert(portalOwnershipEventsTable).values(
+            rows.map((r) => ({
+              customerId,
+              objectId,
+              roleKey,
+              ownerPersonId: r.ownerPersonId,
+              eventType: "declined" as const,
+              actor,
+              reason: declineReason,
+            })),
+          );
+        }
+
+        return rows;
+      });
+
+      log.info({ customerId, objectId, roleKey, gateMode, matched: updated.length > 0 }, "portal ownership cell declined");
+      res.json({ ok: true, matched: updated.length > 0 });
+    } catch (err) {
+      log.error(
+        { customerId, objectId, err: err instanceof Error ? err.message : String(err) },
+        "portal ownership decline failed",
+      );
+      res.status(500).json({ error: "That decline could not be saved." });
     }
   },
 );
