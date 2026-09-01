@@ -33,6 +33,9 @@ namespace BuildConsole.Controls
         /// <summary>Git #2110 — raised when the Build Queue Map icon is clicked; MainWindow toggles the floaty live queue-map window open/closed.</summary>
         public event EventHandler? BuildQueueMapToggleRequested;
 
+        /// <summary>Git #2135 — raised when the Build Queue Design Canvas icon is clicked; MainWindow toggles the isolated redesign-scaffold window open/closed.</summary>
+        public event EventHandler? BuildQueueDesignToggleRequested;
+
         /// <summary>Raised when the Shelf icon is clicked. MainWindow owns the shelved-tab
         /// state (the live off-screen content), so it responds by calling <see cref="ShowShelf"/>
         /// with the current entries' rows.</summary>
@@ -69,6 +72,10 @@ namespace BuildConsole.Controls
         /// <summary>Git #2110 — toggles the floaty live Build Queue Map window.</summary>
         private void BtnBuildQueueMap_Click(object sender, RoutedEventArgs e) =>
             BuildQueueMapToggleRequested?.Invoke(this, EventArgs.Empty);
+
+        /// <summary>Git #2135 — toggles the isolated Build Queue Design Canvas window.</summary>
+        private void BtnBuildQueueDesign_Click(object sender, RoutedEventArgs e) =>
+            BuildQueueDesignToggleRequested?.Invoke(this, EventArgs.Empty);
 
         /// <summary>Shelf icon clicked — ask MainWindow (which owns the shelved-tab state)
         /// to populate + open the popout via <see cref="ShowShelf"/>.</summary>

@@ -175,6 +175,9 @@ namespace BuildConsole
         // ── Git #2110: floaty live Build Queue Map window ───────────────────────
         private BuildQueueMapWindow? _buildQueueMap;
 
+        // ── Git #2135: isolated Build Queue Design Canvas window ─────────────────
+        private BuildQueueDesignWindow? _buildQueueDesign;
+
         // ── Git #1472: floaty Visual Test Tracker window (separate from Sticky Notes) ──
         private VisualTestTrackerWindow? _visualTestTracker;
         // The editor pane (of the four from #893) the user last interacted with —
@@ -1033,6 +1036,8 @@ namespace BuildConsole
             ActivityBar.VisualTestTrackerToggleRequested += (s, e) => ToggleVisualTestTracker();
             // Git #2110 — floaty live Build Queue Map window toggle.
             ActivityBar.BuildQueueMapToggleRequested += (s, e) => ToggleBuildQueueMap();
+            // Git #2135 — isolated Build Queue Design Canvas window toggle.
+            ActivityBar.BuildQueueDesignToggleRequested += (s, e) => ToggleBuildQueueDesign();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
             // there without changing tab selection — walk up from the newly
@@ -1629,6 +1634,34 @@ namespace BuildConsole
             };
             _buildQueueMap.Show();
             BuildConsole.Services.ActivityLog.Log("build-queue-map", "open");
+        }
+
+        /// <summary>
+        /// Git #2135 (Epic #1788) — toggles the isolated Build Queue Design Canvas window.
+        /// Same open-or-close-on-toggle + Owner=this lifecycle as Build Watch (#980) and the
+        /// Build Queue Map (#2110) above, so it closes cleanly with the app and never
+        /// orphans. Passes the shared queue Postgres client so the canvas reads the exact
+        /// same live queue (via GetQueueAsync) every other panel reads — real Build Sets,
+        /// items, and blockers, never fixture data. This window is deliberately a separate,
+        /// visually-isolated scaffold Shane iterates on directly, with zero shared styles
+        /// that could leak a change back into the real, running BuildQueuePanel.
+        /// </summary>
+        private void ToggleBuildQueueDesign()
+        {
+            if (_buildQueueDesign != null)
+            {
+                _buildQueueDesign.Close(); // Closed handler nulls the ref and logs "close"
+                return;
+            }
+
+            _buildQueueDesign = new BuildQueueDesignWindow(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb) { Owner = this };
+            _buildQueueDesign.Closed += (s, e) =>
+            {
+                _buildQueueDesign = null;
+                BuildConsole.Services.ActivityLog.Log("build-queue-design", "close");
+            };
+            _buildQueueDesign.Show();
+            BuildConsole.Services.ActivityLog.Log("build-queue-design", "open");
         }
 
         /// <summary>
