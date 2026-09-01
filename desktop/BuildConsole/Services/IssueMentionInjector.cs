@@ -46,6 +46,12 @@ namespace BuildConsole.Services
     /// Both heuristics only add candidate matches; the existing index-sorted overlap
     /// dedup in decorateTextNode still gives priority to a real "#NNN" or ".sql" match
     /// covering the same text, so a bare-number heuristic never overrides a stronger one.
+    ///
+    /// Git #2146 — the ancestor skip-walk also bails out on any element with
+    /// isContentEditable === true. Claude.ai's message composer is a contenteditable
+    /// div, not a TEXTAREA, so the fixed SKIP_TAGS list never excluded it: typing a
+    /// bare number or "#NNN" into the composer got that live text node replaced by
+    /// the debounced scan, stealing the cursor position.
     /// </summary>
     public static class IssueMentionInjector
     {
@@ -323,6 +329,7 @@ namespace BuildConsole.Services
     var el = parent;
     while (el) {
       if (SKIP_TAGS[el.nodeName]) return;
+      if (el.isContentEditable === true) return;
       el = el.parentElement;
     }
     var text = tn.nodeValue || '';
