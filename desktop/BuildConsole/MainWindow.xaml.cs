@@ -172,6 +172,9 @@ namespace BuildConsole
         // ── Git #980: floaty 8-slot Build Watch window ──────────────────────────
         private BuildWatchWindow? _buildWatch;
 
+        // ── Git #2110: floaty live Build Queue Map window ───────────────────────
+        private BuildQueueMapWindow? _buildQueueMap;
+
         // ── Git #1472: floaty Visual Test Tracker window (separate from Sticky Notes) ──
         private VisualTestTrackerWindow? _visualTestTracker;
         // The editor pane (of the four from #893) the user last interacted with —
@@ -1028,6 +1031,8 @@ namespace BuildConsole
             ActivityBar.BuildWatchToggleRequested += (s, e) => ToggleBuildWatch();
             // Git #1472 — floaty Visual Test Tracker window toggle.
             ActivityBar.VisualTestTrackerToggleRequested += (s, e) => ToggleVisualTestTracker();
+            // Git #2110 — floaty live Build Queue Map window toggle.
+            ActivityBar.BuildQueueMapToggleRequested += (s, e) => ToggleBuildQueueMap();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
             // there without changing tab selection — walk up from the newly
@@ -1599,6 +1604,31 @@ namespace BuildConsole
             };
             _buildWatch.Show();
             BuildConsole.Services.ActivityLog.Log("build-watch", "open");
+        }
+
+        /// <summary>
+        /// Git #2110 — toggles the floaty live Build Queue Map window (Phase 2 of the
+        /// Dynamic Build Queue Map). Same open-or-close-on-toggle + Owner=this lifecycle
+        /// as Build Watch (#980) above, so it closes cleanly with the app and never
+        /// orphans. Passes the shared queue Postgres client so the map reads the exact
+        /// same live queue (via GetQueueMapAsync) every other panel reads.
+        /// </summary>
+        private void ToggleBuildQueueMap()
+        {
+            if (_buildQueueMap != null)
+            {
+                _buildQueueMap.Close(); // Closed handler nulls the ref and logs "close"
+                return;
+            }
+
+            _buildQueueMap = new BuildQueueMapWindow(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb) { Owner = this };
+            _buildQueueMap.Closed += (s, e) =>
+            {
+                _buildQueueMap = null;
+                BuildConsole.Services.ActivityLog.Log("build-queue-map", "close");
+            };
+            _buildQueueMap.Show();
+            BuildConsole.Services.ActivityLog.Log("build-queue-map", "open");
         }
 
         /// <summary>

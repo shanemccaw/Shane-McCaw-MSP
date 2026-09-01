@@ -1,0 +1,149 @@
+<Window x:Class="BuildConsole.BuildQueueMapWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Build Queue Map"
+        Icon="app.ico"
+        Width="1040" Height="680"
+        MinWidth="560" MinHeight="360"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        Background="{DynamicResource MantleBrush}">
+
+    <!-- ── Git #2110 — Dynamic Build Queue Map, Phase 2 (real-time visual rendering) ──
+         A floaty, live-updating map of the build queue built directly on Phase 1's
+         (#2109) real data layer (BuildQueuePostgresClient.GetQueueMapAsync →
+         BuildQueueMap). Every queue item is a node; blocker relationships between
+         queued builds are drawn as connector lines; genuine deadlock cycles are
+         flagged unmissably (dashed red loop edges + a top banner), errors/crashes are
+         visually distinct from healthy items, and real per-item age is shown. Standard
+         window chrome (a movable "watch it on another monitor" window, same intent as
+         Build Watch #980). Basic/default styling — real Design output is still pending;
+         ship functional now, reskin later. All geometry/content is built in code-behind
+         (Render) from the live snapshot — no fixture/hardcoded data. -->
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ── Header ── -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource CrustBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+            <DockPanel LastChildFill="True">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse Width="9" Height="9" Fill="{StaticResource BlueBrush}"
+                             Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="BUILD QUEUE MAP"
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext1Brush}"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <TextBlock x:Name="GeneratedText"
+                               Text=""
+                               FontSize="10.5"
+                               Foreground="{StaticResource Subtext0Brush}"
+                               VerticalAlignment="Center"
+                               Margin="0,0,10,0"/>
+                    <ToggleButton x:Name="AutoRefreshToggle"
+                                  Content="Live"
+                                  IsChecked="True"
+                                  Padding="8,3"
+                                  FontSize="10.5"
+                                  Margin="0,0,6,0"
+                                  Foreground="{StaticResource TextBrush}"
+                                  ToolTip="Auto-refresh the map every few seconds"
+                                  Checked="AutoRefreshToggle_Changed"
+                                  Unchecked="AutoRefreshToggle_Changed"/>
+                    <Button x:Name="BtnRefresh"
+                            Content="Refresh"
+                            Padding="8,3"
+                            FontSize="10.5"
+                            ToolTip="Refresh the map now"
+                            Click="BtnRefresh_Click"/>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- ── Summary / status strip (counts + deadlock + unverified-blocker warning) ── -->
+        <Border DockPanel.Dock="Top"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,6">
+            <StackPanel>
+                <TextBlock x:Name="SummaryText"
+                           Text="Loading…"
+                           FontSize="11"
+                           Foreground="{StaticResource TextBrush}"
+                           TextWrapping="Wrap"/>
+                <!-- Deadlock banner — the loud, unmissable call-out for genuine cycles. -->
+                <Border x:Name="DeadlockBanner"
+                        Background="#3A1E26"
+                        BorderBrush="{StaticResource RedBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="8,5"
+                        Margin="0,6,0,0"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="DeadlockText"
+                               Text=""
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource RedBrush}"
+                               TextWrapping="Wrap"/>
+                </Border>
+                <!-- Blocker-state-unverified warning — GitHub was unreachable this pass. -->
+                <Border x:Name="UnverifiedBanner"
+                        Background="#3A3200"
+                        BorderBrush="{StaticResource YellowBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="8,5"
+                        Margin="0,6,0,0"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="UnverifiedText"
+                               Text=""
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource YellowBrush}"
+                               TextWrapping="Wrap"/>
+                </Border>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Legend ── -->
+        <Border DockPanel.Dock="Bottom"
+                Background="{StaticResource CrustBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,1,0,0"
+                Padding="12,6">
+            <WrapPanel x:Name="LegendPanel" Orientation="Horizontal"/>
+        </Border>
+
+        <!-- ── The map canvas (scrollable in both directions) ── -->
+        <Grid>
+            <ScrollViewer x:Name="MapScroller"
+                          HorizontalScrollBarVisibility="Auto"
+                          VerticalScrollBarVisibility="Auto"
+                          Background="{StaticResource AppBackgroundBrush}">
+                <Canvas x:Name="MapCanvas"
+                        Background="Transparent"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"/>
+            </ScrollViewer>
+            <TextBlock x:Name="EmptyOverlay"
+                       Text=""
+                       FontSize="13"
+                       Foreground="{StaticResource Subtext1Brush}"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       TextWrapping="Wrap"
+                       MaxWidth="420"
+                       TextAlignment="Center"
+                       Visibility="Collapsed"/>
+        </Grid>
+
+    </DockPanel>
+</Window>
