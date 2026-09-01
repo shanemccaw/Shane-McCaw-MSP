@@ -89,7 +89,7 @@ export async function evaluateStandingPolicyForCustomer(policyId: number, custom
     return { runId: null, membersObserved: 0, compliant: 0, nonCompliant: 0, findingsCreated: [], notEvaluableReason: `Policy's OU ${policy.ouId} does not exist` };
   }
 
-  const observations = await observeOuMailboxSizes(customer.tenantId, ou.name);
+  const observations = await observeOuMailboxSizes(customer.tenantId, ou.name, ou.id, customerId);
   if (observations.length === 0) {
     return {
       runId: null,
@@ -97,7 +97,7 @@ export async function evaluateStandingPolicyForCustomer(policyId: number, custom
       compliant: 0,
       nonCompliant: 0,
       findingsCreated: [],
-      notEvaluableReason: `No members of this tenant's real directory carry department = '${ou.name}' with a real mailbox usage row`,
+      notEvaluableReason: `No members of this tenant's real directory are manually assigned to or carry department = '${ou.name}' with a real mailbox usage row`,
     };
   }
 

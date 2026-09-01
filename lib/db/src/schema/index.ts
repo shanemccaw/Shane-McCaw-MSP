@@ -4270,6 +4270,9 @@ export type BotConversation = typeof botConversationsTable.$inferSelect;
 // directive still holds HERE — deliberately no policy columns and no
 // object-to-OU membership model on THIS table; the policy object is a separate
 // table that references this one, not columns bolted onto the container.
+// #1952 adds the membership model itself as its own sibling table
+// (`activeDirectoryOuAssignmentsTable`, below) — same shape: it references
+// this container, it doesn't become columns on it.
 
 export const activeDirectoryOusTable = pgTable("active_directory_ous", {
   id: serial("id").primaryKey(),
@@ -4294,6 +4297,53 @@ export const activeDirectoryOusTable = pgTable("active_directory_ous", {
 
 export type InsertActiveDirectoryOu = typeof activeDirectoryOusTable.$inferInsert;
 export type ActiveDirectoryOu = typeof activeDirectoryOusTable.$inferSelect;
+
+// ── Active Directory — OU manual membership assignment (Git #1952) ──────────
+// Shane's final decision on #1952 (2026-09-01): keep the Graph `department`-field
+// match (policy-compliance-graph.ts) as the primary/automatic OU-membership
+// resolution, but add a real manual override for the case that decision itself
+// flagged and Shane later confirmed from real usage — most tenants don't
+// populate `department` at all, and where it is set it's often stale. A row
+// here for (customerId, objectId) is an explicit assignment that WINS over the
+// department-match guess for that object, exactly like `portal_ownership_assignments`:
+// an explicit row overrides a derived/computed value, current-state only (no
+// history table — this is a small admin override, not a RACI audit trail).
+//
+// One row per real Graph object (a tenant's AAD user, resolved and verified via
+// Graph at assignment time, never trusted from client input alone) per customer.
+// An object can only be manually placed in ONE OU at a time — mirrors real AD
+// semantics (one object, one OU) — so re-assigning an already-assigned object
+// updates its existing row rather than adding a second one.
+export const activeDirectoryOuAssignmentsTable = pgTable("active_directory_ou_assignments", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  ouId: integer("ou_id").notNull().references(() => activeDirectoryOusTable.id, { onDelete: "cascade" }),
+  /** tenants.id — the customer whose real directory this object lives in. No FK,
+   * matching msp_diagnostic_runs' customerId convention. */
+  customerId: integer("customer_id").notNull(),
+  /** The real Graph tenant id (tenants.tenant_id), denormalized so the
+   * Graph-facing resolver in policy-compliance-graph.ts never needs a join back
+   * to tenants just to know which tenant to query. */
+  tenantId: text("tenant_id").notNull(),
+  /** The real Graph object id (AAD user guid), resolved via Graph at assign time. */
+  objectId: text("object_id").notNull(),
+  /** The real Graph userPrincipalName, captured at assign time — this is what
+   * resolveOuMembers matches mailbox-usage rows against. */
+  objectUpn: text("object_upn").notNull(),
+  /** Display label captured at assign time for the admin UI. Convenience only,
+   * never re-derived or trusted as authoritative. */
+  objectDisplayName: text("object_display_name"),
+  assignedByUserId: integer("assigned_by_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("active_directory_ou_assignments_ou_id_idx").on(t.ouId),
+  index("active_directory_ou_assignments_customer_id_idx").on(t.customerId),
+  uniqueIndex("active_directory_ou_assignments_customer_object_idx").on(t.customerId, t.objectId),
+]);
+
+export type InsertActiveDirectoryOuAssignment = typeof activeDirectoryOuAssignmentsTable.$inferInsert;
+export type ActiveDirectoryOuAssignment = typeof activeDirectoryOuAssignmentsTable.$inferSelect;
 
 // ── User Entitlement Overrides (Active Directory Phase 7) ───────────────────
 //
