@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ShaneBuilder")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e82233d60cc064e89c6eaaf86b715a3822166c81")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+cca24c2fee39cbb6968195f8da0a5852a3ea5a20")]
 [assembly: System.Reflection.AssemblyProductAttribute("ShaneBuilder")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ShaneBuilder")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "c:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\ShaneBuilder.csproj": {}
+    "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\ShaneBuilder.csproj": {}
   },
   "projects": {
-    "c:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\ShaneBuilder.csproj": {
+    "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\ShaneBuilder.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "c:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\ShaneBuilder.csproj",
+        "projectUniqueName": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\ShaneBuilder.csproj",
         "projectName": "ShaneBuilder",
-        "projectPath": "c:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\ShaneBuilder.csproj",
+        "projectPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\ShaneBuilder.csproj",
         "packagesPath": "C:\\Users\\Ronnie\\.nuget\\packages\\",
-        "outputPath": "c:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\obj\\",
+        "outputPath": "C:\\Source\\ShaneMcCawConsulting\\Shane-McCaw-MSP\\desktop\\ShaneBuilder\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages",
