@@ -13,12 +13,14 @@
  *
  * TARGET-KIND COVERAGE (honest, not full)
  * ────────────────────────────────────────
- * Only `mailbox_attribute` has a real evaluator here — it's the issue's own
- * worked example ("policy says 150MB, mailbox is 500MB"). `group_membership`
- * and `service_policy` have no reader wired yet (see
- * `policy-compliance-graph.ts`'s module comment for why) — callers get an
- * honest `not_evaluable` verdict for those, never a fabricated compliant/
- * non-compliant call. Filed as its own finding, not silently left undone.
+ * `mailbox_attribute` was the issue's own worked example ("policy says
+ * 150MB, mailbox is 500MB"). `group_membership` (#1953) is now real too —
+ * "VIP -> membership of these groups" compared against a real Graph
+ * `checkMemberGroups` read (`policy-compliance-graph.ts`). `service_policy`
+ * still has no reader wired — it likely needs Exchange Online PowerShell
+ * (ps-execution) rather than a pure Graph read, and that model hasn't been
+ * scoped for this config surface yet. Callers get an honest `not_evaluable`
+ * verdict for it, never a fabricated compliant/non-compliant call.
  */
 
 import type { StandingPolicyTargetKind } from "@workspace/db";
@@ -90,8 +92,64 @@ export function evaluateMailboxAttributeCompliance(
   };
 }
 
+/** The `group_membership` target-state shape this evaluator understands. */
+export interface GroupMembershipTargetState {
+  /** Real Entra group object ids the member must belong to. Compliant only when ALL are present. */
+  readonly groupIds: readonly string[];
+}
+
+export function isGroupMembershipTargetState(value: unknown): value is GroupMembershipTargetState {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return Array.isArray(v.groupIds) && v.groupIds.length > 0 && v.groupIds.every((id) => typeof id === "string" && id.length > 0);
+}
+
+export interface GroupMembershipComplianceObservation {
+  readonly userPrincipalName: string;
+  readonly displayName: string | null;
+  /** Real group object ids `checkMemberGroups` confirmed this member actually belongs to, out of the policy's declared set. */
+  readonly memberGroupIds: readonly string[];
+}
+
+/**
+ * Compares one real observed group-membership set against a policy's
+ * `group_membership` target state. Never invents membership — the caller
+ * supplies the real value (`policy-compliance-graph.ts`'s `checkMemberGroups`
+ * read); this function only judges it.
+ */
+export function evaluateGroupMembershipCompliance(
+  targetState: unknown,
+  observation: GroupMembershipComplianceObservation,
+): PolicyComplianceResult {
+  if (!isGroupMembershipTargetState(targetState)) {
+    return {
+      verdict: "not_evaluable",
+      reason: `Policy target_state is not a recognized group_membership declaration: ${JSON.stringify(targetState)}`,
+      observedValue: null,
+      targetValue: null,
+    };
+  }
+
+  const missing = targetState.groupIds.filter((id) => !observation.memberGroupIds.includes(id));
+  if (missing.length === 0) {
+    return {
+      verdict: "compliant",
+      reason: `Member of all ${targetState.groupIds.length} required group(s)`,
+      observedValue: observation.memberGroupIds.length,
+      targetValue: targetState.groupIds.length,
+    };
+  }
+
+  return {
+    verdict: "non_compliant",
+    reason: `Missing membership in ${missing.length} of ${targetState.groupIds.length} required group(s): ${missing.join(", ")}`,
+    observedValue: observation.memberGroupIds.length,
+    targetValue: targetState.groupIds.length,
+  };
+}
+
 /** Which target kinds this module can actually evaluate today. Honest, not aspirational. */
-export const EVALUABLE_TARGET_KINDS: readonly StandingPolicyTargetKind[] = ["mailbox_attribute"];
+export const EVALUABLE_TARGET_KINDS: readonly StandingPolicyTargetKind[] = ["mailbox_attribute", "group_membership"];
 
 export function isEvaluableTargetKind(kind: StandingPolicyTargetKind): boolean {
   return (EVALUABLE_TARGET_KINDS as readonly string[]).includes(kind);

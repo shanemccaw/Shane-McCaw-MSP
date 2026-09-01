@@ -36,8 +36,8 @@ import {
   mspDiagnosticRunsTable,
   mspDiagnosticFindingsTable,
 } from "@workspace/db";
-import { evaluateMailboxAttributeCompliance, isEvaluableTargetKind } from "./policy-compliance";
-import { observeOuMailboxSizes } from "./policy-compliance-graph";
+import { evaluateMailboxAttributeCompliance, evaluateGroupMembershipCompliance, isEvaluableTargetKind, isGroupMembershipTargetState } from "./policy-compliance";
+import { observeOuMailboxSizes, observeOuGroupMemberships } from "./policy-compliance-graph";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -89,15 +89,33 @@ export async function evaluateStandingPolicyForCustomer(policyId: number, custom
     return { runId: null, membersObserved: 0, compliant: 0, nonCompliant: 0, findingsCreated: [], notEvaluableReason: `Policy's OU ${policy.ouId} does not exist` };
   }
 
-  const observations = await observeOuMailboxSizes(customer.tenantId, ou.name, ou.id, customerId);
-  if (observations.length === 0) {
+  if (policy.targetKind === "group_membership" && !isGroupMembershipTargetState(policy.targetState)) {
     return {
       runId: null,
       membersObserved: 0,
       compliant: 0,
       nonCompliant: 0,
       findingsCreated: [],
-      notEvaluableReason: `No members of this tenant's real directory are manually assigned to or carry department = '${ou.name}' with a real mailbox usage row`,
+      notEvaluableReason: `Policy target_state is not a recognized group_membership declaration: ${JSON.stringify(policy.targetState)}`,
+    };
+  }
+
+  const groupTargetState = policy.targetKind === "group_membership" && isGroupMembershipTargetState(policy.targetState) ? policy.targetState : null;
+  const mailboxObservations = policy.targetKind === "mailbox_attribute" ? await observeOuMailboxSizes(customer.tenantId, ou.name, ou.id, customerId) : null;
+  const groupObservations = groupTargetState ? await observeOuGroupMemberships(customer.tenantId, ou.name, ou.id, customerId, groupTargetState.groupIds) : null;
+  const membersObservedCount = mailboxObservations?.length ?? groupObservations?.length ?? 0;
+
+  if (membersObservedCount === 0) {
+    return {
+      runId: null,
+      membersObserved: 0,
+      compliant: 0,
+      nonCompliant: 0,
+      findingsCreated: [],
+      notEvaluableReason:
+        policy.targetKind === "mailbox_attribute"
+          ? `No members of this tenant's real directory are manually assigned to or carry department = '${ou.name}' with a real mailbox usage row`
+          : `No members of this tenant's real directory are manually assigned to or carry department = '${ou.name}'`,
     };
   }
 
@@ -111,7 +129,7 @@ export async function evaluateStandingPolicyForCustomer(policyId: number, custom
       status: "completed",
       startedAt: new Date(),
       completedAt: new Date(),
-      checksTotal: observations.length,
+      checksTotal: membersObservedCount,
       checksOk: 0,
       checksError: 0,
       checksRequiresScript: 0,
@@ -122,48 +140,86 @@ export async function evaluateStandingPolicyForCustomer(policyId: number, custom
   let compliant = 0;
   let nonCompliant = 0;
   const findingsCreated: string[] = [];
+  const sopNote = policy.sopId ? ` Fix via SOP '${policy.sopId}' — the enacting procedure this policy names (#1548).` : " No enacting SOP is named on this policy yet (#1548).";
 
-  for (const observation of observations) {
-    const result = evaluateMailboxAttributeCompliance(policy.targetState, observation);
-    if (result.verdict === "compliant") {
-      compliant++;
-      continue;
-    }
-    if (result.verdict === "not_evaluable") {
-      continue;
-    }
+  if (mailboxObservations) {
+    for (const observation of mailboxObservations) {
+      const result = evaluateMailboxAttributeCompliance(policy.targetState, observation);
+      if (result.verdict === "compliant") {
+        compliant++;
+        continue;
+      }
+      if (result.verdict === "not_evaluable") {
+        continue;
+      }
 
-    nonCompliant++;
-    const sopNote = policy.sopId ? ` Fix via SOP '${policy.sopId}' — the enacting procedure this policy names (#1548).` : " No enacting SOP is named on this policy yet (#1548).";
-    const [finding] = await db
-      .insert(mspDiagnosticFindingsTable)
-      .values({
-        runId: run.runId,
-        mspId: policy.mspId,
-        customerId,
-        checkKey: `policy:${policy.id}:mailbox_attribute`,
-        checkLabel: `Standing policy: ${policy.title}`,
-        severity: "warning",
-        title: `${observation.displayName ?? observation.userPrincipalName}'s mailbox is ${observation.observedSizeMb}MB — policy '${policy.title}' caps it at ${result.targetValue}MB`,
-        description: `${result.reason}.${sopNote}`,
-        recommendation: {
-          category: "policy",
-          action: policy.sopId ?? undefined,
-          priority: 2,
-        },
-        extractedProperties: { userPrincipalName: observation.userPrincipalName, observedSizeMb: observation.observedSizeMb, targetSizeMb: result.targetValue },
-        checkStatus: "ok",
-        findingSource: "policy",
-        standingPolicyId: policy.id,
-      })
-      .returning({ findingId: mspDiagnosticFindingsTable.findingId });
-    findingsCreated.push(finding.findingId);
+      nonCompliant++;
+      const [finding] = await db
+        .insert(mspDiagnosticFindingsTable)
+        .values({
+          runId: run.runId,
+          mspId: policy.mspId,
+          customerId,
+          checkKey: `policy:${policy.id}:mailbox_attribute`,
+          checkLabel: `Standing policy: ${policy.title}`,
+          severity: "warning",
+          title: `${observation.displayName ?? observation.userPrincipalName}'s mailbox is ${observation.observedSizeMb}MB — policy '${policy.title}' caps it at ${result.targetValue}MB`,
+          description: `${result.reason}.${sopNote}`,
+          recommendation: {
+            category: "policy",
+            action: policy.sopId ?? undefined,
+            priority: 2,
+          },
+          extractedProperties: { userPrincipalName: observation.userPrincipalName, observedSizeMb: observation.observedSizeMb, targetSizeMb: result.targetValue },
+          checkStatus: "ok",
+          findingSource: "policy",
+          standingPolicyId: policy.id,
+        })
+        .returning({ findingId: mspDiagnosticFindingsTable.findingId });
+      findingsCreated.push(finding.findingId);
+    }
+  } else if (groupObservations) {
+    for (const observation of groupObservations) {
+      const result = evaluateGroupMembershipCompliance(policy.targetState, observation);
+      if (result.verdict === "compliant") {
+        compliant++;
+        continue;
+      }
+      if (result.verdict === "not_evaluable") {
+        continue;
+      }
+
+      nonCompliant++;
+      const [finding] = await db
+        .insert(mspDiagnosticFindingsTable)
+        .values({
+          runId: run.runId,
+          mspId: policy.mspId,
+          customerId,
+          checkKey: `policy:${policy.id}:group_membership`,
+          checkLabel: `Standing policy: ${policy.title}`,
+          severity: "warning",
+          title: `${observation.displayName ?? observation.userPrincipalName} does not meet policy '${policy.title}''s group-membership requirement`,
+          description: `${result.reason}.${sopNote}`,
+          recommendation: {
+            category: "policy",
+            action: policy.sopId ?? undefined,
+            priority: 2,
+          },
+          extractedProperties: { userPrincipalName: observation.userPrincipalName, memberGroupIds: observation.memberGroupIds, requiredGroupIds: groupTargetState?.groupIds ?? [] },
+          checkStatus: "ok",
+          findingSource: "policy",
+          standingPolicyId: policy.id,
+        })
+        .returning({ findingId: mspDiagnosticFindingsTable.findingId });
+      findingsCreated.push(finding.findingId);
+    }
   }
 
   log.info(
-    { policyId, customerId, runId: run.runId, membersObserved: observations.length, compliant, nonCompliant, findingsCreated: findingsCreated.length },
+    { policyId, customerId, runId: run.runId, membersObserved: membersObservedCount, compliant, nonCompliant, findingsCreated: findingsCreated.length },
     "standing policy compliance evaluated",
   );
 
-  return { runId: run.runId, membersObserved: observations.length, compliant, nonCompliant, findingsCreated, notEvaluableReason: null };
+  return { runId: run.runId, membersObserved: membersObservedCount, compliant, nonCompliant, findingsCreated, notEvaluableReason: null };
 }

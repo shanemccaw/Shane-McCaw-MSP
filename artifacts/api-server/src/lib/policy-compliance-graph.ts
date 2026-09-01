@@ -32,7 +32,16 @@
  * OTHER OU (an object can only really belong to one OU at a time). An object
  * with no manual row falls through to the department-match guess unchanged.
  *
- * `group_membership` and `service_policy` target kinds get no reader here —
+ * `group_membership` (#1953) reads real membership via Graph's own
+ * `POST /users/{id}/checkMemberGroups` — one call per OU member, asking
+ * Graph directly which of the policy's declared group ids that member is
+ * actually (transitively) a member of. This is the correct-shaped Graph API
+ * for exactly this question, rather than paging every declared group's
+ * `/members` and intersecting client-side.
+ *
+ * `service_policy` still has no reader here — it likely needs Exchange
+ * Online PowerShell (ps-execution) rather than a pure Graph read, and that
+ * model hasn't been scoped for this config surface yet.
  * `policy-compliance.ts`'s `EVALUABLE_TARGET_KINDS` is the honest boundary.
  */
 
@@ -41,7 +50,7 @@ import { db, activeDirectoryOuAssignmentsTable } from "@workspace/db";
 import { graphFetchForTenant } from "./graph";
 import { isCsvReportResponse, parseCsvReport } from "./monitor-executor";
 import { logger } from "./logger";
-import type { MailboxComplianceObservation } from "./policy-compliance";
+import type { MailboxComplianceObservation, GroupMembershipComplianceObservation } from "./policy-compliance";
 
 const log = logger.child({ channel: "engine.dashboard" });
 
@@ -159,6 +168,50 @@ export async function observeOuMailboxSizes(tenantId: string, ouName: string, ou
       continue;
     }
     observations.push({ userPrincipalName: member.userPrincipalName, displayName: member.displayName, observedSizeMb });
+  }
+  return observations;
+}
+
+/**
+ * Real, Graph-confirmed subset of `groupIds` that `userId` actually belongs
+ * to (including transitive membership) — Graph's own `checkMemberGroups`
+ * action, the correct API for "which of these specific groups is this user
+ * in" rather than paging full group rosters.
+ */
+async function resolveMemberGroupIds(tenantId: string, userId: string, groupIds: readonly string[]): Promise<string[]> {
+  const res = await graphFetchForTenant(tenantId, `/users/${encodeURIComponent(userId)}/checkMemberGroups`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ groupIds }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Graph checkMemberGroups error ${res.status} for user ${userId}: ${text.slice(0, 500)}`);
+  }
+  const body = (await res.json()) as { value?: string[] };
+  return body.value ?? [];
+}
+
+/**
+ * Real observed group memberships for every member of the OU named `ouName`
+ * on this tenant, restricted to the policy's own declared `groupIds` — never
+ * a fabricated membership, only what Graph itself confirms. `ouId`/
+ * `customerId` let membership resolution check manual assignments (#1952)
+ * ahead of the department-match guess, same as `observeOuMailboxSizes`.
+ */
+export async function observeOuGroupMemberships(
+  tenantId: string,
+  ouName: string,
+  ouId: number,
+  customerId: number,
+  groupIds: readonly string[],
+): Promise<GroupMembershipComplianceObservation[]> {
+  const members = await resolveOuMembers(tenantId, ouName, ouId, customerId);
+
+  const observations: GroupMembershipComplianceObservation[] = [];
+  for (const member of members) {
+    const memberGroupIds = await resolveMemberGroupIds(tenantId, member.id, groupIds);
+    observations.push({ userPrincipalName: member.userPrincipalName, displayName: member.displayName, memberGroupIds });
   }
   return observations;
 }
