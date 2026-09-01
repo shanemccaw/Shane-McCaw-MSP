@@ -112,8 +112,8 @@ namespace BuildConsole
             var repoRoot = BuildTrackerConfig.FindRepoRoot();
             if (repoRoot == null)
             {
-                MessageBox.Show(this, "Couldn't locate the repo root to read migration files from.", "Load pending migrations",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppDialog.Alert(this, "Couldn't locate the repo root to read migration files from.", "Load pending migrations",
+                    AppDialogIcon.Warning);
                 return;
             }
 

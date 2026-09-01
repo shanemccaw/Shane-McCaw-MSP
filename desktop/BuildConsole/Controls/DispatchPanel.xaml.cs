@@ -370,12 +370,12 @@ namespace BuildConsole.Controls
 
                 if (genuinelyRunning)
                 {
-                    var confirm = MessageBox.Show(
+                    bool confirm = AppDialog.Confirm(Window.GetWindow(this),
                         $"#{issueNumber} \"{existing!.Title}\" (queue #{existing.Id}) is genuinely running right now.\n\n" +
                         "Forcing a re-dispatch will stop that build and start a fresh one. Continue?",
                         "Force Re-Dispatch — Build Is Running",
-                        MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                    if (confirm != MessageBoxResult.Yes)
+                        AppDialogButtons.YesNo, AppDialogIcon.Warning);
+                    if (!confirm)
                     {
                         ShowStatus($"Force re-dispatch of #{issueNumber} canceled — build left running.", (Brush)Application.Current.FindResource("Subtext0Brush"));
                         return;

@@ -1570,7 +1570,7 @@ namespace BuildConsole.Controls
             var acc = settings.UserAccounts?.FirstOrDefault(a => a.Id == accountId);
             if (acc == null) return;
 
-            if (MessageBox.Show($"Are you sure you want to delete profile '{acc.Username}' ({acc.AccountTier})?", "Delete Profile", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            if (!AppDialog.Confirm(Window.GetWindow(this), $"Are you sure you want to delete profile '{acc.Username}' ({acc.AccountTier})?", "Delete Profile", AppDialogButtons.YesNo, AppDialogIcon.Warning))
                 return;
 
             if (settings.UserAccounts == null) return;
@@ -1599,7 +1599,7 @@ namespace BuildConsole.Controls
 
             if (string.IsNullOrEmpty(username))
             {
-                MessageBox.Show("Please enter a username or email.", "Validation Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                AppDialog.Alert(Window.GetWindow(this), "Please enter a username or email.", "Validation Error", AppDialogIcon.Error);
                 return;
             }
 

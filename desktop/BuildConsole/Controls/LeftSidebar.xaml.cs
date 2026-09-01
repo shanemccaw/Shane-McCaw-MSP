@@ -4862,13 +4862,13 @@ namespace BuildConsole.Controls
                         var miCloseMilestone = new MenuItem { Header = "🎉 Close Milestone…" };
                         miCloseMilestone.Click += async (s, e) =>
                         {
-                            var result = MessageBox.Show(
+                            bool result = AppDialog.Confirm(Window.GetWindow(this),
                                 $"Close milestone \"{m.Title}\"?\n\nThis will mark it as closed on GitHub and trigger a HUGE celebration!",
                                 "Close Milestone",
-                                MessageBoxButton.YesNo,
-                                MessageBoxImage.Question);
+                                AppDialogButtons.YesNo,
+                                AppDialogIcon.Question);
 
-                            if (result != MessageBoxResult.Yes) return;
+                            if (!result) return;
 
                             try
                             {

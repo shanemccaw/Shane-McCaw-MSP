@@ -20,7 +20,7 @@ namespace BuildConsole
         {
             if (string.IsNullOrWhiteSpace(TitleBox.Text))
             {
-                MessageBox.Show("Title can't be empty.", "Edit Issue");
+                AppDialog.Alert(this, "Title can't be empty.", "Edit Issue");
                 return;
             }
 

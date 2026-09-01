@@ -161,14 +161,14 @@ namespace BuildConsole.Controls
         {
             if (_api == null)
             {
-                MessageBox.Show("API Client not initialized.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                AppDialog.Alert(Window.GetWindow(this), "API Client not initialized.", "Error", AppDialogIcon.Error);
                 return;
             }
 
             var selectedTenant = ComboTenants.SelectedItem as TenantComboItem;
             if (selectedTenant == null)
             {
-                MessageBox.Show("Please select a target tenant first.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppDialog.Alert(Window.GetWindow(this), "Please select a target tenant first.", "Validation", AppDialogIcon.Warning);
                 return;
             }
 
@@ -176,8 +176,8 @@ namespace BuildConsole.Controls
             if (_apiType == GraphApiEndpointType.Write)
             {
                 var confirmMsg = $"Are you sure you want to execute this Write Action ({_apiKey}) against {selectedTenant.DisplayName}?\n\nThis will perform a live mutating operation on the M365 tenant.";
-                var res = MessageBox.Show(confirmMsg, "⚠️ Live Write Action Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (res != MessageBoxResult.Yes) return;
+                bool res = AppDialog.Confirm(Window.GetWindow(this), confirmMsg, "⚠️ Live Write Action Confirmation", AppDialogButtons.YesNo, AppDialogIcon.Warning);
+                if (!res) return;
             }
 
             BtnExecute.IsEnabled = false;

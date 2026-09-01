@@ -142,8 +142,8 @@ namespace BuildConsole.Controls
             catch (Exception ex)
             {
                 Services.ActivityLog.Log("batter-up", $"#{r.Number} — manual queue FAILED: {ex.Message}");
-                MessageBox.Show($"Couldn't queue #{r.Number}: {ex.Message}", "Batter Up",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppDialog.Alert(Window.GetWindow(this), $"Couldn't queue #{r.Number}: {ex.Message}", "Batter Up",
+                    AppDialogIcon.Warning);
                 btn.Content = originalContent;
                 btn.IsEnabled = true;
                 return;

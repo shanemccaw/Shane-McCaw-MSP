@@ -1,0 +1,97 @@
+<Window x:Class="BuildConsole.AppDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="BuildConsole"
+        Icon="app.ico"
+        MinWidth="380" MaxWidth="560"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        Background="{DynamicResource AppBackgroundBrush}"
+        KeyDown="Window_KeyDown">
+
+    <!-- Git #2175 — same custom-chrome treatment as MainWindow/BuildWatchWindow (Git #1006/#894):
+         WindowStyle="None" + WindowChrome keeps real OS drag behavior while a plain WPF Border
+         replaces the native caption, so no MessageBox.Show call site anywhere in ShaneBuilder
+         reaches for native OS chrome again. -->
+    <WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36"
+                             ResizeBorderThickness="0"
+                             GlassFrameThickness="-1"
+                             CornerRadius="0"
+                             UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Border BorderBrush="{DynamicResource BorderDividerBrush}" BorderThickness="1">
+        <DockPanel LastChildFill="True" Background="{DynamicResource AppBackgroundBrush}">
+            <Border DockPanel.Dock="Top"
+                    Background="{DynamicResource PanelBackgroundBrush}"
+                    BorderBrush="{DynamicResource BorderDividerBrush}"
+                    BorderThickness="0,0,0,1"
+                    Height="36">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="TitleText" Grid.Column="0" Text="BuildConsole" Margin="14,0,0,0"
+                               VerticalAlignment="Center" FontSize="{StaticResource BodyFontSize}" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextSecondaryBrush}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
+                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid Margin="20,18,20,16">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Top">
+                    <TextBlock x:Name="IconGlyph"
+                               FontFamily="Segoe MDL2 Assets"
+                               FontSize="22"
+                               Margin="0,0,14,0"
+                               VerticalAlignment="Top"
+                               Visibility="Collapsed"/>
+                    <TextBlock x:Name="MessageText"
+                               TextWrapping="Wrap"
+                               FontSize="{StaticResource BodyFontSize}"
+                               Foreground="{DynamicResource TextPrimaryBrush}"
+                               VerticalAlignment="Top"/>
+                </StackPanel>
+
+                <TextBox x:Name="InputTextBox"
+                         Grid.Row="1"
+                         Margin="0,14,0,0"
+                         Padding="8,6"
+                         FontSize="{StaticResource BodyFontSize}"
+                         Background="{DynamicResource CardBackgroundBrush}"
+                         Foreground="{DynamicResource TextPrimaryBrush}"
+                         BorderBrush="{DynamicResource BorderDividerBrush}"
+                         Visibility="Collapsed"
+                         KeyDown="InputTextBox_KeyDown"/>
+
+                <StackPanel Grid.Row="2"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="0,20,0,0">
+                    <Button x:Name="BtnNo" Content="No" Padding="14,6" Margin="0,0,8,0"
+                            Visibility="Collapsed" Click="BtnNo_Click"/>
+                    <Button x:Name="BtnCancel" Content="Cancel" Padding="14,6" Margin="0,0,8,0"
+                            IsCancel="True" Visibility="Collapsed" Click="BtnCancel_Click"/>
+                    <Button x:Name="BtnPrimary" Content="OK" Style="{StaticResource PrimaryButton}"
+                            Padding="14,6" IsDefault="True" Click="BtnPrimary_Click"/>
+                </StackPanel>
+            </Grid>
+        </DockPanel>
+    </Border>
+</Window>

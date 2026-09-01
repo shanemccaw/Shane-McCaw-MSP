@@ -48,7 +48,7 @@ namespace BuildConsole
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to open: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppDialog.Alert(this, $"Failed to open: {ex.Message}", "Error", AppDialogIcon.Warning);
             }
         }
 

@@ -1075,7 +1075,7 @@ namespace BuildConsole
             string? manifestPath = FindManifestPath(repoRoot, _currentRunResult.Issue);
             if (manifestPath == null)
             {
-                MessageBox.Show(this, $"Could not find a test manifest in test-manifests/ for issue #{_currentRunResult.Issue}.", "Manifest Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppDialog.Alert(this, $"Could not find a test manifest in test-manifests/ for issue #{_currentRunResult.Issue}.", "Manifest Not Found", AppDialogIcon.Warning);
                 return;
             }
 
@@ -1103,7 +1103,7 @@ namespace BuildConsole
             }
             else
             {
-                MessageBox.Show(this, $"Could not find a test manifest in test-manifests/ for issue #{_currentRunResult.Issue}.", "Manifest Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppDialog.Alert(this, $"Could not find a test manifest in test-manifests/ for issue #{_currentRunResult.Issue}.", "Manifest Not Found", AppDialogIcon.Warning);
             }
         }
 
@@ -1149,7 +1149,7 @@ namespace BuildConsole
             }
 
             Clipboard.SetText(sb.ToString().TrimEnd());
-            MessageBox.Show(this, "Copied diagnostic markdown report to clipboard.", "Report Copied", MessageBoxButton.OK, MessageBoxImage.Information);
+            AppDialog.Alert(this, "Copied diagnostic markdown report to clipboard.", "Report Copied", AppDialogIcon.Info);
         }
 
         private void BtnOpenGallery_Click(object sender, RoutedEventArgs e)
