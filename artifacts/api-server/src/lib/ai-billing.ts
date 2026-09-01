@@ -333,7 +333,7 @@ export interface RecordAiUsageOpts {
 export interface RecordedAiUsage {
   /** `ai_usage_events.costCents` exactly as persisted for this call. */
   costCents: number;
-  eventId: number | null;
+  eventId: string | null;
 }
 
 /**

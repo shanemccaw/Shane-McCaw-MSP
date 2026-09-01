@@ -257,7 +257,7 @@ afterEach(() => {
 
 describe("streaming transport produces the same document the non-streaming path did", () => {
   it("saves exactly extractAiHtml(finalMessage) — the expression the old create() path evaluated", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: "88" }));
 
     const result = await generateDocument(PARAMS);
 
@@ -269,7 +269,7 @@ describe("streaming transport produces the same document the non-streaming path 
   });
 
   it("does not assemble the document out of the chunks it streamed", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: "88" }));
     const relayed: string[] = [];
 
     const result = await generateDocument({ ...PARAMS, onTextDelta: (t) => relayed.push(t) });
@@ -287,7 +287,7 @@ describe("streaming transport produces the same document the non-streaming path 
   });
 
   it("streams instead of awaiting a whole message — and does not do both", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: "88" }));
 
     await generateDocument(PARAMS);
 
@@ -305,7 +305,7 @@ describe("streaming transport produces the same document the non-streaming path 
   });
 
   it("sends the same request params streaming that it sent non-streaming", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: "88" }));
 
     await generateDocument(PARAMS);
 
@@ -332,7 +332,7 @@ describe("streaming transport produces the same document the non-streaming path 
   });
 
   it("generates identically when no relay callback is supplied", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: "88" }));
 
     const withRelay = await generateDocument({ ...PARAMS, onTextDelta: () => {} });
     queueHappyPath();
@@ -343,7 +343,7 @@ describe("streaming transport produces the same document the non-streaming path 
   });
 
   it("a throwing relay callback cannot destroy a document the model already wrote", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: "88" }));
 
     // e.g. the operator closed the tab and the SSE write blew up mid-stream.
     const result = await generateDocument({
@@ -371,7 +371,7 @@ describe("cost capture after the stream completes", () => {
     let call = 0;
     registerAiUsageSink((): AiUsagePersistResult => {
       call += 1;
-      return { costCents: call === 1 ? 1337 : 42, eventId: 87 + call };
+      return { costCents: call === 1 ? 1337 : 42, eventId: String(87 + call) };
     });
 
     const result = await generateDocument(PARAMS);
@@ -388,7 +388,7 @@ describe("cost capture after the stream completes", () => {
     let record: AiUsageRecord | null = null;
     registerAiUsageSink((r): AiUsagePersistResult => {
       record = r;
-      return { costCents: 1337, eventId: 88 };
+      return { costCents: 1337, eventId: "88" };
     });
 
     await generateDocument(PARAMS);
@@ -410,7 +410,7 @@ describe("cost capture after the stream completes", () => {
     const records: AiUsageRecord[] = [];
     registerAiUsageSink((r): AiUsagePersistResult => {
       records.push(r);
-      return { costCents: 100, eventId: 1 };
+      return { costCents: 100, eventId: "1" };
     });
 
     await generateDocument(PARAMS);
@@ -426,7 +426,7 @@ describe("cost capture after the stream completes", () => {
     const records: AiUsageRecord[] = [];
     registerAiUsageSink((r): AiUsagePersistResult => {
       records.push(r);
-      return { costCents: 100, eventId: 1 };
+      return { costCents: 100, eventId: "1" };
     });
 
     await generateDocument(PARAMS);
@@ -464,7 +464,7 @@ describe("cost capture after the stream completes", () => {
     let record: AiUsageRecord | null = null;
     registerAiUsageSink((r): AiUsagePersistResult => {
       record = r;
-      return { costCents: 5, eventId: 2 };
+      return { costCents: 5, eventId: "2" };
     });
     streamFailure = new Error("overloaded_error");
 
@@ -481,7 +481,7 @@ describe("cost capture after the stream completes", () => {
 
 describe("paths that make no model call are unaffected by streaming", () => {
   it("a dry-run preview calls NEITHER transport and stays a real zero", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: 1 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: "1" }));
     const relayed: string[] = [];
 
     const result = await generateDocument({ ...PARAMS, dryRun: true, onTextDelta: (t) => relayed.push(t) });
@@ -498,7 +498,7 @@ describe("paths that make no model call are unaffected by streaming", () => {
   });
 
   it("a dry-run still assembles the prompt it would have sent", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: 1 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: "1" }));
 
     const result = await generateDocument({ ...PARAMS, dryRun: true });
 
@@ -510,7 +510,7 @@ describe("paths that make no model call are unaffected by streaming", () => {
   });
 
   it("a drift-gate reuse calls neither transport and relays nothing", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: 1 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: "1" }));
     reusable = { documentId: 77, htmlContent: "<html>old</html>", docTypeKey: "governance_snapshot" };
     selectQueue = [[DOC_TYPE_ROW]];
     const relayed: string[] = [];

@@ -319,7 +319,7 @@ describe("diagnostics-runner findingRows extractedProperties merge", () => {
   // Mirrors the merge implemented inline in diagnostics-runner.ts around the
   // findingRows.push({ ... extractedProperties: { ... } }) call — not exported,
   // so reimplemented here the same way the severity-classification tests above do.
-  function mergeExtractedProperties(checkResult: { extractedProperties?: unknown; errorMessage?: string }) {
+  function mergeExtractedProperties(checkResult: { extractedProperties?: unknown; errorMessage?: string; [key: string]: unknown }): Record<string, unknown> {
     return {
       ...(checkResult.extractedProperties as Record<string, unknown>),
       ...(checkResult.errorMessage ? { _rawGraphError: checkResult.errorMessage } : {}),

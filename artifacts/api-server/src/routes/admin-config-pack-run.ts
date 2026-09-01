@@ -61,6 +61,9 @@ const ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   // #1497 — the write path was reached without an approved, unconsumed CR that
   // authorizes writing to the target tenant. Forbidden, not "bad request".
   change_request_not_authorized: 403,
+  // #1911 — Key Vault store for generated credentials isn't configured; fail
+  // closed rather than write the credential to the database.
+  generated_secret_store_unavailable: 503,
 };
 
 /**

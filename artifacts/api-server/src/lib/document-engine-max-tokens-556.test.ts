@@ -229,7 +229,7 @@ beforeEach(() => {
   appendixCalls = 0;
   stopReason = undefined;
   resetAiUsageBuffer();
-  registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: 88 }));
+  registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 1337, eventId: "88" }));
   queueHappyPath();
 });
 

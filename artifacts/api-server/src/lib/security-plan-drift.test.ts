@@ -11,7 +11,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { computeSecurityPlanDrift } from "./security-plan-drift.ts";
-import type { SecurityPlanAssembledItem, SecurityPlanAssembledModule, SecurityPlanContent } from "@workspace/db";
+import type { SecurityPlanAssembledItem, SecurityPlanAssembledModule, SecurityPlanContent, SecurityPlanProse } from "@workspace/db";
 
 function item(id: string, over: Partial<SecurityPlanAssembledItem> = {}): SecurityPlanAssembledItem {
   return { id, title: id, state: "open", detail: null, pillar: null, framework: null, ...over };
@@ -19,6 +19,15 @@ function item(id: string, over: Partial<SecurityPlanAssembledItem> = {}): Securi
 
 function moduleOf(key: string, items: SecurityPlanAssembledItem[]): SecurityPlanAssembledModule {
   return { key, label: key, sourceIssue: "#0000", total: items.length, excludedCount: 0, items };
+}
+
+function proseOf(text: string): SecurityPlanProse {
+  return {
+    scope: { text, editedInThisVersion: false },
+    methodology: { text, editedInThisVersion: false },
+    exclusions: { text, editedInThisVersion: false },
+    executiveSummary: { text, editedInThisVersion: false },
+  };
 }
 
 function content(modules: SecurityPlanAssembledModule[], prose: string | null = null): SecurityPlanContent {
@@ -35,7 +44,7 @@ function content(modules: SecurityPlanAssembledModule[], prose: string | null = 
       totalExcluded: 0,
       computedAt: "2026-08-31T00:00:00.000Z",
     },
-    prose,
+    prose: prose === null ? null : proseOf(prose),
   };
 }
 

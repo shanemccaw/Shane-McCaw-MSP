@@ -249,7 +249,7 @@ describe("generateDocument() — real generation", () => {
     let call = 0;
     registerAiUsageSink((): AiUsagePersistResult => {
       call += 1;
-      return { costCents: call === 1 ? 1337 : 42, eventId: 87 + call };
+      return { costCents: call === 1 ? 1337 : 42, eventId: String(87 + call) };
     });
 
     const result = await generateDocument(PARAMS);
@@ -266,7 +266,7 @@ describe("generateDocument() — real generation", () => {
     let attributed: { customerId?: number | null; generatedArtifactType?: string; generatedArtifactId?: string } | null = null;
     registerAiUsageSink((record): AiUsagePersistResult => {
       attributed = record;
-      return { costCents: 100, eventId: 1 };
+      return { costCents: 100, eventId: "1" };
     });
 
     await generateDocument(PARAMS);
@@ -295,7 +295,7 @@ describe("generateDocument() — real generation", () => {
 
 describe("generateDocument() — paths that make no AI call", () => {
   it("a dry-run preview reports a real zero marked no-ai-call", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: 1 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: "1" }));
 
     const result = await generateDocument({ ...PARAMS, dryRun: true });
 
@@ -307,7 +307,7 @@ describe("generateDocument() — paths that make no AI call", () => {
   });
 
   it("a drift-gate reuse reports zero for this request, not the original's cost", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: 1 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: "1" }));
     reusable = { documentId: 77, htmlContent: "<html>old</html>", docTypeKey: "governance_snapshot" };
     selectQueue = [[DOC_TYPE_ROW]];
 

@@ -136,7 +136,7 @@ describe("generateCioNarrative() — AI usage attribution (#149)", () => {
     let record: AiUsageRecord | null = null;
     registerAiUsageSink((r): AiUsagePersistResult => {
       record = r;
-      return { costCents: 42, eventId: 1 };
+      return { costCents: 42, eventId: "1" };
     });
 
     await generateCioNarrative(PARAMS);
@@ -154,7 +154,7 @@ describe("generateCioNarrative() — AI usage attribution (#149)", () => {
     let record: AiUsageRecord | null = null;
     registerAiUsageSink((r): AiUsagePersistResult => {
       record = r;
-      return { costCents: 1, eventId: 1 };
+      return { costCents: 1, eventId: "1" };
     });
 
     await generateCioNarrative(PARAMS);

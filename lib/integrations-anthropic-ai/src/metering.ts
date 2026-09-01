@@ -138,7 +138,7 @@ export interface AiUsagePersistResult {
   /** `ai_usage_events.costCents` as written for this call. */
   costCents: number;
   /** `ai_usage_events.eventId` of that row, when the insert returned one. */
-  eventId?: number | null;
+  eventId?: string | null;
 }
 
 export type AiUsageSink = (
@@ -161,7 +161,7 @@ export interface AiCallCost {
    * not knowable. `null` means unknown — never assume zero.
    */
   costCents: number | null;
-  eventId: number | null;
+  eventId: string | null;
   status: AiCallCostStatus;
   /** The call itself threw; any cost is a floor, not a total. */
   failed: boolean;

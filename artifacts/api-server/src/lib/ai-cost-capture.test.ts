@@ -42,14 +42,14 @@ import {
 function fakeClient(usage: { input_tokens: number; output_tokens: number } | null = { input_tokens: 1000, output_tokens: 500 }) {
   return meterAnthropicClient({
     messages: {
-      create: (async () => ({
+      create: async (..._args: never[]) => ({
         model: "claude-sonnet-4-6",
         content: [{ type: "text", text: "<html>doc</html>" }],
         ...(usage ? { usage } : {}),
-      })) as never,
-      stream: (() => {
+      }),
+      stream: (..._args: never[]) => {
         throw new Error("not used");
-      }) as never,
+      },
     },
   });
 }
@@ -79,7 +79,7 @@ describe("cost capture — the real path", () => {
     // ledger's row back, this assertion is what fails.
     registerAiUsageSink((record): AiUsagePersistResult => {
       seen.push(record);
-      return { costCents: 917, eventId: 5150 };
+      return { costCents: 917, eventId: "5150" };
     });
 
     const client = fakeClient();
@@ -91,7 +91,7 @@ describe("cost capture — the real path", () => {
     expect(costs).toHaveLength(1);
     expect(costs[0].status).toBe("recorded");
     expect(costs[0].costCents).toBe(917);
-    expect(costs[0].eventId).toBe(5150);
+    expect(costs[0].eventId).toBe("5150");
     expect(totalCapturedCostCents(costs)).toBe(917);
 
     // The captured call is the same one that was billed: same attribution, same
@@ -106,7 +106,7 @@ describe("cost capture — the real path", () => {
   it("waits for an asynchronous sink, as the real DB-backed one is", async () => {
     registerAiUsageSink(async (): Promise<AiUsagePersistResult> => {
       await new Promise((r) => setTimeout(r, 10));
-      return { costCents: 250, eventId: 1 };
+      return { costCents: 250, eventId: "1" };
     });
 
     const client = fakeClient();
@@ -199,7 +199,7 @@ describe("cost capture — recording failed (unknown, never zero)", () => {
     registerAiUsageSink((): AiUsagePersistResult | void => {
       call += 1;
       // First call bills, second one's row is lost.
-      return call === 1 ? { costCents: 500, eventId: 1 } : undefined;
+      return call === 1 ? { costCents: 500, eventId: "1" } : undefined;
     });
 
     const client = fakeClient();
@@ -214,7 +214,7 @@ describe("cost capture — recording failed (unknown, never zero)", () => {
   });
 
   it("still surfaces a token-less response as a call whose cost is a floor", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 0, eventId: 9 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 0, eventId: "9" }));
 
     const client = fakeClient(null); // no `usage` block — e.g. a raw stream
     const { costs } = await withAiUsageCapture(DOC_ATTRIBUTION, () =>
@@ -228,7 +228,7 @@ describe("cost capture — recording failed (unknown, never zero)", () => {
 
 describe("cost capture — no AI call was made", () => {
   it("captures nothing when the scope makes no model call (the dry-run / reuse shape)", async () => {
-    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: 1 }));
+    registerAiUsageSink((): AiUsagePersistResult => ({ costCents: 999, eventId: "1" }));
 
     const { result, costs } = await withAiUsageCapture(DOC_ATTRIBUTION, async () => "preview-only");
 

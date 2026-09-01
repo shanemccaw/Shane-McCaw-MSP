@@ -207,7 +207,7 @@ router.patch(
 
 const resolveInstanceSchema = z.object({
   /** Why the line left — remediated vs. the object ceasing to exist (#1509). */
-  reason: z.enum(RISK_INSTANCE_EXIT_REASONS as [string, ...string[]]),
+  reason: z.enum(RISK_INSTANCE_EXIT_REASONS as unknown as [string, ...string[]]),
   note: z.string().nullable().optional(),
 });
 

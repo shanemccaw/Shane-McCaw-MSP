@@ -238,7 +238,7 @@ describe("metered Anthropic client", () => {
   beforeEach(() => {
     records = [];
     resetAiUsageBuffer();
-    registerAiUsageSink((r) => records.push(r));
+    registerAiUsageSink((r) => { records.push(r); });
   });
 
   afterEach(() => {
@@ -388,7 +388,7 @@ describe("metered Anthropic client", () => {
     expect(getUnsunkUsageCount()).toBe(1);
 
     const late: AiUsageRecord[] = [];
-    registerAiUsageSink((r) => late.push(r));
+    registerAiUsageSink((r) => { late.push(r); });
     expect(late).toHaveLength(1);
     expect(getUnsunkUsageCount()).toBe(0);
   });
@@ -452,7 +452,7 @@ describe("impersonation AI attribution (GAP-09)", () => {
   beforeEach(() => {
     records = [];
     resetAiUsageBuffer();
-    registerAiUsageSink((r) => records.push(r));
+    registerAiUsageSink((r) => { records.push(r); });
   });
 
   afterEach(() => {

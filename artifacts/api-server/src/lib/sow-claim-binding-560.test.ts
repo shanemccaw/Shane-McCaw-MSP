@@ -195,7 +195,7 @@ function swapVerdictAudit() {
 
 /** Sums the line-item figures in a rendered SOW pricing table. */
 function sumLineItems(html: string): number {
-  const rows = html.match(/<tr data-line="workstream">[\s\S]*?<\/tr>/g) ?? [];
+  const rows: string[] = html.match(/<tr data-line="workstream">[\s\S]*?<\/tr>/g) ?? [];
   return rows.reduce((sum, row) => {
     const money = row.match(/\$([\d,]+\.\d{2})/);
     return sum + (money ? Number(money[1].replace(/,/g, "")) : 0);
@@ -388,7 +388,10 @@ describe("#560 — the gate on a confirmed pricing mismatch", () => {
       { documentHtml: SWAPPED_PRICES_HTML, source: SOURCE, ctx: CTX },
       log,
       swapVerdictAudit(),
-    ).catch((e) => e as SowClaimBindingError);
+    ).then(
+      () => { throw new Error("expected assertSowClaimBindingsConsistent to throw"); },
+      (e) => e as SowClaimBindingError,
+    );
 
     expect(err).toBeInstanceOf(SowClaimBindingError);
     // Specific, not "validation failed" — an admin can check this against the

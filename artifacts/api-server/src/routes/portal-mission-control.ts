@@ -539,6 +539,9 @@ const CONFIG_PACK_ERROR_STATUS: Record<ConfigPackError["code"], number> = {
   // #1497 — mission-control remediate never passes a changeRequestAuthorization
   // (it is testbed-gated), so this code cannot arise here; mapped for exhaustiveness.
   change_request_not_authorized: 403,
+  // #1911 — Key Vault store for generated credentials isn't configured; fail
+  // closed rather than write the credential to the database.
+  generated_secret_store_unavailable: 503,
 };
 
 router.post(

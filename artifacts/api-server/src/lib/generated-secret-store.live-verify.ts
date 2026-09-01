@@ -106,7 +106,7 @@ describe("#1911 — generated credential lifecycle, live", () => {
     };
 
     const [def] = await db.insert(wfDefinitionsTable).values({
-      name: "#1911 live verify", description: "temporary — removed by the test", status: "active",
+      name: "#1911 live verify", description: "temporary — removed by the test",
     }).returning({ id: wfDefinitionsTable.id });
     definitionId = def.id;
 

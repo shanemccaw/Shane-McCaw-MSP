@@ -103,7 +103,7 @@ router.post("/admin/build-tracker/epics", requireAdmin, async (req: Request, res
 
 /** PATCH /admin/build-tracker/epics/:id — update title/description/status/milestoneId */
 router.patch("/admin/build-tracker/epics/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   const { title, description, status, githubNumber, milestoneId } = req.body as {
     title?: string;
@@ -164,7 +164,7 @@ router.patch("/admin/build-tracker/epics/:id", requireAdmin, async (req: Request
 
 /** DELETE /admin/build-tracker/epics/:id */
 router.delete("/admin/build-tracker/epics/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   try {
     await db.delete(btEpicsTable).where(eq(btEpicsTable.id, id));
@@ -185,7 +185,7 @@ router.get("/admin/build-tracker/milestones", requireAdmin, async (_req: Request
     if (process.env.GITHUB_TOKEN) {
       const msRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones?state=all`);
       if (msRes.ok) {
-        const ghMsList = await msRes.json();
+        const ghMsList = (await msRes.json()) as any[];
         const milestones = ghMsList.map((m: any) => ({
           id: m.number,
           title: m.title,
@@ -236,7 +236,7 @@ router.post("/admin/build-tracker/milestones", requireAdmin, async (req: Request
         }),
       });
       if (ghRes.ok) {
-        const ghData = await ghRes.json();
+        const ghData = (await ghRes.json()) as { number: number };
         ghNumber = ghData.number;
       }
     } catch (err) {
@@ -261,7 +261,7 @@ router.post("/admin/build-tracker/milestones", requireAdmin, async (req: Request
 
 /** PATCH /admin/build-tracker/milestones/:id — update title/description/status/dates */
 router.patch("/admin/build-tracker/milestones/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
 
   const { title, description, status, targetDate, startDate, githubNumber } = req.body as {
@@ -295,7 +295,7 @@ router.patch("/admin/build-tracker/milestones/:id", requireAdmin, async (req: Re
 
 /** DELETE /admin/build-tracker/milestones/:id */
 router.delete("/admin/build-tracker/milestones/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
 
   const githubNumber = req.query.githubNumber ? parseInt(req.query.githubNumber as string, 10) : undefined;
@@ -399,7 +399,7 @@ router.post("/admin/build-tracker/issues", requireAdmin, async (req: Request, re
  * reused as-is, not a new capability), not just mark it done locally.
  */
 router.patch("/admin/build-tracker/issues/:id", ingestAuth, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   const { title, description, status, epicId, githubNumber, githubUrl, labels } = req.body as {
     title?: string;
@@ -452,7 +452,7 @@ router.patch("/admin/build-tracker/issues/:id", ingestAuth, async (req: Request,
 
 /** DELETE /admin/build-tracker/issues/:id */
 router.delete("/admin/build-tracker/issues/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   try {
     await db.delete(btIssuesTable).where(eq(btIssuesTable.id, id));
@@ -1857,7 +1857,7 @@ router.get("/admin/build-tracker/extension/queue/next", ingestAuth, async (req: 
  * and resume the exact same conversation.
  */
 router.post("/admin/build-tracker/extension/queue/:id/complete", ingestAuth, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   const { exitCode, sessionId } = req.body as { exitCode?: number; sessionId?: string | null };
   try {
@@ -1888,7 +1888,7 @@ router.post("/admin/build-tracker/extension/queue/:id/complete", ingestAuth, asy
  * process, so that'd be a lie the UI shouldn't tell.
  */
 router.delete("/admin/build-tracker/extension/queue/:id", ingestAuth, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   try {
     const [row] = await db
@@ -1917,7 +1917,7 @@ router.delete("/admin/build-tracker/extension/queue/:id", ingestAuth, async (req
  * status view stays consistent regardless of which one launched it.
  */
 router.post("/admin/build-tracker/extension/queue/:id/force-claim", ingestAuth, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   try {
     const [row] = await db
@@ -2000,7 +2000,7 @@ router.post("/admin/build-tracker/extension/set-issue-state", ingestAuth, async 
     return;
   }
   const { number, state } = req.body as { number?: number; state?: string };
-  if (!Number.isInteger(number) || (state !== "open" && state !== "closed")) {
+  if (typeof number !== "number" || !Number.isInteger(number) || (state !== "open" && state !== "closed")) {
     res.status(400).json({ error: "number and state ('open'|'closed') are required" });
     return;
   }
@@ -2115,7 +2115,7 @@ router.post("/admin/build-tracker/extension/sync-epic", ingestAuth, async (req: 
 
 /** PATCH /admin/build-tracker/chats/:id */
 router.patch("/admin/build-tracker/chats/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   const { title, issueId, epicId, category, notes } = req.body as {
     title?: string;
@@ -2482,7 +2482,7 @@ router.post("/admin/build-tracker/chats/unarchive", ingestAuth, async (req: Requ
 
 /** DELETE /admin/build-tracker/chats/:id */
 router.delete("/admin/build-tracker/chats/:id", requireAdmin, async (req: Request, res: Response) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(req.params.id as string, 10);
   if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
   try {
     await db.delete(btChatsTable).where(eq(btChatsTable.id, id));
@@ -3230,7 +3230,7 @@ router.post("/admin/build-tracker/github-sync", ingestAuth, async (_req: Request
     try {
       const msRes = await ghFetch(`/repos/${GITHUB_OWNER}/${GITHUB_REPO_NAME}/milestones?state=all`);
       if (msRes.ok) {
-        const ghMsList = await msRes.json();
+        const ghMsList = (await msRes.json()) as any[];
         syncedMilestones = ghMsList.map((m: any) => ({
           id: m.number,
           title: m.title,
