@@ -772,6 +772,53 @@ machine, no BuildConsole instance is running to courier the call to, or a
 real timeout/error came back from the result envelope) — never as an assumed
 default limitation.
 
+## When a needed server is genuinely unreachable (Git #2160)
+
+The rule above forbids assuming "unable to verify" as a default. This is its
+counterpart for the case where a server or connection genuinely **is**
+unreachable after a real check — not permission to skip verification when it
+IS reachable, but the escape valve for when it truly is not, so a build
+never sits in an indefinite retry/hold.
+
+**A real check means a few real attempts with real evidence of failure** — not
+one blind try, and never an unbounded loop. Once that check confirms the
+resource is down (a specific connection error, a timeout with the actual
+error text, a repeatable failure across attempts):
+
+1. **Stop trying.** Do not keep retrying the same call hoping it resolves.
+2. **Report the real, honest state** — what was needed, what was actually
+   tried (the specific calls/attempts), and the actual failure (real error
+   text, not a vague "couldn't connect").
+3. **Do any other real work in scope that doesn't depend on the unreachable
+   resource.** An unreachable verification target blocks only the piece that
+   needs it, not the rest of the build.
+4. **Write an honest bookend reflecting incomplete verification** — `⏳ IN
+   FLIGHT` or a stated partial state, never a silent `✅ DONE` claim over
+   work that was never actually verified.
+
+**The same bounded-wait discipline applies to any background-task or
+async-poll wait**, not just an initial connectivity check. If a session
+triggers a scan/job and waits for a notification of completion, that wait
+needs a real, stated timeout — not an indefinite hold. A resource being
+polled can also be destroyed or invalidated by a concurrent process mid-wait
+(a scan-run history row deleted out from under a poller is a real, confirmed
+case); the wait logic must be able to detect that the thing it's waiting on
+no longer exists and bail out to the report-and-stop path above, rather than
+continuing to poll for something that can never resolve.
+
+**Never hold real, completed work hostage to an unresolved wait.** If a
+sub-piece of the task is genuinely done and verified (a fix confirmed against
+live evidence, a doc grounded in that evidence), commit and push it as soon
+as it's done, on its own commit — do not defer the only commit of the session
+to the very end "once the last thing lands." A completed fix or document that
+sits uncommitted because a final dependent step never resolved is real work
+lost, not real work deferred.
+
+This does not relax the requirement, immediately above, to actually invoke
+the real protocol before claiming something can't be verified — it only
+defines what "genuinely unreachable, after a real check" looks like, and what
+to do once that's actually true.
+
 ## Test Coverage — Standing Practice
 
 ## HARD RULE — never invent data, and never stop at a missing backend
