@@ -53,9 +53,12 @@ merge of another worktree's commit is a purely local ref op — no fetch, no pus
 node scripts/dev-server/bootstrap-server.mjs --link --launch
 ```
 
-* `--link` junctions `node_modules` + `lib/*/dist` from the main repo into the
-  server worktree (fast; avoids a full per-worktree `pnpm install`). Omit it and
-  run `pnpm install` at the repo root yourself instead.
+* `--link` junctions `node_modules` from the main repo into the server worktree
+  (fast; avoids a full per-worktree `pnpm install`), then builds `lib/*/dist`
+  from THIS worktree's own source via `tsc --build` (Git #2117 — `dist` is no
+  longer junctioned from the main repo, since that made a worktree's own
+  schema/type edits invisible to `tsc`/`pnpm typecheck`). Omit `--link` and run
+  `pnpm install` at the repo root yourself instead.
 * `--launch` starts `dev-all.mjs`. Re-running bootstrap is safe/idempotent.
 
 Default server worktree: `C:\dev-server` (short path — the deep `Design/_ds/...`
@@ -303,7 +306,7 @@ stale-lock recovery.
 | `status.mjs` | Diagnostic: current state + exact log paths. |
 | `provision-worktree.mjs` | Create an isolated agent worktree off origin/main. |
 | `bootstrap-server.mjs` | Create/launch the dedicated dev-server checkout. |
-| `link-deps.mjs` | Junction `node_modules` + `lib/*/dist` into a worktree (Windows recipe). |
+| `link-deps.mjs` | Junction `node_modules` into a worktree (Windows recipe) and build `lib/*/dist` from that worktree's own source (`buildLibDist`, Git #2117). |
 | `store-doctor.mjs` | **Git #1988** — scan the shared main-checkout `node_modules` for links/`.bin` shims that resolve into a worktree or dangle; `--repair` is the ONLY (explicit, never automatic) repair path. |
 | `selftest.mjs` | Cross-process verification of the whole mechanism. |
 | `verify-branch-merged.mjs` | **Git #1447 Part 1** — `git merge-base --is-ancestor` check a session runs before writing a DONE bookend, to confirm its own branch actually landed on main (not just that the local worktree looks clean). |

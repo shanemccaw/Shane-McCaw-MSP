@@ -31,7 +31,7 @@ import { existsSync, rmSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { loadConfig, isWindows } from "./config.mjs";
 import { git, resolveCommit, shortSha, listWorktrees } from "./git.mjs";
-import { linkDeps, copyEnvFiles } from "./link-deps.mjs";
+import { linkDeps, buildLibDist, copyEnvFiles } from "./link-deps.mjs";
 import { scanSharedStore } from "./store-doctor.mjs";
 import {
   registerWorktree,
@@ -175,6 +175,7 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
   // --- Link deps (junctions) so the worktree can build immediately with a SHARED
   //     node_modules — no per-worktree install, no re-download (Git #1372). ---
   let linked = false;
+  let libsBuilt = null;
   if (link) {
     try {
       const created = linkDeps(repo, wtPath);
@@ -183,6 +184,10 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
       // Linking is best-effort; the worktree itself is valid without it.
       linked = { error: e.message };
     }
+    // --- Build lib/*/dist FROM THIS WORKTREE'S OWN src (Git #2117) — dist is no
+    //     longer junctioned from the main checkout, so it has to be produced here,
+    //     using the node_modules just linked above (no extra install/download). ---
+    libsBuilt = buildLibDist(wtPath);
   }
 
   // --- Copy local env files (#1633): unconditional, NOT gated behind --link. A
@@ -215,6 +220,7 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
     recordId: rec?.id || null,
     envFiles: envResult,
     storeHealth,
+    libsBuilt,
   };
 }
 
@@ -285,6 +291,13 @@ function main() {
       console.log(`  (reused worktree — dependency junctions left as-is)`);
     } else if (res.linked && res.linked.error) {
       console.log(`  ! dependency linking failed: ${res.linked.error}`);
+    }
+    if (res.libsBuilt) {
+      if (res.libsBuilt.error) {
+        console.log(`  ! lib/*/dist build failed (Git #2117): ${res.libsBuilt.error}`);
+      } else if (res.libsBuilt.built.length) {
+        console.log(`  built ${res.libsBuilt.built.length} lib/*/dist project(s) from this worktree's own src: ${res.libsBuilt.built.join(", ")}`);
+      }
     }
   }
   console.log("");

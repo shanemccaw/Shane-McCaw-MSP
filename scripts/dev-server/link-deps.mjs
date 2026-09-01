@@ -2,22 +2,29 @@
 //
 // A worktree checks out SOURCE only -- no node_modules, no built lib/*/dist. To
 // actually build/run in a worktree without a full (slow, disk-heavy) `pnpm
-// install` per worktree, junction the real dependency dirs from the main repo
-// into the worktree. This is the recipe proven by earlier sessions (the
+// install` per worktree, junction the real THIRD-PARTY dependency dirs from the
+// main repo into the worktree. This is the recipe proven by earlier sessions (the
 // "isolated worktree build needs all workspace node_modules" lesson):
 //
 //   * junction EVERY workspace-package node_modules (~18: root + all
 //     artifacts/* and lib/*), not just root + one app, or Rollup fails to
 //     resolve cross-package imports.
-//   * junction each lib/*/dist too, or tsc fails TS6305 (composite projects
-//     expect the built .d.ts).
 //
-// CLEANUP ORDER MATTERS: always `rmdir` the junctions FIRST, then remove the
-// worktree. Removing a worktree while junctions remain deletes THROUGH them into
-// the real store.
+// lib/*/dist is NOT junctioned (Git #2117 -- it used to be, alongside
+// node_modules, per the TS6305 note this comment previously carried). Junctioning
+// dist from the main checkout means a worktree session's own edits to lib/*/src are
+// invisible to tsc/pnpm typecheck in any consuming package, AND a worktree can see
+// phantom errors (or phantom clean passes) that are really just whichever unrelated
+// branch the main checkout happens to be on. Instead, dist is BUILT per-worktree,
+// from that worktree's own src, via `tsc --build` -- see buildLibDist() below.
+//
+// CLEANUP ORDER MATTERS: always `rmdir` the node_modules junctions FIRST, then
+// remove the worktree. Removing a worktree while junctions remain deletes THROUGH
+// them into the real store. (lib/*/dist is now a real, worktree-owned directory --
+// removing the worktree removes it too, no junction hazard there.)
 
 import { execFileSync } from "node:child_process";
-import { readdirSync, existsSync, statSync, lstatSync, mkdirSync, copyFileSync } from "node:fs";
+import { readdirSync, existsSync, statSync, lstatSync, mkdirSync, copyFileSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { isWindows } from "./config.mjs";
 
@@ -53,15 +60,28 @@ function nodeModulesHosts(repoRoot) {
   return hosts.filter((rel) => existsSync(path.join(repoRoot, rel, "node_modules")));
 }
 
-/** lib/* packages that publish a dist/ (composite project outputs). */
-function libDistDirs(repoRoot) {
+/**
+ * lib/* (and lib/integrations/*) packages with a composite tsconfig.json --
+ * these are the ones that need a built dist/ for TS project-reference
+ * consumers (composite: true, emitDeclarationOnly). Checked by tsconfig
+ * content, not by an existing dist/, since a fresh worktree has none yet.
+ */
+function compositeLibDirs(repoRoot) {
   const out = [];
   for (const group of ["lib", "lib/integrations"]) {
     const dir = path.join(repoRoot, group);
     if (!existsSync(dir)) continue;
     for (const name of readdirSync(dir)) {
-      const rel = path.posix.join(group, name, "dist");
-      if (existsSync(path.join(repoRoot, rel))) out.push(rel);
+      const rel = path.posix.join(group, name);
+      const tsconfigPath = path.join(repoRoot, rel, "tsconfig.json");
+      if (!existsSync(tsconfigPath)) continue;
+      let content;
+      try {
+        content = readFileSync(tsconfigPath, "utf8");
+      } catch {
+        continue;
+      }
+      if (/"composite"\s*:\s*true/.test(content)) out.push(rel);
     }
   }
   return out;
@@ -81,10 +101,7 @@ export function linkDeps(repoRoot, worktreePath) {
     throw new Error("linkDeps currently implements the Windows junction recipe only.");
   }
   const created = [];
-  const rels = [
-    ...nodeModulesHosts(repoRoot).map((h) => path.posix.join(h, "node_modules")),
-    ...libDistDirs(repoRoot),
-  ];
+  const rels = nodeModulesHosts(repoRoot).map((h) => path.posix.join(h, "node_modules"));
   for (const rel of rels) {
     const target = path.join(repoRoot, rel);
     const link = path.join(worktreePath, rel);
@@ -98,6 +115,40 @@ export function linkDeps(repoRoot, worktreePath) {
     }
   }
   return created;
+}
+
+/**
+ * Build each lib/* composite project's dist/ FROM THE WORKTREE'S OWN src (Git
+ * #2117), using tsc's project-reference build mode. Requires node_modules to
+ * already be junctioned (linkDeps) so `typescript` is resolvable -- this does
+ * NOT install or download anything, it only compiles source that's already
+ * checked out in the worktree.
+ *
+ * Best-effort like linkDeps: a build failure is reported on the result, not
+ * thrown -- the worktree itself is still valid (just without a fresh dist)
+ * without it.
+ *
+ * @returns {{ built: string[], error: string|null }}
+ */
+export function buildLibDist(worktreePath) {
+  const projects = compositeLibDirs(worktreePath);
+  if (projects.length === 0) return { built: [], error: null };
+
+  const tscBin = path.join(worktreePath, "node_modules", "typescript", "bin", "tsc");
+  if (!existsSync(tscBin)) {
+    return { built: [], error: "typescript not found in worktree node_modules -- link-deps must run first" };
+  }
+
+  try {
+    execFileSync(process.execPath, [tscBin, "--build", ...projects], {
+      cwd: worktreePath,
+      stdio: "pipe",
+    });
+    return { built: projects, error: null };
+  } catch (e) {
+    const output = (e.stdout?.toString() || "") + (e.stderr?.toString() || "");
+    return { built: projects, error: (output || e.message || String(e)).slice(0, 4000) };
+  }
 }
 
 /** Remove junctions created by linkDeps. rmdir removes only the link, not target.

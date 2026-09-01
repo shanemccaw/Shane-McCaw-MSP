@@ -18,7 +18,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { loadConfig } from "./config.mjs";
 import { git, worktreePaths, revParse, shortSha, resolveCommit } from "./git.mjs";
-import { linkDeps } from "./link-deps.mjs";
+import { linkDeps, buildLibDist } from "./link-deps.mjs";
 import { startServer, readServerMeta } from "./server-process.mjs";
 import { pidAlive } from "./lock.mjs";
 
@@ -75,6 +75,16 @@ async function main() {
     console.log(`  linking dependencies (junctions)...`);
     const created = linkDeps(repo, W);
     console.log(`  linked ${created.length} dependency dir(s).`);
+    // Git #2117 — lib/*/dist is no longer junctioned from the main checkout (that
+    // made it reflect whatever branch main happens to be on, not this worktree's
+    // own merged HEAD); build it from THIS worktree's own src instead.
+    console.log(`  building lib/*/dist from this worktree's own src...`);
+    const libsBuilt = buildLibDist(W);
+    if (libsBuilt.error) {
+      console.log(`  ! lib/*/dist build failed: ${libsBuilt.error}`);
+    } else {
+      console.log(`  built ${libsBuilt.built.length} lib/*/dist project(s).`);
+    }
   } else {
     console.log(`  (skip --link) ensure deps exist: run \`pnpm install\` at repo root, or re-run with --link`);
   }
