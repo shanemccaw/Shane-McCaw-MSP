@@ -50,13 +50,16 @@ namespace BuildConsole
 
         public BuildQueueMapWindow(BuildQueuePostgresClient? db)
         {
-            InitializeComponent();
-            _db = db;
-
+            // Git #2169 — must be assigned BEFORE InitializeComponent(): the XAML sets
+            // AutoRefreshToggle IsChecked="True", which fires AutoRefreshToggle_Changed
+            // (and thus _timer.Start()) synchronously during InitializeComponent().
             // 6s — each pass reuses GetNextAsync's live gh open-issue snapshot when there
             // are blockers to check, so keep the cadence considerate rather than hammering.
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(6) };
             _timer.Tick += async (_, __) => await RefreshAsync();
+
+            InitializeComponent();
+            _db = db;
 
             Loaded += async (_, __) =>
             {
