@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using BuildConsole.Controls;
 
@@ -76,6 +78,34 @@ namespace BuildConsole.Services
                    $"{JsonSerializer.Serialize(tipStatus)}," +
                    $"{(tipEpic ? "true" : "false")}," +
                    $"{actionsJs});";
+        }
+
+        /// <summary>Git #2134 — the eager, cache-only counterpart to <see cref="BuildShowTipScriptAsync"/>:
+        /// resolves as many of <paramref name="numbers"/> as are already in <paramref name="leftSidebar"/>'s
+        /// cache (no live GitHub fetch — this can be a whole screen's worth of mentions at once) and
+        /// returns the JS call that colors those mention spans by type/status. A number not yet cached
+        /// is simply omitted; its span keeps the default color until a later hover resolves it. Returns
+        /// null if nothing in <paramref name="numbers"/> is cached yet.</summary>
+        public static string? BuildSetMentionColorsScript(IEnumerable<int> numbers, LeftSidebar? leftSidebar)
+        {
+            if (leftSidebar == null) return null;
+
+            var map = new Dictionary<string, object>();
+            foreach (var n in numbers.Distinct())
+            {
+                var cached = leftSidebar.BuildDetailIssue(n);
+                if (cached == null) continue;
+                map[n.ToString()] = new
+                {
+                    isEpic = cached.IsEpic,
+                    closed = string.Equals(cached.Status, "CLOSED", StringComparison.OrdinalIgnoreCase),
+                    blocked = cached.IsBlocked
+                };
+            }
+            if (map.Count == 0) return null;
+
+            return "window.__btSetMentionColors && window.__btSetMentionColors(" +
+                   JsonSerializer.Serialize(map, PayloadJsonOptions) + ");";
         }
     }
 }

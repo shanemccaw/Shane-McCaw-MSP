@@ -7679,7 +7679,34 @@ namespace BuildConsole
                         if (x.ValueKind == System.Text.Json.JsonValueKind.Number && x.TryGetInt32(out var n) && n > 0)
                             numbers.Add(n);
                     }
-                    if (numbers.Count == 0 || _queueDb == null) return;
+                    if (numbers.Count == 0) return;
+
+                    // Git #2134 — eager color-by-type/status for these newly-on-screen mentions,
+                    // straight off the same cache BT_HOVER_ISSUE already resolves from (no live
+                    // GitHub fetch for a whole batch). Independent of _queueDb below.
+                    try
+                    {
+                        string? colorJs = BuildConsole.Services.ChatMentionPopupHelper.BuildSetMentionColorsScript(numbers, LeftSidebar);
+                        if (colorJs != null)
+                        {
+                            Microsoft.Web.WebView2.Wpf.WebView2? colorSenderWv = null;
+                            foreach (var kvp in _chatTabs)
+                            {
+                                if (ReferenceEquals(kvp.Value.WebView, sender) ||
+                                    kvp.Value.WebView?.CoreWebView2 == sender)
+                                {
+                                    colorSenderWv = kvp.Value.WebView;
+                                    break;
+                                }
+                            }
+                            if (colorSenderWv == null && ClaudeWebView.CoreWebView2 == sender)
+                                colorSenderWv = ClaudeWebView;
+                            if (colorSenderWv != null) await colorSenderWv.ExecuteScriptAsync(colorJs);
+                        }
+                    }
+                    catch { }
+
+                    if (_queueDb == null) return;
 
                     string chatUrl = $"https://claude.ai/chat/{convId}";
                     try

@@ -350,8 +350,36 @@ namespace BuildConsole
                 {
                     _ = HandleIssueActionAsync(root);
                 }
+                // Git #2134 — eager color-by-type/status push for on-screen mentions in a
+                // floating tab, mirroring MainWindow's BT_ISSUE_MENTIONS_SCAN handling of the
+                // same message (cache-only; the mention-registry recording that message also
+                // drives in MainWindow is out of scope here).
+                else if (type == "BT_ISSUE_MENTIONS_SCAN")
+                {
+                    _ = PushMentionColorsAsync(tab, root);
+                }
             }
             catch { /* a malformed frame is not fatal — the next poll re-posts */ }
+        }
+
+        private async System.Threading.Tasks.Task PushMentionColorsAsync(FloatingChatTab tab, JsonElement root)
+        {
+            if (tab.Wv?.CoreWebView2 == null) return;
+            if (!root.TryGetProperty("numbers", out var numsEl) || numsEl.ValueKind != JsonValueKind.Array) return;
+
+            var numbers = new List<int>();
+            foreach (var x in numsEl.EnumerateArray())
+            {
+                if (x.ValueKind == JsonValueKind.Number && x.TryGetInt32(out var n) && n > 0) numbers.Add(n);
+            }
+            if (numbers.Count == 0) return;
+
+            try
+            {
+                string? js = BuildConsole.Services.ChatMentionPopupHelper.BuildSetMentionColorsScript(numbers, _owner?.LeftSidebar);
+                if (js != null) await tab.Wv.CoreWebView2.ExecuteScriptAsync(js);
+            }
+            catch { }
         }
 
         private async System.Threading.Tasks.Task ResolveAndShowIssueTipAsync(FloatingChatTab tab, int n)

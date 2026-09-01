@@ -47,6 +47,16 @@ namespace BuildConsole.Services
     /// dedup in decorateTextNode still gives priority to a real "#NNN" or ".sql" match
     /// covering the same text, so a bare-number heuristic never overrides a stronger one.
     ///
+    /// Git #2134 — Shane: "color the mention text itself by issue type/status
+    /// (epic/closed/blocked), not just on hover" — you shouldn't have to hover 10
+    /// different #NNNN mentions in a chat to find the one epic mixed in with leaf
+    /// issues. The span itself is now colored eagerly (window.__btSetMentionColors,
+    /// pushed by the host off the same IsEpic/status/IsBlocked cache #2080's hover
+    /// tip already resolves from — no extra GitHub fetch) instead of only on hover,
+    /// with the existing hover round-trip (window.__btShowIssueTip) recoloring too
+    /// since it may carry a fresher, live-fetched resolution. Complements, doesn't
+    /// replace, #2133's hover-popup EPIC badge — both read the same IsEpic source.
+    ///
     /// Git #2146 — the ancestor skip-walk also bails out on any element with
     /// isContentEditable === true. Claude.ai's message composer is a contenteditable
     /// div, not a TEXTAREA, so the fixed SKIP_TAGS list never excluded it: typing a
@@ -190,6 +200,21 @@ namespace BuildConsole.Services
 
   /* Called by MainWindow/FloatingChatWindow after resolving issue + action data */
   window.__btShowIssueTip = function (number, title, status, isEpic, actions) {
+    /* Git #2134 — the hover round-trip is a stronger (possibly live-fetched)
+       resolution than the eager cache-only batch push, so recolor the span(s)
+       from it too, independent of the _tipVisible guard below. */
+    var hoverSpans = liveMentionSpans(number);
+    if (hoverSpans && hoverSpans.length) {
+      var hoverColor = colorForMentionInfo({
+        isEpic: !!isEpic,
+        closed: status === 'CLOSED',
+        blocked: !!(actions && actions.blocked)
+      });
+      for (var hi = 0; hi < hoverSpans.length; hi++) {
+        applyMentionColor(hoverSpans[hi], hoverColor);
+      }
+    }
+
     if (_tipNum !== number || !_tipVisible) return;
     var anchor = document.querySelector('.bc-issue-mention[data-bc-num="' + number + '"]:hover');
     if (!anchor) return;
@@ -236,6 +261,65 @@ namespace BuildConsole.Services
     requestAnimationFrame(function () { tip.style.opacity = '1'; });
   };
 
+  /* Git #2134 — colors the mention SPAN itself (not just the hover popup) by
+     type/status, so an epic/closed/blocked mention reads at a glance without
+     hovering. Pushed eagerly by the host off the same IsEpic/status/blocked cache
+     BT_HOVER_ISSUE already resolves from (see window.__btSetMentionColors below) —
+     this is the fallback/default the span shows until that resolution lands. */
+  var MENTION_DEFAULT_COLOR = '#89B4FA';
+  var MENTION_EPIC_COLOR    = '#F9E2AF';
+  var MENTION_CLOSED_COLOR  = '#6C7086';
+  var MENTION_BLOCKED_COLOR = '#F38BA8';
+  var _mentionSpans = {}; /* num -> [span, ...], all live spans currently rendered for that number */
+
+  function colorForMentionInfo(info) {
+    /* Blocked is the most operationally urgent signal (needs action now), so it
+       wins even on an epic; epic beats closed since "which one is the epic" is
+       the primary case this was built for; closed (any type) reads muted/done. */
+    if (info.blocked) return MENTION_BLOCKED_COLOR;
+    if (info.isEpic) return MENTION_EPIC_COLOR;
+    if (info.closed) return MENTION_CLOSED_COLOR;
+    return MENTION_DEFAULT_COLOR;
+  }
+
+  function applyMentionColor(span, color) {
+    span._bcBorderColor = color;
+    span.style.color = color;
+    if (!span._bcHovering) span.style.borderColor = color;
+  }
+
+  /* Re-renders (React streaming, scroll virtualization) replace text nodes, so
+     _mentionSpans otherwise accumulates disconnected spans forever over a long
+     chat session — drop them whenever we touch a number's list. */
+  function liveMentionSpans(num) {
+    var spans = _mentionSpans[num];
+    if (!spans) return spans;
+    var live = [];
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].isConnected) live.push(spans[i]);
+    }
+    _mentionSpans[num] = live;
+    return live;
+  }
+
+  /* Called by the host (MainWindow/FloatingChatWindow) after resolving whatever
+     on-screen mention numbers it can from its existing cache — no live GitHub
+     fetch, so a number the host hasn't cached yet is simply omitted and keeps the
+     default blue styling until a later hover resolves it. Shape:
+     { "1485": { "isEpic": true, "closed": false, "blocked": false }, ... } */
+  window.__btSetMentionColors = function (colors) {
+    if (!colors) return;
+    for (var key in colors) {
+      if (!Object.prototype.hasOwnProperty.call(colors, key)) continue;
+      var spans = liveMentionSpans(key);
+      if (!spans || !spans.length) continue;
+      var color = colorForMentionInfo(colors[key]);
+      for (var i = 0; i < spans.length; i++) {
+        applyMentionColor(spans[i], color);
+      }
+    }
+  };
+
   /* ── Issue & SQL mention decoration ───────────────────────────── */
   var ISSUE_RE = /#(\d{1,5})\b/g;
   var SQL_RE = /\b([\w\-\./\\]+\.sql)\b/gi;
@@ -250,12 +334,19 @@ namespace BuildConsole.Services
     span.className = 'bc-issue-mention';
     span.setAttribute('data-bc-num', String(num));
     span.textContent = rawText;
-    span.style.cssText = 'border-bottom:1.5px dashed #89B4FA;cursor:pointer;'
+    span._bcBorderColor = MENTION_DEFAULT_COLOR;
+    span._bcHovering = false;
+    span.style.cssText = 'border-bottom:1.5px dashed ' + MENTION_DEFAULT_COLOR + ';color:' + MENTION_DEFAULT_COLOR + ';cursor:pointer;'
       + 'border-radius:2px;padding-bottom:1px;'
       + 'transition:background .12s,border-color .12s';
 
+    /* Git #2134 \u2014 track every live span for this number so a later eager color
+       push (__btSetMentionColors) or hover resolve can find and recolor it. */
+    (_mentionSpans[num] || (_mentionSpans[num] = [])).push(span);
+
     span.addEventListener('mouseenter', function () {
       cancelHide();
+      span._bcHovering = true;
       span.style.background  = 'rgba(137,180,250,.13)';
       span.style.borderColor = '#CBA6F7';
       _tipNum     = num;
@@ -268,8 +359,9 @@ namespace BuildConsole.Services
     });
 
     span.addEventListener('mouseleave', function () {
+      span._bcHovering = false;
       span.style.background  = '';
-      span.style.borderColor = '#89B4FA';
+      span.style.borderColor = span._bcBorderColor || MENTION_DEFAULT_COLOR;
       scheduleHide();
     });
 
