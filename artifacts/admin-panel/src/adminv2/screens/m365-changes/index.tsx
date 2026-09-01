@@ -30,12 +30,15 @@ import {
   deleteInterpretation,
   routeInterpretation,
   loadRoutings,
+  resolveInterpretation,
+  loadResolutions,
   proposedCount,
   WATCH_PROPOSED_KEY,
   type M365ChangeClass,
   type M365Actor,
   type M365Controllability,
   type M365RoutingDecision,
+  type M365ResolutionStatus,
 } from "./m365ChangesStore";
 
 export const ROUTE = "/m365-changes";
@@ -61,6 +64,18 @@ const ROUTING_DECISION_TONE: Record<M365RoutingDecision, string> = {
   proposed: ACCENT.amber,
   declined_risk: ACCENT.danger,
   none: ACCENT_TEXT.neutral,
+};
+
+// ── Resolution (#1615) ───────────────────────────────────────────────────────
+const RESOLUTION_STATUS_LABEL: Record<M365ResolutionStatus, string> = {
+  measured: "MEASURED",
+  not_measured: "NOT MEASURED",
+  error: "ERROR",
+};
+const RESOLUTION_STATUS_TONE: Record<M365ResolutionStatus, string> = {
+  measured: ACCENT.green,
+  not_measured: ACCENT_TEXT.neutral,
+  error: ACCENT.danger,
 };
 
 function openLibrary(): void {
@@ -163,13 +178,50 @@ registerScreen({
       // ledger, lazily loaded on first open of this peek (loadRoutings no-ops
       // once loaded/in-flight, so re-opening the same peek is cheap).
       const snap = getSnapshot();
-      if (isConfirmed) void loadRoutings(it.id);
+      if (isConfirmed) {
+        void loadRoutings(it.id);
+        void loadResolutions(it.id);
+      }
       const routingRun = snap.routingRuns[it.id];
       const routings = snap.routingsByInterpretation[it.id] ?? [];
       const routeLabel =
         routingRun?.status === "running" ? "Routing…" :
         routingRun?.status === "failed" ? "Route now (retry)" :
         "Route now";
+
+      // Resolution (#1615) — the stored per-tenant numbers the #1533 resolution
+      // layer produces (a live /resolve run, or the daily sweep), joined here
+      // with the routing ledger into one per-tenant list so the interpretation's
+      // own screen shows both "what did this measure" and "what it became."
+      const resolveRun = snap.resolveRuns[it.id];
+      const resolutions = snap.resolutionsByInterpretation[it.id] ?? [];
+      const resolveLabel =
+        resolveRun?.status === "running" ? "Resolving…" :
+        resolveRun?.status === "failed" ? "Resolve now (retry)" :
+        "Resolve now";
+      const resolutionByCustomer = new Map(resolutions.map((r) => [r.customerId, r]));
+      const routingByCustomer = new Map(routings.map((r) => [r.customerId, r]));
+      const perTenantCustomerIds = Array.from(
+        new Set([...resolutions.map((r) => r.customerId), ...routings.map((r) => r.customerId)]),
+      );
+      const perTenantRows = perTenantCustomerIds.map((customerId) => {
+        const resolution = resolutionByCustomer.get(customerId);
+        const routing = routingByCustomer.get(customerId);
+        const tenantName = routing?.tenantName ?? resolution?.tenantName ?? `Customer ${customerId}`;
+        const resolutionSub =
+          resolution == null ? undefined :
+          resolution.status === "measured" ? `${resolution.affectedCount ?? 0} affected${resolution.basis ? ` · ${resolution.basis.replace(/_/g, " ")}` : ""}` :
+          resolution.status === "error" ? (resolution.errorMessage ?? "resolve error") :
+          "Not yet measured";
+        return {
+          id: String(customerId),
+          mark: routing ? ROUTING_DECISION_LABEL[routing.decision] : resolution ? RESOLUTION_STATUS_LABEL[resolution.status] : undefined,
+          tone: routing ? ROUTING_DECISION_TONE[routing.decision] : resolution ? RESOLUTION_STATUS_TONE[resolution.status] : undefined,
+          name: tenantName,
+          sub: resolutionSub ?? routing?.reason.replace(/_/g, " "),
+          right: routing?.changeRequestCode ?? (resolution?.affectedCount != null ? `${resolution.affectedCount} affected` : undefined),
+        };
+      });
 
       return {
         kind: "interpretation",
@@ -182,8 +234,10 @@ registerScreen({
         tagTone: statusTone(it.status),
         note:
           isProposed ? "Unverified — confirm before this reaches any tenant" :
+          resolveRun?.status === "failed" ? `Resolve run failed: ${resolveRun.error ?? "unknown error"}` :
+          resolveRun?.status === "completed" ? "Resolve run complete — see the per-tenant list below" :
           routingRun?.status === "failed" ? `Routing run failed: ${routingRun.error ?? "unknown error"}` :
-          routingRun?.status === "completed" ? "Routing run complete — see Routing below" :
+          routingRun?.status === "completed" ? "Routing run complete — see the per-tenant list below" :
           undefined,
         facts: [
           { label: "Change class", value: CHANGE_CLASS_LABEL[it.changeClass], prose: true },
@@ -210,24 +264,18 @@ registerScreen({
             onChange: (v) => void updateInterpretation(it.id, { probe: { ...it.probe, description: v.trim() } }) },
         ],
         body: bodyParts.length ? { title: "Reading", content: bodyParts.join("\n\n") } : undefined,
-        // Routing (#1701) — the real per-tenant outcome of the on-demand /route
-        // trigger (and of the nightly sweep, which writes the same ledger).
-        list: routings.length
-          ? {
-              title: "Routing",
-              rows: routings.map((r) => ({
-                id: String(r.id),
-                mark: ROUTING_DECISION_LABEL[r.decision],
-                tone: ROUTING_DECISION_TONE[r.decision],
-                name: r.tenantName,
-                sub: r.reason.replace(/_/g, " "),
-                right: r.changeRequestCode ?? (r.affectedCount !== null ? `${r.affectedCount} affected` : undefined),
-              })),
-            }
+        // Resolution (#1615) + Routing (#1701) — the real per-tenant numbers the
+        // #1533 resolution layer measured, joined with what each measurement
+        // BECAME through routing (auto-created CR / proposed / declined / none).
+        list: perTenantRows.length
+          ? { title: "Per-tenant resolution & routing", rows: perTenantRows }
           : undefined,
         actions: [
           ...(isProposed
             ? [{ label: "Confirm", tone: "primary" as const, onSelect: () => void confirmInterpretation(it.id) }]
+            : []),
+          ...(isConfirmed
+            ? [{ label: resolveLabel, tone: "primary" as const, onSelect: () => { if (resolveRun?.status !== "running") void resolveInterpretation(it.id); } }]
             : []),
           ...(isConfirmed
             ? [{ label: routeLabel, tone: "primary" as const, onSelect: () => { if (routingRun?.status !== "running") void routeInterpretation(it.id); } }]

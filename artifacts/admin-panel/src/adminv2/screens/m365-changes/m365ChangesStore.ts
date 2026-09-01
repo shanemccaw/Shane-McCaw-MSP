@@ -156,6 +156,32 @@ export interface RoutingRunState {
   error: string | null;
 }
 
+// ── Resolution (#1615 — mirrors routes/admin-m365-interpretations.ts's
+// /resolve + /resolutions, #1533's resolution layer; the on-demand caller was
+// never wired into AdminV2 before this) ─────────────────────────────────────
+
+export type M365ResolutionStatus = "measured" | "not_measured" | "error";
+export type M365ResolutionBasis = "monitor_check" | "license_snapshot";
+
+export interface ResolutionOutcome {
+  id: number;
+  customerId: number;
+  tenantName: string;
+  status: M365ResolutionStatus;
+  affectedCount: number | null;
+  basis: M365ResolutionBasis | null;
+  basisDetail: Record<string, unknown>;
+  errorMessage: string | null;
+  measuredAt: string | null;
+  updatedAt: string;
+}
+
+/** One interpretation's live resolve run — a synchronous request/response, not a polled workflow. */
+export interface ResolveRunState {
+  status: "running" | "completed" | "failed";
+  error: string | null;
+}
+
 // ── Store shape ─────────────────────────────────────────────────────────────
 
 interface M365ChangesState {
@@ -180,6 +206,10 @@ interface M365ChangesState {
   /** Per-interpretation on-demand routing run state, and the routing ledger it produces. */
   routingRuns: Record<number, RoutingRunState>;
   routingsByInterpretation: Record<number, RoutingOutcome[]>;
+
+  /** Per-interpretation on-demand resolve run state, and the resolution ledger it produces. */
+  resolveRuns: Record<number, ResolveRunState>;
+  resolutionsByInterpretation: Record<number, ResolutionOutcome[]>;
 }
 
 const EMPTY_COUNTS: InterpretationCounts = { proposed: 0, confirmed: 0, rejected: 0, total: 0 };
@@ -206,6 +236,8 @@ let state: M365ChangesState = {
   proposal: null,
   routingRuns: {},
   routingsByInterpretation: {},
+  resolveRuns: {},
+  resolutionsByInterpretation: {},
 };
 
 function setState(patch: Partial<M365ChangesState>): void {
@@ -549,6 +581,62 @@ async function pollRoutingRun(id: number, runId: number, attempt: number): Promi
   }
 }
 
+// ── Resolution (#1615) ───────────────────────────────────────────────────────
+
+function setResolveRun(id: number, run: ResolveRunState): void {
+  setState({ resolveRuns: { ...state.resolveRuns, [id]: run } });
+}
+
+// Not part of published state — same in-flight guard as routingsLoadInFlight,
+// for the same reason: the peek resolver re-runs on every store notification.
+const resolutionsLoadInFlight = new Set<number>();
+
+export async function loadResolutions(id: number, force = false): Promise<void> {
+  if (!adminFetchRef) return;
+  if (!force && state.resolutionsByInterpretation[id]) return;
+  if (resolutionsLoadInFlight.has(id)) return;
+  resolutionsLoadInFlight.add(id);
+  try {
+    const res = await adminFetchRef(`/api/admin/m365/interpretations/${id}/resolutions`);
+    if (!res.ok) return;
+    const body = (await res.json()) as { resolutions: ResolutionOutcome[] };
+    setState({ resolutionsByInterpretation: { ...state.resolutionsByInterpretation, [id]: body.resolutions ?? [] } });
+  } catch (err) {
+    log.warn({ err, id }, "m365 resolutions failed to load");
+  } finally {
+    resolutionsLoadInFlight.delete(id);
+  }
+}
+
+/**
+ * Fires the on-demand resolve for one confirmed interpretation
+ * (`POST .../resolve`) — runs the count against the MSP's tenants right now —
+ * then reloads the resolution ledger (`GET .../resolutions`) so the peek shows
+ * the real per-tenant numbers. Unlike routing, resolve is a synchronous
+ * request/response (no workflow run to poll): the endpoint itself runs the
+ * count and returns before responding.
+ */
+export async function resolveInterpretation(id: number): Promise<void> {
+  if (!adminFetchRef) return;
+  setResolveRun(id, { status: "running", error: null });
+  try {
+    const res = await adminFetchRef(`/api/admin/m365/interpretations/${id}/resolve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      setResolveRun(id, { status: "failed", error: await failureOf(res) });
+      return;
+    }
+    setResolveRun(id, { status: "completed", error: null });
+    await loadResolutions(id, true);
+  } catch (err) {
+    log.warn({ err, id }, "m365 resolve interpretation failed");
+    setResolveRun(id, { status: "failed", error: errorText(err) });
+  }
+}
+
 // ── Selectors ─────────────────────────────────────────────────────────────────
 
 export function interpretationById(id: number): Interpretation | undefined {
@@ -576,5 +664,7 @@ export function resetM365ChangesStore(): void {
     proposal: null,
     routingRuns: {},
     routingsByInterpretation: {},
+    resolveRuns: {},
+    resolutionsByInterpretation: {},
   };
 }
