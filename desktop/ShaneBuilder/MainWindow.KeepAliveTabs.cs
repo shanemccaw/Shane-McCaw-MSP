@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using WpfWebView2 = Microsoft.Web.WebView2.Wpf.WebView2;
 
 namespace ShaneBuilder;
@@ -44,15 +45,30 @@ public partial class MainWindow
     /// viewers) gets no dedicated parked WebView2 and stays on the lightweight approach.</summary>
     private enum TabKeepAliveClass { Reloadable, KeepAlive }
 
+    /// <summary>Git #2472 — the four real keep-alive families named in Feature #2469's taxonomy.
+    /// Claude.ai is the only one with a real tab-opening entry point in ShaneBuilder today
+    /// (OpenNewChatFlow, #2318/#2323); the other three have no in-app entry point yet (no menu,
+    /// button or dialog opens any of them — confirmed by repo search, filed as a finding under
+    /// #2469). <see cref="OpenKeepAliveBrowserTab"/> exists so whichever feature builds that real
+    /// entry point (Web Shelf #2158, or a dedicated Azure/M365 Admin or product-site action) gets
+    /// correct keep-alive classification and per-tab WebView2 instancing for free, instead of
+    /// re-deriving it.</summary>
+    internal enum BrowserTabCategory { ClaudeAi, GeminiAiStudio, ProductWebsite, AzureM365Admin }
+
     /// <summary>One keep-alive tab's own live WebView2, parked in <c>KeepAliveHostCanvas</c> when its
-    /// tab isn't active and mounted into <c>ChatWebViewHost</c> when it is.</summary>
+    /// tab isn't active and mounted into its real dock (<c>ChatWebViewHost</c> for a chat,
+    /// <c>GenericBrowserWebViewHost</c> for the other three keep-alive categories — Git #2472) when
+    /// it is.</summary>
     private sealed class KeepAliveView
     {
         public string TabId = "";
         public WpfWebView2 WebView = null!;
         public Border HostBorder = null!;      // parked 1×1 off-screen in KeepAliveHostCanvas
-        public bool Mounted;                    // true when reparented into ChatWebViewHost
+        public bool Mounted;                    // true when reparented into its real dock
         public string CurrentUrl = "https://claude.ai/";
+        // Git #2472 — which real dock this view mounts into when shown. Set once at creation from
+        // TabDef.IsChat; a tab's chat-vs-generic-browser nature never changes after it's opened.
+        public bool IsChatTab;
     }
 
     // Every keep-alive tab's live view, keyed by TabDef.Id. Created lazily the first time the tab is
@@ -92,7 +108,38 @@ public partial class MainWindow
             _keepAliveInitialUrl.Remove(tab.Id);
             return url;
         }
-        return "https://claude.ai/";
+        // Git #2472 — no explicit initial URL was set before this tab's first show. Only the
+        // original chat seed tab ("epic-1202", implicitly Claude.ai) relies on this fallback; every
+        // OTHER keep-alive category MUST set _keepAliveInitialUrl itself (OpenKeepAliveBrowserTab
+        // does) — silently defaulting a Gemini/product-site/Azure-Admin tab to claude.ai would show
+        // the wrong site with no sign anything went wrong.
+        if (tab.BrowserCategory is null or BrowserTabCategory.ClaudeAi) return "https://claude.ai/";
+        Services.ConsoleOutputSink.Log(Services.LogLevel.Warn,
+            $"[chat.keepalive] {tab.BrowserCategory} tab {tab.Id} has no initial URL set — falling back to about:blank");
+        return "about:blank";
+    }
+
+    /// <summary>Git #2472 — the one generic entry point for opening ANY of the four real keep-alive
+    /// categories as its own tab, with correct <see cref="TabKeepAliveClass.KeepAlive"/>
+    /// classification and per-tab WebView2 instancing (the same mechanism #2470 gave Claude.ai
+    /// chats) applied automatically. Whichever feature eventually opens a Gemini/AI Studio, product
+    /// website, or Azure/M365 Admin tab (Web Shelf #2158, or a dedicated action) should call this
+    /// rather than constructing a keep-alive <see cref="TabDef"/> by hand.</summary>
+    private TabDef OpenKeepAliveBrowserTab(string idPrefix, string title, string url, BrowserTabCategory category, Brush? dot = null)
+    {
+        var tab = new TabDef(
+            $"{idPrefix}-" + Guid.NewGuid().ToString("N"),
+            title,
+            dot: dot,
+            keepAliveClass: TabKeepAliveClass.KeepAlive,
+            browserCategory: category);
+        _tabs.Add(tab);
+        // Set BEFORE SelectTab, same rule OpenNewChatFlow follows — EnsureKeepAliveView must see
+        // the real initial URL the first time it creates this tab's view, never a renavigation.
+        _keepAliveInitialUrl[tab.Id] = url;
+        SelectTab(tab.Id);
+        Services.ConsoleOutputSink.Log(Services.LogLevel.Info, $"[chat.keepalive] opened {category} tab {tab.Id} -> {url}");
+        return tab;
     }
 
     /// <summary>Ensure a keep-alive tab has its own live WebView2, created + wired + navigated to its
@@ -107,7 +154,7 @@ public partial class MainWindow
         KeepAliveHostCanvas.Children.Add(host);
         ParkOffscreen(host);
 
-        var kav = new KeepAliveView { TabId = tab.Id, WebView = wv, HostBorder = host, CurrentUrl = initialUrl };
+        var kav = new KeepAliveView { TabId = tab.Id, WebView = wv, HostBorder = host, CurrentUrl = initialUrl, IsChatTab = tab.IsChat };
         _keepAliveViews[tab.Id] = kav;
         _ = WireKeepAliveViewAsync(kav, initialUrl);
         return kav;
@@ -164,10 +211,12 @@ public partial class MainWindow
         _currentConversationUrl = kav.CurrentUrl;
     }
 
-    /// <summary>Reparent a view into the visible chat mount (ChatWebViewHost) at full size.</summary>
+    /// <summary>Reparent a view into its real visible mount at full size — ChatWebViewHost for a
+    /// chat tab, GenericBrowserWebViewHost (Git #2472) for the other three keep-alive categories.</summary>
     private void MountKeepAliveView(KeepAliveView kav)
     {
-        if (kav.Mounted && ChatWebViewHost.Children.Contains(kav.HostBorder)) return;
+        Panel targetHost = kav.IsChatTab ? ChatWebViewHost : GenericBrowserWebViewHost;
+        if (kav.Mounted && targetHost.Children.Contains(kav.HostBorder)) return;
 
         DetachHostBorder(kav.HostBorder);
         kav.HostBorder.Width = double.NaN;
@@ -175,7 +224,7 @@ public partial class MainWindow
         kav.HostBorder.HorizontalAlignment = HorizontalAlignment.Stretch;
         kav.HostBorder.VerticalAlignment = VerticalAlignment.Stretch;
         kav.HostBorder.Visibility = Visibility.Visible;
-        ChatWebViewHost.Children.Add(kav.HostBorder);
+        targetHost.Children.Add(kav.HostBorder);
         kav.Mounted = true;
     }
 

@@ -104,6 +104,7 @@ namespace ShaneBuilder
                     ? "Paste some text above, then Parse."
                     : "Nothing came out of that paste — nothing to import.";
                 BtnImport.IsEnabled = false;
+                MergeBar.Visibility = Visibility.Collapsed;
                 return;
             }
 
@@ -112,9 +113,13 @@ namespace ShaneBuilder
 
             // Git #2344 — a Section header line in the paste doesn't become a note of its own;
             // it's surfaced here instead, as a divider above the notes parsed under it.
+            // Git #2353 — a row merged away (IsMergedAway) already lives inside the row it was
+            // merged into, so it's skipped here rather than rendered as its own row.
             string? lastSection = null;
             foreach (var candidate in _candidates)
             {
+                if (candidate.IsMergedAway) continue;
+
                 if (candidate.Section != null && candidate.Section != lastSection)
                     PreviewHost.Children.Add(BuildSectionHeaderRow(candidate.Section));
                 lastSection = candidate.Section;
@@ -123,6 +128,7 @@ namespace ShaneBuilder
             }
 
             UpdateImportButton();
+            UpdateMergeBar();
         }
 
         /// <summary>Git #2350 — the header-stats line: chars pasted, notes/sections the splitter
@@ -132,15 +138,18 @@ namespace ShaneBuilder
         /// placeholders that get swapped out later.</summary>
         private string BuildHeaderStatsText()
         {
-            var noteCount = _candidates.Count;
-            var sectionCount = _candidates
+            // Git #2353 — a merged-away row's content lives inside its anchor row now, so every
+            // count here reads the live (non-merged-away) set rather than the raw parse output.
+            var live = _candidates.Where(c => !c.IsMergedAway).ToList();
+            var noteCount = live.Count;
+            var sectionCount = live
                 .Select(c => c.Section)
                 .Where(s => !string.IsNullOrEmpty(s))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Count();
-            var matchedCount = _candidates.Count(c => !string.IsNullOrEmpty(c.MatchedFeature));
+            var matchedCount = live.Count(c => !string.IsNullOrEmpty(c.MatchedFeature));
 
-            var tally = _candidates
+            var tally = live
                 .GroupBy(c => c.Type)
                 .OrderByDescending(g => g.Count())
                 .ThenBy(g => g.Key.ToString(), StringComparer.OrdinalIgnoreCase)
@@ -179,12 +188,28 @@ namespace ShaneBuilder
             };
 
             var grid = new Grid();
-            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Git #2353 — merge select
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Include
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            // Git #2353 — the multi-select tick box "Merge N up" acts on. Separate from Include
+            // below: selecting a row for merging doesn't change whether it files on Import.
+            var selectCheck = new CheckBox
+            {
+                IsChecked = candidate.Selected,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, 2, 4, 0),
+                ToolTip = "Select for \"Merge N up\"",
+            };
+            selectCheck.Checked += (_, _) => { candidate.Selected = true; UpdateMergeBar(); };
+            selectCheck.Unchecked += (_, _) => { candidate.Selected = false; UpdateMergeBar(); };
+            Grid.SetRow(selectCheck, 0);
+            Grid.SetColumn(selectCheck, 0);
+            grid.Children.Add(selectCheck);
 
             var check = new CheckBox
             {
@@ -195,7 +220,7 @@ namespace ShaneBuilder
             check.Checked += (_, _) => { candidate.Include = true; UpdateImportButton(); };
             check.Unchecked += (_, _) => { candidate.Include = false; UpdateImportButton(); };
             Grid.SetRow(check, 0);
-            Grid.SetColumn(check, 0);
+            Grid.SetColumn(check, 1);
             grid.Children.Add(check);
 
             var text = new TextBlock
@@ -206,8 +231,16 @@ namespace ShaneBuilder
                 Foreground = (Brush)FindResource("Brush.Text.Primary"),
             };
             Grid.SetRow(text, 0);
-            Grid.SetColumn(text, 1);
+            Grid.SetColumn(text, 2);
             grid.Children.Add(text);
+
+            // Git #2353 — every chip that can appear to the right of a row's text (type, needs-shot,
+            // "+N merged") stacks in one column now that Grid columns shifted for the two checkboxes.
+            var chips = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Top };
+            Grid.SetRow(chips, 0);
+            Grid.SetColumn(chips, 3);
+            Grid.SetColumnSpan(chips, 2);
+            grid.Children.Add(chips);
 
             var typeChip = new Border
             {
@@ -232,8 +265,31 @@ namespace ShaneBuilder
                 candidate.Type = NextType(candidate.Type);
                 typeChipText.Text = LabelFor(candidate.Type);
             };
-            Grid.SetColumn(typeChip, 2);
-            grid.Children.Add(typeChip);
+            chips.Children.Add(typeChip);
+
+            // Git #2353 — "+N merged" indicator: honest trace that this row's Text now carries
+            // other rows' content folded in via "Merge N up". Full split-back-out/undo is #2354's
+            // scope; this is just the visible sign the merge happened at all.
+            if (candidate.MergedChildren.Count > 0)
+            {
+                var mergedBadge = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1, 5, 1),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Background = (Brush)FindResource("Brush.Bg.Card"),
+                    ToolTip = $"{candidate.MergedChildren.Count} row(s) merged up into this one.",
+                };
+                mergedBadge.Child = new TextBlock
+                {
+                    Text = $"+{candidate.MergedChildren.Count} merged",
+                    FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                };
+                chips.Children.Add(mergedBadge);
+            }
 
             if (candidate.NeedsShot)
             {
@@ -255,14 +311,12 @@ namespace ShaneBuilder
                     FontWeight = FontWeights.SemiBold,
                     Foreground = (Brush)FindResource("Brush.Text.Muted"),
                 };
-                Grid.SetRow(shotChip, 0);
-                Grid.SetColumn(shotChip, 3);
-                grid.Children.Add(shotChip);
+                chips.Children.Add(shotChip);
             }
 
             var featureCombo = BuildFeatureCombo(candidate);
             Grid.SetRow(featureCombo, 1);
-            Grid.SetColumn(featureCombo, 1);
+            Grid.SetColumn(featureCombo, 2);
             Grid.SetColumnSpan(featureCombo, 3);
             grid.Children.Add(featureCombo);
 
@@ -326,14 +380,48 @@ namespace ShaneBuilder
 
         private void UpdateImportButton()
         {
-            var count = _candidates.Count(c => c.Include);
+            var count = _candidates.Count(c => c.Include && !c.IsMergedAway);
             BtnImport.Content = count == 0 ? "Import" : $"Import {count}";
             BtnImport.IsEnabled = count > 0;
         }
 
+        /// <summary>Git #2353 — keeps the "Merge N up" bar's visibility/text/enabled state in
+        /// sync with the live selection every time a select tick box changes.</summary>
+        private void UpdateMergeBar()
+        {
+            var selectedCount = _candidates.Count(c => c.Selected && !c.IsMergedAway);
+            if (selectedCount == 0)
+            {
+                MergeBar.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            MergeBar.Visibility = Visibility.Visible;
+            var noun = selectedCount == 1 ? "row" : "rows";
+            MergeBarText.Text = $"{selectedCount} {noun} selected";
+            BtnMergeUp.Content = $"Merge {selectedCount} up";
+
+            // A selection starting at the very top of the visible list has nothing above it to
+            // merge into — mirror that in the button rather than letting the click silently no-op.
+            var visible = _candidates.Where(c => !c.IsMergedAway).ToList();
+            var firstSelectedIndex = visible.FindIndex(c => c.Selected);
+            BtnMergeUp.IsEnabled = firstSelectedIndex > 0;
+        }
+
+        /// <summary>Git #2353 — "Merge N up": folds every ticked row up into whatever row precedes
+        /// the topmost selection, via <see cref="TestPadImportMerger.MergeSelectedUp"/>, then
+        /// re-renders so the merged-away rows drop out and the anchor's "+N merged" badge shows.</summary>
+        private void BtnMergeUp_Click(object sender, RoutedEventArgs e)
+        {
+            var merged = TestPadImportMerger.MergeSelectedUp(_candidates);
+            if (merged == 0) return;
+
+            RenderPreview();
+        }
+
         private void BtnImport_Click(object sender, RoutedEventArgs e)
         {
-            var toImport = _candidates.Where(c => c.Include).ToList();
+            var toImport = _candidates.Where(c => c.Include && !c.IsMergedAway).ToList();
             if (toImport.Count == 0) return;
 
             foreach (var candidate in toImport)

@@ -647,7 +647,10 @@ public partial class MainWindow
         else
         {
             existing = new TabDef(tabId, GitCrumbLabel(current), gitItemTrail: snapshot,
-                dot: (Brush)FindResource(current.Kind == GitCrumbKind.Gate ? "Brush.Epic.Gate" : "Brush.Accent.Primary"));
+                dot: (Brush)FindResource(current.Kind == GitCrumbKind.Gate ? "Brush.Epic.Gate" : "Brush.Accent.Primary"),
+                // Git #2472 — explicit, not just the default: a Git document is the contract's named
+                // reloadable class, never a dedicated parked WebView2.
+                keepAliveClass: TabKeepAliveClass.Reloadable);
             _tabs.Add(existing);
         }
         SelectTab(tabId);

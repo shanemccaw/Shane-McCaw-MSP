@@ -1962,6 +1962,19 @@
                         </Border>
                     </Grid>
 
+                    <!-- Git #2472 — mount point for a keep-alive tab that ISN'T a chat: Gemini/Google
+                         AI Studio, a product website, or Azure/M365 Admin. No chat chrome (context
+                         bar / breadcrumb / composer) belongs here — those are ClaudeChatDock's own
+                         real chat surface. This is deliberately bare: just the tab's own live,
+                         parked-off-screen-when-inactive WebView2 (see MainWindow.KeepAliveTabs.cs
+                         MountKeepAliveView), full-bleed. No real entry point opens one of these tabs
+                         yet (see the #2472 finding under #2469) — this exists so the mount point is
+                         real and correct the moment one does, rather than a generic browser tab
+                         silently rendering nothing under the "— nothing here yet" stub. -->
+                    <Grid x:Name="GenericBrowserDock" Visibility="Collapsed">
+                        <Grid x:Name="GenericBrowserWebViewHost"/>
+                    </Grid>
+
                     <!-- Git Doctor — Step 13 (wpf-handoff/readme-phase2.md). Real
                          findings from Services/GitDoctorService.cs against the
                          actual repo; no seeded/fabricated data. Header + 3-pane

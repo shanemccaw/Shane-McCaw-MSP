@@ -831,14 +831,22 @@ public partial class MainWindow : Window
             _keepAliveClassOverride ?? (IsChat ? TabKeepAliveClass.KeepAlive : TabKeepAliveClass.Reloadable);
         public bool IsKeepAlive => KeepAliveClass == TabKeepAliveClass.KeepAlive;
 
+        // Git #2472 — which real keep-alive family this tab belongs to (Claude.ai, Gemini/Google AI
+        // Studio, a product website, or Azure/M365 Admin), independent of KeepAliveClass. Null for
+        // every reloadable tab and for the original chat seed tab (which is implicitly Claude.ai —
+        // see KeepAliveInitialUrl's fallback in MainWindow.KeepAliveTabs.cs). Set explicitly by
+        // OpenKeepAliveBrowserTab for any tab opened through that generic factory.
+        public BrowserTabCategory? BrowserCategory { get; }
+
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
             string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
             bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false,
             List<GitCrumb>? gitItemTrail = null, int? featureNumber = null, string? subtitle = null,
-            TabKeepAliveClass? keepAliveClass = null)
+            TabKeepAliveClass? keepAliveClass = null, BrowserTabCategory? browserCategory = null)
         {
             _keepAliveClassOverride = keepAliveClass;
+            BrowserCategory = browserCategory;
             Id = id;
             Title = title;
             IsHome = isHome;
@@ -1302,8 +1310,16 @@ public partial class MainWindow : Window
         _activeTabId = id;
         RenderTabStrip();
 
+        // Git #2472 — a keep-alive tab that ISN'T a chat (Gemini/AI Studio, product website,
+        // Azure/M365 Admin) mounts into the bare GenericBrowserDock, not the chat-chrome-carrying
+        // ClaudeChatDock (context bar/breadcrumb/composer are real chat UI, not generic browser
+        // chrome). IsChat tabs are unaffected — they still mount into ClaudeChatDock exactly as
+        // #2470 wired them.
+        bool isGenericBrowserTab = tab.IsKeepAlive && !tab.IsChat;
+
         HomeTabContent.Visibility = tab.IsHome ? Visibility.Visible : Visibility.Collapsed;
         ClaudeChatDock.Visibility = tab.IsChat ? Visibility.Visible : Visibility.Collapsed;
+        GenericBrowserDock.Visibility = isGenericBrowserTab ? Visibility.Visible : Visibility.Collapsed;
         GitDoctorDock.Visibility = tab.IsGitDoctor ? Visibility.Visible : Visibility.Collapsed;
         RepoHealthDock.Visibility = tab.IsRepoHealth ? Visibility.Visible : Visibility.Collapsed;
         LogViewerDock.Visibility = tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
@@ -1312,7 +1328,7 @@ public partial class MainWindow : Window
         SettingsDock.Visibility = tab.IsSettings ? Visibility.Visible : Visibility.Collapsed;
         GitItemDock.Visibility = tab.IsGitItemDoc ? Visibility.Visible : Visibility.Collapsed;
         if (tab.IsSettings) RenderSettings();
-        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc;
+        bool isStub = !tab.IsHome && !tab.IsChat && !isGenericBrowserTab && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -1386,7 +1402,10 @@ public partial class MainWindow : Window
             System.IO.Path.GetFileName(path),
             kind: TabKind.File,
             mdFilePath: path,
-            dot: (Brush)FindResource("Brush.Ext.Md"));
+            dot: (Brush)FindResource("Brush.Ext.Md"),
+            // Git #2472 — explicit, not just the default: a filesystem document is the contract's
+            // named reloadable class, never a dedicated parked WebView2.
+            keepAliveClass: TabKeepAliveClass.Reloadable);
         _tabs.Add(tab);
         return tab.Id;
     }
@@ -2968,14 +2987,20 @@ public partial class MainWindow : Window
         // Git #2380 — grouped detections (Verifying, Claude asks, …) render above loose ones, each
         // group collapsible via its own header. Collapsing a group hides its cards but the items still
         // count toward `shown` — they were found, just tucked away, not "nothing caught".
+        // Git #2381 — the design (Shell Skeleton v2.dc.html's domReaderGroups) wraps each group's
+        // header + body as ONE bordered card, not loose siblings in the scroller's StackPanel. Without
+        // that wrapper, a WPF Border's default VerticalAlignment=Stretch has no effect inside a
+        // StackPanel's infinite-height measure pass, so a lone header/card pair could still end up
+        // arranged at the panel's full remaining height instead of its own natural (shrink-to-fit)
+        // content height. Wrapping header+body in one Border with its own StackPanel forces the card to
+        // measure/arrange at its content's real height every time, matching the design's flex-shrink:0
+        // intent — the group card never gets stretched or squashed by the scroller around it.
         foreach (var group in snap.Groups)
         {
             var visible = group.Items.Where(d => !dismissed.Contains(d.Id)).ToList();
             if (visible.Count == 0) continue;
             bool isCollapsed = collapsedGroups.Contains(group.Key);
-            DetectedItemsResults.Children.Add(DetectedCollapsibleGroupHeader(group.Key, group.Label, visible.Count, isCollapsed));
-            if (!isCollapsed)
-                foreach (var d in visible) DetectedItemsResults.Children.Add(DetectionCard(d));
+            DetectedItemsResults.Children.Add(DetectedGroupCard(group.Key, group.Label, visible, isCollapsed));
             shown += visible.Count;
         }
 
@@ -3135,6 +3160,35 @@ public partial class MainWindow : Window
         },
     };
 
+    /// <summary>Git #2381 — one whole detection group (Verifying, Claude asks, …) as a single bordered
+    /// card: header + body in one Border/StackPanel, matching the design's
+    /// `border:1px solid;border-radius:8px;overflow:hidden` group wrapper (Shell Skeleton v2.dc.html's
+    /// domReaderGroups) instead of a loose header + loose cards as direct scroller siblings. Because the
+    /// header and its items now share one measured StackPanel, the card always renders at its own real
+    /// content height — it can't be squashed or stretched by the scroller around it (the WPF analogue of
+    /// the design's flex-shrink:0 on the group card).</summary>
+    private Border DetectedGroupCard(string groupKey, string label, List<Services.Detection> visible, bool collapsed)
+    {
+        var body = new StackPanel();
+        body.Children.Add(DetectedCollapsibleGroupHeader(groupKey, label, visible.Count, collapsed));
+        if (!collapsed)
+        {
+            var itemsPanel = new StackPanel { Margin = new Thickness(8, 0, 8, 8) };
+            foreach (var d in visible) itemsPanel.Children.Add(DetectionCard(d));
+            body.Children.Add(itemsPanel);
+        }
+
+        return new Border
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+            ClipToBounds = true, // matches the design's overflow:hidden on the group card
+            Child = body,
+        };
+    }
+
     /// <summary>Git #2380 — the collapsible header for a real <see cref="Services.DetectionGroup"/>
     /// (Verifying, Claude asks, …). Click anywhere on the row to toggle; state is kept per active chat
     /// tab so switching tabs doesn't leak one chat's collapse choices into another's.</summary>
@@ -3162,9 +3216,8 @@ public partial class MainWindow : Window
 
         var header = new Border
         {
-            Margin = new Thickness(0, 4, 0, 6),
-            Padding = new Thickness(0, 2, 0, 2),
-            Background = Brushes.Transparent, // makes the whole row (not just the text glyphs) hit-testable
+            Padding = new Thickness(8, 6, 8, 6),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Button"), // matches design's group-header background
             Cursor = Cursors.Hand,
             Child = row,
         };

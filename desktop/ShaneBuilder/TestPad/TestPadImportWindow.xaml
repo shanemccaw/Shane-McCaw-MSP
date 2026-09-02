@@ -119,6 +119,7 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -145,7 +146,25 @@
                            TextWrapping="Wrap"
                            Text="" Visibility="Collapsed"/>
 
-                <ScrollViewer Grid.Row="3" Margin="0,0,0,16" VerticalScrollBarVisibility="Auto" MaxHeight="280">
+                <!-- Git #2353 (Feature: Test Pad, #2326) — "Import: multi-select tick boxes with
+                     Merge N up." One tick box per row (BuildPreviewRow's select checkbox, distinct
+                     from the Include checkbox) feeds this bar: it shows the live selected count and
+                     a single button that merges every selected row up into whatever unselected row
+                     precedes the topmost selection. Collapsed until at least one row is selected. -->
+                <Border Grid.Row="3" x:Name="MergeBar" Margin="0,0,0,6" Visibility="Collapsed"
+                        CornerRadius="6" Padding="8,5" Background="{StaticResource Brush.Bg.Chip}"
+                        BorderBrush="{StaticResource Brush.Border.Default}" BorderThickness="1">
+                    <DockPanel LastChildFill="False">
+                        <TextBlock x:Name="MergeBarText" DockPanel.Dock="Left" VerticalAlignment="Center"
+                                   FontSize="{StaticResource FontSize.11.5}"
+                                   Foreground="{StaticResource Brush.Text.Muted}" Text=""/>
+                        <Button x:Name="BtnMergeUp" DockPanel.Dock="Right" Content="Merge N up"
+                                Style="{StaticResource DialogButton}" Padding="10,3"
+                                Click="BtnMergeUp_Click"/>
+                    </DockPanel>
+                </Border>
+
+                <ScrollViewer Grid.Row="4" Margin="0,0,0,16" VerticalScrollBarVisibility="Auto" MaxHeight="280">
                     <StackPanel x:Name="PreviewHost"/>
                 </ScrollViewer>
             </Grid>
