@@ -397,6 +397,16 @@
                         <Rectangle Canvas.Left="6" Canvas.Top="6" Width="1.5" Height="1.5" Fill="{StaticResource Brush.Text.Dim}"/>
                     </Canvas>
                 </Border>
+                <!-- Git #2176 — real live-connectivity proof: a genuine GitHub Search API open-issue
+                     count and a genuine local Postgres bt_build_queue row count, fetched once at
+                     startup. "connecting…" until both settle; never fixture data. -->
+                <Border DockPanel.Dock="Right" Padding="10,0,10,0" BorderBrush="{StaticResource Brush.Border.Default}" BorderThickness="0,0,1,0">
+                    <TextBlock x:Name="ConnHealthStatus" Text="connecting…"
+                               VerticalAlignment="Center"
+                               FontFamily="{StaticResource FontFamily.Monospace}"
+                               FontSize="{StaticResource FontSize.11}"
+                               Foreground="{StaticResource Brush.Text.Dim}"/>
+                </Border>
                 <ScrollViewer VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Auto">
                     <StackPanel x:Name="StatusBarHost" Orientation="Horizontal"/>
                 </ScrollViewer>

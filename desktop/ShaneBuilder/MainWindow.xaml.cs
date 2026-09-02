@@ -43,6 +43,45 @@ public partial class MainWindow : Window
         SeedSampleQueueData();
         RenderQueue();
         RenderBuildDetail(); // starts closed (BuildDetailColumn.Width = 0) — no item selected yet
+
+        RunStartupConnectivityCheckAsync();
+    }
+
+    // ── Git #2176 — real live-connectivity proof at startup ────────────────────────────────
+    // Fires the same two real connections BuildConsole's own MainWindow establishes at launch
+    // (GitHub API via a Bearer PAT, direct local Postgres via DATABASE_URL) and shows the real
+    // result — genuine open-issue count, genuine bt_build_queue row count — in the status bar's
+    // ConnHealthStatus segment. Each leg reports its own honest state independently; a missing
+    // PAT or DB doesn't block the other, and neither ever falls back to fixture data.
+    private async void RunStartupConnectivityCheckAsync()
+    {
+        string githubPart;
+        try
+        {
+            var gh = GitHubReadClient.CreateFromEnvironment();
+            githubPart = gh == null
+                ? "GitHub: no PAT"
+                : $"GitHub: {await gh.GetOpenIssueCountAsync()} open";
+        }
+        catch (Exception ex)
+        {
+            githubPart = $"GitHub: failed ({ex.Message})";
+        }
+
+        string queuePart;
+        try
+        {
+            var db = QueueReadClient.CreateFromEnvironment();
+            queuePart = db == null
+                ? "Queue: no DB"
+                : $"Queue: {await db.GetQueueRowCountAsync()} rows";
+        }
+        catch (Exception ex)
+        {
+            queuePart = $"Queue: failed ({ex.Message})";
+        }
+
+        ConnHealthStatus.Text = $"{githubPart} · {queuePart}";
     }
 
     // ── SAMPLE DATA — for visually iterating on BuildQueueCard/BuildSetCard
