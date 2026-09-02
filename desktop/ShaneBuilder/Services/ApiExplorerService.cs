@@ -105,12 +105,37 @@ public static class ApiExplorerService
     // ── Graph credentials — DEV app registration, testbed tenant ────────────────────────────────
     public sealed record GraphCredentials(string TenantId, string ClientId, string ClientSecret, string TenantLabel);
 
-    /// <summary>Reads GRAPH_TENANT_ID/GRAPH_CLIENT_ID/GRAPH_CLIENT_SECRET from the given repo
-    /// root's <c>.env.local</c> (caller supplies <c>repoRoot</c> — MainWindow already resolves the
-    /// worktree-aware main-checkout root once, via <c>LogService.MainRepoRoot</c>; this does not
-    /// duplicate that walk). Null means not configured — callers report that honestly.</summary>
-    public static GraphCredentials? ResolveGraphCredentials(string? repoRoot)
+    // ── Settings-store keys for a Graph App Registration added inline from the gear on the tenant
+    // picker (Git #2205) — same store Settings' own screen reads/writes, per the "Settings-in-place"
+    // cross-cutting rule (readme-phase2.md Step 16). Not env-var-scanned (ScanManifests only sees
+    // {{TOKEN}} usages inside test-manifests/), so these are dedicated keys.
+    public const string GraphTenantIdKey = "graph:tenantId";
+    public const string GraphClientIdKey = "graph:clientId";
+    public const string GraphClientSecretKey = "secret:graph:clientSecret";
+    public const string GraphTenantLabelKey = "graph:tenantLabel";
+
+    /// <summary>Resolves the real Graph App Registration to use: a Settings-store override added
+    /// inline via the tenant picker's gear takes priority (it is the more recently and deliberately
+    /// set value); otherwise falls back to GRAPH_TENANT_ID/GRAPH_CLIENT_ID/GRAPH_CLIENT_SECRET in
+    /// the given repo root's <c>.env.local</c> (caller supplies <c>repoRoot</c> — MainWindow already
+    /// resolves the worktree-aware main-checkout root once, via <c>LogService.MainRepoRoot</c>; this
+    /// does not duplicate that walk). Null means neither is configured — callers report that
+    /// honestly.</summary>
+    public static GraphCredentials? ResolveGraphCredentials(string? repoRoot, ISettingsStore? settingsStore = null)
     {
+        if (settingsStore != null)
+        {
+            var storeTenantId = settingsStore.Get(GraphTenantIdKey, "");
+            var storeClientId = settingsStore.Get(GraphClientIdKey, "");
+            var storeClientSecret = settingsStore.Get(GraphClientSecretKey, "");
+            if (!string.IsNullOrWhiteSpace(storeTenantId) && !string.IsNullOrWhiteSpace(storeClientId) && !string.IsNullOrWhiteSpace(storeClientSecret))
+            {
+                var storeLabel = settingsStore.Get(GraphTenantLabelKey, "");
+                return new GraphCredentials(storeTenantId, storeClientId, storeClientSecret,
+                    string.IsNullOrWhiteSpace(storeLabel) ? $"{storeTenantId} (added in Settings)" : storeLabel);
+            }
+        }
+
         if (string.IsNullOrEmpty(repoRoot)) return null;
         var envLocal = Path.Combine(repoRoot, ".env.local");
         if (!File.Exists(envLocal)) return null;

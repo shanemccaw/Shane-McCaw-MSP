@@ -483,4 +483,56 @@ public sealed class GitDoctorService
             yield return new GitDoctorStepResult(step.Cmd, step.Why, exit == 0, output.Trim());
         }
     }
+
+    private async Task<(int ExitCode, string StdOut, string StdErr)> RunWithStdinAsync(string fileName, string args, string stdin, int timeoutMs = 15000)
+    {
+        if (RepoRoot == null) return (-1, "", "no repo root found");
+
+        var psi = new ProcessStartInfo(fileName, args)
+        {
+            WorkingDirectory = RepoRoot,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        using var proc = new Process { StartInfo = psi };
+        proc.Start();
+        await proc.StandardInput.WriteAsync(stdin);
+        proc.StandardInput.Close();
+        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+        var stderrTask = proc.StandardError.ReadToEndAsync();
+        var exited = await Task.Run(() => proc.WaitForExit(timeoutMs));
+        if (!exited)
+        {
+            try { proc.Kill(entireProcessTree: true); } catch { /* best effort */ }
+            return (-1, "", $"timed out after {timeoutMs}ms");
+        }
+        return (proc.ExitCode, await stdoutTask, await stderrTask);
+    }
+
+    /// <summary>Git #2205 — the paste-a-fresh-PAT field on Git Doctor's auth finding. Applies the
+    /// pasted PAT as the real git credential via <c>git credential approve</c> (feeds
+    /// protocol/host/username/password over stdin, the same plumbing command git itself calls
+    /// after a successful interactive login — it lands in whatever credential helper is
+    /// configured, Windows Credential Manager for this repo's setup), then proves it by re-running
+    /// the same <c>ls-remote</c> the original check failed on. No OS browser flow, no
+    /// interactivity.</summary>
+    public async Task<(bool Success, string Output)> ApplyGitHubPatAsync(string pat)
+    {
+        pat = pat.Trim();
+        if (string.IsNullOrEmpty(pat)) return (false, "No PAT entered.");
+
+        var input = $"protocol=https\nhost=github.com\nusername=x-access-token\npassword={pat}\n\n";
+        var approve = await RunWithStdinAsync("git", "credential approve", input, timeoutMs: 10000);
+        if (approve.ExitCode != 0)
+            return (false, string.IsNullOrWhiteSpace(approve.StdErr) ? "git credential approve failed" : approve.StdErr.Trim());
+
+        var verify = await GitAsync("ls-remote --exit-code origin -h", timeoutMs: 8000);
+        return verify.Item1 == 0
+            ? (true, "Verified — GitHub accepted the new PAT.")
+            : (false, string.IsNullOrWhiteSpace(verify.Item3) ? "Credential stored, but ls-remote still failed." : verify.Item3.Trim());
+    }
 }

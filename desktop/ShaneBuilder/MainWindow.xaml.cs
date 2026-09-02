@@ -5819,6 +5819,9 @@ public partial class MainWindow : Window
             GitDoctorDetailPanel.Children.Add(card);
         }
 
+        if (sel.CheckId == "auth")
+            GitDoctorDetailPanel.Children.Add(BuildGitDoctorPastePatCard(sel));
+
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
         var runBtn = new Button
         {
@@ -5852,6 +5855,90 @@ public partial class MainWindow : Window
         actions.Children.Add(copyBtn);
 
         GitDoctorDetailPanel.Children.Add(actions);
+    }
+
+    // Git #2205 — paste-a-fresh-PAT field on Git Doctor's auth finding. An alternative to the
+    // "Re-authenticate with a fresh PAT" remedy's OS browser login flow: applies the pasted PAT
+    // directly as the git credential and writes it to the same "secret:token:github" key Settings'
+    // API Tokens card (#2204) already reads/writes, so both surfaces stay in sync.
+    private bool _gdPasteBusy;
+
+    private Border BuildGitDoctorPastePatCard(GitDoctorFinding sel)
+    {
+        var card = new Border
+        {
+            Padding = new Thickness(11, 10, 11, 10), CornerRadius = new CornerRadius(8),
+            Margin = new Thickness(0, 0, 0, 7), MaxWidth = 660,
+            Background = (Brush)FindResource("Brush.Bg.Card"), BorderBrush = (Brush)FindResource("Brush.Border.Card"), BorderThickness = new Thickness(1),
+        };
+        var body = new StackPanel();
+        body.Children.Add(new TextBlock
+        {
+            Text = "Or paste a fresh PAT directly", Margin = new Thickness(0, 0, 0, 3),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.12"),
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("Brush.Text.Heading"),
+        });
+        body.Children.Add(new TextBlock
+        {
+            Text = "Applies it as the real git credential and saves it to Settings → API Tokens, no browser login.",
+            TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 7),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
+            Foreground = (Brush)FindResource("Brush.Text.Muted"),
+        });
+
+        var row = new DockPanel();
+        var patBox = new PasswordBox
+        {
+            Height = 28, Padding = new Thickness(8, 0, 8, 0), VerticalContentAlignment = VerticalAlignment.Center,
+            Background = (Brush)FindResource("Brush.Bg.Window"), BorderBrush = (Brush)FindResource("Brush.Border.Card"),
+            Foreground = (Brush)FindResource("Brush.Text.Primary"), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
+        };
+        var applyBtn = new Button
+        {
+            Content = "Apply", Height = 28, Padding = new Thickness(12, 0, 12, 0), Margin = new Thickness(6, 0, 0, 0),
+            Background = (Brush)FindResource("Brush.Status.Running"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
+            FontSize = 11, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand,
+        };
+        DockPanel.SetDock(applyBtn, Dock.Right);
+        applyBtn.Click += (s, e) => _ = ApplyGitDoctorPastedPatAsync(sel, patBox.Password, applyBtn);
+        row.Children.Add(applyBtn);
+        row.Children.Add(patBox);
+        body.Children.Add(row);
+
+        card.Child = body;
+        return card;
+    }
+
+    private async Task ApplyGitDoctorPastedPatAsync(GitDoctorFinding sel, string pat, Button applyBtn)
+    {
+        if (_gdPasteBusy) return;
+        if (string.IsNullOrWhiteSpace(pat))
+        {
+            ToastEngine.Show("Git Doctor", "Paste a PAT first.", ToastKind.Warning);
+            return;
+        }
+
+        _gdPasteBusy = true;
+        applyBtn.IsEnabled = false;
+        try
+        {
+            var (success, output) = await _gitDoctorService.ApplyGitHubPatAsync(pat);
+            if (success)
+            {
+                SettingsStore.Set("secret:token:github", pat.Trim());
+                sel.Fixed = true;
+                ToastEngine.Show("Git Doctor", output, ToastKind.Success);
+                await LoadGitDoctorChecksAsync();
+            }
+            else
+            {
+                ToastEngine.Show("Git Doctor", $"PAT rejected — {output}", ToastKind.Error);
+            }
+        }
+        finally
+        {
+            _gdPasteBusy = false;
+        }
     }
 
     private void RenderGitDoctorBranchSection(GitDoctorFinding sel)
@@ -8820,14 +8907,122 @@ public partial class MainWindow : Window
         }
         else
         {
-            var creds = Services.ApiExplorerService.ResolveGraphCredentials(_logService.MainRepoRoot);
-            ApiExplorerAuthExtra.Children.Add(new TextBlock
+            var creds = Services.ApiExplorerService.ResolveGraphCredentials(_logService.MainRepoRoot, SettingsStore);
+
+            var pickerRow = new DockPanel();
+            var gearBtn = new Button
             {
-                Text = creds != null ? $"Tenant: {creds.TenantLabel}" : "GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET not found in .env.local",
-                FontSize = 9.5, TextWrapping = TextWrapping.Wrap,
+                Content = "⚙", Width = 20, Height = 20, Padding = new Thickness(0), Margin = new Thickness(6, 0, 0, 0),
+                Background = Brushes.Transparent, BorderThickness = new Thickness(0), Cursor = Cursors.Hand,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"), FontSize = 11,
+                ToolTip = "Add or edit an App Registration",
+            };
+            DockPanel.SetDock(gearBtn, Dock.Right);
+            gearBtn.Click += (s, e) => { _apiExplorerGraphEditOpen = !_apiExplorerGraphEditOpen; RenderApiExplorerAuthRow(); };
+            pickerRow.Children.Add(gearBtn);
+            pickerRow.Children.Add(new TextBlock
+            {
+                Text = creds != null ? $"Tenant: {creds.TenantLabel}" : "GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET not found — add an App Registration.",
+                FontSize = 9.5, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
                 Foreground = (Brush)FindResource(creds != null ? "Brush.Claude.Text.Muted" : "Brush.Toast.Warning"),
             });
+            ApiExplorerAuthExtra.Children.Add(pickerRow);
+
+            if (_apiExplorerGraphEditOpen)
+                ApiExplorerAuthExtra.Children.Add(BuildGraphAppRegistrationEditor());
         }
+    }
+
+    // Git #2205 — gear on the Graph tenant picker: add/edit an App Registration inline, writing to
+    // the same Settings store (SettingsStoreService) the redesigned Settings screen (#2204) reads.
+    private bool _apiExplorerGraphEditOpen;
+
+    private Border BuildGraphAppRegistrationEditor()
+    {
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 7, 8, 7), Margin = new Thickness(0, 6, 0, 0),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Content"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"), BorderThickness = new Thickness(1),
+        };
+        var sp = new StackPanel();
+
+        TextBox MakeBox(string text) => new()
+        {
+            Text = text, Height = 24, Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(0, 0, 0, 4),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Button"), Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10,
+        };
+        TextBlock MakeLabel(string text) => new() { Text = text, FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") };
+
+        var tenantBox = MakeBox(SettingsStore.Get(Services.ApiExplorerService.GraphTenantIdKey, ""));
+        var clientBox = MakeBox(SettingsStore.Get(Services.ApiExplorerService.GraphClientIdKey, ""));
+        var labelBox = MakeBox(SettingsStore.Get(Services.ApiExplorerService.GraphTenantLabelKey, ""));
+        var secretBox = new PasswordBox
+        {
+            Height = 24, Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(0, 0, 0, 4),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Button"), Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+        };
+        bool hasStoredSecret = !string.IsNullOrEmpty(SettingsStore.Get(Services.ApiExplorerService.GraphClientSecretKey, ""));
+
+        sp.Children.Add(MakeLabel("Tenant ID"));
+        sp.Children.Add(tenantBox);
+        sp.Children.Add(MakeLabel("Client ID"));
+        sp.Children.Add(clientBox);
+        sp.Children.Add(MakeLabel(hasStoredSecret ? "Client secret (leave blank to keep the saved one)" : "Client secret"));
+        sp.Children.Add(secretBox);
+        sp.Children.Add(MakeLabel("Label (optional)"));
+        sp.Children.Add(labelBox);
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+        var saveBtn = new Button
+        {
+            Content = "Save", Height = 24, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 0, 6, 0),
+            Background = (Brush)FindResource("Brush.Status.Running"), Foreground = Brushes.Black, BorderThickness = new Thickness(0),
+            FontSize = 10.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Cursor = Cursors.Hand,
+        };
+        saveBtn.Click += (s, e) =>
+        {
+            var tenantId = tenantBox.Text.Trim();
+            var clientId = clientBox.Text.Trim();
+            if (string.IsNullOrEmpty(tenantId) || string.IsNullOrEmpty(clientId) || (!hasStoredSecret && string.IsNullOrEmpty(secretBox.Password)))
+            {
+                ToastEngine.Show("API Explorer", "Tenant ID, Client ID and a client secret are all required.", ToastKind.Warning);
+                return;
+            }
+            SettingsStore.Set(Services.ApiExplorerService.GraphTenantIdKey, tenantId);
+            SettingsStore.Set(Services.ApiExplorerService.GraphClientIdKey, clientId);
+            if (!string.IsNullOrEmpty(secretBox.Password))
+                SettingsStore.Set(Services.ApiExplorerService.GraphClientSecretKey, secretBox.Password);
+            SettingsStore.Set(Services.ApiExplorerService.GraphTenantLabelKey, labelBox.Text.Trim());
+            _apiExplorerGraphEditOpen = false;
+            ToastEngine.Show("API Explorer", "App Registration saved.", ToastKind.Success);
+            RenderApiExplorerAuthRow();
+        };
+        actions.Children.Add(saveBtn);
+
+        var clearBtn = new Button
+        {
+            Content = "Clear", Height = 24, Padding = new Thickness(10, 0, 10, 0),
+            Background = Brushes.Transparent, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"), BorderThickness = new Thickness(1),
+            FontSize = 10.5, Cursor = Cursors.Hand,
+        };
+        clearBtn.Click += (s, e) =>
+        {
+            SettingsStore.Set(Services.ApiExplorerService.GraphTenantIdKey, "");
+            SettingsStore.Set(Services.ApiExplorerService.GraphClientIdKey, "");
+            SettingsStore.Set(Services.ApiExplorerService.GraphClientSecretKey, "");
+            SettingsStore.Set(Services.ApiExplorerService.GraphTenantLabelKey, "");
+            ToastEngine.Show("API Explorer", "App Registration cleared — falling back to .env.local.", ToastKind.Info);
+            RenderApiExplorerAuthRow();
+        };
+        actions.Children.Add(clearBtn);
+
+        sp.Children.Add(actions);
+        card.Child = sp;
+        return card;
     }
 
     private string _apiExplorerLocalEmail = "";
