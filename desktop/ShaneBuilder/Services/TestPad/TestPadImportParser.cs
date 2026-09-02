@@ -8,10 +8,14 @@ namespace ShaneBuilder.Services.TestPad;
 /// whole pasted Notepad file's raw text into candidate <see cref="TestPadNote"/> rows. This is
 /// deliberately the baseline splitter only — one blank-line-separated block of text becomes one
 /// note, with any leading marker (<see cref="NoteMarkerParser"/>) on the block still recognized.
-/// The section-vs-note distinction, wrapped-line rejoin refinement, bullet/numbering stripping,
-/// bare-short-line splitting, "&lt;need screen shots&gt;" flagging, and feature auto-match are
-/// each their own open sub-issue (#2344-#2349) that will replace/extend this splitter in place —
-/// this issue only has to get a whole pasted file turned into real notes at all, not perfectly.</summary>
+/// Git #2344 adds the one refinement layered on top so far: a block that opens with a line
+/// <see cref="NotepadImportLineClassifier"/> reads as a Section header is not itself filed as a
+/// note — it becomes the <see cref="TestPadImportCandidate.Section"/> every candidate parsed
+/// after it (until the next Section header) carries. The wrapped-line rejoin refinement,
+/// bullet/numbering stripping, bare-short-line splitting, "&lt;need screen shots&gt;" flagging,
+/// and feature auto-match are each their own open sub-issue (#2345-#2349) that will
+/// replace/extend this splitter in place — this issue only has to get a whole pasted file turned
+/// into real notes at all, not perfectly.</summary>
 public static class TestPadImportParser
 {
     /// <summary>Parses <paramref name="rawText"/> into candidate notes ready for preview. Never
@@ -37,6 +41,7 @@ public static class TestPadImportParser
 
         var candidates = new List<TestPadImportCandidate>();
         var currentLines = new List<string>();
+        string? currentSection = null;
 
         void FlushBlock()
         {
@@ -55,7 +60,7 @@ public static class TestPadImportParser
             body = body.Trim();
             if (body.Length == 0) return;
 
-            candidates.Add(new TestPadImportCandidate(body, type));
+            candidates.Add(new TestPadImportCandidate(body, type) { Section = currentSection });
         }
 
         foreach (var line in text.Split('\n'))
@@ -63,6 +68,17 @@ public static class TestPadImportParser
             if (string.IsNullOrWhiteSpace(line))
             {
                 FlushBlock();
+            }
+            else if (currentLines.Count == 0 && NotepadImportLineClassifier.IsSectionHeader(line))
+            {
+                // Git #2344 — a short colon-terminated or bare 1-4 word line opening a fresh
+                // block reads as a Section header, not note body: remember it (colon and outer
+                // whitespace stripped) and keep accumulating whatever paragraph follows under
+                // it, rather than filing the header line itself as a note. A header with no
+                // paragraph following it before the next blank line/section currently produces
+                // no candidate at all — #2347 (bare short lines split into their own notes) is
+                // the sub-issue that reclassifies that specific case instead of dropping it.
+                currentSection = line.Trim().TrimEnd(':').Trim();
             }
             else
             {
@@ -89,6 +105,11 @@ public sealed class TestPadImportCandidate
 
     public string Text { get; set; }
     public NoteType Type { get; set; }
+
+    /// <summary>Git #2344 — the Section header text (colon/outer whitespace stripped) this
+    /// candidate was parsed under, or null when the paste had no header line above it yet.
+    /// Feature auto-match (#2349) reads this as one of its inputs.</summary>
+    public string? Section { get; set; }
 
     /// <summary>Whether this candidate is checked to actually be filed on Import. Defaults to
     /// included — the user unchecks what they don't want rather than opting every row in.</summary>

@@ -65,10 +65,31 @@ namespace ShaneBuilder
             PreviewHeaderText.Visibility = Visibility.Visible;
             PreviewHeaderText.Text = $"{_candidates.Count} {(_candidates.Count == 1 ? "note" : "notes")} found — uncheck any you don't want imported.";
 
+            // Git #2344 — a Section header line in the paste doesn't become a note of its own;
+            // it's surfaced here instead, as a divider above the notes parsed under it.
+            string? lastSection = null;
             foreach (var candidate in _candidates)
+            {
+                if (candidate.Section != null && candidate.Section != lastSection)
+                    PreviewHost.Children.Add(BuildSectionHeaderRow(candidate.Section));
+                lastSection = candidate.Section;
+
                 PreviewHost.Children.Add(BuildPreviewRow(candidate));
+            }
 
             UpdateImportButton();
+        }
+
+        private TextBlock BuildSectionHeaderRow(string section)
+        {
+            return new TextBlock
+            {
+                Text = section,
+                FontSize = 10,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                Margin = new Thickness(2, 10, 0, 4),
+            };
         }
 
         private Border BuildPreviewRow(TestPadImportCandidate candidate)
