@@ -48,6 +48,14 @@
                 </StackPanel>
             </Grid>
             <Border Height="1" Background="{StaticResource Brush.Border.Default}"/>
+            <!-- Git #2332 — status band. "Claude is working — N waiting" while the active chat is
+                 generating and notes are queued, "Claude is free — send N" once it's idle with
+                 notes still queued, "Nothing waiting" once the queue is empty either way. A status
+                 line only for now — #2337 wires the real Send-to-Claude action underneath it. -->
+            <Border x:Name="StatusBand" Padding="14,7,14,7" Background="{StaticResource Brush.Bg.Card}">
+                <TextBlock x:Name="StatusBandText" FontSize="10.5" FontWeight="SemiBold"
+                           Foreground="{StaticResource Brush.Text.Muted}"/>
+            </Border>
             <Grid x:Name="EmptyState" Margin="16,28,16,28">
                 <TextBlock Text="No notes yet." FontSize="11.5"
                            Foreground="{StaticResource Brush.Text.Muted}"

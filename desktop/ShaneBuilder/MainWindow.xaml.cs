@@ -55,12 +55,59 @@ public partial class MainWindow : Window
     // ── Git #2327 — Test Pad pill + pad (Feature: Test Pad, #2326, item 1 of 28) ──────────────
     private TestPadPillWindow? _testPadPillWindow;
     private TestPadWindow? _testPadWindow;
+    private DispatcherTimer? _claudeActivityPollTimer;
 
     private void InitializeTestPad()
     {
         _testPadPillWindow = new TestPadPillWindow { OnTogglePad = ToggleTestPad };
         _testPadWindow = new TestPadWindow();
         _testPadPillWindow.Show();
+
+        // Git #2332 — the status band's "Claude is working" half needs a real busy signal, and
+        // there's no native chat-session object to read it off (see ClaudeActivityService's own
+        // doc comment). Poll the active chat tab's live claude.ai DOM the same way
+        // TryReadLastAssistantTurnAsync already does, at a slow enough interval to be a
+        // non-issue for the WebView2 process.
+        _claudeActivityPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _claudeActivityPollTimer.Tick += async (_, _) => await PollClaudeActivityAsync();
+        _claudeActivityPollTimer.Start();
+    }
+
+    private bool _claudeActivityPollInFlight;
+
+    private async Task PollClaudeActivityAsync()
+    {
+        // A poll that's still awaiting the previous ExecuteScriptAsync must never stack another
+        // one on top of it — same guard shape as RenderTerminalSessionLines' IsRunning gate.
+        if (_claudeActivityPollInFlight) return;
+        if (_activeChatTab == null || !_activeChatTab.IsChat) { ClaudeActivityService.SetWorking(false); return; }
+        if (ClaudeWebView?.CoreWebView2 == null) { ClaudeActivityService.SetWorking(false); return; }
+
+        _claudeActivityPollInFlight = true;
+        try
+        {
+            // claude.ai swaps its composer's send control for a "Stop response"-labelled button
+            // while a reply is streaming — the only real signal available since the chat surface
+            // is the actual site, not a wrapped process.
+            const string script = @"(function(){
+                var btns = document.querySelectorAll('button[aria-label]');
+                for (var i=0;i<btns.length;i++){
+                    var al = (btns[i].getAttribute('aria-label')||'').toLowerCase();
+                    if (al.indexOf('stop') !== -1 && al.indexOf('response') !== -1) return 'true';
+                }
+                return 'false';
+            })();";
+            var raw = await ClaudeWebView.CoreWebView2.ExecuteScriptAsync(script);
+            ClaudeActivityService.SetWorking(raw != null && raw.Contains("true"));
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[testpad.activity] poll failed: {ex.Message}");
+        }
+        finally
+        {
+            _claudeActivityPollInFlight = false;
+        }
     }
 
     private void ToggleTestPad()

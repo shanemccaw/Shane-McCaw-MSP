@@ -49,6 +49,12 @@ namespace ShaneBuilder
             Deactivated += (_, _) => ForceTopmost();
 
             TestPadService.NotesChanged += Render;
+            ClaudeActivityService.Changed += Render;
+            Closed += (_, _) =>
+            {
+                TestPadService.NotesChanged -= Render;
+                ClaudeActivityService.Changed -= Render;
+            };
         }
 
         private void BtnClose_Click(object sender, MouseButtonEventArgs e)
@@ -67,6 +73,8 @@ namespace ShaneBuilder
         {
             var notes = TestPadService.Notes;
             NotesHost.Children.Clear();
+
+            RenderStatusBand();
 
             EmptyState.Visibility = notes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -212,6 +220,26 @@ namespace ShaneBuilder
 
             root.Child = grid;
             return root;
+        }
+
+        // Git #2332 — the three-state status band. "Nothing waiting" whenever the queue is
+        // genuinely empty takes priority over the working/free split, since there's nothing to
+        // send either way once N is 0.
+        private void RenderStatusBand()
+        {
+            int unsent = TestPadService.UnsentCount;
+            if (unsent == 0)
+            {
+                StatusBandText.Text = "Nothing waiting";
+            }
+            else if (ClaudeActivityService.IsWorking)
+            {
+                StatusBandText.Text = $"Claude is working — {unsent} waiting";
+            }
+            else
+            {
+                StatusBandText.Text = $"Claude is free — send {unsent}";
+            }
         }
 
         private void Reposition()
