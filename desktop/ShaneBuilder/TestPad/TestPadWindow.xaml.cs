@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -22,7 +23,10 @@ namespace ShaneBuilder
     /// flat newest-first order. Git #2333 adds the real per-note row: a select checkbox, a delete
     /// button wired to <see cref="TestPadService.RemoveNote"/>, and a "SENT" badge that locks the
     /// row's visual treatment — and its clickability for edit (#2335/#2336) — once the note has
-    /// gone out. An honest "No notes yet." otherwise.
+    /// gone out. An honest "No notes yet." otherwise. Git #2337 adds the real "Send to Claude"
+    /// action: formats the selected (or, with nothing checked, every unsent) note into one block
+    /// via <see cref="TestPadSendFormatter"/> and drops it into the currently active chat tab's
+    /// composer through <see cref="AlertActions.AppendToComposer"/>.
     /// </summary>
     public partial class TestPadWindow : Window
     {
@@ -140,12 +144,47 @@ namespace ShaneBuilder
             EditingBanner.Visibility = Visibility.Visible;
         }
 
+        /// <summary>Git #2337 — "Send to Claude" drops a formatted block with every stamp into the
+        /// open chat's composer. Targets the checked-selected unsent notes if any are checked;
+        /// otherwise every unsent note, so the button always has an obvious "send everything
+        /// waiting" default. Reuses the same static <see cref="AlertActions.AppendToComposer"/>
+        /// bridge MainWindow already wires to the currently active chat tab's composer for the
+        /// Alert Lab reply path — no new bridge needed. Sent notes flip to
+        /// <see cref="TestPadNote.IsSent"/> (the SENT badge/lock #2333 already renders) and clear
+        /// their selection.</summary>
+        private void BtnSendToClaude_Click(object sender, MouseButtonEventArgs e)
+        {
+            var all = TestPadService.Notes;
+            var selectedUnsent = all.Where(n => n.IsSelected && !n.IsSent).ToList();
+            var target = selectedUnsent.Count > 0 ? selectedUnsent : all.Where(n => !n.IsSent).ToList();
+
+            if (target.Count == 0)
+            {
+                ToastEngine.Warning("Test Pad", "Nothing to send — every note is already SENT.");
+                return;
+            }
+
+            if (AlertActions.AppendToComposer == null)
+            {
+                ToastEngine.Warning("Test Pad", "No open chat to send to — couldn't reach the composer.");
+                return;
+            }
+
+            var block = TestPadSendFormatter.Format(target);
+            AlertActions.AppendToComposer.Invoke(block);
+            TestPadService.MarkSent(target.Select(n => n.Id));
+
+            var count = target.Count;
+            ToastEngine.Success("Test Pad", $"Sent {count} {(count == 1 ? "note" : "notes")} into the composer — review, then Send.");
+        }
+
         public void Render()
         {
             var notes = TestPadService.Notes;
             NotesHost.Children.Clear();
 
             RenderStatusBand();
+            RenderSendToClaudeButton(notes);
 
             EmptyState.Visibility = notes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -336,6 +375,21 @@ namespace ShaneBuilder
             {
                 StatusBandText.Text = $"Claude is free — send {unsent}";
             }
+        }
+
+        /// <summary>Git #2337 — labels the button with exactly what a click will send: the
+        /// selected-unsent count if anything is checked, otherwise the total unsent count (the
+        /// same target <see cref="BtnSendToClaude_Click"/> resolves). Dims and disables the hand
+        /// cursor when there's genuinely nothing unsent to send.</summary>
+        private void RenderSendToClaudeButton(IReadOnlyList<TestPadNote> notes)
+        {
+            var selectedUnsent = notes.Count(n => n.IsSelected && !n.IsSent);
+            var totalUnsent = notes.Count(n => !n.IsSent);
+            var target = selectedUnsent > 0 ? selectedUnsent : totalUnsent;
+
+            SendToClaudeLabel.Text = target == 0 ? "Send to Claude" : $"Send to Claude ({target})";
+            BtnSendToClaude.Opacity = target == 0 ? 0.5 : 1.0;
+            BtnSendToClaude.Cursor = target == 0 ? Cursors.Arrow : Cursors.Hand;
         }
 
         private void Reposition()

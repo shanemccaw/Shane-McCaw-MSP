@@ -88,6 +88,29 @@ public static class TestPadService
     /// subscriber — the pill badge, the pad's notes list — re-renders off the same event.</summary>
     public static void NotifyMutated() => RaiseChanged();
 
+    /// <summary>Git #2337 — "Send to Claude" flips every sent note's <see cref="TestPadNote.IsSent"/>
+    /// (the pad already renders the SENT badge and locks the row, #2333/#2336) and clears its
+    /// selection so a re-send doesn't immediately re-target the same rows. A note id that no
+    /// longer exists (deleted mid-send) is silently skipped rather than throwing.</summary>
+    public static void MarkSent(IEnumerable<string> ids)
+    {
+        try
+        {
+            var idSet = ids.ToHashSet();
+            lock (_notes)
+            {
+                foreach (var note in _notes)
+                {
+                    if (!idSet.Contains(note.Id)) continue;
+                    note.IsSent = true;
+                    note.IsSelected = false;
+                }
+            }
+            RaiseChanged();
+        }
+        catch { /* a mark-sent failure must never take down the caller */ }
+    }
+
     private static void RaiseChanged()
     {
         var app = Application.Current;

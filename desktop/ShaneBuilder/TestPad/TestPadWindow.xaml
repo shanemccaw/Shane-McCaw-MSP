@@ -15,7 +15,7 @@
 
     <!-- Git #2327 — "expands to the pad." What the pill opens. The composer (#2328), type chips
          (#2330), status band (#2332), notes list/grouping/edit/lock (#2333-#2336), Send to Claude
-         (#2337, still open), pipeline caption (#2338), copy-as-markdown (#2339), shots/Paste Tray
+         (#2337), pipeline caption (#2338), copy-as-markdown (#2339), shots/Paste Tray
          (#2340-#2342) and import (#2343-#2354) each build out this body in their own issue — this
          shell is only the floating, non-layout-shifting container the pill expands into, with an
          honest empty state until a note actually exists. -->
@@ -51,8 +51,8 @@
             <Border Height="1" Background="{StaticResource Brush.Border.Default}"/>
             <!-- Git #2332 — status band. "Claude is working — N waiting" while the active chat is
                  generating and notes are queued, "Claude is free — send N" once it's idle with
-                 notes still queued, "Nothing waiting" once the queue is empty either way. A status
-                 line only for now — #2337 wires the real Send-to-Claude action underneath it. -->
+                 notes still queued, "Nothing waiting" once the queue is empty either way. #2337's
+                 real Send-to-Claude button sits below the notes list, at the foot of the pad. -->
             <Border x:Name="StatusBand" Padding="14,7,14,7" Background="{StaticResource Brush.Bg.Card}">
                 <TextBlock x:Name="StatusBandText" FontSize="10.5" FontWeight="SemiBold"
                            Foreground="{StaticResource Brush.Text.Muted}"/>
@@ -89,11 +89,20 @@
             </Grid>
             <StackPanel x:Name="NotesHost" Margin="10,4,10,10"/>
             <Border Height="1" Background="{StaticResource Brush.Border.Default}"/>
-            <!-- Git #2338 — pipeline caption. #2337 isn't wired yet (no real "Send to Claude"
-                 button exists to caption), so this sits as its own honest strip at the foot of the
-                 pad — the spot the status band comment above (#2332) already reserved for #2337's
-                 button once it lands — making the destination explicit ahead of that button:
-                 filing a note here is the start of a real pipeline, not a fire-and-forget message. -->
+            <!-- Git #2337 — "Send to Claude" drops a formatted block with every stamp into the
+                 open chat's composer. Selected unsent notes if any are checked; otherwise every
+                 unsent note. -->
+            <Border x:Name="BtnSendToClaude" Margin="10,8,10,0" Height="28" CornerRadius="6"
+                    Cursor="Hand" Background="{StaticResource Brush.Bg.Chip}"
+                    MouseLeftButtonUp="BtnSendToClaude_Click"
+                    ToolTip="Drop the selected (or every unsent) note into the open chat's composer">
+                <TextBlock x:Name="SendToClaudeLabel" Text="Send to Claude" FontSize="11"
+                           FontWeight="SemiBold" Foreground="{StaticResource Brush.Accent.Primary}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <!-- Git #2338 — pipeline caption, captioning the "Send to Claude" button directly above
+                 it: making the destination explicit — filing a note here is the start of a real
+                 pipeline, not a fire-and-forget message. -->
             <Border x:Name="PipelineCaption" Padding="14,7,14,8">
                 <TextBlock TextWrapping="Wrap" FontSize="9.5" FontStyle="Italic" TextAlignment="Center"
                            Foreground="{StaticResource Brush.Text.Dim}">
