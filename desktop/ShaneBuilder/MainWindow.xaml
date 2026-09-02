@@ -563,13 +563,22 @@
                                    FontFamily="{StaticResource FontFamily.Sans}"
                                    FontSize="{StaticResource FontSize.11}"/>
 
-                        <TextBlock x:Name="GitPanelBody" Margin="14,16,14,0"
-                                   TextWrapping="Wrap"
-                                   Text="No Git data loaded — GitHub wiring lands in a later pass."
-                                   Visibility="Collapsed"
-                                   Foreground="{StaticResource Brush.Text.Dim}"
-                                   FontFamily="{StaticResource FontFamily.Sans}"
-                                   FontSize="{StaticResource FontSize.11}"/>
+                        <!-- Git #2290 — the Git Panel navigation shell (Feature #2289 items
+                             1-11): Milestones / Gate cards / Epic → FEATURE → Issue tree plus
+                             the in-panel peek with breadcrumb trail. Rows are built in
+                             code-behind (MainWindow.GitPanel.cs) off real GitHub state via
+                             GitPanelService/GitMapService — no fixture rows exist to declare
+                             here. -->
+                        <StackPanel x:Name="GitPanelBody" Margin="8,8,8,12" Visibility="Collapsed">
+                            <TextBlock x:Name="GitPanelStatus" Margin="6,4,6,6"
+                                       TextWrapping="Wrap"
+                                       Text="Loading real GitHub state…"
+                                       Foreground="{StaticResource Brush.Text.Dim}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.10.5}"/>
+                            <StackPanel x:Name="GitPeekHost" Visibility="Collapsed"/>
+                            <StackPanel x:Name="GitTreeHost"/>
+                        </StackPanel>
 
                         <!-- Next Up groups issues under Critical Path / Other
                              Epics bands with a Gate banner above them once

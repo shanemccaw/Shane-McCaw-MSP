@@ -69,7 +69,7 @@ public partial class MainWindow : Window
         // than depending on MainWindow directly, same static-bridge shape ToastEngine already uses.
         AlertActions.OpenLogAt = (sourceId, levels, query) => OpenLogAt(sourceId, levels, query);
         AlertActions.OpenGitDoctor = OpenGitDoctor;
-        AlertActions.OpenIssueInGitPanel = _ => OpenLeftPanelGit();
+        AlertActions.OpenIssueInGitPanel = n => OpenGitIssueInPanelCold(n); // Git #2300 — derived-ancestry cold open
         AlertActions.AppendToComposer = AppendToComposer;
         AlertActions.OpenChatInBrowser = conversationId =>
         {
@@ -140,6 +140,7 @@ public partial class MainWindow : Window
         GitPanelBody.Visibility = Visibility.Visible;
         NextUpPanelBody.Visibility = Visibility.Collapsed;
         NotBuiltPanelBody.Visibility = Visibility.Collapsed;
+        _ = EnsureGitPanelLoadedAsync(); // Git #2290 — first open fires the real GitHub reads
     }
 
     // ── Git #2176 — real live-connectivity proof at startup ────────────────────────────────
@@ -445,6 +446,8 @@ public partial class MainWindow : Window
         ChatsPanelBody.Visibility = source == "Chat" ? Visibility.Visible : Visibility.Collapsed;
         GitPanelBody.Visibility = source == "Git" ? Visibility.Visible : Visibility.Collapsed;
         NextUpPanelBody.Visibility = source == "NextUp" ? Visibility.Visible : Visibility.Collapsed;
+        if (source == "Git")
+            _ = EnsureGitPanelLoadedAsync(); // Git #2290 — first open fires the real GitHub reads
 
         // Batter Up / Build Console / Build Watch / UI Testing / Shot Vault
         // share one placeholder body — none of them have a real design or
