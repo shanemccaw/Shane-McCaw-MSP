@@ -225,6 +225,42 @@
                 </Grid.ColumnDefinitions>
 
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <!-- Workspace box (Step 9, wpf-handoff/readme-phase2.md) —
+                         replaces what was an empty square left of the app
+                         name. A 4-pip grid of live workspace colours plus a
+                         badge counting dismissed ("stashed") workspace sets;
+                         clicking opens a panel to fold/unfold/restore each.
+                         Hidden entirely when nothing is stashed — an empty
+                         box would just be visual noise the mockup doesn't
+                         call for.
+                         A ToggleButton bound straight to the Popup's IsOpen,
+                         not a Button + code-behind toggle — a StaysOpen=False
+                         Popup opened from a plain Button.Click flashes open
+                         and immediately self-dismisses, because that same
+                         mouse-up is seen as an "outside click." Binding
+                         IsOpen to IsChecked sidesteps that WPF quirk
+                         entirely. Sized to match the other topbar icon
+                         buttons (28x24) rather than the original 20x20 —
+                         too small to reliably hit. -->
+                    <ToggleButton x:Name="BtnWorkspaceBox" Width="36" Height="32" Margin="12,0,0,0"
+                                  Visibility="Collapsed" Style="{StaticResource RailToggle}"
+                                  WindowChrome.IsHitTestVisibleInChrome="True"
+                                  ToolTip="Dismissed workspaces">
+                        <Grid x:Name="WorkspaceBoxPipsGrid" Width="20" Height="20"/>
+                    </ToggleButton>
+                    <Popup x:Name="WorkspaceBoxPopup" PlacementTarget="{Binding ElementName=BtnWorkspaceBox}"
+                           IsOpen="{Binding IsChecked, ElementName=BtnWorkspaceBox, Mode=TwoWay}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True">
+                        <Border Background="{StaticResource Brush.Bg.Panel}" BorderBrush="{StaticResource Brush.Border.Popover}"
+                                BorderThickness="1" CornerRadius="8" Padding="6" MinWidth="230"
+                                Margin="0,4,0,0">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="18" ShadowDepth="6" Opacity="0.5"/>
+                            </Border.Effect>
+                            <StackPanel x:Name="WorkspaceBoxPanelList"/>
+                        </Border>
+                    </Popup>
+
                     <TextBlock Text="ShaneBuilder"
                                Margin="16,0,0,0"
                                VerticalAlignment="Center"

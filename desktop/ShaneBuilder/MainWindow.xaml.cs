@@ -32,7 +32,7 @@ public partial class MainWindow : Window
         RenderQuickAccessToolbar();
 
         _tabs.Add(new TabDef("home", "Home", isHome: true));
-        _tabs.Add(new TabDef("epic-1202", "#1202 ShaneBuilder", isChat: true, dot: (Brush)FindResource("Brush.Epic.BuildConsole"), buildSet: "ShaneBuilder"));
+        _tabs.Add(new TabDef("epic-1202", "#1202 ShaneBuilder", isChat: true, kind: TabKind.Chat, dot: (Brush)FindResource("Brush.Epic.BuildConsole"), buildSet: "ShaneBuilder"));
         SelectTab("home");
 
         SeedSampleQueueData();
@@ -300,10 +300,41 @@ public partial class MainWindow : Window
 
     // ── Document host — tab strip + content switch, per mockup's tabDefs /
     // tabs (Shell Skeleton v2.html lines 1489-1494, 2465-2474). The Home tab
-    // is pinned first and never closable, matching kind:'home' there having
-    // no onClose affordance; every other tab gets an epic-accent dot (shown
-    // only while active, per tb.dot logic) and a × close button that falls
-    // back to the previous tab, or Home, same as the mockup's closeTabById.
+    // is pinned first, outside every workspace, and only grows a close
+    // button once something else is open (Step 9); every other tab gets an
+    // epic-accent dot (shown only while active, per tb.dot logic) and a ×
+    // close button that falls back to the previous tab, or a fresh Home if
+    // that was the last tab standing.
+    // Tab-strip workspace grouping — Step 9 (wpf-handoff/readme-phase2.md).
+    // TabKind→workspace is the "one place" default map the readme's contract
+    // calls for; a tab's own WorkspaceId (set at construction) overrides it,
+    // same as the contract's TabDef.WorkspaceId semantics.
+    private enum TabKind { Chat, Design, GitIssue, Favorite, Log, Api, File }
+
+    private sealed record WorkspaceDef(string Id, string Label, string IconKey, string BrushKey, bool IsPrimary);
+
+    private static readonly WorkspaceDef[] AllWorkspaces =
+    {
+        new("chats", "CLAUDE CHATS", "Icon.Chat", "Brush.Workspace.Chats", true),
+        new("designs", "CLAUDE DESIGNS", "Icon.LayoutGrid", "Brush.Workspace.Designs", false),
+        new("git", "GIT ISSUES", "Icon.Git", "Brush.Workspace.GitIssues", false),
+        new("favorites", "FAVORITES", "Icon.Star", "Brush.Workspace.Favorites", false),
+        new("logs", "LOGS", "Icon.Activity", "Brush.Workspace.Logs", false),
+        new("api", "API EXPLORERS", "Icon.Zap", "Brush.Workspace.Api", false),
+        new("files", "FILES", "Icon.FileCode", "Brush.Workspace.Files", false),
+    };
+
+    private static readonly Dictionary<TabKind, string> KindWorkspaceDefault = new()
+    {
+        [TabKind.Chat] = "chats",
+        [TabKind.Design] = "designs",
+        [TabKind.GitIssue] = "git",
+        [TabKind.Favorite] = "favorites",
+        [TabKind.Log] = "logs",
+        [TabKind.Api] = "api",
+        [TabKind.File] = "files",
+    };
+
     private sealed class TabDef
     {
         public string Id { get; }
@@ -311,16 +342,26 @@ public partial class MainWindow : Window
         public bool IsHome { get; }
         public bool IsChat { get; }
         public bool IsGitDoctor { get; }
+        public TabKind? Kind { get; }
+        public string? Ext { get; }
         public Brush? Dot { get; }
         public string? BuildSet { get; }
+        private readonly string? _workspaceIdOverride;
 
-        public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false, Brush? dot = null, string? buildSet = null)
+        public string? WorkspaceId => _workspaceIdOverride ?? (Kind.HasValue ? KindWorkspaceDefault[Kind.Value] : null);
+
+        public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
+            TabKind? kind = null, string? workspaceId = null, string? ext = null,
+            Brush? dot = null, string? buildSet = null)
         {
             Id = id;
             Title = title;
             IsHome = isHome;
             IsChat = isChat;
             IsGitDoctor = isGitDoctor;
+            Kind = kind;
+            _workspaceIdOverride = workspaceId;
+            Ext = ext;
             Dot = dot;
             BuildSet = buildSet;
         }
@@ -329,11 +370,221 @@ public partial class MainWindow : Window
     private readonly List<TabDef> _tabs = new();
     private string _activeTabId = "home";
 
+    // Dismissed ("stashed") workspaces — their tabs stay in _tabs, just out
+    // of the strip, per the readme's "Dismiss" behavior. Folded ("collapsed")
+    // workspaces still show in the strip but shrunk to their header chip.
+    private readonly HashSet<string> _stashedWorkspaces = new();
+    private readonly HashSet<string> _collapsedWorkspaces = new();
+
     private void RenderTabStrip()
     {
         TabStripPanel.Children.Clear();
-        foreach (var t in _tabs)
+
+        var home = _tabs.Find(t => t.IsHome);
+        if (home != null)
+            TabStripPanel.Children.Add(BuildTabPill(home));
+
+        foreach (var ws in AllWorkspaces)
+        {
+            if (_stashedWorkspaces.Contains(ws.Id)) continue;
+            var members = _tabs.Where(t => !t.IsHome && t.WorkspaceId == ws.Id).ToList();
+            if (members.Count == 0) continue;
+            TabStripPanel.Children.Add(BuildWorkspaceGroup(ws, members));
+        }
+
+        // A tab with no workspace mapping (shouldn't normally happen once
+        // every real tab kind carries a Kind) still renders rather than
+        // silently vanishing from the strip.
+        foreach (var t in _tabs.Where(t => !t.IsHome && t.WorkspaceId == null))
             TabStripPanel.Children.Add(BuildTabPill(t));
+
+        RenderWorkspaceBox();
+    }
+
+    private Border BuildWorkspaceGroup(WorkspaceDef ws, List<TabDef> members)
+    {
+        var accent = (Brush)FindResource(ws.BrushKey);
+        var accentColor = ((SolidColorBrush)accent).Color;
+        bool ownsActive = members.Any(t => t.Id == _activeTabId);
+        bool collapsed = _collapsedWorkspaces.Contains(ws.Id);
+
+        // The whole group is one rounded capsule — a visible border + tinted
+        // fill all the way around, not just a top accent line — with the
+        // workspace chip as its own smaller pill nested at the left edge.
+        var wrapper = new Border
+        {
+            Margin = new Thickness(0, 3, 6, 3),
+            Padding = new Thickness(4, 3, 4, 3),
+            CornerRadius = new CornerRadius(10),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(accentColor) { Opacity = 0.4 },
+            Background = new SolidColorBrush(accentColor) { Opacity = ownsActive ? 0.10 : 0.055 }
+        };
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+
+        var chip = new Border
+        {
+            CornerRadius = new CornerRadius(7),
+            Padding = new Thickness(8, 4, 7, 4),
+            Cursor = Cursors.Hand,
+            Background = new SolidColorBrush(accentColor) { Opacity = 0.14 },
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(accentColor) { Opacity = 0.35 }
+        };
+        var chipStack = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        chipStack.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = (Geometry)FindResource(ws.IconKey), Stroke = accent, Width = 11, Height = 11, Margin = new Thickness(0, 0, 6, 0),
+            Stretch = Stretch.Uniform, StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Fill = Brushes.Transparent
+        });
+        chipStack.Children.Add(new TextBlock
+        {
+            Text = ws.Label, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 6, 0),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+            FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = accent
+        });
+        chipStack.Children.Add(new Border
+        {
+            CornerRadius = new CornerRadius(7), Padding = new Thickness(6, 1, 6, 1), VerticalAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(accentColor) { Opacity = 0.3 },
+            Child = new TextBlock { Text = members.Count.ToString(), FontSize = 9, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = accent }
+        });
+        chip.Child = chipStack;
+        var capturedWsId = ws.Id;
+        chip.MouseLeftButtonDown += (s, e) => { e.Handled = true; ToggleWorkspaceCollapse(capturedWsId); };
+        row.Children.Add(chip);
+
+        if (collapsed)
+        {
+            var activeMember = members.Find(t => t.Id == _activeTabId);
+            if (activeMember != null)
+                row.Children.Add(new TextBlock
+                {
+                    Text = activeMember.Title, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(8, 0, 4, 0),
+                    FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.12"),
+                    FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("Brush.Text.Heading")
+                });
+        }
+        else
+        {
+            foreach (var t in members)
+                row.Children.Add(BuildTabPill(t));
+        }
+
+        var dismiss = new Border
+        {
+            Width = 22, Height = 22, CornerRadius = new CornerRadius(11), Cursor = Cursors.Hand,
+            Margin = new Thickness(4, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+            Background = Brushes.Transparent, ToolTip = $"Dismiss {ws.Label} to the workspace box"
+        };
+        var dismissIcon = new System.Windows.Shapes.Path
+        {
+            Data = (Geometry)FindResource("Icon.Undo2"), Stroke = (Brush)FindResource("Brush.Text.Dim"),
+            Width = 12, Height = 12, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            Stretch = Stretch.Uniform, StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round,
+            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Fill = Brushes.Transparent
+        };
+        dismiss.Child = dismissIcon;
+        dismiss.MouseLeftButtonDown += (s, e) => { e.Handled = true; StashWorkspace(capturedWsId); };
+        dismiss.MouseEnter += (s, e) => { dismiss.Background = new SolidColorBrush(accentColor) { Opacity = 0.14 }; dismissIcon.Stroke = accent; };
+        dismiss.MouseLeave += (s, e) => { dismiss.Background = Brushes.Transparent; dismissIcon.Stroke = (Brush)FindResource("Brush.Text.Dim"); };
+        row.Children.Add(dismiss);
+
+        wrapper.Child = row;
+        return wrapper;
+    }
+
+    private void ToggleWorkspaceCollapse(string workspaceId)
+    {
+        if (!_collapsedWorkspaces.Remove(workspaceId)) _collapsedWorkspaces.Add(workspaceId);
+        RenderTabStrip();
+    }
+
+    private void StashWorkspace(string workspaceId)
+    {
+        _stashedWorkspaces.Add(workspaceId);
+        _collapsedWorkspaces.Remove(workspaceId);
+
+        // If the tab you were looking at just got parked, fall back to Home
+        // rather than leaving the document host pointed at a hidden tab.
+        var active = _tabs.Find(t => t.Id == _activeTabId);
+        if (active != null && active.WorkspaceId == workspaceId)
+            SelectTab(_tabs.First(t => t.IsHome).Id);
+        else
+            RenderTabStrip();
+    }
+
+    private void RestoreWorkspace(string workspaceId)
+    {
+        _stashedWorkspaces.Remove(workspaceId);
+        _collapsedWorkspaces.Remove(workspaceId);
+        RenderTabStrip();
+    }
+
+    private void RenderWorkspaceBox()
+    {
+        BtnWorkspaceBox.Visibility = _stashedWorkspaces.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        WorkspaceBoxPipsGrid.Children.Clear();
+        WorkspaceBoxPipsGrid.ColumnDefinitions.Clear();
+        WorkspaceBoxPipsGrid.RowDefinitions.Clear();
+        for (int r = 0; r < 2; r++) WorkspaceBoxPipsGrid.RowDefinitions.Add(new RowDefinition());
+        for (int c = 0; c < 2; c++) WorkspaceBoxPipsGrid.ColumnDefinitions.Add(new ColumnDefinition());
+        for (int i = 0; i < AllWorkspaces.Length && i < 4; i++)
+        {
+            var pip = new Rectangle
+            {
+                Width = 8, Height = 8, Margin = new Thickness(1),
+                Fill = (Brush)FindResource(AllWorkspaces[i].BrushKey),
+                Opacity = _tabs.Any(t => t.WorkspaceId == AllWorkspaces[i].Id) ? 1.0 : 0.25
+            };
+            Grid.SetRow(pip, i / 2);
+            Grid.SetColumn(pip, i % 2);
+            WorkspaceBoxPipsGrid.Children.Add(pip);
+        }
+
+        WorkspaceBoxPanelList.Children.Clear();
+        if (_stashedWorkspaces.Count == 0) return;
+
+        foreach (var wsId in _stashedWorkspaces.ToList())
+        {
+            var ws = AllWorkspaces.FirstOrDefault(w => w.Id == wsId);
+            if (ws == null) continue;
+            int count = _tabs.Count(t => t.WorkspaceId == wsId);
+
+            var row = new Grid { Margin = new Thickness(4, 4, 4, 4) };
+            var stack = new StackPanel { Orientation = Orientation.Horizontal };
+            stack.Children.Add(new Ellipse { Width = 8, Height = 8, Margin = new Thickness(0, 0, 8, 0), Fill = (Brush)FindResource(ws.BrushKey) });
+            var textCol = new StackPanel();
+            textCol.Children.Add(new TextBlock { Text = ws.Label, FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 11, FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("Brush.Text.Heading") });
+            textCol.Children.Add(new TextBlock
+            {
+                Text = $"{count} tab{(count == 1 ? "" : "s")} · dismissed" + (ws.IsPrimary ? " · primary" : ""),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9, Foreground = (Brush)FindResource("Brush.Text.Dim")
+            });
+            stack.Children.Add(textCol);
+
+            var restore = new TextBlock
+            {
+                Text = "Restore", Cursor = Cursors.Hand, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+                Foreground = (Brush)FindResource(ws.BrushKey)
+            };
+            var capturedId = wsId;
+            restore.MouseLeftButtonDown += (s, e) => { e.Handled = true; RestoreWorkspace(capturedId); WorkspaceBoxPopup.IsOpen = false; };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(stack, 0);
+            Grid.SetColumn(restore, 1);
+            grid.Children.Add(stack);
+            grid.Children.Add(restore);
+            row.Children.Add(grid);
+            WorkspaceBoxPanelList.Children.Add(row);
+        }
     }
 
     private Border BuildTabPill(TabDef t)
@@ -372,6 +623,21 @@ public partial class MainWindow : Window
             });
         }
 
+        // Home is pinned first, outside every workspace — a house glyph
+        // marks it, and it only grows a close button once something else is
+        // open (Step 9 "Home" behavior).
+        if (t.IsHome)
+        {
+            content.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = (Geometry)FindResource("Icon.Home"),
+                Stroke = isActive ? (Brush)FindResource("Brush.Text.Muted") : (Brush)FindResource("Brush.Text.Dim"),
+                Width = 12, Height = 12, Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center,
+                Stretch = Stretch.Uniform, StrokeThickness = 2, StrokeLineJoin = PenLineJoin.Round,
+                StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, Fill = Brushes.Transparent
+            });
+        }
+
         content.Children.Add(new TextBlock
         {
             Text = t.Title,
@@ -382,7 +648,8 @@ public partial class MainWindow : Window
             VerticalAlignment = VerticalAlignment.Center
         });
 
-        if (!t.IsHome)
+        bool closable = !t.IsHome || _tabs.Count > 1;
+        if (closable)
         {
             var close = new TextBlock
             {
@@ -402,7 +669,7 @@ public partial class MainWindow : Window
         border.Child = content;
         border.MouseLeftButtonDown += (s, e) => SelectTab(t.Id);
 
-        if (!t.IsHome)
+        if (closable)
         {
             border.ContextMenu = BuildContextMenu(
                 ("", "Close", () => CloseTab(t.Id), true, true),
@@ -465,6 +732,15 @@ public partial class MainWindow : Window
         var tab = _tabs.Find(t => t.Id == id);
         if (tab == null) return;
 
+        // Opening a tab un-stashes and unfolds its workspace so you see it
+        // arrive, per Step 9's "Routing" behavior. A no-op when the
+        // workspace is already visible.
+        if (tab.WorkspaceId != null)
+        {
+            _stashedWorkspaces.Remove(tab.WorkspaceId);
+            _collapsedWorkspaces.Remove(tab.WorkspaceId);
+        }
+
         _activeTabId = id;
         RenderTabStrip();
 
@@ -483,9 +759,23 @@ public partial class MainWindow : Window
     private void CloseTab(string id)
     {
         int idx = _tabs.FindIndex(t => t.Id == id);
-        if (idx < 0 || _tabs[idx].IsHome) return;
+        // Home is closable once something else is open, per Step 9 — only a
+        // lone Home tab refuses to close.
+        if (idx < 0 || (_tabs[idx].IsHome && _tabs.Count == 1)) return;
 
         _tabs.RemoveAt(idx);
+
+        if (_tabs.Count == 0)
+        {
+            // Closing the last tab resets to Home in its first-run state —
+            // clear tool belts (none exist yet to clear), workspace collapse
+            // and stash state.
+            _collapsedWorkspaces.Clear();
+            _stashedWorkspaces.Clear();
+            _tabs.Add(new TabDef("home", "Home", isHome: true));
+            SelectTab("home");
+            return;
+        }
 
         if (_activeTabId == id)
         {
@@ -3227,7 +3517,7 @@ public partial class MainWindow : Window
     private void OpenGitDoctor()
     {
         if (_tabs.Find(t => t.Id == "gitdoctor") == null)
-            _tabs.Add(new TabDef("gitdoctor", "Git Doctor", isGitDoctor: true, dot: (Brush)FindResource("Brush.Epic.Gate")));
+            _tabs.Add(new TabDef("gitdoctor", "Git Doctor", isGitDoctor: true, kind: TabKind.GitIssue, dot: (Brush)FindResource("Brush.Epic.Gate")));
         SelectTab("gitdoctor");
     }
 

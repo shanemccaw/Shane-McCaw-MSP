@@ -51,6 +51,47 @@
     <PathGeometry x:Key="Icon.Settings"
         Figures="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915 M9,12 A3,3 0 1 0 15,12 A3,3 0 1 0 9,12"/>
 
+    <!-- layout-grid — workspace chip: Claude Designs (Step 9). rect rx=1
+         corners expanded to arc segments by hand, same convention as the
+         circle expansions above. -->
+    <PathGeometry x:Key="Icon.LayoutGrid"
+        Figures="M4,3 H9 A1,1 0 0 1 10,4 V9 A1,1 0 0 1 9,10 H4 A1,1 0 0 1 3,9 V4 A1,1 0 0 1 4,3 Z
+                 M15,3 H20 A1,1 0 0 1 21,4 V9 A1,1 0 0 1 20,10 H15 A1,1 0 0 1 14,9 V4 A1,1 0 0 1 15,3 Z
+                 M15,14 H20 A1,1 0 0 1 21,15 V20 A1,1 0 0 1 20,21 H15 A1,1 0 0 1 14,20 V15 A1,1 0 0 1 15,14 Z
+                 M4,14 H9 A1,1 0 0 1 10,15 V20 A1,1 0 0 1 9,21 H4 A1,1 0 0 1 3,20 V15 A1,1 0 0 1 4,14 Z"/>
+
+    <!-- star — workspace chip: Favorites (Step 9) -->
+    <PathGeometry x:Key="Icon.Star"
+        Figures="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>
+
+    <!-- activity — workspace chip: Logs (Step 9) -->
+    <PathGeometry x:Key="Icon.Activity"
+        Figures="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>
+
+    <!-- zap — workspace chip: API Explorers (Step 9). Same shape already
+         proven out as Icon.BatterUp; duplicated under its own semantic name
+         since the two concepts (Batter Up vs. API Explorers) shouldn't share
+         a resource key even though the glyph is identical. -->
+    <PathGeometry x:Key="Icon.Zap"
+        Figures="M15.914 4 a1.5 1.5 0 0 0 -2.474 -1.561 l-9 9 A1.5 1.5 0 0 0 5.5 14 h4.002 a.5 .5 0 0 1 .471 .666 L8.086 20 a1.5 1.5 0 0 0 2.475 1.56 l9-9 A1.5 1.5 0 0 0 18.5 10 h-3.997 a.5 .5 0 0 1 -.472 -.667 z"/>
+
+    <!-- file-code — workspace chip: Files (Step 9) -->
+    <PathGeometry x:Key="Icon.FileCode"
+        Figures="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z
+                 M14 2v5a1 1 0 0 0 1 1h5
+                 M10 12.5 8 15l2 2.5
+                 m14 12.5 2 2.5-2 2.5"/>
+
+    <!-- house — Home tab pin/leading glyph (Step 9 redesign pass) -->
+    <PathGeometry x:Key="Icon.Home"
+        Figures="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8
+                 M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+
+    <!-- undo-2 — workspace group "dismiss to the workspace box" glyph -->
+    <PathGeometry x:Key="Icon.Undo2"
+        Figures="M9 14 4 9l5-5
+                 M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11"/>
+
     <!-- Shared style so every rail icon renders identically (16x16, round
          joins/caps matching Lucide's own stroke-linecap="round"). -->
     <Style x:Key="RailIconPath" TargetType="Path">
