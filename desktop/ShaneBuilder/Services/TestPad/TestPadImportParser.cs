@@ -16,9 +16,15 @@ namespace ShaneBuilder.Services.TestPad;
 /// genuinely new note typed on its own line (no blank line before it, but the prior line ended
 /// a sentence) still becomes its own note, while a soft-wrapped continuation (prior line has no
 /// terminal punctuation — it was just wrapped mid-thought) rejoins into the same note. Git
-/// #2348 layered "&lt;need screen shots&gt;" stripping/flagging on top of the same pipeline.
-/// Bullet/numbering stripping, bare-short-line splitting, and feature auto-match are each their
-/// own open sub-issue (#2346, #2347, #2349) that will further extend this in place.</summary>
+/// #2348 layered "&lt;need screen shots&gt;" stripping/flagging on top of the same pipeline. Git
+/// #2468 (re-dispatch of #2347) closed the gap #2344 left documented in place: a line that reads
+/// as a Section header (<see cref="NotepadImportLineClassifier.IsSectionHeader"/>) is only ever
+/// treated as one once real content is actually filed under it — see the "pending header"
+/// tracking in <see cref="ParseCore"/>. A header line superseded by another header, or hit at
+/// end-of-paste, with zero content ever added underneath it, was never really a header; it's
+/// demoted and filed as its own note instead of silently dropped.
+/// Bullet/numbering stripping and feature auto-match are each their
+/// own open sub-issue (#2346, #2349) that will further extend this in place.</summary>
 public static class TestPadImportParser
 {
     /// <summary>Git #2348 — the literal marker a Notepad note uses to call out that it needs a
@@ -58,6 +64,13 @@ public static class TestPadImportParser
         var currentLines = new List<string>();
         string? currentSection = null;
 
+        // Git #2468 — a header-classified line is only committed to `currentSection` once real
+        // content actually gets filed under it (see the `else` branch below). Until then it sits
+        // here as a *pending* header: still governing where the section divider would land in the
+        // preview if content shows up, but not yet proven to have been a real header rather than
+        // a standalone bare line.
+        string? pendingHeaderRawLine = null;
+
         void FlushBlock()
         {
             if (currentLines.Count == 0) return;
@@ -73,6 +86,18 @@ public static class TestPadImportParser
             currentLines.Clear();
         }
 
+        // Git #2468 — a pending header that gets superseded (by the next header, or by
+        // end-of-paste) without ever gaining real content underneath it was never a real header:
+        // file the line itself as its own note (under whatever section was already confirmed
+        // before it) instead of silently dropping it, which is the exact gap #2344 documented and
+        // left open for this issue to close.
+        void ResolveOrphanedHeader()
+        {
+            if (pendingHeaderRawLine == null) return;
+            EmitCandidate(new[] { pendingHeaderRawLine }, currentSection, candidates);
+            pendingHeaderRawLine = null;
+        }
+
         foreach (var line in text.Split('\n'))
         {
             if (string.IsNullOrWhiteSpace(line))
@@ -84,17 +109,24 @@ public static class TestPadImportParser
                 // Git #2344 — a short colon-terminated or bare 1-4 word line opening a fresh
                 // block reads as a Section header, not note body: remember it (colon and outer
                 // whitespace stripped) and keep accumulating whatever paragraph follows under
-                // it, rather than filing the header line itself as a note. A header with no
-                // paragraph following it before the next blank line/section currently produces
-                // no candidate at all — #2347 (bare short lines split into their own notes) is
-                // the sub-issue that reclassifies that specific case instead of dropping it.
-                currentSection = line.Trim().TrimEnd(':').Trim();
+                // it, rather than filing the header line itself as a note — but per Git #2468,
+                // don't commit to it until content actually arrives.
+                ResolveOrphanedHeader();
+                pendingHeaderRawLine = line.Trim();
             }
             else
             {
+                if (pendingHeaderRawLine != null)
+                {
+                    // Real content showed up under the pending header — it was a genuine
+                    // Section after all; commit it now.
+                    currentSection = pendingHeaderRawLine.TrimEnd(':').Trim();
+                    pendingHeaderRawLine = null;
+                }
                 currentLines.Add(line);
             }
         }
+        ResolveOrphanedHeader();
         FlushBlock();
 
         return candidates;
