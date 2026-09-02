@@ -774,66 +774,22 @@
                                                        FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
                                                        Foreground="{StaticResource Brush.Text.Muted}"/>
                                         </Button>
-                                        <Button x:Name="BtnToggleLogPeek" Style="{StaticResource PanelCollapseButton}"
-                                                Margin="8,0,0,0"
-                                                ToolTip="Log Peek — live tail of the 9 log sources"
-                                                Click="BtnToggleLogPeek_Click">
-                                            <TextBlock Text="&#xE81C;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
-                                        </Button>
-                                        <!-- Git #2215 — SQL Runner mini panel toggle. Same PanelCollapseButton
-                                             precedent as the icon buttons above; text label (not a glyph) since
-                                             no MDL2 database icon reads cleanly at this size. -->
-                                        <Button x:Name="BtnToggleSqlRunner" Style="{StaticResource PanelCollapseButton}"
-                                                Margin="8,0,0,0"
-                                                ToolTip="SQL Runner — real query against local Postgres"
-                                                Click="BtnToggleSqlRunner_Click">
-                                            <TextBlock Text="SQL" FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5" FontWeight="{StaticResource FontWeight.Bold}"/>
-                                        </Button>
+                                        <!-- Git #2233 — Log Peek / SQL Runner / Repo Health / JSON Viewer /
+                                             Windows File Browser / Git Map / Git Doctor mini rail each used to
+                                             have their own standalone toggle button here (BtnToggleLogPeek,
+                                             BtnToggleSqlRunner, BtnToggleRepoHealth, BtnToggleJsonViewer,
+                                             BtnToggleFileBrowser, BtnToggleGitMap, BtnToggleGitDoctorMini) —
+                                             seven scattered buttons duplicating access to the same seven tools
+                                             now reachable from the one wrench menu below (BuildWrenchMenu).
+                                             Removed rather than kept as a second path in; each handler and its
+                                             panel/column state is untouched, only this bar entry point is gone.
+                                             "Detected panel" is a different, non-toolbelt feature and keeps its
+                                             own bar button. -->
                                         <Button x:Name="BtnToggleDetectedItems" Style="{StaticResource PanelCollapseButton}"
                                                 Margin="8,0,0,0"
                                                 ToolTip="Detected in this chat — mentioned issues + pinned questions (⌘)"
                                                 Click="BtnToggleDetectedItems_Click">
                                             <TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
-                                        </Button>
-                                        <!-- Git #2214 §6.6 — Repo Health mini panel toggle, same mechanism as
-                                             BtnToggleLogPeek/BtnToggleDetectedItems above. -->
-                                        <Button x:Name="BtnToggleRepoHealth" Style="{StaticResource PanelCollapseButton}"
-                                                Margin="8,0,0,0"
-                                                ToolTip="Repo Health — Depth / Naming / Stale / Orphan findings"
-                                                Click="BtnToggleRepoHealth_Click">
-                                            <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
-                                        </Button>
-                                        <!-- Git #2217 — JSON Viewer mini panel toggle (§6.9), same mechanism
-                                             as the toggles above. Text label since no MDL2 braces glyph reads
-                                             cleanly at this size (same reasoning as the SQL Runner "SQL" label). -->
-                                        <Button x:Name="BtnToggleJsonViewer" Style="{StaticResource PanelCollapseButton}"
-                                                Margin="8,0,0,0"
-                                                ToolTip="JSON Viewer — paste, prettify, copy"
-                                                Click="BtnToggleJsonViewer_Click">
-                                            <TextBlock Text="{}{}" FontFamily="{StaticResource FontFamily.Monospace}" FontSize="10" FontWeight="{StaticResource FontWeight.Bold}"/>
-                                        </Button>
-                                        <!-- Git #2217 — Windows File Browser mini panel toggle (§6.10).
-                                             Read-only by design — hands Claude an exact path, does not edit files. -->
-                                        <Button x:Name="BtnToggleFileBrowser" Style="{StaticResource PanelCollapseButton}"
-                                                Margin="8,0,0,0"
-                                                ToolTip="Windows File Browser — read-only, browse to a path"
-                                                Click="BtnToggleFileBrowser_Click">
-                                            <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
-                                        </Button>
-                                        <Button x:Name="BtnToggleGitMap" Style="{StaticResource PanelCollapseButton}"
-                                                Margin="8,0,0,0"
-                                                ToolTip="Git Map — this epic's focus build, dropped work, and features"
-                                                Click="BtnToggleGitMap_Click">
-                                            <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
-                                        </Button>
-                                        <!-- Git #2218 §6.2 — Git Doctor mini rail panel toggle, same mechanism
-                                             as BtnToggleRepoHealth/BtnToggleSqlRunner above. Reuses the real
-                                             landed GitDoctorService/GitDoctorDock state — no reimplementation. -->
-                                        <Button x:Name="BtnToggleGitDoctorMini" Style="{StaticResource PanelCollapseButton}"
-                                                Margin="8,0,0,0"
-                                                ToolTip="Git Doctor — real git-health findings + guided fix"
-                                                Click="BtnToggleGitDoctorMini_Click">
-                                            <TextBlock Text="&#xE9CE;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
                                         </Button>
                                         <!-- Git #2209 §10 — the Claude Floaty (⧉) button. Full floaty spec
                                              lives with the #2035/#2059/#2065 chain; what belongs HERE is only

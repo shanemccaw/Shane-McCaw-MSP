@@ -3034,35 +3034,58 @@ public partial class MainWindow : Window
         WrenchPopup.IsOpen = !WrenchPopup.IsOpen;
     }
 
+    // Git #2233 — the real 12-tool spec (Shane's screenshot, audited against docs/Toolbelt.md
+    // which was stale — it still described the old vault/batter/matrix/gate/health/settings
+    // belt). Order below matches that spec: Log Peek, API Runner, Graph Read, Graph Write,
+    // Git Doctor, Git Map, Repo Health, SQL Runner, PowerShell, Terminal, JSON Viewer,
+    // Windows File Browser. All 12 are landed and wired to their real existing
+    // panel/service state — nothing here is a fixture or a stub.
     private void BuildWrenchMenu()
     {
         WrenchMenuItems.Children.Clear();
         WrenchMenuItems.Children.Add(WrenchItem("Ask another epic a question…", () => { WrenchPopup.IsOpen = false; OpenCrossEpicComposer(); }));
         WrenchMenuItems.Children.Add(WrenchItem(_detectedItemsOpen ? "Hide Detected panel" : "Show Detected panel",
             () => { WrenchPopup.IsOpen = false; BtnToggleDetectedItems_Click(this, new RoutedEventArgs()); }));
+
+        WrenchMenuItems.Children.Add(WrenchSeparator());
+
         WrenchMenuItems.Children.Add(WrenchItem(_logPeekOpen ? "Hide Log Peek" : "Show Log Peek",
             () => { WrenchPopup.IsOpen = false; BtnToggleLogPeek_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_sqlRunnerOpen ? "Hide SQL Runner" : "Show SQL Runner",
-            () => { WrenchPopup.IsOpen = false; BtnToggleSqlRunner_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_jsonViewerOpen ? "Hide JSON Viewer" : "Show JSON Viewer",
-            () => { WrenchPopup.IsOpen = false; BtnToggleJsonViewer_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_fileBrowserOpen ? "Hide File Browser" : "Show File Browser",
-            () => { WrenchPopup.IsOpen = false; BtnToggleFileBrowser_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_gitMapOpen ? "Hide Git Map" : "Show Git Map",
-            () => { WrenchPopup.IsOpen = false; BtnToggleGitMap_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_psOpen ? "Hide PowerShell" : "Show PowerShell",
-            () => { WrenchPopup.IsOpen = false; BtnTogglePs_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_terminalOpen ? "Hide Terminal" : "Show Terminal",
-            () => { WrenchPopup.IsOpen = false; BtnToggleTerminal_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem(_apiExplorerOpen && _apiExplorerMode == Services.ApiExplorerMode.Local ? "Hide API Runner" : "Show API Runner",
             () => { WrenchPopup.IsOpen = false; OpenApiExplorer(Services.ApiExplorerMode.Local); }));
         WrenchMenuItems.Children.Add(WrenchItem(_apiExplorerOpen && _apiExplorerMode == Services.ApiExplorerMode.GraphRead ? "Hide Graph Read" : "Show Graph Read",
             () => { WrenchPopup.IsOpen = false; OpenApiExplorer(Services.ApiExplorerMode.GraphRead); }));
         WrenchMenuItems.Children.Add(WrenchItem(_apiExplorerOpen && _apiExplorerMode == Services.ApiExplorerMode.GraphWrite ? "Hide Graph Write" : "Show Graph Write",
             () => { WrenchPopup.IsOpen = false; OpenApiExplorer(Services.ApiExplorerMode.GraphWrite); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_gdMiniOpen ? "Hide Git Doctor" : "Show Git Doctor",
+            () => { WrenchPopup.IsOpen = false; BtnToggleGitDoctorMini_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_gitMapOpen ? "Hide Git Map" : "Show Git Map",
+            () => { WrenchPopup.IsOpen = false; BtnToggleGitMap_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_repoHealthOpen ? "Hide Repo Health" : "Show Repo Health",
+            () => { WrenchPopup.IsOpen = false; BtnToggleRepoHealth_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_sqlRunnerOpen ? "Hide SQL Runner" : "Show SQL Runner",
+            () => { WrenchPopup.IsOpen = false; BtnToggleSqlRunner_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_psOpen ? "Hide PowerShell" : "Show PowerShell",
+            () => { WrenchPopup.IsOpen = false; BtnTogglePs_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_terminalOpen ? "Hide Terminal" : "Show Terminal",
+            () => { WrenchPopup.IsOpen = false; BtnToggleTerminal_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_jsonViewerOpen ? "Hide JSON Viewer" : "Show JSON Viewer",
+            () => { WrenchPopup.IsOpen = false; BtnToggleJsonViewer_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_fileBrowserOpen ? "Hide File Browser" : "Show File Browser",
+            () => { WrenchPopup.IsOpen = false; BtnToggleFileBrowser_Click(this, new RoutedEventArgs()); }));
+
+        WrenchMenuItems.Children.Add(WrenchSeparator());
+
         WrenchMenuItems.Children.Add(WrenchItem("Pop into Claude Floaty", () => { WrenchPopup.IsOpen = false; BtnFloaty_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Start a new chat", () => { WrenchPopup.IsOpen = false; BtnStartNewChat_Click(this, new RoutedEventArgs()); }));
     }
+
+    private FrameworkElement WrenchSeparator() => new Border
+    {
+        Height = 1,
+        Margin = new Thickness(4, 4, 4, 4),
+        Background = (Brush)FindResource("Brush.Border.Popover"),
+    };
 
     private FrameworkElement WrenchItem(string label, Action onClick)
     {
