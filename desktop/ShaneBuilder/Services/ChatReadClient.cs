@@ -254,4 +254,38 @@ public sealed class ChatReadClient
         }
         return result;
     }
+
+    // ── Git #2213 — Git Map read-only lookups against bt_build_queue ────────────────────────
+    /// <summary>The real <c>status</c> (lowercase — <c>queued</c>/<c>running</c>/<c>done</c>/…, as
+    /// stored) of the MOST RECENT <c>bt_build_queue</c> row for one issue number, or null when this
+    /// issue has never been queued. No cross-process step/total progress exists to read (confirmed:
+    /// BuildConsole's <c>BuildProgressTracker</c> is in-process memory only) — this coarse queue
+    /// status is the real, honest substitute rather than a guessed percentage.</summary>
+    public async Task<string?> GetMostRecentBuildQueueStatusAsync(int githubNumber)
+    {
+        if (githubNumber <= 0) return null;
+        await using var conn = await OpenAsync();
+        const string sql = @"
+            SELECT status FROM bt_build_queue
+            WHERE github_number = @n
+            ORDER BY COALESCE(completed_at, claimed_at, created_at) DESC
+            LIMIT 1";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@n", githubNumber);
+        var scalar = await cmd.ExecuteScalarAsync();
+        return scalar is string s ? s : null;
+    }
+
+    /// <summary>Real count of <c>bt_build_queue</c> rows that reached <c>status='done'</c> strictly
+    /// after <paramref name="sinceUtc"/> — the "builds-since" figure for a Started-and-Dropped item,
+    /// i.e. how many OTHER builds have landed while this one sat untouched.</summary>
+    public async Task<int> CountDoneBuildsSinceAsync(DateTimeOffset sinceUtc)
+    {
+        await using var conn = await OpenAsync();
+        const string sql = "SELECT count(*) FROM bt_build_queue WHERE status = 'done' AND completed_at > @since";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@since", sinceUtc);
+        var scalar = await cmd.ExecuteScalarAsync();
+        return scalar is long l ? (int)l : Convert.ToInt32(scalar);
+    }
 }

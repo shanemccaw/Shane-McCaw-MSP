@@ -810,6 +810,12 @@
                                                 Click="BtnToggleFileBrowser_Click">
                                             <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
                                         </Button>
+                                        <Button x:Name="BtnToggleGitMap" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="Git Map — this epic's focus build, dropped work, and features"
+                                                Click="BtnToggleGitMap_Click">
+                                            <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                                        </Button>
                                         <!-- Git #2209 §10 — the Claude Floaty (⧉) button. Full floaty spec
                                              lives with the #2035/#2059/#2065 chain; what belongs HERE is only
                                              the button + that the floaty and this tab show the SAME conversation
@@ -920,6 +926,7 @@
                                 <ColumnDefinition x:Name="RepoHealthColumn" Width="0"/>
                                 <ColumnDefinition x:Name="JsonViewerColumn" Width="0"/>
                                 <ColumnDefinition x:Name="FileBrowserColumn" Width="0"/>
+                                <ColumnDefinition x:Name="GitMapColumn" Width="0"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Stat detail flyout — Shane's own addition, not in the mockup:
@@ -1439,6 +1446,43 @@
                                     <TreeView x:Name="FileBrowserTree" Margin="6,8,6,8"
                                               Background="Transparent" BorderThickness="0"
                                               SelectedItemChanged="FileBrowserTree_SelectedItemChanged"/>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Git #2213 — Git Map mini panel. Same 280px flyout-column mechanism
+                                 as StatDetailPanel/DetectedItemsPanel/LogPeekPanel above (the real,
+                                 established rail-mini-panel precedent — #2209 shipped no generic tool
+                                 rail container). Body is entirely dynamic (GitMapService, single-
+                                 sourced with the full Git Map document tab) — see RenderGitMap*
+                                 in code-behind. Column 8 — SQL Runner/Repo Health/JSON Viewer/File
+                                 Browser landed concurrently and took 4-7. -->
+                            <Border x:Name="GitMapPanel" Grid.Column="8" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="280">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <TextBlock Text="&#xE740;" Margin="0,0,10,0" Cursor="Hand"
+                                                           ToolTip="Maximize to the full Git Map"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="GitMapMaximize_Click"/>
+                                                <TextBlock Text="&#xE711;" Cursor="Hand"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="BtnToggleGitMap_Click"/>
+                                            </StackPanel>
+                                            <TextBlock Text="Git Map" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="GitMapResults" Margin="10,10,10,14"/>
+                                    </ScrollViewer>
                                 </DockPanel>
                             </Border>
                         </Grid>
@@ -1965,6 +2009,47 @@
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <Border x:Name="MarkdownViewerContentHost" Margin="24,16" HorizontalAlignment="Stretch"/>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- Git #2213 — Git Map full document. Real audit: README-ClaudeChat.md, the
+                         doc that would define this document's OWN distinct layout, does not exist
+                         in the repo (git history search came back empty; tracked at #2227, still
+                         open). Rather than invent a layout, this reuses the EXACT SAME card-render
+                         methods the mini panel uses (single-source, per #2213's hard constraint) in
+                         a single wide column — real data, honestly plain layout. -->
+                    <Grid x:Name="GitMapDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,10" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <DockPanel LastChildFill="True">
+                                <Button DockPanel.Dock="Right" x:Name="BtnGitMapRefresh" Content="Refresh"
+                                        Style="{StaticResource PanelCollapseButton}" Width="Auto" Height="30" Padding="12,0"
+                                        Click="BtnGitMapRefresh_Click"
+                                        Foreground="{StaticResource Brush.Text.Primary}"
+                                        FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11.5}"/>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,10,0"
+                                               Foreground="{StaticResource Brush.Epic.Gate}"/>
+                                    <StackPanel>
+                                        <TextBlock Text="Git Map" FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                                   FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                   Foreground="{StaticResource Brush.Text.Heading}"/>
+                                        <TextBlock Text="Full-document layout has no surviving spec (README-ClaudeChat.md — see #2227); real data below, same source as the mini panel."
+                                                   Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="620"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="GitMapDocResults" Margin="24,16" MaxWidth="640" HorizontalAlignment="Left"/>
                         </ScrollViewer>
                     </Grid>
                 </Grid>

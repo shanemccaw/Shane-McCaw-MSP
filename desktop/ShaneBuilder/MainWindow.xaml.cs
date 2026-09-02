@@ -426,6 +426,7 @@ public partial class MainWindow : Window
         public TabKind? Kind { get; }
         public string? Ext { get; }
         public bool IsLogViewer { get; }
+        public bool IsGitMap { get; }
         // Git #2211 — set for a Markdown Viewer tab opened by dropping a .md file;
         // the real path SelectTab reads from and MarkdownRenderer.Render()s into
         // MarkdownViewerDock. Null for every other tab kind.
@@ -445,7 +446,7 @@ public partial class MainWindow : Window
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
             string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
-            bool isRepoHealth = false)
+            bool isRepoHealth = false, bool isGitMap = false)
         {
             Id = id;
             Title = title;
@@ -461,6 +462,7 @@ public partial class MainWindow : Window
             Dot = dot;
             BuildSet = buildSet;
             EpicNumber = epicNumber;
+            IsGitMap = isGitMap;
         }
     }
 
@@ -847,7 +849,8 @@ public partial class MainWindow : Window
         RepoHealthDock.Visibility = tab.IsRepoHealth ? Visibility.Visible : Visibility.Collapsed;
         LogViewerDock.Visibility = tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
         MarkdownViewerDock.Visibility = tab.IsMarkdownViewer ? Visibility.Visible : Visibility.Collapsed;
-        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer;
+        GitMapDock.Visibility = tab.IsGitMap ? Visibility.Visible : Visibility.Collapsed;
+        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -861,6 +864,8 @@ public partial class MainWindow : Window
             EnsureLogViewerLoaded();
         if (tab.IsMarkdownViewer)
             LoadMarkdownViewerTab(tab);
+        if (tab.IsGitMap)
+            _ = RenderGitMapDocAsync();
     }
 
     // ── Markdown Viewer — Git #2211. Real OS file drag-and-drop onto the
@@ -2991,6 +2996,8 @@ public partial class MainWindow : Window
             () => { WrenchPopup.IsOpen = false; BtnToggleJsonViewer_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem(_fileBrowserOpen ? "Hide File Browser" : "Show File Browser",
             () => { WrenchPopup.IsOpen = false; BtnToggleFileBrowser_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_gitMapOpen ? "Hide Git Map" : "Show Git Map",
+            () => { WrenchPopup.IsOpen = false; BtnToggleGitMap_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Pop into Claude Floaty", () => { WrenchPopup.IsOpen = false; BtnFloaty_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Start a new chat", () => { WrenchPopup.IsOpen = false; BtnStartNewChat_Click(this, new RoutedEventArgs()); }));
     }
@@ -3299,6 +3306,11 @@ public partial class MainWindow : Window
             (Brush)FindResource("Brush.LogSource.Console"), "Log Viewer",
             "COLD search, BURST/LIVE tail, and the real on-disk archive.",
             () => OpenLogViewer()));
+
+        results.Add(new PaletteResult("ClaudeUrls", "Git Map", "Epic-scoped focus build, dropped work, and features",
+            (Brush)FindResource("Brush.Epic.Gate"), "Git Map",
+            "Real Focus Build + Started-and-Dropped + open-epic browser, off live GitHub + bt_build_queue.",
+            () => OpenGitMap()));
 
         foreach (var tab in _tabs)
         {
@@ -7077,5 +7089,389 @@ public partial class MainWindow : Window
         if (FileBrowserTree.SelectedItem is not TreeViewItem item || item.Tag is not FileBrowserNode { IsDirectory: false } node) return;
         Clipboard.SetText(node.FullPath);
         ToastEngine.Show("File Browser", "Path copied.", ToastKind.Info);
+    }
+    // ── Git Map — Git #2213 ══════════════════════════════════════════════════════════════════
+    // Epic-scoped digest: pending cross-epic questions targeting this epic, the Focus Build
+    // (this epic's real in-flight feature), Started-and-Dropped (real abandoned work, global),
+    // and an Epics browser whose expanded epic lists real feature cards. Single-sourced with the
+    // full Git Map document (RenderGitMapAsync / RenderGitMapDocAsync both read the same
+    // _gitMapData/_gitMapFeatureCache, built by Services.GitMapService — no second data path,
+    // per #2213's hard constraint). Full-document LAYOUT has no surviving spec — see the note on
+    // GitMapDock in XAML and #2227 — so the doc tab reuses these SAME card builders in one wide
+    // column rather than guessing a distinct design.
+    private bool _gitMapOpen;
+    private Services.GitMapData? _gitMapData;
+    private int _gitMapDataEpic = int.MinValue;
+    private readonly Dictionary<int, List<Services.GitMapFeature>> _gitMapFeatureCache = new();
+    private readonly HashSet<int> _gitMapExpandedEpics = new();
+    private int _gitMapRenderSeq;
+
+    private void BtnToggleGitMap_Click(object sender, RoutedEventArgs e)
+    {
+        _gitMapOpen = !_gitMapOpen;
+        GitMapColumn.Width = new GridLength(_gitMapOpen ? 280 : 0);
+        if (_gitMapOpen) _ = RenderGitMapAsync();
+    }
+
+    private void GitMapMaximize_Click(object sender, MouseButtonEventArgs e)
+    {
+        _gitMapOpen = false;
+        GitMapColumn.Width = new GridLength(0);
+        OpenGitMap();
+    }
+
+    private void OpenGitMap()
+    {
+        if (_tabs.Find(t => t.Id == "gitmap") == null)
+            _tabs.Add(new TabDef("gitmap", "Git Map", isGitMap: true, dot: (Brush)FindResource("Brush.Epic.Gate")));
+        SelectTab("gitmap");
+    }
+
+    private void BtnGitMapRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        _gitMapData = null;
+        _gitMapFeatureCache.Clear();
+        _ = RenderGitMapDocAsync();
+    }
+
+    /// <summary>Fetches (or reuses) the epic-scoped snapshot for the active chat's epic. A tab
+    /// switch to a different epic invalidates the cache — a stale epic's Focus Build/Epics-first
+    /// tag must never linger under a new epic's chat.</summary>
+    private async Task<Services.GitMapData> EnsureGitMapDataAsync()
+    {
+        int epic = _activeChatTab?.EpicNumber ?? 0;
+        if (_gitMapData != null && _gitMapDataEpic == epic) return _gitMapData;
+
+        var db = ResolveChatReadClient();
+        var repoRoot = _logService.MainRepoRoot ?? Environment.CurrentDirectory;
+        var data = await Services.GitMapService.BuildAsync(epic > 0 ? epic : (int?)null, repoRoot, db);
+
+        _gitMapData = data;
+        _gitMapDataEpic = epic;
+        _gitMapFeatureCache.Clear();
+        _gitMapExpandedEpics.Clear();
+        return data;
+    }
+
+    private async Task RenderGitMapAsync()
+    {
+        int seq = ++_gitMapRenderSeq;
+        GitMapResults.Children.Clear();
+        GitMapResults.Children.Add(GitMapLoadingRow());
+
+        var data = await EnsureGitMapDataAsync();
+        if (seq != _gitMapRenderSeq) return; // a newer refresh superseded this one
+
+        GitMapResults.Children.Clear();
+        foreach (var el in BuildGitMapBody(data))
+            GitMapResults.Children.Add(el);
+    }
+
+    private async Task RenderGitMapDocAsync()
+    {
+        int seq = ++_gitMapRenderSeq;
+        GitMapDocResults.Children.Clear();
+        GitMapDocResults.Children.Add(GitMapLoadingRow());
+
+        var data = await EnsureGitMapDataAsync();
+        if (seq != _gitMapRenderSeq) return;
+
+        GitMapDocResults.Children.Clear();
+        foreach (var el in BuildGitMapBody(data))
+            GitMapDocResults.Children.Add(el);
+    }
+
+    private TextBlock GitMapLoadingRow() => new()
+    {
+        Text = "Loading Git Map…",
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10.5,
+        Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+    };
+
+    /// <summary>The one real UI-construction path both surfaces call — the actual single-source
+    /// guarantee, not just shared data. Rebuilds a fresh element tree each call (a WPF element can't
+    /// be parented twice) but every element is built from the identical GitMapData/feature cache.</summary>
+    private List<UIElement> BuildGitMapBody(Services.GitMapData data)
+    {
+        var children = new List<UIElement>();
+
+        if (!data.GitHubReachable)
+        {
+            children.Add(GitMapNote($"GitHub unreachable — {data.GitHubError ?? "gh call failed"}. Showing whatever loaded before the failure."));
+        }
+
+        // Pending cross-epic questions targeting THIS epic — real, in-memory CrossEpicQuestion
+        // state from §7 (#2209), filtered the other direction from the Detected panel's "questions
+        // I asked" view: here it's "other chats are asking THIS epic something, still open".
+        int epic = _activeChatTab?.EpicNumber ?? 0;
+        var pending = _crossEpicQuestions.Where(q => q.TargetEpic == epic && !q.Answered).ToList();
+        if (pending.Count > 0)
+        {
+            children.Add(GitMapSectionHeader($"Pending cross-epic questions ({pending.Count})"));
+            foreach (var q in pending) children.Add(GitMapPendingQuestionCard(q));
+        }
+
+        children.Add(GitMapSectionHeader("Focus Build"));
+        children.Add(data.FocusBuild != null ? GitMapFocusBuildCard(data.FocusBuild) : GitMapNote(
+            epic > 0 ? "No feature in this epic currently carries the real in-flight label." : "This chat has no epic assigned."));
+
+        children.Add(GitMapSectionHeader("Started-and-Dropped"));
+        if (data.Dropped.Count == 0)
+            children.Add(GitMapNote("No real abandoned work found — every non-DONE bookend's issue is either closed elsewhere or has no bookend at all."));
+        else
+            foreach (var d in data.Dropped) children.Add(GitMapDroppedCard(d));
+
+        children.Add(GitMapSectionHeader($"Epics ({data.Epics.Count})"));
+        foreach (var e in data.Epics) children.Add(GitMapEpicRow(e));
+
+        return children;
+    }
+
+    private TextBlock GitMapSectionHeader(string text) => new()
+    {
+        Text = text.ToUpperInvariant(),
+        Margin = new Thickness(0, 14, 0, 6),
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"),
+        Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+    };
+
+    private TextBlock GitMapNote(string text) => new()
+    {
+        Text = text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8),
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+        Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+    };
+
+    private Border GitMapPendingQuestionCard(CrossEpicQuestion q)
+    {
+        var outer = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 8), CornerRadius = new CornerRadius(8),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Bubble"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Accent"), BorderThickness = new Thickness(1),
+            Padding = new Thickness(10, 8, 10, 8),
+        };
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = q.QuestionText, TextWrapping = TextWrapping.Wrap,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+        });
+        outer.Child = stack;
+        return outer;
+    }
+
+    private Border GitMapFocusBuildCard(Services.GitMapFocusBuild f)
+    {
+        var green = (Brush)FindResource("Brush.Alert.Success");
+        var outer = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 8), CornerRadius = new CornerRadius(8),
+            Background = Tint(green, 0x1E), BorderBrush = Tint(green, 0x66), BorderThickness = new Thickness(1),
+            Padding = new Thickness(10, 8, 10, 8),
+        };
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = $"#{f.Number} · IN FLIGHT", FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = green,
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = f.Title, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+        });
+        string meta = $"{f.OpenGapCount} open gap{(f.OpenGapCount == 1 ? "" : "s")}" +
+            (f.BuildQueueStatus != null ? $" · queue: {f.BuildQueueStatus}" : "");
+        stack.Children.Add(new TextBlock
+        {
+            Text = meta, Margin = new Thickness(0, 3, 0, 0),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        });
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
+        actions.Children.Add(DetectionActionLink("Send to chat", green, () => SendFeatureToComposer(f.Number, f.Title)));
+        actions.Children.Add(DetectionActionLink("Open on GitHub", (Brush)FindResource("Brush.Claude.Text.Muted"), () => OpenIssueInBrowser(f.Number)));
+        stack.Children.Add(actions);
+        outer.Child = stack;
+        return outer;
+    }
+
+    private Border GitMapDroppedCard(Services.GitMapDroppedItem d)
+    {
+        var red = (Brush)FindResource("Brush.Alert.Danger.Border");
+        var outer = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 8), CornerRadius = new CornerRadius(8),
+            Background = (Brush)FindResource("Brush.Alert.Danger.Bg"), BorderBrush = Tint(red, 0x66), BorderThickness = new Thickness(1),
+            Padding = new Thickness(10, 8, 10, 8),
+        };
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = $"#{d.Number} · {d.BuildsSince} build{(d.BuildsSince == 1 ? "" : "s")} since last touched",
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = red,
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = d.Title, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = $"Last touched {d.LastTouchedAtUtc.ToLocalTime():MMM d, h:mm tt}",
+            Margin = new Thickness(0, 3, 0, 0),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        });
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
+        actions.Children.Add(DetectionActionLink("Send to chat", red, () => SendFeatureToComposer(d.Number, d.Title)));
+        actions.Children.Add(DetectionActionLink("Open on GitHub", (Brush)FindResource("Brush.Claude.Text.Muted"), () => OpenIssueInBrowser(d.Number)));
+        stack.Children.Add(actions);
+        outer.Child = stack;
+        return outer;
+    }
+
+    private StackPanel GitMapEpicRow(Services.GitMapEpic e)
+    {
+        bool expanded = _gitMapExpandedEpics.Contains(e.Number);
+        var container = new StackPanel { Margin = new Thickness(0, 0, 0, 4) };
+
+        var header = new Border
+        {
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6, 8, 6), Cursor = Cursors.Hand,
+            Background = e.IsThisChat ? Tint((Brush)FindResource("Brush.Claude.Accent"), 0x1E) : (Brush)FindResource("Brush.Claude.Bg.Bubble"),
+        };
+        var headerRow = new DockPanel();
+        headerRow.Children.Add(new TextBlock
+        {
+            Text = expanded ? "" : "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 9,
+            Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        });
+        var titleStack = new StackPanel();
+        var titleRow = new StackPanel { Orientation = Orientation.Horizontal };
+        titleRow.Children.Add(new TextBlock
+        {
+            Text = $"#{e.Number}", FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+            Margin = new Thickness(0, 0, 6, 0), Foreground = (Brush)FindResource("Brush.Claude.Accent"),
+        });
+        if (e.IsThisChat)
+            titleRow.Children.Add(new Border
+            {
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(0, 0, 6, 0),
+                Background = (Brush)FindResource("Brush.Claude.Accent"),
+                Child = new TextBlock { Text = "THIS CHAT", FontSize = 7.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = Brushes.Black },
+            });
+        titleStack.Children.Add(titleRow);
+        titleStack.Children.Add(new TextBlock
+        {
+            Text = e.Title, TextWrapping = TextWrapping.Wrap,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+        });
+        headerRow.Children.Add(titleStack);
+        header.Child = headerRow;
+        header.MouseLeftButtonDown += (s, ev) => ToggleGitMapEpic(e.Number);
+        container.Children.Add(header);
+
+        if (expanded)
+        {
+            var body = new StackPanel { Margin = new Thickness(16, 4, 0, 4) };
+            if (_gitMapFeatureCache.TryGetValue(e.Number, out var cached))
+            {
+                if (cached.Count == 0)
+                    body.Children.Add(GitMapNote("No open sub-issues under this epic."));
+                else
+                    foreach (var f in cached.Where(x => !x.IsClosed)) body.Children.Add(GitMapFeatureCard(f));
+            }
+            else
+            {
+                body.Children.Add(GitMapNote("Loading features…"));
+                _ = LoadGitMapEpicFeaturesAsync(e.Number);
+            }
+            container.Children.Add(body);
+        }
+
+        return container;
+    }
+
+    private void ToggleGitMapEpic(int epicNumber)
+    {
+        if (!_gitMapExpandedEpics.Remove(epicNumber)) _gitMapExpandedEpics.Add(epicNumber);
+        _ = RenderGitMapAsync();
+        _ = RenderGitMapDocAsync();
+    }
+
+    private async Task LoadGitMapEpicFeaturesAsync(int epicNumber)
+    {
+        var (ok, features, error) = await Services.GitMapService.GetFeaturesForEpicAsync(epicNumber);
+        if (ok) _gitMapFeatureCache[epicNumber] = features;
+        else Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[git-map] feature load failed for epic #{epicNumber}: {error}");
+        _ = RenderGitMapAsync();
+        _ = RenderGitMapDocAsync();
+    }
+
+    private Border GitMapFeatureCard(Services.GitMapFeature f)
+    {
+        var outer = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 6), CornerRadius = new CornerRadius(7),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Bubble"), BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+            BorderThickness = new Thickness(1), Padding = new Thickness(8, 6, 8, 6),
+        };
+        var stack = new StackPanel();
+        var chipRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 3) };
+        if (f.IsInFlight) chipRow.Children.Add(GitMapChip("IN FLIGHT", (Brush)FindResource("Brush.Alert.Success")));
+        if (f.IsBlocked) chipRow.Children.Add(GitMapChip("BLOCKED", (Brush)FindResource("Brush.Status.Blocked")));
+        if (f.IsComplete) chipRow.Children.Add(GitMapChip("COMPLETE", (Brush)FindResource("Brush.Status.Done")));
+        if (chipRow.Children.Count > 0) stack.Children.Add(chipRow);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = $"#{f.Number} {f.Title}", TextWrapping = TextWrapping.Wrap,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+        });
+
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
+        actions.Children.Add(DetectionActionLink("Focus", (Brush)FindResource("Brush.Claude.Accent"), () => OpenIssueInBrowser(f.Number)));
+        actions.Children.Add(DetectionActionLink("Send", (Brush)FindResource("Brush.Claude.Text.Muted"), () => SendFeatureToComposer(f.Number, f.Title)));
+        stack.Children.Add(actions);
+
+        outer.Child = stack;
+        return outer;
+    }
+
+    private Border GitMapChip(string text, Brush color) => new()
+    {
+        CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(0, 0, 5, 0),
+        Background = Tint(color, 0x33), BorderBrush = color, BorderThickness = new Thickness(1),
+        Child = new TextBlock { Text = text, FontSize = 7.5, FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), Foreground = color },
+    };
+
+    // "Send" mirrors #2209's already-established "Promote to Queue" shape exactly (PromoteDetection) —
+    // a real, queue-ready --title build header staged into the composer, never auto-dispatched (§5).
+    private void SendFeatureToComposer(int number, string title)
+    {
+        string staged = $"--title {number} --model claude-sonnet-5 --effort medium --buildSet ShaneBuilder\n\n{title}";
+        AppendToComposer(staged);
+        ToastEngine.Show("Git Map", "Staged into the composer — review, then Send to queue it.", ToastKind.Info);
+    }
+
+    private void OpenIssueInBrowser(int number)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo($"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{number}") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[git-map] couldn't open issue #{number} in browser: {ex.Message}");
+        }
     }
 }
