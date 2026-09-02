@@ -3523,6 +3523,31 @@ public partial class MainWindow : Window
             RenderPaletteCategories();
             RenderCommandPaletteResults(preserveSelection: true);
         }
+
+        // Git #2410 — revalidate every locally-active row's real GitHub board Status on this same
+        // refresh, not just the local bt_build_queue snapshot (the real #1734 incident: an item
+        // moved back to Backlog on GitHub kept showing as running/queued locally until Shane
+        // manually stopped it). Runs AFTER the render above so a normal palette open never blocks
+        // on GitHub — reconciliation lands as a second, fire-and-forget re-render once it resolves.
+        if (_paletteBuilds.Count > 0)
+            _ = ReconcilePaletteBuildStatusesAsync(seq);
+    }
+
+    private async Task ReconcilePaletteBuildStatusesAsync(int seq)
+    {
+        try
+        {
+            await Services.QueueStatusReconciler.ReconcileAsync(_paletteBuilds, _chatGitHubFilter);
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[queue] palette status reconciliation failed: {ex.Message}");
+            return;
+        }
+        if (seq != _paletteRealDataLoadSeq) return; // superseded by a newer load
+
+        if (CommandPaletteOverlay.Visibility == Visibility.Visible)
+            RenderCommandPaletteResults(preserveSelection: true);
     }
 
     private void CloseCommandPalette()
@@ -3672,8 +3697,12 @@ public partial class MainWindow : Window
         foreach (var build in _paletteBuilds)
         {
             string byTitle = build.GithubNumber.HasValue ? $"#{build.GithubNumber.Value} {build.Title}" : build.Title;
-            string subtitle = $"{build.BuildSet ?? "—"} · {build.Status}";
-            var dot = QueueStatusBrush(build.Status);
+            // Git #2410 — a row flagged stale by ReconcilePaletteBuildStatusesAsync shows the real
+            // GitHub board Status, not the local cache's own belief it's still active.
+            string subtitle = build.IsStale
+                ? $"{build.BuildSet ?? "—"} · stale — GitHub now says {build.BoardStatus}"
+                : $"{build.BuildSet ?? "—"} · {build.Status}";
+            var dot = build.IsStale ? (Brush)FindResource("Brush.Text.Dim") : QueueStatusBrush(build.Status);
             results.Add(new PaletteResult("Builds", byTitle, subtitle, dot, byTitle, null,
                 () => { if (build.GithubNumber.HasValue) OpenIssueInBrowser(build.GithubNumber.Value); CloseCommandPalette(); }, payload: build));
             results.Add(new PaletteResult("BuildIDs", $"Build {build.Id} — {build.Title}", subtitle, dot, byTitle, null,
@@ -4015,6 +4044,17 @@ public partial class MainWindow : Window
         string titleLine = build.GithubNumber.HasValue ? $"#{build.GithubNumber} {build.Title}" : build.Title;
         CommandPalettePreview.Children.Add(PaletteDetailTitle(titleLine));
         CommandPalettePreview.Children.Add(PaletteDetailMeta($"Build {build.Id} · {build.BuildSet ?? "—"} · {build.Model ?? "—"} / {build.Effort ?? "—"}"));
+
+        // Git #2410 — real reconciliation result, not just the cached local status: a row can look
+        // active in `bt_build_queue` while GitHub has already moved it back to Backlog (or anywhere
+        // else non-launch). Only rendered once a real board-status lookup has actually resolved for
+        // this row (BoardStatus != null) — an unresolved/unreachable lookup says nothing here.
+        if (build.BoardStatus != null)
+        {
+            CommandPalettePreview.Children.Add(build.IsStale
+                ? PaletteMutedNote($"⚠ Stale — local status is \"{build.Status}\" but GitHub's real board Status is now \"{build.BoardStatus}\".")
+                : PaletteDetailMeta($"GitHub board Status: {build.BoardStatus} (matches local)"));
+        }
 
         CommandPalettePreview.Children.Add(PaletteSectionLabel("Progress"));
         var (step, total, label) = ReadPaletteBuildProgress(build.Id);
