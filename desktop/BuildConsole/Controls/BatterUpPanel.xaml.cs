@@ -332,7 +332,10 @@ namespace BuildConsole.Controls
             {
                 mainStack.Children.Add(new TextBlock
                 {
-                    Text = $"waiting on #{string.Join(", #", r.OpenBlockedByNumbers)}",
+                    // Git #2225 — show what's GENUINELY still holding it (open AND not yet satisfied by a
+                    // verified DONE bookend), not every raw-open blocker; a blocker open-but-proven-landed
+                    // no longer blocks and shouldn't appear here.
+                    Text = $"waiting on #{string.Join(", #", r.BlockingNumbers)}",
                     FontSize = 10,
                     FontStyle = FontStyles.Italic,
                     Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8)),

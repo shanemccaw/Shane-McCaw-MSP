@@ -356,6 +356,40 @@ namespace BuildConsole.Services
                     ActivityLog.Log("watcher", $"Git #1600/#1904: couldn't reach GitHub to re-check blocker(s)/own-issue state ({live.Error}) — holding every candidate that needs a live check this tick (fail closed).");
                 }
             }
+
+            // Git #2225 — a blocker that GitHub still reports OPEN can nonetheless be safe to build
+            // on if its work genuinely landed: a real DONE bookend on origin/main whose cited commit
+            // passes `git cat-file -t` (real commit object) AND `git merge-base --is-ancestor <sha>
+            // origin/main`. Closing an issue is a deliberately slower human step; requiring it before
+            // a dependent can even START is what stalled whole dependency chains overnight (Shane: "I
+            // can't queue up a big feature and go to bed"). So a blocker counts satisfied on EITHER
+            // GitHub-closed OR a verified DONE bookend — whichever comes first. Computed ONCE for every
+            // blocker still open across all candidates this pass (same single-snapshot discipline as
+            // the live open-issue fetch above), and ONLY when GitHub was actually reachable — a
+            // fail-closed live snapshot already holds every blocked candidate in the loop below. The
+            // verifier itself fails closed on every error, so this can only ever RELEASE work that is
+            // provably on origin/main, never work that isn't.
+            HashSet<int> satisfiedByDoneBookend = new();
+            if (live != null && live.Success)
+            {
+                var stillOpenAcrossAll = candidates
+                    .SelectMany(EffectiveBlockers)
+                    .Where(b => live.OpenNumbers.Contains(b))
+                    .Distinct()
+                    .ToList();
+                if (stillOpenAcrossAll.Count > 0)
+                {
+                    try
+                    {
+                        satisfiedByDoneBookend = await DoneBookendVerifier.GetSatisfiedAsync(stillOpenAcrossAll);
+                    }
+                    catch (Exception ex)
+                    {
+                        ActivityLog.Log("watcher", $"Git #2225: DONE-bookend blocker check threw ({ex.Message}) — treating all still-open blockers as unsatisfied this tick (fail closed).");
+                    }
+                }
+            }
+
             foreach (var item in candidates)
             {
                 if (ready.Count >= limit) break;
@@ -388,7 +422,10 @@ namespace BuildConsole.Services
                 }
 
                 if (blockers.Count == 0) { ready.Add(item); continue; }
-                var stillOpen = blockers.Where(b => live.OpenNumbers.Contains(b)).ToList();
+                // Git #2225 — held only by blockers that are BOTH still open on GitHub AND not yet
+                // satisfied by a verified DONE bookend. A blocker open on GitHub but proven-landed
+                // (verified bookend) no longer holds a dependent — that's the whole liveness fix.
+                var stillOpen = blockers.Where(b => live.OpenNumbers.Contains(b) && !satisfiedByDoneBookend.Contains(b)).ToList();
                 if (stillOpen.Count == 0) { ready.Add(item); continue; }
                 heldReasons[item.Id] = $"waiting on {string.Join(", ", stillOpen.Select(b => $"#{b}"))} (open)";
             }

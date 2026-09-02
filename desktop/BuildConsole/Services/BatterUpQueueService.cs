@@ -30,9 +30,21 @@ namespace BuildConsole.Services
         public bool HasBuildComment { get; init; }
         /// <summary>Every real GitHub `blocked_by` dependency number declared on this issue (open or closed).</summary>
         public List<int> BlockedByNumbers { get; init; } = new();
-        /// <summary>The subset of <see cref="BlockedByNumbers"/> GitHub currently reports still OPEN — what the row's blocked badge shows.</summary>
+        /// <summary>The subset of <see cref="BlockedByNumbers"/> GitHub currently reports still OPEN — the real
+        /// open/closed display signal (Git #2225 keeps this as the honest GitHub-state badge). Note this is no
+        /// longer the same thing as "genuinely still blocking": a blocker open here can still be safe to build
+        /// on (see <see cref="SatisfiedByBookendNumbers"/> / <see cref="BlockingNumbers"/>).</summary>
         public List<int> OpenBlockedByNumbers { get; init; } = new();
-        public bool IsBlocked => OpenBlockedByNumbers.Count > 0;
+        /// <summary>Git #2225 — the subset of <see cref="OpenBlockedByNumbers"/> that, although still OPEN on
+        /// GitHub, is already satisfied by a real git-verified DONE bookend on origin/main (see
+        /// <see cref="BuildConsole.Services.DoneBookendVerifier"/>). These no longer hold a dependent build.</summary>
+        public List<int> SatisfiedByBookendNumbers { get; init; } = new();
+        /// <summary>Git #2225 — the blockers GENUINELY still holding this item: open on GitHub AND not yet
+        /// satisfied by a verified DONE bookend. This — not raw open/closed — is what "blocked" now means for the
+        /// card, matching the live #1600 launch gate so the badge can't say "🔒 BLOCKED" on something that will
+        /// actually auto-launch.</summary>
+        public List<int> BlockingNumbers { get; init; } = new();
+        public bool IsBlocked => BlockingNumbers.Count > 0;
         /// <summary>True when a `bt_build_queue` row already exists for this issue (any status) — this refresh left it alone.</summary>
         public bool AlreadyTracked { get; init; }
         /// <summary>Set true only on the refresh pass that actually inserted a fresh queue row for this item.</summary>
@@ -172,6 +184,16 @@ namespace BuildConsole.Services
                 var blockers = await gh.GetBlockedByAsync(item.Number);
                 var blockedByNumbers = blockers.Select(b => b.Number).ToList();
                 var openBlockedByNumbers = blockers.Where(b => !b.IsClosed).Select(b => b.Number).ToList();
+                // Git #2225 — an open blocker can still be safe to build on when a real DONE bookend
+                // for it is on origin/main with a git-verified ancestor commit. Split the open set into
+                // "satisfied anyway" vs "genuinely still blocking" so the card badge matches the live
+                // #1600 launch gate rather than over-reporting BLOCKED on something that will auto-launch.
+                // OpenBlockedByNumbers is preserved as the honest raw GitHub open/closed signal.
+                var satisfiedByBookend = openBlockedByNumbers.Count > 0
+                    ? await DoneBookendVerifier.GetSatisfiedAsync(openBlockedByNumbers)
+                    : new HashSet<int>();
+                var satisfiedByBookendNumbers = openBlockedByNumbers.Where(n => satisfiedByBookend.Contains(n)).ToList();
+                var blockingNumbers = openBlockedByNumbers.Where(n => !satisfiedByBookend.Contains(n)).ToList();
 
                 if (rawComment == null)
                 {
@@ -184,6 +206,8 @@ namespace BuildConsole.Services
                         HasBuildComment = false,
                         BlockedByNumbers = blockedByNumbers,
                         OpenBlockedByNumbers = openBlockedByNumbers,
+                        SatisfiedByBookendNumbers = satisfiedByBookendNumbers,
+                        BlockingNumbers = blockingNumbers,
                     });
                     continue;
                 }
@@ -234,6 +258,8 @@ namespace BuildConsole.Services
                     HasBuildComment = true,
                     BlockedByNumbers = blockedByNumbers,
                     OpenBlockedByNumbers = openBlockedByNumbers,
+                    SatisfiedByBookendNumbers = satisfiedByBookendNumbers,
+                    BlockingNumbers = blockingNumbers,
                     AlreadyTracked = false,
                     JustAutoQueued = false,
                     TrackedTerminalStatus = trackedTerminalStatus,
