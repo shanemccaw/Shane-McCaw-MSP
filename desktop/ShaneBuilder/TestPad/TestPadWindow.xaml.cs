@@ -213,6 +213,18 @@ namespace ShaneBuilder
 
             var count = target.Count;
             ToastEngine.Success("Test Pad", $"Sent {count} {(count == 1 ? "note" : "notes")} into the composer — review, then Send.");
+
+            // Git #2341 — sending a batch that includes notes carrying an attached shot (#2340)
+            // opens the Paste Tray (#2342) right after: the text already landed in the composer
+            // above, but the clipboard can only hold one image at a time, so shots need a manual
+            // walkthrough rather than riding along in that same block. HasShotSlot alone isn't
+            // enough — the operator can leave a slot armed and never actually drop an image onto
+            // it (#2340's drop is optional), so only a note whose ShotImage is real gets walked.
+            var shots = target.Where(n => n.ShotImage != null).ToList();
+            if (shots.Count > 0)
+            {
+                new PasteTrayWindow(shots) { Owner = this }.Show();
+            }
         }
 
         /// <summary>Git #2339 — "Copy as markdown" for the selection, distinct from "Send to

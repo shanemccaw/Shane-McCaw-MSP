@@ -1,0 +1,108 @@
+<Window x:Class="ShaneBuilder.PasteTrayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Paste Tray"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        SizeToContent="Height"
+        Width="420"
+        ShowInTaskbar="False"
+        Topmost="True"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Git #2342 — "Sending notes with shots opens the Paste Tray" (#2341) hands this window a
+         list of the sent notes that carry an attached shot (#2340's ShotImage). WPF's clipboard
+         can hold exactly one image at a time, so there's no way to drop N images into the chat
+         composer the way #2337 drops the text block — this walks the operator through them one at
+         a time instead: big preview, the note's own text for context, "N of M", a Copy Image button
+         that puts that one shot on the clipboard so Ctrl+V into the chat pastes it, then Next.
+         Non-modal and Topmost (not ShowDialog) — the whole point is the operator alt-tabbing or
+         clicking into the chat window mid-flow to paste, then coming back for the next shot. -->
+    <Border CornerRadius="10" Background="{StaticResource Brush.Bg.Panel}"
+            BorderBrush="{StaticResource Brush.Border.Popover}" BorderThickness="1" Margin="14">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.4" Color="Black"/>
+        </Border.Effect>
+        <StackPanel>
+            <Grid Margin="14,12,10,10">
+                <TextBlock Text="Paste Tray" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource Brush.Text.Heading}" VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <TextBlock x:Name="CounterLabel" Text="1 of 3" FontSize="11"
+                               Foreground="{StaticResource Brush.Text.Muted}"
+                               VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <Border x:Name="BtnClose" Width="22" Height="22" CornerRadius="4" Cursor="Hand"
+                            Background="Transparent"
+                            MouseLeftButtonUp="BtnClose_Click">
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                   Foreground="{StaticResource Brush.Text.Muted}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </StackPanel>
+            </Grid>
+            <Border Height="1" Background="{StaticResource Brush.Border.Default}"/>
+
+            <!-- Large preview. Border gives it a fixed frame so the tray doesn't jump size between
+                 a tall and a wide shot; Image itself Stretch=Uniform inside that frame. -->
+            <Border Margin="14,12,14,0" Height="280" CornerRadius="6"
+                    Background="{StaticResource Brush.Bg.Chip}"
+                    BorderBrush="{StaticResource Brush.Border.Default}" BorderThickness="1">
+                <Grid>
+                    <Image x:Name="Preview" Stretch="Uniform" Margin="6"/>
+                    <TextBlock x:Name="PreviewUnavailable" Text="Image unavailable — the file may have moved."
+                               FontSize="11" Foreground="{StaticResource Brush.Text.Muted}"
+                               TextWrapping="Wrap" TextAlignment="Center" Margin="20"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="Collapsed"/>
+                </Grid>
+            </Border>
+
+            <!-- The note's own text rides along for context — the operator is pasting the shot
+                 right after the note that asked for it, not guessing which shot goes where. -->
+            <TextBlock x:Name="NoteText" Margin="14,10,14,0" FontSize="11.5" TextWrapping="Wrap"
+                       Foreground="{StaticResource Brush.Text.Primary}"/>
+
+            <Border Height="1" Margin="0,12,0,0" Background="{StaticResource Brush.Border.Default}"/>
+
+            <Grid Margin="14,10,14,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Copy Image → clipboard, then the inline "Copied — paste with Ctrl+V" confirmation
+                     right next to it so the operator knows the click landed before they alt-tab away. -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border x:Name="BtnCopyImage" Height="28" CornerRadius="6" Cursor="Hand"
+                            Padding="12,0" Background="{StaticResource Brush.Bg.Chip}"
+                            MouseLeftButtonUp="BtnCopyImage_Click"
+                            ToolTip="Copy this shot to the clipboard">
+                        <TextBlock Text="Copy image" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="{StaticResource Brush.Accent.Primary}"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <TextBlock x:Name="CopiedConfirmation" Text="Copied — paste with Ctrl+V"
+                               FontSize="10.5" Foreground="{StaticResource Brush.Accent.Primary}"
+                               VerticalAlignment="Center" Margin="10,0,0,0" Visibility="Collapsed"/>
+                </StackPanel>
+
+                <Border x:Name="BtnNext" Grid.Column="1" Height="28" CornerRadius="6" Cursor="Hand"
+                        Padding="14,0" Margin="0,0,8,0" Background="{StaticResource Brush.Bg.Chip}"
+                        MouseLeftButtonUp="BtnNext_Click">
+                    <TextBlock Text="Next" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.Text.Primary}"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <Border x:Name="BtnDone" Grid.Column="2" Height="28" CornerRadius="6" Cursor="Hand"
+                        Padding="14,0" Background="{StaticResource Brush.Bg.Chip}"
+                        MouseLeftButtonUp="BtnDone_Click">
+                    <TextBlock x:Name="DoneLabel" Text="Done" FontSize="11" FontWeight="SemiBold"
+                               Foreground="{StaticResource Brush.Text.Muted}"
+                               VerticalAlignment="Center"/>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </Border>
+</Window>
