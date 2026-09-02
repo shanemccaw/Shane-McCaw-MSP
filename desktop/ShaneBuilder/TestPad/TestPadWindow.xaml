@@ -14,10 +14,10 @@
 
     <!-- Git #2327 — "expands to the pad." What the pill opens. The composer (#2328), type chips
          (#2330), status band (#2332), notes list/grouping/edit/lock (#2333-#2336), Send to Claude
-         (#2337-#2338), copy-as-markdown (#2339), shots/Paste Tray (#2340-#2342) and import
-         (#2343-#2354) each build out this body in their own issue — this shell is only the
-         floating, non-layout-shifting container the pill expands into, with an honest empty state
-         until a note actually exists. -->
+         (#2337, still open), pipeline caption (#2338), copy-as-markdown (#2339), shots/Paste Tray
+         (#2340-#2342) and import (#2343-#2354) each build out this body in their own issue — this
+         shell is only the floating, non-layout-shifting container the pill expands into, with an
+         honest empty state until a note actually exists. -->
     <Border CornerRadius="10" Background="{StaticResource Brush.Bg.Panel}"
             BorderBrush="{StaticResource Brush.Border.Popover}" BorderThickness="1" Margin="14">
         <Border.Effect>
@@ -62,6 +62,18 @@
                            HorizontalAlignment="Center"/>
             </Grid>
             <StackPanel x:Name="NotesHost" Margin="10,4,10,10"/>
+            <Border Height="1" Background="{StaticResource Brush.Border.Default}"/>
+            <!-- Git #2338 — pipeline caption. #2337 isn't wired yet (no real "Send to Claude"
+                 button exists to caption), so this sits as its own honest strip at the foot of the
+                 pad — the spot the status band comment above (#2332) already reserved for #2337's
+                 button once it lands — making the destination explicit ahead of that button:
+                 filing a note here is the start of a real pipeline, not a fire-and-forget message. -->
+            <Border x:Name="PipelineCaption" Padding="14,7,14,8">
+                <TextBlock TextWrapping="Wrap" FontSize="9.5" FontStyle="Italic" TextAlignment="Center"
+                           Foreground="{StaticResource Brush.Text.Dim}">
+                    <Run Text="Note"/><Run Text=" → "/><Run Text="Claude architects"/><Run Text=" → "/><Run Text="you approve"/><Run Text=" → "/><Run Text="prompt + git issue"/><Run Text=" → "/><Run Text="Batter Up"/>
+                </TextBlock>
+            </Border>
         </StackPanel>
     </Border>
 </Window>
