@@ -1,12 +1,16 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using ShaneBuilder.Services;
+using IOPath = System.IO.Path;
 
 namespace ShaneBuilder;
 
@@ -50,6 +54,16 @@ public partial class MainWindow
     private readonly List<GitCrumb> _gitTrail = new();
     private readonly Dictionary<int, GitPanelAncestry> _gitPeekCache = new();
     private int _gitPeekRequestSeq;
+
+    // ── Feature detail panel (#2309, #2310 — Feature #2289 items 20-21) ─────────────────────────
+    private enum GitBuildState { UpNext, Running, Verifying, Blocked, Parked, Paused }
+    private readonly Dictionary<int, GitPanelIssueNode> _gitFeatureDetailCache = new();
+    private readonly Dictionary<int, int> _gitFeatureDetailTotalCache = new();
+    private readonly Dictionary<int, List<PaletteBuildQueueRow>> _gitFeatureBuildsCache = new();
+    private readonly HashSet<int> _gitFeatureDetailLoading = new();
+    private int _gitFeatureDetailRequestSeq;
+    private int _gitFeatureStateFilterForFeature;
+    private GitBuildState? _gitFeatureStateFilter;
 
     // ── load ─────────────────────────────────────────────────────────────────────────────────
 
@@ -361,6 +375,8 @@ public partial class MainWindow
         _gitTrail.Clear();
         _gitTrail.AddRange(trail);
         RenderGitPanel();
+        if (trail.Count > 0 && trail[^1].Kind == GitCrumbKind.Feature)
+            _ = EnsureGitFeatureDetailAsync(trail[^1].Number);
     }
 
     /// <summary>Entry point for surfaces outside this panel (alerts, future Command Center hooks):
@@ -379,6 +395,8 @@ public partial class MainWindow
         RenderGitPanel();
         if (fetchLastIssue && trail.Count > 0 && trail[^1].Kind != GitCrumbKind.Milestone)
             _ = FetchGitPeekStateAsync(trail[^1].Number);
+        if (trail.Count > 0 && trail[^1].Kind == GitCrumbKind.Feature)
+            _ = EnsureGitFeatureDetailAsync(trail[^1].Number);
     }
 
     /// <summary>Fills the current peek's real state/labels (one ancestry call, cached). The peek
@@ -485,6 +503,13 @@ public partial class MainWindow
                 GitPeekHost.Children.Add(counts);
             }
         }
+        else if (current.Kind == GitCrumbKind.Feature)
+        {
+            // Git #2309/#2310 — the real Feature detail panel: ring, state, epic, bug count,
+            // last build, six real build-state chips, and the (chip-filterable) issue list.
+            RenderGitFeatureDetail(current.Number);
+            return;
+        }
         else if (_gitPeekCache.TryGetValue(current.Number, out var state))
         {
             var pills = new WrapPanel { Margin = new Thickness(6, 0, 6, 8) };
@@ -521,6 +546,357 @@ public partial class MainWindow
         RenderGitPanel();
         if (_gitTrail.Count > 0 && _gitTrail[^1].Kind != GitCrumbKind.Milestone)
             _ = FetchGitPeekStateAsync(_gitTrail[^1].Number);
+        if (_gitTrail.Count > 0 && _gitTrail[^1].Kind == GitCrumbKind.Feature)
+            _ = EnsureGitFeatureDetailAsync(_gitTrail[^1].Number);
+    }
+
+    /// <summary>Opens an issue from inside the Feature detail panel's own issue list — appends
+    /// onto whatever trail already led to this feature (Milestone/Epic/Feature), same convention
+    /// as <see cref="OpenGitIssueRowPeek"/>'s tree-driven append.</summary>
+    private void OpenGitIssueFromFeatureDetail(int issueNumber, string issueTitle)
+    {
+        var trail = new List<GitCrumb>(_gitTrail) { new() { Kind = GitCrumbKind.Issue, Number = issueNumber, Title = issueTitle } };
+        SetGitTrail(trail, fetchLastIssue: true);
+    }
+
+    /// <summary>Git #2309 — fetches (and caches) one feature's own real detail: its direct
+    /// sub-issues plus the latest real <c>bt_build_queue</c> row for the feature's own number and
+    /// every child. Independent of the epic tree's cached two-level fetch so this is correct
+    /// whether the peek was reached by drilling the tree or by a cold/derived open. The active
+    /// state-chip filter resets whenever the panel navigates to a different feature.</summary>
+    private async Task EnsureGitFeatureDetailAsync(int featureNumber)
+    {
+        if (_gitFeatureStateFilterForFeature != featureNumber)
+        {
+            _gitFeatureStateFilterForFeature = featureNumber;
+            _gitFeatureStateFilter = null;
+        }
+        if (_gitFeatureDetailCache.ContainsKey(featureNumber)) { RenderGitPanel(); return; }
+        if (!_gitFeatureDetailLoading.Add(featureNumber)) return;
+
+        int seq = ++_gitFeatureDetailRequestSeq;
+        var (ok, feature, totalCount, error) = await GitPanelService.GetFeatureDetailAsync(featureNumber);
+        _gitFeatureDetailLoading.Remove(featureNumber);
+        if (seq != _gitFeatureDetailRequestSeq) return; // superseded by a newer navigation
+
+        if (!ok || feature == null)
+        {
+            GitPanelStatus.Text = $"Feature #{featureNumber} detail failed — {error}";
+            GitPanelStatus.Visibility = Visibility.Visible;
+            return;
+        }
+        _gitFeatureDetailCache[featureNumber] = feature;
+        _gitFeatureDetailTotalCache[featureNumber] = totalCount;
+
+        // Real bt_build_queue join — the feature's own number plus every direct child's number.
+        var numbers = new List<int> { featureNumber };
+        numbers.AddRange(feature.Children.Select(c => c.Number));
+        var queueClient = QueueReadClient.CreateFromEnvironment();
+        var builds = queueClient != null
+            ? await queueClient.GetLatestByGithubNumbersAsync(numbers)
+            : new List<PaletteBuildQueueRow>();
+        if (seq != _gitFeatureDetailRequestSeq) return;
+        _gitFeatureBuildsCache[featureNumber] = builds;
+
+        if (_gitTrail.Count > 0 && _gitTrail[^1].Number == featureNumber && _gitTrail[^1].Kind == GitCrumbKind.Feature)
+            RenderGitPanel();
+    }
+
+    /// <summary>Git #2309 — real build-state classification for one <c>bt_build_queue</c> row,
+    /// mirroring the Build Queue band's own six-state taxonomy (up next / running / verifying /
+    /// blocked / parked / paused). A "queued" row is Blocked only when its recorded blocker is a
+    /// sibling in this same feature and that sibling is still open — a blocker outside the
+    /// feature is treated the same way BuildConsole's own coordinator treats an unresolved one.
+    /// Terminal statuses (done/failed/canceled/superseded/external) are honestly not one of the
+    /// six real buckets, never force-mapped into one.</summary>
+    private static GitBuildState? ClassifyBuildState(PaletteBuildQueueRow row, HashSet<int> pausedIds, HashSet<int> closedSiblingNumbers)
+    {
+        switch (row.Status)
+        {
+            case "verifying": return GitBuildState.Verifying;
+            case "running": return GitBuildState.Running;
+            case "parked": return GitBuildState.Parked;
+            case "limit-paused": return GitBuildState.Paused; // BuildConsole's SessionLimitAutoRestartService.LimitPausedStatus real value
+            case "queued":
+                if (pausedIds.Contains(row.Id)) return GitBuildState.Paused;
+                if (row.BlockedByNumber.HasValue && !closedSiblingNumbers.Contains(row.BlockedByNumber.Value))
+                    return GitBuildState.Blocked;
+                return GitBuildState.UpNext;
+            default:
+                return null;
+        }
+    }
+
+    private static string GitBuildStateLabel(GitBuildState s) => s switch
+    {
+        GitBuildState.UpNext => "Up next",
+        GitBuildState.Running => "Running",
+        GitBuildState.Verifying => "Verifying",
+        GitBuildState.Blocked => "Blocked",
+        GitBuildState.Parked => "Parked",
+        GitBuildState.Paused => "Paused",
+        _ => s.ToString()
+    };
+
+    private static string GitBuildStateBrushKey(GitBuildState s) => s switch
+    {
+        GitBuildState.UpNext => "Brush.Status.Queued",
+        GitBuildState.Running => "Brush.Status.Running",
+        GitBuildState.Verifying => "Brush.Status.Verifying",
+        GitBuildState.Blocked => "Brush.Status.Blocked",
+        GitBuildState.Parked => "Brush.Status.Parked",
+        GitBuildState.Paused => "Brush.Status.Capped",
+        _ => "Brush.Text.Muted"
+    };
+
+    /// <summary>Git #2309 — real manually-paused build ids, read straight from BuildConsole's own
+    /// <c>%AppData%\BuildConsole\settings.json</c> "PausedBuildIds" field (same file/field
+    /// <c>BuildConsoleSettings.PausedBuildIds</c> owns) — same don't-reimplement-the-other-app's-
+    /// settings-class shape <see cref="GitHubReadClient"/>'s own PAT resolution already
+    /// established. Degrades to "no known manual pauses" rather than fabricating one.</summary>
+    private static HashSet<int> GitResolveManuallyPausedIds()
+    {
+        try
+        {
+            var path = IOPath.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "BuildConsole", "settings.json");
+            if (!File.Exists(path)) return new HashSet<int>();
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.TryGetProperty("PausedBuildIds", out var idsEl) && idsEl.ValueKind == JsonValueKind.Array)
+            {
+                var set = new HashSet<int>();
+                foreach (var idEl in idsEl.EnumerateArray())
+                    if (idEl.TryGetInt32(out var id)) set.Add(id);
+                return set;
+            }
+        }
+        catch { /* degrade to no known manual pauses — never fabricate one */ }
+        return new HashSet<int>();
+    }
+
+    /// <summary>Git #2309 — Feature panel body: progress ring (real closed/total children), state
+    /// pill, epic link, open bug count, last real build, the six real build-state chips, and the
+    /// issue list a chip click filters (#2310).</summary>
+    private void RenderGitFeatureDetail(int featureNumber)
+    {
+        if (!_gitFeatureDetailCache.TryGetValue(featureNumber, out var feature))
+        {
+            GitPeekHost.Children.Add(GitDimLine("Loading real feature detail…", indent: 6));
+            return;
+        }
+
+        int total = feature.Children.Count;
+        int closed = total - feature.OpenChildCount;
+
+        // Ring + state pill + epic link + bug count.
+        var topRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 6, 8) };
+        topRow.Children.Add(GitRing(closed, total));
+
+        var infoStack = new StackPanel { Margin = new Thickness(10, 2, 0, 0), VerticalAlignment = VerticalAlignment.Center };
+        var (stateLabel, stateBrushKey) = GitNodeState(feature);
+        var statePill = GitCountPill(stateLabel, stateBrushKey);
+        statePill.HorizontalAlignment = HorizontalAlignment.Left;
+        statePill.Margin = new Thickness(0, 0, 0, 4);
+        infoStack.Children.Add(statePill);
+
+        int epicIdx = _gitTrail.FindLastIndex(c => c.Kind == GitCrumbKind.Epic);
+        if (epicIdx >= 0)
+        {
+            var epicCrumb = _gitTrail[epicIdx];
+            var epicLink = GitText($"Epic: #{epicCrumb.Number} {StripGitPrefix(epicCrumb.Title)}", 10, "Brush.Text.Muted");
+            epicLink.TextTrimming = TextTrimming.CharacterEllipsis;
+            epicLink.Cursor = Cursors.Hand;
+            epicLink.ToolTip = $"Back to EPIC #{epicCrumb.Number}";
+            epicLink.MouseLeftButtonDown += (_, _) => GitTruncateTrailTo(epicIdx);
+            infoStack.Children.Add(epicLink);
+        }
+
+        if (feature.OpenBugCount > 0)
+        {
+            var bugPill = GitCountPill($"{feature.OpenBugCount} open bug{(feature.OpenBugCount == 1 ? "" : "s")}", "Brush.NextUp.Blocked.Fg");
+            bugPill.HorizontalAlignment = HorizontalAlignment.Left;
+            bugPill.Margin = new Thickness(0, 4, 0, 0);
+            infoStack.Children.Add(bugPill);
+        }
+        topRow.Children.Add(infoStack);
+        GitPeekHost.Children.Add(topRow);
+
+        var builds = _gitFeatureBuildsCache.TryGetValue(featureNumber, out var b) ? b : new List<PaletteBuildQueueRow>();
+        var byNumber = builds.Where(r => r.GithubNumber.HasValue).ToDictionary(r => r.GithubNumber!.Value);
+
+        // Last build — the most recently touched real bt_build_queue row across the feature's
+        // own number and every direct child.
+        var lastBuild = builds.OrderByDescending(r => r.UpdatedAt).FirstOrDefault();
+        GitPeekHost.Children.Add(lastBuild != null
+            ? GitDimLine($"Last build: #{lastBuild.GithubNumber} — {lastBuild.Status} — {GitRelativeTime(lastBuild.UpdatedAt)}", indent: 6)
+            : GitDimLine("No build history for this feature's issues yet.", indent: 6));
+
+        // Six real build-state chips (#2309) — clicking one filters the issue list (#2310).
+        var pausedIds = GitResolveManuallyPausedIds();
+        var closedSiblings = feature.Children.Where(c => c.IsClosed).Select(c => c.Number).ToHashSet();
+        var counts = Enum.GetValues(typeof(GitBuildState)).Cast<GitBuildState>().ToDictionary(s => s, _ => 0);
+        foreach (var child in feature.Children)
+        {
+            if (!byNumber.TryGetValue(child.Number, out var row)) continue;
+            var state = ClassifyBuildState(row, pausedIds, closedSiblings);
+            if (state.HasValue) counts[state.Value]++;
+        }
+
+        var chipWrap = new WrapPanel { Margin = new Thickness(6, 4, 6, 8) };
+        foreach (GitBuildState s in Enum.GetValues(typeof(GitBuildState)))
+        {
+            int count = counts[s];
+            var chip = GitStateChip(GitBuildStateLabel(s), count, GitBuildStateBrushKey(s), _gitFeatureStateFilter == s);
+            if (count > 0)
+            {
+                var captured = s;
+                chip.MouseLeftButtonDown += (_, _) =>
+                {
+                    _gitFeatureStateFilter = _gitFeatureStateFilter == captured ? null : captured;
+                    RenderGitPanel();
+                };
+            }
+            chipWrap.Children.Add(chip);
+        }
+        GitPeekHost.Children.Add(chipWrap);
+
+        // Issue list — filtered to the active chip's state when one is selected (#2310).
+        IEnumerable<GitPanelIssueNode> visible = feature.Children;
+        if (_gitFeatureStateFilter.HasValue)
+            visible = feature.Children.Where(c =>
+                byNumber.TryGetValue(c.Number, out var row) && ClassifyBuildState(row, pausedIds, closedSiblings) == _gitFeatureStateFilter.Value);
+        var visibleList = visible.ToList();
+
+        var listHeader = GitText(
+            _gitFeatureStateFilter.HasValue
+                ? $"Issues — {GitBuildStateLabel(_gitFeatureStateFilter.Value)} ({visibleList.Count})"
+                : $"Issues ({feature.Children.Count})",
+            10.5, "Brush.Text.Primary");
+        listHeader.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
+        listHeader.Margin = new Thickness(6, 4, 6, 4);
+        GitPeekHost.Children.Add(listHeader);
+
+        if (_gitFeatureDetailTotalCache.TryGetValue(featureNumber, out var totalAll) && totalAll > feature.Children.Count)
+            GitPeekHost.Children.Add(GitDimLine($"Showing first {feature.Children.Count} of {totalAll} sub-issues (GitHub page cap).", indent: 6));
+
+        if (feature.Children.Count == 0)
+        {
+            GitPeekHost.Children.Add(GitDimLine("No sub-issues under this feature.", indent: 6));
+        }
+        else if (visibleList.Count == 0)
+        {
+            GitPeekHost.Children.Add(GitDimLine("No issues in this state.", indent: 6));
+        }
+        else
+        {
+            foreach (var issue in visibleList)
+            {
+                var row = GitRowShell(indent: 6);
+                row.ColumnLeft(GitDot(GitNodeBrush(issue)));
+                var text = GitText($"#{issue.Number} {issue.Title}", 10.5, issue.IsClosed ? "Brush.Text.Dim" : "Brush.Text.Muted");
+                text.TextTrimming = TextTrimming.CharacterEllipsis;
+                text.Margin = new Thickness(6, 0, 0, 0);
+                row.ColumnFill(text);
+                if (byNumber.TryGetValue(issue.Number, out var buildRow))
+                {
+                    var state = ClassifyBuildState(buildRow, pausedIds, closedSiblings);
+                    if (state.HasValue)
+                        row.ColumnRight(GitCountPill(GitBuildStateLabel(state.Value), GitBuildStateBrushKey(state.Value)));
+                }
+                var capturedIssue = issue;
+                row.Root.MouseLeftButtonDown += (_, _) => OpenGitIssueFromFeatureDetail(capturedIssue.Number, capturedIssue.Title);
+                GitPeekHost.Children.Add(row.Root);
+            }
+        }
+    }
+
+    private static string GitRelativeTime(DateTimeOffset t)
+    {
+        var span = DateTimeOffset.UtcNow - t;
+        if (span.TotalMinutes < 1) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
+        return $"{(int)span.TotalDays}d ago";
+    }
+
+    /// <summary>Simple donut progress ring — a real closed/total percentage, not a fabricated
+    /// visual. Uses WPF's own dash-array-in-stroke-thickness-units convention for the arc.</summary>
+    private FrameworkElement GitRing(int closed, int total, double diameter = 54)
+    {
+        double percent = total > 0 ? Math.Clamp((double)closed / total, 0.0, 1.0) : 0.0;
+        const double thickness = 5;
+        double d = diameter - thickness;
+        double circumferenceUnits = Math.PI * d / thickness; // dash units are multiples of StrokeThickness
+
+        var grid = new Grid { Width = diameter, Height = diameter };
+        grid.Children.Add(new Ellipse
+        {
+            Width = d,
+            Height = d,
+            Stroke = (Brush)FindResource("Brush.Border.Default"),
+            StrokeThickness = thickness
+        });
+        if (percent > 0)
+        {
+            grid.Children.Add(new Ellipse
+            {
+                Width = d,
+                Height = d,
+                Stroke = (Brush)FindResource(percent >= 1.0 ? "Brush.Status.Done" : "Brush.Accent.Primary"),
+                StrokeThickness = thickness,
+                StrokeDashCap = PenLineCap.Round,
+                StrokeDashArray = new DoubleCollection { circumferenceUnits * percent, circumferenceUnits },
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = new RotateTransform(-90)
+            });
+        }
+        var pct = GitText($"{(int)Math.Round(percent * 100)}%", 11, "Brush.Text.Heading");
+        pct.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        pct.HorizontalAlignment = HorizontalAlignment.Center;
+        pct.VerticalAlignment = VerticalAlignment.Center;
+        grid.Children.Add(pct);
+        return grid;
+    }
+
+    /// <summary>One clickable build-state chip. Zero-count chips render dimmed and are not
+    /// clickable — same real convention as the Build Queue band's own six state chips.</summary>
+    private Border GitStateChip(string label, int count, string brushKey, bool active)
+    {
+        var fg = (SolidColorBrush)FindResource(brushKey);
+        bool dim = count == 0;
+        var border = new Border
+        {
+            Padding = new Thickness(7, 3, 7, 3),
+            Margin = new Thickness(0, 0, 4, 4),
+            CornerRadius = new CornerRadius(99),
+            Background = new SolidColorBrush(fg.Color) { Opacity = active ? 0.28 : (dim ? 0.05 : 0.12) },
+            BorderThickness = new Thickness(active ? 1.5 : 1),
+            BorderBrush = new SolidColorBrush(fg.Color) { Opacity = dim ? 0.2 : (active ? 0.9 : 0.4) },
+            Cursor = dim ? Cursors.Arrow : Cursors.Hand,
+            Opacity = dim ? 0.55 : 1.0,
+            ToolTip = dim ? null : (active ? $"Showing {label} only — click to clear" : $"Show only {label}")
+        };
+        var stack = new StackPanel { Orientation = Orientation.Horizontal };
+        stack.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = 9,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = dim ? (Brush)FindResource("Brush.Text.Dim") : fg
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = $" {count}",
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"),
+            FontSize = 9,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = dim ? (Brush)FindResource("Brush.Text.Dim") : fg,
+            Margin = new Thickness(3, 0, 0, 0)
+        });
+        border.Child = stack;
+        return border;
     }
 
     // ── shared helpers ───────────────────────────────────────────────────────────────────────

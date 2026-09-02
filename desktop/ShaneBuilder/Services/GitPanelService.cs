@@ -188,6 +188,53 @@ public static class GitPanelService
         }
     }
 
+    /// <summary>Git #2309 — one feature's own real identity plus its direct sub-issues (one
+    /// level), fetched independently of any epic's cached two-level sub-tree so the Feature
+    /// detail panel is correct whether opened by drilling the tree (where the owning epic's
+    /// fetch already carries this) or by a cold direct open (an alert link, a derived-ancestry
+    /// open) that never touched the epic at all. Same one-GraphQL-call, no-second-guessed-lookup
+    /// shape as <see cref="GetFeatureTreeAsync"/>.</summary>
+    public static async Task<(bool Ok, GitPanelIssueNode? Feature, int TotalCount, string? Error)> GetFeatureDetailAsync(int featureNumber)
+    {
+        string query =
+            "query { repository(owner: \"" + Owner + "\", name: \"" + RepoName + "\") { " +
+            "issue(number: " + featureNumber + ") { number title state labels(first: 20) { nodes { name } } " +
+            "subIssues(first: 100) { totalCount nodes { number title state labels(first: 20) { nodes { name } } } } " +
+            "} } }";
+
+        var (ok, stdout, stderr) = await RunGhAsync(new[] { "api", "graphql", "-f", $"query={query}" });
+        if (!ok)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] feature detail fetch failed for #{featureNumber}: {stderr.Trim()}");
+            return (false, null, 0, $"feature detail fetch failed: {stderr.Trim()}");
+        }
+        try
+        {
+            using var doc = JsonDocument.Parse(stdout);
+            var issueEl = doc.RootElement.GetProperty("data").GetProperty("repository").GetProperty("issue");
+            if (issueEl.ValueKind != JsonValueKind.Object)
+                return (false, null, 0, $"feature #{featureNumber} not found");
+
+            int totalCount = issueEl.TryGetProperty("subIssues", out var subsCountEl) && subsCountEl.TryGetProperty("totalCount", out var tc)
+                ? tc.GetInt32() : 0;
+
+            var children = new List<GitPanelIssueNode>();
+            if (issueEl.TryGetProperty("subIssues", out var subEl) && subEl.ValueKind == JsonValueKind.Object)
+                foreach (var c in subEl.GetProperty("nodes").EnumerateArray())
+                    children.Add(ParseNode(c, new List<GitPanelIssueNode>(), 0, 0));
+
+            int openChildren = children.Count(c => !c.IsClosed);
+            int openBugs = children.Count(c => !c.IsClosed && c.Labels.Contains("bug", StringComparer.OrdinalIgnoreCase));
+            var feature = ParseNode(issueEl, children, openChildren, openBugs);
+            return (true, feature, totalCount, null);
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] couldn't parse feature detail for #{featureNumber}: {ex.Message}");
+            return (false, null, 0, $"couldn't parse gh output: {ex.Message}");
+        }
+    }
+
     private static GitPanelIssueNode ParseNode(JsonElement el, List<GitPanelIssueNode> children, int openChildCount, int openBugCount)
     {
         var labels = new List<string>();

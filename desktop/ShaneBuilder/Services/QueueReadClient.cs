@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Npgsql;
 
@@ -144,6 +145,53 @@ public sealed class QueueReadClient
         catch (Exception ex)
         {
             ConsoleOutputSink.Log(LogLevel.Warn, $"[queue] GetRecentBuildsAsync failed: {ex.Message}");
+        }
+        return result;
+    }
+
+    /// <summary>Git #2309 — the latest real <c>bt_build_queue</c> row per GitHub issue number, for
+    /// the Git Panel Feature detail's six real build-state chips and "last build" line. One row
+    /// per number (its own most recently updated) — a number with no queue history simply isn't
+    /// in the result, never backfilled with a fabricated status. Fails closed to an empty list on
+    /// a connection/query error, same convention as <see cref="GetRecentBuildsAsync"/>.</summary>
+    public async Task<List<PaletteBuildQueueRow>> GetLatestByGithubNumbersAsync(IEnumerable<int> githubNumbers)
+    {
+        var numbers = (githubNumbers ?? Array.Empty<int>()).Distinct().ToArray();
+        var result = new List<PaletteBuildQueueRow>();
+        if (numbers.Length == 0) return result;
+        try
+        {
+            await using var conn = new NpgsqlConnection(_connectionString);
+            await conn.OpenAsync();
+            await using var cmd = new NpgsqlCommand(
+                @"SELECT DISTINCT ON (github_number) id, title, github_number, status, build_set, model, effort,
+                         session_id, blocked_by_number, updated_at
+                  FROM bt_build_queue
+                  WHERE github_number = ANY(@nums)
+                  ORDER BY github_number, updated_at DESC", conn);
+            cmd.Parameters.AddWithValue("nums", numbers);
+
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                result.Add(new PaletteBuildQueueRow
+                {
+                    Id = reader.GetInt32(0),
+                    Title = reader.GetString(1),
+                    GithubNumber = reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                    Status = reader.GetString(3),
+                    BuildSet = reader.IsDBNull(4) ? null : reader.GetString(4),
+                    Model = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    Effort = reader.IsDBNull(6) ? null : reader.GetString(6),
+                    SessionId = reader.IsDBNull(7) ? null : reader.GetString(7),
+                    BlockedByNumber = reader.IsDBNull(8) ? null : reader.GetInt32(8),
+                    UpdatedAt = reader.GetFieldValue<DateTimeOffset>(9)
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[queue] GetLatestByGithubNumbersAsync failed: {ex.Message}");
         }
         return result;
     }
