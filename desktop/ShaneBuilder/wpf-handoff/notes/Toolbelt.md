@@ -1,3 +1,9 @@
+> **STALE — historical design-export note only.** This describes an early Shell
+> Skeleton v2 mockup (`vault`/`batter`/`matrix`/`gate`/`health`/`settings`, a
+> per-tab accumulating belt) that was never built. The real, live wrench-menu
+> spec that actually shipped (12 tools, one dropdown, audited 2026-09-02) is in
+> `desktop/ShaneBuilder/docs/Toolbelt.md` (Git #2233) — read that instead.
+
 # Toolbelt (Shell Skeleton v2)
 
 ## What it is

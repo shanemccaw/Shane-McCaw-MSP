@@ -5,9 +5,18 @@ using Npgsql;
 
 namespace ShaneBuilder.Services;
 
+/// <summary>Git #2201 — one recent <c>bt_build_queue</c> row, the real shape the Alerts/Critters
+/// build-runner watcher polls (AlertWatchers.cs). Field names/values match the table verbatim
+/// (confirmed via `\d bt_build_queue` against the local Postgres instance).</summary>
+public sealed record BuildQueueRow(
+    int Id, string Title, string? Status, int? GithubNumber, int? BlockedByNumber,
+    int? ExitCode, DateTimeOffset? CompletedAt, DateTimeOffset UpdatedAt);
+
 /// <summary>Git #2203 — one real <c>bt_build_queue</c> row for the Command Center's
-/// "Builds"/"Build IDs" category.</summary>
-public sealed class BuildQueueRow
+/// "Builds"/"Build IDs" category. A separate shape from <see cref="BuildQueueRow"/> above
+/// (Git #2201's Alerts/Critters watcher row) — same table, different real field set, landed
+/// concurrently; renamed on merge to avoid colliding on the same type name.</summary>
+public sealed class PaletteBuildQueueRow
 {
     public int Id { get; init; }
     public string Title { get; init; } = "";
@@ -63,17 +72,45 @@ public sealed class QueueReadClient
         };
     }
 
-    /// <summary>Real, recent <c>bt_build_queue</c> rows, most recently updated first — the same
-    /// table BuildConsole's own Build Queue panel and Board read, over this same real
-    /// connection. No status filter: a "done" or "failed" row is exactly as real as a "running"
-    /// one for the palette's Builds/Build IDs category.</summary>
-    /// <summary>Real, recent rows — fails closed (empty list, logged) on a connection or query
-    /// error, same convention as this file's sibling read services (GitMapService,
-    /// GitIssuesService, DevServicesReadClient), so a Postgres hiccup degrades the palette's
-    /// Builds/Build IDs category gracefully instead of throwing out of an unguarded call site.</summary>
-    public async Task<List<BuildQueueRow>> GetRecentBuildsAsync(int limit = 40)
+    /// <summary>Git #2201 — the most recently updated <paramref name="limit"/> rows, for the Alerts/
+    /// Critters build-runner watcher to diff against its own last-seen snapshot (a row that transitions
+    /// to "failed" -> a BuildFailed alert; one that transitions to "done" -> a tier-1 celebration).</summary>
+    public async Task<List<BuildQueueRow>> GetRecentAsync(int limit = 25)
     {
         var result = new List<BuildQueueRow>();
+        await using var conn = new NpgsqlConnection(_connectionString);
+        await conn.OpenAsync();
+        const string sql = @"
+            SELECT id, title, status, github_number, blocked_by_number, exit_code, completed_at, updated_at
+            FROM bt_build_queue
+            ORDER BY updated_at DESC
+            LIMIT @limit";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        cmd.Parameters.AddWithValue("@limit", limit);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new BuildQueueRow(
+                reader.GetInt32(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                reader.IsDBNull(4) ? null : reader.GetInt32(4),
+                reader.IsDBNull(5) ? null : reader.GetInt32(5),
+                reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6),
+                reader.GetFieldValue<DateTimeOffset>(7)));
+        }
+        return result;
+    }
+
+    /// <summary>Git #2203 — real, recent <c>bt_build_queue</c> rows for the Command Center's
+    /// Builds/Build IDs category. Fails closed (empty list, logged) on a connection or query
+    /// error, same convention as this file's sibling read services (GitMapService,
+    /// GitIssuesService, DevServicesReadClient), so a Postgres hiccup degrades the palette
+    /// gracefully instead of throwing out of an unguarded call site.</summary>
+    public async Task<List<PaletteBuildQueueRow>> GetRecentBuildsAsync(int limit = 40)
+    {
+        var result = new List<PaletteBuildQueueRow>();
         try
         {
             await using var conn = new NpgsqlConnection(_connectionString);
@@ -89,7 +126,7 @@ public sealed class QueueReadClient
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
             {
-                result.Add(new BuildQueueRow
+                result.Add(new PaletteBuildQueueRow
                 {
                     Id = reader.GetInt32(0),
                     Title = reader.GetString(1),

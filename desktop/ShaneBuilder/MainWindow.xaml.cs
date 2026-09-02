@@ -2,6 +2,8 @@ using System;
 using System.Data;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
@@ -45,6 +47,99 @@ public partial class MainWindow : Window
         RenderBuildDetail(); // starts closed (BuildDetailColumn.Width = 0) — no item selected yet
 
         RunStartupConnectivityCheckAsync();
+        InitializeAlertsAndCritters();
+    }
+
+    // ── Git #2201 — Alerts and Critters (readme-phase2.md Step 11) ────────────────────────────
+    private AlertStackWindow? _alertStackWindow;
+    private CritterOverlayWindow? _critterOverlayWindow;
+    private AlertLabWindow? _alertLabWindow;
+
+    private void InitializeAlertsAndCritters()
+    {
+        _alertStackWindow = new AlertStackWindow { OnOpenAlertLab = OpenAlertLab };
+        _critterOverlayWindow = new CritterOverlayWindow();
+        _alertLabWindow = new AlertLabWindow();
+
+        AlertCenter.AlertsChanged += OnAlertsChanged;
+        AlertCenter.CelebrationRequested += OnCelebrationRequested;
+
+        // Wire the real actions a card/lab fire — AlertWatchers.cs and AlertLabWindow build their
+        // AlertAction delegates against these static fields (Notifications/AlertActions.cs) rather
+        // than depending on MainWindow directly, same static-bridge shape ToastEngine already uses.
+        AlertActions.OpenLogAt = (sourceId, levels, query) => OpenLogAt(sourceId, levels, query);
+        AlertActions.OpenGitDoctor = OpenGitDoctor;
+        AlertActions.OpenIssueInGitPanel = _ => OpenLeftPanelGit();
+        AlertActions.AppendToComposer = AppendToComposer;
+        AlertActions.OpenChatInBrowser = conversationId =>
+        {
+            if (string.IsNullOrWhiteSpace(conversationId)) return;
+            try { Process.Start(new ProcessStartInfo($"https://claude.ai/chat/{conversationId}") { UseShellExecute = true }); }
+            catch { /* opening the browser must never crash the card */ }
+        };
+
+        AlertWatchers.Start();
+    }
+
+    private void OnAlertsChanged()
+    {
+        var live = AlertCenter.LiveAlerts;
+        _alertStackWindow?.Render(live);
+        BellBadge.Visibility = live.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        BellBadgeText.Text = live.Count.ToString();
+    }
+
+    private void OnCelebrationRequested(Celebration c) => _critterOverlayWindow?.Play(c);
+
+    private void BtnAlertBell_Click(object sender, RoutedEventArgs e) => OpenAlertLab();
+
+    private void OpenAlertLab()
+    {
+        if (_alertLabWindow == null) return;
+        var point = BtnAlertBell.PointToScreen(new Point(BtnAlertBell.ActualWidth - 296, BtnAlertBell.ActualHeight + 4));
+        _alertLabWindow.ShowNear(point);
+    }
+
+    /// <summary>The real "lands you in the pre-filtered log" primary action for a Crash/BuildFailed
+    /// alert — sets the Log Viewer's own filter state (same fields BuildCurrentLogQuery reads) and
+    /// switches to it, then refreshes.</summary>
+    private void OpenLogAt(string? sourceId, IReadOnlyList<LogLevel>? levels, string? query)
+    {
+        _logEnabledSourceIds.Clear();
+        if (sourceId != null && LogService.Sources.Any(s => s.Id == sourceId))
+            _logEnabledSourceIds.Add(sourceId);
+        else
+            foreach (var s in LogService.Sources) _logEnabledSourceIds.Add(s.Id);
+
+        _logSelectedLevels.Clear();
+        if (levels != null && levels.Count > 0)
+            foreach (var l in levels) _logSelectedLevels.Add(l);
+        else
+            foreach (var l in Enum.GetValues<LogLevel>()) _logSelectedLevels.Add(l);
+
+        _logHighlight = false;
+        _logRegex = false;
+        _logSearchText = query ?? "";
+        _logExcludeText = "";
+        _logScrubberMinutesBack = 0;
+
+        OpenLogViewer();
+        RefreshLogViewerQuery();
+    }
+
+    /// <summary>The real "opens #N in the Git panel — your document stayed put" secondary action for
+    /// an IssueBlocked alert. Reuses RailToggle_Click's own panel-opening logic against BtnRailGit.</summary>
+    private void OpenLeftPanelGit()
+    {
+        if (_leftPanelSource == "Git") return;
+        _leftPanelSource = "Git";
+        LeftPanel.Width = LeftPanelWidth;
+        LeftPanelTitle.Text = RailPanelLabels["Git"];
+        foreach (var rail in RailButtons) rail.IsChecked = ReferenceEquals(rail, BtnRailGit);
+        ChatsPanelBody.Visibility = Visibility.Collapsed;
+        GitPanelBody.Visibility = Visibility.Visible;
+        NextUpPanelBody.Visibility = Visibility.Collapsed;
+        NotBuiltPanelBody.Visibility = Visibility.Collapsed;
     }
 
     // ── Git #2176 — real live-connectivity proof at startup ────────────────────────────────
@@ -219,6 +314,17 @@ public partial class MainWindow : Window
         catch { /* best-effort teardown on shutdown */ }
 
         DisposeAllTerminalSessions(); // Git #2216 — never leave a live powershell.exe/cmd.exe running after exit
+
+        try
+        {
+            AlertWatchers.Stop();
+            AlertCenter.AlertsChanged -= OnAlertsChanged;
+            AlertCenter.CelebrationRequested -= OnCelebrationRequested;
+            _alertStackWindow?.Close();
+            _critterOverlayWindow?.Close();
+            _alertLabWindow?.Close();
+        }
+        catch { /* best-effort teardown on shutdown */ }
 
         base.OnClosed(e);
     }
@@ -3041,29 +3147,58 @@ public partial class MainWindow : Window
         WrenchPopup.IsOpen = !WrenchPopup.IsOpen;
     }
 
+    // Git #2233 — the real 12-tool spec (Shane's screenshot, audited against docs/Toolbelt.md
+    // which was stale — it still described the old vault/batter/matrix/gate/health/settings
+    // belt). Order below matches that spec: Log Peek, API Runner, Graph Read, Graph Write,
+    // Git Doctor, Git Map, Repo Health, SQL Runner, PowerShell, Terminal, JSON Viewer,
+    // Windows File Browser. All 12 are landed and wired to their real existing
+    // panel/service state — nothing here is a fixture or a stub.
     private void BuildWrenchMenu()
     {
         WrenchMenuItems.Children.Clear();
         WrenchMenuItems.Children.Add(WrenchItem("Ask another epic a question…", () => { WrenchPopup.IsOpen = false; OpenCrossEpicComposer(); }));
         WrenchMenuItems.Children.Add(WrenchItem(_detectedItemsOpen ? "Hide Detected panel" : "Show Detected panel",
             () => { WrenchPopup.IsOpen = false; BtnToggleDetectedItems_Click(this, new RoutedEventArgs()); }));
+
+        WrenchMenuItems.Children.Add(WrenchSeparator());
+
         WrenchMenuItems.Children.Add(WrenchItem(_logPeekOpen ? "Hide Log Peek" : "Show Log Peek",
             () => { WrenchPopup.IsOpen = false; BtnToggleLogPeek_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_sqlRunnerOpen ? "Hide SQL Runner" : "Show SQL Runner",
-            () => { WrenchPopup.IsOpen = false; BtnToggleSqlRunner_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_jsonViewerOpen ? "Hide JSON Viewer" : "Show JSON Viewer",
-            () => { WrenchPopup.IsOpen = false; BtnToggleJsonViewer_Click(this, new RoutedEventArgs()); }));
-        WrenchMenuItems.Children.Add(WrenchItem(_fileBrowserOpen ? "Hide File Browser" : "Show File Browser",
-            () => { WrenchPopup.IsOpen = false; BtnToggleFileBrowser_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_apiExplorerOpen && _apiExplorerMode == Services.ApiExplorerMode.Local ? "Hide API Runner" : "Show API Runner",
+            () => { WrenchPopup.IsOpen = false; OpenApiExplorer(Services.ApiExplorerMode.Local); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_apiExplorerOpen && _apiExplorerMode == Services.ApiExplorerMode.GraphRead ? "Hide Graph Read" : "Show Graph Read",
+            () => { WrenchPopup.IsOpen = false; OpenApiExplorer(Services.ApiExplorerMode.GraphRead); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_apiExplorerOpen && _apiExplorerMode == Services.ApiExplorerMode.GraphWrite ? "Hide Graph Write" : "Show Graph Write",
+            () => { WrenchPopup.IsOpen = false; OpenApiExplorer(Services.ApiExplorerMode.GraphWrite); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_gdMiniOpen ? "Hide Git Doctor" : "Show Git Doctor",
+            () => { WrenchPopup.IsOpen = false; BtnToggleGitDoctorMini_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem(_gitMapOpen ? "Hide Git Map" : "Show Git Map",
             () => { WrenchPopup.IsOpen = false; BtnToggleGitMap_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_repoHealthOpen ? "Hide Repo Health" : "Show Repo Health",
+            () => { WrenchPopup.IsOpen = false; BtnToggleRepoHealth_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_sqlRunnerOpen ? "Hide SQL Runner" : "Show SQL Runner",
+            () => { WrenchPopup.IsOpen = false; BtnToggleSqlRunner_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem(_psOpen ? "Hide PowerShell" : "Show PowerShell",
             () => { WrenchPopup.IsOpen = false; BtnTogglePs_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem(_terminalOpen ? "Hide Terminal" : "Show Terminal",
             () => { WrenchPopup.IsOpen = false; BtnToggleTerminal_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_jsonViewerOpen ? "Hide JSON Viewer" : "Show JSON Viewer",
+            () => { WrenchPopup.IsOpen = false; BtnToggleJsonViewer_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_fileBrowserOpen ? "Hide File Browser" : "Show File Browser",
+            () => { WrenchPopup.IsOpen = false; BtnToggleFileBrowser_Click(this, new RoutedEventArgs()); }));
+
+        WrenchMenuItems.Children.Add(WrenchSeparator());
+
         WrenchMenuItems.Children.Add(WrenchItem("Pop into Claude Floaty", () => { WrenchPopup.IsOpen = false; BtnFloaty_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Start a new chat", () => { WrenchPopup.IsOpen = false; BtnStartNewChat_Click(this, new RoutedEventArgs()); }));
     }
+
+    private FrameworkElement WrenchSeparator() => new Border
+    {
+        Height = 1,
+        Margin = new Thickness(4, 4, 4, 4),
+        Background = (Brush)FindResource("Brush.Border.Popover"),
+    };
 
     private FrameworkElement WrenchItem(string label, Action onClick)
     {
@@ -3225,7 +3360,7 @@ public partial class MainWindow : Window
     private readonly List<Services.GitMapEpic> _paletteEpics = new();
     private readonly Dictionary<int, List<Services.GitMapFeature>> _paletteEpicFeatures = new();
     private readonly List<Services.GitIssueRow> _paletteIssues = new();
-    private readonly List<Services.BuildQueueRow> _paletteBuilds = new();
+    private readonly List<Services.PaletteBuildQueueRow> _paletteBuilds = new();
     private readonly List<Services.DevServiceRow> _paletteServices = new();
     private List<Services.RepoSqlFile> _paletteSqlFiles = new();
     private bool _paletteRealDataLoaded;
@@ -3347,7 +3482,7 @@ public partial class MainWindow : Window
         var issuesTask = Services.GitIssuesService.GetRecentOpenIssuesAsync();
         var servicesTask = Services.DevServicesReadClient.GetAllAsync(repoRoot);
         var queueClient = Services.QueueReadClient.CreateFromEnvironment();
-        var buildsTask = queueClient?.GetRecentBuildsAsync() ?? Task.FromResult(new List<Services.BuildQueueRow>());
+        var buildsTask = queueClient?.GetRecentBuildsAsync() ?? Task.FromResult(new List<Services.PaletteBuildQueueRow>());
 
         try { await Task.WhenAll(epicsTask, issuesTask, servicesTask, buildsTask); }
         catch { /* individual tasks report their own honest failure below */ }
@@ -3695,7 +3830,7 @@ public partial class MainWindow : Window
         {
             case Services.GitMapEpic epic: RenderPaletteEpicDetail(epic); return;
             case Services.GitIssueRow issue: RenderPaletteIssueDetail(issue); return;
-            case Services.BuildQueueRow build: RenderPaletteBuildDetail(build); return;
+            case Services.PaletteBuildQueueRow build: RenderPaletteBuildDetail(build); return;
             case TabDef tab: RenderPaletteTabDetail(tab); return;
             case Services.DevServiceRow svc: RenderPaletteServiceDetail(svc); return;
         }
@@ -3844,7 +3979,7 @@ public partial class MainWindow : Window
     // ── Builds & Build IDs detail (Git #2203) — real bt_build_queue row, best-effort real
     // step/% (report-progress.mjs's own durable JSON snapshot, when one exists for this build
     // id), and the real last-10 stdout lines off the machine-global per-build log file. ───────
-    private void RenderPaletteBuildDetail(Services.BuildQueueRow build)
+    private void RenderPaletteBuildDetail(Services.PaletteBuildQueueRow build)
     {
         string titleLine = build.GithubNumber.HasValue ? $"#{build.GithubNumber} {build.Title}" : build.Title;
         CommandPalettePreview.Children.Add(PaletteDetailTitle(titleLine));
@@ -8553,5 +8688,400 @@ public partial class MainWindow : Window
         _terminalSessionsByTab.Clear();
         _paletteTerminalSession?.Dispose(); // Git #2203 — the Command Center's own terminal session
         _paletteTerminalSession = null;
+    }
+
+    // ── Git #2220 — API Runner / Graph Read / Graph Write mini panel (README-ClaudeChat.md §6.3) ═
+    // One panel, three modes, real HTTP execution via Services/ApiExplorerService.cs. #2202 (the full
+    // explorer + ITokenBroker/GatedProfile store) is NOT landed — see that service's header comment
+    // for the real-audit finding this stood on instead of waiting on it.
+    private bool _apiExplorerOpen;
+    private Services.ApiExplorerMode _apiExplorerMode = Services.ApiExplorerMode.Local;
+    private string _apiExplorerSearchText = "";
+    private Services.ApiEndpoint? _apiExplorerSelected;
+    private string? _apiExplorerToken;
+    private DateTimeOffset? _apiExplorerTokenExpiresAt;
+    // §6.3 — "Dry run is the default and must stay the default on every panel open — never
+    // remember LIVE across sessions." No persistence anywhere; this resets to true every OpenApiExplorer.
+    private bool _apiExplorerDryRun = true;
+    private Services.ApiExplorerResponse? _apiExplorerLastResponse;
+    private bool _apiExplorerBusy;
+
+    private void OpenApiExplorer(Services.ApiExplorerMode mode)
+    {
+        bool sameMode = _apiExplorerOpen && _apiExplorerMode == mode;
+        _apiExplorerMode = mode;
+        _apiExplorerOpen = !sameMode || !_apiExplorerOpen;
+        // Switching mode (or reopening) always resets dry-run/selection/response — a stale LIVE
+        // write-safety state or a Local endpoint selected while looking at Graph Write would be a
+        // real correctness bug here, not a cosmetic one.
+        if (_apiExplorerOpen)
+        {
+            _apiExplorerDryRun = true;
+            _apiExplorerSelected = null;
+            _apiExplorerLastResponse = null;
+            _apiExplorerSearchText = "";
+        }
+        ApiExplorerColumn.Width = new GridLength(_apiExplorerOpen ? 320 : 0);
+        if (_apiExplorerOpen) RenderApiExplorer();
+    }
+
+    private void BtnToggleApiExplorer_CloseClick(object sender, MouseButtonEventArgs e)
+    {
+        _apiExplorerOpen = false;
+        ApiExplorerColumn.Width = new GridLength(0);
+    }
+
+    private void RenderApiExplorer()
+    {
+        if (ApiExplorerTitle == null) return;
+
+        var (title, colour) = _apiExplorerMode switch
+        {
+            Services.ApiExplorerMode.Local => ("API Runner", Color.FromRgb(0xC0, 0x84, 0xFC)),
+            Services.ApiExplorerMode.GraphRead => ("Graph Read", Color.FromRgb(0x00, 0xB4, 0xD8)),
+            Services.ApiExplorerMode.GraphWrite => ("Graph Write", Color.FromRgb(0xE2, 0x59, 0x3F)),
+            _ => ("API Runner", Color.FromRgb(0xC0, 0x84, 0xFC)),
+        };
+        ApiExplorerTitle.Text = title;
+        ApiExplorerTitle.Foreground = new SolidColorBrush(colour);
+
+        ApiExplorerSearchBox.Text = _apiExplorerSearchText;
+        ApiExplorerWriteSafetyRow.Visibility = _apiExplorerMode == Services.ApiExplorerMode.GraphWrite ? Visibility.Visible : Visibility.Collapsed;
+
+        RenderApiExplorerAuthRow();
+        RenderApiExplorerTokenPill();
+        RenderApiExplorerEndpointList();
+        RenderApiExplorerSelected();
+        RenderApiExplorerWriteSafetyButtons();
+        RenderApiExplorerResponse();
+    }
+
+    private void RenderApiExplorerAuthRow()
+    {
+        ApiExplorerAuthExtra.Children.Clear();
+        if (_apiExplorerMode == Services.ApiExplorerMode.Local)
+        {
+            // Real-audit: #2204 (Settings / Accounts & Tiers — the single source for gated
+            // profiles) is "Not started". Per #2202's own build comment this does NOT stand up a
+            // parallel profile store — the lock renders an honest not-built-yet state instead.
+            var lockRow = new Border
+            {
+                CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6, 8, 6),
+                Background = (Brush)FindResource("Brush.Claude.Bg.Content"),
+                BorderBrush = (Brush)FindResource("Brush.Claude.Border"), BorderThickness = new Thickness(1),
+            };
+            var sp = new StackPanel();
+            sp.Children.Add(new TextBlock
+            {
+                Text = "No gated profiles yet — Accounts & Tiers (#2204) isn't built.",
+                FontSize = 9.5, TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            sp.Children.Add(new TextBlock
+            {
+                Text = "Type an email + password below and get a real token.", FontSize = 9.5,
+                Margin = new Thickness(0, 2, 0, 6), TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            var emailBox = new TextBox
+            {
+                Text = _apiExplorerLocalEmail, Height = 24, Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(0, 0, 0, 4),
+                Background = (Brush)FindResource("Brush.Claude.Bg.Button"), Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+                BorderBrush = (Brush)FindResource("Brush.Claude.Border"), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10,
+            };
+            emailBox.TextChanged += (s, e) => _apiExplorerLocalEmail = emailBox.Text;
+            var pwBox = new PasswordBox
+            {
+                Height = 24, Padding = new Thickness(6, 2, 6, 2),
+                Background = (Brush)FindResource("Brush.Claude.Bg.Button"), Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+                BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+            };
+            pwBox.PasswordChanged += (s, e) => _apiExplorerLocalPassword = pwBox.Password;
+            sp.Children.Add(new TextBlock { Text = "Email", FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
+            sp.Children.Add(emailBox);
+            sp.Children.Add(new TextBlock { Text = "Password", FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
+            sp.Children.Add(pwBox);
+            lockRow.Child = sp;
+            ApiExplorerAuthExtra.Children.Add(lockRow);
+        }
+        else
+        {
+            var creds = Services.ApiExplorerService.ResolveGraphCredentials(_logService.MainRepoRoot);
+            ApiExplorerAuthExtra.Children.Add(new TextBlock
+            {
+                Text = creds != null ? $"Tenant: {creds.TenantLabel}" : "GRAPH_TENANT_ID/CLIENT_ID/CLIENT_SECRET not found in .env.local",
+                FontSize = 9.5, TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource(creds != null ? "Brush.Claude.Text.Muted" : "Brush.Toast.Warning"),
+            });
+        }
+    }
+
+    private string _apiExplorerLocalEmail = "";
+    private string _apiExplorerLocalPassword = "";
+
+    private void RenderApiExplorerTokenPill()
+    {
+        bool hasToken = !string.IsNullOrEmpty(_apiExplorerToken);
+        bool expired = hasToken && _apiExplorerTokenExpiresAt.HasValue && _apiExplorerTokenExpiresAt.Value <= DateTimeOffset.UtcNow;
+        ApiExplorerTokenPillText.Text = !hasToken ? "No token" : expired ? "Expired" : $"Token valid until {_apiExplorerTokenExpiresAt!.Value.LocalDateTime:HH:mm}";
+        ApiExplorerTokenPillText.Foreground = (Brush)FindResource(hasToken && !expired ? "Brush.Status.Running" : "Brush.Claude.Text.Muted");
+        ApiExplorerTokenBtnLabel.Text = hasToken ? "Refresh token" : "Get token";
+        BtnApiExplorerToken.IsEnabled = !_apiExplorerBusy;
+    }
+
+    private void RenderApiExplorerWriteSafetyButtons()
+    {
+        var accent = (Brush)FindResource("Brush.Claude.Accent");
+        var idleBg = (Brush)FindResource("Brush.Claude.Bg.Content");
+        var idleFg = (Brush)FindResource("Brush.Claude.Text.Muted");
+        BtnApiExplorerDryRun.Background = _apiExplorerDryRun ? accent : idleBg;
+        ((TextBlock)BtnApiExplorerDryRun.Content).Foreground = _apiExplorerDryRun ? new SolidColorBrush(Color.FromRgb(0x1A, 0x0F, 0x0A)) : idleFg;
+        BtnApiExplorerLive.Background = !_apiExplorerDryRun ? new SolidColorBrush(Color.FromRgb(0xE2, 0x59, 0x3F)) : idleBg;
+        ((TextBlock)BtnApiExplorerLive.Content).Foreground = !_apiExplorerDryRun ? Brushes.White : idleFg;
+    }
+
+    private void BtnApiExplorerDryRun_Click(object sender, RoutedEventArgs e)
+    {
+        _apiExplorerDryRun = true;
+        RenderApiExplorerWriteSafetyButtons();
+    }
+
+    private void BtnApiExplorerLive_Click(object sender, RoutedEventArgs e)
+    {
+        _apiExplorerDryRun = false;
+        RenderApiExplorerWriteSafetyButtons();
+    }
+
+    private void ApiExplorerSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _apiExplorerSearchText = ApiExplorerSearchBox.Text;
+        RenderApiExplorerEndpointList();
+    }
+
+    private void RenderApiExplorerEndpointList()
+    {
+        ApiExplorerEndpointList.Children.Clear();
+        var endpoints = Services.ApiExplorerService.GetEndpoints(_apiExplorerMode)
+            .Where(ep => string.IsNullOrWhiteSpace(_apiExplorerSearchText)
+                || ep.Path.Contains(_apiExplorerSearchText, StringComparison.OrdinalIgnoreCase)
+                || ep.Name.Contains(_apiExplorerSearchText, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        foreach (var ep in endpoints)
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 3), Cursor = Cursors.Hand };
+            var methodChip = new Border
+            {
+                CornerRadius = new CornerRadius(4), Padding = new Thickness(5, 1, 5, 1), Margin = new Thickness(0, 0, 6, 0),
+                Background = (Brush)FindResource("Brush.Claude.Bg.Button"),
+                Child = new TextBlock { Text = ep.Method, FontSize = 8.5, FontWeight = FontWeights.Bold, FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), Foreground = (Brush)FindResource("Brush.Claude.Accent") },
+            };
+            DockPanel.SetDock(methodChip, Dock.Left);
+            row.Children.Add(methodChip);
+            row.Children.Add(new TextBlock
+            {
+                Text = ep.Path, FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Body"), TextTrimming = TextTrimming.CharacterEllipsis,
+            });
+            row.MouseLeftButtonDown += (s, e) => { _apiExplorerSelected = ep; RenderApiExplorerSelected(); RenderApiExplorerResponse(); };
+            ApiExplorerEndpointList.Children.Add(row);
+        }
+
+        if (endpoints.Count == 0)
+        {
+            ApiExplorerEndpointList.Children.Add(new TextBlock
+            {
+                Text = "No endpoints match.", FontStyle = FontStyles.Italic, FontSize = 10,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+        }
+    }
+
+    private void RenderApiExplorerSelected()
+    {
+        ApiExplorerSelectedPanel.Children.Clear();
+        if (_apiExplorerSelected == null)
+        {
+            ApiExplorerSelectedPanel.Children.Add(new TextBlock
+            {
+                Text = "Pick an endpoint above.", FontStyle = FontStyles.Italic, FontSize = 9.5,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            return;
+        }
+        var ep = _apiExplorerSelected;
+        var line = new TextBlock { TextWrapping = TextWrapping.Wrap, FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10 };
+        line.Inlines.Add(new Run(ep.Method + " ") { FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("Brush.Claude.Accent") });
+        line.Inlines.Add(new Run(ep.Path) { Foreground = (Brush)FindResource("Brush.Claude.Text.Bright") });
+        ApiExplorerSelectedPanel.Children.Add(line);
+        if (!string.IsNullOrEmpty(ep.Permission))
+        {
+            ApiExplorerSelectedPanel.Children.Add(new TextBlock
+            {
+                Text = $"Requires {ep.Permission} · risk: {ep.Risk}", FontSize = 8.5, Margin = new Thickness(0, 2, 0, 0),
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+        }
+    }
+
+    private async void BtnApiExplorerToken_Click(object sender, RoutedEventArgs e)
+    {
+        if (_apiExplorerBusy) return;
+        _apiExplorerBusy = true;
+        RenderApiExplorerTokenPill();
+        try
+        {
+            if (_apiExplorerMode == Services.ApiExplorerMode.Local)
+            {
+                if (string.IsNullOrWhiteSpace(_apiExplorerLocalEmail) || string.IsNullOrWhiteSpace(_apiExplorerLocalPassword))
+                {
+                    ToastEngine.Show("API Runner", "Enter an email and password first.", ToastKind.Info);
+                    return;
+                }
+                var (token, error) = await Services.ApiExplorerService.LocalPasswordLoginAsync(LocalApiBaseUrl, _apiExplorerLocalEmail, _apiExplorerLocalPassword);
+                if (token == null)
+                {
+                    ToastEngine.Show("API Runner", $"Login failed: {error}", ToastKind.Error);
+                }
+                else
+                {
+                    _apiExplorerToken = token;
+                    _apiExplorerTokenExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15); // real api-server access-token TTL band
+                }
+            }
+            else
+            {
+                var creds = Services.ApiExplorerService.ResolveGraphCredentials(_logService.MainRepoRoot);
+                if (creds == null)
+                {
+                    ToastEngine.Show("API Runner", "No Graph credentials configured in .env.local.", ToastKind.Error);
+                    return;
+                }
+                var (token, expiresAt, error) = await Services.ApiExplorerService.AcquireGraphTokenAsync(creds);
+                if (token == null)
+                {
+                    ToastEngine.Show("API Runner", $"Token acquisition failed: {error}", ToastKind.Error);
+                }
+                else
+                {
+                    _apiExplorerToken = token;
+                    _apiExplorerTokenExpiresAt = expiresAt;
+                }
+            }
+        }
+        finally
+        {
+            _apiExplorerBusy = false;
+            RenderApiExplorerTokenPill();
+        }
+    }
+
+    // Real local dev api-server (scripts/dev-server/config.mjs / artifacts/api-server/package.json
+    // "PORT=${PORT:-8080}") — not a fixture URL.
+    private const string LocalApiBaseUrl = "http://localhost:8080";
+    private const string GraphApiBase = "https://graph.microsoft.com";
+
+    private async void BtnApiExplorerSend_Click(object sender, RoutedEventArgs e)
+    {
+        if (_apiExplorerBusy) return;
+        var ep = _apiExplorerSelected;
+        if (ep == null)
+        {
+            ToastEngine.Show("API Runner", "Pick an endpoint first.", ToastKind.Info);
+            return;
+        }
+
+        var url = _apiExplorerMode == Services.ApiExplorerMode.Local ? LocalApiBaseUrl + ep.Path : GraphApiBase + ep.Path;
+        var method = new HttpMethod(ep.Method);
+        var body = string.IsNullOrEmpty(ep.ExampleBody) ? null : ep.ExampleBody;
+
+        bool isWrite = _apiExplorerMode == Services.ApiExplorerMode.GraphWrite;
+        if (isWrite && _apiExplorerDryRun)
+        {
+            _apiExplorerLastResponse = Services.ApiExplorerService.BuildDryRunPreview(method, url, !string.IsNullOrEmpty(_apiExplorerToken), body);
+            RenderApiExplorerResponse();
+            return;
+        }
+
+        _apiExplorerBusy = true;
+        BtnApiExplorerSend.IsEnabled = false;
+        try
+        {
+            _apiExplorerLastResponse = await Services.ApiExplorerService.ExecuteAsync(url, method, _apiExplorerToken, body);
+        }
+        finally
+        {
+            _apiExplorerBusy = false;
+            BtnApiExplorerSend.IsEnabled = true;
+            RenderApiExplorerResponse();
+        }
+    }
+
+    private void RenderApiExplorerResponse()
+    {
+        ApiExplorerResponsePanel.Children.Clear();
+        var r = _apiExplorerLastResponse;
+        if (r == null)
+        {
+            ApiExplorerResponsePanel.Children.Add(new TextBlock
+            {
+                Text = "Run it here and paste the result straight into the message you are writing.",
+                FontStyle = FontStyles.Italic, FontSize = 10, TextWrapping = TextWrapping.Wrap,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            BtnApiExplorerCopy.IsEnabled = false;
+            return;
+        }
+
+        var toneBrushKey = r.Tone switch
+        {
+            "success" => "Brush.Status.Running",
+            "denied" => "Brush.Status.Blocked",
+            "dry" => "Brush.LogLevel.Warn",
+            _ => "Brush.Status.Blocked",
+        };
+        var chip = new Border
+        {
+            CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(0, 0, 0, 4),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Background = new SolidColorBrush(((SolidColorBrush)FindResource(toneBrushKey)).Color) { Opacity = 0.22 },
+            Child = new TextBlock
+            {
+                Text = r.StatusCode.HasValue ? $"{r.StatusCode} {r.StatusText}" : r.StatusText,
+                FontSize = 9.5, FontWeight = FontWeights.Bold, FontFamily = (FontFamily)FindResource("FontFamily.Monospace"),
+                Foreground = (Brush)FindResource(toneBrushKey),
+            },
+        };
+        ApiExplorerResponsePanel.Children.Add(chip);
+        ApiExplorerResponsePanel.Children.Add(new TextBlock
+        {
+            Text = $"{r.ElapsedMs}ms · {r.SizeBytes}b", FontSize = 8.5, Margin = new Thickness(0, 0, 0, 4),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        });
+        ApiExplorerResponsePanel.Children.Add(new TextBox
+        {
+            Text = r.Body, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true,
+            MaxHeight = 150, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            Background = (Brush)FindResource("Brush.Claude.Bg.Content"), BorderThickness = new Thickness(0),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Body"),
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5, Margin = new Thickness(0, 0, 0, 6),
+        });
+        var pasteBtn = new Button
+        {
+            Height = 24, HorizontalAlignment = HorizontalAlignment.Stretch,
+            Style = (Style)FindResource("PanelCollapseButton"),
+            Content = new TextBlock { Text = "Paste response into the chat", FontSize = 10, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") },
+        };
+        pasteBtn.Click += (s, e) => AppendToComposer($"```\n{r.Body}\n```");
+        ApiExplorerResponsePanel.Children.Add(pasteBtn);
+
+        BtnApiExplorerCopy.IsEnabled = true;
+    }
+
+    private void BtnApiExplorerCopy_Click(object sender, RoutedEventArgs e)
+    {
+        if (_apiExplorerLastResponse == null) return;
+        Clipboard.SetText(_apiExplorerLastResponse.Body);
+        ToastEngine.Show("API Runner", "Response copied.", ToastKind.Info);
     }
 }

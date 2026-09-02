@@ -1,0 +1,30 @@
+<Window x:Class="ShaneBuilder.AlertStackWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Alerts"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Focusable="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Git #2201 — readme-phase2.md Step 11, Channel 1: "A stack bottom-right above the status bar,
+         max-height: 100vh - 92px, at most 2 visible with a 'N more waiting in the bell' pill for the
+         rest." Same always-on-top, non-activating host shape as ToastHostWindow — sized to content so
+         only the cards + pill intercept the mouse. -->
+    <StackPanel x:Name="Root" Margin="14">
+        <StackPanel x:Name="CardStack"/>
+        <Border x:Name="OverflowPill" Visibility="Collapsed" Cursor="Hand"
+                HorizontalAlignment="Right" Margin="0,4,0,0" Padding="10,5" CornerRadius="99"
+                Background="{StaticResource Brush.Bg.Card}"
+                BorderBrush="{StaticResource Brush.Border.Card}" BorderThickness="1"
+                MouseLeftButtonUp="OverflowPill_Click">
+            <TextBlock x:Name="OverflowText" FontSize="10.5" FontWeight="SemiBold"
+                       Foreground="{StaticResource Brush.Text.Muted}"/>
+        </Border>
+    </StackPanel>
+</Window>
