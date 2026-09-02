@@ -10,6 +10,13 @@
  *       same status vocabulary and same verification-reset-on-write rule as
  *       `portal-remediation-tracker.ts`'s s1–s30 world — this is that same
  *       table, just addressed by the finding's own identity.
+ *   POST /api/portal/remediation/checklist/:checkKey/raise-change
+ *     — raise a real Change Request FROM this checklist item (#1941): builds
+ *       the CR body from the finding itself (`lib/remediation-raise-change.ts`)
+ *       and inserts it through the SAME `raiseChangeRequest` the wizard's
+ *       `POST /portal/change-control` uses, with `remediationCheckKey` set to
+ *       this item's checkKey — the real row #1541's reveal gate has had
+ *       nothing to authorize until now.
  *
  * WHY THIS IS A SEPARATE ROUTE FROM `portal-remediation-tracker.ts`
  * -------------------------------------------------------------------
@@ -33,8 +40,10 @@ import { z } from "zod";
 
 import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { resolveRemediationChecklist, isKnownCheckKey } from "../lib/remediation-checklist";
+import { resolveRemediationChecklist, resolveRemediationChecklistItem, isKnownCheckKey } from "../lib/remediation-checklist";
 import { logRetainerWorkFromTracker } from "../lib/retainer-work-logger";
+import { buildRaiseChangeRequestInputForChecklistItem } from "../lib/remediation-raise-change";
+import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
 
 /** Roles that represent SHANE / the MSP acting — see portal-remediation-tracker.ts's own note on why the retainer hook is scoped to these only. */
 const RETAINER_MSP_ACTOR_ROLES = new Set(["admin", "PlatformAdmin", "MSPOperator", "MSPAdmin"]);
@@ -184,6 +193,47 @@ router.put(
     } catch (err) {
       log.error({ err, customerId, checkKey, status }, "PUT /portal/remediation/checklist failed");
       res.status(500).json({ error: "Failed to save remediation checklist item" });
+    }
+  },
+);
+
+// ── Raise a real Change Request FROM one checklist item (#1941) ─────────────
+//
+// The structured backend counterpart to the "Raise a change to fix this"
+// affordance a future checklist UI will call: builds the CR body from the
+// finding itself (see `remediation-raise-change.ts`) and raises it through
+// the SAME `raiseChangeRequest` the wizard's `POST /portal/change-control`
+// uses, with `remediationCheckKey` set — the one thing #1541's reveal gate
+// has been waiting on a real row to authorize.
+router.post(
+  "/portal/remediation/checklist/:checkKey/raise-change",
+  requireRole("Assessment"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const checkKey = String(req.params.checkKey ?? "");
+
+    try {
+      const item = await resolveRemediationChecklistItem(customerId, checkKey);
+      if (!item) {
+        res.status(404).json({ error: "Unknown or already-resolved checklist item" });
+        return;
+      }
+
+      const result = await raiseChangeRequest(customerId, req.user!, buildRaiseChangeRequestInputForChecklistItem(item));
+      log.info({ customerId, checkKey, code: result.code }, "change request raised from a remediation checklist item");
+      res.status(201).json({ ...result, checkKey });
+    } catch (err) {
+      if (err instanceof RaiseChangeRequestError) {
+        res.status(err.status).json({ error: err.message, ...err.body });
+        return;
+      }
+      log.error({ err, customerId, checkKey }, "POST /portal/remediation/checklist/:checkKey/raise-change failed");
+      res.status(500).json({ error: "Failed to raise the change request" });
     }
   },
 );

@@ -321,6 +321,49 @@ export function deriveWorkload(targetResource: string): ChangeRequestWorkload {
 }
 
 /**
+ * Workload derivation for a CR raised FROM a remediation checklist item
+ * (#1941) — a THIRD, separate function from `deriveWorkload` and
+ * `deriveWorkloadFromTouches`, for the same reason those two are separate
+ * from each other: the input shape is different. `deriveWorkload` matches a
+ * technical PowerShell-cmdlet/Graph-endpoint string; a checklist item has no
+ * such string — its only stable identity is `checkKey`
+ * (`remediation_knowledge_base.check_key`), whose own namespace prefix
+ * (`identity:…`, `sharepoint:…`, `security:…`) already names the real area of
+ * the tenant the finding is about. Real prefixes as seeded in
+ * `remediation_knowledge_base` (verified live): identity, devices, exchange,
+ * sharepoint, onedrive, teams, security, compliance, governance, copilot,
+ * appgov, adoption, cost, license/licensing, m365, platform. Only the first
+ * seven have an unambiguous single workload; everything else (governance,
+ * copilot, appgov, adoption, cost, license, licensing, m365, platform) falls
+ * through to `Identity`, the same default `deriveWorkload` itself falls back
+ * to for anything it can't classify — this is not a fabricated category, it's
+ * the same "no better answer" fallback already established for the sibling
+ * function.
+ */
+export function workloadForCheckKey(checkKey: string): ChangeRequestWorkload {
+  const prefix = checkKey.split(":", 1)[0]?.toLowerCase() ?? "";
+  switch (prefix) {
+    case "exchange":
+      return "Exchange / mail";
+    case "sharepoint":
+    case "onedrive":
+      return "SharePoint";
+    case "devices":
+      return "Intune";
+    case "security":
+      return "Defender";
+    case "compliance":
+      return "Purview";
+    case "teams":
+      return "Teams";
+    case "identity":
+      return "Identity";
+    default:
+      return "Identity";
+  }
+}
+
+/**
  * Workload derivation for a Microsoft-change-routed CR (#1534/#1700) — a SEPARATE
  * function from `deriveWorkload` above, on purpose. `deriveWorkload` is
  * `submitCc`'s prototype-ported matcher over a TECHNICAL resource string (a

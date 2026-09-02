@@ -254,4 +254,20 @@ export async function isKnownCheckKey(checkKey: string): Promise<boolean> {
   return row !== undefined;
 }
 
+/**
+ * One checklist item, resolved the same way `resolveRemediationChecklist`
+ * resolves all of them. Returns null when `checkKey` names no OPEN finding
+ * for this tenant's latest scan — a finding that has already resolved (fixed,
+ * no longer flagged) or was never real for this tenant is not something a
+ * "raise a change to fix this" action can be raised against, and this is the
+ * single fail-closed gate that guarantees that (#1941).
+ */
+export async function resolveRemediationChecklistItem(
+  customerId: number,
+  checkKey: string,
+): Promise<RemediationChecklistItem | null> {
+  const { items } = await resolveRemediationChecklist(customerId);
+  return items.find((item) => item.checkKey === checkKey) ?? null;
+}
+
 export { REMEDIATION_TRACKER_STEP_STATUS };

@@ -28,6 +28,7 @@ import {
   formatSnapshotJson,
   isOpenStatus,
   storedChangeClass,
+  workloadForCheckKey,
   workloadForCategory,
 } from "./portal-change-control";
 
@@ -155,6 +156,30 @@ describe("deriveWorkload", () => {
     expect(deriveWorkload("Set-RetentionCompliancePolicy -SharePointLocation https://x.sharepoint.com")).toBe(
       "Purview",
     );
+  });
+});
+
+describe("workloadForCheckKey", () => {
+  it("classifies real remediation_knowledge_base check_key prefixes (#1941)", () => {
+    expect(workloadForCheckKey("exchange:mail-flow-rule-review")).toBe("Exchange / mail");
+    expect(workloadForCheckKey("sharepoint:orgwide-links")).toBe("SharePoint");
+    expect(workloadForCheckKey("onedrive:external-sharing")).toBe("SharePoint");
+    expect(workloadForCheckKey("devices:stale-duplicate-records")).toBe("Intune");
+    expect(workloadForCheckKey("security:secure-score")).toBe("Defender");
+    expect(workloadForCheckKey("compliance:zero-dlp-policies")).toBe("Purview");
+    expect(workloadForCheckKey("teams:external-access")).toBe("Teams");
+    expect(workloadForCheckKey("identity:ca-mfa-coverage")).toBe("Identity");
+  });
+
+  it("falls through to Identity for a prefix with no unambiguous workload — the same 'no better answer' default deriveWorkload itself uses", () => {
+    expect(workloadForCheckKey("governance:guest-count")).toBe("Identity");
+    expect(workloadForCheckKey("copilot:adoption-rate")).toBe("Identity");
+    expect(workloadForCheckKey("m365:license-waste")).toBe("Identity");
+  });
+
+  it("is case-insensitive on the prefix and tolerates a key with no colon", () => {
+    expect(workloadForCheckKey("SharePoint:orgwide-links")).toBe("SharePoint");
+    expect(workloadForCheckKey("no-prefix-here")).toBe("Identity");
   });
 
   it("falls back to Identity for a target it cannot classify", () => {

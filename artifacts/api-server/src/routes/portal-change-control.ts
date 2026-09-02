@@ -111,7 +111,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, changeFreezeWindowsTable, crApprovalsTable, mspChangeRequestsTable, portalChangeControlPolicyTable, usersTable, type CrApproval } from "@workspace/db";
+import { db, changeFreezeWindowsTable, crApprovalsTable, mspChangeRequestsTable, usersTable, type CrApproval } from "@workspace/db";
 import { and, asc, desc, eq, or } from "drizzle-orm";
 import { z } from "zod";
 
@@ -127,21 +127,15 @@ import {
   type ApprovalState,
   type WireApprovalRecord,
 } from "../lib/portal-change-approvals";
-import {
-  loadApprovalPolicy,
-  materializeApprovalsForChange,
-  recordApproval,
-} from "../lib/portal-change-approvals-store";
+import { loadApprovalPolicy, recordApproval } from "../lib/portal-change-approvals-store";
 import { recordRejection } from "../lib/portal-change-rejection";
-import { dischargeRisksForNewChangeRequest } from "../lib/change-request-risk-discharge";
-import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store";
+import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
 import {
   addAttachment,
   addComment,
   listAttachmentsForChangeIds,
   listCommentsForChangeIds,
   listEventsForChangeIds,
-  recordCrEvent,
 } from "../lib/portal-change-timeline-store";
 import { logger } from "../lib/logger";
 import {
@@ -151,9 +145,6 @@ import {
   approvalLines,
   canApprove,
   canRollback,
-  categoryForWorkload,
-  computeRiskLevel,
-  deriveWorkload,
   displayChangeClass,
   displayImplementer,
   displayIntake,
@@ -162,8 +153,6 @@ import {
   formatChangeRequestCode,
   formatSnapshotJson,
   isOpenStatus,
-  storedChangeClass,
-  storedRiskLevel,
   workloadForCategory,
   type ChangeClass,
   type ChangeRequestDisplayStatus,
@@ -654,220 +643,32 @@ router.post(
       return;
     }
 
+    const body = parsed.data;
     try {
-      const scope = await resolveScope(customerId);
-      if (!scope) {
-        res.status(409).json({
-          error: "This account has no connected Microsoft 365 tenant to raise a change against",
-        });
-        return;
-      }
-
-      const body = parsed.data;
-      // Authority-bearing values are computed, never accepted. See the header.
-      const risk = computeRiskLevel({
+      // #1941 — the actual insert/freeze-gate/approval-materialisation/
+      // risk-discharge logic moved to `lib/portal-change-control-raise.ts` so
+      // the "raise a change for this fix" checklist affordance can reuse it
+      // instead of a second create path. See that file's header.
+      const result = await raiseChangeRequest(customerId, req.user!, {
+        title: body.title,
+        target: body.target,
+        ticket: body.ticket,
+        pre: parseJsonField(body.pre),
+        post: parseJsonField(body.post),
         changeClass: body.changeClass,
-        targetResource: body.target,
         impactedUsersCount: body.impactedUsersCount,
+        window: body.window,
+        scheduledStart: body.scheduledStart,
+        scheduledEnd: body.scheduledEnd,
+        freezeException: body.freezeException,
+        remediationCheckKey: body.remediationCheckKey,
       });
-      const workload = deriveWorkload(body.target);
-      const requestedBy = req.user?.email ?? "unknown";
-      const requestedAt = new Date().toISOString();
-
-      // #1500 — enforcement at submit, server-side. A client-side freeze is
-      // decoration; this is the actual gate. Only checked when this tenant's
-      // own policy has opted the freeze calendar in — the master switch and
-      // the sub-toggle are the same pair `portal-settings-change-control.ts`
-      // reads/writes.
-      const [policyRow] = await db
-        .select({ enabled: portalChangeControlPolicyTable.enabled, enforceFreezeCalendar: portalChangeControlPolicyTable.enforceFreezeCalendar })
-        .from(portalChangeControlPolicyTable)
-        .where(eq(portalChangeControlPolicyTable.customerId, scope.customerId))
-        .limit(1);
-      const freezeEnforced = policyRow?.enabled === true && policyRow?.enforceFreezeCalendar === true;
-      const freezeCtx = { mspId: scope.mspId, tenantId: scope.tenantId, workload };
-      const submitFreeze = freezeEnforced ? await activeFreezeForSubmit(freezeCtx, new Date()) : null;
-
-      // #1762 — the second half of freeze enforcement: does the change's OWN
-      // booked window overlap a freeze, not just "is a freeze active right now".
-      // Gated on the same policy pair. Only fires when a real `scheduled_start`
-      // was supplied — a change with no real instant cannot be evaluated this
-      // way, and the 409 below says so rather than implying it passed.
-      const bookedWindowEvaluated = freezeEnforced && !!body.scheduledStart;
-      const bookedFreeze = bookedWindowEvaluated
-        ? await freezeForBookedWindow(
-            freezeCtx,
-            new Date(body.scheduledStart!),
-            body.scheduledEnd ? new Date(body.scheduledEnd) : null,
-          )
-        : null;
-
-      // The freeze that blocks this submission, if any — the active-now one
-      // takes precedence for the message, else the booked-window overlap. A
-      // written exception (#1500) is the one way through either.
-      const blockingFreeze = submitFreeze ?? bookedFreeze;
-      if (blockingFreeze && !body.freezeException) {
-        const reason = submitFreeze
-          ? `"${blockingFreeze.name}" is an active change freeze. Raising a change now requires a written exception.`
-          : `The booked window overlaps the "${blockingFreeze.name}" change freeze. Scheduling into it requires a written exception.`;
-        res.status(409).json({
-          error: reason,
-          freeze: { id: blockingFreeze.id, name: blockingFreeze.name, scope: blockingFreeze.scope },
-          // #1762 — false means no real scheduled_start was supplied, so only
-          // the submit-time check ran; the booked window was NOT evaluated. The
-          // caller must not read a pass here as "the window is clear".
-          bookedWindowEvaluated,
-        });
+      res.status(201).json(result);
+    } catch (err) {
+      if (err instanceof RaiseChangeRequestError) {
+        res.status(err.status).json({ error: err.message, ...err.body });
         return;
       }
-
-      // #1761 — a wizard-raised Standard change is genuinely pre-approved (see
-      // materializeApprovalsForChange's `stages === 0` branch below), so it needs
-      // a real `approvedBy` at creation the same way the catalog `execute` route
-      // (portal-change-catalog.ts) sets its own signed approver — otherwise
-      // displayStatus() has nothing to key "Approved" off of and the CR is stuck
-      // showing "Pending approval" forever despite the ledger already saying
-      // approved. No catalog item exists on this path, so the name mirrors the
-      // one materializeApprovalsForChange's own stages === 0 branch writes into
-      // cr_approvals when no approvedBy is supplied.
-      const wizardApprovedBy = body.changeClass === "Standard" ? "Standard change — pre-approved" : null;
-
-      const [inserted] = await db
-        .insert(mspChangeRequestsTable)
-        .values({
-          mspId: scope.mspId,
-          tenantId: scope.tenantId,
-          tenantName: scope.tenantName,
-          primaryDomain: scope.primaryDomain,
-          title: body.title,
-          // The prototype's own rationale for a wizard-raised CR (proto 17183).
-          description: "Raised from the change control page. Awaiting approval.",
-          // No casts on any of these three. They are typed unions from
-          // lib/portal-change-control.ts precisely so the compiler checks them
-          // against the real column types — a cast here would compile whether
-          // or not `category` had actually been widened to hold "SharePoint".
-          changeClass: storedChangeClass(body.changeClass),
-          riskLevel: storedRiskLevel(risk),
-          category: categoryForWorkload(workload),
-          targetResource: body.target,
-          psaTicketId: body.ticket?.trim() || "No ticket reference",
-          requestedBy,
-          requestedAt,
-          scheduledFor: body.window,
-          // #1762 — the real booked instant, when the caller supplied one. NULL
-          // otherwise: `scheduled_for` (the label) is always kept; this pair is
-          // only ever a real instant or nothing, never a guess.
-          scheduledStart: body.scheduledStart ? new Date(body.scheduledStart) : null,
-          scheduledEnd: body.scheduledEnd ? new Date(body.scheduledEnd) : null,
-          impactedUsersCount: body.impactedUsersCount,
-          status: "pending_approval",
-          // NOT the MSP route's fabricated hash — see the header. Nothing has
-          // executed, so nothing has been backed up.
-          backupVerified: false,
-          backupHash: "",
-          preChangeSnapshot: parseJsonField(body.pre),
-          proposedPayload: parseJsonField(body.post),
-          rollbackScriptSnippet: "",
-          // #1541 — NULL unless the caller supplied one (see the schema comment
-          // above). The CR gate resolves this exact match, so it is stored
-          // verbatim rather than normalized/validated against a check catalogue
-          // here — an unknown key simply never resolves a reveal, which is the
-          // correct fail-closed outcome rather than a 400 on an otherwise valid
-          // change submission.
-          remediationCheckKey: body.remediationCheckKey?.trim() || null,
-          approvedBy: wizardApprovedBy,
-        })
-        .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
-
-      // #1503 — every CR-creation path emits the `raised` event that opens its timeline.
-      await recordCrEvent({
-        changeRequestId: inserted.id,
-        mspId: scope.mspId,
-        tenantId: scope.tenantId,
-        eventType: "raised",
-        fromValue: null,
-        toValue: "pending_approval",
-        actorRole: "customer",
-        actorPersonId: personIdForUser(req.user!.id),
-        actorName: requestedBy,
-        occurredAt: inserted.createdAt,
-      });
-
-      // #1496 — a real change produces a real approval record from the moment it
-      // is raised. A wizard CR is `normal`, unapproved, so this materialises the
-      // required pending stage(s) with their SLA. Non-fatal if it fails: the CR
-      // is already created and the register still renders.
-      try {
-        // #1759 — materialise the required pending stage(s) against this tenant's
-        // own policy floor, not just the risk-derived count.
-        const policy = await loadApprovalPolicy(customerId);
-        await materializeApprovalsForChange(
-          {
-            id: inserted.id,
-            mspId: scope.mspId,
-            tenantId: scope.tenantId,
-            changeClass: storedChangeClass(body.changeClass),
-            riskLevel: storedRiskLevel(risk),
-            status: "pending_approval",
-            approvedBy: wizardApprovedBy,
-            requestedBy,
-            createdAt: inserted.createdAt,
-          },
-          policy,
-        );
-      } catch (err) {
-        log.error({ err, crId: inserted.id }, "change request created but approval materialisation failed");
-      }
-
-      // #1500 / #1762 — the change was allowed through a freeze (active-now OR a
-      // booked window overlapping one) ONLY because a justification was given;
-      // that becomes its own higher-bar approval stage (MSP sign-off required),
-      // additional to whatever ordinary stages the change already needed.
-      // Non-fatal, same discipline as the materialisation above: the CR already
-      // exists and the register renders.
-      if (blockingFreeze && body.freezeException) {
-        try {
-          await recordFreezeException({
-            changeRequestId: inserted.id,
-            mspId: scope.mspId,
-            tenantId: scope.tenantId,
-            freezeWindowId: blockingFreeze.id,
-            justification: body.freezeException.justification,
-            requestedBy,
-          });
-        } catch (err) {
-          log.error({ err, crId: inserted.id }, "change request created but freeze-exception stage failed to record");
-        }
-      }
-
-      // #1514 — the discharge half of the rejection-to-risk lifecycle: a fresh
-      // CR raised against the same check as a standing accepted risk IS the
-      // change that supersedes it. Non-fatal, same discipline as the two
-      // blocks above: the CR already exists and the register still renders
-      // even if this lookup fails.
-      let riskDischarged = false;
-      if (body.remediationCheckKey) {
-        try {
-          const { dischargedRiskIds } = await dischargeRisksForNewChangeRequest({
-            changeRequestId: inserted.id,
-            mspId: scope.mspId,
-            tenantId: scope.tenantId,
-            checkKey: body.remediationCheckKey.trim(),
-          });
-          riskDischarged = dischargedRiskIds.length > 0;
-        } catch (err) {
-          log.error({ err, crId: inserted.id }, "change request created but risk discharge lookup failed");
-        }
-      }
-
-      const code = formatChangeRequestCode(inserted.id);
-      log.info(
-        { customerId, mspId: scope.mspId, code, risk, workload, changeClass: body.changeClass, freezeException: blockingFreeze !== null, riskDischarged },
-        "change request raised from the customer portal",
-      );
-
-      res.status(201).json({ code, risk, workload, freezeException: blockingFreeze !== null, riskDischarged });
-    } catch (err) {
       log.error({ err, customerId }, "POST /portal/change-control failed");
       res.status(500).json({ error: "Failed to raise the change request" });
     }
