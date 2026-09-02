@@ -15,10 +15,10 @@
 
     <!-- Git #2327 — "expands to the pad." What the pill opens. The composer (#2328), type chips
          (#2330), status band (#2332), notes list/grouping/edit/lock (#2333-#2336), Send to Claude
-         (#2337), pipeline caption (#2338), copy-as-markdown (#2339), shots/Paste Tray
-         (#2340-#2342) and import (#2343-#2354) each build out this body in their own issue — this
-         shell is only the floating, non-layout-shifting container the pill expands into, with an
-         honest empty state until a note actually exists. -->
+         (#2337), pipeline caption (#2338), copy-as-markdown (#2339, header action), shots/Paste
+         Tray (#2340-#2342) and import (#2343-#2354) each build out this body in their own issue —
+         this shell is only the floating, non-layout-shifting container the pill expands into, with
+         an honest empty state until a note actually exists. -->
     <Border CornerRadius="10" Background="{StaticResource Brush.Bg.Panel}"
             BorderBrush="{StaticResource Brush.Border.Popover}" BorderThickness="1" Margin="14">
         <Border.Effect>
@@ -29,6 +29,19 @@
                 <TextBlock Text="Test Pad" FontSize="13" FontWeight="SemiBold"
                            Foreground="{StaticResource Brush.Text.Heading}" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Git #2339 — "Copy as markdown" for the checked selection, distinct from
+                         "Send to Claude" (#2337) which falls back to every unsent note when nothing
+                         is checked. This one only ever acts on TestPadNote.IsSelected, so it's
+                         hidden entirely until at least one note is checked. -->
+                    <Border x:Name="BtnCopyMarkdown" Height="20" CornerRadius="4" Cursor="Hand"
+                            Padding="6,0" Margin="0,0,6,0" Background="Transparent"
+                            MouseLeftButtonUp="BtnCopyMarkdown_Click"
+                            Visibility="Collapsed"
+                            ToolTip="Copy the selected notes as a markdown block">
+                        <TextBlock x:Name="CopyMarkdownLabel" Text="Copy as markdown" FontSize="10"
+                                   Foreground="{StaticResource Brush.Text.Muted}"
+                                   VerticalAlignment="Center"/>
+                    </Border>
                     <!-- Git #2334 — "By feature" regroups the list. Toggles the notes list below
                          between flat (newest-first) and grouped-by-Feature. -->
                     <Border x:Name="BtnGroupByFeature" Height="20" CornerRadius="4" Cursor="Hand"

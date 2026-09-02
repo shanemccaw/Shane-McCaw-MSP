@@ -26,7 +26,10 @@ namespace ShaneBuilder
     /// gone out. An honest "No notes yet." otherwise. Git #2337 adds the real "Send to Claude"
     /// action: formats the selected (or, with nothing checked, every unsent) note into one block
     /// via <see cref="TestPadSendFormatter"/> and drops it into the currently active chat tab's
-    /// composer through <see cref="AlertActions.AppendToComposer"/>.
+    /// composer through <see cref="AlertActions.AppendToComposer"/>. Git #2339 adds "Copy as
+    /// markdown" — unlike Send to Claude it never falls back to "every unsent note"; it acts only
+    /// on whatever is checked (<see cref="TestPadNote.IsSelected"/>, any mix of sent/unsent) and is
+    /// hidden entirely when nothing is checked.
     /// </summary>
     public partial class TestPadWindow : Window
     {
@@ -178,6 +181,26 @@ namespace ShaneBuilder
             ToastEngine.Success("Test Pad", $"Sent {count} {(count == 1 ? "note" : "notes")} into the composer — review, then Send.");
         }
 
+        /// <summary>Git #2339 — "Copy as markdown" for the selection, distinct from "Send to
+        /// Claude": it never falls back to "every unsent note" — it acts strictly on whatever is
+        /// checked, sent or not, and does nothing (with a nudge toast) if nothing is checked at
+        /// all, which shouldn't be reachable since the button is hidden in that state.</summary>
+        private void BtnCopyMarkdown_Click(object sender, MouseButtonEventArgs e)
+        {
+            var selected = TestPadService.Notes.Where(n => n.IsSelected).ToList();
+            if (selected.Count == 0)
+            {
+                ToastEngine.Warning("Test Pad", "Check a note first to copy it as markdown.");
+                return;
+            }
+
+            var block = TestPadSendFormatter.Format(selected);
+            Clipboard.SetText(block);
+
+            var count = selected.Count;
+            ToastEngine.Success("Test Pad", $"Copied {count} {(count == 1 ? "note" : "notes")} as markdown.");
+        }
+
         public void Render()
         {
             var notes = TestPadService.Notes;
@@ -185,6 +208,7 @@ namespace ShaneBuilder
 
             RenderStatusBand();
             RenderSendToClaudeButton(notes);
+            RenderCopyMarkdownButton(notes);
 
             EmptyState.Visibility = notes.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -390,6 +414,16 @@ namespace ShaneBuilder
             SendToClaudeLabel.Text = target == 0 ? "Send to Claude" : $"Send to Claude ({target})";
             BtnSendToClaude.Opacity = target == 0 ? 0.5 : 1.0;
             BtnSendToClaude.Cursor = target == 0 ? Cursors.Arrow : Cursors.Hand;
+        }
+
+        /// <summary>Git #2339 — the header's "Copy as markdown" action only exists while there's a
+        /// selection to act on; it's collapsed entirely rather than shown disabled, and labels
+        /// itself with the real count so it's obvious exactly what a click copies.</summary>
+        private void RenderCopyMarkdownButton(IReadOnlyList<TestPadNote> notes)
+        {
+            var selected = notes.Count(n => n.IsSelected);
+            BtnCopyMarkdown.Visibility = selected == 0 ? Visibility.Collapsed : Visibility.Visible;
+            CopyMarkdownLabel.Text = $"Copy as markdown ({selected})";
         }
 
         private void Reposition()
