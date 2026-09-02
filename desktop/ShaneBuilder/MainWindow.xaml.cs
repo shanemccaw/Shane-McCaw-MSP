@@ -878,7 +878,15 @@ public partial class MainWindow : Window
             }
         }
 
-        if (changed) RenderTabStrip();
+        if (changed)
+        {
+            RenderTabStrip();
+            // Git #2324 — the breadcrumb bar is a separate render path from the tab strip; a
+            // FeatureNumber resolved after RenderClaudeChatContext already ran for the active tab
+            // would otherwise leave the breadcrumb stuck without its Feature segment.
+            if (_activeChatTab != null && targets.Contains(_activeChatTab))
+                RenderClaudeChatContext(_activeChatTab);
+        }
     }
 
     private void RenderTabStrip()
@@ -2723,6 +2731,23 @@ public partial class MainWindow : Window
         _activeChatTab = tab;
         CtxEpicNum.Text = tab.EpicNumber.HasValue ? $"#{tab.EpicNumber}" : "#—";
         CrumbEpic.Text = tab.EpicNumber.HasValue ? $"Epic #{tab.EpicNumber}" : "Epic";
+
+        // Git #2324 — Feature segment, only shown once genuinely resolved (ResolveChatFeatureNumbersAsync,
+        // #2319). No Feature-tier ancestor is a genuinely honest state, not a loading state — collapsed,
+        // matching the tab-strip badge's own null handling.
+        if (tab.FeatureNumber.HasValue)
+        {
+            CrumbFeature.Text = $"⬡ Feature #{tab.FeatureNumber}";
+            CrumbFeature.Visibility = Visibility.Visible;
+            CrumbFeatureSep.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            CrumbFeature.Text = "";
+            CrumbFeature.Visibility = Visibility.Collapsed;
+            CrumbFeatureSep.Visibility = Visibility.Collapsed;
+        }
+
         CrumbChat.Text = tab.Title;
 
         // §8 — bind this tab's own draft into the composer (guard the load so setting .Text doesn't
@@ -3446,6 +3471,28 @@ public partial class MainWindow : Window
         }
     }
 
+    // Git #2324 — Feature click-target, mirroring CtxEpic_Click above.
+    private void CtxFeature_Click(object sender, MouseButtonEventArgs e)
+    {
+        var feature = _activeChatTab?.FeatureNumber;
+        if (feature.HasValue)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = $"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{feature}",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] open feature failed: {ex.Message}"); }
+        }
+        else
+        {
+            ToastEngine.Show("Feature", "This chat has no Feature-tier ancestor.", ToastKind.Info);
+        }
+    }
+
     private void BtnStartNewChat_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -3461,15 +3508,27 @@ public partial class MainWindow : Window
     /// build against instead of a second copy of this button's wiring.</summary>
     private void BtnNewChat_Click(object sender, RoutedEventArgs e) => OpenNewChatFlow();
 
-    /// <summary>Today: opens a fresh claude.ai tab, same navigation BtnStartNewChat_Click
-    /// already uses. #2321 replaces this body with the real disclosure listing active
-    /// features + their epic/state and a "no feature yet — decide later" option before
-    /// writing the anchor into the new tab's subtitle.</summary>
+    /// <summary>Git #2321 — shows the real anchor disclosure (active Features + their real Epic
+    /// and state, off <see cref="Services.GitIssuesService.GetActiveFeaturesAsync"/>) before
+    /// navigating. A picked feature's anchor is logged for now (Console/Toast) — writing it into
+    /// the new tab's own subtitle is #2323's real remaining work (a new anchored TabDef doesn't
+    /// exist yet; today's single persistent chat tab just gets renavigated, same as
+    /// BtnStartNewChat_Click always has). Cancelling the dialog is a real no-op: no navigation,
+    /// nothing anchored — the "no feature yet — decide later" option (#2322) still needs building.</summary>
     private void OpenNewChatFlow()
     {
+        var dlg = NewChatAnchorDialog.ShowFor(this);
+        if (dlg.SelectedFeatureNumber == null)
+            return; // cancelled — no anchor chosen, don't navigate
+
         try
         {
             ClaudeWebView.Source = new Uri("https://claude.ai/new");
+            string anchorLabel = dlg.SelectedEpicNumber.HasValue
+                ? $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\" (Epic #{dlg.SelectedEpicNumber})"
+                : $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\"";
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Info, $"[chat] new chat anchored to {anchorLabel}");
+            ToastEngine.Show("New chat", $"Anchored to {anchorLabel}.", ToastKind.Info);
         }
         catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] new-chat failed: {ex.Message}"); }
     }
