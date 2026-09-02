@@ -3513,17 +3513,27 @@ public partial class MainWindow : Window
     /// navigating. A picked feature's anchor is logged for now (Console/Toast) — writing it into
     /// the new tab's own subtitle is #2323's real remaining work (a new anchored TabDef doesn't
     /// exist yet; today's single persistent chat tab just gets renavigated, same as
-    /// BtnStartNewChat_Click always has). Cancelling the dialog is a real no-op: no navigation,
-    /// nothing anchored — the "no feature yet — decide later" option (#2322) still needs building.</summary>
+    /// BtnStartNewChat_Click always has). Cancelling the dialog (Cancel/Escape/close) is a real
+    /// no-op: no navigation, nothing decided. Git #2322 — "No feature yet — decide later"
+    /// (<see cref="NewChatAnchorDialog.DecideLater"/>) is the third, distinct outcome: the user
+    /// explicitly chose to proceed unanchored, so the new chat still navigates, just logged/toasted
+    /// as unanchored rather than silently skipped like a cancel.</summary>
     private void OpenNewChatFlow()
     {
         var dlg = NewChatAnchorDialog.ShowFor(this);
-        if (dlg.SelectedFeatureNumber == null)
-            return; // cancelled — no anchor chosen, don't navigate
+        if (dlg.SelectedFeatureNumber == null && !dlg.DecideLater)
+            return; // cancelled — no decision made, don't navigate
 
         try
         {
             ClaudeWebView.Source = new Uri("https://claude.ai/new");
+            if (dlg.SelectedFeatureNumber == null)
+            {
+                Services.ConsoleOutputSink.Log(Services.LogLevel.Info, "[chat] new chat started unanchored (decide later)");
+                ToastEngine.Show("New chat", "Started unanchored — pick a Feature for it later.", ToastKind.Info);
+                return;
+            }
+
             string anchorLabel = dlg.SelectedEpicNumber.HasValue
                 ? $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\" (Epic #{dlg.SelectedEpicNumber})"
                 : $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\"";

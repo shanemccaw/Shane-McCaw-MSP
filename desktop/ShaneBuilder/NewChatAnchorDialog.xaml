@@ -101,6 +101,7 @@
             </Border>
 
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Margin="20,0,20,16">
+                <Button x:Name="BtnDecideLater" Content="No feature yet — decide later" Style="{StaticResource DialogButton}" Padding="14,6" Margin="0,0,8,0" Click="BtnDecideLater_Click"/>
                 <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource DialogButton}" Padding="14,6" IsCancel="True" Click="BtnCancel_Click"/>
             </StackPanel>
 

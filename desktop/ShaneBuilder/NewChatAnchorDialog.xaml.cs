@@ -15,17 +15,24 @@ namespace ShaneBuilder
     /// claude.ai/new. Lists every real open "Feature:" issue (<see cref="GitIssuesService.GetActiveFeaturesAsync"/>)
     /// with its real parent Epic and real state — never a fabricated list. Picking a row is the
     /// real anchor decision; <see cref="SelectedFeatureNumber"/>/<see cref="SelectedEpicNumber"/>
-    /// carry it back to the caller. Writing that anchor into the new tab's subtitle (#2323) and the
-    /// "no feature yet — decide later" option (#2322) are both separate open sub-issues of #2318 —
-    /// out of scope here; Cancel is this dialog's only "don't anchor yet" path today.</summary>
+    /// carry it back to the caller. Writing that anchor into the new tab's subtitle is #2323's
+    /// separate remaining work — out of scope here. Git #2322 (Feature #2318 item 4) adds the real
+    /// "no feature yet — decide later" path (<see cref="DecideLater"/>): a deliberate choice to
+    /// proceed unanchored, distinct from Cancel/Escape/close, which is still a full abort — no
+    /// navigation, nothing decided either way.</summary>
     public partial class NewChatAnchorDialog : Window
     {
-        /// <summary>The real Feature issue number the user picked, or null if the dialog was
-        /// cancelled/closed without a selection.</summary>
+        /// <summary>The real Feature issue number the user picked, or null if none was picked
+        /// (either cancelled, or explicitly deferred via <see cref="DecideLater"/>).</summary>
         public int? SelectedFeatureNumber { get; private set; }
         public string? SelectedFeatureTitle { get; private set; }
         public int? SelectedEpicNumber { get; private set; }
         public string? SelectedEpicTitle { get; private set; }
+
+        /// <summary>True when the user explicitly picked "No feature yet — decide later" —
+        /// the caller should still navigate the new chat, just without an anchor, as opposed to
+        /// Cancel/Escape/close (false here too, but also no navigation at all).</summary>
+        public bool DecideLater { get; private set; }
 
         private NewChatAnchorDialog()
         {
@@ -151,6 +158,12 @@ namespace ShaneBuilder
 
         private void BtnCancel_Click(object sender, RoutedEventArgs e) => Close();
         private void BtnCloseWindow_Click(object sender, RoutedEventArgs e) => Close();
+
+        private void BtnDecideLater_Click(object sender, RoutedEventArgs e)
+        {
+            DecideLater = true;
+            Close();
+        }
 
         private void Window_KeyDown(object sender, KeyEventArgs e)
         {
