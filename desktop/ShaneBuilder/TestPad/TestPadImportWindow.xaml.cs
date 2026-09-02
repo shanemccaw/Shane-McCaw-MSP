@@ -25,11 +25,13 @@ namespace ShaneBuilder
     /// <see cref="GitIssuesService.GetActiveFeaturesAsync"/> returns. Every preview row also gets a
     /// feature dropdown — pre-selected to whatever auto-matched, always including every real active
     /// feature plus "— No feature —" — which is both the fallback for a row that came back
-    /// unmatched and the correction path for a wrong auto-match. Merge-up UI (#2352-#2354)
-    /// is a separate open sub-issue that extends <see cref="PreviewHost"/> in place — this issue's
-    /// preview is deliberately just a checkable list of what the splitter produced. Per-row
-    /// type-chip correction (#2351) is done: each row's chip is clickable and cycles its
-    /// candidate's <see cref="NoteType"/> in place, via <see cref="NextType"/>.</summary>
+    /// unmatched and the correction path for a wrong auto-match. Per-row type-chip correction
+    /// (#2351) is done: each row's chip is clickable and cycles its candidate's
+    /// <see cref="NoteType"/> in place, via <see cref="NextType"/>. Merge-up (#2352-#2354)
+    /// extends <see cref="PreviewHost"/> in place: multi-select "Merge N up" (#2353) plus the
+    /// per-row single-click "↑ merge up" chip (#2352, via <see cref="TestPadImportMerger.MergeRowUp"/>)
+    /// both fold a row's text into whatever row precedes it; split-back-out/undo (#2354) is
+    /// still open.</summary>
     public partial class TestPadImportWindow : Window
     {
         private List<TestPadImportCandidate> _candidates = new();
@@ -116,15 +118,17 @@ namespace ShaneBuilder
             // Git #2353 — a row merged away (IsMergedAway) already lives inside the row it was
             // merged into, so it's skipped here rather than rendered as its own row.
             string? lastSection = null;
-            foreach (var candidate in _candidates)
+            var visible = _candidates.Where(c => !c.IsMergedAway).ToList();
+            foreach (var candidate in visible)
             {
-                if (candidate.IsMergedAway) continue;
-
                 if (candidate.Section != null && candidate.Section != lastSection)
                     PreviewHost.Children.Add(BuildSectionHeaderRow(candidate.Section));
                 lastSection = candidate.Section;
 
-                PreviewHost.Children.Add(BuildPreviewRow(candidate));
+                // Git #2352 — the topmost visible row has nothing above it to merge into; every
+                // other row gets the per-row merge-up button.
+                var canMergeUp = visible.IndexOf(candidate) > 0;
+                PreviewHost.Children.Add(BuildPreviewRow(candidate, canMergeUp));
             }
 
             UpdateImportButton();
@@ -175,7 +179,9 @@ namespace ShaneBuilder
             };
         }
 
-        private Border BuildPreviewRow(TestPadImportCandidate candidate)
+        /// <summary>Git #2352 — <paramref name="canMergeUp"/> is false only for the topmost
+        /// visible row, which has nothing above it to merge into.</summary>
+        private Border BuildPreviewRow(TestPadImportCandidate candidate, bool canMergeUp)
         {
             var row = new Border
             {
@@ -266,6 +272,36 @@ namespace ShaneBuilder
                 typeChipText.Text = LabelFor(candidate.Type);
             };
             chips.Children.Add(typeChip);
+
+            // Git #2352 — "Import: per-row merge-up button." A quick single-click fold of just
+            // this row into whatever row precedes it, with no select tick box involved — the
+            // multi-select "Merge N up" bar (#2353) stays for folding several rows at once.
+            if (canMergeUp)
+            {
+                var mergeUpChip = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1, 5, 1),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Cursor = Cursors.Hand,
+                    ToolTip = "Merge this row up into the one above it",
+                    Background = (Brush)FindResource("Brush.Bg.Card"),
+                };
+                mergeUpChip.Child = new TextBlock
+                {
+                    Text = "↑ merge up",
+                    FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                };
+                mergeUpChip.MouseLeftButtonDown += (_, _) =>
+                {
+                    if (TestPadImportMerger.MergeRowUp(_candidates, candidate))
+                        RenderPreview();
+                };
+                chips.Children.Add(mergeUpChip);
+            }
 
             // Git #2353 — "+N merged" indicator: honest trace that this row's Text now carries
             // other rows' content folded in via "Merge N up". Full split-back-out/undo is #2354's

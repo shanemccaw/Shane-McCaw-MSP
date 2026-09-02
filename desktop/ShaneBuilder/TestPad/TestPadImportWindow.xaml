@@ -17,7 +17,9 @@
          Two-stage body: a paste box (Stage 1), and once Parse runs, a preview list of the
          candidate notes TestPadImportParser split out (Stage 2) with an Import button that files
          them into TestPadService. The header-stats line, per-row type-chip correction, and
-         merge-up UI (#2350-#2354) extend PreviewHost/PreviewHeaderText in place. -->
+         merge-up UI (#2350-#2354) extend PreviewHost/PreviewHeaderText in place. #2352's
+         per-row "↑ merge up" chip lives inside each row (TestPadImportWindow.xaml.cs
+         BuildPreviewRow) rather than as a separate element here. -->
     <WindowChrome.WindowChrome>
         <shell:WindowChrome CaptionHeight="36"
                              ResizeBorderThickness="0"
