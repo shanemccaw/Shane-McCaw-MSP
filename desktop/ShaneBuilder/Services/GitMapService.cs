@@ -43,6 +43,21 @@ public sealed class GitMapFeature
     /// re-fetched, single-sourced per this file's own header.</summary>
     public bool IsParked { get; set; }
     public bool IsPaused { get; set; }
+    /// <summary>Git #2314 — real closed count of this feature's OWN sub-issues (its "gaps"), off
+    /// GitHub's <c>subIssues</c> edge, same edge <see cref="GitEpicPanelService"/>'s epic-detail
+    /// query already reads one level deeper. Zero for a childless feature — see
+    /// <see cref="TotalCount"/> for the "IS the atomic work item" case, same convention
+    /// <c>GitEpicFeature.Leaves</c> already uses.</summary>
+    public int ClosedCount { get; init; }
+    /// <summary>Real total sub-issue count off GitHub's own <c>subIssues.totalCount</c> — exact
+    /// even beyond the first 100 nodes fetched for <see cref="ClosedCount"/>. Zero means this
+    /// feature has no sub-issues of its own; the feature itself is then the one atomic unit
+    /// (already covered by <see cref="IsClosed"/>), not a burndown gap.</summary>
+    public int TotalCount { get; init; }
+    /// <summary>Real fraction closed of <see cref="TotalCount"/>, for a burndown bar/ring. Null
+    /// when the feature has no sub-issues of its own — an honest "no burndown here", never a
+    /// fabricated 0% or 100%.</summary>
+    public double? BurndownFraction => TotalCount > 0 ? (double)ClosedCount / TotalCount : (double?)null;
 }
 
 /// <summary>The real, currently in-flight feature under one epic — "Focus Build" per §6.5's mini
@@ -163,16 +178,23 @@ public static class GitMapService
     /// <summary>One epic's real sub-issues ("features"), straight off GitHub's own sub_issues edge —
     /// the SAME call both the mini panel's expand action and the full document's feature list use
     /// (single-source, per #2213's hard constraint). Labels come back in the same response, so
-    /// in-flight/blocked/complete are real per-feature state, not a second lookup per card.</summary>
+    /// in-flight/blocked/complete are real per-feature state, not a second lookup per card.
+    /// Git #2314 — also pulls each feature's OWN one-level-deeper <c>subIssues</c> (real closed/
+    /// total counts for the per-feature burndown), via GraphQL in this same one call rather than
+    /// an N+1 REST round-trip per feature — the same nested-<c>subIssues</c> shape
+    /// <see cref="GitEpicPanelService.GetEpicDetailAsync"/> already reads one level deeper.</summary>
     public static async Task<(bool Ok, List<GitMapFeature> Features, string? Error)> GetFeaturesForEpicAsync(int epicNumber)
     {
         if (epicNumber <= 0) return (true, new List<GitMapFeature>(), null);
 
-        var (ok, stdout, stderr) = await RunGhAsync(new[]
-        {
-            "api", $"repos/{Owner}/{RepoName}/issues/{epicNumber}/sub_issues",
-            "--jq", "[.[] | {number, title, state, labels: [.labels[].name]}]"
-        });
+        string query =
+            "query { repository(owner: \"" + Owner + "\", name: \"" + RepoName + "\") { " +
+            "issue(number: " + epicNumber + ") { subIssues(first: 100) { nodes { " +
+            "number title state labels(first: 20) { nodes { name } } " +
+            "subIssues(first: 100) { totalCount nodes { state } } " +
+            "} } } } }";
+
+        var (ok, stdout, stderr) = await RunGhAsync(new[] { "api", "graphql", "-f", $"query={query}" });
         if (!ok)
         {
             ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] sub_issues fetch failed for epic #{epicNumber}: {stderr.Trim()}");
@@ -180,21 +202,43 @@ public static class GitMapService
         }
         try
         {
-            var rows = JsonSerializer.Deserialize<List<SubIssueRow>>(stdout, JsonOpts) ?? new();
-            var features = rows.Select(r =>
+            using var doc = JsonDocument.Parse(stdout);
+            var issueEl = doc.RootElement.GetProperty("data").GetProperty("repository").GetProperty("issue");
+            var features = new List<GitMapFeature>();
+            if (issueEl.ValueKind == JsonValueKind.Object && issueEl.TryGetProperty("subIssues", out var subEl) && subEl.ValueKind == JsonValueKind.Object)
             {
-                var labels = r.Labels ?? new List<string>();
-                bool closed = string.Equals(r.State, "closed", StringComparison.OrdinalIgnoreCase);
-                return new GitMapFeature
+                foreach (var f in subEl.GetProperty("nodes").EnumerateArray())
                 {
-                    Number = r.Number,
-                    Title = r.Title ?? $"#{r.Number}",
-                    IsClosed = closed,
-                    IsInFlight = !closed && labels.Contains("in-flight", StringComparer.OrdinalIgnoreCase),
-                    IsBlocked = !closed && labels.Contains("blocked", StringComparer.OrdinalIgnoreCase),
-                    IsComplete = labels.Contains("complete", StringComparer.OrdinalIgnoreCase),
-                };
-            }).ToList();
+                    int number = f.GetProperty("number").GetInt32();
+                    string title = f.TryGetProperty("title", out var t) ? t.GetString() ?? $"#{number}" : $"#{number}";
+                    bool closed = f.TryGetProperty("state", out var st) && string.Equals(st.GetString(), "CLOSED", StringComparison.OrdinalIgnoreCase);
+                    var labels = new List<string>();
+                    if (f.TryGetProperty("labels", out var labelsEl) && labelsEl.TryGetProperty("nodes", out var labelNodes))
+                        foreach (var l in labelNodes.EnumerateArray())
+                            if (l.TryGetProperty("name", out var ln) && ln.GetString() is string name) labels.Add(name);
+
+                    int totalCount = 0, closedCount = 0;
+                    if (f.TryGetProperty("subIssues", out var childEl) && childEl.ValueKind == JsonValueKind.Object)
+                    {
+                        totalCount = childEl.TryGetProperty("totalCount", out var tc) ? tc.GetInt32() : 0;
+                        if (childEl.TryGetProperty("nodes", out var childNodes))
+                            closedCount = childNodes.EnumerateArray().Count(c =>
+                                c.TryGetProperty("state", out var cs) && string.Equals(cs.GetString(), "CLOSED", StringComparison.OrdinalIgnoreCase));
+                    }
+
+                    features.Add(new GitMapFeature
+                    {
+                        Number = number,
+                        Title = title,
+                        IsClosed = closed,
+                        IsInFlight = !closed && labels.Contains("in-flight", StringComparer.OrdinalIgnoreCase),
+                        IsBlocked = !closed && labels.Contains("blocked", StringComparer.OrdinalIgnoreCase),
+                        IsComplete = labels.Contains("complete", StringComparer.OrdinalIgnoreCase),
+                        ClosedCount = closedCount,
+                        TotalCount = totalCount,
+                    });
+                }
+            }
             return (true, features, null);
         }
         catch (Exception ex)
@@ -390,11 +434,4 @@ public static class GitMapService
         [JsonPropertyName("title")] public string? Title { get; set; }
     }
     private sealed class StateRow { [JsonPropertyName("state")] public string? State { get; set; } }
-    private sealed class SubIssueRow
-    {
-        [JsonPropertyName("number")] public int Number { get; set; }
-        [JsonPropertyName("title")] public string? Title { get; set; }
-        [JsonPropertyName("state")] public string? State { get; set; }
-        [JsonPropertyName("labels")] public List<string>? Labels { get; set; }
-    }
 }

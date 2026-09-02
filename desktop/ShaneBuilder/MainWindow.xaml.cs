@@ -9267,6 +9267,12 @@ public partial class MainWindow : Window
             Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
         });
 
+        // Git #2314 — real per-feature burndown off the feature's own real sub-issue closed/total
+        // counts. Null fraction (no sub-issues of its own) renders nothing — an honest absence,
+        // not a fabricated 0%/100% bar.
+        if (f.BurndownFraction.HasValue)
+            stack.Children.Add(GitMapBurndownBar(f.ClosedCount, f.TotalCount, f.BurndownFraction.Value));
+
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
         actions.Children.Add(DetectionActionLink("Focus", (Brush)FindResource("Brush.Claude.Accent"), () => OpenIssueInBrowser(f.Number)));
         actions.Children.Add(DetectionActionLink("Send", (Brush)FindResource("Brush.Claude.Text.Muted"), () => SendFeatureToComposer(f.Number, f.Title)));
@@ -9274,6 +9280,41 @@ public partial class MainWindow : Window
 
         outer.Child = stack;
         return outer;
+    }
+
+    /// <summary>Git #2314 — a plain closed/total burndown bar for a feature card: a thin filled
+    /// track (real fraction closed) plus the real "N/M closed" caption. Deliberately a bar, not
+    /// the Epic panel's own ring (#2305/#2306) — this card is small and shares layout with the
+    /// state chips above it, same reasoning the Focus Build card's plain text meta line already
+    /// uses instead of a graphic.</summary>
+    private StackPanel GitMapBurndownBar(int closedCount, int totalCount, double fraction)
+    {
+        var container = new StackPanel { Margin = new Thickness(0, 5, 0, 0) };
+        var track = new Grid { Height = 4 };
+        track.Children.Add(new Border
+        {
+            CornerRadius = new CornerRadius(2), Background = (Brush)FindResource("Brush.Claude.Border"),
+        });
+        track.Children.Add(new Border
+        {
+            CornerRadius = new CornerRadius(2), Background = (Brush)FindResource("Brush.Alert.Success"),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Width = double.IsNaN(track.ActualWidth) || track.ActualWidth <= 0 ? 0 : track.ActualWidth * fraction,
+        });
+        // Width above needs a laid-out track; bind via loaded event since this is built off-visual-tree.
+        track.Loaded += (s, e) =>
+        {
+            if (track.Children.Count > 1 && track.Children[1] is Border fill)
+                fill.Width = track.ActualWidth * fraction;
+        };
+        container.Children.Add(track);
+        container.Children.Add(new TextBlock
+        {
+            Text = $"{closedCount}/{totalCount} closed", Margin = new Thickness(0, 3, 0, 0),
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 8.5,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        });
+        return container;
     }
 
     private Border GitMapChip(string text, Brush color) => new()
