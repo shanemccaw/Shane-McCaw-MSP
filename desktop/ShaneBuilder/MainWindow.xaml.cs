@@ -599,6 +599,8 @@ public partial class MainWindow : Window
             _ = EnsureGitPanelLoadedAsync(); // Git #2290 — first open fires the real GitHub reads
         if (source == "BatterUp")
             _ = EnsureBatterUpPanelLoadedAsync(); // Git #2356 — first open fires the real lane-count read
+        if (source == "Chat")
+            RenderChatsPanel(); // Git #2325 — real rows + context badges + archive, not a placeholder
 
         // Build Console / Build Watch / UI Testing / Shot Vault share one
         // placeholder body — none of them have a real design or data source
@@ -1146,10 +1148,16 @@ public partial class MainWindow : Window
 
         if (closable)
         {
-            border.ContextMenu = BuildContextMenu(
-                ("", "Close", () => CloseTab(t.Id), true, true),
-                ("", "Close Others", () => CloseOtherTabs(t.Id), _tabs.Count(x => !x.IsHome) > 1, false)
-            );
+            // Git #2325 -- Archive only makes sense for a real chat tab (it saves the
+            // conversation's identity before resetting it); non-chat tabs keep the plain menu.
+            border.ContextMenu = t.IsChat
+                ? BuildContextMenu(
+                    ("", "Archive chat", () => ArchiveChatTab(t.Id), true, false),
+                    ("", "Close", () => CloseTab(t.Id), true, true),
+                    ("", "Close Others", () => CloseOtherTabs(t.Id), _tabs.Count(x => !x.IsHome) > 1, false))
+                : BuildContextMenu(
+                    ("", "Close", () => CloseTab(t.Id), true, true),
+                    ("", "Close Others", () => CloseOtherTabs(t.Id), _tabs.Count(x => !x.IsHome) > 1, false));
         }
 
         return border;
@@ -3227,10 +3235,12 @@ public partial class MainWindow : Window
         ChatComposer.Focus();
     }
 
-    // §2 — context gauge estimate: 0.28 tokens/char over the draft + a 40k fixed overhead, kept as a
-    // two-part "used / 300k" shape (resolved OQ#3: no real tokeniser wired yet). The transcript's own
-    // length isn't reachable without a full DOM read, so the estimate reflects the draft + overhead and
-    // says so; the shape is what matters until a real tokeniser lands.
+    // §2 — context gauge estimate: 0.28 tokens/char + a 40k fixed overhead, kept as a two-part
+    // "used / 300k" shape. Git #2325 replaced the transcript half of this: originally the
+    // transcript's own length wasn't reachable without a full DOM read (OQ#3), so the estimate
+    // was draft-only. It now adds the REAL DOM-scraped transcript char count from
+    // _chatContextByTabId (Services.ChatContextMeterScript) when this tab has one — the draft
+    // term stays additive on top since the transcript reading never includes the unsent draft.
     private const double TokensPerChar = 0.28;
     private const int FixedOverheadTokens = 40000;
     private const int ContextWindowTokens = 300000;
@@ -3238,7 +3248,12 @@ public partial class MainWindow : Window
     private void UpdateContextGauge()
     {
         int draftChars = ChatComposer?.Text?.Length ?? 0;
-        int estimate = FixedOverheadTokens + (int)Math.Ceiling(draftChars * TokensPerChar);
+        double transcriptChars = 0;
+        var tabId = _activeChatTab?.Id;
+        if (tabId != null && _chatContextByTabId.TryGetValue(tabId, out var stat))
+            transcriptChars = stat.EstCharCount;
+
+        int estimate = FixedOverheadTokens + (int)Math.Ceiling((draftChars + transcriptChars) * TokensPerChar);
         double frac = Math.Min(1.0, (double)estimate / ContextWindowTokens);
         if (CtxGauge != null)
             CtxGauge.Text = $"≈{estimate / 1000}k / {ContextWindowTokens / 1000}k ctx";
@@ -3304,6 +3319,11 @@ public partial class MainWindow : Window
             {
                 _currentConversationUrl = ClaudeWebView.CoreWebView2.Source ?? _currentConversationUrl;
             };
+            // Git #2325 — real per-turn transcript-size reading, replacing the draft-only estimate.
+            // AddScriptToExecuteOnDocumentCreatedAsync re-injects on every new document for the
+            // life of this CoreWebView2, so this registration is one-time.
+            await ClaudeWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(Services.ChatContextMeterScript.Script);
+            ClaudeWebView.CoreWebView2.WebMessageReceived += ClaudeWebView_WebMessageReceived;
             _webViewWired = true;
         }
         catch (Exception ex)

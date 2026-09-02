@@ -563,12 +563,28 @@
                     -->
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid>
-                        <TextBlock x:Name="ChatsPanelBody" Margin="14,16,14,0"
-                                   TextWrapping="Wrap"
-                                   Text="No chats yet. Chats you open will show up here."
-                                   Foreground="{StaticResource Brush.Text.Dim}"
-                                   FontFamily="{StaticResource FontFamily.Sans}"
-                                   FontSize="{StaticResource FontSize.11}"/>
+                        <!-- Git #2325 (Feature #2318 item 9) — real chat rows (was a static
+                             placeholder). One row per open chat tab, each with a real
+                             DOM-derived context-size badge (ChatContextMeterScript) and an
+                             Archive action; an ARCHIVED section below lists chats archived this
+                             way with Reopen/Delete. Built in code-behind
+                             (MainWindow.ChatsPanel.cs). -->
+                        <StackPanel x:Name="ChatsPanelBody" Margin="8,8,8,12">
+                            <TextBlock x:Name="ChatsPanelStatus" Margin="6,4,6,10"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource Brush.Text.Dim}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.10.5}"/>
+                            <StackPanel x:Name="ChatsPanelOpenRows"/>
+                            <TextBlock x:Name="ChatsPanelArchivedHeader" Margin="6,14,6,6"
+                                       Text="ARCHIVED"
+                                       Visibility="Collapsed"
+                                       Foreground="{StaticResource Brush.Text.Dim}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.10.5}"
+                                       FontWeight="{StaticResource FontWeight.SemiBold}"/>
+                            <StackPanel x:Name="ChatsPanelArchivedRows"/>
+                        </StackPanel>
 
                         <!-- Shared placeholder for the 4 rail panels that don't have
                              real content or a design yet (Build Console / Build Watch /
