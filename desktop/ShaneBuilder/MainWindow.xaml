@@ -949,6 +949,7 @@
                                 <ColumnDefinition x:Name="GdMiniColumn" Width="0"/>
                                 <ColumnDefinition x:Name="PsColumn" Width="0"/>
                                 <ColumnDefinition x:Name="TerminalColumn" Width="0"/>
+                                <ColumnDefinition x:Name="ApiExplorerColumn" Width="0"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Stat detail flyout — Shane's own addition, not in the mockup:
@@ -1721,6 +1722,123 @@
 
                                     <ScrollViewer x:Name="TerminalOutputScroll" VerticalScrollBarVisibility="Auto" MinHeight="80">
                                         <StackPanel x:Name="TerminalLinesPanel" Margin="8"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Git #2220 — API Runner / Graph Read / Graph Write mini panel (§6.3). One panel,
+                                 three modes, launched from three separate wrench-menu entries (BtnToggleApiExplorer,
+                                 mode passed in) that share this one column — same bolt-on-flyout mechanism as
+                                 StatDetailPanel/LogPeekPanel/SqlRunnerPanel/GitMapPanel above. Real audit: #2202
+                                 (the full explorer document + ITokenBroker/GatedProfile) is NOT landed as of this
+                                 build, so auth/endpoint execution is self-contained here (Services/ApiExplorerService.cs)
+                                 rather than reading a store that doesn't exist yet — see that file's header comment.
+                                 Column 12 — GdMini/Ps/Terminal (#2216/#2218) landed concurrently and took 9-11. -->
+                            <Border x:Name="ApiExplorerPanel" Grid.Column="12" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="320">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="BtnToggleApiExplorer_CloseClick"/>
+                                            <TextBlock x:Name="ApiExplorerTitle" Text="API Runner" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <!-- Auth row: token-state pill + mode-specific extra (tenant label for Graph,
+                                         autofill lock for local) + Get/Refresh token. -->
+                                    <Border DockPanel.Dock="Top" Padding="10,8" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <StackPanel>
+                                            <StackPanel x:Name="ApiExplorerAuthExtra" Margin="0,0,0,6"/>
+                                            <DockPanel>
+                                                <Border x:Name="ApiExplorerTokenPill" DockPanel.Dock="Left" CornerRadius="99"
+                                                        Padding="8,3" Margin="0,0,6,0"
+                                                        Background="{StaticResource Brush.Claude.Bg.Button}">
+                                                    <TextBlock x:Name="ApiExplorerTokenPillText" Text="No token" FontSize="9.5"
+                                                               FontFamily="{StaticResource FontFamily.Monospace}"
+                                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                                </Border>
+                                                <Button x:Name="BtnApiExplorerToken" Width="Auto" Height="24" Padding="8,3"
+                                                        HorizontalAlignment="Right"
+                                                        Style="{StaticResource PanelCollapseButton}"
+                                                        Click="BtnApiExplorerToken_Click">
+                                                    <TextBlock x:Name="ApiExplorerTokenBtnLabel" Text="Get token" FontSize="10"
+                                                               FontFamily="{StaticResource FontFamily.Sans}"
+                                                               FontWeight="{StaticResource FontWeight.SemiBold}"/>
+                                                </Button>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Selected endpoint + write-safety + send/copy (bottom-docked, always visible). -->
+                                    <Border DockPanel.Dock="Bottom" Padding="10,8" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <StackPanel>
+                                            <StackPanel x:Name="ApiExplorerSelectedPanel" Margin="0,0,0,7"/>
+
+                                            <!-- Write safety segmented control — write mode only. DRY RUN is the
+                                                 default on every panel open, never remembered as LIVE (§6.3). -->
+                                            <UniformGrid x:Name="ApiExplorerWriteSafetyRow" Rows="1" Columns="2"
+                                                         Margin="0,0,0,7" Visibility="Collapsed">
+                                                <Button x:Name="BtnApiExplorerDryRun" Height="24" Margin="0,0,3,0"
+                                                        Background="{StaticResource Brush.Claude.Bg.Content}"
+                                                        BorderThickness="1" BorderBrush="{StaticResource Brush.Claude.Border}"
+                                                        Click="BtnApiExplorerDryRun_Click">
+                                                    <TextBlock Text="DRY RUN" FontSize="9.5" FontWeight="{StaticResource FontWeight.Bold}"
+                                                               FontFamily="{StaticResource FontFamily.Monospace}"/>
+                                                </Button>
+                                                <Button x:Name="BtnApiExplorerLive" Height="24" Margin="3,0,0,0"
+                                                        Background="{StaticResource Brush.Claude.Bg.Content}"
+                                                        BorderThickness="1" BorderBrush="{StaticResource Brush.Claude.Border}"
+                                                        Click="BtnApiExplorerLive_Click">
+                                                    <TextBlock Text="LIVE" FontSize="9.5" FontWeight="{StaticResource FontWeight.Bold}"
+                                                               FontFamily="{StaticResource FontFamily.Monospace}"/>
+                                                </Button>
+                                            </UniformGrid>
+
+                                            <DockPanel>
+                                                <Button x:Name="BtnApiExplorerCopy" DockPanel.Dock="Right" Width="26" Height="26"
+                                                        Margin="6,0,0,0" Style="{StaticResource PanelCollapseButton}"
+                                                        ToolTip="Copy response" Click="BtnApiExplorerCopy_Click">
+                                                    <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                                </Button>
+                                                <Button x:Name="BtnApiExplorerSend" Height="26" HorizontalAlignment="Stretch"
+                                                        Style="{StaticResource PanelCollapseButton}"
+                                                        Click="BtnApiExplorerSend_Click">
+                                                    <TextBlock Text="Send" FontFamily="{StaticResource FontFamily.Sans}" FontSize="10.5"
+                                                               FontWeight="{StaticResource FontWeight.SemiBold}"
+                                                               Foreground="{StaticResource Brush.Claude.Accent}"/>
+                                                </Button>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Body: search, endpoint list, response — the only part that scrolls
+                                         (§6 "every panel's body is flex:1; min-height:0; overflow-y:auto"). -->
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel Margin="10,10,10,10">
+                                            <TextBox x:Name="ApiExplorerSearchBox" Height="26" Padding="6,0"
+                                                     VerticalContentAlignment="Center" Margin="0,0,0,7"
+                                                     Background="{StaticResource Brush.Claude.Bg.Button}"
+                                                     BorderBrush="{StaticResource Brush.Claude.Border}"
+                                                     Foreground="{StaticResource Brush.Claude.Text.Bright}"
+                                                     FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10}"
+                                                     Tag="Search endpoints…"
+                                                     TextChanged="ApiExplorerSearchBox_TextChanged"/>
+                                            <ScrollViewer MaxHeight="184" VerticalScrollBarVisibility="Auto" Margin="0,0,0,10">
+                                                <StackPanel x:Name="ApiExplorerEndpointList"/>
+                                            </ScrollViewer>
+                                            <StackPanel x:Name="ApiExplorerResponsePanel"/>
+                                        </StackPanel>
                                     </ScrollViewer>
                                 </DockPanel>
                             </Border>
