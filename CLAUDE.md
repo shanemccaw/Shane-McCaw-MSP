@@ -405,6 +405,45 @@ The provisioner registers the worktree so the cleanup sweep (`cleanup-worktree.m
 --sweep`, also the BuildConsole Home "🧹 Clean" button) never removes a live one while
 its owning process is alive. See `scripts/dev-server/README.md` for the full mechanism.
 
+## BuildConsole freeze policy — live app is bug fixes only (Git #2178)
+
+**Live `desktop/BuildConsole` accepts genuine bug fixes and stability work only.
+New features default to the new isolated project, `desktop/ShaneBuilder`, unless
+Shane explicitly overrides that for the specific session he's in.** This has existed
+as real practice since #2138, but until now it lived only in issue comments and chat
+memory — never in the one document a live session actually reads. #2175 was scoped
+for ShaneBuilder, got real-time redirected into live BuildConsole mid-session, and
+the agent complied — correctly following the standing rule that a real-time
+instruction overrides an issue's original scope, but with zero awareness the target
+it was redirected onto is frozen for exactly this kind of work. 24 real
+`MessageBox.Show` call sites across 15 live files got rewired before anyone caught
+it.
+
+This freeze is about **where new feature work lands**, not about touching live
+BuildConsole at all — a real bug fix, a stability fix, or confirmed emergency work
+(e.g. #2141's single-instance guard, which correctly targeted live BuildConsole
+because it genuinely needed to run there) still goes there normally, no extra
+confirmation required.
+
+### The guard: a real-time redirect onto frozen ground still needs a real yes
+
+A real-time instruction from Shane still overrides an issue's stated scope — that
+capability is genuine and stays. But when a real-time redirect would move **new
+feature work** (not a small, obviously-safe bug fix, not confirmed emergency work)
+off its stated target and onto live BuildConsole, silently complying is wrong. The
+agent must instead:
+
+1. Name the conflict explicitly, in plain terms — e.g. *"this issue was scoped for
+   ShaneBuilder; live BuildConsole is currently frozen for new features — confirming
+   you want this built there instead?"*
+2. Get a real, explicit yes from Shane before proceeding.
+
+Only after that explicit confirmation does the redirect proceed. This does not slow
+down a legitimate quick fix or genuine emergency work against live BuildConsole —
+those were never in scope for this guard, and asking permission for them would just
+be noise. It exists solely for the case where a redirect would quietly widen scope
+onto ground that's supposed to be closed to exactly that kind of change.
+
 ## Build-prompt header convention (queued builds)
 
 ### `--title` must be a LEAF issue, never an epic
