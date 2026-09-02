@@ -296,6 +296,8 @@ public partial class MainWindow
             GitPanelStatus.Visibility = Visibility.Visible;
         }
         if (_gitTrail.Count == 0) RenderGitTree();
+        else if (_gitTrail.Count > 0 && _gitTrail[^1].Kind == GitCrumbKind.Epic && _gitTrail[^1].Number == epicNumber)
+            RenderGitPeek();
     }
 
     // ── peek open paths (#2292-#2296) ────────────────────────────────────────────────────────
@@ -311,6 +313,10 @@ public partial class MainWindow
         AddGitMilestoneCrumb(trail, epic.Milestone);
         trail.Add(new GitCrumb { Kind = GitCrumbKind.Epic, Number = epic.Number, Title = epic.Title });
         SetGitTrail(trail, fetchLastIssue: true);
+        // #2311 — the amber "no burndown" banner needs a real feature count, not just identity
+        // state; kick off the same load the tree row uses if this epic hasn't been fetched yet.
+        if (!_gitEpicFeatures.ContainsKey(epic.Number) && !_gitEpicsLoadingFeatures.Contains(epic.Number))
+            _ = LoadGitEpicFeaturesAsync(epic.Number);
     }
 
     private void OpenGitFeaturePeek(GitMapEpic epic, GitPanelIssueNode feature)
@@ -496,6 +502,27 @@ public partial class MainWindow
         else
         {
             GitPeekHost.Children.Add(GitDimLine("Loading real state…", indent: 6));
+        }
+
+        // #2311 — real "no burndown" warning: an Epic whose sub-issue fetch came back with zero
+        // FEATURE children has nothing to compute a burndown ring from. Total comes straight off
+        // GitPanelService.GetFeatureTreeAsync's real TotalCount (#2290), never inferred/guessed.
+        if (current.Kind == GitCrumbKind.Epic && _gitEpicFeatureTotals.TryGetValue(current.Number, out var featureTotal) && featureTotal == 0)
+        {
+            var amber = (Color)ColorConverter.ConvertFromString("#E2984A"); // Brush.Toast.Warning hex
+            var warn = new Border
+            {
+                Margin = new Thickness(6, 0, 6, 8),
+                Padding = new Thickness(8, 6, 8, 6),
+                CornerRadius = new CornerRadius(5),
+                Background = new SolidColorBrush(Color.FromArgb(38, amber.R, amber.G, amber.B)),
+                BorderThickness = new Thickness(1),
+                BorderBrush = new SolidColorBrush(amber)
+            };
+            var warnText = GitText("⚠ Nothing here has a burndown — this Epic has no FEATURE sub-issues yet.", 10, "Brush.Text.Heading");
+            warnText.TextWrapping = TextWrapping.Wrap;
+            warn.Child = warnText;
+            GitPeekHost.Children.Add(warn);
         }
 
         var note = GitDimLine("Peek detail content (vitals, rings, actions) lands in later builds under Feature #2289.", indent: 6);
