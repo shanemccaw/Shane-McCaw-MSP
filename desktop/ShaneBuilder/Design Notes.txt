@@ -1,0 +1,17 @@
+
+Favorites:
+These are quick access links to like LinkedIn, GitHub etc... when clicked they should open in a tab in the main window grouped by Web... 
+Except when I open a link for one of my say Dev site -> Should be grouped in Dev, Stage, or Production which ever the url matches. 
+
+I have a thought: 
+Great feature, but it cant go anywhere... I put my thought it saves but I can't copy it, I can't send it to chat... 
+
+
+WebTester 
+This is another executable that sits outside the buildconsole project, this is the application that executes the web tests from the UI Automation stuff... What I need is a placeholder in the UI to report when this is running, and it's progress / error / etc... When the agent is done testing, I can use this to see a report... 
+
+
+Git Doctor
+I should be able to see the files that need to be commited, and if possible organize them by the build that created them, and the feature they belong to. 
+I need to be able to mark a file as ignore 
+I need to be able to commit and push any changes that are open that are mine ... or stale from an agent. 

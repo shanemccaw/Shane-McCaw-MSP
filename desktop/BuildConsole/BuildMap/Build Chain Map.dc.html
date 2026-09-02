@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+  <script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+  <script src="./lucide-local.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%;background:#0a0d12;color-scheme:dark}
+    body > div{height:100%}
+    a{color:#7da7cd;text-decoration:none}
+    a:hover{color:#9fc0dd;text-decoration:underline}
+    .om-scroll{scrollbar-width:auto;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:11px;height:11px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:3px solid #0d1117;border-radius:8px;min-height:44px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    button,select{font-family:inherit}
+    select{color-scheme:dark}
+  </style>
+</helmet>
+
+<div data-screen-label="Build chain map" style="height:100%;min-height:780px;width:100%;display:flex;flex-direction:column;background:#0a0d12;color:#c9d1d9;font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden">
+
+  <div style="flex:none;display:flex;align-items:center;flex-wrap:wrap;gap:8px 14px;padding:10px 14px;min-height:56px;background:#0d1117;border-bottom:1px solid #21262d">
+    <div style="display:flex;align-items:center;gap:10px;flex:none">
+      <span style="display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:7px;background:#1d3450;color:#6a8fb5;flex:none"><i data-lucide="git-fork" width="14" height="14"></i></span>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <span style="font-size:8.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#6a8fb5">Build chain · §5 Feature chaining</span>
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span style="font-size:13.5px;font-weight:800;color:#e6edf3;letter-spacing:-.01em">{{ epic.name }}</span>
+          <span style="font-size:10px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ epic.num }}</span>
+          <span style="font-size:10.5px;color:#8b949e;white-space:nowrap">Epic → Feature → Issue → blocked_by</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:12px;flex:1 1 380px;min-width:0;overflow:hidden;padding-left:14px;border-left:1px solid #21262d;align-self:stretch">
+      <sc-for list="{{ stats }}" as="st" hint-placeholder-count="0">
+        <div style="display:flex;flex-direction:column;gap:2px;flex:none">
+          <span style="font-size:8px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#576069;white-space:nowrap">{{ st.label }}</span>
+          <span style="font-size:13px;font-weight:800;color:{{ st.color }};font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1">{{ st.value }}</span>
+        </div>
+      </sc-for>
+    </div>
+    <div style="{{ chain.style }}">
+      <span style="display:inline-flex;width:11px;height:11px;flex:none"><i data-lucide="{{ chain.icon }}" width="11" height="11"></i></span>
+      <span style="white-space:nowrap">{{ chain.label }}</span>
+      <sc-if value="{{ chain.showFix }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ onRewire }}" style="height:18px;padding:0 7px;background:#3a2a1c;border:1px solid #5a3f2a;border-radius:4px;color:#f0c9a6;font-size:9px;font-weight:800;cursor:pointer;white-space:nowrap" style-hover="background:#4a3522">Re-wire §5.2</button>
+      </sc-if>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;flex:none;margin-left:auto">
+      <button onClick="{{ onExpandAll }}" style="height:24px;padding:0 9px;display:inline-flex;align-items:center;gap:5px;background:#0f1319;border:1px solid #21262d;border-radius:5px;color:#c9d1d9;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap" style-hover="background:#161c25">Expand all</button>
+      <button onClick="{{ onCollapseAll }}" style="height:24px;padding:0 9px;display:inline-flex;align-items:center;gap:5px;background:#0f1319;border:1px solid #21262d;border-radius:5px;color:#c9d1d9;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap" style-hover="background:#161c25">Collapse all</button>
+      <div style="display:flex;align-items:center;height:24px;background:#0f1319;border:1px solid #21262d;border-radius:5px;overflow:hidden">
+        <button onClick="{{ onZoomOut }}" title="Zoom out" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;color:#c9d1d9;cursor:pointer" style-hover="background:#161c25"><i data-lucide="minus" width="11" height="11"></i></button>
+        <span style="min-width:38px;text-align:center;font-size:10px;font-weight:700;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">{{ zoomLabel }}</span>
+        <button onClick="{{ onZoomIn }}" title="Zoom in" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;color:#c9d1d9;cursor:pointer" style-hover="background:#161c25"><i data-lucide="plus" width="11" height="11"></i></button>
+        <button onClick="{{ onFit }}" title="Fit width" style="height:24px;padding:0 8px;background:transparent;border:0;border-left:1px solid #21262d;color:#8b949e;font-size:10px;font-weight:700;cursor:pointer" style-hover="background:#161c25">Fit</button>
+      </div>
+      <button onClick="{{ onReset }}" title="Discard local edits and reload the §10 worked example" style="height:24px;padding:0 9px;display:inline-flex;align-items:center;gap:5px;background:#0f1319;border:1px solid #21262d;border-radius:5px;color:#8b949e;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap" style-hover="background:#161c25;color:#c9d1d9"><i data-lucide="rotate-ccw" width="11" height="11"></i>Reset</button>
+    </div>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex">
+
+    <div ref="{{ scrollRef }}" class="om-scroll" onClick="{{ onCanvasClick }}" style="flex:1;min-width:0;overflow:auto;position:relative;background-color:#0a0d12;background-image:radial-gradient(#141a22 1px, transparent 1px);background-size:22px 22px">
+      <div style="{{ sizedStyle }}">
+        <div style="{{ stageStyle }}">
+          {{ edgeLayer }}
+
+          <div onClick="{{ epic.onClick }}" title="Epic — a container for scope. Closes when its children close." style="{{ epic.style }}">
+            <div style="display:flex;align-items:center;gap:6px">
+              <span style="display:inline-flex;width:20px;height:20px;align-items:center;justify-content:center;border-radius:5px;background:#1d3450;color:#6a8fb5;flex:none"><i data-lucide="layers" width="11" height="11"></i></span>
+              <span style="font-size:8.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#6a8fb5">Epic</span>
+              <span style="margin-left:auto;font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ epic.num }}</span>
+            </div>
+            <div style="font-size:12.5px;font-weight:800;color:#e6edf3;letter-spacing:-.01em;line-height:1.2">{{ epic.name }}</div>
+            <div style="font-size:9.5px;color:#8b949e;line-height:1.4;text-wrap:pretty">{{ epic.meta }}</div>
+          </div>
+
+          <sc-for list="{{ heads }}" as="f" hint-placeholder-count="0">
+            <div onClick="{{ f.onClick }}" draggable="{{ true }}" onDragStart="{{ f.onDragStart }}" onDragOver="{{ onDragOver }}" onDrop="{{ f.onDrop }}" onDragEnd="{{ onDragEnd }}" title="{{ f.tip }}" style="{{ f.style }}">
+              <div style="display:flex;align-items:center;gap:6px">
+                <span style="flex:none;font-size:8.5px;font-weight:800;padding:1px 5px;border-radius:4px;background:#1d3450;color:#9fc0dd;font-family:Consolas,ui-monospace,Menlo,monospace">P{{ f.p }}</span>
+                <span style="font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#576069">Feature</span>
+                <span style="margin-left:auto;font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ f.num }}</span>
+                <span style="display:inline-flex;width:12px;height:12px;color:#576069;flex:none"><i data-lucide="{{ f.chev }}" width="12" height="12"></i></span>
+              </div>
+              <div style="font-size:12px;font-weight:800;color:#e6edf3;letter-spacing:-.01em;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.name }}</div>
+              <div style="display:flex;align-items:center;gap:7px">
+                <div style="flex:1;display:flex;height:4px;border-radius:99px;overflow:hidden;background:#0a0d12;border:1px solid #1b212a">
+                  <sc-for list="{{ f.segs }}" as="s" hint-placeholder-count="0"><span style="{{ s.style }}"></span></sc-for>
+                </div>
+                <span style="flex:none;font-size:9px;font-weight:700;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">{{ f.count }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:9px;line-height:1.3">
+                <span style="color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap">sentinel #{{ f.sentinelNum }}</span>
+                <span style="margin-left:auto;color:{{ f.stateColor }};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ f.stateText }}</span>
+              </div>
+            </div>
+          </sc-for>
+
+          <sc-for list="{{ rows }}" as="n" hint-placeholder-count="0">
+            <div onClick="{{ n.onClick }}" title="{{ n.tip }}" style="{{ n.style }}">
+              <span style="{{ n.dot }}"></span>
+              <span style="flex:none;font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ n.num }}</span>
+              <span style="flex:1;min-width:0;font-size:10.5px;font-weight:600;color:{{ n.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ n.title }}</span>
+              <span style="flex:none;font-size:8.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:{{ n.tagColor }};font-family:Consolas,ui-monospace,Menlo,monospace">{{ n.tag }}</span>
+            </div>
+          </sc-for>
+
+          <sc-for list="{{ sentinels }}" as="s" hint-placeholder-count="0">
+            <div onClick="{{ s.onClick }}" title="{{ s.tip }}" style="{{ s.style }}">
+              <div style="display:flex;align-items:center;gap:5px">
+                <span style="display:inline-flex;width:10px;height:10px;color:#6a8fb5;flex:none"><i data-lucide="target" width="10" height="10"></i></span>
+                <span style="font-size:8px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#6a8fb5">Sentinel</span>
+                <span style="margin-left:auto;font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ s.num }}</span>
+              </div>
+              <div style="font-size:10.5px;font-weight:700;color:{{ s.color }};line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.title }}</div>
+              <div style="display:flex;align-items:center;gap:6px;font-size:9px;font-family:Consolas,ui-monospace,Menlo,monospace">
+                <span style="color:#8b949e;white-space:nowrap">fan-in {{ s.fan }}</span>
+                <span style="margin-left:auto;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:{{ s.tagColor }}">{{ s.tag }}</span>
+              </div>
+            </div>
+          </sc-for>
+
+          <sc-for list="{{ gates }}" as="g" hint-placeholder-count="0">
+            <sc-if value="{{ g.manual }}" hint-placeholder-val="{{ false }}">
+              <div style="{{ g.lineStyle }}"></div>
+            </sc-if>
+            <div onClick="{{ g.onClick }}" title="{{ g.tip }}" style="{{ g.style }}">
+              <span style="display:inline-flex;width:10px;height:10px;flex:none"><i data-lucide="{{ g.icon }}" width="10" height="10"></i></span>
+              <span>{{ g.label }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <div class="om-scroll" style="width:312px;flex:none;background:#0d1117;border-left:1px solid #21262d;overflow-y:auto;padding:14px 15px 18px;display:flex;flex-direction:column;gap:12px">
+
+      <sc-if value="{{ view.none }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="font-size:9px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:#576069;margin-bottom:7px">How to read this</div>
+          <div style="font-size:12px;color:#8b949e;line-height:1.6;text-wrap:pretty">Left to right is priority order. Each Feature collapses to one card. Open it and its issues fan into a sentinel; that sentinel gates every issue in the next Feature. Select any node and the edges that hold it turn amber.</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px">
+          <sc-for list="{{ legend }}" as="lg" hint-placeholder-count="0">
+            <div style="display:flex;align-items:flex-start;gap:9px">
+              <span style="{{ lg.dot }}"></span>
+              <div style="min-width:0">
+                <div style="font-size:10.5px;font-weight:700;color:#c9d1d9">{{ lg.label }}</div>
+                <div style="font-size:10px;color:#576069;line-height:1.45;margin-top:1px;text-wrap:pretty">{{ lg.desc }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px;padding-top:10px;border-top:1px solid #1b212a">
+          <sc-for list="{{ edgeLegend }}" as="el" hint-placeholder-count="0">
+            <div style="display:flex;align-items:flex-start;gap:9px">
+              <span style="{{ el.sw }}"></span>
+              <div style="min-width:0">
+                <div style="font-size:10.5px;font-weight:700;color:#c9d1d9">{{ el.label }}</div>
+                <div style="font-size:10px;color:#576069;line-height:1.45;margin-top:1px;text-wrap:pretty">{{ el.desc }}</div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="padding:11px 12px;background:#0f1319;border:1px solid #1b212a;border-left:2px solid #4d7aa8;border-radius:7px">
+          <div style="font-size:10.5px;font-weight:700;color:#e6edf3;margin-bottom:5px">§5.2 in numbers</div>
+          <div style="font-size:10.5px;color:#8b949e;line-height:1.55;text-wrap:pretty">{{ method.text }}</div>
+        </div>
+        <div style="margin-top:auto;padding:11px 12px;background:#0f1319;border:1px dashed #2e3742;border-radius:7px">
+          <div style="font-size:10.5px;color:#8b949e;line-height:1.55;text-wrap:pretty">Seeded from the §10 worked example (2026-09-02). Issue numbers and titles are placeholders until synced from GitHub. Edits save in this browser; Reset restores the example.</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ view.feature }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+            <span style="font-size:8.5px;font-weight:800;padding:1px 6px;border-radius:4px;background:#1d3450;color:#9fc0dd;font-family:Consolas,ui-monospace,Menlo,monospace">P{{ fi.p }}</span>
+            <span style="font-size:8.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#576069">Feature</span>
+            <span style="margin-left:auto;font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ fi.num }}</span>
+          </div>
+          <div style="font-size:16px;font-weight:800;color:#e6edf3;letter-spacing:-.02em;line-height:1.2;text-wrap:pretty">{{ fi.name }}</div>
+          <div style="font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;margin-top:4px">buildSet={{ fi.short }} · {{ fi.count }}</div>
+        </div>
+        <div style="display:flex;gap:5px">
+          <sc-for list="{{ fi.counts }}" as="c" hint-placeholder-count="0">
+            <div style="flex:1;min-width:0;background:#0f1319;border:1px solid #1b212a;border-radius:6px;padding:6px 7px">
+              <div style="font-size:7.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#576069">{{ c.label }}</div>
+              <div style="font-size:15px;font-weight:800;color:{{ c.color }};font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1.1;margin-top:2px">{{ c.value }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:10.5px;color:#8b949e;line-height:1.5">
+          <div style="display:flex;gap:7px"><span style="display:inline-flex;width:11px;height:11px;color:#6a8fb5;flex:none;margin-top:3px"><i data-lucide="lock" width="11" height="11"></i></span><span style="text-wrap:pretty">{{ fi.gatedOn }}</span></div>
+          <div style="display:flex;gap:7px"><span style="display:inline-flex;width:11px;height:11px;color:#6a8fb5;flex:none;margin-top:3px"><i data-lucide="corner-up-right" width="11" height="11"></i></span><span style="text-wrap:pretty">{{ fi.releases }}</span></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;padding-top:10px;border-top:1px solid #1b212a">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="display:inline-flex;width:11px;height:11px;color:#6a8fb5"><i data-lucide="target" width="11" height="11"></i></span>
+            <span style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069">Sentinel</span>
+          </div>
+          <select value="{{ fi.sentinelNum }}" onChange="{{ fi.onSentinel }}" style="width:100%;height:26px;background:#0f1319;border:1px solid #21262d;border-radius:5px;color:#c9d1d9;font-size:10.5px;padding:0 6px">
+            <sc-for list="{{ fi.sentinelOptions }}" as="o" hint-placeholder-count="0">
+              <option value="{{ o.value }}">{{ o.label }}</option>
+            </sc-for>
+          </select>
+          <div style="font-size:10px;color:#576069;line-height:1.45;text-wrap:pretty">Highest-numbered issue by default. Changing it re-wires the fan-in and the downstream gate.</div>
+        </div>
+        <sc-if value="{{ fi.hasGate }}" hint-placeholder-val="{{ false }}">
+          <div onClick="{{ fi.onToggleGate }}" style="display:flex;align-items:center;gap:10px;padding:9px 10px;background:#0f1319;border:1px solid #1b212a;border-radius:7px;cursor:pointer" style-hover="border-color:#2e3742">
+            <div style="flex:1;min-width:0">
+              <div style="font-size:10.5px;font-weight:700;color:#e6edf3">Gate before this Feature</div>
+              <div style="font-size:10px;color:#8b949e;line-height:1.45;margin-top:2px;text-wrap:pretty">{{ fi.gateText }}</div>
+            </div>
+            <span style="{{ fi.switchStyle }}"><span style="{{ fi.knobStyle }}"></span></span>
+          </div>
+        </sc-if>
+        <div style="display:flex;gap:6px">
+          <button onClick="{{ fi.onToggle }}" style="flex:1;height:26px;background:#1d3450;border:1px solid #3d5875;border-radius:5px;color:#cfe0f0;font-size:10.5px;font-weight:700;cursor:pointer" style-hover="background:#24405f">{{ fi.toggleLabel }}</button>
+          <button onClick="{{ fi.onUp }}" title="Move earlier in priority" style="width:30px;height:26px;display:inline-flex;align-items:center;justify-content:center;background:#0f1319;border:1px solid #21262d;border-radius:5px;color:#c9d1d9;cursor:pointer" style-hover="background:#161c25"><i data-lucide="arrow-left" width="12" height="12"></i></button>
+          <button onClick="{{ fi.onDown }}" title="Move later in priority" style="width:30px;height:26px;display:inline-flex;align-items:center;justify-content:center;background:#0f1319;border:1px solid #21262d;border-radius:5px;color:#c9d1d9;cursor:pointer" style-hover="background:#161c25"><i data-lucide="arrow-right" width="12" height="12"></i></button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;padding-top:10px;border-top:1px solid #1b212a">
+          <div style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069;margin-bottom:4px">Issues</div>
+          <sc-for list="{{ fi.issues }}" as="i" hint-placeholder-count="0">
+            <div onClick="{{ i.onClick }}" style="display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:5px;cursor:pointer" style-hover="background:#0f1319">
+              <span style="{{ i.dot }}"></span>
+              <span style="flex:none;font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ i.num }}</span>
+              <span style="flex:1;min-width:0;font-size:10.5px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.title }}</span>
+              <sc-if value="{{ i.isSentinel }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;width:10px;height:10px;color:#6a8fb5;flex:none"><i data-lucide="target" width="10" height="10"></i></span></sc-if>
+              <span style="flex:none;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:{{ i.color }};font-family:Consolas,ui-monospace,Menlo,monospace">{{ i.tag }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ view.issue }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+            <span style="font-size:8.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#576069">Issue</span>
+            <span style="font-size:9.5px;color:#8b949e">{{ ii.feature }}</span>
+            <span style="margin-left:auto;font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ ii.num }}</span>
+          </div>
+          <div style="font-size:15px;font-weight:800;color:#e6edf3;letter-spacing:-.02em;line-height:1.25;text-wrap:pretty">{{ ii.title }}</div>
+          <div style="display:flex;align-items:center;gap:7px;margin-top:7px">
+            <span style="{{ ii.stateDot }}"></span>
+            <span style="font-size:10.5px;font-weight:700;color:{{ ii.stateColor }}">{{ ii.stateLabel }}</span>
+          </div>
+        </div>
+        <sc-if value="{{ ii.isSentinel }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:7px;padding:7px 9px;background:#0e141c;border:1px solid #3d5875;border-radius:6px;font-size:10px;color:#9fc0dd;line-height:1.4">
+            <span style="display:inline-flex;width:11px;height:11px;flex:none;color:#6a8fb5"><i data-lucide="target" width="11" height="11"></i></span>
+            <span style="text-wrap:pretty">{{ ii.fanText }}</span>
+          </div>
+        </sc-if>
+        <div>
+          <div style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069;margin-bottom:6px">Board status</div>
+          <div style="display:flex;gap:4px">
+            <sc-for list="{{ ii.statuses }}" as="s" hint-placeholder-count="0">
+              <button onClick="{{ s.onClick }}" style="{{ s.style }}">{{ s.label }}</button>
+            </sc-for>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+            <span style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069">Blocked by</span>
+            <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ ii.blockerCount }}</span>
+            <button onClick="{{ ii.onAddBlocker }}" style="{{ ii.addStyle }}">{{ ii.addLabel }}</button>
+          </div>
+          <sc-if value="{{ ii.blockersEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:10.5px;color:#576069;padding:4px 0;line-height:1.5">Nothing. Launches on the next refresh if it is in Batter Up.</div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <sc-for list="{{ ii.blockers }}" as="b" hint-placeholder-count="0">
+              <div style="display:flex;align-items:center;gap:7px;padding:4px 6px;background:#0f1319;border:1px solid #1b212a;border-radius:5px">
+                <span onClick="{{ b.onSelect }}" style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;cursor:pointer">
+                  <span style="{{ b.dot }}"></span>
+                  <span style="flex:none;font-size:9px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ b.num }}</span>
+                  <span style="flex:1;min-width:0;font-size:10.5px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.title }}</span>
+                </span>
+                <span style="flex:none;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ b.kind }}</span>
+                <button onClick="{{ b.onRemove }}" title="Remove this blocked_by edge" style="flex:none;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:4px;color:#576069;cursor:pointer" style-hover="background:#2a1a1a;color:#e8746f"><i data-lucide="x" width="11" height="11"></i></button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+            <span style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069">Blocks</span>
+            <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ ii.blocksCount }}</span>
+          </div>
+          <sc-if value="{{ ii.blocksEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:10.5px;color:#576069;padding:4px 0;line-height:1.5">Nothing waits on this issue.</div>
+          </sc-if>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <sc-for list="{{ ii.blocks }}" as="b" hint-placeholder-count="0">
+              <div style="display:flex;align-items:center;gap:7px;padding:4px 6px;background:#0f1319;border:1px solid #1b212a;border-radius:5px">
+                <span onClick="{{ b.onSelect }}" style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;cursor:pointer">
+                  <span style="{{ b.dot }}"></span>
+                  <span style="flex:none;font-size:9px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ b.num }}</span>
+                  <span style="flex:1;min-width:0;font-size:10.5px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.title }}</span>
+                </span>
+                <span style="flex:none;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ b.kind }}</span>
+                <button onClick="{{ b.onRemove }}" title="Remove this blocked_by edge" style="flex:none;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:4px;color:#576069;cursor:pointer" style-hover="background:#2a1a1a;color:#e8746f"><i data-lucide="x" width="11" height="11"></i></button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <sc-if value="{{ ii.canSentinel }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ ii.onMakeSentinel }}" style="height:26px;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:#0f1319;border:1px solid #3d5875;border-radius:5px;color:#9fc0dd;font-size:10.5px;font-weight:700;cursor:pointer" style-hover="background:#131c27"><i data-lucide="target" width="11" height="11"></i>Make this the sentinel</button>
+        </sc-if>
+        <div style="padding-top:10px;border-top:1px solid #1b212a">
+          <div style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069;margin-bottom:6px">Dispatch</div>
+          <sc-if value="{{ ii.hasBuild }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:8px 9px;background:#0a0d12;border:1px solid #1b212a;border-radius:6px;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9.5px;line-height:1.55;color:#8b949e;overflow-wrap:anywhere">
+              <div style="color:#c9d1d9">{{ ii.build1 }}</div>
+              <div>{{ ii.build2 }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ ii.buildNote }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:10px;color:#8b949e;line-height:1.5;margin-top:6px;text-wrap:pretty">{{ ii.buildNote }}</div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ view.edge }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+            <span style="font-size:8.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#576069">blocked_by edge</span>
+            <span style="margin-left:auto;font-size:9.5px;color:#8b949e">{{ ei.kindLabel }}</span>
+          </div>
+          <div style="font-size:14px;font-weight:800;color:#e6edf3;letter-spacing:-.02em;line-height:1.3;text-wrap:pretty">{{ ei.headline }}</div>
+          <div style="font-size:10.5px;color:#8b949e;line-height:1.5;margin-top:6px;text-wrap:pretty">{{ ei.desc }}</div>
+        </div>
+        <div onClick="{{ ei.onSelectFrom }}" style="display:flex;align-items:center;gap:7px;padding:7px 9px;background:#0f1319;border:1px solid #1b212a;border-radius:6px;cursor:pointer" style-hover="border-color:#2e3742">
+          <span style="{{ ei.fromDot }}"></span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:8px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#576069">Blocker · {{ ei.fromFeature }}</div>
+            <div style="font-size:10.5px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ ei.from }}</span> {{ ei.fromTitle }}</div>
+          </div>
+          <span style="flex:none;font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:{{ ei.fromColor }};font-family:Consolas,ui-monospace,Menlo,monospace">{{ ei.fromState }}</span>
+        </div>
+        <div>
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px">
+            <span style="font-size:9px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069">Holds</span>
+            <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ ei.count }}</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            <sc-for list="{{ ei.targets }}" as="t" hint-placeholder-count="0">
+              <div style="display:flex;align-items:center;gap:7px;padding:4px 6px;background:#0f1319;border:1px solid #1b212a;border-radius:5px">
+                <span onClick="{{ t.onSelect }}" style="flex:1;min-width:0;display:flex;align-items:center;gap:6px;cursor:pointer">
+                  <span style="flex:none;font-size:9px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ t.num }}</span>
+                  <span style="flex:1;min-width:0;font-size:10.5px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ t.title }}</span>
+                </span>
+                <button onClick="{{ t.onRemove }}" title="Remove this edge" style="flex:none;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:4px;color:#576069;cursor:pointer" style-hover="background:#2a1a1a;color:#e8746f"><i data-lucide="x" width="11" height="11"></i></button>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+        <button onClick="{{ ei.onRemoveAll }}" style="height:26px;display:inline-flex;align-items:center;justify-content:center;gap:6px;background:#1d1211;border:1px solid #4a2320;border-radius:5px;color:#e8746f;font-size:10.5px;font-weight:700;cursor:pointer" style-hover="background:#2a1a1a"><i data-lucide="trash-2" width="11" height="11"></i>{{ ei.removeLabel }}</button>
+        <div style="font-size:10px;color:#576069;line-height:1.5;text-wrap:pretty">Removing a §5.2 edge opens a gap in the chain. The header pill shows the count; Re-wire restores the pattern.</div>
+      </sc-if>
+
+    </div>
+  </div>
+
+  <div style="flex:none;display:flex;align-items:center;gap:10px;height:26px;padding:0 14px;background:#0d1117;border-top:1px solid #21262d;font-size:10px;color:#8b949e">
+    <span style="display:inline-flex;width:11px;height:11px;color:{{ hintColor }};flex:none"><i data-lucide="{{ hintIcon }}" width="11" height="11"></i></span>
+    <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:{{ hintColor }}">{{ hint }}</span>
+    <span style="flex:none;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ edgeSummary }}</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;showFanIn&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Graph&quot;},&quot;dimUnrelated&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Graph&quot;},&quot;edgeStyle&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;orthogonal&quot;,&quot;options&quot;:[&quot;curved&quot;,&quot;orthogonal&quot;],&quot;tsType&quot;:&quot;'curved' | 'orthogonal'&quot;,&quot;section&quot;:&quot;Graph&quot;}}">
+class Component extends DCLogic {
+  MONO = 'Consolas,ui-monospace,Menlo,monospace';
+  KEY = 'build-chain-map.v1';
+  L = { padL:20, top:66, railY:42, epicW:148, epicGap:64, colW:204, gutter:88, stackW:212, sentGap:40, sentW:160, headH:94, rowH:26, rowGap:5, sentH:66 };
+  META = {
+    ready:   { label:'ready',  color:'#7fb08a', dot:'background:#7fb08a', desc:'Batter Up with no open blockers. Launches on the next refresh.' },
+    blocked: { label:'waits',  color:'#6a8fb5', dot:'border:1.5px solid #4d7aa8', desc:'Batter Up, waiting on blocked_by edges to clear. The number is how many.' },
+    held:    { label:'held',   color:'#8b949e', dot:'border:1.5px dashed #6b7480', desc:'Backlog. A human moves it, even after its edges clear.' },
+    ask:     { label:'ask',    color:'#a374ea', dot:'background:#8b7aa8', desc:'Ask Shane. An open question with no build attached; outside the cascade.' },
+    done:    { label:'done',   color:'#5f9a6c', dot:'background:#2f5a3a;border:1px solid #7fb08a', desc:'Verified DONE bookend on origin/main.' }
+  };
+  STATUS = { batter:'Batter Up', backlog:'Backlog', ask:'Ask Shane', done:'Done' };
+  MARK = { fanin:'#4d7aa8', blue:'#6a8fb5', amber:'#e0a879', violet:'#a374ea', green:'#7fb08a', dim:'#2a323d', white:'#e6edf3' };
+  SPEC = [
+    ['Test Pad','TestPad',['^Test Pad document tab type','Pad toolbar: run, stop, clear','!Request editor with syntax highlight','^Response pane with JSON tree','Persist pad contents per epic','Pad history sidebar (last 50 runs)','Env picker: local / staging / prod','!Variables panel with secret masking','!Auth header injection from account','_Copy request as curl','Save pad as named snippet','Snippet search inside the pad','Diff two responses','Status + timing strip','_Ctrl+Enter runs the pad','Split view: editor over response','^Large response virtualization','Cancel in-flight request','Error toasts via ToastEngine','Pad tab pinning + shelf','Import code fence from issue body','Export run to build-journal note','_Pad dark theme tokens','_Empty state + first-run hint','Context menu on response nodes','Unit tests: pad store','Telemetry: pad run events','Pad section in Settings']],
+    ['Build Matrix','BuildMatrix',['^Matrix grid: issues × build slots','Cell state from build-journal bookends','Live refresh (15s) with diff flash','Column filter by buildSet','_Row click opens IssueDetail','Blocked cells nest under blocker','Matrix export to markdown']],
+    ['Shot Vault','ShotVault',['Vault grid with capture thumbnails','Capture metadata: issue, branch, time','Tag shots to an issue','^Compare two shots side by side','Bulk delete with confirm','_Vault storage path setting','Shot search by issue number']],
+    ['I have a thought','IHaveAThought',['Global hotkey opens thought sheet','Thought → issue draft under epic','Attach current context (tab, branch)','Thoughts list with triage states','Promote thought to Ask Shane']],
+    ['Favorites','Favorites',['Star any tab or issue','Favorites rail section','Reorder favorites by drag','Favorite groups (folders)','^Sync favorites to Postgres','Recent vs favorite split','_Remove-favorite undo toast']],
+    ['Focus Mode','FocusMode',['FocusModeBar: single-issue header','Hide rail + side panels in focus','Focus timer with pause','Focus build progress in bar','Exit focus restores layout','_Focus shortcut (F11)','Notifications muted in focus','Focus session log to journal','_Focus defaults in Settings','FocusImmersiveView retirement cleanup']],
+    ['App Shell & Chrome','AppShellChrome',['ActivityBar icon set + order','Top bar: account, location, meters','Status strip: port, branch, UTF-8','Bottom panel resize + persist','^Tab strip: pinned + shelf','_Window title with epic name','Density tokens (VS Code tight)','Shell layout persistence']],
+    ['Command Palette','CommandPalette',['^Ctrl+K palette shell','Command registry + fuzzy match','Recent commands ranking']],
+    ['WebTester UI','WebTesterUI',['Match device frame to screenshot','Result card layout per screenshot','Failure visuals per screenshot','WebTester run list + status','^Run detail with step log'],{ask:[0,1,2]}],
+    ['Build Queue','BuildQueue',['!Queue panel reads Postgres queue','Pause / resume queue (QueuePause)','New build paste (NewBuildPaste)','!Blocked-by nesting in queue'],{backlog:true}]
+  ];
+
+  state = this.init();
+  scrollRef = React.createRef();
+
+  init() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(this.KEY) || 'null'); } catch (e) {}
+    const ok = saved && saved.doc && saved.doc.v === 1 && Array.isArray(saved.doc.features);
+    return { doc: ok ? saved.doc : this.seed(), expanded: (ok && saved.expanded) || {}, sel: null, link: false, zoom: 1, hover: null, drag: null, note: '' };
+  }
+
+  seed() {
+    let num = 2221;
+    const features = this.SPEC.map((s, fi) => {
+      const [name, short, titles, opts] = s; const o = opts || {};
+      const issues = titles.map((raw, i) => {
+        let t = raw, model = 'claude-sonnet-5', effort = 'medium'; const m = raw[0];
+        if (m === '!') { model = 'claude-opus-4-8'; effort = 'high'; t = raw.slice(1); }
+        else if (m === '^') { effort = 'high'; t = raw.slice(1); }
+        else if (m === '_') { effort = 'low'; t = raw.slice(1); }
+        const status = (o.ask || []).includes(i) ? 'ask' : (o.backlog ? 'backlog' : 'batter');
+        return { num: num++, title: t, status, model, effort };
+      });
+      return { id: short, num: 2211 + fi, name, short, issues, sentinel: null };
+    });
+    const doc = { v: 1, epic: { num: 2198, name: 'ShaneBuilder' }, features, order: features.map(f => f.id), edges: [], gates: { BuildQueue: true } };
+    this.rechainAll(doc);
+    return doc;
+  }
+
+  byId(doc, id) { return doc.features.find(f => f.id === id); }
+  cascade(f) { return f.issues.filter(i => i.status !== 'ask'); }
+  pickSentinel(f) { const c = this.cascade(f); return c.length ? Math.max(...c.map(i => i.num)) : null; }
+  featureOf(doc, num) { return doc.features.find(f => f.issues.some(i => i.num === num)); }
+  issue(doc, num) { for (const f of doc.features) { const i = f.issues.find(x => x.num === num); if (i) return i; } return null; }
+  push(doc, e) {
+    if (e.from === e.to) return false;
+    const ex = doc.edges.find(x => x.from === e.from && x.to === e.to);
+    if (ex) { if (ex.kind === 'manual' && e.kind !== 'manual') ex.kind = e.kind; return false; }
+    doc.edges.push(e); return true;
+  }
+  rechainFanin(doc, f) {
+    const set = new Set(f.issues.map(i => i.num));
+    doc.edges = doc.edges.filter(e => !(e.kind === 'fanin' && set.has(e.to)));
+    const cas = this.cascade(f);
+    if (!f.sentinel || !cas.some(i => i.num === f.sentinel)) f.sentinel = this.pickSentinel(f);
+    if (!f.sentinel) return;
+    cas.forEach(i => { if (i.num !== f.sentinel) this.push(doc, { from: i.num, to: f.sentinel, kind: 'fanin' }); });
+  }
+  rechainGates(doc) {
+    doc.edges = doc.edges.filter(e => e.kind !== 'gate');
+    for (let k = 1; k < doc.order.length; k++) {
+      const A = this.byId(doc, doc.order[k - 1]), B = this.byId(doc, doc.order[k]);
+      if (!A || !B || !A.sentinel) continue;
+      this.cascade(B).forEach(j => this.push(doc, { from: A.sentinel, to: j.num, kind: 'gate' }));
+    }
+  }
+  rechainAll(doc) { doc.features.forEach(f => this.rechainFanin(doc, f)); this.rechainGates(doc); }
+
+  derive(doc) {
+    const byNum = {}, featOf = {}, inE = {}, outE = {}, has = new Set();
+    doc.features.forEach(f => f.issues.forEach(i => { byNum[i.num] = i; featOf[i.num] = f; }));
+    doc.edges.forEach(e => { (inE[e.to] || (inE[e.to] = [])).push(e); (outE[e.from] || (outE[e.from] = [])).push(e); has.add(e.from + '>' + e.to); });
+    const open = {}, st = {};
+    Object.keys(byNum).forEach(k => {
+      const n = +k, i = byNum[n];
+      open[n] = (inE[n] || []).filter(e => byNum[e.from] && byNum[e.from].status !== 'done').length;
+      st[n] = i.status === 'done' ? 'done' : i.status === 'ask' ? 'ask' : i.status === 'backlog' ? 'held' : open[n] ? 'blocked' : 'ready';
+    });
+    const fsum = {};
+    doc.features.forEach(f => { const c = { ready:0, blocked:0, held:0, ask:0, done:0 }; f.issues.forEach(i => c[st[i.num]]++); fsum[f.id] = c; });
+    let gaps = 0, cross = 0;
+    doc.features.forEach(f => { if (!f.sentinel) return; this.cascade(f).forEach(i => { if (i.num !== f.sentinel && !has.has(i.num + '>' + f.sentinel)) gaps++; }); });
+    for (let k = 1; k < doc.order.length; k++) {
+      const A = this.byId(doc, doc.order[k - 1]), B = this.byId(doc, doc.order[k]); const cb = this.cascade(B);
+      cross += this.cascade(A).length * cb.length;
+      if (!A.sentinel) { gaps += cb.length; continue; }
+      cb.forEach(j => { if (!has.has(A.sentinel + '>' + j.num)) gaps++; });
+    }
+    const tot = { issues:0, ready:0, blocked:0, held:0, ask:0, done:0 };
+    Object.keys(byNum).forEach(k => { tot.issues++; tot[st[+k]]++; });
+    const fanin = doc.edges.filter(e => e.kind === 'fanin').length, gate = doc.edges.filter(e => e.kind === 'gate').length, manual = doc.edges.length - fanin - gate;
+    return { byNum, featOf, inE, outE, has, open, st, fsum, gaps, cross, tot, fanin, gate, manual };
+  }
+
+  layout(doc, expanded) {
+    const L = this.L; const P = { head:{}, node:{} };
+    let x = L.padL + L.epicW + L.epicGap, maxB = L.top + L.headH;
+    doc.order.forEach(fid => {
+      const f = this.byId(doc, fid); if (!f) return;
+      const exp = !!expanded[fid]; const w = exp ? L.stackW + L.sentGap + L.sentW : L.colW;
+      P.head[fid] = { x, y: L.top, w, h: L.headH };
+      if (exp) {
+        const sibs = f.issues.filter(i => i.num !== f.sentinel).sort((a, b) => a.num - b.num);
+        const y0 = L.top + L.headH + 18;
+        sibs.forEach((i, r) => { P.node[i.num] = { x, y: y0 + r * (L.rowH + L.rowGap), w: L.stackW, h: L.rowH, kind: 'row' }; });
+        const stackH = sibs.length ? sibs.length * (L.rowH + L.rowGap) - L.rowGap : L.sentH;
+        if (f.sentinel) P.node[f.sentinel] = { x: x + L.stackW + L.sentGap, y: Math.max(y0, y0 + stackH / 2 - L.sentH / 2), w: L.sentW, h: L.sentH, kind: 'sentinel' };
+        maxB = Math.max(maxB, y0 + stackH, f.sentinel ? P.node[f.sentinel].y + L.sentH : 0);
+      }
+      x += w + L.gutter;
+    });
+    P.W = x - L.gutter + L.padL + 24; P.H = maxB + 48;
+    return P;
+  }
+  outPort(P, D, exp, num) {
+    const f = D.featOf[num]; if (!f) return null; const n = P.node[num];
+    if (exp[f.id] && n) return { x: n.x + n.w, y: n.y + n.h / 2, key: 'i' + num };
+    const h = P.head[f.id]; if (!h) return null; return { x: h.x + h.w, y: h.y + h.h / 2, key: 'f' + f.id };
+  }
+  inPort(P, D, exp, num) {
+    const f = D.featOf[num]; if (!f) return null; const n = P.node[num];
+    if (exp[f.id] && n) return { x: n.x, y: n.y + n.h / 2, key: 'i' + num };
+    const h = P.head[f.id]; if (!h) return null; return { x: h.x, y: h.y + h.h / 2, key: 'f' + f.id };
+  }
+  pathD(a, b, ortho) {
+    if (ortho) { const mx = (a.x + b.x) / 2; return 'M' + a.x + ' ' + a.y + ' H' + mx + ' V' + b.y + ' H' + b.x; }
+    const dx = Math.max(36, Math.min(110, Math.abs(b.x - a.x) * .5));
+    return 'M' + a.x + ' ' + a.y + ' C' + (a.x + dx) + ' ' + a.y + ' ' + (b.x - dx) + ' ' + b.y + ' ' + b.x + ' ' + b.y;
+  }
+  edgeLook(g, ctx) {
+    const e0 = g.edges[0], D = ctx.D, doc = ctx.doc; const fromI = D.byNum[e0.from];
+    const toF = D.featOf[e0.to]; const manualGate = e0.kind === 'gate' && toF && doc.gates[toF.id];
+    let c, o, w = 1.1, m, dash = null;
+    if (e0.kind === 'fanin') { c = this.MARK.fanin; o = .5; m = 'fanin'; }
+    else if (e0.kind === 'gate') { if (manualGate) { c = this.MARK.amber; o = .7; m = 'amber'; dash = '4 3'; } else { c = this.MARK.blue; o = .6; m = 'blue'; } }
+    else { c = this.MARK.violet; o = .75; m = 'violet'; }
+    if (fromI && fromI.status === 'done') { c = this.MARK.green; o = .4; m = 'green'; }
+    const sel = ctx.sel;
+    if (sel) {
+      let rel = false;
+      if (sel.type === 'issue') rel = g.edges.some(e => e.to === sel.num) ? 'in' : g.edges.some(e => e.from === sel.num) ? 'out' : false;
+      else if (sel.type === 'feature') { const f = this.byId(doc, sel.id); const set = new Set(f ? f.issues.map(i => i.num) : []); rel = g.edges.some(e => set.has(e.from) || set.has(e.to)) ? 'touch' : false; }
+      else if (sel.type === 'edge') rel = g.edges.some(e => sel.set.has(e.from + '>' + e.to)) ? 'sel' : false;
+      if (rel === 'in') { c = this.MARK.amber; o = 1; w = 1.8; m = 'amber'; }
+      else if (rel === 'out') { c = '#9fc0dd'; o = .95; w = 1.6; m = 'white'; }
+      else if (rel === 'sel') { c = this.MARK.white; o = 1; w = 2; m = 'white'; }
+      else if (rel === false && ctx.dim) { o = .1; m = 'dim'; }
+    }
+    if (ctx.hover === ctx.key) { o = 1; w = Math.max(w, 1.8); }
+    return { c, o, w, m, dash };
+  }
+  buildEdgeLayer(doc, D, P, expanded, opts) {
+    const h = React.createElement, L = this.L;
+    const groups = new Map();
+    doc.edges.forEach(e => {
+      if (!opts.showFanIn && e.kind === 'fanin') return;
+      const a = this.outPort(P, D, expanded, e.from), b = this.inPort(P, D, expanded, e.to);
+      if (!a || !b || a.key === b.key) return;
+      const key = a.key + '>' + b.key; let g = groups.get(key);
+      if (!g) { g = { a, b, edges: [] }; groups.set(key, g); }
+      g.edges.push(e);
+    });
+    const kids = [];
+    kids.push(h('defs', { key: 'defs' }, Object.keys(this.MARK).map(k => h('marker', { key: k, id: 'bc-mk-' + k, viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' }, h('path', { d: 'M0 0 L10 5 L0 10 z', fill: this.MARK[k] })))));
+    const ex = L.padL + L.epicW, ey = L.top + L.headH / 2, tx = L.padL + L.epicW + L.epicGap / 2;
+    const cols = doc.order.map(fid => P.head[fid]).filter(Boolean).map(hd => hd.x + 28);
+    if (cols.length) {
+      let d = 'M' + ex + ' ' + ey + ' H' + tx + ' V' + L.railY + ' H' + cols[cols.length - 1];
+      cols.forEach(cx => { d += ' M' + cx + ' ' + L.railY + ' V' + L.top; });
+      kids.push(h('path', { key: 'tree', d, style: { fill: 'none', stroke: '#2a323d', strokeWidth: 1 } }));
+    }
+    groups.forEach((g, key) => {
+      const look = this.edgeLook(g, { D, doc, sel: opts.sel, hover: opts.hover, dim: opts.dim, key });
+      const d = this.pathD(g.a, g.b, opts.ortho);
+      kids.push(h('path', { key: key + 'v', d, markerEnd: 'url(#bc-mk-' + look.m + ')', style: { fill: 'none', stroke: look.c, strokeWidth: look.w, strokeOpacity: look.o, strokeDasharray: look.dash || 'none', transition: 'stroke-opacity .15s, stroke .15s' } }));
+      kids.push(h('path', { key: key + 'h', d, style: { fill: 'none', stroke: 'transparent', strokeWidth: 10, cursor: 'pointer', pointerEvents: 'stroke' }, onClick: ev => { ev.stopPropagation(); this.selectEdge(g); }, onMouseEnter: () => this.setState({ hover: key }), onMouseLeave: () => this.setState({ hover: null }) }));
+      if (g.edges.length > 1) {
+        const mx = (g.a.x + g.b.x) / 2, my = (g.a.y + g.b.y) / 2;
+        kids.push(h('text', { key: key + 't', x: mx, y: my + 3, textAnchor: 'middle', style: { fontSize: 9, fontFamily: this.MONO, fontWeight: 700, fill: look.c, fillOpacity: Math.min(1, look.o + .35), paintOrder: 'stroke', stroke: '#0a0d12', strokeWidth: 4, pointerEvents: 'none' } }, '×' + g.edges.length));
+      }
+    });
+    return h('svg', { width: P.W, height: P.H, style: { position: 'absolute', left: 0, top: 0, overflow: 'visible', pointerEvents: 'none' } }, kids);
+  }
+
+  featureState(doc, f, c, k) {
+    const prev = k > 0 ? this.byId(doc, doc.order[k - 1]) : null;
+    const askTail = c.ask ? ' · ' + c.ask + ' ask' : '';
+    if (c.done === f.issues.length && f.issues.length) return { text: 'complete', color: '#5f9a6c' };
+    if (c.ready) return { text: c.ready + ' ready now' + askTail, color: '#7fb08a' };
+    if (c.blocked) return { text: c.blocked + ' waiting' + (prev && prev.sentinel ? ' on #' + prev.sentinel : '') + askTail, color: '#6a8fb5' };
+    if (c.held) return { text: c.held + ' held' + (doc.gates[f.id] ? ' · manual gate' : '') + askTail, color: '#8b949e' };
+    if (c.ask) return { text: c.ask + ' ask Shane', color: '#a374ea' };
+    return { text: 'no issues', color: '#576069' };
+  }
+
+  mut(fn) { const doc = JSON.parse(JSON.stringify(this.state.doc)); const extra = fn(doc) || {}; this.setState(Object.assign({ doc }, extra)); }
+  toggleExpand(fid) { const expanded = Object.assign({}, this.state.expanded); expanded[fid] = !expanded[fid]; this.setState({ expanded, sel: { type: 'feature', id: fid }, link: false, note: '' }); }
+  selectIssue(num, ensure) {
+    const f = this.featureOf(this.state.doc, num); const expanded = Object.assign({}, this.state.expanded);
+    if (ensure && f) expanded[f.id] = true;
+    this.setState({ sel: { type: 'issue', num }, expanded, link: false, note: '' });
+  }
+  clickIssue(num) {
+    const { sel, link } = this.state;
+    if (link && sel && sel.type === 'issue') {
+      if (sel.num === num) { this.setState({ link: false }); return; }
+      this.mut(doc => { const ok = this.push(doc, { from: num, to: sel.num, kind: 'manual' }); return { link: false, note: ok ? '#' + sel.num + ' is now blocked_by #' + num + '.' : '#' + sel.num + ' was already blocked_by #' + num + '.' }; });
+      return;
+    }
+    this.setState({ sel: { type: 'issue', num }, link: false, note: '' });
+  }
+  selectEdge(g) { const pairs = g.edges.map(e => [e.from, e.to]); this.setState({ sel: { type: 'edge', pairs, set: new Set(pairs.map(p => p.join('>'))) }, link: false, note: '' }); }
+  setStatus(num, status) {
+    this.mut(doc => {
+      const i = this.issue(doc, num), f = this.featureOf(doc, num); if (!i) return {};
+      const was = i.status; if (was === status) return {};
+      i.status = status; let note = '#' + num + ' → ' + this.STATUS[status] + '.';
+      if ((was === 'ask') !== (status === 'ask')) { this.rechainFanin(doc, f); this.rechainGates(doc); note += status === 'ask' ? ' Left the cascade: its fan-in and gate edges were dropped.' : ' Joined the cascade: fan-in and gate edges wired.'; }
+      else if (status === 'done' && f.sentinel === num) note += ' Sentinel cleared — the next Feature is released.';
+      return { note };
+    });
+  }
+  makeSentinel(num) {
+    this.mut(doc => {
+      const f = this.featureOf(doc, num), i = this.issue(doc, num); if (!f || !i) return {};
+      if (i.status === 'ask') return { note: 'An Ask Shane item sits outside the cascade and cannot be the sentinel.' };
+      if (f.sentinel === num) return {};
+      f.sentinel = num; this.rechainFanin(doc, f); this.rechainGates(doc);
+      const sel = this.state.sel;
+      return { note: '#' + num + ' is now the sentinel of ' + f.name + '. Fan-in and the downstream gate were re-wired.', sel: sel && sel.type === 'issue' ? { type: 'issue', num } : sel };
+    });
+  }
+  removeEdges(pairs) {
+    this.mut(doc => {
+      const set = new Set(pairs.map(p => p.join('>')));
+      doc.edges = doc.edges.filter(e => !set.has(e.from + '>' + e.to));
+      let sel = this.state.sel;
+      if (sel && sel.type === 'edge') { const rest = sel.pairs.filter(p => !set.has(p.join('>'))); sel = rest.length ? { type: 'edge', pairs: rest, set: new Set(rest.map(p => p.join('>'))) } : null; }
+      return { sel, note: pairs.length === 1 ? 'Removed: #' + pairs[0][1] + ' blocked_by #' + pairs[0][0] + '.' : 'Removed ' + pairs.length + ' blocked_by edges.' };
+    });
+  }
+  toggleGate(fid) {
+    this.mut(doc => {
+      const f = this.byId(doc, fid); const on = !doc.gates[fid]; doc.gates[fid] = on; let moved = 0;
+      f.issues.forEach(i => { if (on && i.status === 'batter') { i.status = 'backlog'; moved++; } if (!on && i.status === 'backlog') { i.status = 'batter'; moved++; } });
+      const n = moved + ' issue' + (moved === 1 ? '' : 's');
+      return { note: on ? 'Manual gate before ' + f.name + ': ' + n + ' moved to Backlog. The blocked_by edges stay as the technical floor.' : 'Gate before ' + f.name + ' is automatic: ' + n + ' moved to Batter Up.' };
+    });
+  }
+  reorder(from, to) {
+    if (!from || !to || from === to) { this.setState({ drag: null }); return; }
+    this.mut(doc => {
+      const o = doc.order, fi = o.indexOf(from), ti = o.indexOf(to); if (fi < 0 || ti < 0) return { drag: null };
+      o.splice(fi, 1); o.splice(ti, 0, from); this.rechainGates(doc);
+      return { drag: null, sel: { type: 'feature', id: from }, note: 'Priority changed. Cross-feature gates re-wired per §5.2; your added edges were kept.' };
+    });
+  }
+  moveFeature(fid, dir) { const o = this.state.doc.order, i = o.indexOf(fid), j = i + dir; if (i < 0 || j < 0 || j >= o.length) return; this.reorder(fid, o[j]); }
+  rewire() { this.mut(doc => { this.rechainAll(doc); const D = this.derive(doc); return { note: 'Re-wired: ' + D.fanin + ' fan-in + ' + D.gate + ' gate edges. Your added edges were kept.' }; }); }
+  reset() { try { localStorage.removeItem(this.KEY); } catch (e) {} this.setState({ doc: this.seed(), expanded: {}, sel: null, link: false, drag: null, note: 'Reset to the §10 worked example.' }); }
+  setAll(on) { const expanded = {}; if (on) this.state.doc.order.forEach(id => { expanded[id] = true; }); this.setState({ expanded }); }
+  zoomBy(d) { this.setState({ zoom: Math.round(Math.max(.35, Math.min(1.6, this.state.zoom + d)) * 100) / 100 }); }
+  fit() { const el = this.scrollRef.current; if (!el) return; const P = this.layout(this.state.doc, this.state.expanded); this.setState({ zoom: Math.round(Math.max(.35, Math.min(1, (el.clientWidth - 16) / P.W)) * 100) / 100 }); }
+
+  onKey = ev => {
+    const t = ev.target; if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+    if (ev.key === 'Escape') { if (this.state.link) this.setState({ link: false }); else this.setState({ sel: null }); }
+    if ((ev.key === 'Delete' || ev.key === 'Backspace') && this.state.sel && this.state.sel.type === 'edge') { ev.preventDefault(); this.removeEdges(this.state.sel.pairs); }
+  };
+  componentDidMount() {
+    const run = () => { if (window.lucide) { window.lucide.createIcons(); return true; } return false; };
+    if (!run()) this._it = setInterval(() => { if (run()) clearInterval(this._it); }, 200);
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentDidUpdate() {
+    if (window.lucide) window.lucide.createIcons();
+    const { doc, expanded } = this.state;
+    if (this._savedDoc !== doc || this._savedExp !== expanded) {
+      this._savedDoc = doc; this._savedExp = expanded;
+      try { localStorage.setItem(this.KEY, JSON.stringify({ doc, expanded })); } catch (e) {}
+    }
+  }
+  componentWillUnmount() { if (this._it) clearInterval(this._it); window.removeEventListener('keydown', this.onKey); }
+
+  renderVals() {
+    const S = this.state, { doc, expanded, sel, link, zoom, hover, drag, note } = S; const L = this.L, M = this.MONO;
+    const showFanIn = this.props.showFanIn ?? true, dim = this.props.dimUnrelated ?? true, ortho = (this.props.edgeStyle ?? 'curved') === 'orthogonal';
+    const D = this.derive(doc), P = this.layout(doc, expanded);
+    const selIssue = sel && sel.type === 'issue' && D.byNum[sel.num] ? sel.num : null;
+    const selFeat = sel && sel.type === 'feature' && this.byId(doc, sel.id) ? sel.id : null;
+    const blockersOf = new Set(selIssue != null ? (D.inE[selIssue] || []).map(e => e.from) : []);
+    const dependents = new Set(selIssue != null ? (D.outE[selIssue] || []).map(e => e.to) : []);
+    const stop = fn => ev => { ev.stopPropagation(); fn(ev); };
+    const dot = (st, size) => 'flex:none;width:' + size + 'px;height:' + size + 'px;border-radius:99px;' + this.META[st].dot;
+
+    const heads = doc.order.map((fid, k) => {
+      const f = this.byId(doc, fid), hd = P.head[fid], c = D.fsum[fid], exp = !!expanded[fid], isSel = selFeat === fid;
+      const segs = [['ready','#7fb08a'],['blocked','#4d7aa8'],['done','#2f5a3a'],['held','#3a4250'],['ask','#8b7aa8']].filter(s => c[s[0]]).map(s => ({ style: 'flex:' + c[s[0]] + ' 0 0;background:' + s[1] }));
+      const fs = this.featureState(doc, f, c, k);
+      return {
+        p: k + 1, num: f.num, name: f.name, chev: exp ? 'chevron-up' : 'chevron-down', segs, count: f.issues.length + ' issues', sentinelNum: f.sentinel == null ? '—' : f.sentinel, stateText: fs.text, stateColor: fs.color,
+        tip: 'Feature: ' + f.name + ' (ShaneBuilder) · #' + f.num + '\nClick to ' + (exp ? 'collapse' : 'open its issues') + '. Drag to change priority.',
+        style: 'position:absolute;left:' + hd.x + 'px;top:' + hd.y + 'px;width:' + hd.w + 'px;height:' + hd.h + 'px;display:flex;flex-direction:column;justify-content:space-between;padding:9px 10px;background:#0d1117;border:1px solid ' + (isSel ? '#6a8fb5' : exp ? '#2e3742' : '#21262d') + ';border-radius:7px;cursor:pointer;box-shadow:' + (isSel ? '0 0 0 1px #6a8fb5' : 'none') + ';opacity:' + (drag === fid ? .45 : 1),
+        onClick: stop(() => this.toggleExpand(fid)),
+        onDragStart: ev => { ev.dataTransfer.setData('text/plain', fid); ev.dataTransfer.effectAllowed = 'move'; this.setState({ drag: fid }); },
+        onDrop: ev => { ev.preventDefault(); ev.stopPropagation(); const from = this.state.drag || ev.dataTransfer.getData('text/plain'); this.reorder(from, fid); }
+      };
+    });
+
+    const rows = [], sentinels = [];
+    doc.order.forEach(fid => {
+      if (!expanded[fid]) return; const f = this.byId(doc, fid);
+      f.issues.forEach(i => {
+        const n = P.node[i.num]; if (!n) return;
+        const st = D.st[i.num], meta = this.META[st], isSel = selIssue === i.num, isB = blockersOf.has(i.num), isD = dependents.has(i.num);
+        const ring = isSel ? '0 0 0 1px #6a8fb5' : isB ? '0 0 0 1px rgba(224,168,121,.35)' : 'none';
+        const cursor = link ? (isSel ? 'not-allowed' : 'crosshair') : 'pointer';
+        const base = {
+          num: i.num, title: i.title, color: st === 'done' ? '#576069' : st === 'blocked' ? '#aab4bf' : '#e6edf3', tag: st === 'blocked' ? String(D.open[i.num]) : meta.label, tagColor: meta.color, dot: dot(st, 7),
+          tip: '#' + i.num + ' ' + i.title + '\n' + this.STATUS[i.status] + ' · ' + meta.desc, onClick: stop(() => this.clickIssue(i.num))
+        };
+        if (n.kind === 'sentinel') {
+          const fan = (D.inE[i.num] || []).filter(e => e.kind === 'fanin'); const fanDone = fan.filter(e => D.byNum[e.from] && D.byNum[e.from].status === 'done').length;
+          sentinels.push(Object.assign(base, { fan: fanDone + '/' + fan.length, style: 'position:absolute;left:' + n.x + 'px;top:' + n.y + 'px;width:' + n.w + 'px;height:' + n.h + 'px;display:flex;flex-direction:column;justify-content:center;gap:4px;padding:7px 9px;background:' + (isSel ? '#131c27' : '#0e141c') + ';border:1px solid ' + (isSel ? '#6a8fb5' : isB ? '#e0a879' : isD ? '#6a8fb5' : '#3d5875') + ';border-radius:6px;cursor:' + cursor + ';box-shadow:' + ring }));
+        } else {
+          const border = isSel ? '1px solid #6a8fb5' : isB ? '1px solid #e0a879' : isD ? '1px solid #4d7aa8' : st === 'held' ? '1px dashed #2e3742' : st === 'ask' ? '1px solid #3a3050' : st === 'ready' ? '1px solid #2e4a36' : '1px solid #1b212a';
+          rows.push(Object.assign(base, { style: 'position:absolute;left:' + n.x + 'px;top:' + n.y + 'px;width:' + n.w + 'px;height:' + n.h + 'px;display:flex;align-items:center;gap:6px;padding:0 8px;background:' + (isSel ? '#131c27' : st === 'done' ? '#0c1210' : '#0f1319') + ';border:' + border + ';border-radius:5px;cursor:' + cursor + ';box-shadow:' + ring }));
+        }
+      });
+    });
+
+    const gates = [];
+    for (let k = 1; k < doc.order.length; k++) {
+      const prev = this.byId(doc, doc.order[k - 1]), f = this.byId(doc, doc.order[k]), ph = P.head[prev.id]; const gx = ph.x + ph.w + L.gutter / 2; const manual = !!doc.gates[f.id];
+      gates.push({
+        manual, icon: manual ? 'pause' : 'zap', label: manual ? 'manual gate' : 'auto',
+        tip: manual ? 'Manual cutover: ' + f.name + ' stays in Backlog until Shane confirms ' + prev.name + '. Click to make it automatic.' : 'Automatic: ' + f.name + ' launches when #' + prev.sentinel + ' posts its DONE bookend. Click to make this a manual gate.',
+        style: 'position:absolute;left:' + (gx - 40) + 'px;top:' + (L.top + L.headH / 2 - 10) + 'px;width:80px;height:20px;display:flex;align-items:center;justify-content:center;gap:4px;border-radius:99px;font-size:8px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;font-family:' + M + ';cursor:pointer;background:' + (manual ? '#1a1512' : '#0d1117') + ';border:1px solid ' + (manual ? '#5a3f2a' : '#21262d') + ';color:' + (manual ? '#e0a879' : '#576069'),
+        lineStyle: 'position:absolute;left:' + gx + 'px;top:' + L.railY + 'px;height:' + (P.H - L.railY - 24) + 'px;width:0;border-left:1px dashed rgba(224,168,121,.4)',
+        onClick: stop(() => this.toggleGate(f.id))
+      });
+    }
+
+    const edgeLayer = this.buildEdgeLayer(doc, D, P, expanded, { showFanIn, dim, ortho, sel, hover });
+    const epic = { num: doc.epic.num, name: doc.epic.name, meta: doc.features.length + ' Features · ' + D.tot.issues + ' issues · ' + doc.edges.length + ' blocked_by edges', style: 'position:absolute;left:' + L.padL + 'px;top:' + L.top + 'px;width:' + L.epicW + 'px;height:' + L.headH + 'px;display:flex;flex-direction:column;justify-content:space-between;padding:9px 10px;background:#0d1117;border:1px solid ' + (sel ? '#21262d' : '#2e3742') + ';border-radius:7px;cursor:pointer', onClick: stop(() => this.setState({ sel: null, link: false, note: '' })) };
+
+    const stats = [
+      { label: 'Features', value: doc.features.length, color: '#e6edf3' }, { label: 'Issues', value: D.tot.issues, color: '#e6edf3' },
+      { label: 'Ready now', value: D.tot.ready, color: '#7fb08a' }, { label: 'Waiting', value: D.tot.blocked, color: '#6a8fb5' },
+      { label: 'Backlog', value: D.tot.held, color: '#8b949e' }, { label: 'Ask Shane', value: D.tot.ask, color: '#a374ea' },
+      { label: 'Done', value: D.tot.done, color: '#5f9a6c' }
+    ];
+    const ok = D.gaps === 0;
+    const chain = { icon: ok ? 'check' : 'alert-triangle', showFix: !ok, label: ok ? 'Chain exact · ' + D.gate + ' gate edges, not ' + D.cross : 'Chain has ' + D.gaps + ' gap' + (D.gaps === 1 ? '' : 's'),
+      style: 'flex:none;display:flex;align-items:center;gap:7px;height:26px;padding:0 10px;border-radius:99px;font-size:10px;font-weight:700;background:' + (ok ? '#0f1a14' : '#1a1512') + ';border:1px solid ' + (ok ? '#2e4a36' : '#5a3f2a') + ';color:' + (ok ? '#7fb08a' : '#e0a879') };
+
+    let fi = null, ii = null, ei = null;
+    if (selFeat) {
+      const f = this.byId(doc, selFeat), k = doc.order.indexOf(selFeat), c = D.fsum[selFeat];
+      const prev = k > 0 ? this.byId(doc, doc.order[k - 1]) : null, next = k < doc.order.length - 1 ? this.byId(doc, doc.order[k + 1]) : null; const manual = !!doc.gates[f.id];
+      fi = {
+        p: k + 1, num: f.num, name: f.name, short: f.short, count: f.issues.length + ' issues · ' + this.cascade(f).length + ' in cascade',
+        counts: [['ready','ready'],['waits','blocked'],['held','held'],['ask','ask'],['done','done']].map(s => ({ label: s[0], value: c[s[1]], color: c[s[1]] ? this.META[s[1]].color : '#3f4756' })),
+        gatedOn: prev ? 'Gated on #' + prev.sentinel + ', the sentinel of ' + prev.name + (manual ? ', plus Shane\u2019s confirmation.' : '. Launches automatically when it clears.') : 'First in priority. Nothing gates it.',
+        releases: next ? 'Its sentinel #' + f.sentinel + ' releases ' + next.name + ' (' + this.cascade(next).length + ' issues).' : 'Last in priority. Releases nothing.',
+        sentinelNum: f.sentinel, sentinelOptions: this.cascade(f).slice().sort((a, b) => b.num - a.num).map(i => ({ value: i.num, label: '#' + i.num + ' ' + i.title })), onSentinel: ev => this.makeSentinel(+ev.target.value),
+        hasGate: k > 0, gateText: manual ? 'Manual. Issues wait in Backlog until Shane moves them, even after the sentinel clears.' : 'Automatic. Issues launch on refresh once the previous sentinel posts DONE.', onToggleGate: () => this.toggleGate(f.id),
+        switchStyle: 'flex:none;position:relative;width:30px;height:16px;border-radius:99px;background:' + (manual ? '#5a3f2a' : '#21262d') + ';border:1px solid ' + (manual ? '#8a5a38' : '#2e3742'),
+        knobStyle: 'position:absolute;top:1px;left:' + (manual ? 15 : 1) + 'px;width:12px;height:12px;border-radius:99px;background:' + (manual ? '#e0a879' : '#8b949e') + ';transition:left .15s',
+        toggleLabel: expanded[f.id] ? 'Collapse issues' : 'Open issues', onToggle: () => { const e = Object.assign({}, expanded); e[f.id] = !e[f.id]; this.setState({ expanded: e }); }, onUp: () => this.moveFeature(f.id, -1), onDown: () => this.moveFeature(f.id, 1),
+        issues: f.issues.slice().sort((a, b) => a.num - b.num).map(i => { const st = D.st[i.num]; return { num: i.num, title: i.title, isSentinel: i.num === f.sentinel, tag: st === 'blocked' ? 'waits ' + D.open[i.num] : this.META[st].label, color: this.META[st].color, dot: dot(st, 6), onClick: () => this.selectIssue(i.num, true) }; })
+      };
+    } else if (selIssue != null) {
+      const i = D.byNum[selIssue], f = D.featOf[selIssue], k = doc.order.indexOf(f.id), st = D.st[selIssue], meta = this.META[st], isS = f.sentinel === selIssue;
+      const ins = D.inE[selIssue] || [], outs = D.outE[selIssue] || []; const bl = ins.map(e => e.from).sort((a, b) => a - b);
+      const kindLabel = e => e.kind === 'fanin' ? 'fan-in' : e.kind === 'gate' ? 'gate' : 'added';
+      const row = (n, e) => { const x = D.byNum[n], s = D.st[n]; return { num: n, title: x ? x.title : '(missing)', kind: kindLabel(e), dot: s ? dot(s, 6) : 'width:6px', onRemove: () => this.removeEdges([[e.from, e.to]]), onSelect: () => this.selectIssue(n, true) }; };
+      ii = {
+        num: i.num, title: i.title, feature: f.name + ' · P' + (k + 1), stateDot: dot(st, 8), stateColor: meta.color,
+        stateLabel: st === 'blocked' ? 'Waiting on ' + D.open[selIssue] + ' blocker' + (D.open[selIssue] === 1 ? '' : 's') : st === 'ready' ? 'Ready — launches on the next refresh' : st === 'held' ? 'Held in Backlog' : st === 'ask' ? 'Ask Shane — outside the cascade' : 'DONE bookend verified',
+        statuses: Object.keys(this.STATUS).map(s => ({ label: this.STATUS[s], onClick: () => this.setStatus(selIssue, s), style: 'flex:1;height:24px;padding:0;border-radius:4px;font-size:9.5px;font-weight:700;cursor:pointer;white-space:nowrap;border:1px solid ' + (i.status === s ? '#3d5875' : '#21262d') + ';background:' + (i.status === s ? '#1d3450' : '#0f1319') + ';color:' + (i.status === s ? '#cfe0f0' : '#8b949e') })),
+        hasBuild: i.status !== 'ask', build1: 'BUILD: model=' + i.model + ' effort=' + i.effort + ' buildSet=' + f.short, build2: '--model ' + i.model + ' --effort ' + i.effort + ' --title ' + i.num + (bl.length ? ' --blocked-by ' + bl.join(',') : ''),
+        buildNote: i.status === 'ask' ? 'No BUILD comment. An Ask Shane item carries a question, not a dispatch.' : i.status === 'backlog' ? 'Dispatched but held. Backlog waits for a human to move it to Batter Up.' : '',
+        isSentinel: isS, fanText: isS ? 'Sentinel of ' + f.name + ': ' + ins.filter(e => e.kind === 'fanin').length + ' siblings fan in here. It is the last thing in the Feature to clear.' : '', canSentinel: !isS && i.status !== 'ask', onMakeSentinel: () => this.makeSentinel(selIssue),
+        blockers: ins.map(e => row(e.from, e)), blocks: outs.map(e => row(e.to, e)), blockersEmpty: !ins.length, blocksEmpty: !outs.length, blockerCount: String(ins.length), blocksCount: String(outs.length),
+        onAddBlocker: () => this.setState({ link: !link }), addLabel: link ? 'Cancel' : 'Add blocker…',
+        addStyle: 'margin-left:auto;flex:none;white-space:nowrap;height:20px;padding:0 8px;border-radius:4px;font-size:9.5px;font-weight:700;cursor:pointer;border:1px solid ' + (link ? '#5a3f2a' : '#3d5875') + ';background:' + (link ? '#1a1512' : '#1d3450') + ';color:' + (link ? '#e0a879' : '#cfe0f0')
+      };
+    } else if (sel && sel.type === 'edge') {
+      const pairs = sel.pairs.filter(p => D.has.has(p[0] + '>' + p[1]));
+      if (pairs.length) {
+        const from = pairs[0][0], fx = D.byNum[from], fromF = D.featOf[from], toF = D.featOf[pairs[0][1]];
+        const kinds = Array.from(new Set(pairs.map(p => (doc.edges.find(e => e.from === p[0] && e.to === p[1]) || {}).kind)));
+        const kindLabel = kinds.map(k => k === 'fanin' ? 'fan-in' : k === 'gate' ? (toF && doc.gates[toF.id] ? 'manual gate' : 'cross-feature gate') : 'added by you').join(' + ');
+        const one = pairs.length === 1; const tx = one ? D.byNum[pairs[0][1]] : null;
+        ei = {
+          from, fromTitle: fx ? fx.title : '', fromFeature: fromF ? fromF.name : '', fromState: this.META[D.st[from]] ? this.META[D.st[from]].label : '', fromColor: this.META[D.st[from]] ? this.META[D.st[from]].color : '#8b949e', fromDot: D.st[from] ? dot(D.st[from], 8) : '', kindLabel, count: String(pairs.length),
+          headline: one ? '#' + pairs[0][1] + ' blocked_by #' + from : pairs.length + ' issues in ' + (toF ? toF.name : '') + ' blocked_by #' + from,
+          desc: fx && fx.status === 'done' ? 'Cleared. #' + from + ' has a DONE bookend, so this edge no longer holds anything.' : one && tx ? '#' + pairs[0][1] + ' cannot launch until #' + from + ' posts its DONE bookend.' : 'None of these launch until #' + from + ' posts its DONE bookend. Open ' + (toF ? toF.name : 'the Feature') + ' to see each edge on its own.',
+          targets: pairs.map(p => { const x = D.byNum[p[1]]; return { num: p[1], title: x ? x.title : '(missing)', onRemove: () => this.removeEdges([p]), onSelect: () => this.selectIssue(p[1], true) }; }),
+          onRemoveAll: () => this.removeEdges(pairs), removeLabel: one ? 'Remove edge' : 'Remove all ' + pairs.length + ' edges', onSelectFrom: () => this.selectIssue(from, true)
+        };
+      }
+    }
+    const view = { none: !fi && !ii && !ei, feature: !!fi, issue: !!ii, edge: !!ei };
+
+    const legend = ['ready','blocked','held','ask','done'].map(k => ({ label: { ready:'Ready', blocked:'Waiting', held:'Held (Backlog)', ask:'Ask Shane', done:'Done' }[k], desc: this.META[k].desc, dot: 'flex:none;margin-top:3px;width:8px;height:8px;border-radius:99px;' + this.META[k].dot }));
+    const sw = css => 'flex:none;margin-top:6px;width:18px;height:0;' + css;
+    const edgeLegend = [
+      { label: 'Fan-in', desc: 'Every sibling → its Feature\u2019s sentinel. The sentinel is provably the last thing to clear.', sw: sw('border-top:1.5px solid #4d7aa8') },
+      { label: 'Cross-feature gate', desc: 'Previous sentinel → every issue in the next Feature. O(n) per transition.', sw: sw('border-top:1.5px solid #6a8fb5') },
+      { label: 'Manual gate', desc: 'Same edge plus a human. Downstream issues wait in Backlog, not Batter Up.', sw: sw('border-top:1.5px dashed #e0a879') },
+      { label: 'Added by you', desc: 'A blocked_by edge outside the §5.2 pattern. Kept through re-wires.', sw: sw('border-top:1.5px solid #a374ea') }
+    ];
+    const method = { text: D.fanin + ' fan-in and ' + D.gate + ' gate edges chain ' + D.tot.issues + ' issues across ' + doc.features.length + ' Features. Wiring every next-Feature issue to every previous-Feature issue would take ' + D.cross + ' edges.' + (D.manual ? ' Plus ' + D.manual + ' added by you.' : '') };
+
+    const hint = link && selIssue != null ? 'Pick a blocker for #' + selIssue + ': click any issue node. Esc cancels.' : note || 'Click a Feature to open its issues · drag a header to change priority · click an issue to see what holds it · click an edge to inspect or remove it';
+    return {
+      scrollRef: this.scrollRef, epic, heads, rows, sentinels, gates, edgeLayer, stats, chain, view, fi, ii, ei, legend, edgeLegend, method,
+      sizedStyle: 'position:relative;width:' + Math.ceil(P.W * zoom) + 'px;height:' + Math.ceil(P.H * zoom) + 'px',
+      stageStyle: 'position:absolute;left:0;top:0;width:' + P.W + 'px;height:' + P.H + 'px;transform:scale(' + zoom + ');transform-origin:0 0',
+      zoomLabel: Math.round(zoom * 100) + '%',
+      hint, hintColor: link ? '#e0a879' : note ? '#c9d1d9' : '#8b949e', hintIcon: link ? 'crosshair' : note ? 'info' : 'help-circle',
+      edgeSummary: D.fanin + ' fan-in · ' + D.gate + ' gate · ' + D.manual + ' added',
+      onCanvasClick: () => { if (sel || link) this.setState({ sel: null, link: false }); },
+      onDragOver: ev => { ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; }, onDragEnd: () => { if (this.state.drag) this.setState({ drag: null }); },
+      onExpandAll: () => this.setAll(true), onCollapseAll: () => this.setAll(false), onZoomIn: () => this.zoomBy(.1), onZoomOut: () => this.zoomBy(-.1), onFit: () => this.fit(), onReset: () => this.reset(), onRewire: () => this.rewire()
+    };
+  }
+}
+</script>
+</body>
+</html>
