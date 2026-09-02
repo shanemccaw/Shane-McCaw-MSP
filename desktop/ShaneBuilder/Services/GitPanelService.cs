@@ -42,6 +42,56 @@ public sealed class GitPanelAncestryStep
     public string Title { get; init; } = "";
 }
 
+/// <summary>Git #2302 — one real "check" on a GATE issue: a direct sub-issue, straight off the
+/// same `subIssues` edge the feature tree reads. A gate's own real sub-issue list IS its check
+/// list — nothing invented, nothing scored beyond open/closed.</summary>
+public sealed class GitGateCheck
+{
+    public int Number { get; init; }
+    public string Title { get; init; } = "";
+    public bool IsClosed { get; init; }
+    public List<string> Labels { get; init; } = new();
+}
+
+/// <summary>One real blocking edge off GitHub's own `dependencies/blocked_by` relationship —
+/// <see cref="IsClosed"/> true means the blocker itself is already closed, i.e. a stale edge per
+/// the CLAUDE.md Git #1987 guidance ("a closing blocker silently releases everything downstream"
+/// — this is what surfaces that here instead of it going unnoticed).</summary>
+public sealed class GitGateBlockerEdge
+{
+    public int Number { get; init; }
+    public string Title { get; init; } = "";
+    public bool IsClosed { get; init; }
+}
+
+/// <summary>One real open `Epic:`-titled issue sharing the gate's own milestone and carrying the
+/// repo's real `blocked` label — a "blocked critical epic" for this gate, with its actual
+/// blocking edge(s) resolved so the panel can show what it's really waiting on, not a guess.</summary>
+public sealed class GitGateBlockedEpic
+{
+    public int Number { get; init; }
+    public string Title { get; init; } = "";
+    public List<GitGateBlockerEdge> BlockedBy { get; init; } = new();
+}
+
+/// <summary>Git #2302 — everything the Gate peek renders: the gate's own real check list (its
+/// sub-issues), the real blocked critical epics sharing its milestone, and when this snapshot was
+/// last swept. One <see cref="GitPanelService.GetGateDetailAsync"/> call produces it — "Run
+/// Verification Sweep" is calling that method again.</summary>
+public sealed class GitGateDetail
+{
+    public int Number { get; init; }
+    public string Title { get; init; } = "";
+    public int? MilestoneNumber { get; init; }
+    public string? MilestoneTitle { get; init; }
+    public List<GitGateCheck> Checks { get; init; } = new();
+    public List<GitGateBlockedEpic> BlockedCriticalEpics { get; init; } = new();
+    public DateTime SweptAtUtc { get; init; }
+    public int ClosedCheckCount => Checks.Count(c => c.IsClosed);
+    public int TotalCheckCount => Checks.Count;
+    public int StaleBlockerEdgeCount => BlockedCriticalEpics.Sum(e => e.BlockedBy.Count(b => b.IsClosed));
+}
+
 /// <summary>Git #2300 — real derived ancestry for one issue: its own state/labels, its nearest
 /// real milestone (its own, or the closest ancestor's), and the full `parent` chain walked
 /// top-down. Everything comes from one GraphQL call; nothing is guessed.</summary>
@@ -289,6 +339,146 @@ public static class GitPanelService
         }
     }
 
+    /// <summary>Git #2302 — the full real snapshot a Gate peek renders: the gate's own real
+    /// sub-issues as its check list (one GraphQL call), plus every real open `Epic:`-titled issue
+    /// sharing the gate's milestone that carries the `blocked` label, each resolved against its
+    /// actual `dependencies/blocked_by` edge(s) so a stale edge (blocker already closed) is
+    /// flagged rather than silently trusted. "Run Verification Sweep" is calling this again.</summary>
+    public static async Task<(bool Ok, GitGateDetail? Detail, string? Error)> GetGateDetailAsync(int gateNumber)
+    {
+        string gateQuery =
+            "query { repository(owner: \"" + Owner + "\", name: \"" + RepoName + "\") { " +
+            "issue(number: " + gateNumber + ") { number title milestone { number title } " +
+            "subIssues(first: 100) { totalCount nodes { number title state labels(first: 20) { nodes { name } } } } } } }";
+
+        var (gateOk, gateStdout, gateStderr) = await RunGhAsync(new[] { "api", "graphql", "-f", $"query={gateQuery}" });
+        if (!gateOk)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] gate detail fetch failed for #{gateNumber}: {gateStderr.Trim()}");
+            return (false, null, $"gate detail fetch failed: {gateStderr.Trim()}");
+        }
+
+        int? msNumber;
+        string? msTitle;
+        string gateTitle;
+        var checks = new List<GitGateCheck>();
+        try
+        {
+            using var doc = JsonDocument.Parse(gateStdout);
+            var issueEl = doc.RootElement.GetProperty("data").GetProperty("repository").GetProperty("issue");
+            if (issueEl.ValueKind != JsonValueKind.Object)
+                return (false, null, $"gate issue #{gateNumber} not found");
+
+            gateTitle = issueEl.TryGetProperty("title", out var t) ? t.GetString() ?? $"#{gateNumber}" : $"#{gateNumber}";
+            msNumber = null; msTitle = null;
+            ReadMilestone(issueEl, ref msNumber, ref msTitle);
+
+            foreach (var c in issueEl.GetProperty("subIssues").GetProperty("nodes").EnumerateArray())
+            {
+                var labels = new List<string>();
+                if (c.TryGetProperty("labels", out var labelsEl) && labelsEl.ValueKind == JsonValueKind.Object)
+                    foreach (var l in labelsEl.GetProperty("nodes").EnumerateArray())
+                        if (l.TryGetProperty("name", out var nameEl) && nameEl.GetString() is { Length: > 0 } name)
+                            labels.Add(name);
+                checks.Add(new GitGateCheck
+                {
+                    Number = c.GetProperty("number").GetInt32(),
+                    Title = c.TryGetProperty("title", out var ct) ? ct.GetString() ?? "" : "",
+                    IsClosed = c.TryGetProperty("state", out var cs) &&
+                               string.Equals(cs.GetString(), "CLOSED", StringComparison.OrdinalIgnoreCase),
+                    Labels = labels
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] couldn't parse gate detail for #{gateNumber}: {ex.Message}");
+            return (false, null, $"couldn't parse gh output: {ex.Message}");
+        }
+
+        // Blocked critical epics: real open Epic:-titled issues sharing this gate's milestone,
+        // carrying the repo's real `blocked` label. No milestone on the gate means honestly none.
+        var blockedEpics = new List<GitGateBlockedEpic>();
+        if (msNumber.HasValue)
+        {
+            var (blOk, blStdout, blStderr) = await RunGhAsync(new[]
+            {
+                "issue", "list", "--repo", Repo, "--label", "blocked", "--state", "open",
+                "--json", "number,title,milestone", "--limit", "100"
+            });
+            if (!blOk)
+            {
+                ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] blocked-epics fetch failed for gate #{gateNumber}: {blStderr.Trim()}");
+                // A failed leg doesn't fail the whole sweep — checks are still real; report the gap.
+            }
+            else
+            {
+                try
+                {
+                    using var blDoc = JsonDocument.Parse(blStdout);
+                    foreach (var el in blDoc.RootElement.EnumerateArray())
+                    {
+                        var title = el.TryGetProperty("title", out var tt) ? tt.GetString() ?? "" : "";
+                        if (!title.TrimStart().StartsWith("epic:", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!el.TryGetProperty("milestone", out var msEl) || msEl.ValueKind != JsonValueKind.Object) continue;
+                        if (!msEl.TryGetProperty("number", out var msnEl) || msnEl.GetInt32() != msNumber.Value) continue;
+
+                        int epicNumber = el.GetProperty("number").GetInt32();
+                        var edges = await GetBlockedByEdgesAsync(epicNumber);
+                        blockedEpics.Add(new GitGateBlockedEpic { Number = epicNumber, Title = title, BlockedBy = edges });
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] couldn't parse blocked-epics list for gate #{gateNumber}: {ex.Message}");
+                }
+            }
+        }
+
+        return (true, new GitGateDetail
+        {
+            Number = gateNumber,
+            Title = gateTitle,
+            MilestoneNumber = msNumber,
+            MilestoneTitle = msTitle,
+            Checks = checks,
+            BlockedCriticalEpics = blockedEpics,
+            SweptAtUtc = DateTime.UtcNow
+        }, null);
+    }
+
+    /// <summary>Real `blocked_by` edges for one issue off GitHub's own dependency relationship —
+    /// each edge's own real state, so a blocker that already closed (a stale edge, Git #1987)
+    /// shows up as such rather than silently trusted.</summary>
+    private static async Task<List<GitGateBlockerEdge>> GetBlockedByEdgesAsync(int issueNumber)
+    {
+        var (ok, stdout, stderr) = await RunGhAsync(new[]
+        {
+            "api", $"repos/{Owner}/{RepoName}/issues/{issueNumber}/dependencies/blocked_by",
+            "--jq", "[.[] | {number, title, state}]"
+        });
+        if (!ok)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] blocked_by fetch failed for #{issueNumber}: {stderr.Trim()}");
+            return new List<GitGateBlockerEdge>();
+        }
+        try
+        {
+            var rows = JsonSerializer.Deserialize<List<BlockerEdgeRow>>(stdout, JsonOpts) ?? new();
+            return rows.Select(r => new GitGateBlockerEdge
+            {
+                Number = r.Number,
+                Title = r.Title ?? $"#{r.Number}",
+                IsClosed = string.Equals(r.State, "closed", StringComparison.OrdinalIgnoreCase)
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] couldn't parse blocked_by for #{issueNumber}: {ex.Message}");
+            return new List<GitGateBlockerEdge>();
+        }
+    }
+
     // ── gh process runner — mirrors GitMapService's own local copy (kept local for the same
     // reason: this feature can't regress that one's already-shipped surface). ──────────────────
     private static Task<(bool Ok, string StdOut, string StdErr)> RunGhAsync(string[] args, int timeoutMs = 30000)
@@ -346,5 +536,11 @@ public static class GitPanelService
     {
         [JsonPropertyName("number")] public int Number { get; set; }
         [JsonPropertyName("title")] public string? Title { get; set; }
+    }
+    private sealed class BlockerEdgeRow
+    {
+        [JsonPropertyName("number")] public int Number { get; set; }
+        [JsonPropertyName("title")] public string? Title { get; set; }
+        [JsonPropertyName("state")] public string? State { get; set; }
     }
 }
