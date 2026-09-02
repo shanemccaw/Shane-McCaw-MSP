@@ -3,10 +3,1123 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:local="clr-namespace:ShaneBuilder"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="ShaneBuilder"
+        Height="800" Width="1280"
+        MinHeight="480" MinWidth="800"
+        WindowState="Maximized"
+        Background="{StaticResource Brush.Bg.Window}"
+        WindowStyle="None"
+        ResizeMode="CanResize"
+        AllowsTransparency="False"
+        StateChanged="Window_StateChanged"
+        PreviewKeyDown="Window_PreviewKeyDown">
 
+    <!-- WindowChrome keeps real OS window behavior (drag-to-move, edge resize,
+         Aero snap, double-click-to-maximize) on a WindowStyle="None" window,
+         same mechanism as BuildConsole's MainWindow.xaml. CaptionHeight matches
+         the title bar's own 44px height below (per wpf-handoff/README.md's
+         "Title bar — fixed 44px height" spec); everything interactive inside
+         that height is marked IsHitTestVisibleInChrome so WindowChrome treats
+         it as a real click instead of a window-drag gesture. -->
+    <WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="44"
+                             ResizeBorderThickness="6"
+                             GlassFrameThickness="0"
+                             CornerRadius="0"
+                             UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <Style x:Key="CaptionButton" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="44"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource Brush.Text.Muted}"/>
+            <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Brush.Bg.Chip}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="CaptionButtonClose" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Brush.Alert.Critical}"/>
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Text.Heading}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Left icon rail toggle (Chats / Epics / Git / Next Up), per
+             wpf-handoff Shell Skeleton v2.html's rail tiles: 32x32,
+             6px corner radius, tinted background + accent border when
+             the panel it drives is the active one. -->
+        <Style x:Key="RailToggle" TargetType="ToggleButton">
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource Brush.Text.Muted}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="6" BorderThickness="1" BorderBrush="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Brush.Bg.Chip}"/>
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Brush.Bg.Chip}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Brush.Accent.Primary}"/>
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Text.Heading}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Collapse/expand caret used by both the left panel header and the
+             Build Queue panel header — 20x20, per the queue-panel retract
+             control in the mockup. -->
+        <Style x:Key="PanelCollapseButton" TargetType="Button">
+            <Setter Property="Width" Value="20"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="Background" Value="{StaticResource Brush.Bg.Chip}"/>
+            <Setter Property="Foreground" Value="{StaticResource Brush.Text.Muted}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="5" BorderThickness="1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Text.Heading}"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{StaticResource Brush.Border.Hover}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark theme for right-click context menus — real Windows
+             ContextMenu/MenuItem controls render with the light system
+             theme by default, which would look jarring against everything
+             else in this app. Implicit styles (no x:Key) so every
+             ContextMenu built anywhere (tabs, build cards, build set
+             headers) picks this up automatically. -->
+        <Style TargetType="ContextMenu">
+            <Setter Property="Background" Value="{StaticResource Brush.Bg.Panel}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Brush.Border.Popover}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="18" ShadowDepth="6" Opacity="0.5"/>
+                            </Border.Effect>
+                            <StackPanel IsItemsHost="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="MenuItem">
+            <Setter Property="Foreground" Value="{StaticResource Brush.Text.Primary}"/>
+            <Setter Property="FontFamily" Value="{StaticResource FontFamily.Sans}"/>
+            <Setter Property="FontSize" Value="{StaticResource FontSize.11.5}"/>
+            <Setter Property="MinWidth" Value="190"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="MenuItem">
+                        <Border x:Name="Bd" Background="Transparent" CornerRadius="5" Margin="2,1" Padding="9,8">
+                            <DockPanel>
+                                <Border DockPanel.Dock="Left" Width="20" Height="20" Margin="0,0,10,0"
+                                        VerticalAlignment="Center">
+                                    <ContentPresenter ContentSource="Icon" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ContentPresenter ContentSource="Header" VerticalAlignment="Center"/>
+                            </DockPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Brush.Bg.Chip}"/>
+                            </Trigger>
+                            <Trigger Property="Tag" Value="Destructive">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource Brush.Alert.Danger.Bg}"/>
+                            </Trigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="Tag" Value="Destructive"/>
+                                    <Condition Property="IsHighlighted" Value="True"/>
+                                </MultiTrigger.Conditions>
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Alert.Danger.Border}"/>
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource Brush.Text.Dim}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="Separator">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Separator">
+                        <Border Height="1" Margin="6,4" Background="{StaticResource Brush.Border.Default}"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <!-- Root Grid — the DockPanel below is the whole app shell; the Command
+         Palette overlay is a sibling layered on top of it (added after in
+         document order), so it can cover literally everything including the
+         title/status bars, not just the document host. -->
+    <Grid x:Name="RootGrid">
+    <DockPanel>
+        <!-- ══════════════════════════════════════════════════════════════
+             TITLE BAR — 44px, per wpf-handoff/README.md
+             ══════════════════════════════════════════════════════════════ -->
+        <Border DockPanel.Dock="Top" Height="44" Background="{StaticResource Brush.Bg.Panel}"
+                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="ShaneBuilder"
+                               Margin="16,0,0,0"
+                               VerticalAlignment="Center"
+                               Foreground="{StaticResource Brush.Text.Heading}"
+                               FontFamily="{StaticResource FontFamily.Sans}"
+                               FontSize="{StaticResource FontSize.13}"
+                               FontWeight="{StaticResource FontWeight.SemiBold}"/>
+
+                    <!-- Focus nudge pill — per README: shows the day's chosen
+                         objective epic, growing wider through 6 escalating
+                         "quiet" stages, using Brush.FocusNudge.<Stage>.* from
+                         Colors.xaml section 8 (an exact match to the mockup's
+                         own LEVELS table). No real "quiet timer" exists yet
+                         (that needs the Home tab's not-yet-wired Today's
+                         Objectives), so clicking the pill cycles the stage —
+                         same demo behavior the mockup's own onCycle uses. The
+                         objective itself is honestly this project's own real
+                         epic (#1202 ShaneBuilder), not invented data. -->
+                    <Border x:Name="NudgePill" Margin="10,0,0,0" Height="26" CornerRadius="6"
+                            Padding="8,0,10,0" Cursor="Hand"
+                            WindowChrome.IsHitTestVisibleInChrome="True"
+                            MouseLeftButtonDown="NudgePill_Click">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Rectangle x:Name="NudgeDot" Width="7" Height="7" RadiusX="1.5" RadiusY="1.5" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="NudgeLabel" VerticalAlignment="Center"
+                                       FontFamily="{StaticResource FontFamily.Monospace}"
+                                       FontSize="{StaticResource FontSize.9.5}"
+                                       FontWeight="{StaticResource FontWeight.Bold}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel x:Name="NudgeMessageHost" Orientation="Horizontal" Visibility="Collapsed"
+                                Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="NudgeMessageText" VerticalAlignment="Center" Margin="0,0,8,0"
+                                   FontFamily="{StaticResource FontFamily.Sans}"
+                                   FontSize="{StaticResource FontSize.10.5}"
+                                   FontWeight="{StaticResource FontWeight.SemiBold}"/>
+                        <Border Background="{StaticResource Brush.Bg.Chip}" BorderBrush="{StaticResource Brush.Border.Hover}"
+                                BorderThickness="1" CornerRadius="6" Padding="10,3" Cursor="Hand"
+                                WindowChrome.IsHitTestVisibleInChrome="True"
+                                MouseLeftButtonDown="NudgeJumpBack_Click">
+                            <TextBlock Text="Jump back →"
+                                       Foreground="{StaticResource Brush.Text.Heading}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.10.5}"
+                                       FontWeight="{StaticResource FontWeight.Bold}"/>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Search trigger — per README's title bar spec ("a search
+                     trigger center/right"). Click, or Ctrl+K anywhere in the
+                     app, opens the Command Palette below. -->
+                <Border Grid.Column="0" HorizontalAlignment="Center" Width="260" Height="24"
+                        CornerRadius="6" Background="{StaticResource Brush.Bg.Window}"
+                        BorderBrush="{StaticResource Brush.Border.Hover}" BorderThickness="1"
+                        Cursor="Hand"
+                        WindowChrome.IsHitTestVisibleInChrome="True"
+                        MouseLeftButtonDown="SearchTrigger_Click">
+                    <StackPanel Orientation="Horizontal" Margin="9,0">
+                        <TextBlock Text="&#xE721;" Margin="0,0,7,0" VerticalAlignment="Center"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                        <TextBlock Text="Search epics, tabs, builds…" VerticalAlignment="Center"
+                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                        <TextBlock Text="Ctrl K" Margin="10,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Right"
+                                   FontFamily="{StaticResource FontFamily.Monospace}" FontSize="9"
+                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <!-- Quick access toggle chips + actions — per README's title
+                         bar spec ("small toggle chips: account / location /
+                         conservation mode") and the mockup's topbarToggles /
+                         topbarQuickActions (lines 59-73). Account/Location/
+                         Conservation/Drain have no real backing concept in
+                         ShaneBuilder yet, so they're local demo toggles (same
+                         honest pattern as the nudge pill and Active/Paused
+                         pill); the camera button is real (captures the window
+                         to the clipboard) and Git Pull is an honest stub —
+                         there's no repo integration wired up here. -->
+                    <Border Margin="0,0,10,0" Padding="4,3" CornerRadius="7"
+                            Background="{StaticResource Brush.Bg.Window}" BorderBrush="{StaticResource Brush.Border.Card}" BorderThickness="1"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                        <StackPanel x:Name="QuickAccessToolbar" Orientation="Horizontal"/>
+                    </Border>
+
+                    <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
+                        <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="BtnMaximizeRestore" Style="{StaticResource CaptionButton}" ToolTip="Maximize" Click="BtnMaximizeRestore_Click">
+                        <TextBlock x:Name="BtnMaximizeRestoreIcon" Text="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                    <Button x:Name="BtnCloseWindow" Style="{StaticResource CaptionButtonClose}" ToolTip="Close" Click="BtnCloseWindow_Click">
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             STATUS BAR — 23px, per README's spec: flat segments, thin
+             separators, monospace counts, a resize-grip glyph bottom-right.
+             Segments are built in code-behind (RenderStatusBar) from the
+             real _queueItems counts — hover a segment for a flyout listing
+             its matching builds. background/border match Shell Skeleton
+             v2.html line 1184 exactly (#1c2128 = Brush.Bg.Chip).
+             ══════════════════════════════════════════════════════════════ -->
+        <Border DockPanel.Dock="Bottom" Height="23" Background="{StaticResource Brush.Bg.Chip}"
+                BorderThickness="0,1,0,0" BorderBrush="{StaticResource Brush.Border.Default}">
+            <DockPanel>
+                <Border DockPanel.Dock="Right" Width="16" Padding="0,0,3,2">
+                    <Canvas Width="9" Height="9" VerticalAlignment="Bottom" HorizontalAlignment="Right">
+                        <Rectangle Canvas.Left="6" Canvas.Top="0" Width="1.5" Height="1.5" Fill="{StaticResource Brush.Text.Dim}"/>
+                        <Rectangle Canvas.Left="3" Canvas.Top="3" Width="1.5" Height="1.5" Fill="{StaticResource Brush.Text.Dim}"/>
+                        <Rectangle Canvas.Left="6" Canvas.Top="3" Width="1.5" Height="1.5" Fill="{StaticResource Brush.Text.Dim}"/>
+                        <Rectangle Canvas.Left="0" Canvas.Top="6" Width="1.5" Height="1.5" Fill="{StaticResource Brush.Text.Dim}"/>
+                        <Rectangle Canvas.Left="3" Canvas.Top="6" Width="1.5" Height="1.5" Fill="{StaticResource Brush.Text.Dim}"/>
+                        <Rectangle Canvas.Left="6" Canvas.Top="6" Width="1.5" Height="1.5" Fill="{StaticResource Brush.Text.Dim}"/>
+                    </Canvas>
+                </Border>
+                <ScrollViewer VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="StatusBarHost" Orientation="Horizontal"/>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- ══════════════════════════════════════════════════════════════
+             APP SCAFFOLDING — icon rail | left panel | document host | queue
+             Widths/backgrounds match wpf-handoff Shell Skeleton v2.html's
+             leftPanelStyle / mainContentColumnStyle / queuePanelStyle.
+             Content inside each zone is a placeholder — built out per
+             component next, not part of this scaffolding pass.
+             ══════════════════════════════════════════════════════════════ -->
+        <Grid x:Name="ContentGrid">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition x:Name="DocumentHostColumn" Width="*"/>
+                <ColumnDefinition x:Name="BuildDetailColumn" Width="0"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left icon rail — 52px, per mockup line 78 -->
+            <Border Grid.Column="0" Width="52" Background="{StaticResource Brush.Bg.Window}"
+                    BorderThickness="0,0,1,0" BorderBrush="{StaticResource Brush.Border.Default}">
+                <!-- Real Lucide vector icons (Themes/Icons.xaml) instead of Segoe
+                     MDL2 glyphs — Shane's pared-down rail list, in his given order:
+                     Chat, Git, Next Up, Batter Up, Build Console, Build Watch,
+                     UI Testing, Shot Vault, with Settings pinned at the bottom. -->
+                <DockPanel Margin="0,12">
+                    <Button x:Name="BtnRailSettings" DockPanel.Dock="Bottom" Style="{StaticResource CaptionButton}"
+                            Width="32" Height="32" Margin="0,0,0,4" ToolTip="Settings"
+                            HorizontalAlignment="Center">
+                        <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.Settings}"
+                              Stroke="{StaticResource Brush.Text.Muted}"/>
+                    </Button>
+
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top">
+                        <ToggleButton x:Name="BtnRailChat" Style="{StaticResource RailToggle}" Margin="0,0,0,8"
+                                      ToolTip="Chat" Click="RailToggle_Click" Tag="Chat">
+                            <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.Chat}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BtnRailGit" Style="{StaticResource RailToggle}" Margin="0,0,0,8"
+                                      ToolTip="Git" Click="RailToggle_Click" Tag="Git">
+                            <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.Git}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BtnRailNextUp" Style="{StaticResource RailToggle}" Margin="0,0,0,8"
+                                      ToolTip="Next Up" Click="RailToggle_Click" Tag="NextUp">
+                            <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.NextUp}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BtnRailBatterUp" Style="{StaticResource RailToggle}" Margin="0,0,0,8"
+                                      ToolTip="Batter Up" Click="RailToggle_Click" Tag="BatterUp">
+                            <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.BatterUp}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BtnRailBuildConsole" Style="{StaticResource RailToggle}" Margin="0,0,0,8"
+                                      ToolTip="Build Console" Click="RailToggle_Click" Tag="BuildConsole">
+                            <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.BuildConsole}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BtnRailBuildWatch" Style="{StaticResource RailToggle}" Margin="0,0,0,8"
+                                      ToolTip="Build Watch" Click="RailToggle_Click" Tag="BuildWatch">
+                            <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.BuildWatch}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BtnRailUiTesting" Style="{StaticResource RailToggle}" Margin="0,0,0,8"
+                                      ToolTip="UI Testing" Click="RailToggle_Click" Tag="UiTesting">
+                            <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.UiTesting}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BtnRailShotVault" Style="{StaticResource RailToggle}"
+                                      ToolTip="Shot Vault" Click="RailToggle_Click" Tag="ShotVault">
+                            <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.ShotVault}"
+                                  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                        </ToggleButton>
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
+            <!-- Left collapsible panel — 280px open / 0px collapsed, per
+                 mockup's leftPanelStyle (line 2377) -->
+            <Border x:Name="LeftPanel" Grid.Column="1" Width="0" Background="{StaticResource Brush.Bg.Panel}"
+                    BorderThickness="0,0,1,0" BorderBrush="{StaticResource Brush.Border.Default}"
+                    ClipToBounds="True">
+                <DockPanel Width="280">
+                    <Border DockPanel.Dock="Top" Height="36" Padding="0,0,8,0" BorderThickness="0,0,0,1"
+                            BorderBrush="{StaticResource Brush.Border.Default}">
+                        <DockPanel VerticalAlignment="Center">
+                            <!-- Collapse icon on the panel's outer edge (right side, away
+                                 from the rail) — closes it without needing to re-click the
+                                 same rail icon that opened it. -->
+                            <Button x:Name="BtnCollapseLeftPanel" DockPanel.Dock="Right"
+                                    Style="{StaticResource PanelCollapseButton}"
+                                    ToolTip="Collapse panel" Click="BtnCollapseLeftPanel_Click">
+                                <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                            </Button>
+                            <TextBlock x:Name="LeftPanelTitle" Text="CHATS" Margin="14,0,0,0"
+                                       VerticalAlignment="Center"
+                                       Foreground="{StaticResource Brush.Text.Muted}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.11}"
+                                       FontWeight="{StaticResource FontWeight.SemiBold}"/>
+                        </DockPanel>
+                    </Border>
+                    <!-- Per-source panel bodies, per mockup's isLeftChats /
+                         isLeftGit / isLeftNextUp / isLeftEpics blocks
+                         (Shell Skeleton v2.html lines 93-244). Each is a real
+                         empty state rather than the mockup's demo rows — no
+                         chat/epic/Git session data exists to read yet, and
+                         fabricating specific chat names or issue numbers here
+                         would be exactly the invented-data trap the rest of
+                         this codebase is built to avoid. RailToggle_Click
+                         swaps which one is visible.
+                    -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid>
+                        <TextBlock x:Name="ChatsPanelBody" Margin="14,16,14,0"
+                                   TextWrapping="Wrap"
+                                   Text="No chats yet. Chats you open will show up here."
+                                   Foreground="{StaticResource Brush.Text.Dim}"
+                                   FontFamily="{StaticResource FontFamily.Sans}"
+                                   FontSize="{StaticResource FontSize.11}"/>
+
+                        <!-- Shared placeholder for the 5 rail panels that don't have
+                             real content or a design yet (Batter Up / Build Console /
+                             Build Watch / UI Testing / Shot Vault) — text is set per
+                             panel in RailToggle_Click rather than duplicating this
+                             block 5 times. -->
+                        <TextBlock x:Name="NotBuiltPanelBody" Margin="14,16,14,0"
+                                   TextWrapping="Wrap"
+                                   Visibility="Collapsed"
+                                   Foreground="{StaticResource Brush.Text.Dim}"
+                                   FontFamily="{StaticResource FontFamily.Sans}"
+                                   FontSize="{StaticResource FontSize.11}"/>
+
+                        <TextBlock x:Name="GitPanelBody" Margin="14,16,14,0"
+                                   TextWrapping="Wrap"
+                                   Text="No Git data loaded — GitHub wiring lands in a later pass."
+                                   Visibility="Collapsed"
+                                   Foreground="{StaticResource Brush.Text.Dim}"
+                                   FontFamily="{StaticResource FontFamily.Sans}"
+                                   FontSize="{StaticResource FontSize.11}"/>
+
+                        <!-- Next Up groups issues under Critical Path / Other
+                             Epics bands with a Gate banner above them once
+                             critical epics clear (mockup lines 95-147). The
+                             bands are real structure; GateBanner stays
+                             collapsed until real Git data can say the gate
+                             is actually clear. -->
+                        <StackPanel x:Name="NextUpPanelBody" Visibility="Collapsed">
+                            <Border x:Name="GateBanner" Margin="8,8,8,0" Padding="12"
+                                    CornerRadius="9" BorderThickness="1.5"
+                                    Background="{StaticResource Brush.Gate.Bg}"
+                                    BorderBrush="{StaticResource Brush.Gate.Border}"
+                                    Visibility="Collapsed">
+                                <StackPanel>
+                                    <TextBlock Text="GATE · V1.1 RELEASE"
+                                               Foreground="{StaticResource Brush.Gate.Accent}"
+                                               FontFamily="{StaticResource FontFamily.Sans}"
+                                               FontSize="{StaticResource FontSize.9}"
+                                               FontWeight="{StaticResource FontWeight.ExtraBold}"/>
+                                    <TextBlock Text="All critical-path epics clear — the gate is now the blocker."
+                                               Margin="0,4,0,0" TextWrapping="Wrap"
+                                               Foreground="{StaticResource Brush.Text.Muted}"
+                                               FontFamily="{StaticResource FontFamily.Sans}"
+                                               FontSize="{StaticResource FontSize.10.5}"/>
+                                </StackPanel>
+                            </Border>
+
+                            <StackPanel Margin="8,10,8,4" Orientation="Horizontal">
+                                <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                           Foreground="{StaticResource Brush.Text.Muted}" Margin="0,0,6,0"/>
+                                <TextBlock Text="CRITICAL PATH"
+                                           Foreground="{StaticResource Brush.Text.Muted}"
+                                           FontFamily="{StaticResource FontFamily.Sans}"
+                                           FontSize="{StaticResource FontSize.9}"
+                                           FontWeight="{StaticResource FontWeight.ExtraBold}"/>
+                            </StackPanel>
+                            <TextBlock Margin="14,0,14,12" TextWrapping="Wrap"
+                                       Text="No epics in this band yet."
+                                       Foreground="{StaticResource Brush.Text.Dim}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.11}"/>
+
+                            <StackPanel Margin="8,0,8,4" Orientation="Horizontal">
+                                <TextBlock Text="&#xE81E;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                           Foreground="{StaticResource Brush.Text.Muted}" Margin="0,0,6,0"/>
+                                <TextBlock Text="OTHER EPICS"
+                                           Foreground="{StaticResource Brush.Text.Muted}"
+                                           FontFamily="{StaticResource FontFamily.Sans}"
+                                           FontSize="{StaticResource FontSize.9}"
+                                           FontWeight="{StaticResource FontWeight.ExtraBold}"/>
+                            </StackPanel>
+                            <TextBlock Margin="14,0,14,0" TextWrapping="Wrap"
+                                       Text="No epics in this band yet."
+                                       Foreground="{StaticResource Brush.Text.Dim}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.11}"/>
+                        </StackPanel>
+                    </Grid>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Document host zone — center flex column, per mockup's
+                 mainContentColumnStyle (line 2281). The tab strip is built
+                 in code-behind (RenderTabStrip) since a tab pill's style
+                 depends on active/inactive state, same as the mockup's own
+                 tb.style computation (Shell Skeleton v2.html line 2467). -->
+            <DockPanel Grid.Column="2" Background="{StaticResource Brush.Bg.Window}">
+                <Border DockPanel.Dock="Top" Background="{StaticResource Brush.Bg.Window}"
+                        BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}"
+                        Padding="8,6,8,0">
+                    <StackPanel x:Name="TabStripPanel" Orientation="Horizontal" VerticalAlignment="Bottom"/>
+                </Border>
+
+                <Grid>
+                    <!-- Home tab content — per mockup's activeTab.isHome block
+                         (Shell Skeleton v2.html line 283). The objective
+                         picker/cards need real Epics data that doesn't exist
+                         yet, so they're a plain notice for now rather than
+                         fabricated placeholder rows (no invented data). -->
+                    <StackPanel x:Name="HomeTabContent" Margin="24" VerticalAlignment="Top">
+                        <TextBlock Text="Set Today's Objectives"
+                                   Foreground="{StaticResource Brush.Text.Heading}"
+                                   FontFamily="{StaticResource FontFamily.Sans}"
+                                   FontSize="{StaticResource FontSize.15}"
+                                   FontWeight="{StaticResource FontWeight.ExtraBold}"/>
+                        <TextBlock Text="Pick 1–2 epics to anchor today — everything else can wait."
+                                   Margin="0,2,0,12"
+                                   Foreground="{StaticResource Brush.Text.Muted}"
+                                   FontFamily="{StaticResource FontFamily.Sans}"
+                                   FontSize="{StaticResource FontSize.11.5}"/>
+                        <TextBlock Text="No objectives set — Epics/Next Up data wiring lands in a later pass."
+                                   Foreground="{StaticResource Brush.Text.Dim}"
+                                   FontFamily="{StaticResource FontFamily.Sans}"
+                                   FontSize="{StaticResource FontSize.11}"/>
+                    </StackPanel>
+
+                    <TextBlock x:Name="StubTabContent"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Visibility="Collapsed"
+                               Foreground="{StaticResource Brush.Text.Dim}"
+                               FontFamily="{StaticResource FontFamily.Sans}"
+                               FontSize="{StaticResource FontSize.13}"/>
+
+                    <!-- Real claude.ai, not a re-implemented chat UI — the message
+                         thread and composer inside are the actual site via WebView2
+                         (same mechanism BuildConsole's own ClaudeWebView uses), not
+                         redrawn in WPF. Everything AROUND it — the context bar, the
+                         Detected Items flyout, the Inspector check-in overlays — is
+                         real chrome built here, per README items 6 and 9. Shown for
+                         any chat-kind tab (currently just #1202 ShaneBuilder). -->
+                    <Grid x:Name="ClaudeChatDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Context bar — cool palette (Brush.Bg.Card), not the warm
+                             Claude.* one; per the mockup it sits above the warm chat
+                             surface as shell-level metadata, not part of the pane
+                             itself. Epic stats are real (from _queueItems, filtered to
+                             this chat's BuildSet); the context-usage fraction has no
+                             real token-tracking source yet, so it's an honest "—",
+                             not a fabricated percentage. Two columns (content * / actions
+                             Auto) so the two action buttons pin to the far right instead
+                             of just trailing whatever content precedes them. -->
+                        <Border Grid.Row="0" Background="{StaticResource Brush.Bg.Card}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <Grid>
+                                <Border x:Name="CtxBarFill" Width="0" HorizontalAlignment="Left" Opacity="0.16"/>
+                                <Grid Margin="14,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <WrapPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="#1202" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource Brush.Accent.IssueNum}"
+                                                   FontFamily="{StaticResource FontFamily.Monospace}"
+                                                   FontSize="17" FontWeight="{StaticResource FontWeight.ExtraBold}"/>
+                                        <Border Width="1" Height="16" Margin="0,0,10,0" Background="{StaticResource Brush.Border.Default}"/>
+                                        <!-- Each stat opens the left-side detail panel (mirrors
+                                             Detected Items on the right) filtered to that status
+                                             — Shane's own addition, not in the original mockup. -->
+                                        <TextBlock x:Name="CtxStatVerifying" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                   Cursor="Hand" Tag="Verifying" MouseLeftButtonDown="CtxStat_Click"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                                   Foreground="{StaticResource Brush.Status.Verifying}"/>
+                                        <TextBlock x:Name="CtxStatInFlight" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                   Cursor="Hand" Tag="Running" MouseLeftButtonDown="CtxStat_Click"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                                   Foreground="{StaticResource Brush.Status.Running}"/>
+                                        <TextBlock x:Name="CtxStatQueued" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                   Cursor="Hand" Tag="Queued" MouseLeftButtonDown="CtxStat_Click"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                                        <TextBlock x:Name="CtxStatBlocked" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                   Cursor="Hand" Tag="Blocked" MouseLeftButtonDown="CtxStat_Click"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                                   Foreground="{StaticResource Brush.Status.Blocked}"/>
+                                        <TextBlock x:Name="CtxStatDone" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                   Cursor="Hand" Tag="Done" MouseLeftButtonDown="CtxStat_Click"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                                   FontWeight="{StaticResource FontWeight.Bold}"
+                                                   Foreground="{StaticResource Brush.Status.Done}"/>
+                                        <Border Width="1" Height="16" Margin="0,0,10,0" Background="{StaticResource Brush.Border.Default}"/>
+                                        <TextBlock Text="— / 300k ctx" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.11}"
+                                                   Foreground="{StaticResource Brush.Text.Dim}"
+                                                   ToolTip="Not tracked yet — no real token source wired up."/>
+                                    </WrapPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button x:Name="BtnSimulateInspector" Style="{StaticResource PanelCollapseButton}"
+                                                Width="Auto" Height="22" Padding="8,3" Margin="10,0,0,0"
+                                                ToolTip="Simulate an Inspector check-in (demo — no real inspector agent exists yet)"
+                                                Click="BtnSimulateInspector_Click">
+                                            <TextBlock Text="Simulate Inspector Check-in"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                                       Foreground="{StaticResource Brush.Text.Muted}"/>
+                                        </Button>
+                                        <Button x:Name="BtnToggleDetectedItems" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="Detected items (tasks, todos, git issues) from this chat"
+                                                Click="BtnToggleDetectedItems_Click">
+                                            <TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- Inspector "warning" phase — floaty notice, non-blocking. Lives in
+                             its own row ABOVE the webview rather than overlapping it: WebView2
+                             hosts a native child window that always paints on top of any WPF
+                             sibling sharing its screen space ("airspace"), so an overlay drawn
+                             in the same Grid cell as ClaudeWebView is invisible no matter its
+                             Z-order — this row-based placement is the actual fix, not a
+                             cosmetic choice. Collapses to 0 height when hidden. -->
+                        <Border Grid.Row="1" x:Name="InspectorWarningNotice" Visibility="Collapsed"
+                                Padding="14,8" Background="{StaticResource Brush.Claude.Bg.Bubble}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Claude.Border}">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="&#xE7BA;" Margin="0,0,8,0" VerticalAlignment="Center"
+                                           FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                           Foreground="{StaticResource Brush.FocusNudge.Quiet15m.Fg}"/>
+                                <TextBlock x:Name="InspectorWarningText" Text="Inspector will ask Claude a question in 5s…" VerticalAlignment="Center"
+                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11.5}"
+                                           FontWeight="{StaticResource FontWeight.SemiBold}"
+                                           Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="StatDetailColumn" Width="0"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition x:Name="DetectedItemsColumn" Width="0"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Stat detail flyout — Shane's own addition, not in the mockup:
+                                 clicking a context-bar stat (e.g. "1 verifying") opens this,
+                                 the Detected Items panel's twin on the opposite edge, listing
+                                 the real matching builds for that status. -->
+                            <Border x:Name="StatDetailPanel" Grid.Column="0" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="0,0,1,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="280">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="CloseStatDetailPanel_Click"/>
+                                            <TextBlock x:Name="StatDetailTitle" Text="Verifying" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="StatDetailResults" Margin="10"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <Grid Grid.Column="1">
+                                <wv2:WebView2 x:Name="ClaudeWebView" Source="https://claude.ai/"/>
+
+                                <!-- Inspector "blocking" phase — locks the chat surface until
+                                     Claude responds. Same airspace constraint as the warning
+                                     notice above means this can't visually sit "over" the live
+                                     WebView2 either — the fix here is code-behind toggling
+                                     ClaudeWebView's own Visibility off while this shows, so
+                                     there's nothing underneath competing for the same pixels.
+                                     A flat Border, not a real backdrop-blur (WPF can't blur what
+                                     it doesn't render without a snapshot) — the wpf-handoff
+                                     README's own suggested fallback for backdrop-filter. -->
+                                <Border x:Name="InspectorBlockingOverlay" Visibility="Collapsed"
+                                        Background="{StaticResource Brush.Claude.Bg.Content}">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Width="36" Height="36" CornerRadius="18" HorizontalAlignment="Center"
+                                                Background="{StaticResource Brush.Claude.Bg.Button}"
+                                                BorderBrush="{StaticResource Brush.Claude.Accent}" BorderThickness="1">
+                                            <TextBlock Text="&#xE756;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource Brush.Claude.Accent}"/>
+                                        </Border>
+                                        <TextBlock Text="Inspector is asking Claude a question…" Margin="0,8,0,2"
+                                                   HorizontalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12.5}"
+                                                   FontWeight="{StaticResource FontWeight.Bold}"
+                                                   Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        <TextBlock Text="You'll get control back once Claude responds"
+                                                   HorizontalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                   Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- Detected Items flyout — warm palette, matches the mockup's own
+                                 treatment even though it's shell chrome, since it's part of the
+                                 same dock. No real DOM-injection/detection engine reads the
+                                 webview's content yet, so this is an honest empty state, not
+                                 invented findings. -->
+                            <Border x:Name="DetectedItemsPanel" Grid.Column="2" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="280">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="BtnToggleDetectedItems_Click"/>
+                                            <TextBlock Text="Detected in this chat" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+                                    <TextBlock Margin="14,20,14,0" TextWrapping="Wrap" TextAlignment="Center"
+                                               FontStyle="Italic"
+                                               Text="Nothing caught yet — keep talking."
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                </DockPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </DockPanel>
+
+            <!-- Build detail flyout — slides out from the Build Queue panel's
+                 LEFT edge, per mockup's buildDetailPanelStyle (line 2277):
+                 0px closed / 320px normal / fills the document area when
+                 expanded. Content is built in code-behind (RenderBuildDetail)
+                 since it depends on which QueueItem is selected. -->
+            <Border x:Name="BuildDetailPanel" Grid.Column="3" Background="{StaticResource Brush.Bg.Card}"
+                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Border.Default}"
+                    ClipToBounds="True">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                            BorderBrush="{StaticResource Brush.Border.Default}">
+                        <DockPanel VerticalAlignment="Center">
+                            <StackPanel x:Name="BuildDetailActions" DockPanel.Dock="Right" Orientation="Horizontal"/>
+                            <TextBlock x:Name="BuildDetailNum" Text="#0000" VerticalAlignment="Center"
+                                       Foreground="{StaticResource Brush.Accent.IssueNum}"
+                                       FontFamily="{StaticResource FontFamily.Monospace}"
+                                       FontSize="{StaticResource FontSize.13}"
+                                       FontWeight="{StaticResource FontWeight.ExtraBold}"/>
+                            <StackPanel x:Name="BuildDetailStatusHost" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                        </DockPanel>
+                    </Border>
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="BuildDetailBody" Margin="0,0,0,12"/>
+                    </ScrollViewer>
+                </DockPanel>
+            </Border>
+
+            <!-- Build Queue panel — 348px open / 40px collapsed, per
+                 mockup's queuePanelStyle (line 2370). Defaults to OPEN
+                 (Shane: "that right panel should always be extended by
+                 default") — the mockup's own collapsed-by-default doesn't
+                 apply here. -->
+            <Border x:Name="BuildQueuePanel" Grid.Column="4" Width="348" Background="{StaticResource Brush.Bg.Panel}"
+                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Border.Default}">
+                <DockPanel>
+                    <Border DockPanel.Dock="Top" Padding="10,8" BorderThickness="0,0,0,1"
+                            BorderBrush="{StaticResource Brush.Border.Default}">
+                        <DockPanel LastChildFill="False">
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal">
+                                <Button x:Name="BtnToggleQueue" Style="{StaticResource PanelCollapseButton}"
+                                        ToolTip="Collapse Build Queue" Click="BtnToggleQueue_Click">
+                                    <TextBlock x:Name="BtnToggleQueueIcon" Text="&#xE76C;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                                </Button>
+                                <TextBlock x:Name="QueuePanelTitle" Text="Build Queue" Margin="8,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Foreground="{StaticResource Brush.Text.Heading}"
+                                           FontFamily="{StaticResource FontFamily.Monospace}"
+                                           FontSize="{StaticResource FontSize.12}"
+                                           FontWeight="{StaticResource FontWeight.Bold}"/>
+                            </StackPanel>
+
+                            <!-- Active/Paused + Lens chip — per mockup lines 1024-1025.
+                                 Active/Paused toggles a real (if only locally-tracked)
+                                 queue-paused flag; the Lens chip is a placeholder for
+                                 Filter Studio, which Shane is architecting separately —
+                                 it's a real, clickable entry point, but the click just
+                                 says so rather than opening a feature that doesn't
+                                 exist yet. -->
+                            <StackPanel x:Name="QueueHeaderActions" DockPanel.Dock="Right" Orientation="Horizontal">
+                                <Border x:Name="BtnQueueActivePaused" CornerRadius="5" Padding="7,3" Margin="0,0,6,0"
+                                        Cursor="Hand" MouseLeftButtonDown="BtnQueueActivePaused_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="QueueActivePausedIcon" Margin="0,0,4,0" VerticalAlignment="Center"
+                                                   FontFamily="Segoe MDL2 Assets" FontSize="9"/>
+                                        <TextBlock x:Name="QueueActivePausedText" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                   FontWeight="{StaticResource FontWeight.Bold}"/>
+                                    </StackPanel>
+                                </Border>
+                                <Border Background="{StaticResource Brush.Bg.Chip}" BorderBrush="{StaticResource Brush.Border.Default}"
+                                        BorderThickness="1" CornerRadius="5" Padding="7,3" Cursor="Hand"
+                                        ToolTip="Filter Studio — Ctrl+Shift+F"
+                                        MouseLeftButtonDown="BtnLensChip_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE81E;" Margin="0,0,4,0" VerticalAlignment="Center"
+                                                   FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                                        <TextBlock Text="Lens" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                   FontWeight="{StaticResource FontWeight.Bold}"
+                                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </DockPanel>
+                    </Border>
+                    <!-- Build Queue body — grouped Build Set cards, each a
+                         vertical timeline of build cards, per README's
+                         "Build Queue panel" spec. BuildConsole's own
+                         Controls/BuildQueuePanel.xaml.cs (BuildQueueCard) is
+                         the proven mechanism this borrows — status pill per
+                         state, issue-number badge, model/effort badge — but
+                         recolored onto THIS app's own theme (Brush.Status.*
+                         / Brush.NextUp.*) rather than BuildConsole's
+                         Catppuccin one; card content is built in code-behind
+                         (RenderQueue) since a card's colors depend on its
+                         status. No real queue backend exists yet, so it
+                         starts empty rather than showing invented builds. -->
+                    <Grid x:Name="QueuePanelBody">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="QueueSetsHost" Margin="10,8"/>
+                        </ScrollViewer>
+                        <TextBlock x:Name="QueueEmptyText" Margin="14,16,14,0"
+                                   TextWrapping="Wrap"
+                                   Text="No builds in the queue yet."
+                                   HorizontalAlignment="Left" VerticalAlignment="Top"
+                                   Foreground="{StaticResource Brush.Text.Dim}"
+                                   FontFamily="{StaticResource FontFamily.Sans}"
+                                   FontSize="{StaticResource FontSize.11}"/>
+                    </Grid>
+                </DockPanel>
+            </Border>
+        </Grid>
+    </DockPanel>
+
+    <!-- Command Palette — Ctrl+K anywhere, or click the search trigger.
+         Searches real data only: open tabs and queue items (_tabs /
+         _queueItems), plus a couple of quick actions that actually do
+         something (open a tab, toggle the Build Queue panel) — no fabricated
+         results. Selecting an epic/build result opens the matching real UI
+         (SelectTab / OpenBuildDetail), same as the mockup's own palette
+         result actions. -->
+    <Border x:Name="CommandPaletteOverlay" Visibility="Collapsed"
+            Background="#BF000000" MouseLeftButtonDown="CommandPaletteOverlay_Click">
+        <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,60,0,0"
+                Width="900" Height="560"
+                Background="{StaticResource Brush.Bg.Window}"
+                BorderBrush="{StaticResource Brush.Border.Popover}" BorderThickness="1"
+                CornerRadius="12" MouseLeftButtonDown="CommandPaletteDialog_Click">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" BlurRadius="40" ShadowDepth="12" Opacity="0.6"/>
+            </Border.Effect>
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Padding="16,14" BorderThickness="0,0,0,1"
+                        BorderBrush="{StaticResource Brush.Border.Default}">
+                    <DockPanel VerticalAlignment="Center">
+                        <TextBlock DockPanel.Dock="Left" Text="&#xE721;" Margin="0,0,10,0" VerticalAlignment="Center"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                        <Border DockPanel.Dock="Right" Background="{StaticResource Brush.Bg.Chip}"
+                                BorderBrush="{StaticResource Brush.Border.Default}" BorderThickness="1"
+                                CornerRadius="5" Padding="8,3" Cursor="Hand" Margin="8,0,0,0"
+                                MouseLeftButtonDown="CommandPaletteEsc_Click">
+                            <TextBlock Text="ESC" FontFamily="{StaticResource FontFamily.Sans}" FontSize="9"
+                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                       Foreground="{StaticResource Brush.Text.Muted}"/>
+                        </Border>
+                        <Grid>
+                            <TextBox x:Name="CommandPaletteInput" Background="Transparent" BorderThickness="0"
+                                     Foreground="{StaticResource Brush.Text.Heading}"
+                                     FontFamily="{StaticResource FontFamily.Monospace}" FontSize="14"
+                                     CaretBrush="{StaticResource Brush.Text.Heading}"
+                                     TextChanged="CommandPaletteInput_TextChanged"
+                                     PreviewKeyDown="CommandPaletteInput_PreviewKeyDown"/>
+                            <TextBlock x:Name="CommandPalettePlaceholder" IsHitTestVisible="False"
+                                       Text="Search epics, builds, and chats — # for issue number"
+                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.13}"
+                                       Foreground="{StaticResource Brush.Text.Dim}"/>
+                        </Grid>
+                    </DockPanel>
+                </Border>
+
+                <!-- Category tabs — real counts for the two categories backed by real
+                     data (Builds ← _queueItems, Claude & URLs ← _tabs); every other
+                     category shown for visual parity with the reference stays an
+                     honest (0) since ShaneBuilder has no Git/Services/Terminal/SQL/
+                     Files data source yet, not a fabricated count. -->
+                <Border DockPanel.Dock="Top" Padding="14,8" BorderThickness="0,0,0,1"
+                        BorderBrush="{StaticResource Brush.Border.Default}">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="CommandPaletteCategories" Orientation="Horizontal"/>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Footer hint bar -->
+                <Border DockPanel.Dock="Bottom" Padding="14,7" BorderThickness="0,1,0,0"
+                        BorderBrush="{StaticResource Brush.Border.Default}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" Text="Esc Close"
+                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                        <TextBlock Text="↑↓ Navigate    ↵ Select    Tab Switch Category"
+                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                    </DockPanel>
+                </Border>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="300"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <!-- Quick-action tiles — only the actions that are genuinely
+                                 real in ShaneBuilder today, not the reference's
+                                 BuildConsole-specific ones (Git Pull / Paste Manual
+                                 Build / Recover Builds don't exist here). -->
+                            <WrapPanel x:Name="CommandPaletteTiles" Margin="12,12,12,0"/>
+                            <StackPanel x:Name="CommandPaletteResults" Margin="8"/>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <Border Grid.Column="1" BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Border.Default}">
+                        <StackPanel x:Name="CommandPalettePreview" Margin="16"/>
+                    </Border>
+                </Grid>
+            </DockPanel>
+        </Border>
+    </Border>
+
+    <!-- Filter Studio — Ctrl+Shift+F or the Lens chip. Built against the real
+         spec in docs/Filter Studio &amp; Lenses.md. Layout follows
+         docs/fs-overlay-stash.txt: scope rail | facet panel | live-impact +
+         lenses. Only Build Queue is a real registered surface right now
+         (state/build-set/search facets actually filter QueueSetsHost);
+         Chats Pane / Git Board / Batter Up are shown per the doc's scope
+         model but sit under "Awaiting Registration" — no real surface to
+         filter yet, not a fabricated one. -->
+    <Border x:Name="FilterStudioOverlay" Visibility="Collapsed"
+            Background="#C7020A0A" MouseLeftButtonDown="FilterStudioOverlay_Click">
+        <Border HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,44,0,20"
+                Width="1050" Height="620"
+                Background="{StaticResource Brush.Bg.Terminal}"
+                BorderBrush="{StaticResource Brush.Border.Popover}" BorderThickness="1"
+                CornerRadius="14" MouseLeftButtonDown="FilterStudioDialog_Click">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" BlurRadius="50" ShadowDepth="14" Opacity="0.65"/>
+            </Border.Effect>
+            <DockPanel>
+                <Border DockPanel.Dock="Top" Padding="18,13" BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Popover}">
+                    <DockPanel VerticalAlignment="Center">
+                        <Border DockPanel.Dock="Left" Width="34" Height="34" CornerRadius="9" Margin="0,0,12,0"
+                                Background="{StaticResource Brush.Bg.Chip}" BorderBrush="{StaticResource Brush.Accent.Active}" BorderThickness="1">
+                            <TextBlock Text="&#xE71D;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{StaticResource Brush.Accent.Active}"/>
+                        </Border>
+                        <Border DockPanel.Dock="Right" Background="{StaticResource Brush.Bg.Chip}"
+                                BorderBrush="{StaticResource Brush.Border.Default}" BorderThickness="1"
+                                CornerRadius="5" Padding="9,3" Cursor="Hand"
+                                MouseLeftButtonDown="FilterStudioEsc_Click">
+                            <TextBlock Text="ESC" FontFamily="{StaticResource FontFamily.Monospace}" FontSize="9.5"
+                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                       Foreground="{StaticResource Brush.Text.Muted}"/>
+                        </Border>
+                        <Border x:Name="FilterStudioResetButton" DockPanel.Dock="Right" Margin="0,0,8,0"
+                                Background="{StaticResource Brush.Alert.Danger.Bg}" BorderBrush="{StaticResource Brush.Alert.Danger.Border}"
+                                BorderThickness="1" CornerRadius="5" Padding="9,3" Cursor="Hand" Visibility="Collapsed"
+                                MouseLeftButtonDown="FilterStudioResetAll_Click">
+                            <TextBlock Text="Reset everything" FontFamily="{StaticResource FontFamily.Sans}" FontSize="10"
+                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                       Foreground="{StaticResource Brush.Alert.Danger.Border}"/>
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Filter Studio" FontFamily="{StaticResource FontFamily.Sans}" FontSize="13.5"
+                                           FontWeight="{StaticResource FontWeight.Bold}" Foreground="{StaticResource Brush.Text.Heading}"/>
+                                <Border Margin="8,0,0,0" Padding="7,1" CornerRadius="99"
+                                        Background="{StaticResource Brush.Bg.Chip}" BorderBrush="{StaticResource Brush.Border.Default}" BorderThickness="1">
+                                    <TextBlock x:Name="FilterStudioRegistryLabel"
+                                               FontFamily="{StaticResource FontFamily.Monospace}" FontSize="8.5"
+                                               FontWeight="{StaticResource FontWeight.Bold}" Foreground="{StaticResource Brush.Text.Muted}"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="One lens for every surface — filter and sort globally, or target a panel."
+                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="10.5" Margin="0,1,0,0"
+                                       Foreground="{StaticResource Brush.Text.Dim}"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <Border DockPanel.Dock="Bottom" Padding="16,8" BorderThickness="0,1,0,0" BorderBrush="{StaticResource Brush.Border.Popover}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Right" x:Name="FilterStudioSummary"
+                                   FontFamily="{StaticResource FontFamily.Monospace}" FontSize="9" Foreground="{StaticResource Brush.Text.Dim}"/>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Esc Close    Ctrl+Shift+F Toggle    Enter Applies search"
+                                       FontFamily="{StaticResource FontFamily.Monospace}" FontSize="9" Foreground="{StaticResource Brush.Text.Dim}"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="198"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="290"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" BorderThickness="0,0,1,0" BorderBrush="{StaticResource Brush.Border.Popover}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="FilterStudioScopeList" Margin="8"/>
+                        </ScrollViewer>
+                    </Border>
+
+                    <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="FilterStudioFacetHost" Margin="16"/>
+                    </ScrollViewer>
+
+                    <Border Grid.Column="2" BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Border.Popover}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="FilterStudioImpactHost" Margin="12"/>
+                        </ScrollViewer>
+                    </Border>
+                </Grid>
+            </DockPanel>
+        </Border>
+    </Border>
     </Grid>
 </Window>
