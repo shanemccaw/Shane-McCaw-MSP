@@ -81,7 +81,8 @@ public partial class MainWindow : Window
         // one on top of it — same guard shape as RenderTerminalSessionLines' IsRunning gate.
         if (_claudeActivityPollInFlight) return;
         if (_activeChatTab == null || !_activeChatTab.IsChat) { ClaudeActivityService.SetWorking(false); return; }
-        if (ClaudeWebView?.CoreWebView2 == null) { ClaudeActivityService.SetWorking(false); return; }
+        var wv = ActiveChatWebView;
+        if (wv?.CoreWebView2 == null) { ClaudeActivityService.SetWorking(false); return; }
 
         _claudeActivityPollInFlight = true;
         try
@@ -97,7 +98,7 @@ public partial class MainWindow : Window
                 }
                 return 'false';
             })();";
-            var raw = await ClaudeWebView.CoreWebView2.ExecuteScriptAsync(script);
+            var raw = await wv.CoreWebView2.ExecuteScriptAsync(script);
             ClaudeActivityService.SetWorking(raw != null && raw.Contains("true"));
         }
         catch (Exception ex)
@@ -820,12 +821,24 @@ public partial class MainWindow : Window
 
         public string? WorkspaceId => _workspaceIdOverride ?? (Kind.HasValue ? KindWorkspaceDefault[Kind.Value] : null);
 
+        // Git #2470 — tab-type taxonomy. Keep-alive tabs own a persistent, parked-off-screen
+        // WebView2 (see MainWindow.KeepAliveTabs.cs); reloadable tabs don't. Chat is keep-alive by
+        // default; the explicit override lets a future browser-type tab (Gemini/Google AI Studio,
+        // a product website, Azure/M365 Admin — the rest of the contract's keep-alive class) be
+        // constructed as keep-alive without also being IsChat. Everything else is reloadable.
+        private readonly TabKeepAliveClass? _keepAliveClassOverride;
+        public TabKeepAliveClass KeepAliveClass =>
+            _keepAliveClassOverride ?? (IsChat ? TabKeepAliveClass.KeepAlive : TabKeepAliveClass.Reloadable);
+        public bool IsKeepAlive => KeepAliveClass == TabKeepAliveClass.KeepAlive;
+
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
             string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
             bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false,
-            List<GitCrumb>? gitItemTrail = null, int? featureNumber = null, string? subtitle = null)
+            List<GitCrumb>? gitItemTrail = null, int? featureNumber = null, string? subtitle = null,
+            TabKeepAliveClass? keepAliveClass = null)
         {
+            _keepAliveClassOverride = keepAliveClass;
             Id = id;
             Title = title;
             IsHome = isHome;
@@ -1303,6 +1316,11 @@ public partial class MainWindow : Window
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
+        // Git #2470 — a keep-alive tab gets its OWN persistent WebView2 mounted here (and every
+        // other keep-alive view parked 1×1 off-screen), so two open chat tabs show their own
+        // distinct live pages. Reloadable tabs never reach this — they're unaffected.
+        if (tab.IsKeepAlive)
+            ShowKeepAliveTab(tab);
         if (tab.IsChat)
             RenderClaudeChatContext(tab);
         if (tab.IsGitDoctor)
@@ -1408,6 +1426,10 @@ public partial class MainWindow : Window
         // Git #2216 — "sessions persist per chat tab while the tab lives": once the tab is
         // actually gone, the real powershell.exe/cmd.exe backing it must go too.
         DisposeTerminalSessionsForTab(id);
+
+        // Git #2470 — same lifecycle for a keep-alive tab's own WebView2: parking keeps it warm,
+        // but a genuine close disposes the CoreWebView2 for real.
+        DisposeKeepAliveView(id);
 
         _tabs.RemoveAt(idx);
 
@@ -2703,7 +2725,6 @@ public partial class MainWindow : Window
     // The live claude.ai conversation URL, tracked off CoreWebView2.SourceChanged so Share, Floaty
     // and the Detected pipe all key on the SAME conversation the WebView2 is actually showing.
     private string _currentConversationUrl = "https://claude.ai/";
-    private bool _webViewWired;
 
     private Services.ChatReadClient? ResolveChatReadClient()
     {
@@ -2768,7 +2789,8 @@ public partial class MainWindow : Window
         UpdateContextGauge();
         RenderComposerReturnBar();
 
-        EnsureWebViewWired();
+        // Git #2470 — the active keep-alive tab's view is created + wired per-tab in ShowKeepAliveTab
+        // (called from SelectTab before this), so there's no shared-view one-time wiring to do here.
         CloseStatDetailPanel(); // stale filter after a re-render (e.g. switching chat tabs)
 
         if (_detectedItemsOpen)
@@ -3340,12 +3362,12 @@ public partial class MainWindow : Window
             // WPF sibling sharing its screen space ("airspace") regardless of
             // Z-order, so the overlay can't visually sit "on top of" it — hide
             // the webview itself while the overlay is shown instead.
-            ClaudeWebView.Visibility = Visibility.Collapsed;
+            SetActiveChatWebViewVisible(false);
             InspectorBlockingOverlay.Visibility = Visibility.Visible;
             await Task.Delay(TimeSpan.FromSeconds(4));
 
             InspectorBlockingOverlay.Visibility = Visibility.Collapsed;
-            ClaudeWebView.Visibility = Visibility.Visible;
+            SetActiveChatWebViewVisible(true);
         }
         finally
         {
@@ -3449,37 +3471,19 @@ public partial class MainWindow : Window
     }
 
     // ── WebView2 bridge ──────────────────────────────────────────────────────────────────────
-    private async void EnsureWebViewWired()
-    {
-        if (_webViewWired || ClaudeWebView == null) return;
-        try
-        {
-            await ClaudeWebView.EnsureCoreWebView2Async();
-            if (ClaudeWebView.CoreWebView2 == null) return;
-            _currentConversationUrl = ClaudeWebView.CoreWebView2.Source ?? _currentConversationUrl;
-            ClaudeWebView.CoreWebView2.SourceChanged += (s, e) =>
-            {
-                _currentConversationUrl = ClaudeWebView.CoreWebView2.Source ?? _currentConversationUrl;
-            };
-            // Git #2325 — real per-turn transcript-size reading, replacing the draft-only estimate.
-            // AddScriptToExecuteOnDocumentCreatedAsync re-injects on every new document for the
-            // life of this CoreWebView2, so this registration is one-time.
-            await ClaudeWebView.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(Services.ChatContextMeterScript.Script);
-            ClaudeWebView.CoreWebView2.WebMessageReceived += ClaudeWebView_WebMessageReceived;
-            _webViewWired = true;
-        }
-        catch (Exception ex)
-        {
-            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.webview] init failed: {ex.Message}");
-        }
-    }
+    // Git #2470 — per-tab views are created + wired (URL tracking, #2325 context-meter script and
+    // message pump) in WireKeepAliveViewAsync (MainWindow.KeepAliveTabs.cs), one CoreWebView2 per
+    // keep-alive tab. There's no longer a single shared view to wire once, so the old
+    // EnsureWebViewWired shim is gone; the operations below act on ActiveChatWebView.
 
     private async Task<bool> TrySendToClaudeAsync(string text)
     {
+        var wv = ActiveChatWebView;
         try
         {
-            await ClaudeWebView.EnsureCoreWebView2Async();
-            if (ClaudeWebView.CoreWebView2 == null) return false;
+            if (wv == null) return false;
+            await wv.EnsureCoreWebView2Async();
+            if (wv.CoreWebView2 == null) return false;
             // Inject the draft into claude.ai's ProseMirror composer. We DO NOT auto-submit — the
             // user reviews on the site and presses Enter — matching §5's "writes into the composer,
             // never auto-sends" invariant end to end.
@@ -3492,7 +3496,7 @@ public partial class MainWindow : Window
                 else { el.innerText = t; el.dispatchEvent(new InputEvent('input',{bubbles:true})); }
                 return 'ok';
             })(" + json + ");";
-            var result = await ClaudeWebView.CoreWebView2.ExecuteScriptAsync(script);
+            var result = await wv.CoreWebView2.ExecuteScriptAsync(script);
             return result != null && result.Contains("ok");
         }
         catch (Exception ex)
@@ -3504,14 +3508,16 @@ public partial class MainWindow : Window
 
     private async Task<string?> TryReadLastAssistantTurnAsync()
     {
-        await ClaudeWebView.EnsureCoreWebView2Async();
-        if (ClaudeWebView.CoreWebView2 == null) return null;
+        var wv = ActiveChatWebView;
+        if (wv == null) return null;
+        await wv.EnsureCoreWebView2Async();
+        if (wv.CoreWebView2 == null) return null;
         const string script = @"(function(){
             var sel = document.querySelectorAll('.font-claude-message, [data-testid=""assistant-turn""]');
             if(!sel || sel.length===0) return '';
             return (sel[sel.length-1].innerText || '').trim();
         })();";
-        var raw = await ClaudeWebView.CoreWebView2.ExecuteScriptAsync(script);
+        var raw = await wv.CoreWebView2.ExecuteScriptAsync(script);
         if (string.IsNullOrEmpty(raw) || raw == "null") return null;
         try { return System.Text.Json.JsonSerializer.Deserialize<string>(raw); }
         catch { return null; }
@@ -3565,11 +3571,8 @@ public partial class MainWindow : Window
 
     private void BtnStartNewChat_Click(object sender, RoutedEventArgs e)
     {
-        try
-        {
-            ClaudeWebView.Source = new Uri("https://claude.ai/new");
-        }
-        catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] start-new failed: {ex.Message}"); }
+        // Git #2470 — renavigates THIS (active) chat tab's own live view, not a shared one.
+        NavigateActiveChat("https://claude.ai/new");
     }
 
     /// <summary>Git #2320 (Feature #2318 item 2) — New Chat button at the top of the Chats
@@ -3627,8 +3630,12 @@ public partial class MainWindow : Window
                 featureNumber: featureNumber,
                 subtitle: subtitle);
             _tabs.Add(tab);
+            // Git #2470 — a genuinely new chat tab opens its OWN fresh keep-alive WebView2 on
+            // claude.ai/new (SelectTab → ShowKeepAliveTab → EnsureKeepAliveView creates+navigates
+            // it), never a renavigation of some other tab's view. Set its initial URL first so the
+            // per-tab view lands on /new the moment it's created.
+            _keepAliveInitialUrl[tab.Id] = "https://claude.ai/new";
             SelectTab(tab.Id);
-            ClaudeWebView.Source = new Uri("https://claude.ai/new");
 
             if (subtitle != null)
                 Services.ConsoleOutputSink.Log(Services.LogLevel.Info, $"[chat] new chat tab {tab.Id} — {subtitle}");
@@ -3955,8 +3962,9 @@ public partial class MainWindow : Window
         // child window always paints over every WPF sibling sharing its
         // screen space regardless of Z-order, so this overlay would render
         // behind claude.ai no matter where it sits in the visual tree unless
-        // the webview itself is hidden while it's open.
-        ClaudeWebView.Visibility = Visibility.Collapsed;
+        // the webview itself is hidden while it's open. Git #2470 — hide the
+        // ACTIVE tab's own view (parked views are already 1×1 off-screen).
+        SetActiveChatWebViewVisible(false);
 
         CommandPaletteOverlay.Visibility = Visibility.Visible;
         _paletteCategory = "All";
@@ -4044,10 +4052,10 @@ public partial class MainWindow : Window
     {
         CommandPaletteOverlay.Visibility = Visibility.Collapsed;
         // Don't reveal the webview if the Inspector's own blocking overlay is
-        // still up — it hid ClaudeWebView for the same airspace reason and
+        // still up — it hid the active view for the same airspace reason and
         // owns un-hiding it once that phase ends.
         if (InspectorBlockingOverlay.Visibility != Visibility.Visible)
-            ClaudeWebView.Visibility = Visibility.Visible;
+            SetActiveChatWebViewVisible(true);
     }
 
     private void CommandPaletteInput_TextChanged(object sender, TextChangedEventArgs e)
@@ -5148,8 +5156,8 @@ public partial class MainWindow : Window
         CloseCommandPalette(); // mutually exclusive, per docs/Filter Studio & Lenses.md
         LoadFsLenses();
 
-        // Same WebView2 "airspace" fix as the other overlays.
-        ClaudeWebView.Visibility = Visibility.Collapsed;
+        // Same WebView2 "airspace" fix as the other overlays (Git #2470 — active view).
+        SetActiveChatWebViewVisible(false);
 
         FilterStudioOverlay.Visibility = Visibility.Visible;
         _fsScope = "Global";
@@ -5160,7 +5168,7 @@ public partial class MainWindow : Window
     {
         FilterStudioOverlay.Visibility = Visibility.Collapsed;
         if (InspectorBlockingOverlay.Visibility != Visibility.Visible && CommandPaletteOverlay.Visibility != Visibility.Visible)
-            ClaudeWebView.Visibility = Visibility.Visible;
+            SetActiveChatWebViewVisible(true);
     }
 
     private void FilterStudioOverlay_Click(object sender, MouseButtonEventArgs e) => CloseFilterStudio();

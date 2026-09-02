@@ -16,14 +16,13 @@ namespace ShaneBuilder;
 /// <c>build-journal/2325.md</c>): one row per open chat tab with a real DOM-derived context-size
 /// badge, plus Archive/Reopen/Delete for the chat archive.
 ///
-/// Context-size reading: <see cref="ChatContextMeterScript"/> is injected into the shared
-/// <c>ClaudeWebView</c> (single WebView2 reused across chat tabs — see <c>_activeChatTab</c> in
-/// MainWindow.xaml.cs §11) and reports real per-conversation transcript stats via
-/// <c>window.chrome.webview.postMessage</c>. Because only the ACTIVE tab's conversation is ever
-/// actually mounted in that shared WebView, <see cref="_chatContextByTabId"/> only ever gets a
-/// live update for whichever tab is currently open — that's an honest limitation of the
-/// single-WebView architecture, not a bug: a tab never shown this session has genuinely never been
-/// read, and its row says so rather than showing a stale or fabricated number.
+/// Context-size reading: <see cref="ChatContextMeterScript"/> is injected into each keep-alive
+/// tab's own WebView2 (Git #2470 replaced the single shared <c>ClaudeWebView</c> with one live view
+/// per chat tab — see MainWindow.KeepAliveTabs.cs) and reports real per-conversation transcript
+/// stats via <c>window.chrome.webview.postMessage</c>. Each reading is attributed to the tab that
+/// actually posted it (<see cref="OnKeepAliveChatStats"/>), so <see cref="_chatContextByTabId"/> is
+/// genuinely per-tab. A tab that has never finished loading its view still shows "not read yet"
+/// rather than a stale or fabricated number.
 ///
 /// Archive: "Archive" here means: record this chat's identity and last known size into
 /// <see cref="ChatArchiveStore"/>, then reset the shared WebView to a fresh chat — the same
@@ -36,9 +35,10 @@ namespace ShaneBuilder;
 /// </summary>
 public partial class MainWindow
 {
-    /// <summary>One tab's last-known real context reading, keyed by <c>TabDef.Id</c>. Only ever
-    /// written by <see cref="ClaudeWebView_WebMessageReceived"/> for whichever tab is currently
-    /// active in the shared WebView.</summary>
+    /// <summary>One tab's last-known real context reading, keyed by <c>TabDef.Id</c>. Written by
+    /// <see cref="OnKeepAliveChatStats"/> for the tab that actually posted the reading — Git #2470
+    /// gave each keep-alive tab its own WebView2, so this is now genuinely per-tab, not "whichever
+    /// tab is currently active in the one shared WebView."</summary>
     private sealed class ChatContextStat
     {
         public double EstCharCount;
@@ -50,7 +50,14 @@ public partial class MainWindow
 
     // ── DOM-derived transcript stats (real, off Services.ChatContextMeterScript) ────────────────
 
-    private void ClaudeWebView_WebMessageReceived(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
+    /// <summary>Git #2470 — the #2325 context-meter pump, now keyed to the SENDING tab, not
+    /// <c>_activeChatTab</c>. Each keep-alive tab owns its own live WebView2 (parked off-screen when
+    /// inactive but still running the injected meter script), so a parked tab can post
+    /// SB_CHAT_STATS at any time — attributing that to whatever tab happens to be active would
+    /// cross-contaminate the badges. The per-view wiring in WireKeepAliveViewAsync captures each
+    /// tab's own id and passes it here, so every reading lands under the tab it actually came
+    /// from.</summary>
+    private void OnKeepAliveChatStats(string tabId, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
     {
         try
         {
@@ -65,8 +72,8 @@ public partial class MainWindow
             int Int(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number ? v.GetInt32() : 0;
             bool Bool(string prop) => root.TryGetProperty(prop, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.True;
 
-            var activeTab = _activeChatTab;
-            if (activeTab == null) return; // the WebView isn't behind a chat document right now
+            var activeTab = _tabs.Find(t2 => t2.Id == tabId && t2.IsChat);
+            if (activeTab == null) return; // the tab was closed out from under this in-flight message
 
             double charCount = Int("charCount");
             int turnCount = Int("turnCount");
@@ -89,7 +96,10 @@ public partial class MainWindow
                 SelectorsLikelyStale = Bool("selectorsLikelyStale")
             };
 
-            UpdateContextGauge();
+            // The composer gauge reflects the ACTIVE tab only; a parked tab's reading updates its
+            // row badge (RenderChatsPanel below) but must not repaint the active gauge with data
+            // from a different conversation.
+            if (_activeChatTab?.Id == activeTab.Id) UpdateContextGauge();
             if (_leftPanelSource == "Chat") RenderChatsPanel();
         }
         catch (Exception ex)
@@ -326,14 +336,8 @@ public partial class MainWindow
         ChatArchiveStore.Add(tab.Title, tab.EpicNumber, _currentConversationUrl, stat?.EstCharCount, stat?.TurnCount);
         _chatContextByTabId.Remove(tabId);
 
-        try
-        {
-            ClaudeWebView.Source = new Uri("https://claude.ai/new");
-        }
-        catch (Exception ex)
-        {
-            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.archive] reset-to-new failed: {ex.Message}");
-        }
+        // Git #2470 — reset THIS tab's own live keep-alive view to a fresh chat.
+        NavigateActiveChat("https://claude.ai/new");
 
         ToastEngine.Show("Chat archived", $"\"{tab.Title}\" moved to Archived. Started a fresh chat.", ToastKind.Info);
         if (tab.Id == _activeChatTab?.Id) UpdateContextGauge();
@@ -342,9 +346,16 @@ public partial class MainWindow
 
     private void ReopenArchivedChat(ArchivedChat chat)
     {
+        // Git #2470 — reopen into the active chat tab's own live keep-alive view.
+        var wv = ActiveChatWebView;
+        if (wv == null)
+        {
+            ToastEngine.Show("Reopen chat", "Open a chat tab first, then reopen the archived conversation into it.", ToastKind.Info);
+            return;
+        }
         try
         {
-            ClaudeWebView.Source = new Uri(chat.ConversationUrl);
+            wv.Source = new Uri(chat.ConversationUrl);
         }
         catch (Exception ex)
         {

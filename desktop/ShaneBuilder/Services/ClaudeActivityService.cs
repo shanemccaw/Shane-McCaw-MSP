@@ -6,8 +6,9 @@ namespace ShaneBuilder.Services;
 /// <summary>
 /// Git #2332 (Feature: Test Pad, #2326, item 6 of 28) — the real "is Claude currently generating a
 /// response" signal the Test Pad's status band reads. There is no native chat-session object to hook
-/// here: ShaneBuilder's chat surface is the real claude.ai site loaded in <c>ClaudeWebView</c>
-/// (MainWindow.xaml.cs), not a wrapped Claude Code process, so this can't be a simple
+/// here: ShaneBuilder's chat surface is the real claude.ai site loaded in the active keep-alive
+/// tab's own WebView2 (Git #2470; MainWindow.KeepAliveTabs.cs), not a wrapped Claude Code process,
+/// so this can't be a simple
 /// IsRunning-flips-around-an-await flag the way <see cref="TerminalSession.IsRunning"/> is. Instead
 /// MainWindow polls the active chat tab's WebView2 DOM (same ExecuteScriptAsync pattern as its own
 /// TryReadLastAssistantTurnAsync) for claude.ai's own "Stop response" control and reports the result

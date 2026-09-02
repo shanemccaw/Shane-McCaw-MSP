@@ -1028,7 +1028,14 @@
                             </Border>
 
                             <Grid Grid.Column="1">
-                                <wv2:WebView2 x:Name="ClaudeWebView" Source="https://claude.ai/"/>
+                                <!-- Git #2470 — mount point for the ACTIVE keep-alive tab's own
+                                     persistent WebView2. There is no longer a single shared
+                                     ClaudeWebView: each keep-alive (chat) tab owns its own live
+                                     view (see MainWindow.KeepAliveTabs.cs). SelectTab reparents the
+                                     active tab's view host into here and parks every other one 1×1
+                                     off-screen in KeepAliveHostCanvas — so switching two chat tabs
+                                     shows each tab's OWN distinct live page (the #2465 fix). -->
+                                <Grid x:Name="ChatWebViewHost"/>
 
                                 <!-- Inspector "blocking" phase — locks the chat surface until
                                      Claude responds. Same airspace constraint as the warning
@@ -2664,6 +2671,18 @@
             </Border>
         </Grid>
     </DockPanel>
+
+    <!-- Git #2470 — keep-alive park canvas. Each keep-alive tab (a claude.ai chat, and
+         later Gemini/product-site/Azure-M365 browser tabs) owns its own persistent
+         WebView2; when its tab isn't the active one, that view is parked HERE, shrunk to
+         1×1 at (-20000,-20000) — the load-bearing #982 fix, ported verbatim from
+         desktop/BuildConsole/MainWindow.ShelvedTabs.cs: a WebView2 is an HwndHost whose
+         surface only leaves view on a real SIZE change (z-order/visibility can't occlude
+         it), and 1×1 is NONZERO so CoreWebView2 is never torn down — the session stays
+         warm/logged-in. ClipToBounds clips the parked child fully out of view; the canvas
+         never takes hits. The ACTIVE tab's view is reparented OUT of here into
+         ChatWebViewHost (inside the chat dock) — reflow only, never a reload. -->
+    <Canvas x:Name="KeepAliveHostCanvas" IsHitTestVisible="False" ClipToBounds="True"/>
 
     <!-- Command Palette — Ctrl+K anywhere, or click the search trigger.
          Searches real data only: open tabs and queue items (_tabs /
