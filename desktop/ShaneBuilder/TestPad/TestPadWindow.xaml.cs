@@ -113,6 +113,13 @@ namespace ShaneBuilder
             AttachShotChip.BorderBrush = _shotArmed ? brush : (Brush)FindResource("Brush.Border.Default");
         }
 
+        /// <summary>Git #2343 — "Import" opens the paste/preview dialog. Owned by this window so
+        /// it centers over the pad rather than the main window.</summary>
+        private void BtnImport_Click(object sender, MouseButtonEventArgs e)
+        {
+            TestPadImportWindow.ShowFor(this);
+        }
+
         private void ComposerBox_PreviewKeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter)
