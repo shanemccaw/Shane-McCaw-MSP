@@ -16,7 +16,8 @@
         ResizeMode="CanResize"
         AllowsTransparency="False"
         StateChanged="Window_StateChanged"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown"
+        PreviewKeyUp="Window_PreviewKeyUp">
 
     <!-- WindowChrome keeps real OS window behavior (drag-to-move, edge resize,
          Aero snap, double-click-to-maximize) on a WindowStyle="None" window,
@@ -349,6 +350,18 @@
                             WindowChrome.IsHitTestVisibleInChrome="True">
                         <StackPanel x:Name="QuickAccessToolbar" Orientation="Horizontal"/>
                     </Border>
+
+                    <!-- Git #2210 — desktop screen-clipping tool, ported from BuildConsole (Git #1866).
+                         Draw a region anywhere on the desktop; the clip goes to the clipboard AND to
+                         disk. Also fires on PrintScreen (BtnScreenClip.ToolTip is updated from
+                         code-behind to say whether the global hotkey was claimed by Windows' Snipping
+                         Tool). Distinct from the QuickAccessToolbar's "Screenshot Tool" button above,
+                         which only captures the whole ShaneBuilder window to the clipboard. -->
+                    <Button x:Name="BtnScreenClip" Style="{StaticResource CaptionButton}"
+                            ToolTip="Screen clip (PrintScreen) - drag a region to the clipboard and disk"
+                            Click="ScreenClip_Click">
+                        <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                    </Button>
 
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
                         <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>

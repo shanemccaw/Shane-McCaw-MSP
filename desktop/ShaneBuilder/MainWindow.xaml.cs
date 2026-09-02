@@ -104,6 +104,81 @@ public partial class MainWindow : Window
     {
         base.OnSourceInitialized(e);
         WindowChromeHelper.Setup(this);
+        RegisterScreenClipHotkey();
+    }
+
+    // ── Git #2210 — desktop screen-clipping tool (ported from BuildConsole's Git #1866) ───────
+    // Title-bar icon + PrintScreen. Two key paths, both needed:
+    //   Global: RegisterHotKey(VK_SNAPSHOT) via an HwndSource hook, so PrtScn fires even when
+    //           ShaneBuilder isn't focused. Windows 11's "Use the Print screen key to open
+    //           Snipping Tool" claims the key first — RegisterHotKey then returns false; we log
+    //           it, toast once, and put the reason in the button tooltip.
+    //   In-app: WPF doesn't reliably raise KeyDown for PrtScn (only key-up), so
+    //           Window_PreviewKeyUp also handles Key.Snapshot — this covers the focused case
+    //           even when the global registration was refused.
+    private const int WM_HOTKEY = 0x0312;
+    private const int VK_SNAPSHOT = 0x2C;
+    private const int SCREEN_CLIP_HOTKEY_ID = 0xB1A6; // arbitrary, app-unique
+    private bool _screenClipHotkeyRegistered;
+    private System.Windows.Interop.HwndSource? _screenClipHwndSource;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    private void RegisterScreenClipHotkey()
+    {
+        var helper = new System.Windows.Interop.WindowInteropHelper(this);
+        _screenClipHwndSource = System.Windows.Interop.HwndSource.FromHwnd(helper.Handle);
+        _screenClipHwndSource?.AddHook(ScreenClipWndProc);
+
+        // fsModifiers=0: bare PrintScreen, no modifier.
+        _screenClipHotkeyRegistered = RegisterHotKey(helper.Handle, SCREEN_CLIP_HOTKEY_ID, 0, VK_SNAPSHOT);
+        if (_screenClipHotkeyRegistered)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Info, "Screen clip global PrintScreen hotkey registered.");
+            BtnScreenClip.ToolTip = "Screen clip (PrintScreen) — drag a region to the clipboard and disk";
+        }
+        else
+        {
+            // Almost always: Windows 11 Snipping Tool already owns PrtScn.
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn,
+                "Screen clip global PrintScreen hotkey registration REFUSED (RegisterHotKey returned false) — likely Windows Snipping Tool owns the key. In-app key-up still works when ShaneBuilder is focused.");
+            ToastEngine.Warning("PrintScreen already claimed",
+                "Windows (Snipping Tool) already owns the Print Screen key, so ShaneBuilder couldn't register it globally. PrtScn still works when ShaneBuilder is focused; the title-bar icon always works. Turn off \"Use the Print screen key to open Snipping Tool\" in Windows Settings to free it.");
+            BtnScreenClip.ToolTip = "Screen clip — drag a region to the clipboard and disk. Global PrintScreen is claimed by Windows Snipping Tool; PrtScn works only when ShaneBuilder is focused (or free the key in Windows Settings).";
+        }
+    }
+
+    private IntPtr ScreenClipWndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (msg == WM_HOTKEY && wParam.ToInt32() == SCREEN_CLIP_HOTKEY_ID)
+        {
+            handled = true;
+            Services.DesktopScreenClipService.Capture();
+        }
+        return IntPtr.Zero;
+    }
+
+    private void ScreenClip_Click(object sender, RoutedEventArgs e) => Services.DesktopScreenClipService.Capture();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        // Git #2210 — release the global PrintScreen hotkey and detach the message hook.
+        try
+        {
+            if (_screenClipHotkeyRegistered)
+            {
+                UnregisterHotKey(new System.Windows.Interop.WindowInteropHelper(this).Handle, SCREEN_CLIP_HOTKEY_ID);
+                _screenClipHotkeyRegistered = false;
+            }
+            _screenClipHwndSource?.RemoveHook(ScreenClipWndProc);
+        }
+        catch { /* best-effort teardown on shutdown */ }
+
+        base.OnClosed(e);
     }
 
     private void BtnMinimize_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -2330,6 +2405,20 @@ public partial class MainWindow : Window
                 int dir = (Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? -1 : 1;
                 SetPaletteCategory(PaletteCategories[(idx + dir + PaletteCategories.Length) % PaletteCategories.Length].Key);
             }
+        }
+    }
+
+    private void Window_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        // Git #2210 — PrtScn while ShaneBuilder is focused. WPF only surfaces PrintScreen on
+        // key-up, so we handle it here (not KeyDown). Guard against double-firing: when the
+        // GLOBAL hotkey is registered it consumes the key before it reaches this window, so we
+        // only act on the in-app path when the global registration was refused. (The service's
+        // own overlay-open guard is a second backstop.)
+        if (e.Key == Key.Snapshot && !_screenClipHotkeyRegistered)
+        {
+            e.Handled = true;
+            Services.DesktopScreenClipService.Capture();
         }
     }
 

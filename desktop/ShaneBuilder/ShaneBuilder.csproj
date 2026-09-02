@@ -6,11 +6,29 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
+    <!-- Git #2210 — the ported desktop screen-clipping tool needs System.Drawing
+         (Graphics.CopyFromScreen / Bitmap) and the OLE clipboard's multi-format
+         DataObject path. UseWindowsForms pulls both from the in-box Windows
+         Desktop framework (no NuGet). This does NOT change the app's DPI
+         awareness or WPF behaviour — it only makes those in-box assemblies
+         referenceable (same rationale as BuildConsole.csproj's identical flag). -->
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
     <PackageReference Include="Npgsql" Version="7.0.7" />
+  </ItemGroup>
+
+  <!-- Git #2210 — UseWindowsForms's own ImplicitUsings add global "using System.Drawing;" and
+       "using System.Windows.Forms;", which collide project-wide with WPF's unqualified Brush/Color
+       (System.Windows.Media) used all over this app's existing WPF code — CS0104 ambiguous-reference
+       everywhere, not just in the ported screen-clip files. Drop those two implicit usings; the
+       screen-clip code that actually needs them (DesktopScreenClipService.cs) already has its own
+       explicit "using System.Drawing;"/"using System.Drawing.Imaging;" and WinForms* type aliases. -->
+  <ItemGroup>
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
   </ItemGroup>
 
 </Project>
