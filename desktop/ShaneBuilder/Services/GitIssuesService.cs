@@ -37,6 +37,10 @@ public static class GitIssuesService
     private static readonly System.Text.RegularExpressions.Regex FeatureTitlePrefix =
         new(@"^feature:\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
+    /// <summary>Git #2321 — display helper, same real "strip the repo's own title-convention
+    /// prefix" pattern GitMapService's own StripEpicTitlePrefix sibling uses for "Epic:".</summary>
+    public static string StripFeatureTitlePrefix(string title) => FeatureTitlePrefix.Replace(title ?? "", "");
+
     /// <summary>Real, live open issues, most recently updated first, with real labels — then a
     /// single batched GraphQL call resolves each one's real parent (if any). Two calls total,
     /// never N+1.</summary>
@@ -174,6 +178,52 @@ public static class GitIssuesService
             ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] couldn't parse feature-tier ancestor response for #{issueNumber}: {ex.Message}");
             return (null, null);
         }
+    }
+
+    /// <summary>Git #2321 — every real open issue whose title genuinely starts with
+    /// "Feature:"/"feature:" (<see cref="FeatureTitlePrefix"/>, the same real prefix-match
+    /// convention <see cref="GitMapService.GetOpenEpicsAsync"/> already established for
+    /// "Epic:" — never a fabricated registry, never full-text-search false positives like a
+    /// title merely containing the word). Backs the New Chat anchor disclosure: each row needs
+    /// its real parent Epic (<see cref="GitIssueRow.ParentNumber"/>/<see cref="GitIssueRow.ParentTitle"/>)
+    /// and real state (labels — in-flight/blocked/complete, else plain open). Two real `gh` calls
+    /// total (list + one batched parent GraphQL lookup, reusing <see cref="ResolveParentsAsync"/>),
+    /// never N+1 per epic.</summary>
+    public static async Task<(bool Ok, List<GitIssueRow> Features, string? Error)> GetActiveFeaturesAsync()
+    {
+        var (ok, stdout, stderr) = await RunGhAsync(new[]
+        {
+            "issue", "list", "--repo", Repo, "--state", "open",
+            "--json", "number,title,labels", "--limit", "200",
+            "--search", "Feature in:title"
+        });
+        if (!ok)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] gh issue list (features) failed: {stderr.Trim()}");
+            return (false, new List<GitIssueRow>(), $"gh issue list failed: {stderr.Trim()}");
+        }
+
+        List<IssueRow> rows;
+        try
+        {
+            rows = JsonSerializer.Deserialize<List<IssueRow>>(stdout, JsonOpts) ?? new();
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] couldn't parse gh output (features): {ex.Message}");
+            return (false, new List<GitIssueRow>(), $"couldn't parse gh output: {ex.Message}");
+        }
+
+        var features = rows
+            .Where(r => FeatureTitlePrefix.IsMatch(r.Title ?? ""))
+            .Select(r => new GitIssueRow
+            {
+                Number = r.Number,
+                Title = r.Title ?? $"#{r.Number}",
+                Labels = r.Labels?.Select(l => l.Name ?? "").Where(n => n.Length > 0).ToList() ?? new List<string>()
+            }).ToList();
+
+        return (true, await ResolveParentsAsync(features), null);
     }
 
     // ── gh process runner — mirrors GitMapService's own local copy (kept local for the same
