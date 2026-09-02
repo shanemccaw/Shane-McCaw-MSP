@@ -166,8 +166,11 @@ describe("the route's step ids still match the guide's own catalogue", () => {
   it("is exactly the ids in previewRemediationGuide.ts, in its order", () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const guidePath = path.resolve(
+      // #1956 — corrected from a stale "../../../msp-portal/..." path (that
+      // directory was retired in favor of artifacts/portal/, and this drift
+      // guard had been silently ENOENT-ing rather than actually comparing).
       here,
-      "../../../msp-portal/src/components/copilot-journey/previewRemediationGuide.ts",
+      "../../../portal/src/components/copilot-journey/previewRemediationGuide.ts",
     );
     const source = readFileSync(guidePath, "utf8");
     const catalogueIds = [...source.matchAll(/^ {4}id: "(s\d+)",\r?$/gm)].map((m) => m[1]);

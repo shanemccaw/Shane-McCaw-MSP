@@ -77,8 +77,12 @@ const LEGACY_STEP_ID_PATTERN = /^s\d+$/;
 function mappedKeysFor(stepId: string): readonly string[] | undefined {
   const legacy = STEP_CHECK_KEYS[stepId];
   if (legacy) return legacy;
-  // A legacy id with no entry above (s18, s24, s25, s27, s28, s30) is a
+  // A legacy id with no entry above (s18, s24, s25, s27, s30) is a
   // deliberate gap/process-only step — never eligible, same as always.
+  // (s28 used to be one of these too, until #753 built onedrive:sync-errors
+  // and it gained a real mapping above — #1956 found this comment and the
+  // s28 entry itself had drifted out of sync during the msp-portal→portal
+  // restructuring, and re-added it from the live guide.)
   if (LEGACY_STEP_ID_PATTERN.test(stepId)) return undefined;
   // #1538: anything else is a checklist item keyed by its own checkKey.
   return [stepId];
@@ -119,6 +123,7 @@ const STEP_CHECK_KEYS: Readonly<Record<string, readonly string[]>> = {
   s22: ["cost:group-based-licensing-adoption"],
   s23: ["adoption:teams-activity-trend", "adoption:sharepoint-onedrive-trend"],
   s26: ["sharepoint:tenant-sharing-capability"],
+  s28: ["onedrive:sync-errors"],
   s29: ["sharepoint:inactive-sites", "teams:ownerless-teams", "governance:ownerless-groups"],
 };
 
