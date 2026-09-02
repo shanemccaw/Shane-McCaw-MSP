@@ -42,9 +42,9 @@ public partial class MainWindow : Window
         _tabs.Add(new TabDef("epic-1202", "#1202 ShaneBuilder", isChat: true, kind: TabKind.Chat, dot: (Brush)FindResource("Brush.Epic.BuildConsole"), buildSet: "ShaneBuilder", epicNumber: 1202));
         SelectTab("home");
 
-        SeedSampleQueueData();
-        RenderQueue();
+        RenderQueue(); // _queueItems starts empty — real rows land async below (Git #2413)
         RenderBuildDetail(); // starts closed (BuildDetailColumn.Width = 0) — no item selected yet
+        _ = LoadQueueFromDatabaseAsync();
 
         RunStartupConnectivityCheckAsync();
         InitializeAlertsAndCritters();
@@ -180,61 +180,149 @@ public partial class MainWindow : Window
         ConnHealthStatus.Text = $"{githubPart} · {queuePart}";
     }
 
-    // ── SAMPLE DATA — for visually iterating on BuildQueueCard/BuildSetCard
-    // styling only. Not real builds; delete this method (and its call above)
-    // once ShaneBuilder has a real queue backend to read from. Covers every
-    // status branch StatusBrush() handles so all the card colors are visible
-    // at once.
-    private void SeedSampleQueueData()
+    // ── Git #2413 — Build Queue panel's real backing data ──────────────────────────────────
+    // Replaces the former SeedSampleQueueData() fixture (filed off #2308's own build audit)
+    // with a real read off bt_build_queue via QueueReadClient — the same client #2309/#2410
+    // and the Command Palette's "Builds" category (#2203) already use for other real queue
+    // reads in this app. No second client, no fixture rows ever mixed with real ones. No
+    // DATABASE_URL resolvable, or the read itself failing, means the panel starts genuinely
+    // empty (RenderQueue's own "No builds in the queue yet." state) — never a fallback to
+    // fabricated rows.
+    private async Task LoadQueueFromDatabaseAsync()
     {
-        var referenceChecklist = new (string, bool)[]
+        var client = QueueReadClient.CreateFromEnvironment();
+        if (client == null)
         {
-            ("Read spec & acceptance criteria", true),
-            ("Explore codebase", true),
-            ("Write implementation", true),
-            ("Add/update tests", true),
-            ("Run test suite", true),
-            ("Fix lint & type errors", true),
-            ("Update docs", true),
-            ("Self-review diff", true),
-            ("Push branch", false),
-            ("Open PR / request review", false)
-        };
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, "[queue] Build Queue panel: no DATABASE_URL resolvable — starting empty.");
+            return;
+        }
 
-        _queueItems.Add(new QueueItem("s1", "Wire the left rail's Chats panel to real session data", "ShaneBuilder", "Running",
-            2007, "claude-sonnet-5", branch: "feat/side-by-side-doc-host", buildId: "bld_2007_side_by_side",
-            blocks: new[] { 2008 }, blockedBy: new[] { (2002, "queued", (string?)null) }, checklist: referenceChecklist));
-        _queueItems.Add(new QueueItem("s1b", "Status bar — bottom 23px, per README", "ShaneBuilder", "Blocked",
-            2005, "Opus", "High", branch: "ui/consolidated-ring-progress", buildId: "bld_2005_status_bar",
-            blocks: new[] { 2003, 2010 }, blockedBy: new[] { (2002, "queued", (string?)null) },
-            checklist: referenceChecklist.Take(8).Select((c, i) => (c.Item1, i < 2)).ToArray()));
-        _queueItems.Add(new QueueItem("s1c", "Focus nudge pill — 6-stage escalation", "ShaneBuilder", "Blocked",
-            2003, "Opus", "High", branch: "feat/automated-threshold-routing", buildId: "bld_2003_auto_route",
-            blockedBy: new[]
+        List<PaletteBuildQueueRow> rows;
+        try
+        {
+            rows = await client.GetRecentBuildsAsync(limit: 150);
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[queue] Build Queue panel: real read failed: {ex.Message}");
+            return;
+        }
+
+        // A row's blocked_by_number can point at a build outside this recent-150 window (an
+        // older row) — backfill just those so the "blocked by #N (status)" chip reflects the
+        // real blocker's real state instead of "unknown".
+        var blockerInfo = new Dictionary<int, (string Status, string? BuildSet)>();
+        foreach (var r in rows)
+            if (r.GithubNumber.HasValue)
+                blockerInfo[r.GithubNumber.Value] = (r.Status, r.BuildSet);
+
+        var missingBlockerNumbers = rows
+            .Where(r => r.BlockedByNumber.HasValue && !blockerInfo.ContainsKey(r.BlockedByNumber.Value))
+            .Select(r => r.BlockedByNumber!.Value)
+            .Distinct()
+            .ToList();
+
+        if (missingBlockerNumbers.Count > 0)
+        {
+            try
             {
-                (1485, "in-flight", (string?)"Portal"),
-                (1925, "queued", (string?)"Config-State-Core"),
-                (2001, "queued", (string?)null),
-                (2005, "blocked", (string?)null)
-            },
-            checklist: referenceChecklist.Take(6).Select((c, i) => (c.Item1, i < 1)).ToArray()));
-        _queueItems.Add(new QueueItem("s2", "Build detail flyout — slide out from Build Queue's left edge", "ShaneBuilder", "Queued",
-            2202, "Sonnet 5", "High", blockedBy: new[] { (2201, "in-flight", (string?)null) }));
-        _queueItems.Add(new QueueItem("s3", "Status bar — bottom 23px, per README", "ShaneBuilder", "Verifying", 2199, "Opus 5", "Medium"));
-        _queueItems.Add(new QueueItem("s4", "Focus nudge pill — 6-stage escalation", "ShaneBuilder", "Done", 2190));
-        _queueItems.Add(new QueueItem("s5", "Claude chat pane — warm sub-palette", "ShaneBuilder", "Failed", 2185, "Sonnet 5", "High"));
-        _queueItems.Add(new QueueItem("s6", "Next Up panel real GitHub wiring", "App Core", "Blocked", 2144, blockedBy: new[] { (2101, "queued", (string?)null), (2102, "queued", (string?)null) }));
-        _queueItems.Add(new QueueItem("s7", "Epics panel real GitHub wiring", "App Core", "Parked", 2145));
-        _queueItems.Add(new QueueItem("s8", "Ad-hoc research spike — deferred", "App Core", "Cancelled", 2130));
-        _queueItems.Add(new QueueItem("s9", "Opus run over Conservation Cap threshold", "App Core", "Capped", 2131, "Opus 5", "High"));
-        _queueItems.Add(new QueueItem("s10", "Launched via Send to Builder", "App Core", "External", 2132));
-        _queueItems.Add(new QueueItem("s11", "Regression sweep — test-manifests", "App Core", "Tests", 2133));
+                var backfill = await client.GetLatestByGithubNumbersAsync(missingBlockerNumbers);
+                foreach (var b in backfill)
+                    if (b.GithubNumber.HasValue)
+                        blockerInfo[b.GithubNumber.Value] = (b.Status, b.BuildSet);
+            }
+            catch (Exception ex)
+            {
+                // Non-fatal — affected rows just show "unknown" for a blocker this couldn't reach.
+                Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[queue] Build Queue panel: blocker backfill failed: {ex.Message}");
+            }
+        }
 
-        _buildSetChatRefs["ShaneBuilder"] = "Chat 1: App Shell Scaffolding";
-        _buildSetChatRefs["App Core"] = "Chat 1: Engine & Schema Work";
+        // "Blocks" is the reverse edge: which other loaded rows are waiting on THIS row's own
+        // github_number — derivable from the same recent window, no extra query needed.
+        var blocksLookup = rows
+            .Where(r => r.BlockedByNumber.HasValue && r.GithubNumber.HasValue)
+            .GroupBy(r => r.BlockedByNumber!.Value)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.Select(r => r.GithubNumber!.Value).Distinct().ToList());
 
-        _expandedSets.Add("ShaneBuilder"); // expanded by default so the sample cards are visible immediately
+        var items = new List<QueueItem>();
+        foreach (var row in rows)
+        {
+            string buildSet = string.IsNullOrWhiteSpace(row.BuildSet) ? "Ungrouped" : row.BuildSet;
+            string status = MapQueueStatus(row.Status);
+
+            // A queued row whose real blocker hasn't reached a terminal state yet displays as
+            // Blocked instead of Queued — mirrors BuildConsole's own BuildQueuePanel.xaml.cs
+            // "isBlocked" derivation, computed here off real rows rather than a second live pass.
+            IReadOnlyList<(int, string, string?)> blockedBy = Array.Empty<(int, string, string?)>();
+            if (row.BlockedByNumber.HasValue)
+            {
+                int blockerNum = row.BlockedByNumber.Value;
+                if (blockerInfo.TryGetValue(blockerNum, out var info))
+                {
+                    string blockerStatus = MapQueueStatus(info.Status).ToLowerInvariant();
+                    string? crossSet = info.BuildSet != null && !string.Equals(info.BuildSet, buildSet, StringComparison.Ordinal)
+                        ? info.BuildSet
+                        : null;
+                    blockedBy = new[] { (blockerNum, blockerStatus, crossSet) };
+                    if (status == "Queued" && !IsTerminalDbStatus(info.Status))
+                        status = "Blocked";
+                }
+                else
+                {
+                    blockedBy = new[] { (blockerNum, "unknown", (string?)null) };
+                }
+            }
+
+            IReadOnlyList<int> blocks = row.GithubNumber.HasValue && blocksLookup.TryGetValue(row.GithubNumber.Value, out var b)
+                ? b
+                : Array.Empty<int>();
+
+            items.Add(new QueueItem(
+                row.Id.ToString(),
+                row.Title,
+                buildSet,
+                status,
+                row.GithubNumber,
+                row.Model,
+                row.Effort,
+                branch: null, // bt_build_queue has no branch column — never fabricated
+                buildId: string.IsNullOrWhiteSpace(row.SessionId) ? null : row.SessionId,
+                blocks: blocks,
+                blockedBy: blockedBy));
+            // checklist intentionally omitted — real rows carry no checklist data
+        }
+
+        _queueItems.Clear();
+        _queueItems.AddRange(items);
+        // Real chat linking isn't built yet, so _buildSetChatRefs stays empty — BuildSetCard
+        // already hides the chat-reference pill entirely when a set has no entry there.
+        RenderQueue();
     }
+
+    private static bool IsTerminalDbStatus(string? dbStatus) => dbStatus is "done" or "failed" or "canceled";
+
+    // Real bt_build_queue status vocabulary (confirmed via `\d bt_build_queue` + a live
+    // GROUP BY, plus the real status constants BuildConsole's own BuildQueuePostgresClient /
+    // AccountCapPolicy / SessionLimitAutoRestartService define for that same shared table)
+    // mapped onto this panel's own display vocabulary. An unrecognized real status shows
+    // verbatim rather than being silently dropped or coerced.
+    private static string MapQueueStatus(string? dbStatus) => dbStatus switch
+    {
+        "queued" => "Queued",
+        "running" => "Running",
+        "verifying" => "Verifying",
+        "done" => "Done",
+        "failed" => "Failed",
+        "canceled" => "Cancelled",
+        "parked" => "Parked",
+        "external" => "External",
+        "capped" => "Capped",
+        "limit-paused" => "Queued", // still pending, same coarser treatment BuildConsole's own panel gives it
+        "blocked" => "Blocked",
+        null or "" => "Queued",
+        _ => dbStatus
+    };
 
     protected override void OnSourceInitialized(EventArgs e)
     {
@@ -1166,9 +1254,9 @@ public partial class MainWindow : Window
     // model/effort badge — ported onto ShaneBuilder's own App-Shell-v2 theme
     // tokens (Brush.Status.* / Brush.NextUp.*) instead of BuildConsole's
     // Catppuccin one, per this project's "use the theme already here" rule.
-    // No real queue backend (Postgres/GitHub) is wired up in ShaneBuilder
-    // yet, so _queueItems starts empty and the panel shows an honest empty
-    // state — RenderQueue is fully ready for when real items land.
+    // _queueItems starts empty and is filled asynchronously from a real bt_build_queue read
+    // (LoadQueueFromDatabaseAsync, Git #2413) — RenderQueue's own empty state covers the window
+    // before that first read lands, and the honest "no DB" case if it never does.
     private sealed class QueueItem
     {
         public string Id { get; }
@@ -1209,9 +1297,9 @@ public partial class MainWindow : Window
     private readonly List<QueueItem> _queueItems = new();
     private readonly HashSet<string> _expandedSets = new();
 
-    // Sample-only: a chat reference pill per build set. Real chat linking
-    // isn't built yet, so this is populated only from SeedSampleQueueData —
-    // BuildSetCard hides the pill entirely when a set has no entry here.
+    // A chat reference pill per build set. Real chat linking isn't built yet, so this stays
+    // empty (LoadQueueFromDatabaseAsync never populates it) — BuildSetCard hides the pill
+    // entirely when a set has no entry here.
     private readonly Dictionary<string, string> _buildSetChatRefs = new();
 
     private void RenderQueue()
@@ -3680,13 +3768,14 @@ public partial class MainWindow : Window
                 () => SelectTab(tab.Id), payload: tab));
         }
 
-        // Git #2203 — the "Builds" category used to be populated from _queueItems here, but that
-        // list is pre-existing sample/fixture data (SeedSampleQueueData — the Build Queue side
-        // panel's own out-of-scope debt, see #2176's bookend), never real. Mixing fabricated rows
-        // into the same category as the real _paletteBuilds rows below would violate this
-        // project's "never invent data to display" rule and confuse the two lists (they don't
-        // even share a real key). Removed — "Builds"/"Build IDs" are real-only, from
-        // _paletteBuilds (real bt_build_queue rows) further down.
+        // Git #2203 — the "Builds" category used to be populated from _queueItems here, but at
+        // the time that list was pre-existing sample/fixture data (SeedSampleQueueData), never
+        // real. Mixing fabricated rows into the same category as the real _paletteBuilds rows
+        // below would have violated this project's "never invent data to display" rule.
+        // _queueItems is a real bt_build_queue read as of Git #2413, but this category still
+        // deliberately reads from _paletteBuilds (its own independent GetRecentBuildsAsync
+        // call, see EnsurePaletteRealDataAsync) rather than being switched over — unifying the
+        // two real reads into one is a separate refactor, out of #2413's own scope.
 
         // ── Git Epics — real, off live `gh` (Git #2203). ─────────────────────────────────────
         foreach (var epic in _paletteEpics)
