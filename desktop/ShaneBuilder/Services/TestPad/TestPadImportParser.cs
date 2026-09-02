@@ -144,4 +144,21 @@ public sealed class TestPadImportCandidate
     /// carry this through to <see cref="TestPadNote.HasShotSlot"/> — the same droppable-thumbnail
     /// slot the manual "Attach shot" composer chip (#2340) arms.</summary>
     public bool NeedsShot { get; set; }
+
+    /// <summary>Git #2353 — ticked in the preview's multi-select column to mark this row for
+    /// "Merge N up". Independent of <see cref="Include"/>: a row can be selected for merging
+    /// without being excluded from import, and vice versa.</summary>
+    public bool Selected { get; set; }
+
+    /// <summary>Git #2353 — set true once this candidate has been merged up into a prior row's
+    /// <see cref="Text"/>. A merged-away candidate is skipped by rendering and by Import (its
+    /// content already lives inside the row it was merged into); it is kept in the original list
+    /// (not removed) and in <see cref="MergedInto"/>'s <see cref="MergedChildren"/> so a future
+    /// split-back-out (#2354) has the real candidates to restore, not just their text.</summary>
+    public bool IsMergedAway { get; set; }
+
+    /// <summary>Git #2353 — the candidates merged into this one via "Merge N up", in the order
+    /// they were merged. Drives a "+N merged" indicator on the row (#2354 extends this into a
+    /// clickable split-back-out); empty for a row nothing has been merged into.</summary>
+    public List<TestPadImportCandidate> MergedChildren { get; } = new();
 }
