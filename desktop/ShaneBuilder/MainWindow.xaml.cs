@@ -831,14 +831,22 @@ public partial class MainWindow : Window
             _keepAliveClassOverride ?? (IsChat ? TabKeepAliveClass.KeepAlive : TabKeepAliveClass.Reloadable);
         public bool IsKeepAlive => KeepAliveClass == TabKeepAliveClass.KeepAlive;
 
+        // Git #2472 — which real keep-alive family this tab belongs to (Claude.ai, Gemini/Google AI
+        // Studio, a product website, or Azure/M365 Admin), independent of KeepAliveClass. Null for
+        // every reloadable tab and for the original chat seed tab (which is implicitly Claude.ai —
+        // see KeepAliveInitialUrl's fallback in MainWindow.KeepAliveTabs.cs). Set explicitly by
+        // OpenKeepAliveBrowserTab for any tab opened through that generic factory.
+        public BrowserTabCategory? BrowserCategory { get; }
+
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
             string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
             bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false,
             List<GitCrumb>? gitItemTrail = null, int? featureNumber = null, string? subtitle = null,
-            TabKeepAliveClass? keepAliveClass = null)
+            TabKeepAliveClass? keepAliveClass = null, BrowserTabCategory? browserCategory = null)
         {
             _keepAliveClassOverride = keepAliveClass;
+            BrowserCategory = browserCategory;
             Id = id;
             Title = title;
             IsHome = isHome;
@@ -1302,8 +1310,16 @@ public partial class MainWindow : Window
         _activeTabId = id;
         RenderTabStrip();
 
+        // Git #2472 — a keep-alive tab that ISN'T a chat (Gemini/AI Studio, product website,
+        // Azure/M365 Admin) mounts into the bare GenericBrowserDock, not the chat-chrome-carrying
+        // ClaudeChatDock (context bar/breadcrumb/composer are real chat UI, not generic browser
+        // chrome). IsChat tabs are unaffected — they still mount into ClaudeChatDock exactly as
+        // #2470 wired them.
+        bool isGenericBrowserTab = tab.IsKeepAlive && !tab.IsChat;
+
         HomeTabContent.Visibility = tab.IsHome ? Visibility.Visible : Visibility.Collapsed;
         ClaudeChatDock.Visibility = tab.IsChat ? Visibility.Visible : Visibility.Collapsed;
+        GenericBrowserDock.Visibility = isGenericBrowserTab ? Visibility.Visible : Visibility.Collapsed;
         GitDoctorDock.Visibility = tab.IsGitDoctor ? Visibility.Visible : Visibility.Collapsed;
         RepoHealthDock.Visibility = tab.IsRepoHealth ? Visibility.Visible : Visibility.Collapsed;
         LogViewerDock.Visibility = tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
@@ -1312,7 +1328,7 @@ public partial class MainWindow : Window
         SettingsDock.Visibility = tab.IsSettings ? Visibility.Visible : Visibility.Collapsed;
         GitItemDock.Visibility = tab.IsGitItemDoc ? Visibility.Visible : Visibility.Collapsed;
         if (tab.IsSettings) RenderSettings();
-        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc;
+        bool isStub = !tab.IsHome && !tab.IsChat && !isGenericBrowserTab && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -1386,7 +1402,10 @@ public partial class MainWindow : Window
             System.IO.Path.GetFileName(path),
             kind: TabKind.File,
             mdFilePath: path,
-            dot: (Brush)FindResource("Brush.Ext.Md"));
+            dot: (Brush)FindResource("Brush.Ext.Md"),
+            // Git #2472 — explicit, not just the default: a filesystem document is the contract's
+            // named reloadable class, never a dedicated parked WebView2.
+            keepAliveClass: TabKeepAliveClass.Reloadable);
         _tabs.Add(tab);
         return tab.Id;
     }
