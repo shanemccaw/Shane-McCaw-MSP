@@ -457,7 +457,7 @@
                 <DockPanel Margin="0,12">
                     <Button x:Name="BtnRailSettings" DockPanel.Dock="Bottom" Style="{StaticResource CaptionButton}"
                             Width="32" Height="32" Margin="0,0,0,4" ToolTip="Settings"
-                            HorizontalAlignment="Center">
+                            HorizontalAlignment="Center" Click="BtnRailSettings_Click">
                         <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.Settings}"
                               Stroke="{StaticResource Brush.Text.Muted}"/>
                     </Button>
@@ -2382,6 +2382,62 @@
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="GitMapDocResults" Margin="24,16" MaxWidth="640" HorizontalAlignment="Left"/>
                         </ScrollViewer>
+                    </Grid>
+
+                    <!-- Settings, redesigned — Step 15 (wpf-handoff/readme-phase2.md), the real
+                         Settings screen markup/computeSettings() spec in
+                         wpf-handoff/Shell Skeleton v2.dc.html (lines 1441-1630, 6003-6147). One
+                         surface only: the gear icon, the wrench menu and Ctrl+K palette all open
+                         THIS tab (OpenSettingsTab in MainWindow.Settings.cs) — no placeholder
+                         "SettingsTabView lands here" stub. Header (icon/title/health chips/search)
+                         + left rail (grouped categories, count badges) + content area, all
+                         populated in code-behind from the real ISettingsStore, same "layout
+                         skeleton here, Render* builds the rows" convention as Git Doctor/Repo
+                         Health above. -->
+                    <Grid x:Name="SettingsDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,11" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <DockPanel LastChildFill="True">
+                                <TextBox x:Name="SettingsSearchBox" DockPanel.Dock="Right" Width="260" Height="28"
+                                         VerticalContentAlignment="Center" Padding="10,0"
+                                         Background="{StaticResource Brush.Bg.Card}" BorderBrush="{StaticResource Brush.Border.Card}"
+                                         Foreground="{StaticResource Brush.Text.Heading}"
+                                         FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                         TextChanged="SettingsSearchBox_TextChanged"/>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.Settings}"
+                                          Stroke="{StaticResource Brush.Status.Verifying}" Width="16" Height="16" Margin="0,0,10,0"/>
+                                    <TextBlock Text="Settings" Margin="0,0,12,0"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                               FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                               Foreground="{StaticResource Brush.Text.Heading}"/>
+                                    <WrapPanel x:Name="SettingsHealthChips" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="SettingsRailColumn" Width="214"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0" Background="{StaticResource Brush.Bg.Panel}"
+                                    BorderThickness="0,0,1,0" BorderBrush="{StaticResource Brush.Border.Strong}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="SettingsRailPanel" Margin="6,8"/>
+                                </ScrollViewer>
+                            </Border>
+
+                            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="SettingsContentPanel" Margin="18,14" MaxWidth="660" HorizontalAlignment="Left"/>
+                            </ScrollViewer>
+                        </Grid>
                     </Grid>
                 </Grid>
             </DockPanel>

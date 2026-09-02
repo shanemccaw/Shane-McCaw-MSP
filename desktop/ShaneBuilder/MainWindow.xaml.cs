@@ -583,6 +583,7 @@ public partial class MainWindow : Window
         public string? Ext { get; }
         public bool IsLogViewer { get; }
         public bool IsGitMap { get; }
+        public bool IsSettings { get; }
         // Git #2211 — set for a Markdown Viewer tab opened by dropping a .md file;
         // the real path SelectTab reads from and MarkdownRenderer.Render()s into
         // MarkdownViewerDock. Null for every other tab kind.
@@ -602,7 +603,7 @@ public partial class MainWindow : Window
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
             string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
-            bool isRepoHealth = false, bool isGitMap = false)
+            bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false)
         {
             Id = id;
             Title = title;
@@ -619,6 +620,7 @@ public partial class MainWindow : Window
             BuildSet = buildSet;
             EpicNumber = epicNumber;
             IsGitMap = isGitMap;
+            IsSettings = isSettings;
         }
     }
 
@@ -1006,7 +1008,9 @@ public partial class MainWindow : Window
         LogViewerDock.Visibility = tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
         MarkdownViewerDock.Visibility = tab.IsMarkdownViewer ? Visibility.Visible : Visibility.Collapsed;
         GitMapDock.Visibility = tab.IsGitMap ? Visibility.Visible : Visibility.Collapsed;
-        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap;
+        SettingsDock.Visibility = tab.IsSettings ? Visibility.Visible : Visibility.Collapsed;
+        if (tab.IsSettings) RenderSettings();
+        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -3189,6 +3193,11 @@ public partial class MainWindow : Window
 
         WrenchMenuItems.Children.Add(WrenchSeparator());
 
+        // Git #2204 — Settings is a document, not a mini-panel toggle (it has no bolt-on
+        // column, same reason "Ask another epic a question…"/"Start a new chat" below aren't
+        // in the 12-tool spec either). One real entry point among the three: gear icon
+        // (BtnRailSettings), Ctrl+K palette, and here — all open the exact same tab.
+        WrenchMenuItems.Children.Add(WrenchItem("Settings", () => { WrenchPopup.IsOpen = false; OpenSettingsTab(); }));
         WrenchMenuItems.Children.Add(WrenchItem("Pop into Claude Floaty", () => { WrenchPopup.IsOpen = false; BtnFloaty_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Start a new chat", () => { WrenchPopup.IsOpen = false; BtnStartNewChat_Click(this, new RoutedEventArgs()); }));
     }
@@ -3600,6 +3609,11 @@ public partial class MainWindow : Window
             (Brush)FindResource("Brush.Epic.Gate"), "Git Map",
             "Real Focus Build + Started-and-Dropped + open-epic browser, off live GitHub + bt_build_queue.",
             () => OpenGitMap()));
+
+        results.Add(new PaletteResult("ClaudeUrls", "Settings", "Environment, credentials, accounts",
+            (Brush)FindResource("Brush.Status.Verifying"), "Settings",
+            "Test env variables, API tokens, gated accounts, Claude Projects — one real store, no placeholder.",
+            () => OpenSettingsTab()));
 
         foreach (var tab in _tabs)
         {
