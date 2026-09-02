@@ -806,6 +806,11 @@ public partial class MainWindow : Window
         // guessed. Mutable (not init), same pattern as GitMapFeature.IsParked: resolved
         // asynchronously AFTER the tab is constructed, then the tab strip is re-rendered.
         public int? FeatureNumber { get; set; }
+        // Git #2323 — the real anchor line for a chat opened through OpenNewChatFlow (#2321), e.g.
+        // `Feature #2318 "Chats" (Epic #1202)`. Null for the pre-existing seed tab and for any chat
+        // that never went through the anchor disclosure — the Chats rail row renders nothing extra
+        // in that case rather than a fabricated line.
+        public string? Subtitle { get; }
         // Git #2312 — set for a Git Panel peek sent to a tab via "Send to tab"; the real crumb
         // trail snapshot GitItemDock's RenderGitItemDoc renders through the same
         // RenderGitIdentityBlock the rail peek uses. Null for every other tab kind.
@@ -819,7 +824,7 @@ public partial class MainWindow : Window
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
             string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
             bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false,
-            List<GitCrumb>? gitItemTrail = null)
+            List<GitCrumb>? gitItemTrail = null, int? featureNumber = null, string? subtitle = null)
         {
             Id = id;
             Title = title;
@@ -838,6 +843,8 @@ public partial class MainWindow : Window
             IsGitMap = isGitMap;
             IsSettings = isSettings;
             GitItemTrail = gitItemTrail;
+            FeatureNumber = featureNumber;
+            Subtitle = subtitle;
         }
     }
 
@@ -3510,35 +3517,60 @@ public partial class MainWindow : Window
 
     /// <summary>Git #2321 — shows the real anchor disclosure (active Features + their real Epic
     /// and state, off <see cref="Services.GitIssuesService.GetActiveFeaturesAsync"/>) before
-    /// navigating. A picked feature's anchor is logged for now (Console/Toast) — writing it into
-    /// the new tab's own subtitle is #2323's real remaining work (a new anchored TabDef doesn't
-    /// exist yet; today's single persistent chat tab just gets renavigated, same as
-    /// BtnStartNewChat_Click always has). Cancelling the dialog (Cancel/Escape/close) is a real
-    /// no-op: no navigation, nothing decided. Git #2322 — "No feature yet — decide later"
-    /// (<see cref="NewChatAnchorDialog.DecideLater"/>) is the third, distinct outcome: the user
-    /// explicitly chose to proceed unanchored, so the new chat still navigates, just logged/toasted
-    /// as unanchored rather than silently skipped like a cancel.</summary>
+    /// navigating. Cancelling the dialog (Cancel/Escape/close) is a real no-op: no navigation, no
+    /// new tab. Git #2322 — "No feature yet — decide later" (<see cref="NewChatAnchorDialog.DecideLater"/>)
+    /// is the third, distinct outcome: the user explicitly chose to proceed unanchored, so a chat
+    /// still opens, just with no Feature/Epic on it. Git #2323 — a picked (or deliberately
+    /// unanchored) chat opens as a genuinely NEW <see cref="TabDef"/>, not a renavigation of
+    /// whatever chat tab happened to be open (the old behavior every prior BtnStartNewChat_Click
+    /// caller used) — the anchor is set directly on the tab (EpicNumber/FeatureNumber, no waiting on
+    /// the async ResolveChatFeatureNumbersAsync pass, since the user just picked it explicitly) and
+    /// carried as the tab's real Subtitle, rendered by the Chats rail row
+    /// (MainWindow.ChatsPanel.cs BuildChatRow).</summary>
     private void OpenNewChatFlow()
     {
         var dlg = NewChatAnchorDialog.ShowFor(this);
         if (dlg.SelectedFeatureNumber == null && !dlg.DecideLater)
-            return; // cancelled — no decision made, don't navigate
+            return; // cancelled — no decision made, don't navigate, no new tab
+
+        string title;
+        string? subtitle;
+        int? epicNumber = null;
+        int? featureNumber = null;
+
+        if (dlg.SelectedFeatureNumber == null)
+        {
+            title = "New chat";
+            subtitle = "Unanchored — decide later";
+        }
+        else
+        {
+            epicNumber = dlg.SelectedEpicNumber;
+            featureNumber = dlg.SelectedFeatureNumber;
+            title = "New chat";
+            subtitle = dlg.SelectedEpicNumber.HasValue
+                ? $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\" (Epic #{dlg.SelectedEpicNumber})"
+                : $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\"";
+        }
 
         try
         {
+            var tab = new TabDef(
+                "chat-" + Guid.NewGuid().ToString("N"),
+                title,
+                isChat: true,
+                kind: TabKind.Chat,
+                epicNumber: epicNumber,
+                featureNumber: featureNumber,
+                subtitle: subtitle);
+            _tabs.Add(tab);
+            SelectTab(tab.Id);
             ClaudeWebView.Source = new Uri("https://claude.ai/new");
-            if (dlg.SelectedFeatureNumber == null)
-            {
-                Services.ConsoleOutputSink.Log(Services.LogLevel.Info, "[chat] new chat started unanchored (decide later)");
-                ToastEngine.Show("New chat", "Started unanchored — pick a Feature for it later.", ToastKind.Info);
-                return;
-            }
 
-            string anchorLabel = dlg.SelectedEpicNumber.HasValue
-                ? $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\" (Epic #{dlg.SelectedEpicNumber})"
-                : $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\"";
-            Services.ConsoleOutputSink.Log(Services.LogLevel.Info, $"[chat] new chat anchored to {anchorLabel}");
-            ToastEngine.Show("New chat", $"Anchored to {anchorLabel}.", ToastKind.Info);
+            if (subtitle != null)
+                Services.ConsoleOutputSink.Log(Services.LogLevel.Info, $"[chat] new chat tab {tab.Id} — {subtitle}");
+            ToastEngine.Show("New chat", subtitle != null ? $"Anchored to {subtitle}." : "Started unanchored — pick a Feature for it later.", ToastKind.Info);
+            if (_leftPanelSource == "Chat") RenderChatsPanel();
         }
         catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] new-chat failed: {ex.Message}"); }
     }

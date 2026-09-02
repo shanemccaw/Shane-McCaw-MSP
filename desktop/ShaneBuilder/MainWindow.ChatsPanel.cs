@@ -25,12 +25,14 @@ namespace ShaneBuilder;
 /// single-WebView architecture, not a bug: a tab never shown this session has genuinely never been
 /// read, and its row says so rather than showing a stale or fabricated number.
 ///
-/// Archive: ShaneBuilder creates exactly one persistent chat tab today (no multi-tab chat creation
-/// exists yet — #2321-#2324 build that). "Archive" here means: record this chat's identity and
-/// last known size into <see cref="ChatArchiveStore"/>, then reset the shared WebView to a fresh
-/// chat — the same navigation <c>BtnStartNewChat_Click</c>/<c>OpenNewChatFlow</c> already use — so
-/// nothing is silently lost and the old conversation can be found and reopened from the ARCHIVED
-/// section.
+/// Archive: "Archive" here means: record this chat's identity and last known size into
+/// <see cref="ChatArchiveStore"/>, then reset the shared WebView to a fresh chat — the same
+/// navigation <c>BtnStartNewChat_Click</c>/<c>OpenNewChatFlow</c> already use — so nothing is
+/// silently lost and the old conversation can be found and reopened from the ARCHIVED section.
+/// Git #2323 made <c>OpenNewChatFlow</c> create a genuine new <c>TabDef</c> per chat instead of
+/// always reusing the one seed tab — Archive's own tab-strip cleanup for that multi-tab case (does
+/// archiving a secondary tab remove it, vs. reset-in-place like the seed tab always has?) is a real
+/// gap this exposed, filed separately rather than redesigned here (see build-journal/2323.md).
 /// </summary>
 public partial class MainWindow
 {
@@ -184,6 +186,24 @@ public partial class MainWindow
 
         var left = new StackPanel();
         left.Children.Add(titleStack);
+
+        // Git #2323 — the real anchor picked in OpenNewChatFlow's disclosure (or the honest
+        // "decide later" unanchored state), carried on TabDef.Subtitle. Null for the seed tab and
+        // any chat that predates the anchor flow — no line at all rather than a fabricated one.
+        if (tab.Subtitle != null)
+        {
+            left.Children.Add(new TextBlock
+            {
+                Text = tab.Subtitle,
+                Margin = new Thickness(13, 2, 0, 0),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = (double)FindResource("FontSize.10.5"),
+                Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                ToolTip = tab.Subtitle
+            });
+        }
+
         left.Children.Add(new TextBlock
         {
             Text = label,
