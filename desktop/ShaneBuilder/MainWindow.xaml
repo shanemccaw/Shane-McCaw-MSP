@@ -785,6 +785,14 @@
                                                 Click="BtnToggleDetectedItems_Click">
                                             <TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
                                         </Button>
+                                        <!-- Git #2214 §6.6 — Repo Health mini panel toggle, same mechanism as
+                                             BtnToggleLogPeek/BtnToggleDetectedItems above. -->
+                                        <Button x:Name="BtnToggleRepoHealth" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="Repo Health — Depth / Naming / Stale / Orphan findings"
+                                                Click="BtnToggleRepoHealth_Click">
+                                            <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                                        </Button>
                                         <!-- Git #2209 §10 — the Claude Floaty (⧉) button. Full floaty spec
                                              lives with the #2035/#2059/#2065 chain; what belongs HERE is only
                                              the button + that the floaty and this tab show the SAME conversation
@@ -892,6 +900,7 @@
                                 <ColumnDefinition x:Name="DetectedItemsColumn" Width="0"/>
                                 <ColumnDefinition x:Name="LogPeekColumn" Width="0"/>
                                 <ColumnDefinition x:Name="SqlRunnerColumn" Width="0"/>
+                                <ColumnDefinition x:Name="RepoHealthColumn" Width="0"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Stat detail flyout — Shane's own addition, not in the mockup:
@@ -1065,7 +1074,7 @@
                             <!-- Git #2215 — SQL Runner mini panel (README-ClaudeChat.md §6.7, per
                                  #2215's issue-body paraphrase — the doc itself isn't committed, see
                                  #2227). Same bolt-on-flyout mechanism as StatDetailPanel/
-                                 DetectedItemsPanel/LogPeekPanel above — a 6th single-purpose column.
+                                 DetectedItemsPanel/LogPeekPanel above — a single-purpose column.
                                  Execution logic (Services/SqlRunnerService.cs +
                                  Services/SqlScriptSplitter.cs) is a direct port of BuildConsole's
                                  real, already-working SqlDocumentView/LocalSqlExecutor/
@@ -1212,6 +1221,72 @@
                                                  Foreground="{StaticResource Brush.Claude.Text.Bright}"
                                                  Visibility="Collapsed"/>
                                     </Grid>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Repo Health mini panel — Git #2214 §6.6. Scan line + 4 rule-counter tiles
+                                 (Depth/Naming/Stale/Orphan) + open findings list with checkboxes capped at
+                                 5 selections, already-sent rows locked to "In chat", footer "Send N to this
+                                 chat" writes a real markdown work order into the composer. Same flyout
+                                 mechanism as LogPeekPanel/SqlRunnerPanel above — column 5 since #2215's
+                                 SQL Runner landed concurrently and took column 4. -->
+                            <Border x:Name="RepoHealthPanel" Grid.Column="5" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="300">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <TextBlock Text="&#xE740;" Margin="0,0,10,0" Cursor="Hand"
+                                                           ToolTip="Maximize to the full Repo Health document"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="RepoHealthMaximize_Click"/>
+                                                <TextBlock Text="&#xE711;" Cursor="Hand"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="BtnToggleRepoHealth_Click"/>
+                                            </StackPanel>
+                                            <TextBlock Text="Repo Health" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <Border DockPanel.Dock="Top" Padding="10,8" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,7">
+                                                <TextBlock x:Name="RepoHealthScanLine" DockPanel.Dock="Left" Text="Scanning…"
+                                                           VerticalAlignment="Center"
+                                                           FontFamily="{StaticResource FontFamily.Monospace}" FontSize="9.5"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                                <TextBlock Text="&#xE72C;" Cursor="Hand" HorizontalAlignment="Right"
+                                                           ToolTip="Re-scan"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="RepoHealthRescan_Click"/>
+                                            </DockPanel>
+                                            <UniformGrid x:Name="RepoHealthTiles" Rows="1" Columns="4"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border DockPanel.Dock="Bottom" Padding="10,8" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <Button x:Name="BtnRepoHealthSendToChat" Width="Auto" Height="26" HorizontalAlignment="Stretch"
+                                                Style="{StaticResource PanelCollapseButton}"
+                                                Click="BtnRepoHealthSendToChat_Click">
+                                            <TextBlock x:Name="RepoHealthSendToChatLabel" Text="Send 0 to this chat"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                        </Button>
+                                    </Border>
+
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="RepoHealthFindingsPanel" Margin="8"/>
+                                    </ScrollViewer>
                                 </DockPanel>
                             </Border>
                         </Grid>
@@ -1435,6 +1510,90 @@
                                     </ScrollViewer>
                                 </DockPanel>
                             </Border>
+                        </Grid>
+                    </Grid>
+
+                    <!-- Repo Health — full document, Git #2214 §6.6. Same layout skeleton convention
+                         as GitDoctorDock/LogViewerDock above: header (scan line + rescan + rule tiles)
+                         + 3-pane body (findings list | detail | markdown work-order preview). Real
+                         findings only, from Services/RepoHealthService.cs's live `gh api graphql`
+                         scan of this repo's own open issues — no seeded data. -->
+                    <Grid x:Name="RepoHealthDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,12" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <DockPanel LastChildFill="True">
+                                <Button DockPanel.Dock="Right" x:Name="BtnRepoHealthDocRescan" Content="Re-scan"
+                                        Style="{StaticResource PanelCollapseButton}" Width="Auto" Height="32" Padding="12,0"
+                                        Click="RepoHealthDocRescan_Click"
+                                        Foreground="{StaticResource Brush.Text.Primary}"
+                                        FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11.5}"/>
+                                <UniformGrid DockPanel.Dock="Right" x:Name="RepoHealthDocTiles" Rows="1" Columns="4" Margin="0,0,14,0" Width="440"/>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.Git}"
+                                          Stroke="{StaticResource Brush.Epic.Gate}" Width="18" Height="18" Margin="0,0,12,0"/>
+                                    <StackPanel>
+                                        <TextBlock Text="Repo Health"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                                   FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                   Foreground="{StaticResource Brush.Text.Heading}"/>
+                                        <TextBlock x:Name="RepoHealthDocScanLine" Margin="0,3,0,0"
+                                                   FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10}"
+                                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="320"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Findings list — every open finding, grouped by rule, with the same
+                                 capped-5-checkbox selection as the mini panel (shared state). -->
+                            <Border Grid.Column="0" Background="{StaticResource Brush.Bg.Panel}"
+                                    BorderThickness="0,0,1,0" BorderBrush="{StaticResource Brush.Border.Strong}">
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Top" Padding="11,9" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Border.Card}">
+                                        <TextBlock Text="ALL OPEN FINDINGS"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9}"
+                                                   FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                                    </Border>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="RepoHealthDocFindingsPanel" Margin="6"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Detail + markdown work-order preview -->
+                            <Grid Grid.Column="1">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="RepoHealthDocDetailPanel" Margin="16,14"/>
+                                </ScrollViewer>
+                                <Border Grid.Row="1" Padding="16,10" BorderThickness="0,1,0,0"
+                                        BorderBrush="{StaticResource Brush.Border.Card}">
+                                    <Button x:Name="BtnRepoHealthDocSendToChat" HorizontalAlignment="Right"
+                                            Width="Auto" Height="32" Padding="14,0"
+                                            Style="{StaticResource PanelCollapseButton}"
+                                            Click="BtnRepoHealthSendToChat_Click">
+                                        <TextBlock x:Name="RepoHealthDocSendToChatLabel" Text="Send 0 to this chat"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                                   Foreground="{StaticResource Brush.Text.Primary}"/>
+                                    </Button>
+                                </Border>
+                            </Grid>
                         </Grid>
                     </Grid>
 

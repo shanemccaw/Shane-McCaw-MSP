@@ -422,6 +422,7 @@ public partial class MainWindow : Window
         public bool IsHome { get; }
         public bool IsChat { get; }
         public bool IsGitDoctor { get; }
+        public bool IsRepoHealth { get; }
         public TabKind? Kind { get; }
         public string? Ext { get; }
         public bool IsLogViewer { get; }
@@ -443,13 +444,15 @@ public partial class MainWindow : Window
 
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
-            string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null)
+            string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
+            bool isRepoHealth = false)
         {
             Id = id;
             Title = title;
             IsHome = isHome;
             IsChat = isChat;
             IsGitDoctor = isGitDoctor;
+            IsRepoHealth = isRepoHealth;
             Kind = kind;
             _workspaceIdOverride = workspaceId;
             Ext = ext;
@@ -841,9 +844,10 @@ public partial class MainWindow : Window
         HomeTabContent.Visibility = tab.IsHome ? Visibility.Visible : Visibility.Collapsed;
         ClaudeChatDock.Visibility = tab.IsChat ? Visibility.Visible : Visibility.Collapsed;
         GitDoctorDock.Visibility = tab.IsGitDoctor ? Visibility.Visible : Visibility.Collapsed;
+        RepoHealthDock.Visibility = tab.IsRepoHealth ? Visibility.Visible : Visibility.Collapsed;
         LogViewerDock.Visibility = tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
         MarkdownViewerDock.Visibility = tab.IsMarkdownViewer ? Visibility.Visible : Visibility.Collapsed;
-        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsLogViewer && !tab.IsMarkdownViewer;
+        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -851,6 +855,8 @@ public partial class MainWindow : Window
             RenderClaudeChatContext(tab);
         if (tab.IsGitDoctor)
             _ = EnsureGitDoctorLoadedAsync();
+        if (tab.IsRepoHealth)
+            _ = EnsureRepoHealthLoadedAsync();
         if (tab.IsLogViewer)
             EnsureLogViewerLoaded();
         if (tab.IsMarkdownViewer)
@@ -4463,6 +4469,24 @@ public partial class MainWindow : Window
     private string _gdLookupQueryShown = "";
     private List<(string Cmd, bool Approved)> _gdPlan = new();
 
+    // ══════════════════════════════════════════════════════════════════════
+    // Repo Health — Git #2214 §6.6. Every finding comes from RepoHealthService's
+    // real `gh api graphql` scan of this repo's own open issues (Depth/Naming
+    // rules) plus a real filesystem check (Stale) — no seeded data. The mini
+    // panel (5th ClaudeChatDock flyout column) and the full document (its own
+    // tab) share this same scan + selection state, per §5's tool-writes-to-
+    // composer invariant: "Send N to this chat" calls AppendToComposer, same
+    // as Detected Items' "Promote to Queue".
+    // ══════════════════════════════════════════════════════════════════════
+    private const int RepoHealthMaxSelected = 5;
+    private readonly RepoHealthService _repoHealthService = new();
+    private RepoHealthScan? _rhScan;
+    private bool _rhLoaded;
+    private bool _rhLoading;
+    private bool _repoHealthOpen;
+    private readonly HashSet<string> _rhSelected = new();
+    private readonly HashSet<string> _rhSent = new();
+
     private void OpenGitDoctor()
     {
         if (_tabs.Find(t => t.Id == "gitdoctor") == null)
@@ -5298,6 +5322,13 @@ public partial class MainWindow : Window
         if (_tabs.Find(t => t.Id == "logviewer") == null)
             _tabs.Add(new TabDef("logviewer", "Log Viewer", isLogViewer: true, dot: (Brush)FindResource("Brush.LogSource.Console")));
         SelectTab("logviewer");
+    }
+
+    private void OpenRepoHealth()
+    {
+        if (_tabs.Find(t => t.Id == "repohealth") == null)
+            _tabs.Add(new TabDef("repohealth", "Repo Health", isRepoHealth: true, dot: (Brush)FindResource("Brush.Epic.Gate")));
+        SelectTab("repohealth");
     }
 
     private void EnsureLogViewerLoaded()
@@ -6563,4 +6594,289 @@ public partial class MainWindow : Window
 
     private static string SqlRunnerEscapeCsvCell(string value) =>
         value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
+
+    // ── Repo Health — mini panel (5th ClaudeChatDock flyout column) ─────────
+    private void BtnToggleRepoHealth_Click(object sender, RoutedEventArgs e)
+    {
+        _repoHealthOpen = !_repoHealthOpen;
+        RepoHealthColumn.Width = new GridLength(_repoHealthOpen ? 300 : 0);
+        if (_repoHealthOpen) _ = EnsureRepoHealthScanAsync();
+    }
+
+    private void RepoHealthMaximize_Click(object sender, MouseButtonEventArgs e)
+    {
+        _repoHealthOpen = false;
+        RepoHealthColumn.Width = new GridLength(0);
+        OpenRepoHealth();
+    }
+
+    private void RepoHealthRescan_Click(object sender, MouseButtonEventArgs e) => _ = RunRepoHealthScanAsync();
+    private void RepoHealthDocRescan_Click(object sender, RoutedEventArgs e) => _ = RunRepoHealthScanAsync();
+
+    private async Task EnsureRepoHealthLoadedAsync()
+    {
+        await EnsureRepoHealthScanAsync();
+        RenderRepoHealthDoc();
+    }
+
+    private async Task EnsureRepoHealthScanAsync()
+    {
+        if (_rhLoaded || _rhLoading) { RenderRepoHealth(); RenderRepoHealthDoc(); return; }
+        await RunRepoHealthScanAsync();
+    }
+
+    private async Task RunRepoHealthScanAsync()
+    {
+        _rhLoading = true;
+        RepoHealthScanLine.Text = "Scanning…";
+        RepoHealthDocScanLine.Text = "Scanning…";
+        _rhScan = await _repoHealthService.RunScanAsync();
+        _rhLoaded = true;
+        _rhLoading = false;
+        RenderRepoHealth();
+        RenderRepoHealthDoc();
+    }
+
+    private string RepoHealthScanLineText()
+    {
+        if (_rhScan == null) return "Scanning…";
+        if (!_rhScan.GitHubReachable) return $"GitHub unreachable — {_rhScan.GitHubError}";
+        return $"Scanned {_rhScan.ScanTime.ToLocalTime():HH:mm:ss} · {_rhScan.Total} finding{(_rhScan.Total == 1 ? "" : "s")}";
+    }
+
+    private void RenderRepoHealth()
+    {
+        RepoHealthScanLine.Text = RepoHealthScanLineText();
+        RenderRepoHealthTiles(RepoHealthTiles);
+        RenderRepoHealthFindingsList(RepoHealthFindingsPanel);
+        UpdateRepoHealthSendLabel();
+    }
+
+    private static readonly (RepoHealthRule Rule, string Desc)[] RepoHealthRuleDescriptions =
+    {
+        (RepoHealthRule.Depth, "More than 3 ancestor levels above an open issue — a parent-chain walk (subIssuesSummary + parent) same as this session's own manual audit."),
+        (RepoHealthRule.Naming, "An issue with real sub-issues (epic-shaped) whose title isn't prefixed \"Epic: \" — this repo's own naming convention."),
+        (RepoHealthRule.Stale, "An issue body references a backtick-quoted repo path that no longer exists in this checkout."),
+        (RepoHealthRule.Orphan, "An open issue whose direct parent is CLOSED."),
+    };
+
+    private void RenderRepoHealthDoc()
+    {
+        RepoHealthDocScanLine.Text = RepoHealthScanLineText();
+        RenderRepoHealthTiles(RepoHealthDocTiles);
+        RenderRepoHealthDocFindingsList();
+        RenderRepoHealthDocDetail();
+        UpdateRepoHealthSendLabel();
+    }
+
+    private void RenderRepoHealthDocDetail()
+    {
+        RepoHealthDocDetailPanel.Children.Clear();
+        RepoHealthDocDetailPanel.Children.Add(new TextBlock
+        {
+            Text = "THE FOUR RULES", Margin = new Thickness(0, 0, 0, 10),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10,
+            FontWeight = FontWeights.ExtraBold,
+            Foreground = (Brush)FindResource("Brush.Text.Dim"),
+        });
+        foreach (var (rule, desc) in RepoHealthRuleDescriptions)
+        {
+            var block = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
+            block.Children.Add(new TextBlock
+            {
+                Text = $"{RuleLabel(rule)} — {_rhScan?.Count(rule) ?? 0} open",
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 12,
+                FontWeight = FontWeights.Bold,
+                Foreground = (Brush)FindResource("Brush.Text.Heading"),
+            });
+            block.Children.Add(new TextBlock
+            {
+                Text = desc, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10.5,
+                Foreground = (Brush)FindResource("Brush.Text.Dim"),
+            });
+            RepoHealthDocDetailPanel.Children.Add(block);
+        }
+    }
+
+    private void RenderRepoHealthTiles(UniformGrid target)
+    {
+        target.Children.Clear();
+        foreach (var rule in new[] { RepoHealthRule.Depth, RepoHealthRule.Naming, RepoHealthRule.Stale, RepoHealthRule.Orphan })
+        {
+            int count = _rhScan?.Count(rule) ?? 0;
+            var tile = new Border
+            {
+                Margin = new Thickness(2), Padding = new Thickness(6, 4, 6, 4), CornerRadius = new CornerRadius(6),
+                Background = (Brush)FindResource("Brush.Claude.Bg.Button"),
+                BorderBrush = count > 0 ? (Brush)FindResource("Brush.Epic.Gate") : (Brush)FindResource("Brush.Claude.Border"),
+                BorderThickness = new Thickness(1),
+            };
+            var stack = new StackPanel();
+            stack.Children.Add(new TextBlock
+            {
+                Text = count.ToString(), HorizontalAlignment = HorizontalAlignment.Center,
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 14,
+                FontWeight = FontWeights.ExtraBold,
+                Foreground = count > 0 ? (Brush)FindResource("Brush.Epic.Gate") : (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            stack.Children.Add(new TextBlock
+            {
+                Text = RuleLabel(rule), HorizontalAlignment = HorizontalAlignment.Center,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 8.5,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            tile.Child = stack;
+            target.Children.Add(tile);
+        }
+    }
+
+    private static string RuleLabel(RepoHealthRule rule) => rule switch
+    {
+        RepoHealthRule.Depth => "DEPTH",
+        RepoHealthRule.Naming => "NAMING",
+        RepoHealthRule.Stale => "STALE",
+        RepoHealthRule.Orphan => "ORPHAN",
+        _ => rule.ToString().ToUpperInvariant(),
+    };
+
+    private void RenderRepoHealthFindingsList(StackPanel target)
+    {
+        target.Children.Clear();
+
+        if (_rhScan != null && !_rhScan.GitHubReachable)
+        {
+            target.Children.Add(new TextBlock
+            {
+                Text = $"GitHub unreachable: {_rhScan.GitHubError}", TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            return;
+        }
+
+        var findings = _rhScan?.Findings ?? new List<RepoHealthFinding>();
+        if (findings.Count == 0)
+        {
+            target.Children.Add(new TextBlock
+            {
+                Text = _rhLoaded ? "No open findings — repo is clean." : "Not scanned yet.",
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            return;
+        }
+
+        // "pick next 5" — a convenience link that fills the remaining selection slots (up to the
+        // 5-selection cap) with the next not-yet-sent, not-yet-selected findings, top to bottom.
+        var pickNext = new TextBlock
+        {
+            Text = "pick next 5", Cursor = Cursors.Hand, Margin = new Thickness(0, 0, 0, 6),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+            FontWeight = FontWeights.Bold,
+            Foreground = (Brush)FindResource("Brush.Claude.Accent"),
+        };
+        pickNext.MouseLeftButtonDown += (s, e) => PickNextRepoHealthFindings(findings);
+        target.Children.Add(pickNext);
+
+        foreach (var f in findings)
+        {
+            bool sent = _rhSent.Contains(f.Id);
+            var row = new Border
+            {
+                Margin = new Thickness(0, 0, 0, 6), Padding = new Thickness(8, 6, 8, 6), CornerRadius = new CornerRadius(6),
+                Background = (Brush)FindResource("Brush.Claude.Bg.Button"),
+                Opacity = sent ? 0.55 : 1.0,
+            };
+            var dock = new DockPanel();
+
+            if (sent)
+            {
+                var inChat = new TextBlock
+                {
+                    Text = "In chat",
+                    FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+                };
+                DockPanel.SetDock(inChat, Dock.Right);
+                dock.Children.Add(inChat);
+            }
+            else
+            {
+                var cb = new CheckBox { IsChecked = _rhSelected.Contains(f.Id), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 1, 8, 0) };
+                DockPanel.SetDock(cb, Dock.Left);
+                cb.Checked += (s, e) => { if (_rhSelected.Count >= RepoHealthMaxSelected) { cb.IsChecked = false; ToastEngine.Show("Repo Health", $"Cap is {RepoHealthMaxSelected} selections at a time.", ToastKind.Warning); return; } _rhSelected.Add(f.Id); UpdateRepoHealthSendLabel(); };
+                cb.Unchecked += (s, e) => { _rhSelected.Remove(f.Id); UpdateRepoHealthSendLabel(); };
+                dock.Children.Add(cb);
+            }
+
+            var body = new StackPanel();
+            body.Children.Add(new TextBlock
+            {
+                Text = $"[{f.RuleLabel}] #{f.Number} {f.Title}", TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+            });
+            body.Children.Add(new TextBlock
+            {
+                Text = f.Evidence, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 2, 0, 0),
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+            dock.Children.Add(body);
+
+            row.Child = dock;
+            target.Children.Add(row);
+        }
+    }
+
+    private void RenderRepoHealthDocFindingsList() => RenderRepoHealthFindingsList(RepoHealthDocFindingsPanel);
+
+    private void PickNextRepoHealthFindings(List<RepoHealthFinding> findings)
+    {
+        foreach (var f in findings)
+        {
+            if (_rhSelected.Count >= RepoHealthMaxSelected) break;
+            if (_rhSent.Contains(f.Id) || _rhSelected.Contains(f.Id)) continue;
+            _rhSelected.Add(f.Id);
+        }
+        RenderRepoHealth();
+        RenderRepoHealthDoc();
+    }
+
+    private void UpdateRepoHealthSendLabel()
+    {
+        var text = $"Send {_rhSelected.Count} to this chat";
+        if (RepoHealthSendToChatLabel != null) RepoHealthSendToChatLabel.Text = text;
+        if (RepoHealthDocSendToChatLabel != null) RepoHealthDocSendToChatLabel.Text = text;
+    }
+
+    // The real markdown work order: one bullet per selected finding, with its real evidence, plus
+    // the closing instruction distinguishing directly-fixable (Depth/Naming) from must-be-reported
+    // (Stale) findings — exactly the issue body's own footer contract.
+    private void BtnRepoHealthSendToChat_Click(object sender, RoutedEventArgs e)
+    {
+        var findings = _rhScan?.Findings ?? new List<RepoHealthFinding>();
+        var selected = findings.Where(f => _rhSelected.Contains(f.Id)).ToList();
+        if (selected.Count == 0) { ToastEngine.Show("Repo Health", "Nothing selected.", ToastKind.Warning); return; }
+
+        var bullets = string.Join("\n", selected.Select(f => $"- [{f.RuleLabel}] #{f.Number} {f.Title} — {f.Evidence}"));
+        bool anyStale = selected.Any(f => f.Rule == RepoHealthRule.Stale);
+        bool anyFixable = selected.Any(f => f.FixableDirectly);
+        var closing = anyFixable && anyStale
+            ? "Depth and Naming findings above may be fixed directly (retitle / re-parent). Stale references must be reported as a new issue, not closed — the referenced path may simply have moved."
+            : anyStale
+                ? "Stale references must be reported as a new issue, not closed — the referenced path may simply have moved."
+                : "Depth and Naming findings above may be fixed directly (retitle / re-parent).";
+
+        var md = $"**Repo Health — {selected.Count} finding{(selected.Count == 1 ? "" : "s")}**\n\n{bullets}\n\n{closing}";
+        AppendToComposer(md);
+
+        foreach (var f in selected) { _rhSent.Add(f.Id); _rhSelected.Remove(f.Id); }
+        RenderRepoHealth();
+        RenderRepoHealthDoc();
+        ToastEngine.Show("Repo Health", $"{selected.Count} finding(s) written into the composer — review, then Send.", ToastKind.Info);
+    }
 }
