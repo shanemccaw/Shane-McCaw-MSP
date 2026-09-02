@@ -7419,6 +7419,34 @@ export const portalChangeControlPolicyTable = pgTable("portal_change_control_pol
 export type PortalChangeControlPolicy = typeof portalChangeControlPolicyTable.$inferSelect;
 export type InsertPortalChangeControlPolicy = typeof portalChangeControlPolicyTable.$inferInsert;
 
+/** The two enforcement levels for the RACI acceptance gate (#2162, redo of
+ *  #1518). "strict" is #1518's original behaviour — every A/R cell must be
+ *  accepted before it counts. "loose" (the default) is the pre-gate de facto
+ *  behaviour — an assignment is effective immediately, no acceptance step. */
+export const OWNERSHIP_GATE_MODES = ["strict", "loose"] as const;
+export type OwnershipGateMode = (typeof OWNERSHIP_GATE_MODES)[number];
+
+/**
+ * Per-customer enforcement level for the Ownership/RACI acceptance gate
+ * (#2162). No row for a customer means "loose" — the default is computed at
+ * read time, not backfilled, so this table starts empty for every existing
+ * customer and changes nothing about their current behaviour until they
+ * opt in to strict.
+ */
+export const portalOwnershipPolicyTable = pgTable("portal_ownership_policy", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the tables above. */
+  customerId: integer("customer_id").notNull(),
+  gateMode: text("gate_mode", { enum: OWNERSHIP_GATE_MODES }).notNull().default("loose"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("portal_ownership_policy_customer_id_idx").on(t.customerId),
+]);
+
+export type PortalOwnershipPolicy = typeof portalOwnershipPolicyTable.$inferSelect;
+export type InsertPortalOwnershipPolicy = typeof portalOwnershipPolicyTable.$inferInsert;
+
 // #1759 removed `portal_change_control_approvers` (the `CC_APPROVER_BANDS`
 // `normal`/`emergency` stored approver set). Approver eligibility now derives
 // live from `users.can_approve_changes`; see the block comment above and
