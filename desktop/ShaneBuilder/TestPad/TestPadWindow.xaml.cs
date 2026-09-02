@@ -353,6 +353,10 @@ namespace ShaneBuilder
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(0, 4, 6, 4),
                 Cursor = note.IsSent ? Cursors.Arrow : Cursors.Hand,
+                // Git #2463 — the click-to-edit lock (#2336) had no affordance explaining WHY a
+                // sent row doesn't respond to a click; an unsent row needs none since the pointer
+                // cursor already implies it.
+                ToolTip = note.IsSent ? "Sent — locked from editing" : null,
             };
             textLine.Children.Add(new TextBlock
             {
