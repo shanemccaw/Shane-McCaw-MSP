@@ -676,6 +676,12 @@
                                                        FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
                                                        Foreground="{StaticResource Brush.Text.Muted}"/>
                                         </Button>
+                                        <Button x:Name="BtnToggleLogPeek" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="Log Peek — live tail of the 9 log sources"
+                                                Click="BtnToggleLogPeek_Click">
+                                            <TextBlock Text="&#xE81C;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                                        </Button>
                                         <Button x:Name="BtnToggleDetectedItems" Style="{StaticResource PanelCollapseButton}"
                                                 Margin="8,0,0,0"
                                                 ToolTip="Detected items (tasks, todos, git issues) from this chat"
@@ -713,6 +719,7 @@
                                 <ColumnDefinition x:Name="StatDetailColumn" Width="0"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition x:Name="DetectedItemsColumn" Width="0"/>
+                                <ColumnDefinition x:Name="LogPeekColumn" Width="0"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Stat detail flyout — Shane's own addition, not in the mockup:
@@ -804,6 +811,74 @@
                                                Text="Nothing caught yet — keep talking."
                                                FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
                                                Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Log Peek — Step 10 (wpf-handoff/readme-phase2.md), the chat
+                                 document's own tool-panel flyout. Shares LogService/state with
+                                 the full Log Viewer document (RenderLogPeek / RenderLogViewer
+                                 both read the same _log* fields) rather than owning a second
+                                 copy — "two surfaces, one state" per the spec. Bolted on as a
+                                 4th single-purpose flyout column, same mechanism as
+                                 StatDetailPanel/DetectedItemsPanel above; Step 9's generic
+                                 multi-tool tool-belt (docs/Toolbelt.md) is real design but not
+                                 yet built in code (real audit, Git #2200), so this follows the
+                                 precedent already set rather than building that first. -->
+                            <Border x:Name="LogPeekPanel" Grid.Column="3" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="280">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <TextBlock Text="&#xE740;" Margin="0,0,10,0" Cursor="Hand"
+                                                           ToolTip="Maximize to the full Log Viewer"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="LogPeekMaximize_Click"/>
+                                                <TextBlock Text="&#xE711;" Cursor="Hand"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="BtnToggleLogPeek_Click"/>
+                                            </StackPanel>
+                                            <TextBlock Text="Log Peek" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <Border DockPanel.Dock="Top" Padding="10,8" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <StackPanel>
+                                            <StackPanel x:Name="LogPeekSourceChips" Orientation="Horizontal" Margin="0,0,0,7"/>
+                                            <StackPanel x:Name="LogPeekStreamSwitch" Orientation="Horizontal" Margin="0,0,0,7"/>
+                                            <TextBox x:Name="LogPeekSearchBox" Height="26" Padding="6,0"
+                                                     VerticalContentAlignment="Center"
+                                                     Background="{StaticResource Brush.Claude.Bg.Button}"
+                                                     BorderBrush="{StaticResource Brush.Claude.Border}"
+                                                     Foreground="{StaticResource Brush.Claude.Text.Bright}"
+                                                     FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10.5}"
+                                                     Tag="Search…"
+                                                     TextChanged="LogPeekSearchBox_TextChanged"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Border DockPanel.Dock="Bottom" Padding="10,8" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <Button x:Name="BtnLogPeekSendToChat" Width="Auto" Height="26" HorizontalAlignment="Stretch"
+                                                Style="{StaticResource PanelCollapseButton}"
+                                                Click="BtnLogPeekSendToChat_Click">
+                                            <TextBlock x:Name="LogPeekSendToChatLabel" Text="Send 0 to chat"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                        </Button>
+                                    </Border>
+
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="LogPeekLinesPanel" Margin="8"/>
+                                    </ScrollViewer>
                                 </DockPanel>
                             </Border>
                         </Grid>
@@ -962,6 +1037,197 @@
 
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                                         <StackPanel x:Name="GitDoctorLogPanel" Margin="11,8"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
+
+                    <!-- Log Viewer — Step 10 (wpf-handoff/readme-phase2.md), corrected by
+                         issue #2200's 2026-09-02 comment (per-source level handling, not one
+                         uniform InferLevel pass). Header (streaming 3-way switch + status
+                         pill) + left rail (Sources/Archive) | center stream | right inspector,
+                         same layout skeleton convention as GitDoctorDock above — a static XAML
+                         shell with named panels populated in code-behind (RenderLogViewer*).
+                         Step 9's Tab Workspaces (a "Logs" workspace grouping) is real design
+                         but not yet built in code (real audit, Git #2200), so this bolts on as
+                         its own document exactly like Git Doctor did before it, rather than
+                         waiting on that grouping infrastructure. -->
+                    <Grid x:Name="LogViewerDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,10" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <DockPanel LastChildFill="True">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <StackPanel x:Name="LogViewerStreamSwitch" Orientation="Horizontal" Margin="0,0,10,0"/>
+                                    <TextBlock x:Name="LogViewerStatusPill" VerticalAlignment="Center" Padding="8,3"
+                                               FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10}"
+                                               FontWeight="{StaticResource FontWeight.Bold}"
+                                               Foreground="{StaticResource Brush.Text.Dim}"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse Width="10" Height="10" Margin="0,0,12,0" Fill="{StaticResource Brush.LogSource.Console}"/>
+                                    <TextBlock Text="Log Viewer"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                               FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                               Foreground="{StaticResource Brush.Text.Heading}"/>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="240"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="280"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Left rail — Sources / Archive tabs -->
+                            <Border Grid.Column="0" Background="{StaticResource Brush.Bg.Panel}"
+                                    BorderThickness="0,0,1,0" BorderBrush="{StaticResource Brush.Border.Strong}">
+                                <DockPanel>
+                                    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="8,8,8,0">
+                                        <Button x:Name="BtnLogViewerRailSources" Content="Sources" Width="Auto" Height="26" Padding="10,0" Margin="0,0,4,0"
+                                                Style="{StaticResource PanelCollapseButton}" Click="BtnLogViewerRailSources_Click"
+                                                FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"/>
+                                        <Button x:Name="BtnLogViewerRailArchive" Content="Archive" Width="Auto" Height="26" Padding="10,0"
+                                                Style="{StaticResource PanelCollapseButton}" Click="BtnLogViewerRailArchive_Click"
+                                                FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"/>
+                                    </StackPanel>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="LogViewerRailContent" Margin="8"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Center — filter bar + scrubber + stream -->
+                            <DockPanel Grid.Column="1">
+                                <Border x:Name="LogViewerArchiveBanner" DockPanel.Dock="Top" Visibility="Collapsed"
+                                        Padding="14,8" Background="{StaticResource Brush.Gate.Bg}"
+                                        BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Gate.Border}">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Text="Back to live sources" Cursor="Hand"
+                                                   MouseLeftButtonDown="LogViewerCloseArchiveBanner_Click"
+                                                   Foreground="{StaticResource Brush.Gate.Accent}"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                   FontWeight="{StaticResource FontWeight.Bold}"/>
+                                        <TextBlock x:Name="LogViewerArchiveBannerText"
+                                                   FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10.5}"
+                                                   Foreground="{StaticResource Brush.Gate.Accent}"/>
+                                    </DockPanel>
+                                </Border>
+
+                                <Border DockPanel.Dock="Top" Padding="12,10" BorderThickness="0,0,0,1"
+                                        BorderBrush="{StaticResource Brush.Border.Card}">
+                                    <StackPanel>
+                                        <Grid Margin="0,0,0,7">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="180"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBox x:Name="LogViewerSearchBox" Grid.Column="0" Height="28" Padding="8,0" Margin="0,0,6,0"
+                                                     VerticalContentAlignment="Center"
+                                                     Background="{StaticResource Brush.Bg.Card}"
+                                                     BorderBrush="{StaticResource Brush.Border.Card}"
+                                                     Foreground="{StaticResource Brush.Text.Heading}"
+                                                     FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.11.5}"
+                                                     Tag="Search (plain text)…"
+                                                     TextChanged="LogViewerSearchBox_TextChanged"/>
+                                            <Button x:Name="BtnLogViewerRegex" Grid.Column="1" Content=".*" Width="30" Height="28" Margin="0,0,6,0"
+                                                    Style="{StaticResource PanelCollapseButton}" Click="BtnLogViewerRegex_Click"
+                                                    ToolTip="Treat search as a regular expression"
+                                                    FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.11}"/>
+                                            <TextBox x:Name="LogViewerExcludeBox" Grid.Column="2" Height="28" Padding="8,0"
+                                                     VerticalContentAlignment="Center"
+                                                     Background="{StaticResource Brush.Bg.Card}"
+                                                     BorderBrush="{StaticResource Brush.Border.Card}"
+                                                     Foreground="{StaticResource Brush.Alert.Danger.Border}"
+                                                     FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.11}"
+                                                     Tag="exclude, comma, separated…"
+                                                     TextChanged="LogViewerExcludeBox_TextChanged"/>
+                                        </Grid>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                                            <Button x:Name="BtnLogViewerHighlight" Content="HIGHLIGHT" Height="24" Padding="10,0" Margin="0,0,10,0"
+                                                    Style="{StaticResource PanelCollapseButton}" Width="Auto"
+                                                    Click="BtnLogViewerHighlight_Click"
+                                                    FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9}"
+                                                    FontWeight="{StaticResource FontWeight.ExtraBold}"/>
+                                            <StackPanel x:Name="LogViewerSavedFilters" Orientation="Horizontal" Margin="0,0,10,0"/>
+                                            <TextBlock Text="save current" Cursor="Hand" VerticalAlignment="Center"
+                                                       MouseLeftButtonDown="LogViewerSaveCurrentFilter_Click"
+                                                       Foreground="{StaticResource Brush.Claude.Accent}"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"/>
+                                        </StackPanel>
+
+                                        <StackPanel x:Name="LogViewerLevelPills" Orientation="Horizontal" Margin="0,0,0,7"/>
+
+                                        <DockPanel>
+                                            <TextBlock x:Name="LogViewerScrubberReadout" DockPanel.Dock="Right" Margin="8,0,0,0" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.9.5}"
+                                                       Foreground="{StaticResource Brush.Text.Dim}"/>
+                                            <Slider x:Name="LogViewerScrubber" Minimum="0" Maximum="1440" Value="0"
+                                                    ValueChanged="LogViewerScrubber_ValueChanged"
+                                                    ToolTip="History scrubber — minutes back from now"/>
+                                        </DockPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="LogViewerLinesPanel" Margin="10,6"/>
+                                </ScrollViewer>
+                            </DockPanel>
+
+                            <!-- Right inspector -->
+                            <Border Grid.Column="2" Background="{StaticResource Brush.Bg.Panel}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Border.Strong}">
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Top" Padding="11,9" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Border.Card}">
+                                        <StackPanel>
+                                            <TextBlock Text="ACTIVE FILTERS" Margin="0,0,0,6"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9}"
+                                                       FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                       Foreground="{StaticResource Brush.Text.Dim}"/>
+                                            <WrapPanel x:Name="LogViewerFilterChips"/>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <ScrollViewer DockPanel.Dock="Top" MaxHeight="260" VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="LogViewerLineDetail" Margin="11,9"/>
+                                    </ScrollViewer>
+
+                                    <Border DockPanel.Dock="Bottom" Padding="11,9" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Border.Card}">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,7">
+                                                <TextBlock DockPanel.Dock="Left" Text="SCRATCH PAD" VerticalAlignment="Center"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9}"
+                                                           FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                           Foreground="{StaticResource Brush.Text.Dim}"/>
+                                                <TextBlock x:Name="LogViewerScratchCopy" Text="copy" HorizontalAlignment="Right" Cursor="Hand"
+                                                           Margin="0,0,10,0"
+                                                           MouseLeftButtonDown="LogViewerScratchCopy_Click"
+                                                           Foreground="{StaticResource Brush.Claude.Accent}"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                                           FontWeight="{StaticResource FontWeight.Bold}"/>
+                                                <TextBlock x:Name="LogViewerScratchSendToChat" Text="send to chat" HorizontalAlignment="Right" Cursor="Hand"
+                                                           MouseLeftButtonDown="LogViewerScratchSendToChat_Click"
+                                                           Foreground="{StaticResource Brush.Claude.Accent}"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                                           FontWeight="{StaticResource FontWeight.Bold}"/>
+                                            </DockPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="LogViewerScratchPad" Margin="11,8"/>
                                     </ScrollViewer>
                                 </DockPanel>
                             </Border>

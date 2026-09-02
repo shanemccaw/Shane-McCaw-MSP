@@ -171,4 +171,29 @@
     <SolidColorBrush x:Key="Brush.Toast.Warning" Color="#E2984A"/>
     <SolidColorBrush x:Key="Brush.Toast.Error" Color="#E8746F"/>
 
+    <!-- 13. Log Viewer (Step 10, Git #2200) — source dot colours and level
+         pill colours, both ported verbatim from the real handoff mockup
+         (wpf-handoff/wpf-handoff/Shell Skeleton v2.html, LOG_SRC / LOG_LEVELS
+         constants ~line 4383) rather than invented. Level colours double as
+         the "real" (platform_log_stream) badge tone; an INFERRED badge (see
+         Services/LogService.cs's InferLevel) uses the same hue but an
+         outline/dashed treatment in the UI, never a solid fill, so a guess
+         never reads with the same confidence as a real level. -->
+    <SolidColorBrush x:Key="Brush.LogSource.Marketing" Color="#4F8FF0"/>
+    <SolidColorBrush x:Key="Brush.LogSource.Portal" Color="#00B4D8"/>
+    <SolidColorBrush x:Key="Brush.LogSource.Admin" Color="#A374EA"/>
+    <SolidColorBrush x:Key="Brush.LogSource.Api" Color="#E2593F"/>
+    <SolidColorBrush x:Key="Brush.LogSource.Sql" Color="#38BDF8"/>
+    <SolidColorBrush x:Key="Brush.LogSource.Build" Color="#E2B039"/>
+    <SolidColorBrush x:Key="Brush.LogSource.Ssh" Color="#7FB08A"/>
+    <SolidColorBrush x:Key="Brush.LogSource.Terminal" Color="#6EE7B7"/>
+    <SolidColorBrush x:Key="Brush.LogSource.Console" Color="#8FA7C4"/>
+
+    <SolidColorBrush x:Key="Brush.LogLevel.Trace" Color="#576069"/>
+    <SolidColorBrush x:Key="Brush.LogLevel.Debug" Color="#8FA7C4"/>
+    <SolidColorBrush x:Key="Brush.LogLevel.Info" Color="#7FB08A"/>
+    <SolidColorBrush x:Key="Brush.LogLevel.Warn" Color="#E2B039"/>
+    <SolidColorBrush x:Key="Brush.LogLevel.Error" Color="#E2593F"/>
+    <SolidColorBrush x:Key="Brush.LogLevel.Fatal" Color="#E2678A"/>
+
 </ResourceDictionary>
