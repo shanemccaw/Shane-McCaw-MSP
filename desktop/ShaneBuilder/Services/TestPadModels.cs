@@ -29,4 +29,11 @@ public sealed class TestPadNote
     // Git #2333 — per-note selection state for the notes list (bulk copy-as-markdown #2339 and
     // "Send to Claude" #2337 will read this same flag rather than each inventing their own).
     public bool IsSelected { get; set; }
+
+    // Git #2340/#2341 — a note can carry one attached shot (full "arm next note; droppable
+    // thumbnail" attach UI is #2340's own scope; this field is the plumbing #2342's Paste Tray
+    // needs to exist at all). Null for the overwhelming majority of notes, which never attach a
+    // shot. A local file path on disk, not embedded image bytes — the tray loads it lazily per
+    // note (#2342) rather than this record holding decoded bitmaps for every note in memory.
+    public string? ImagePath { get; set; }
 }
