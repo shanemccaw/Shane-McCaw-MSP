@@ -1,4 +1,5 @@
 using System;
+using System.Windows.Media.Imaging;
 using ShaneBuilder.Services.TestPad;
 
 namespace ShaneBuilder.Services;
@@ -29,4 +30,11 @@ public sealed class TestPadNote
     // Git #2333 — per-note selection state for the notes list (bulk copy-as-markdown #2339 and
     // "Send to Claude" #2337 will read this same flag rather than each inventing their own).
     public bool IsSelected { get; set; }
+
+    // Git #2340 — "Attach shot" (the composer chip) arms this flag on the note it's about to file
+    // rather than the image itself, so the note renders a droppable thumbnail slot immediately even
+    // before anything's been dropped onto it. <see cref="ShotImage"/> is filled in later by that
+    // drop (or, once #2341/#2342 land, by the Paste Tray) — both write to this same slot.
+    public bool HasShotSlot { get; set; }
+    public BitmapSource? ShotImage { get; set; }
 }

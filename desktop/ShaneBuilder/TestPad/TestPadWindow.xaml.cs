@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using ShaneBuilder.Services;
 using ShaneBuilder.Services.TestPad;
 
@@ -49,12 +52,17 @@ namespace ShaneBuilder
         /// for editing; null when the composer's next Enter files a brand-new note instead.</summary>
         private string? _editingNoteId;
 
+        // Git #2340 — true while "Attach shot" is armed. Consumed (and reset) the moment the next
+        // brand-new note is filed; toggling the chip again before then disarms it without filing
+        // anything.
+        private bool _shotArmed;
+
         public TestPadWindow()
         {
             InitializeComponent();
             WindowStartupLocation = WindowStartupLocation.Manual;
             SizeChanged += (_, _) => Reposition();
-            Loaded += (_, _) => { Reposition(); ForceTopmost(); Render(); };
+            Loaded += (_, _) => { Reposition(); ForceTopmost(); Render(); RenderShotChip(); };
             Deactivated += (_, _) => ForceTopmost();
 
             TypeChips.TargetTextBox = ComposerBox;
@@ -78,6 +86,25 @@ namespace ShaneBuilder
         {
             _groupByFeature = !_groupByFeature;
             Render();
+        }
+
+        /// <summary>Git #2340 — toggles the arm. Doesn't touch any existing note; it only decides
+        /// whether the NEXT brand-new note filed gets a shot slot.</summary>
+        private void AttachShotChip_Click(object sender, MouseButtonEventArgs e)
+        {
+            _shotArmed = !_shotArmed;
+            RenderShotChip();
+        }
+
+        private void RenderShotChip()
+        {
+            var brush = _shotArmed
+                ? (Brush)FindResource("Brush.Accent.Primary")
+                : (Brush)FindResource("Brush.Text.Muted");
+            AttachShotIcon.Foreground = brush;
+            AttachShotLabel.Foreground = brush;
+            AttachShotLabel.Text = _shotArmed ? " Attach shot — armed" : " Attach shot";
+            AttachShotChip.BorderBrush = _shotArmed ? brush : (Brush)FindResource("Brush.Border.Default");
         }
 
         private void ComposerBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -112,7 +139,15 @@ namespace ShaneBuilder
             }
             else
             {
-                TestPadService.AddNote(new TestPadNote { Text = text, Type = type });
+                var note = new TestPadNote { Text = text, Type = type };
+                if (_shotArmed)
+                {
+                    // Git #2340 — the arm is consumed by THIS note, not carried forward.
+                    note.HasShotSlot = true;
+                    _shotArmed = false;
+                    RenderShotChip();
+                }
+                TestPadService.AddNote(note);
             }
 
             CancelEdit();
@@ -314,8 +349,135 @@ namespace ShaneBuilder
             Grid.SetColumn(delete, 3);
             grid.Children.Add(delete);
 
-            root.Child = grid;
+            if (!note.HasShotSlot)
+            {
+                root.Child = grid;
+                return root;
+            }
+
+            // Git #2340 — this note was filed with "Attach shot" armed, so it carries a droppable
+            // thumbnail slot underneath its text regardless of whether a shot has landed on it yet.
+            var stack = new StackPanel();
+            stack.Children.Add(grid);
+            stack.Children.Add(BuildShotThumb(note));
+            root.Child = stack;
             return root;
+        }
+
+        /// <summary>Git #2340 — the droppable thumbnail slot for a note filed with "Attach shot"
+        /// armed. Empty (a camera glyph placeholder) until an image is dropped onto it; a real drop
+        /// paints the actual image and locks in as the note's attached shot. Sending notes with
+        /// shots (#2341) and the Paste Tray (#2342) are separate, not-yet-built issues — this only
+        /// covers the drop-target half.</summary>
+        private UIElement BuildShotThumb(TestPadNote note)
+        {
+            var thumb = new Border
+            {
+                Width = 44,
+                Height = 44,
+                Margin = new Thickness(24, 0, 0, 6),
+                CornerRadius = new CornerRadius(6),
+                Background = (Brush)FindResource("Brush.Bg.Chip"),
+                BorderBrush = (Brush)FindResource("Brush.Border.Default"),
+                BorderThickness = new Thickness(1),
+                AllowDrop = true,
+                ToolTip = note.ShotImage == null
+                    ? "Drop an image here to attach a shot"
+                    : "Attached shot",
+            };
+
+            thumb.Child = note.ShotImage != null
+                ? new Image { Source = note.ShotImage, Stretch = Stretch.UniformToFill }
+                : new TextBlock
+                {
+                    Text = "",
+                    FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                    FontSize = 14,
+                    Foreground = (Brush)FindResource("Brush.Text.Dim"),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+
+            thumb.DragEnter += (_, e) => SetDropEffect(e);
+            thumb.DragOver += (_, e) => SetDropEffect(e);
+            thumb.Drop += (_, e) =>
+            {
+                var image = ExtractDroppedImage(e.Data);
+                if (image == null)
+                {
+                    return;
+                }
+                note.ShotImage = image;
+                TestPadService.NotifyMutated();
+            };
+
+            return thumb;
+        }
+
+        private static void SetDropEffect(DragEventArgs e)
+        {
+            e.Effects = HasImageData(e.Data) ? DragDropEffects.Copy : DragDropEffects.None;
+            e.Handled = true;
+        }
+
+        private static bool HasImageData(IDataObject data)
+        {
+            if (data.GetDataPresent(DataFormats.Bitmap))
+            {
+                return true;
+            }
+            if (!data.GetDataPresent(DataFormats.FileDrop))
+            {
+                return false;
+            }
+            return data.GetData(DataFormats.FileDrop) is string[] paths && paths.Any(IsImageFile);
+        }
+
+        private static bool IsImageFile(string path)
+        {
+            var ext = Path.GetExtension(path).ToLowerInvariant();
+            return ext is ".png" or ".jpg" or ".jpeg" or ".gif" or ".bmp";
+        }
+
+        /// <summary>Reads whatever image the OS drop actually carried — a dropped file (Explorer,
+        /// most browsers) or a raw bitmap (dragged straight off some apps' canvases) — into a
+        /// frozen, cross-thread-safe <see cref="BitmapSource"/>. Never throws back into the Drop
+        /// handler; a bad/partial drop just leaves the slot empty.</summary>
+        private static BitmapSource? ExtractDroppedImage(IDataObject data)
+        {
+            try
+            {
+                if (data.GetDataPresent(DataFormats.FileDrop) &&
+                    data.GetData(DataFormats.FileDrop) is string[] paths)
+                {
+                    var path = paths.FirstOrDefault(IsImageFile);
+                    if (path != null)
+                    {
+                        var bitmap = new BitmapImage();
+                        bitmap.BeginInit();
+                        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                        bitmap.UriSource = new Uri(path);
+                        bitmap.EndInit();
+                        bitmap.Freeze();
+                        return bitmap;
+                    }
+                }
+
+                if (data.GetDataPresent(DataFormats.Bitmap) &&
+                    data.GetData(DataFormats.Bitmap, true) is BitmapSource bitmapSource)
+                {
+                    if (bitmapSource.CanFreeze)
+                    {
+                        bitmapSource.Freeze();
+                    }
+                    return bitmapSource;
+                }
+            }
+            catch
+            {
+                // a malformed/partial drop must never crash the pad
+            }
+            return null;
         }
 
         // Git #2332 — the three-state status band. "Nothing waiting" whenever the queue is

@@ -78,7 +78,25 @@
                              FontSize="11.5"
                              PreviewKeyDown="ComposerBox_PreviewKeyDown"/>
                 </Border>
-                <local:TypeChipsControl x:Name="TypeChips" Margin="0,6,0,0"/>
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <local:TypeChipsControl x:Name="TypeChips"/>
+                    <!-- Git #2340 — "Attach shot" arms the next note; the note it files then
+                         carries a droppable thumbnail (built in BuildRow, code-behind) instead of
+                         attaching an image itself. Click again before filing to disarm. Filing the
+                         armed note (SaveComposer) consumes the arm and resets this chip. -->
+                    <Border x:Name="AttachShotChip" CornerRadius="11" BorderThickness="1" Padding="8,3"
+                            Margin="6,0,0,0" Background="{StaticResource Brush.Bg.Chip}"
+                            BorderBrush="{StaticResource Brush.Border.Default}" Cursor="Hand"
+                            ToolTip="Attach a shot to the next note"
+                            MouseLeftButtonUp="AttachShotChip_Click">
+                        <TextBlock FontSize="11" FontWeight="SemiBold">
+                            <Run x:Name="AttachShotIcon" Text="&#xE722;" FontFamily="Segoe MDL2 Assets"
+                                 FontSize="10" Foreground="{StaticResource Brush.Text.Muted}"/><Run
+                                 x:Name="AttachShotLabel" Text=" Attach shot"
+                                 Foreground="{StaticResource Brush.Text.Muted}"/>
+                        </TextBlock>
+                    </Border>
+                </StackPanel>
             </StackPanel>
             <Border Height="1" Background="{StaticResource Brush.Border.Default}"/>
 
