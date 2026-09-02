@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -28,19 +29,90 @@ public sealed class ApiExplorerResponse
     public string Tone { get; init; } = "neutral"; // success | denied | dry | error
     public int ElapsedMs { get; init; }
     public int SizeBytes { get; init; }
+    /// <summary>Pretty-printed (indented) body — the "JSON Output" view.</summary>
     public string Body { get; init; } = "";
+    /// <summary>The full "Raw Response" view per readme Step 12: real status line, the diagnostic
+    /// headers (content-type, request-id, client-request-id, Graph diagnostic), duration, then the
+    /// body exactly as it came off the wire (unindented) — genuinely different text from
+    /// <see cref="Body"/>, so the two response tabs never show the same thing.</summary>
+    public string RawBody { get; init; } = "";
+}
+
+/// <summary>Git #2202 (readme-phase2.md Step 12) — a real Graph tenant the token broker acquires
+/// against. Carries its App Registration (client id) and its <c>GrantedScopes</c>. The scopes are
+/// NOT a hardcoded list — after a token is acquired they are parsed live from that token's own
+/// <c>roles</c>/<c>scp</c> claim (see <see cref="ApiExplorerService.ParseGrantedScopes"/>), which is
+/// the honest source for "what this App Reg was actually granted." The client secret is deliberately
+/// NOT on this record — it never travels with a value shown in the UI; the broker holds it.</summary>
+public sealed record GraphTenant(string Id, string Label, string Env, string TenantId, string AppRegistration, string[] GrantedScopes);
+
+/// <summary>Git #2202 (readme Step 12) contract — a gated login profile. This is the SAME shape
+/// #2204's <see cref="AccountProfile"/> carries; the autofill lock reads <c>AccountProfile</c>
+/// straight from <c>SettingsStoreService.GetProfiles()</c> and does NOT stand up a parallel store
+/// (per #2202's own build dispatch). Provided so the readme's named contract exists; build one from
+/// an <c>AccountProfile</c> via <see cref="FromAccount"/>.</summary>
+public sealed record GatedProfile(string Id, string User, string Password, string Description, string Tier)
+{
+    public static GatedProfile FromAccount(AccountProfile a) => new(a.Id, a.User, a.Password, a.Description, a.Tier);
+}
+
+/// <summary>Git #2202 (readme Step 12) contract — one acquired bearer token, plus everything the
+/// token panel shows (who it is for, when acquired, TTL, flow) and the permissions parsed out of the
+/// token's own JWT. Never persisted — lives only for the session, same as the panel's other state.</summary>
+public sealed record Token(string AccessToken, DateTimeOffset AcquiredAt, DateTimeOffset ExpiresAt, string Flow, string For, IReadOnlyList<string> GrantedScopes, string Error)
+{
+    public bool Ok => !string.IsNullOrEmpty(AccessToken);
+    public static Token Fail(string error) => new("", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, "", "", Array.Empty<string>(), error);
+}
+
+/// <summary>Git #2202 (readme Step 12) contract, verbatim (<c>Task&lt;Token&gt; ClientCredentials</c>
+/// / <c>PasswordLogin</c>). Real implementation is <see cref="TokenBroker"/> — no MSAL dependency,
+/// each grant is a single <see cref="HttpClient"/> POST, so no new NuGet download per CLAUDE.md's
+/// bandwidth rule.</summary>
+public interface ITokenBroker
+{
+    Task<Token> ClientCredentials(GraphTenant t);        // Graph — client_credentials
+    Task<Token> PasswordLogin(string baseUrl, string user, string pw); // local API — password
+}
+
+/// <summary>Git #2202 — the one real <see cref="ITokenBroker"/>. Reuses the vetted single-POST grant
+/// helpers on <see cref="ApiExplorerService"/> (kept in one place) and layers on the token-panel
+/// metadata + live scope parsing the readme's <c>Token</c> shape needs. The DEV Graph client secret
+/// is held here (constructed from <see cref="ApiExplorerService.GraphCredentials"/>), never on
+/// <see cref="GraphTenant"/>.</summary>
+public sealed class TokenBroker : ITokenBroker
+{
+    private readonly ApiExplorerService.GraphCredentials? _graph;
+    public TokenBroker(ApiExplorerService.GraphCredentials? graph) => _graph = graph;
+
+    public async Task<Token> ClientCredentials(GraphTenant t)
+    {
+        if (_graph == null) return Token.Fail("No Graph credentials configured in .env.local.");
+        var (tok, exp, err) = await ApiExplorerService.AcquireGraphTokenAsync(_graph);
+        if (tok == null) return Token.Fail(err);
+        return new Token(tok, DateTimeOffset.UtcNow, exp ?? DateTimeOffset.UtcNow.AddHours(1),
+            "client_credentials", t.Label, ApiExplorerService.ParseGrantedScopes(tok), "");
+    }
+
+    public async Task<Token> PasswordLogin(string baseUrl, string user, string pw)
+    {
+        var (tok, err) = await ApiExplorerService.LocalPasswordLoginAsync(baseUrl, user, pw);
+        if (tok == null) return Token.Fail(err);
+        // Real api-server access-token TTL band (~15m). Local login tokens aren't Graph-role gated,
+        // so GrantedScopes stays whatever the JWT carries (usually empty) — the permission gate is a
+        // Graph-mode concept only.
+        return new Token(tok, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(15),
+            "password", user, ApiExplorerService.ParseGrantedScopes(tok), "");
+    }
 }
 
 /// <summary>
-/// Git #2220 — real execution backing the API Explorer mini panel (README-ClaudeChat.md §6.3).
-///
-/// Real-audit finding this class exists to work around: #2202 (the full API Explorers feature —
-/// <c>ITokenBroker</c>, <c>GatedProfile</c>, the full explorer document) is NOT landed as of this
-/// build — its own BUILD dispatch was posted the same day and is separately blocked on #2204
-/// (Settings / Accounts &amp; Tiers store, also "Not started"). Per #2202's own build comment,
-/// this does NOT stand up a parallel <c>GatedProfile</c>/accounts store — the autofill-lock UI
-/// renders an honest "not built yet" state (see MainWindow's RenderApiExplorerAuthRow) rather than
-/// faking one. What IS real and buildable without either dependency:
+/// Git #2220 / #2202 — real execution backing the API Explorer panel (README-ClaudeChat.md §6.3 +
+/// readme-phase2.md Step 12). #2220 stood up the shared three-mode panel; #2202 completed it once
+/// #2204 (Settings / Accounts &amp; Tiers store) landed on main — the formal <see cref="ITokenBroker"/>
+/// contract above, the permission/scope gate (<see cref="ParseGrantedScopes"/>/<see cref="HasPermission"/>),
+/// the Raw-vs-JSON response views, and the autofill lock wired to the real
+/// <c>SettingsStoreService.GetProfiles()</c> (NOT a parallel profile store). What is real here:
 ///  - Local mode: a plain POST to the local dev api-server's own <c>/api/auth/login</c>
 ///    (confirmed real at <c>artifacts/api-server/src/routes/auth.ts:321</c>, returns a bearer
 ///    <c>accessToken</c> in the JSON body) plus a curated set of real GET routes.
@@ -245,6 +317,7 @@ public static class ApiExplorerService
                 ElapsedMs = (int)sw.ElapsedMilliseconds,
                 SizeBytes = Encoding.UTF8.GetByteCount(text),
                 Body = PrettyPrintIfJson(text),
+                RawBody = BuildRawView(resp, text, (int)sw.ElapsedMilliseconds),
             };
         }
         catch (Exception ex)
@@ -263,11 +336,14 @@ public static class ApiExplorerService
     /// <summary>Never touches the network — builds the exact request the LIVE path would send, so
     /// DRY RUN (the default on every panel open, per §6.3) shows a real preview instead of a fake
     /// canned response.</summary>
-    public static ApiExplorerResponse BuildDryRunPreview(HttpMethod method, string url, bool hasToken, string? body)
+    public static ApiExplorerResponse BuildDryRunPreview(HttpMethod method, string url, bool hasToken, string? body, string? permission = null, string? tenantLabel = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"{method.Method} {url}");
+        if (!string.IsNullOrEmpty(tenantLabel)) sb.AppendLine($"Tenant: {tenantLabel}");
+        if (!string.IsNullOrEmpty(permission)) sb.AppendLine($"Permission required: {permission}");
         sb.AppendLine(hasToken ? "Authorization: Bearer <token acquired, not shown>" : "Authorization: <no token acquired yet>");
+        sb.AppendLine("Content-Type: application/json");
         if (!string.IsNullOrEmpty(body))
         {
             sb.AppendLine();
@@ -282,7 +358,77 @@ public static class ApiExplorerService
             ElapsedMs = 0,
             SizeBytes = Encoding.UTF8.GetByteCount(text),
             Body = text,
+            RawBody = text,
         };
+    }
+
+    /// <summary>Builds the "Raw Response" view — the real status line, the diagnostic headers the
+    /// readme names (content-type, request-id, client-request-id, the Graph <c>x-ms-ags-diagnostic</c>
+    /// header), the duration, then the body exactly as it arrived (unindented). Distinct from the
+    /// indented JSON Output view so the two tabs genuinely differ.</summary>
+    private static string BuildRawView(HttpResponseMessage resp, string rawText, int elapsedMs)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"HTTP {(int)resp.StatusCode} {resp.ReasonPhrase}");
+        var ct = resp.Content.Headers.ContentType?.ToString();
+        if (!string.IsNullOrEmpty(ct)) sb.AppendLine($"content-type: {ct}");
+        AppendHeader(sb, resp, "request-id");
+        AppendHeader(sb, resp, "client-request-id");
+        AppendHeader(sb, resp, "x-ms-ags-diagnostic");
+        if (resp.Headers.Date.HasValue) sb.AppendLine($"date: {resp.Headers.Date.Value:R}");
+        sb.AppendLine($"duration: {elapsedMs}ms");
+        sb.AppendLine();
+        sb.Append(rawText);
+        return sb.ToString();
+    }
+
+    private static void AppendHeader(StringBuilder sb, HttpResponseMessage resp, string name)
+    {
+        if (resp.Headers.TryGetValues(name, out var vals))
+            sb.AppendLine($"{name}: {string.Join(", ", vals)}");
+    }
+
+    // ── Permission / scope gate (Graph modes) ────────────────────────────────────────────────────
+
+    /// <summary>Parses the granted app permissions (<c>roles</c>) and delegated scopes (<c>scp</c>)
+    /// out of a JWT's payload — the honest, live source for "what this token can actually do." No
+    /// signature validation (we are only reading the App Reg's own granted-scope list to drive the UI
+    /// gate, not trusting the token for authorization ourselves).</summary>
+    public static IReadOnlyList<string> ParseGrantedScopes(string jwt)
+    {
+        try
+        {
+            var parts = jwt.Split('.');
+            if (parts.Length < 2) return Array.Empty<string>();
+            using var doc = JsonDocument.Parse(Base64UrlDecode(parts[1]));
+            var scopes = new List<string>();
+            if (doc.RootElement.TryGetProperty("roles", out var roles) && roles.ValueKind == JsonValueKind.Array)
+                foreach (var r in roles.EnumerateArray()) { var s = r.GetString(); if (!string.IsNullOrEmpty(s)) scopes.Add(s); }
+            if (doc.RootElement.TryGetProperty("scp", out var scp) && scp.ValueKind == JsonValueKind.String)
+                scopes.AddRange((scp.GetString() ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries));
+            return scopes;
+        }
+        catch { return Array.Empty<string>(); }
+    }
+
+    /// <summary>True when the granted scopes cover the endpoint's required permission. An empty
+    /// requirement (unauthenticated local routes) is always satisfied. Matching is case-insensitive.</summary>
+    public static bool HasPermission(IReadOnlyList<string> grantedScopes, string? required)
+    {
+        if (string.IsNullOrEmpty(required)) return true;
+        return grantedScopes.Any(g => string.Equals(g, required, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Real Microsoft admin-consent URL for the App Registration — the link the amber
+    /// permission banner offers when a scope is missing.</summary>
+    public static string BuildAdminConsentUrl(string tenantId, string clientId) =>
+        $"https://login.microsoftonline.com/{tenantId}/adminconsent?client_id={clientId}";
+
+    private static string Base64UrlDecode(string input)
+    {
+        var s = input.Replace('-', '+').Replace('_', '/');
+        switch (s.Length % 4) { case 2: s += "=="; break; case 3: s += "="; break; }
+        return Encoding.UTF8.GetString(Convert.FromBase64String(s));
     }
 
     private static string PrettyPrintIfJson(string text)

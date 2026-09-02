@@ -3615,6 +3615,20 @@ public partial class MainWindow : Window
             "Test env variables, API tokens, gated accounts, Claude Projects — one real store, no placeholder.",
             () => OpenSettingsTab()));
 
+        // API Explorers — the third entry point (topbar zap menu + this Ctrl+K palette + chat tool panel), per readme Step 12.
+        results.Add(new PaletteResult("ClaudeUrls", "API Endpoint Runner", "Local API server — routes, token, run",
+            (Brush)FindResource("Brush.Workspace.Api"), "API Endpoint Runner",
+            "Real local dev api-server routes. Login & fill token from the autofill lock, then run.",
+            () => OpenApiExplorer(Services.ApiExplorerMode.Local)));
+        results.Add(new PaletteResult("ClaudeUrls", "MS Graph Read Explorer", "Graph v1.0 reads — client-credentials token",
+            (Brush)FindResource("Brush.Workspace.Api"), "MS Graph Read Explorer",
+            "Real Microsoft Graph read endpoints against the DEV app registration, with a live permission gate.",
+            () => OpenApiExplorer(Services.ApiExplorerMode.GraphRead)));
+        results.Add(new PaletteResult("ClaudeUrls", "MS Graph Write Explorer", "Graph writes — risk-rated, DRY RUN default",
+            (Brush)FindResource("Brush.Workspace.Api"), "MS Graph Write Explorer",
+            "Risk-rated Graph writes. Defaults to DRY RUN — LIVE returns the real 403 when a scope is missing.",
+            () => OpenApiExplorer(Services.ApiExplorerMode.GraphWrite)));
+
         foreach (var tab in _tabs)
         {
             results.Add(new PaletteResult("ClaudeUrls", tab.Title, tab.IsHome ? "Home tab" : "Chat tab",
@@ -8791,21 +8805,34 @@ public partial class MainWindow : Window
         _paletteTerminalSession = null;
     }
 
-    // ── Git #2220 — API Runner / Graph Read / Graph Write mini panel (README-ClaudeChat.md §6.3) ═
-    // One panel, three modes, real HTTP execution via Services/ApiExplorerService.cs. #2202 (the full
-    // explorer + ITokenBroker/GatedProfile store) is NOT landed — see that service's header comment
-    // for the real-audit finding this stood on instead of waiting on it.
+    // ── Git #2220 / #2202 — API Endpoint Runner / MS Graph Read / MS Graph Write, one shared panel ═
+    // README-ClaudeChat.md §6.3 (mini panel) + readme-phase2.md Step 12 (the full explorer contract:
+    // ITokenBroker, GatedProfile, GraphTenant, the permission gate, the autofill lock). #2204 (the
+    // Accounts & Tiers store the autofill lock reads from) landed on main (e17b4620e), so the lock is
+    // now wired to the real SettingsStore.GetProfiles()/AddProfile() — no parallel profile store.
     private bool _apiExplorerOpen;
     private Services.ApiExplorerMode _apiExplorerMode = Services.ApiExplorerMode.Local;
     private string _apiExplorerSearchText = "";
     private Services.ApiEndpoint? _apiExplorerSelected;
     private string? _apiExplorerToken;
     private DateTimeOffset? _apiExplorerTokenExpiresAt;
+    // Live scope list parsed from the acquired token's own roles/scp claim (Step 12 permission gate),
+    // plus the flow + subject the token panel shows. Reset on every fresh token / panel open.
+    private IReadOnlyList<string> _apiExplorerTokenScopes = Array.Empty<string>();
+    private string _apiExplorerTokenFlow = "";
+    private string _apiExplorerTokenFor = "";
     // §6.3 — "Dry run is the default and must stay the default on every panel open — never
     // remember LIVE across sessions." No persistence anywhere; this resets to true every OpenApiExplorer.
     private bool _apiExplorerDryRun = true;
+    // Response pane view: false = JSON Output (indented), true = Raw Response (status line + headers +
+    // unindented body). Step 12 "Done when: Raw Response differs from JSON Output."
+    private bool _apiExplorerResponseRaw;
+    // Set when the autofill lock filled the local login from a gated profile (shows "filled from the
+    // gated profile · <label>"). Cleared when the user edits the fields by hand.
+    private string? _apiExplorerFilledFromProfile;
     private Services.ApiExplorerResponse? _apiExplorerLastResponse;
     private bool _apiExplorerBusy;
+    private System.Windows.Controls.Primitives.Popup? _apiExplorerLockPopup;
 
     private void OpenApiExplorer(Services.ApiExplorerMode mode)
     {
@@ -8817,7 +8844,8 @@ public partial class MainWindow : Window
         // real correctness bug here, not a cosmetic one.
         if (_apiExplorerOpen)
         {
-            _apiExplorerDryRun = true;
+            _apiExplorerDryRun = true;      // never remembered as LIVE across opens (§6.3)
+            _apiExplorerResponseRaw = false; // default to JSON Output
             _apiExplorerSelected = null;
             _apiExplorerLastResponse = null;
             _apiExplorerSearchText = "";
@@ -8862,9 +8890,6 @@ public partial class MainWindow : Window
         ApiExplorerAuthExtra.Children.Clear();
         if (_apiExplorerMode == Services.ApiExplorerMode.Local)
         {
-            // Real-audit: #2204 (Settings / Accounts & Tiers — the single source for gated
-            // profiles) is "Not started". Per #2202's own build comment this does NOT stand up a
-            // parallel profile store — the lock renders an honest not-built-yet state instead.
             var lockRow = new Border
             {
                 CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6, 8, 6),
@@ -8872,41 +8897,69 @@ public partial class MainWindow : Window
                 BorderBrush = (Brush)FindResource("Brush.Claude.Border"), BorderThickness = new Thickness(1),
             };
             var sp = new StackPanel();
+            var profileCount = SettingsStore.GetProfiles().Count;
             sp.Children.Add(new TextBlock
             {
-                Text = "No gated profiles yet — Accounts & Tiers (#2204) isn't built.",
-                FontSize = 9.5, TextWrapping = TextWrapping.Wrap,
+                Text = profileCount > 0
+                    ? "Autofill a gated profile with the lock, or type an email + password, then get a real token."
+                    : "Type an email + password, or add a gated profile with the lock. Then get a real token.",
+                FontSize = 9.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 6),
                 Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
             });
-            sp.Children.Add(new TextBlock
-            {
-                Text = "Type an email + password below and get a real token.", FontSize = 9.5,
-                Margin = new Thickness(0, 2, 0, 6), TextWrapping = TextWrapping.Wrap,
-                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
-            });
+
             var emailBox = new TextBox
             {
                 Text = _apiExplorerLocalEmail, Height = 24, Padding = new Thickness(6, 2, 6, 2), Margin = new Thickness(0, 0, 0, 4),
                 Background = (Brush)FindResource("Brush.Claude.Bg.Button"), Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
                 BorderBrush = (Brush)FindResource("Brush.Claude.Border"), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10,
             };
-            emailBox.TextChanged += (s, e) => _apiExplorerLocalEmail = emailBox.Text;
+            emailBox.TextChanged += (s, e) => { _apiExplorerLocalEmail = emailBox.Text; _apiExplorerFilledFromProfile = null; };
+            sp.Children.Add(new TextBlock { Text = "Email", FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
+            sp.Children.Add(emailBox);
+
+            // Password field with the autofill lock docked beside it (readme Step 12).
+            sp.Children.Add(new TextBlock { Text = "Password", FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
+            var pwRow = new DockPanel { Margin = new Thickness(0, 0, 0, 2) };
+            var lockBtn = new Button
+            {
+                Width = 26, Height = 24, Margin = new Thickness(4, 0, 0, 0), Cursor = Cursors.Hand,
+                Style = (Style)FindResource("PanelCollapseButton"),
+                ToolTip = "Autofill a gated profile",
+                Content = new TextBlock { Text = "", FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 11, Foreground = (Brush)FindResource("Brush.Claude.Accent") },
+                RenderTransformOrigin = new Point(0.5, 0.5),
+            };
+            lockBtn.RenderTransform = new TransformGroup { Children = { new RotateTransform(0), new TranslateTransform(0, 0) } };
+            DockPanel.SetDock(lockBtn, Dock.Right);
             var pwBox = new PasswordBox
             {
                 Height = 24, Padding = new Thickness(6, 2, 6, 2),
                 Background = (Brush)FindResource("Brush.Claude.Bg.Button"), Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
                 BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
             };
-            pwBox.PasswordChanged += (s, e) => _apiExplorerLocalPassword = pwBox.Password;
-            sp.Children.Add(new TextBlock { Text = "Email", FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
-            sp.Children.Add(emailBox);
-            sp.Children.Add(new TextBlock { Text = "Password", FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
-            sp.Children.Add(pwBox);
+            if (!string.IsNullOrEmpty(_apiExplorerLocalPassword)) pwBox.Password = _apiExplorerLocalPassword;
+            pwBox.PasswordChanged += (s, e) => { _apiExplorerLocalPassword = pwBox.Password; _apiExplorerFilledFromProfile = null; };
+            lockBtn.Click += (s, e) => { DroopLock(lockBtn); ShowAutofillLockPopup(lockBtn); };
+            pwRow.Children.Add(lockBtn);
+            pwRow.Children.Add(pwBox);
+            sp.Children.Add(pwRow);
+
+            if (!string.IsNullOrEmpty(_apiExplorerFilledFromProfile))
+            {
+                sp.Children.Add(new TextBlock
+                {
+                    Text = $"filled from the gated profile · {_apiExplorerFilledFromProfile}",
+                    FontSize = 8.5, Margin = new Thickness(0, 2, 0, 0), FontStyle = FontStyles.Italic,
+                    Foreground = (Brush)FindResource("Brush.Status.Running"),
+                });
+            }
             lockRow.Child = sp;
             ApiExplorerAuthExtra.Children.Add(lockRow);
         }
         else
         {
+            // #2205 — Graph tenant picker with a gear to add/edit an App Registration inline, stored
+            // in the same Settings store (#2204). Kept intact and extended below with #2202's
+            // granted-scope readout that drives the permission gate.
             var creds = Services.ApiExplorerService.ResolveGraphCredentials(_logService.MainRepoRoot, SettingsStore);
 
             var pickerRow = new DockPanel();
@@ -8930,6 +8983,20 @@ public partial class MainWindow : Window
 
             if (_apiExplorerGraphEditOpen)
                 ApiExplorerAuthExtra.Children.Add(BuildGraphAppRegistrationEditor());
+
+            // #2202 — granted-scope readout (from the acquired token's own roles/scp claim). Empty
+            // until a token is fetched; feeds the permission gate on the selected endpoint.
+            if (creds != null)
+            {
+                ApiExplorerAuthExtra.Children.Add(new TextBlock
+                {
+                    Text = _apiExplorerTokenScopes.Count > 0
+                        ? $"Granted: {_apiExplorerTokenScopes.Count} permission(s) — from the token's own claims"
+                        : "Get token for this tenant to read its granted permissions.",
+                    FontSize = 8.5, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+                });
+            }
         }
     }
 
@@ -9028,11 +9095,224 @@ public partial class MainWindow : Window
     private string _apiExplorerLocalEmail = "";
     private string _apiExplorerLocalPassword = "";
 
+    /// <summary>Builds the readme Step 12 <see cref="Services.GraphTenant"/> from the resolved DEV
+    /// credentials. <c>GrantedScopes</c> is the live list parsed from the last acquired token (empty
+    /// until one is fetched) — never a hardcoded scope list.</summary>
+    private Services.GraphTenant? BuildGraphTenant()
+    {
+        var creds = Services.ApiExplorerService.ResolveGraphCredentials(_logService.MainRepoRoot, SettingsStore);
+        if (creds == null) return null;
+        return new Services.GraphTenant(
+            Id: creds.TenantId, Label: creds.TenantLabel, Env: "DEV app registration",
+            TenantId: creds.TenantId, AppRegistration: creds.ClientId,
+            GrantedScopes: _apiExplorerTokenScopes.ToArray());
+    }
+
+    private Services.ITokenBroker BuildTokenBroker() =>
+        new Services.TokenBroker(Services.ApiExplorerService.ResolveGraphCredentials(_logService.MainRepoRoot, SettingsStore));
+
+    /// <summary>The lock "droops" (tilt + slide down, 180ms) when opened — readme Step 12 detail.</summary>
+    private static void DroopLock(Button lockBtn)
+    {
+        if (lockBtn.RenderTransform is not TransformGroup g || g.Children.Count < 2) return;
+        var dur = new Duration(TimeSpan.FromMilliseconds(180));
+        ((RotateTransform)g.Children[0]).BeginAnimation(RotateTransform.AngleProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 12, dur) { AutoReverse = true });
+        ((TranslateTransform)g.Children[1]).BeginAnimation(TranslateTransform.YProperty,
+            new System.Windows.Media.Animation.DoubleAnimation(0, 2, dur) { AutoReverse = true });
+    }
+
+    private static Brush TierTone(FrameworkElement ctx, string tier) => tier switch
+    {
+        "Enterprise" => (Brush)ctx.FindResource("Brush.Workspace.Designs"),
+        "Premium" => (Brush)ctx.FindResource("Brush.Epic.Portal"),
+        _ => (Brush)ctx.FindResource("Brush.Status.Verifying"),
+    };
+
+    /// <summary>Readme Step 12 — "Autofill Gated Profile": the configured profiles (read live from
+    /// #2204's real <c>SettingsStore.GetProfiles()</c>, the SAME list as Settings → Accounts &amp;
+    /// Tiers, never a parallel store) with tier badges, each picking fills both fields and marks
+    /// "filled from the gated profile". "+ Add an account" does add-it-and-use-it: saves via
+    /// <c>SettingsStore.AddProfile</c>, closes the lock, fills the login.</summary>
+    private void ShowAutofillLockPopup(Button anchor)
+    {
+        _apiExplorerLockPopup?.SetCurrentValue(System.Windows.Controls.Primitives.Popup.IsOpenProperty, false);
+
+        var outer = new StackPanel { MinWidth = 240 };
+        var card = new Border
+        {
+            CornerRadius = new CornerRadius(8), Padding = new Thickness(10), Background = (Brush)FindResource("Brush.Claude.Bg.Chrome"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"), BorderThickness = new Thickness(1),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 14, ShadowDepth = 3, Opacity = 0.4, Color = Colors.Black },
+        };
+        card.Child = outer;
+
+        outer.Children.Add(new TextBlock
+        {
+            Text = "Autofill Gated Profile", FontWeight = FontWeights.Bold, FontSize = 11, Margin = new Thickness(0, 0, 0, 8),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+        });
+
+        var popup = new System.Windows.Controls.Primitives.Popup
+        {
+            PlacementTarget = anchor, Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+            StaysOpen = false, AllowsTransparency = true, Child = card,
+        };
+        _apiExplorerLockPopup = popup;
+
+        void Fill(Services.AccountProfile p)
+        {
+            _apiExplorerLocalEmail = p.User;
+            _apiExplorerLocalPassword = p.Password;
+            _apiExplorerFilledFromProfile = string.IsNullOrEmpty(p.Description) ? p.User : p.Description;
+            popup.IsOpen = false;
+            RenderApiExplorerAuthRow();
+        }
+
+        var profiles = SettingsStore.GetProfiles();
+        foreach (var p in profiles)
+        {
+            var tone = TierTone(this, p.Tier);
+            var rowBtn = new Button
+            {
+                Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(0), Cursor = Cursors.Hand,
+                Background = Brushes.Transparent, BorderThickness = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            };
+            var row = new DockPanel { LastChildFill = true };
+            var badge = new Border
+            {
+                CornerRadius = new CornerRadius(4),
+                Padding = new Thickness(6, 1, 6, 1), Margin = new Thickness(6, 0, 0, 0), VerticalAlignment = VerticalAlignment.Center,
+                Background = Tint(tone, 0x29), BorderBrush = Tint(tone, 0x66), BorderThickness = new Thickness(1),
+                Child = new TextBlock { Text = p.Tier, FontSize = 8.5, FontWeight = FontWeights.Bold, Foreground = tone },
+            };
+            DockPanel.SetDock(badge, Dock.Right);
+            row.Children.Add(badge);
+            row.Children.Add(new TextBlock
+            {
+                Text = p.User, FontSize = 10, VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Body"),
+            });
+            var wrap = new Border
+            {
+                CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 5, 8, 5),
+                Background = (Brush)FindResource("Brush.Claude.Bg.Content"),
+                BorderBrush = (Brush)FindResource("Brush.Claude.Border"), BorderThickness = new Thickness(1), Child = row,
+            };
+            rowBtn.Content = wrap;
+            var captured = p;
+            rowBtn.Click += (s, e) => Fill(captured);
+            outer.Children.Add(rowBtn);
+        }
+
+        if (profiles.Count == 0)
+        {
+            outer.Children.Add(new TextBlock
+            {
+                Text = "No gated profiles yet — add one below.", FontSize = 9.5, FontStyle = FontStyles.Italic,
+                Margin = new Thickness(0, 0, 0, 6), Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+        }
+
+        outer.Children.Add(new Border { Height = 1, Margin = new Thickness(0, 4, 0, 8), Background = (Brush)FindResource("Brush.Claude.Border") });
+
+        // "+ Add an account" — add-it-and-use-it inline form.
+        var addToggle = new Button
+        {
+            Height = 24, HorizontalAlignment = HorizontalAlignment.Stretch, Style = (Style)FindResource("PanelCollapseButton"),
+            Content = new TextBlock { Text = "+ Add an account", FontSize = 10, Foreground = (Brush)FindResource("Brush.Claude.Accent") },
+        };
+        var addForm = new StackPanel { Visibility = Visibility.Collapsed, Margin = new Thickness(0, 6, 0, 0) };
+        addToggle.Click += (s, e) => addForm.Visibility = addForm.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
+        outer.Children.Add(addToggle);
+
+        var userBox = new TextBox
+        {
+            Height = 24, Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(6, 2, 6, 2),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Button"), Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"), FontSize = 10,
+        };
+        var newPwBox = new PasswordBox
+        {
+            Height = 24, Margin = new Thickness(0, 0, 0, 4), Padding = new Thickness(6, 2, 6, 2),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Button"), Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+        };
+        addForm.Children.Add(new TextBlock { Text = "Username", FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
+        addForm.Children.Add(userBox);
+        addForm.Children.Add(new TextBlock { Text = "Password", FontSize = 8.5, Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
+        addForm.Children.Add(newPwBox);
+
+        var chosenTier = "Standard";
+        var tierRow = new WrapPanel { Margin = new Thickness(0, 2, 0, 6) };
+        var tierBtns = new List<Border>();
+        foreach (var tier in new[] { "Standard", "Enterprise", "Premium" })
+        {
+            var tone = TierTone(this, tier);
+            var btn = new Border
+            {
+                CornerRadius = new CornerRadius(6), Padding = new Thickness(9, 4, 9, 4), Margin = new Thickness(0, 0, 5, 0), Cursor = Cursors.Hand,
+                Background = tier == chosenTier ? Tint(tone, 0x24) : Brushes.Transparent,
+                BorderBrush = tier == chosenTier ? Tint(tone, 0x80) : (Brush)FindResource("Brush.Claude.Border"), BorderThickness = new Thickness(1),
+                Child = new TextBlock { Text = tier, FontSize = 9.5, FontWeight = FontWeights.Bold, Foreground = tier == chosenTier ? tone : (Brush)FindResource("Brush.Claude.Text.Muted") },
+                Tag = tier,
+            };
+            var capturedTier = tier;
+            btn.MouseLeftButtonDown += (s, e) =>
+            {
+                chosenTier = capturedTier;
+                foreach (var b in tierBtns)
+                {
+                    var bt = (string)b.Tag; var bTone = TierTone(this, bt); bool on = bt == chosenTier;
+                    b.Background = on ? Tint(bTone, 0x24) : Brushes.Transparent;
+                    b.BorderBrush = on ? Tint(bTone, 0x80) : (Brush)FindResource("Brush.Claude.Border");
+                    ((TextBlock)b.Child).Foreground = on ? bTone : (Brush)FindResource("Brush.Claude.Text.Muted");
+                }
+            };
+            tierBtns.Add(btn);
+            tierRow.Children.Add(btn);
+        }
+        addForm.Children.Add(tierRow);
+
+        var addUseBtn = new Button
+        {
+            Height = 26, HorizontalAlignment = HorizontalAlignment.Stretch, Style = (Style)FindResource("PanelCollapseButton"),
+            Content = new TextBlock { Text = "Add & use", FontSize = 10, FontWeight = FontWeights.Bold, Foreground = (Brush)FindResource("Brush.Claude.Accent") },
+        };
+        addUseBtn.Click += (s, e) =>
+        {
+            var user = userBox.Text.Trim();
+            var pw = newPwBox.Password;
+            if (string.IsNullOrWhiteSpace(user) || string.IsNullOrEmpty(pw))
+            {
+                ToastEngine.Show("API Runner", "Enter a username and password to add an account.", ToastKind.Info);
+                return;
+            }
+            var added = SettingsStore.AddProfile(user, pw, "", chosenTier); // same store as Settings → Accounts & Tiers
+            Fill(added);                                                     // add-it-and-use-it
+            ToastEngine.Show("API Runner", $"Added {user} ({chosenTier}) and filled the login.", ToastKind.Success);
+        };
+        addForm.Children.Add(addUseBtn);
+        outer.Children.Add(addForm);
+
+        popup.IsOpen = true;
+    }
+
     private void RenderApiExplorerTokenPill()
     {
         bool hasToken = !string.IsNullOrEmpty(_apiExplorerToken);
         bool expired = hasToken && _apiExplorerTokenExpiresAt.HasValue && _apiExplorerTokenExpiresAt.Value <= DateTimeOffset.UtcNow;
-        ApiExplorerTokenPillText.Text = !hasToken ? "No token" : expired ? "Expired" : $"Token valid until {_apiExplorerTokenExpiresAt!.Value.LocalDateTime:HH:mm}";
+        string text;
+        if (!hasToken) text = "No token";
+        else if (expired) text = "Expired";
+        else
+        {
+            // Token panel shows who it's for, the flow, and when it expires (readme Step 12).
+            var who = string.IsNullOrEmpty(_apiExplorerTokenFor) ? "" : $" · {_apiExplorerTokenFor}";
+            var flow = string.IsNullOrEmpty(_apiExplorerTokenFlow) ? "" : $" · {_apiExplorerTokenFlow}";
+            text = $"Valid until {_apiExplorerTokenExpiresAt!.Value.LocalDateTime:HH:mm}{who}{flow}";
+        }
+        ApiExplorerTokenPillText.Text = text;
         ApiExplorerTokenPillText.Foreground = (Brush)FindResource(hasToken && !expired ? "Brush.Status.Running" : "Brush.Claude.Text.Muted");
         ApiExplorerTokenBtnLabel.Text = hasToken ? "Refresh token" : "Get token";
         BtnApiExplorerToken.IsEnabled = !_apiExplorerBusy;
@@ -9125,12 +9405,66 @@ public partial class MainWindow : Window
         ApiExplorerSelectedPanel.Children.Add(line);
         if (!string.IsNullOrEmpty(ep.Permission))
         {
-            ApiExplorerSelectedPanel.Children.Add(new TextBlock
+            var riskTone = ep.Risk switch
             {
-                Text = $"Requires {ep.Permission} · risk: {ep.Risk}", FontSize = 8.5, Margin = new Thickness(0, 2, 0, 0),
-                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
-            });
+                "critical" => (Brush)FindResource("Brush.Epic.Gate"),
+                "high" => (Brush)FindResource("Brush.Status.Blocked"),
+                "write" => (Brush)FindResource("Brush.LogLevel.Warn"),
+                _ => (Brush)FindResource("Brush.Claude.Text.Muted"),
+            };
+            var permLine = new TextBlock { FontSize = 8.5, Margin = new Thickness(0, 2, 0, 0), TextWrapping = TextWrapping.Wrap };
+            permLine.Inlines.Add(new Run($"Requires {ep.Permission} · risk: ") { Foreground = (Brush)FindResource("Brush.Claude.Text.Muted") });
+            permLine.Inlines.Add(new Run(ep.Risk) { Foreground = riskTone, FontWeight = FontWeights.Bold });
+            ApiExplorerSelectedPanel.Children.Add(permLine);
         }
+        RenderApiExplorerPermissionGate(ep);
+    }
+
+    /// <summary>Readme Step 12 permission gate. For a Graph endpoint whose required scope is NOT in
+    /// the acquired token's granted scopes, drops an amber banner naming the missing grant and
+    /// offering the real admin-consent URL. A LIVE execute is still allowed through — it returns the
+    /// real Graph <c>403 Authorization_RequestDenied</c> shape, which is exactly what the readme wants
+    /// the runner to surface (the banner is the "why it will fail" heads-up, not a client-side block
+    /// that hides the real server response).</summary>
+    private void RenderApiExplorerPermissionGate(Services.ApiEndpoint ep)
+    {
+        bool isGraph = _apiExplorerMode is Services.ApiExplorerMode.GraphRead or Services.ApiExplorerMode.GraphWrite;
+        if (!isGraph || string.IsNullOrEmpty(ep.Permission)) return;
+        if (string.IsNullOrEmpty(_apiExplorerToken)) return; // nothing to check yet — token panel already prompts
+        if (Services.ApiExplorerService.HasPermission(_apiExplorerTokenScopes, ep.Permission)) return;
+
+        var tenant = BuildGraphTenant();
+        var banner = new Border
+        {
+            CornerRadius = new CornerRadius(6), Padding = new Thickness(8, 6, 8, 6), Margin = new Thickness(0, 6, 0, 0),
+            Background = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.LogLevel.Warn")).Color) { Opacity = 0.16 },
+            BorderBrush = (Brush)FindResource("Brush.LogLevel.Warn"), BorderThickness = new Thickness(1),
+        };
+        var sp = new StackPanel();
+        sp.Children.Add(new TextBlock
+        {
+            Text = $"This App Registration isn't granted {ep.Permission}.", FontSize = 9.5, FontWeight = FontWeights.Bold,
+            TextWrapping = TextWrapping.Wrap, Foreground = (Brush)FindResource("Brush.LogLevel.Warn"),
+        });
+        sp.Children.Add(new TextBlock
+        {
+            Text = "A LIVE call will come back 403 Authorization_RequestDenied. Grant it with admin consent:",
+            FontSize = 8.5, Margin = new Thickness(0, 2, 0, 4), TextWrapping = TextWrapping.Wrap,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        });
+        if (tenant != null)
+        {
+            var consentUrl = Services.ApiExplorerService.BuildAdminConsentUrl(tenant.TenantId, tenant.AppRegistration);
+            var consentBtn = new Button
+            {
+                Height = 22, HorizontalAlignment = HorizontalAlignment.Left, Style = (Style)FindResource("PanelCollapseButton"),
+                Content = new TextBlock { Text = "Copy admin-consent URL", FontSize = 9, Foreground = (Brush)FindResource("Brush.Claude.Accent") },
+            };
+            consentBtn.Click += (s, e) => { Clipboard.SetText(consentUrl); ToastEngine.Show("API Runner", "Admin-consent URL copied.", ToastKind.Info); };
+            sp.Children.Add(consentBtn);
+        }
+        banner.Child = sp;
+        ApiExplorerSelectedPanel.Children.Add(banner);
     }
 
     private async void BtnApiExplorerToken_Click(object sender, RoutedEventArgs e)
@@ -9140,42 +9474,41 @@ public partial class MainWindow : Window
         RenderApiExplorerTokenPill();
         try
         {
+            var broker = BuildTokenBroker();
+            Services.Token result;
             if (_apiExplorerMode == Services.ApiExplorerMode.Local)
             {
                 if (string.IsNullOrWhiteSpace(_apiExplorerLocalEmail) || string.IsNullOrWhiteSpace(_apiExplorerLocalPassword))
                 {
-                    ToastEngine.Show("API Runner", "Enter an email and password first.", ToastKind.Info);
+                    ToastEngine.Show("API Runner", "Enter an email and password first (or autofill a gated profile).", ToastKind.Info);
                     return;
                 }
-                var (token, error) = await Services.ApiExplorerService.LocalPasswordLoginAsync(LocalApiBaseUrl, _apiExplorerLocalEmail, _apiExplorerLocalPassword);
-                if (token == null)
-                {
-                    ToastEngine.Show("API Runner", $"Login failed: {error}", ToastKind.Error);
-                }
-                else
-                {
-                    _apiExplorerToken = token;
-                    _apiExplorerTokenExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15); // real api-server access-token TTL band
-                }
+                result = await broker.PasswordLogin(LocalApiBaseUrl, _apiExplorerLocalEmail, _apiExplorerLocalPassword);
             }
             else
             {
-                var creds = Services.ApiExplorerService.ResolveGraphCredentials(_logService.MainRepoRoot);
-                if (creds == null)
+                var tenant = BuildGraphTenant();
+                if (tenant == null)
                 {
                     ToastEngine.Show("API Runner", "No Graph credentials configured in .env.local.", ToastKind.Error);
                     return;
                 }
-                var (token, expiresAt, error) = await Services.ApiExplorerService.AcquireGraphTokenAsync(creds);
-                if (token == null)
-                {
-                    ToastEngine.Show("API Runner", $"Token acquisition failed: {error}", ToastKind.Error);
-                }
-                else
-                {
-                    _apiExplorerToken = token;
-                    _apiExplorerTokenExpiresAt = expiresAt;
-                }
+                result = await broker.ClientCredentials(tenant);
+            }
+
+            if (!result.Ok)
+            {
+                ToastEngine.Show("API Runner", $"Token acquisition failed: {result.Error}", ToastKind.Error);
+            }
+            else
+            {
+                _apiExplorerToken = result.AccessToken;
+                _apiExplorerTokenExpiresAt = result.ExpiresAt;
+                _apiExplorerTokenScopes = result.GrantedScopes;
+                _apiExplorerTokenFlow = result.Flow;
+                _apiExplorerTokenFor = result.For;
+                RenderApiExplorerAuthRow();   // Graph auth row now shows granted-scope count
+                RenderApiExplorerSelected();  // re-evaluate the permission gate against the new token
             }
         }
         finally
@@ -9207,9 +9540,18 @@ public partial class MainWindow : Window
         bool isWrite = _apiExplorerMode == Services.ApiExplorerMode.GraphWrite;
         if (isWrite && _apiExplorerDryRun)
         {
-            _apiExplorerLastResponse = Services.ApiExplorerService.BuildDryRunPreview(method, url, !string.IsNullOrEmpty(_apiExplorerToken), body);
+            var tenant = BuildGraphTenant();
+            _apiExplorerLastResponse = Services.ApiExplorerService.BuildDryRunPreview(
+                method, url, !string.IsNullOrEmpty(_apiExplorerToken), body, ep.Permission, tenant?.Label);
             RenderApiExplorerResponse();
             return;
+        }
+
+        // A LIVE Graph write is the one genuinely consequential action on this surface — audit it.
+        if (isWrite && !_apiExplorerDryRun)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn,
+                $"[api-explorer] LIVE Graph write: {ep.Method} {ep.Path} (permission {ep.Permission}, risk {ep.Risk}) against {BuildGraphTenant()?.Label ?? "?"}");
         }
 
         _apiExplorerBusy = true;
@@ -9267,9 +9609,29 @@ public partial class MainWindow : Window
             Text = $"{r.ElapsedMs}ms · {r.SizeBytes}b", FontSize = 8.5, Margin = new Thickness(0, 0, 0, 4),
             Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
         });
+
+        // JSON Output / Raw Response toggle (Step 12 — the two must genuinely differ).
+        var viewToggle = new UniformGrid { Rows = 1, Columns = 2, Margin = new Thickness(0, 0, 0, 4) };
+        Button ViewBtn(string label, bool raw)
+        {
+            bool on = _apiExplorerResponseRaw == raw;
+            var b = new Button
+            {
+                Height = 22, Margin = new Thickness(raw ? 3 : 0, 0, raw ? 0 : 3, 0), Style = (Style)FindResource("PanelCollapseButton"),
+                Background = on ? (Brush)FindResource("Brush.Claude.Accent") : (Brush)FindResource("Brush.Claude.Bg.Content"),
+                Content = new TextBlock { Text = label, FontSize = 9, Foreground = on ? new SolidColorBrush(Color.FromRgb(0x1A, 0x0F, 0x0A)) : (Brush)FindResource("Brush.Claude.Text.Muted") },
+            };
+            b.Click += (s, e) => { _apiExplorerResponseRaw = raw; RenderApiExplorerResponse(); };
+            return b;
+        }
+        viewToggle.Children.Add(ViewBtn("JSON Output", false));
+        viewToggle.Children.Add(ViewBtn("Raw Response", true));
+        ApiExplorerResponsePanel.Children.Add(viewToggle);
+
+        var bodyText = _apiExplorerResponseRaw ? r.RawBody : r.Body;
         ApiExplorerResponsePanel.Children.Add(new TextBox
         {
-            Text = r.Body, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true,
+            Text = bodyText, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, AcceptsReturn = true,
             MaxHeight = 150, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             Background = (Brush)FindResource("Brush.Claude.Bg.Content"), BorderThickness = new Thickness(0),
             Foreground = (Brush)FindResource("Brush.Claude.Text.Body"),
@@ -9290,7 +9652,8 @@ public partial class MainWindow : Window
     private void BtnApiExplorerCopy_Click(object sender, RoutedEventArgs e)
     {
         if (_apiExplorerLastResponse == null) return;
-        Clipboard.SetText(_apiExplorerLastResponse.Body);
-        ToastEngine.Show("API Runner", "Response copied.", ToastKind.Info);
+        var text = _apiExplorerResponseRaw ? _apiExplorerLastResponse.RawBody : _apiExplorerLastResponse.Body;
+        Clipboard.SetText(text);
+        ToastEngine.Show("API Runner", _apiExplorerResponseRaw ? "Raw response copied." : "JSON output copied.", ToastKind.Info);
     }
 }
