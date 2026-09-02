@@ -2987,14 +2987,20 @@ public partial class MainWindow : Window
         // Git #2380 — grouped detections (Verifying, Claude asks, …) render above loose ones, each
         // group collapsible via its own header. Collapsing a group hides its cards but the items still
         // count toward `shown` — they were found, just tucked away, not "nothing caught".
+        // Git #2381 — the design (Shell Skeleton v2.dc.html's domReaderGroups) wraps each group's
+        // header + body as ONE bordered card, not loose siblings in the scroller's StackPanel. Without
+        // that wrapper, a WPF Border's default VerticalAlignment=Stretch has no effect inside a
+        // StackPanel's infinite-height measure pass, so a lone header/card pair could still end up
+        // arranged at the panel's full remaining height instead of its own natural (shrink-to-fit)
+        // content height. Wrapping header+body in one Border with its own StackPanel forces the card to
+        // measure/arrange at its content's real height every time, matching the design's flex-shrink:0
+        // intent — the group card never gets stretched or squashed by the scroller around it.
         foreach (var group in snap.Groups)
         {
             var visible = group.Items.Where(d => !dismissed.Contains(d.Id)).ToList();
             if (visible.Count == 0) continue;
             bool isCollapsed = collapsedGroups.Contains(group.Key);
-            DetectedItemsResults.Children.Add(DetectedCollapsibleGroupHeader(group.Key, group.Label, visible.Count, isCollapsed));
-            if (!isCollapsed)
-                foreach (var d in visible) DetectedItemsResults.Children.Add(DetectionCard(d));
+            DetectedItemsResults.Children.Add(DetectedGroupCard(group.Key, group.Label, visible, isCollapsed));
             shown += visible.Count;
         }
 
@@ -3154,6 +3160,35 @@ public partial class MainWindow : Window
         },
     };
 
+    /// <summary>Git #2381 — one whole detection group (Verifying, Claude asks, …) as a single bordered
+    /// card: header + body in one Border/StackPanel, matching the design's
+    /// `border:1px solid;border-radius:8px;overflow:hidden` group wrapper (Shell Skeleton v2.dc.html's
+    /// domReaderGroups) instead of a loose header + loose cards as direct scroller siblings. Because the
+    /// header and its items now share one measured StackPanel, the card always renders at its own real
+    /// content height — it can't be squashed or stretched by the scroller around it (the WPF analogue of
+    /// the design's flex-shrink:0 on the group card).</summary>
+    private Border DetectedGroupCard(string groupKey, string label, List<Services.Detection> visible, bool collapsed)
+    {
+        var body = new StackPanel();
+        body.Children.Add(DetectedCollapsibleGroupHeader(groupKey, label, visible.Count, collapsed));
+        if (!collapsed)
+        {
+            var itemsPanel = new StackPanel { Margin = new Thickness(8, 0, 8, 8) };
+            foreach (var d in visible) itemsPanel.Children.Add(DetectionCard(d));
+            body.Children.Add(itemsPanel);
+        }
+
+        return new Border
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            CornerRadius = new CornerRadius(8),
+            BorderThickness = new Thickness(1),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+            ClipToBounds = true, // matches the design's overflow:hidden on the group card
+            Child = body,
+        };
+    }
+
     /// <summary>Git #2380 — the collapsible header for a real <see cref="Services.DetectionGroup"/>
     /// (Verifying, Claude asks, …). Click anywhere on the row to toggle; state is kept per active chat
     /// tab so switching tabs doesn't leak one chat's collapse choices into another's.</summary>
@@ -3181,9 +3216,8 @@ public partial class MainWindow : Window
 
         var header = new Border
         {
-            Margin = new Thickness(0, 4, 0, 6),
-            Padding = new Thickness(0, 2, 0, 2),
-            Background = Brushes.Transparent, // makes the whole row (not just the text glyphs) hit-testable
+            Padding = new Thickness(8, 6, 8, 6),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Button"), // matches design's group-header background
             Cursor = Cursors.Hand,
             Child = row,
         };
