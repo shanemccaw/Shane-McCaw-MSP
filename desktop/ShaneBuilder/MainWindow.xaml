@@ -656,10 +656,17 @@
                          real chrome built here, per README items 6 and 9. Shown for
                          any chat-kind tab (currently just #1202 ShaneBuilder). -->
                     <Grid x:Name="ClaudeChatDock" Visibility="Collapsed">
+                        <!-- Git #2209 §1 — the 5-band anatomy: (0) Context bar [cool] /
+                             (1) Breadcrumb-Share [warm] / (2) Inspector warning [transient] /
+                             (3) Transcript + Tool rail body [warm] / (4) Composer [warm].
+                             Only band 0 stays on the cool shell palette; every warm band uses
+                             Brush.Claude.* — the palette split is intentional, do NOT harmonise. -->
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
                         <!-- Context bar — cool palette (Brush.Bg.Card), not the warm
@@ -671,10 +678,19 @@
                              not a fabricated percentage. Two columns (content * / actions
                              Auto) so the two action buttons pin to the far right instead
                              of just trailing whatever content precedes them. -->
-                        <Border Grid.Row="0" Background="{StaticResource Brush.Bg.Card}"
+                        <!-- Git #2209 §2 — real layout bug already hit twice: the context bar must be
+                             overflow:visible + z-index:40 so the wrench Popup can paint OVER the warm
+                             surface below instead of being clipped/occluded. WPF: no ClipToBounds on
+                             this Border (default false, kept so), and an explicit Panel.ZIndex="40" so
+                             it sits above the Row-2 body. The wrench menu itself is a WPF Popup anchored
+                             by PlacementTarget — NOT measured screen coordinates (the second flagged
+                             bug) — so it follows the button under window moves/DPI changes for free. -->
+                        <Border Grid.Row="0" Panel.ZIndex="40" x:Name="CtxBarBorder"
+                                Background="{StaticResource Brush.Bg.Card}"
                                 BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
                             <Grid>
-                                <Border x:Name="CtxBarFill" Width="0" HorizontalAlignment="Left" Opacity="0.16"/>
+                                <Border x:Name="CtxBarFill" Width="0" HorizontalAlignment="Left" Opacity="0.16"
+                                        Background="{StaticResource Brush.Accent.Primary}"/>
                                 <Grid Margin="14,8">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -682,7 +698,14 @@
                                     </Grid.ColumnDefinitions>
 
                                     <WrapPanel Grid.Column="0" VerticalAlignment="Center">
-                                        <TextBlock Text="#1202" Margin="0,0,10,0" VerticalAlignment="Center"
+                                        <!-- Git #2209 §11 bug FIX — the chat's epic is DERIVED from the
+                                             active tab (TabDef.EpicNumber), set in RenderClaudeChatContext,
+                                             never hardcoded. The original mockup shipped "#1202" baked in
+                                             here and the panel lied about which chat you were in after a
+                                             tab switch. Clickable → real epic click-target (CtxEpic_Click). -->
+                                        <TextBlock x:Name="CtxEpicNum" Text="#—" Margin="0,0,10,0" VerticalAlignment="Center"
+                                                   Cursor="Hand" MouseLeftButtonDown="CtxEpic_Click"
+                                                   ToolTip="This chat's epic — click to view / reassign"
                                                    Foreground="{StaticResource Brush.Accent.IssueNum}"
                                                    FontFamily="{StaticResource FontFamily.Monospace}"
                                                    FontSize="17" FontWeight="{StaticResource FontWeight.ExtraBold}"/>
@@ -712,10 +735,24 @@
                                                    FontWeight="{StaticResource FontWeight.Bold}"
                                                    Foreground="{StaticResource Brush.Status.Done}"/>
                                         <Border Width="1" Height="16" Margin="0,0,10,0" Background="{StaticResource Brush.Border.Default}"/>
-                                        <TextBlock Text="— / 300k ctx" VerticalAlignment="Center"
+                                        <!-- Git #2209 §2 — context-used gauge. Two-part shape (used / 300k)
+                                             is non-negotiable; the estimate is the doc's own 0.28 tokens/char
+                                             + 40k fixed overhead (resolved open question #3: no real tokeniser
+                                             is wired yet, keep the estimate, keep the two-part shape). Fed by
+                                             the app-owned composer draft length + a stated transcript overhead;
+                                             CtxBarFill above renders the fraction as a background sweep. -->
+                                        <TextBlock x:Name="CtxGauge" Text="≈40k / 300k ctx" VerticalAlignment="Center"
                                                    FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.11}"
                                                    Foreground="{StaticResource Brush.Text.Dim}"
-                                                   ToolTip="Not tracked yet — no real token source wired up."/>
+                                                   ToolTip="Estimated (0.28 tokens/char + 40k overhead) — no real tokeniser wired yet."/>
+                                        <!-- Appears only at ≥75% context used, per §2. -->
+                                        <Button x:Name="BtnStartNewChat" Style="{StaticResource PanelCollapseButton}"
+                                                Width="Auto" Height="20" Padding="8,2" Margin="10,0,0,0" Visibility="Collapsed"
+                                                ToolTip="Context is getting full — start a fresh chat"
+                                                Click="BtnStartNewChat_Click">
+                                            <TextBlock Text="Start new chat" FontFamily="{StaticResource FontFamily.Sans}"
+                                                       FontSize="9.5" Foreground="{StaticResource Brush.Accent.IssueNum}"/>
+                                        </Button>
                                     </WrapPanel>
 
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
@@ -735,12 +772,86 @@
                                         </Button>
                                         <Button x:Name="BtnToggleDetectedItems" Style="{StaticResource PanelCollapseButton}"
                                                 Margin="8,0,0,0"
-                                                ToolTip="Detected items (tasks, todos, git issues) from this chat"
+                                                ToolTip="Detected in this chat — mentioned issues + pinned questions (⌘)"
                                                 Click="BtnToggleDetectedItems_Click">
                                             <TextBlock Text="&#xE9D2;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
                                         </Button>
+                                        <!-- Git #2209 §10 — the Claude Floaty (⧉) button. Full floaty spec
+                                             lives with the #2035/#2059/#2065 chain; what belongs HERE is only
+                                             the button + that the floaty and this tab show the SAME conversation
+                                             (BtnFloaty_Click pops the current claude.ai URL into a topmost mini
+                                             window). -->
+                                        <Button x:Name="BtnFloaty" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="Pop this conversation into the always-on-top Claude Floaty"
+                                                Click="BtnFloaty_Click">
+                                            <TextBlock Text="&#xE8A7;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                                        </Button>
+                                        <!-- Git #2209 §2 — wrench menu. A WPF Popup anchored by
+                                             PlacementTarget/Placement=Bottom, deliberately NOT positioned by
+                                             measured screen coordinates (the real bug flagged twice in the doc).
+                                             StaysOpen=False so a click-away dismisses it. -->
+                                        <Button x:Name="BtnWrench" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0" ToolTip="Chat tools &amp; actions"
+                                                Click="BtnWrench_Click">
+                                            <TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                                        </Button>
+                                        <Popup x:Name="WrenchPopup" PlacementTarget="{Binding ElementName=BtnWrench}"
+                                               Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                                               HorizontalOffset="-160" VerticalOffset="4">
+                                            <Border Background="{StaticResource Brush.Bg.Panel}" CornerRadius="8"
+                                                    BorderBrush="{StaticResource Brush.Border.Popover}" BorderThickness="1"
+                                                    Padding="6" Width="230">
+                                                <Border.Effect>
+                                                    <DropShadowEffect BlurRadius="14" ShadowDepth="3" Opacity="0.45" Color="#000000"/>
+                                                </Border.Effect>
+                                                <StackPanel x:Name="WrenchMenuItems"/>
+                                            </Border>
+                                        </Popup>
                                     </StackPanel>
                                 </Grid>
+                            </Grid>
+                        </Border>
+
+                        <!-- Git #2209 §3 — Breadcrumb / Share bar (band 2, WARM). A near-replica of
+                             claude.ai's own chrome strip: a breadcrumb of Epic › Chat, and the Share
+                             pill. Resolved open question #1: Share is wired to the real claude.ai share
+                             URL for the mapped conversation; if the WebView2 host can't expose that
+                             cleanly the pill hides itself (BtnShare_Click) rather than shipping a fake
+                             inert one. Warm palette on purpose — this band is part of the chat document,
+                             not the shell. -->
+                        <Border Grid.Row="1" Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Claude.Border}"
+                                Padding="14,6">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock x:Name="CrumbEpic" Text="Epic" VerticalAlignment="Center"
+                                               Cursor="Hand" MouseLeftButtonDown="CtxEpic_Click"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                    <TextBlock Text="&#xE76C;" Margin="7,0" VerticalAlignment="Center"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                    <TextBlock x:Name="CrumbChat" Text="Chat" VerticalAlignment="Center"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                               FontWeight="{StaticResource FontWeight.SemiBold}"
+                                               Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                </StackPanel>
+                                <Button x:Name="BtnShare" Grid.Column="1" Style="{StaticResource PanelCollapseButton}"
+                                        Width="Auto" Height="22" Padding="9,3" ToolTip="Copy this conversation's claude.ai share link"
+                                        Click="BtnShare_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE72D;" FontFamily="Segoe MDL2 Assets" FontSize="10"
+                                                   VerticalAlignment="Center" Margin="0,0,5,0"
+                                                   Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                        <TextBlock Text="Share" FontFamily="{StaticResource FontFamily.Sans}" FontSize="10"
+                                                   Foreground="{StaticResource Brush.Claude.Text.Body}"/>
+                                    </StackPanel>
+                                </Button>
                             </Grid>
                         </Border>
 
@@ -751,7 +862,7 @@
                              in the same Grid cell as ClaudeWebView is invisible no matter its
                              Z-order — this row-based placement is the actual fix, not a
                              cosmetic choice. Collapses to 0 height when hidden. -->
-                        <Border Grid.Row="1" x:Name="InspectorWarningNotice" Visibility="Collapsed"
+                        <Border Grid.Row="2" x:Name="InspectorWarningNotice" Visibility="Collapsed"
                                 Padding="14,8" Background="{StaticResource Brush.Claude.Bg.Bubble}"
                                 BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Claude.Border}">
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
@@ -765,7 +876,7 @@
                             </StackPanel>
                         </Border>
 
-                        <Grid Grid.Row="2">
+                        <Grid Grid.Row="3">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition x:Name="StatDetailColumn" Width="0"/>
                                 <ColumnDefinition Width="*"/>
@@ -840,6 +951,11 @@
                                  same dock. No real DOM-injection/detection engine reads the
                                  webview's content yet, so this is an honest empty state, not
                                  invented findings. -->
+                            <!-- Git #2209 §6 — Detected in this chat. Body is now DYNAMIC, rendered by
+                                 RenderDetectedItems() from the real #2197 ChatDockData pipe (Postgres
+                                 chat-mentions + pinned questions, live GitHub board status) — no more
+                                 fixture "nothing caught yet". Grouped detections + loose cards with
+                                 DetectionKind chips + Promote to Queue / Dismiss. -->
                             <Border x:Name="DetectedItemsPanel" Grid.Column="2" ClipToBounds="True"
                                     Background="{StaticResource Brush.Claude.Bg.Chrome}"
                                     BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
@@ -851,17 +967,20 @@
                                                        FontFamily="Segoe MDL2 Assets" FontSize="12"
                                                        Foreground="{StaticResource Brush.Claude.Text.Muted}"
                                                        MouseLeftButtonDown="BtnToggleDetectedItems_Click"/>
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE72C;" Cursor="Hand" Margin="0,0,12,0"
+                                                       ToolTip="Refresh detections"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="DetectedRefresh_Click"/>
                                             <TextBlock Text="Detected in this chat" VerticalAlignment="Center"
                                                        FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
                                                        FontWeight="{StaticResource FontWeight.Bold}"
                                                        Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
                                         </DockPanel>
                                     </Border>
-                                    <TextBlock Margin="14,20,14,0" TextWrapping="Wrap" TextAlignment="Center"
-                                               FontStyle="Italic"
-                                               Text="Nothing caught yet — keep talking."
-                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
-                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="DetectedItemsResults" Margin="10,10,10,14"/>
+                                    </ScrollViewer>
                                 </DockPanel>
                             </Border>
 
@@ -933,6 +1052,68 @@
                                 </DockPanel>
                             </Border>
                         </Grid>
+
+                        <!-- Git #2209 §8/§5 — Composer band (band 5, WARM). App-OWNED composer, the one
+                             surface tools write into (never auto-send, §5) and the anchor for the per-tab
+                             draft dictionary (ChatDrafts keyed by tab id, §8 — a global draft breaks both
+                             the tool-writes-to-composer pattern AND the cross-epic flow, so it is a real
+                             correctness requirement, not a nicety). "Send to Claude" injects the draft
+                             into the live claude.ai composer via the WebView2 DOM bridge; sending clears
+                             ONLY this tab's draft. The return-address bar appears when a cross-epic
+                             question was written into this tab (§7). -->
+                        <Border Grid.Row="4" Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                BorderThickness="0,1,0,0" BorderBrush="{StaticResource Brush.Claude.Border}"
+                                Padding="14,10">
+                            <StackPanel>
+                                <Border x:Name="ComposerReturnBar" Visibility="Collapsed" Margin="0,0,0,8"
+                                        CornerRadius="6" Padding="9,6"
+                                        Background="{StaticResource Brush.Claude.Bg.Bubble}"
+                                        BorderBrush="{StaticResource Brush.Claude.Accent}" BorderThickness="1">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                   VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                   Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                   MouseLeftButtonDown="ComposerReturnClear_Click"/>
+                                        <TextBlock Text="&#xE72C;" Margin="0,0,7,0" VerticalAlignment="Center"
+                                                   FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                   Foreground="{StaticResource Brush.Claude.Accent}"/>
+                                        <TextBlock x:Name="ComposerReturnText" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                   Foreground="{StaticResource Brush.Claude.Text.Body}"/>
+                                    </DockPanel>
+                                </Border>
+                                <Border CornerRadius="10" Background="{StaticResource Brush.Claude.Bg.Content}"
+                                        BorderBrush="{StaticResource Brush.Claude.Border}" BorderThickness="1" Padding="4">
+                                    <DockPanel>
+                                        <Button x:Name="BtnComposerSend" DockPanel.Dock="Right" VerticalAlignment="Bottom"
+                                                Style="{StaticResource PanelCollapseButton}" Width="Auto" Height="30"
+                                                Padding="12,0" Margin="6,0,2,2"
+                                                ToolTip="Send this draft to the live claude.ai composer"
+                                                Click="BtnComposerSend_Click">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="Send" VerticalAlignment="Center" Margin="0,0,5,0"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                                           FontWeight="{StaticResource FontWeight.SemiBold}"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                                <TextBlock Text="&#xE72A;" VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets"
+                                                           FontSize="11" Foreground="{StaticResource Brush.Claude.Accent}"/>
+                                            </StackPanel>
+                                        </Button>
+                                        <TextBox x:Name="ChatComposer" AcceptsReturn="True" TextWrapping="Wrap"
+                                                 MaxHeight="120" VerticalScrollBarVisibility="Auto" BorderThickness="0"
+                                                 Padding="8,6" Background="Transparent"
+                                                 Foreground="{StaticResource Brush.Claude.Text.Bright}"
+                                                 CaretBrush="{StaticResource Brush.Claude.Accent}"
+                                                 FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                 TextChanged="ChatComposer_TextChanged"/>
+                                    </DockPanel>
+                                </Border>
+                                <TextBlock x:Name="ComposerHint" Margin="4,6,0,0"
+                                           Text="Tools and cross-epic answers write here — nothing sends until you click Send."
+                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                            </StackPanel>
+                        </Border>
                     </Grid>
 
                     <!-- Git Doctor — Step 13 (wpf-handoff/readme-phase2.md). Real

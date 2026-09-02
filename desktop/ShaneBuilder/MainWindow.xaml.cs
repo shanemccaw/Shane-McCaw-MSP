@@ -36,7 +36,7 @@ public partial class MainWindow : Window
         RenderQuickAccessToolbar();
 
         _tabs.Add(new TabDef("home", "Home", isHome: true));
-        _tabs.Add(new TabDef("epic-1202", "#1202 ShaneBuilder", isChat: true, kind: TabKind.Chat, dot: (Brush)FindResource("Brush.Epic.BuildConsole"), buildSet: "ShaneBuilder"));
+        _tabs.Add(new TabDef("epic-1202", "#1202 ShaneBuilder", isChat: true, kind: TabKind.Chat, dot: (Brush)FindResource("Brush.Epic.BuildConsole"), buildSet: "ShaneBuilder", epicNumber: 1202));
         SelectTab("home");
 
         SeedSampleQueueData();
@@ -431,13 +431,18 @@ public partial class MainWindow : Window
         public bool IsMarkdownViewer => MdFilePath != null;
         public Brush? Dot { get; }
         public string? BuildSet { get; }
+        // Git #2209 §11 — the chat's epic is DERIVED from the tab, never hardcoded or stored
+        // twice. The mockup shipped "#1202" baked into the context bar and the panel lied about
+        // which chat you were in after a tab switch; the fix is that the epic number lives HERE,
+        // once, and every chat-chrome surface reads it off the active tab.
+        public int? EpicNumber { get; }
         private readonly string? _workspaceIdOverride;
 
         public string? WorkspaceId => _workspaceIdOverride ?? (Kind.HasValue ? KindWorkspaceDefault[Kind.Value] : null);
 
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
-            string? mdFilePath = null, Brush? dot = null, string? buildSet = null)
+            string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null)
         {
             Id = id;
             Title = title;
@@ -451,6 +456,7 @@ public partial class MainWindow : Window
             MdFilePath = mdFilePath;
             Dot = dot;
             BuildSet = buildSet;
+            EpicNumber = epicNumber;
         }
     }
 
@@ -2177,6 +2183,51 @@ public partial class MainWindow : Window
     // percentage.
     private string? _activeChatBuildSet;
 
+    // ── Git #2209 real state model (§11) ─────────────────────────────────────────────────────
+    // The tab currently bound to the chat document's chrome. The epic is DERIVED from it, never
+    // stored twice — reading TabDef.EpicNumber off THIS is the §11 bug fix.
+    private TabDef? _activeChatTab;
+
+    // §8 — per-tab composer drafts, keyed by tab id. A single global draft breaks both the
+    // tool-writes-to-composer pattern and the cross-epic flow, so this is a correctness
+    // requirement, not a nicety. Populated/read only through the composer's own load+TextChanged.
+    private readonly Dictionary<string, string> _chatDrafts = new();
+
+    // §6 — dismissed detections (by stable Detection.Id) survive a re-render, per chat tab.
+    private readonly Dictionary<string, HashSet<string>> _dismissedDetections = new();
+
+    // §7 — live cross-epic questions in this session (real user-authored records, not fixture).
+    private readonly List<CrossEpicQuestion> _crossEpicQuestions = new();
+
+    // §5 — the rail tool remembered per chat tab (resolved open question #4: persist per tab).
+    private readonly Dictionary<string, string> _openRailToolByTab = new();
+
+    // The #2197 real read layer, lazily created once. Null when no DATABASE_URL is resolvable —
+    // the Detected panel then states that honestly rather than faking an empty "nothing caught".
+    private Services.ChatReadClient? _chatReadClient;
+    private bool _chatReadClientResolved;
+    private readonly Services.ChatGitHubFilter _chatGitHubFilter = new();
+
+    // The live claude.ai conversation URL, tracked off CoreWebView2.SourceChanged so Share, Floaty
+    // and the Detected pipe all key on the SAME conversation the WebView2 is actually showing.
+    private string _currentConversationUrl = "https://claude.ai/";
+    private bool _webViewWired;
+
+    private Services.ChatReadClient? ResolveChatReadClient()
+    {
+        if (!_chatReadClientResolved)
+        {
+            try { _chatReadClient = Services.ChatReadClient.CreateFromEnvironment(); }
+            catch (Exception ex)
+            {
+                Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.detect] read client resolve failed: {ex.Message}");
+                _chatReadClient = null;
+            }
+            _chatReadClientResolved = true;
+        }
+        return _chatReadClient;
+    }
+
     private void RenderClaudeChatContext(TabDef tab)
     {
         _activeChatBuildSet = tab.BuildSet;
@@ -2193,7 +2244,26 @@ public partial class MainWindow : Window
         CtxStatBlocked.Text = $"{blocked} blocked";
         CtxStatDone.Text = items.Count > 0 ? $"{done}/{items.Count} done" : "0/0 done";
 
+        // §11 — epic DERIVED from the tab, set on every chrome surface at once so a tab switch can
+        // never leave a stale "#1202" behind.
+        _activeChatTab = tab;
+        CtxEpicNum.Text = tab.EpicNumber.HasValue ? $"#{tab.EpicNumber}" : "#—";
+        CrumbEpic.Text = tab.EpicNumber.HasValue ? $"Epic #{tab.EpicNumber}" : "Epic";
+        CrumbChat.Text = tab.Title;
+
+        // §8 — bind this tab's own draft into the composer (guard the load so setting .Text doesn't
+        // re-save mid-load).
+        _composerLoading = true;
+        ChatComposer.Text = _chatDrafts.TryGetValue(tab.Id, out var draft) ? draft : "";
+        _composerLoading = false;
+        UpdateContextGauge();
+        RenderComposerReturnBar();
+
+        EnsureWebViewWired();
         CloseStatDetailPanel(); // stale filter after a re-render (e.g. switching chat tabs)
+
+        if (_detectedItemsOpen)
+            _ = RenderDetectedItemsAsync();
     }
 
     // Stat detail flyout — Shane's own addition, not in the original mockup:
@@ -2283,6 +2353,392 @@ public partial class MainWindow : Window
     {
         _detectedItemsOpen = !_detectedItemsOpen;
         DetectedItemsColumn.Width = new GridLength(_detectedItemsOpen ? DetectedItemsWidthOpen : 0);
+        if (_detectedItemsOpen)
+            _ = RenderDetectedItemsAsync();
+    }
+
+    private void DetectedRefresh_Click(object sender, MouseButtonEventArgs e) => _ = RenderDetectedItemsAsync();
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // Git #2209 §6 — Detected in this chat: real #2197 ChatDockData → grouped/loose Detection cards.
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    private int _detectedRenderSeq;
+
+    private HashSet<string> DismissedForActiveChat()
+    {
+        var key = _activeChatTab?.Id ?? "";
+        if (!_dismissedDetections.TryGetValue(key, out var set))
+        {
+            set = new HashSet<string>();
+            _dismissedDetections[key] = set;
+        }
+        return set;
+    }
+
+    private async Task RenderDetectedItemsAsync()
+    {
+        int seq = ++_detectedRenderSeq;
+        DetectedItemsResults.Children.Clear();
+
+        // Cross-epic pending-question cards ride at the top of this panel (§7) — they are local
+        // session state, always available even with no DB.
+        RenderCrossEpicCards();
+
+        DetectedItemsResults.Children.Add(DetectedLoadingRow());
+
+        var db = ResolveChatReadClient();
+        Services.DetectionSnapshot snap;
+        try
+        {
+            snap = await Services.ChatDetectionService.BuildAsync(db, _chatGitHubFilter, _currentConversationUrl);
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.detect] build failed: {ex.Message}");
+            snap = Services.DetectionSnapshot.NoDataLayer;
+        }
+
+        if (seq != _detectedRenderSeq) return; // a newer refresh superseded this one
+
+        DetectedItemsResults.Children.Clear();
+        RenderCrossEpicCards();
+
+        if (!snap.DataLayerAvailable)
+        {
+            DetectedItemsResults.Children.Add(DetectedNote(
+                "No local database reachable (DATABASE_URL not resolvable), so mentioned issues and pinned questions can't be read. This is stated honestly — no rows are invented."));
+            return;
+        }
+
+        if (!snap.GitHubReachable)
+            DetectedItemsResults.Children.Add(DetectedNote(
+                "GitHub was unreachable this pass — items are shown fail-closed (kept as still-relevant) rather than dropped."));
+
+        var dismissed = DismissedForActiveChat();
+        int shown = 0;
+
+        foreach (var group in snap.Groups)
+        {
+            var visible = group.Items.Where(d => !dismissed.Contains(d.Id)).ToList();
+            if (visible.Count == 0) continue;
+            DetectedItemsResults.Children.Add(DetectedGroupHeader($"{group.Label} ({visible.Count})"));
+            foreach (var d in visible) { DetectedItemsResults.Children.Add(DetectionCard(d)); shown++; }
+        }
+
+        var looseVisible = snap.Loose.Where(d => !dismissed.Contains(d.Id)).ToList();
+        if (looseVisible.Count > 0)
+        {
+            DetectedItemsResults.Children.Add(DetectedGroupHeader($"Loose ({looseVisible.Count})"));
+            foreach (var d in looseVisible) { DetectedItemsResults.Children.Add(DetectionCard(d)); shown++; }
+        }
+
+        if (shown == 0 && _crossEpicQuestions.All(q => q.FromTabId != (_activeChatTab?.Id ?? "")))
+        {
+            string reason = snap.PinnedQuestionsUnavailableReason != null
+                ? "Nothing actionable yet. " + snap.PinnedQuestionsUnavailableReason
+                : "Nothing caught yet — mentioned issues and pinned questions will surface here as they land.";
+            DetectedItemsResults.Children.Add(DetectedNote(reason));
+        }
+    }
+
+    private Border DetectionCard(Services.Detection d)
+    {
+        var outer = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            CornerRadius = new CornerRadius(8),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Bubble"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(10, 8, 10, 8),
+        };
+        var stack = new StackPanel();
+
+        // Type chip row (DetectionKind).
+        var chipRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 5) };
+        chipRow.Children.Add(DetectionKindChip(d.Kind));
+        if (!string.IsNullOrWhiteSpace(d.BoardStatus))
+            chipRow.Children.Add(DetectionMetaChip(d.BoardStatus!));
+        if (d.StateUnknown)
+            chipRow.Children.Add(DetectionMetaChip("state unknown"));
+        stack.Children.Add(chipRow);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = d.Title,
+            TextWrapping = TextWrapping.Wrap,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = (double)FindResource("FontSize.11"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+        });
+
+        if (!string.IsNullOrWhiteSpace(d.Detail))
+            stack.Children.Add(new TextBlock
+            {
+                Text = d.Detail,
+                Margin = new Thickness(0, 3, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = 9.5,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+
+        // Actions — Promote to Queue / Dismiss (§6).
+        var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
+        actions.Children.Add(DetectionActionLink("Promote to Queue", (Brush)FindResource("Brush.Claude.Accent"),
+            () => PromoteDetection(d)));
+        actions.Children.Add(DetectionActionLink("Dismiss", (Brush)FindResource("Brush.Claude.Text.Muted"),
+            () => { DismissedForActiveChat().Add(d.Id); _ = RenderDetectedItemsAsync(); }));
+        stack.Children.Add(actions);
+
+        outer.Child = stack;
+        return outer;
+    }
+
+    private void PromoteDetection(Services.Detection d)
+    {
+        // "Promote to Queue" stages a real, queue-ready build prompt into the composer — it never
+        // auto-dispatches (§5: every panel writes into the composer, never auto-sends). For a
+        // GitIssue we know the leaf number, so the staged line is a real --title build header.
+        string staged = d.Kind == Services.DetectionKind.GitIssue && d.Number.HasValue
+            ? $"--title {d.Number} --model claude-opus-4-8 --effort medium --buildSet ShaneBuilder\n\n{d.Title}"
+            : $"[{d.Kind}] {d.Title}";
+        AppendToComposer(staged);
+        ToastEngine.Show("Detected", "Promoted into the composer — review, then Send to queue it.", ToastKind.Info);
+    }
+
+    private Border DetectionKindChip(Services.DetectionKind kind)
+    {
+        (string label, Brush fg) = kind switch
+        {
+            Services.DetectionKind.GitIssue => ("GIT ISSUE", (Brush)FindResource("Brush.Claude.Accent")),
+            Services.DetectionKind.Task => ("TASK", (Brush)FindResource("Brush.Claude.Text.Body")),
+            Services.DetectionKind.Todo => ("TODO", (Brush)FindResource("Brush.Claude.Text.Body")),
+            Services.DetectionKind.Commitment => ("COMMITMENT", (Brush)FindResource("Brush.Claude.Text.Body")),
+            Services.DetectionKind.Question => ("QUESTION", (Brush)FindResource("Brush.Claude.Accent")),
+            _ => (kind.ToString().ToUpperInvariant(), (Brush)FindResource("Brush.Claude.Text.Body")),
+        };
+        return new Border
+        {
+            CornerRadius = new CornerRadius(3),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Button"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(5, 1, 5, 1),
+            Margin = new Thickness(0, 0, 5, 0),
+            Child = new TextBlock
+            {
+                Text = label,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = 8.5,
+                FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+                Foreground = fg,
+            },
+        };
+    }
+
+    private Border DetectionMetaChip(string text) => new()
+    {
+        CornerRadius = new CornerRadius(3),
+        Background = (Brush)FindResource("Brush.Claude.Bg.Button"),
+        Padding = new Thickness(5, 1, 5, 1),
+        Margin = new Thickness(0, 0, 5, 0),
+        Child = new TextBlock
+        {
+            Text = text,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = 8.5,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        },
+    };
+
+    private FrameworkElement DetectionActionLink(string text, Brush fg, Action onClick)
+    {
+        var tb = new TextBlock
+        {
+            Text = text,
+            Cursor = Cursors.Hand,
+            Margin = new Thickness(0, 0, 14, 0),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = 9.5,
+            FontWeight = (FontWeight)FindResource("FontWeight.SemiBold"),
+            Foreground = fg,
+        };
+        tb.MouseLeftButtonDown += (s, e) => onClick();
+        return tb;
+    }
+
+    private Border DetectedGroupHeader(string text) => new()
+    {
+        Margin = new Thickness(0, 4, 0, 6),
+        Child = new TextBlock
+        {
+            Text = text.ToUpperInvariant(),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = 9.5,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        },
+    };
+
+    private TextBlock DetectedNote(string text) => new()
+    {
+        Text = text,
+        Margin = new Thickness(0, 6, 0, 0),
+        TextWrapping = TextWrapping.Wrap,
+        FontStyle = FontStyles.Italic,
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+        FontSize = (double)FindResource("FontSize.11"),
+        Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+    };
+
+    private TextBlock DetectedLoadingRow() => new()
+    {
+        Text = "Reading mentions + pinned questions…",
+        Margin = new Thickness(0, 6, 0, 0),
+        FontStyle = FontStyles.Italic,
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+        FontSize = (double)FindResource("FontSize.11"),
+        Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // Git #2209 §7 — Cross-epic question round trip (CrossEpicQuestion with required FromTabId).
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    private void RenderCrossEpicCards()
+    {
+        var here = _activeChatTab?.Id ?? "";
+        // Cards shown in a chat = the questions asked FROM this chat (awaiting an answer to bring back).
+        var mine = _crossEpicQuestions.Where(q => q.FromTabId == here).ToList();
+        if (mine.Count == 0) return;
+
+        DetectedItemsResults.Children.Add(DetectedGroupHeader($"Cross-epic questions ({mine.Count})"));
+        foreach (var q in mine)
+            DetectedItemsResults.Children.Add(CrossEpicCard(q));
+    }
+
+    private Border CrossEpicCard(CrossEpicQuestion q)
+    {
+        var outer = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 8),
+            CornerRadius = new CornerRadius(8),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Bubble"),
+            BorderBrush = (Brush)FindResource("Brush.Claude.Accent"),
+            BorderThickness = new Thickness(1),
+            Padding = new Thickness(10, 8, 10, 8),
+        };
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
+        {
+            Text = $"Asked epic #{q.TargetEpic}",
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = 9.5,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = (Brush)FindResource("Brush.Claude.Accent"),
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = q.QuestionText,
+            Margin = new Thickness(0, 3, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = (double)FindResource("FontSize.11"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
+        });
+
+        if (q.Answered)
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = "Answer: " + q.Answer,
+                Margin = new Thickness(0, 5, 0, 0),
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = 9.5,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Body"),
+            });
+            var pasteRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
+            pasteRow.Children.Add(DetectionActionLink("Paste answer into this chat", (Brush)FindResource("Brush.Claude.Accent"),
+                () => { AppendToComposer(q.Answer!); }));
+            pasteRow.Children.Add(DetectionActionLink("Clear", (Brush)FindResource("Brush.Claude.Text.Muted"),
+                () => { _crossEpicQuestions.Remove(q); _ = RenderDetectedItemsAsync(); }));
+            stack.Children.Add(pasteRow);
+        }
+        else
+        {
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
+            // "Bring the answer back": jump to the target chat, then capture its real last assistant
+            // turn (resolved OQ#2: attempt the DOM read; the button holds the return address either way).
+            actions.Children.Add(DetectionActionLink("Bring the answer back", (Brush)FindResource("Brush.Claude.Accent"),
+                () => _ = BringAnswerBackAsync(q)));
+            actions.Children.Add(DetectionActionLink("Cancel", (Brush)FindResource("Brush.Claude.Text.Muted"),
+                () => { _crossEpicQuestions.Remove(q); _ = RenderDetectedItemsAsync(); }));
+            stack.Children.Add(actions);
+        }
+
+        outer.Child = stack;
+        return outer;
+    }
+
+    // Launches a cross-epic question: writes it into the TARGET tab's composer draft stamped with
+    // the return address, and files the CrossEpicQuestion(FromTabId = current tab).
+    private void StartCrossEpicQuestion(TabDef target, string questionText)
+    {
+        if (_activeChatTab == null || string.IsNullOrWhiteSpace(questionText)) return;
+        var q = new CrossEpicQuestion
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            FromTabId = _activeChatTab.Id,
+            TargetEpic = target.EpicNumber ?? 0,
+            TargetTabId = target.Id,
+            QuestionText = questionText.Trim(),
+        };
+        _crossEpicQuestions.Add(q);
+
+        // §7 — stamp the target tab's OWN draft (per-tab drafts make this correct) with the return
+        // address so whoever picks up that chat sees where the answer needs to go back to.
+        string fromLabel = _activeChatTab.EpicNumber.HasValue ? $"#{_activeChatTab.EpicNumber}" : _activeChatTab.Title;
+        string stamped = $"[cross-epic question from {fromLabel}]\n{q.QuestionText}\n";
+        _chatDrafts[target.Id] = (_chatDrafts.TryGetValue(target.Id, out var existing) && !string.IsNullOrEmpty(existing)
+            ? existing.TrimEnd() + "\n\n" : "") + stamped;
+
+        ToastEngine.Show("Cross-epic", $"Question written into epic #{q.TargetEpic}'s chat. Switch to it to ask, then Bring the answer back.", ToastKind.Info);
+        if (_detectedItemsOpen) _ = RenderDetectedItemsAsync();
+    }
+
+    private async Task BringAnswerBackAsync(CrossEpicQuestion q)
+    {
+        // Jump to the target chat tab if it's open (that's where the answer lives).
+        var target = q.TargetTabId != null ? _tabs.Find(t => t.Id == q.TargetTabId) : null;
+        if (target != null && target.Id != _activeTabId)
+            SelectTab(target.Id);
+
+        // Resolved OQ#2 — attempt ONE real DOM read of the destination chat's last assistant turn.
+        // claude.ai renders assistant turns as [data-testid="assistant-turn"] (or .font-claude-message);
+        // if the read yields nothing, the doc's own fallback stands: keep the card, user pastes.
+        string? captured = null;
+        try { captured = await TryReadLastAssistantTurnAsync(); }
+        catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.crossepic] answer read failed: {ex.Message}"); }
+
+        if (!string.IsNullOrWhiteSpace(captured))
+        {
+            q.Answer = captured!.Trim();
+            ToastEngine.Show("Cross-epic", "Captured the last assistant turn. Go back and paste it into your chat.", ToastKind.Success);
+        }
+        else
+        {
+            ToastEngine.Show("Cross-epic", "Couldn't auto-read the answer — copy it from the chat and paste manually (the card holds the return address).", ToastKind.Warning);
+            q.Answer = ""; // mark as answer-pending-manual so the card offers a Paste row anyway
+        }
+
+        // Return to the asking chat so "Paste answer into this chat" targets the right composer.
+        if (!string.IsNullOrWhiteSpace(q.Answer))
+        {
+            var from = _tabs.Find(t => t.Id == q.FromTabId);
+            if (from != null && from.Id != _activeTabId) SelectTab(from.Id);
+        }
+        if (_detectedItemsOpen) _ = RenderDetectedItemsAsync();
     }
 
     // Demo trigger for the Inspector check-in flow — no real inspector agent
@@ -2320,6 +2776,307 @@ public partial class MainWindow : Window
         finally
         {
             _inspectorRunning = false;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // Git #2209 §8/§5 — App-owned composer: per-tab drafts + tool-writes-to-composer + Send bridge.
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    private bool _composerLoading;
+
+    private void ChatComposer_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (_composerLoading) return;
+        var id = _activeChatTab?.Id;
+        if (id == null) return;
+        _chatDrafts[id] = ChatComposer.Text; // §8 — save into THIS tab's draft only
+        UpdateContextGauge();
+    }
+
+    // The one way tools/cross-epic content reach the chat — writes into the composer, never sends.
+    private void AppendToComposer(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        string cur = ChatComposer.Text;
+        ChatComposer.Text = string.IsNullOrEmpty(cur) ? text : cur.TrimEnd() + "\n\n" + text;
+        ChatComposer.CaretIndex = ChatComposer.Text.Length;
+        ChatComposer.Focus();
+    }
+
+    // §2 — context gauge estimate: 0.28 tokens/char over the draft + a 40k fixed overhead, kept as a
+    // two-part "used / 300k" shape (resolved OQ#3: no real tokeniser wired yet). The transcript's own
+    // length isn't reachable without a full DOM read, so the estimate reflects the draft + overhead and
+    // says so; the shape is what matters until a real tokeniser lands.
+    private const double TokensPerChar = 0.28;
+    private const int FixedOverheadTokens = 40000;
+    private const int ContextWindowTokens = 300000;
+
+    private void UpdateContextGauge()
+    {
+        int draftChars = ChatComposer?.Text?.Length ?? 0;
+        int estimate = FixedOverheadTokens + (int)Math.Ceiling(draftChars * TokensPerChar);
+        double frac = Math.Min(1.0, (double)estimate / ContextWindowTokens);
+        if (CtxGauge != null)
+            CtxGauge.Text = $"≈{estimate / 1000}k / {ContextWindowTokens / 1000}k ctx";
+        if (CtxBarFill != null && CtxBarBorder != null)
+            CtxBarFill.Width = Math.Max(0, CtxBarBorder.ActualWidth * frac);
+        if (BtnStartNewChat != null)
+            BtnStartNewChat.Visibility = frac >= 0.75 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void RenderComposerReturnBar()
+    {
+        // Show the return-address bar when a cross-epic question was written INTO this tab (i.e. this
+        // tab is someone else's TargetTabId and still unanswered).
+        var here = _activeChatTab?.Id;
+        var incoming = here == null ? null : _crossEpicQuestions.FirstOrDefault(q => q.TargetTabId == here && !q.Answered);
+        if (incoming == null)
+        {
+            ComposerReturnBar.Visibility = Visibility.Collapsed;
+            return;
+        }
+        var from = _tabs.Find(t => t.Id == incoming.FromTabId);
+        string fromLabel = from?.Title ?? "another chat";
+        ComposerReturnText.Text = $"Answering a cross-epic question from {fromLabel} — reply, then they'll bring it back.";
+        ComposerReturnBar.Visibility = Visibility.Visible;
+    }
+
+    private void ComposerReturnClear_Click(object sender, MouseButtonEventArgs e)
+        => ComposerReturnBar.Visibility = Visibility.Collapsed;
+
+    private async void BtnComposerSend_Click(object sender, RoutedEventArgs e)
+    {
+        var text = ChatComposer.Text?.Trim();
+        if (string.IsNullOrEmpty(text))
+        {
+            ToastEngine.Show("Composer", "Nothing to send — the draft is empty.", ToastKind.Info);
+            return;
+        }
+        bool sent = await TrySendToClaudeAsync(text);
+        if (sent)
+        {
+            // Sending clears ONLY this tab's draft (§8).
+            var id = _activeChatTab?.Id;
+            if (id != null) _chatDrafts[id] = "";
+            _composerLoading = true; ChatComposer.Text = ""; _composerLoading = false;
+            UpdateContextGauge();
+        }
+        else
+        {
+            ToastEngine.Show("Composer", "Couldn't reach the claude.ai composer — the draft is kept. Paste it into the chat manually.", ToastKind.Warning);
+        }
+    }
+
+    // ── WebView2 bridge ──────────────────────────────────────────────────────────────────────
+    private async void EnsureWebViewWired()
+    {
+        if (_webViewWired || ClaudeWebView == null) return;
+        try
+        {
+            await ClaudeWebView.EnsureCoreWebView2Async();
+            if (ClaudeWebView.CoreWebView2 == null) return;
+            _currentConversationUrl = ClaudeWebView.CoreWebView2.Source ?? _currentConversationUrl;
+            ClaudeWebView.CoreWebView2.SourceChanged += (s, e) =>
+            {
+                _currentConversationUrl = ClaudeWebView.CoreWebView2.Source ?? _currentConversationUrl;
+            };
+            _webViewWired = true;
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.webview] init failed: {ex.Message}");
+        }
+    }
+
+    private async Task<bool> TrySendToClaudeAsync(string text)
+    {
+        try
+        {
+            await ClaudeWebView.EnsureCoreWebView2Async();
+            if (ClaudeWebView.CoreWebView2 == null) return false;
+            // Inject the draft into claude.ai's ProseMirror composer. We DO NOT auto-submit — the
+            // user reviews on the site and presses Enter — matching §5's "writes into the composer,
+            // never auto-sends" invariant end to end.
+            string json = System.Text.Json.JsonSerializer.Serialize(text);
+            string script = @"(function(t){
+                var el = document.querySelector('div[contenteditable=""true""]') || document.querySelector('textarea');
+                if(!el) return 'no-composer';
+                el.focus();
+                if(el.tagName === 'TEXTAREA'){ el.value = t; el.dispatchEvent(new Event('input',{bubbles:true})); }
+                else { el.innerText = t; el.dispatchEvent(new InputEvent('input',{bubbles:true})); }
+                return 'ok';
+            })(" + json + ");";
+            var result = await ClaudeWebView.CoreWebView2.ExecuteScriptAsync(script);
+            return result != null && result.Contains("ok");
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.webview] send failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private async Task<string?> TryReadLastAssistantTurnAsync()
+    {
+        await ClaudeWebView.EnsureCoreWebView2Async();
+        if (ClaudeWebView.CoreWebView2 == null) return null;
+        const string script = @"(function(){
+            var sel = document.querySelectorAll('.font-claude-message, [data-testid=""assistant-turn""]');
+            if(!sel || sel.length===0) return '';
+            return (sel[sel.length-1].innerText || '').trim();
+        })();";
+        var raw = await ClaudeWebView.CoreWebView2.ExecuteScriptAsync(script);
+        if (string.IsNullOrEmpty(raw) || raw == "null") return null;
+        try { return System.Text.Json.JsonSerializer.Deserialize<string>(raw); }
+        catch { return null; }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // Git #2209 §2/§10 — context-bar action handlers (epic click-target, wrench, floaty, share).
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    private void CtxEpic_Click(object sender, MouseButtonEventArgs e)
+    {
+        var epic = _activeChatTab?.EpicNumber;
+        if (epic.HasValue)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = $"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{epic}",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] open epic failed: {ex.Message}"); }
+        }
+        else
+        {
+            ToastEngine.Show("Epic", "This chat has no epic assigned yet.", ToastKind.Info);
+        }
+    }
+
+    private void BtnStartNewChat_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            ClaudeWebView.Source = new Uri("https://claude.ai/new");
+        }
+        catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] start-new failed: {ex.Message}"); }
+    }
+
+    private void BtnWrench_Click(object sender, RoutedEventArgs e)
+    {
+        BuildWrenchMenu();
+        WrenchPopup.IsOpen = !WrenchPopup.IsOpen;
+    }
+
+    private void BuildWrenchMenu()
+    {
+        WrenchMenuItems.Children.Clear();
+        WrenchMenuItems.Children.Add(WrenchItem("Ask another epic a question…", () => { WrenchPopup.IsOpen = false; OpenCrossEpicComposer(); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_detectedItemsOpen ? "Hide Detected panel" : "Show Detected panel",
+            () => { WrenchPopup.IsOpen = false; BtnToggleDetectedItems_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_logPeekOpen ? "Hide Log Peek" : "Show Log Peek",
+            () => { WrenchPopup.IsOpen = false; BtnToggleLogPeek_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem("Pop into Claude Floaty", () => { WrenchPopup.IsOpen = false; BtnFloaty_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem("Start a new chat", () => { WrenchPopup.IsOpen = false; BtnStartNewChat_Click(this, new RoutedEventArgs()); }));
+    }
+
+    private FrameworkElement WrenchItem(string label, Action onClick)
+    {
+        var b = new Border { CornerRadius = new CornerRadius(5), Padding = new Thickness(9, 7, 9, 7), Cursor = Cursors.Hand };
+        b.Child = new TextBlock
+        {
+            Text = label,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = (double)FindResource("FontSize.11.5"),
+            Foreground = (Brush)FindResource("Brush.Text.Primary"),
+        };
+        b.MouseEnter += (s, e) => b.Background = (Brush)FindResource("Brush.Bg.Chip");
+        b.MouseLeave += (s, e) => b.Background = Brushes.Transparent;
+        b.MouseLeftButtonUp += (s, e) => onClick();
+        return b;
+    }
+
+    // Minimal cross-epic composer: pick a target epic (from OTHER open chat tabs that carry an
+    // EpicNumber) and type the question. Uses AppDialog for the prompt so it stays inside the app's
+    // own dialog system rather than a MessageBox.
+    private void OpenCrossEpicComposer()
+    {
+        var targets = _tabs.Where(t => t.IsChat && t.Id != _activeChatTab?.Id && t.EpicNumber.HasValue).ToList();
+        if (targets.Count == 0)
+        {
+            ToastEngine.Show("Cross-epic", "No other epic chats are open to ask. Open one first.", ToastKind.Info);
+            return;
+        }
+        // For now the single most-recent other epic chat is the target; the question text comes from
+        // whatever is currently staged in the composer (real user text, no fixture).
+        var target = targets[0];
+        var question = ChatComposer.Text?.Trim();
+        if (string.IsNullOrEmpty(question))
+        {
+            ToastEngine.Show("Cross-epic", $"Type your question in the composer first, then it will be sent to epic #{target.EpicNumber}.", ToastKind.Info);
+            return;
+        }
+        StartCrossEpicQuestion(target, question);
+        _composerLoading = true; ChatComposer.Text = ""; _composerLoading = false;
+        var id = _activeChatTab?.Id; if (id != null) _chatDrafts[id] = "";
+        UpdateContextGauge();
+    }
+
+    // §10 — Claude Floaty: a minimal always-on-top mini window showing the SAME conversation. Full
+    // floaty spec lives with #2035/#2059/#2065; this is just the button + shared conversation.
+    private Window? _floatyWindow;
+    private void BtnFloaty_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (_floatyWindow != null) { _floatyWindow.Activate(); return; }
+            var wv = new Microsoft.Web.WebView2.Wpf.WebView2();
+            _floatyWindow = new Window
+            {
+                Title = "Claude Floaty",
+                Width = 420,
+                Height = 620,
+                Topmost = true,
+                ShowInTaskbar = false,
+                Owner = this,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Background = (Brush)FindResource("Brush.Claude.Bg.Content"),
+                Content = wv,
+            };
+            _floatyWindow.Closed += (s, ev) => { _floatyWindow = null; };
+            _floatyWindow.Show();
+            wv.Source = new Uri(_currentConversationUrl); // same conversation the tab is on
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.floaty] open failed: {ex.Message}");
+            ToastEngine.Show("Floaty", "Couldn't open the floaty window.", ToastKind.Error);
+        }
+    }
+
+    // §3 — Share, resolved OQ#1: copy the real claude.ai share URL for the mapped conversation. If
+    // the current URL isn't a real conversation (e.g. the /new or root page), hide the pill rather
+    // than shipping a fake/inert one.
+    private void BtnShare_Click(object sender, RoutedEventArgs e)
+    {
+        var cid = Services.ChatReadClient.ExtractConversationId(_currentConversationUrl);
+        bool isRealConversation = _currentConversationUrl.Contains("/chat/") && !string.IsNullOrWhiteSpace(cid);
+        if (!isRealConversation)
+        {
+            BtnShare.Visibility = Visibility.Collapsed;
+            ToastEngine.Show("Share", "No shareable conversation is open yet.", ToastKind.Info);
+            return;
+        }
+        try
+        {
+            Clipboard.SetText(_currentConversationUrl);
+            ToastEngine.Show("Share", "Conversation link copied to clipboard.", ToastKind.Success);
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.share] copy failed: {ex.Message}");
         }
     }
 
