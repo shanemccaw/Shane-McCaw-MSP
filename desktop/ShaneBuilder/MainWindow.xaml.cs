@@ -298,6 +298,45 @@ public partial class MainWindow : Window
         // Real chat linking isn't built yet, so _buildSetChatRefs stays empty — BuildSetCard
         // already hides the chat-reference pill entirely when a set has no entry there.
         RenderQueue();
+
+        // Git #2308 — the same real Park/Pause overlay Git Map and the Command Palette already
+        // apply after their own fetch (GitEpicPanelService.OverlayParkPauseAsync), applied here
+        // too so the Build Queue panel's rows read the same real state instead of a third,
+        // divergent notion of "parked"/"paused". Fire-and-forget after the first real render —
+        // mirrors the same pattern this method's own caller already uses for the initial load.
+        _ = OverlayQueueParkPauseAsync(items);
+    }
+
+    private async Task OverlayQueueParkPauseAsync(List<QueueItem> items)
+    {
+        var withNumbers = items.Where(i => i.GithubNumber.HasValue).ToList();
+        if (withNumbers.Count == 0) return;
+
+        var features = withNumbers
+            .Select(i => new Services.GitMapFeature { Number = i.GithubNumber!.Value, Title = i.Title })
+            .ToList();
+
+        try
+        {
+            await Services.GitEpicPanelService.OverlayParkPauseAsync(features, Services.ChatReadClient.ResolveConnectionStringForSqlRunner());
+        }
+        catch (Exception ex)
+        {
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[queue] Build Queue panel: park/pause overlay failed: {ex.Message}");
+            return;
+        }
+
+        var byNumber = features.ToDictionary(f => f.Number, f => f);
+        foreach (var item in withNumbers)
+        {
+            if (byNumber.TryGetValue(item.GithubNumber!.Value, out var f))
+            {
+                item.IsParked = f.IsParked;
+                item.IsPaused = f.IsPaused;
+            }
+        }
+
+        RenderQueue();
     }
 
     private static bool IsTerminalDbStatus(string? dbStatus) => dbStatus is "done" or "failed" or "canceled";
@@ -1271,6 +1310,12 @@ public partial class MainWindow : Window
         public IReadOnlyList<int> Blocks { get; }
         public IReadOnlyList<(int Num, string StatusLabel, string? CrossSet)> BlockedBy { get; }
         public IReadOnlyList<(string Label, bool Done)> Checklist { get; }
+        // Git #2308 — real propagation from the Epic panel's own Park/Pause actions (#2307),
+        // via the same GitEpicPanelService.OverlayParkPauseAsync overlay Git Map and the
+        // Command Palette already call. Mutable (not init) so it can be set AFTER construction
+        // once the overlay resolves, without rebuilding the whole row.
+        public bool IsParked { get; set; }
+        public bool IsPaused { get; set; }
 
         public QueueItem(string id, string title, string buildSet, string status,
             int? githubNumber = null, string? model = null, string? effort = null,
@@ -1820,6 +1865,19 @@ public partial class MainWindow : Window
         });
 
         badges.Children.Add(StatusPill(item.Status, fg, bg, border));
+
+        // Git #2308 — real propagation from the Epic panel's own Park/Pause actions (#2307),
+        // same overlay Git Map and the Command Palette already show.
+        if (item.IsParked)
+        {
+            var parkedAccent = (Brush)FindResource("Brush.Status.Parked");
+            badges.Children.Add(Chip("PARKED", parkedAccent, Tint(parkedAccent, 0x22), Tint(parkedAccent, 0x66)));
+        }
+        if (item.IsPaused)
+        {
+            var pausedAccent = (Brush)FindResource("Brush.Status.Paused");
+            badges.Children.Add(Chip("PAUSED", pausedAccent, Tint(pausedAccent, 0x22), Tint(pausedAccent, 0x66)));
+        }
 
         if (item.GithubNumber.HasValue)
         {
