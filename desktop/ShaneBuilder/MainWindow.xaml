@@ -793,6 +793,23 @@
                                                 Click="BtnToggleRepoHealth_Click">
                                             <TextBlock Text="&#xE9D9;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
                                         </Button>
+                                        <!-- Git #2217 — JSON Viewer mini panel toggle (§6.9), same mechanism
+                                             as the toggles above. Text label since no MDL2 braces glyph reads
+                                             cleanly at this size (same reasoning as the SQL Runner "SQL" label). -->
+                                        <Button x:Name="BtnToggleJsonViewer" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="JSON Viewer — paste, prettify, copy"
+                                                Click="BtnToggleJsonViewer_Click">
+                                            <TextBlock Text="{}{}" FontFamily="{StaticResource FontFamily.Monospace}" FontSize="10" FontWeight="{StaticResource FontWeight.Bold}"/>
+                                        </Button>
+                                        <!-- Git #2217 — Windows File Browser mini panel toggle (§6.10).
+                                             Read-only by design — hands Claude an exact path, does not edit files. -->
+                                        <Button x:Name="BtnToggleFileBrowser" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="Windows File Browser — read-only, browse to a path"
+                                                Click="BtnToggleFileBrowser_Click">
+                                            <TextBlock Text="&#xE8B7;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                                        </Button>
                                         <!-- Git #2209 §10 — the Claude Floaty (⧉) button. Full floaty spec
                                              lives with the #2035/#2059/#2065 chain; what belongs HERE is only
                                              the button + that the floaty and this tab show the SAME conversation
@@ -901,6 +918,8 @@
                                 <ColumnDefinition x:Name="LogPeekColumn" Width="0"/>
                                 <ColumnDefinition x:Name="SqlRunnerColumn" Width="0"/>
                                 <ColumnDefinition x:Name="RepoHealthColumn" Width="0"/>
+                                <ColumnDefinition x:Name="JsonViewerColumn" Width="0"/>
+                                <ColumnDefinition x:Name="FileBrowserColumn" Width="0"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Stat detail flyout — Shane's own addition, not in the mockup:
@@ -1287,6 +1306,139 @@
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                                         <StackPanel x:Name="RepoHealthFindingsPanel" Margin="8"/>
                                     </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Git #2217 — JSON Viewer mini panel (§6.9). 6-row paste textarea, Prettify,
+                                 error line on invalid input, formatted output, Copy JSON. Seeded with a
+                                 small object so the panel is never blank on first open. Same bolt-on-flyout
+                                 mechanism as StatDetailPanel/SqlRunnerPanel/RepoHealthPanel above — a 7th
+                                 single-purpose column. -->
+                            <Border x:Name="JsonViewerPanel" Grid.Column="6" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="340">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="BtnToggleJsonViewer_Click"/>
+                                            <TextBlock Text="JSON Viewer" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <!-- Toolbar: Prettify + error line -->
+                                    <Border DockPanel.Dock="Top" Padding="10,7" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel>
+                                            <Button x:Name="BtnJsonViewerPrettify" DockPanel.Dock="Left"
+                                                    Style="{StaticResource PanelCollapseButton}"
+                                                    Width="Auto" Height="24"
+                                                    Padding="10,4" ToolTip="Prettify"
+                                                    Click="BtnJsonViewerPrettify_Click">
+                                                <TextBlock Text="Prettify" FontFamily="{StaticResource FontFamily.Sans}"
+                                                           FontSize="10.5" FontWeight="{StaticResource FontWeight.SemiBold}"
+                                                           Foreground="{StaticResource Brush.Claude.Accent}"/>
+                                            </Button>
+                                            <TextBlock x:Name="JsonViewerError" Text="" Margin="10,0,0,0"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                                       Foreground="{StaticResource Brush.Status.Blocked}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <!-- Bottom action bar: Copy JSON -->
+                                    <Border DockPanel.Dock="Bottom" Padding="10,8" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <Button x:Name="BtnJsonViewerCopy" Width="Auto" Height="24" HorizontalAlignment="Stretch"
+                                                Style="{StaticResource PanelCollapseButton}"
+                                                ToolTip="Copy the formatted JSON" Click="BtnJsonViewerCopy_Click">
+                                            <TextBlock Text="Copy JSON" FontFamily="{StaticResource FontFamily.Sans}" FontSize="10.5"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Body}"/>
+                                        </Button>
+                                    </Border>
+
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition x:Name="JsonViewerInputRow" Height="108" MinHeight="54"/>
+                                            <RowDefinition Height="5"/>
+                                            <RowDefinition Height="*" MinHeight="60"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- 6-row paste textarea (§6.9), seeded with a small object so this
+                                             panel is never blank on first open. -->
+                                        <TextBox x:Name="JsonViewerInput" Grid.Row="0" Margin="10,8,10,0" Padding="6"
+                                                 AcceptsReturn="True" AcceptsTab="True" TextWrapping="Wrap"
+                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                                 Background="{StaticResource Brush.Claude.Bg.Content}" BorderThickness="0"
+                                                 FontFamily="{StaticResource FontFamily.Monospace}" FontSize="11"
+                                                 Foreground="{StaticResource Brush.Claude.Text.Bright}"
+                                                 TextChanged="JsonViewerInput_TextChanged"/>
+
+                                        <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                                      Background="{StaticResource Brush.Claude.Border}" ResizeDirection="Rows"/>
+
+                                        <!-- Formatted output — read-only -->
+                                        <TextBox x:Name="JsonViewerOutput" Grid.Row="2" Margin="10,0,10,10" Padding="6"
+                                                 IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                                 Background="{StaticResource Brush.Claude.Bg.Content}" BorderThickness="0"
+                                                 FontFamily="{StaticResource FontFamily.Monospace}" FontSize="10.5"
+                                                 Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                    </Grid>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Git #2217 — Windows File Browser mini panel (§6.10). Indented tree,
+                                 folders expand in place, selecting a file shows full path (word-break,
+                                 Copy Path). READ-ONLY BY DESIGN — hands Claude an exact path, does not
+                                 edit files; no write/rename/delete capability added, per spec. -->
+                            <Border x:Name="FileBrowserPanel" Grid.Column="7" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="320">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="BtnToggleFileBrowser_Click"/>
+                                            <TextBlock Text="File Browser" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <!-- Selected file's full path + Copy Path. Word-break so a long
+                                         Windows path wraps instead of overflowing the fixed-width panel. -->
+                                    <Border DockPanel.Dock="Bottom" Padding="10,8" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <StackPanel>
+                                            <TextBlock x:Name="FileBrowserSelectedPath" Text="No file selected"
+                                                       Margin="0,0,0,7" TextWrapping="Wrap"
+                                                       FontFamily="{StaticResource FontFamily.Monospace}" FontSize="10"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                            <Button x:Name="BtnFileBrowserCopyPath" Width="Auto" Height="24" HorizontalAlignment="Stretch"
+                                                    Style="{StaticResource PanelCollapseButton}" IsEnabled="False"
+                                                    ToolTip="Copy the selected file's full path" Click="BtnFileBrowserCopyPath_Click">
+                                                <TextBlock Text="Copy Path" FontFamily="{StaticResource FontFamily.Sans}" FontSize="10.5"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Body}"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Indented tree, folders expand in place (lazy-loaded on expand —
+                                         real local DriveInfo/DirectoryInfo, no fixture data). -->
+                                    <TreeView x:Name="FileBrowserTree" Margin="6,8,6,8"
+                                              Background="Transparent" BorderThickness="0"
+                                              SelectedItemChanged="FileBrowserTree_SelectedItemChanged"/>
                                 </DockPanel>
                             </Border>
                         </Grid>

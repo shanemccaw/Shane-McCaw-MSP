@@ -2987,6 +2987,10 @@ public partial class MainWindow : Window
             () => { WrenchPopup.IsOpen = false; BtnToggleLogPeek_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem(_sqlRunnerOpen ? "Hide SQL Runner" : "Show SQL Runner",
             () => { WrenchPopup.IsOpen = false; BtnToggleSqlRunner_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_jsonViewerOpen ? "Hide JSON Viewer" : "Show JSON Viewer",
+            () => { WrenchPopup.IsOpen = false; BtnToggleJsonViewer_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_fileBrowserOpen ? "Hide File Browser" : "Show File Browser",
+            () => { WrenchPopup.IsOpen = false; BtnToggleFileBrowser_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Pop into Claude Floaty", () => { WrenchPopup.IsOpen = false; BtnFloaty_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Start a new chat", () => { WrenchPopup.IsOpen = false; BtnStartNewChat_Click(this, new RoutedEventArgs()); }));
     }
@@ -6878,5 +6882,200 @@ public partial class MainWindow : Window
         RenderRepoHealth();
         RenderRepoHealthDoc();
         ToastEngine.Show("Repo Health", $"{selected.Count} finding(s) written into the composer — review, then Send.", ToastKind.Info);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // Git #2217 — JSON Viewer mini panel (§6.9). Same bolt-on-flyout mechanism as
+    // SqlRunnerPanel/RepoHealthPanel above (7th tool-panel column). Prettify runs on click, not
+    // live-as-you-type — the error line reflects the last Prettify attempt, cleared as soon as the
+    // user edits the input again so a stale error never lingers over freshly-typed text.
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    private bool _jsonViewerOpen;
+    private const double JsonViewerWidthOpen = 340;
+
+    private void BtnToggleJsonViewer_Click(object sender, RoutedEventArgs e)
+    {
+        _jsonViewerOpen = !_jsonViewerOpen;
+        JsonViewerColumn.Width = new GridLength(_jsonViewerOpen ? JsonViewerWidthOpen : 0);
+        // Seeded with a small object so the panel is never blank on first open (§6.9).
+        if (_jsonViewerOpen && string.IsNullOrEmpty(JsonViewerInput.Text))
+        {
+            JsonViewerInput.Text = "{\n  \"hello\": \"world\",\n  \"count\": 1\n}";
+            JsonViewerPrettify();
+        }
+    }
+
+    private void JsonViewerInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (JsonViewerError.Text.Length > 0) JsonViewerError.Text = "";
+    }
+
+    private void BtnJsonViewerPrettify_Click(object sender, RoutedEventArgs e) => JsonViewerPrettify();
+
+    private void JsonViewerPrettify()
+    {
+        var raw = JsonViewerInput.Text;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            JsonViewerError.Text = "Nothing to prettify.";
+            return;
+        }
+        try
+        {
+            using var doc = JsonDocument.Parse(raw);
+            JsonViewerOutput.Text = JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions { WriteIndented = true });
+            JsonViewerError.Text = "";
+        }
+        catch (JsonException ex)
+        {
+            JsonViewerError.Text = $"Invalid JSON: {ex.Message}";
+        }
+    }
+
+    private void BtnJsonViewerCopy_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrEmpty(JsonViewerOutput.Text)) return;
+        Clipboard.SetText(JsonViewerOutput.Text);
+        ToastEngine.Show("JSON Viewer", "Copied.", ToastKind.Info);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // Git #2217 — Windows File Browser mini panel (§6.10). READ-ONLY BY DESIGN — hands Claude an
+    // exact path, does not edit files; no create/rename/delete/write capability exists anywhere in
+    // this section, per spec. Real local DriveInfo/DirectoryInfo, no fixture data. Lazy-expanding
+    // tree (a single placeholder child per unexpanded folder, replaced with real children on first
+    // Expanded) so opening the panel doesn't walk the whole filesystem up front.
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    private bool _fileBrowserOpen;
+    private bool _fileBrowserLoaded;
+    private const double FileBrowserWidthOpen = 320;
+    private static readonly object FileBrowserPlaceholder = new();
+
+    private sealed class FileBrowserNode
+    {
+        public readonly string FullPath;
+        public readonly bool IsDirectory;
+        public FileBrowserNode(string fullPath, bool isDirectory) { FullPath = fullPath; IsDirectory = isDirectory; }
+    }
+
+    private void BtnToggleFileBrowser_Click(object sender, RoutedEventArgs e)
+    {
+        _fileBrowserOpen = !_fileBrowserOpen;
+        FileBrowserColumn.Width = new GridLength(_fileBrowserOpen ? FileBrowserWidthOpen : 0);
+        if (_fileBrowserOpen && !_fileBrowserLoaded)
+        {
+            _fileBrowserLoaded = true;
+            LoadFileBrowserRoots();
+        }
+    }
+
+    private void LoadFileBrowserRoots()
+    {
+        FileBrowserTree.Items.Clear();
+        foreach (var drive in DriveInfo.GetDrives())
+        {
+            if (!drive.IsReady) continue;
+            var name = drive.Name.TrimEnd('\\');
+            FileBrowserTree.Items.Add(CreateFileBrowserDirectoryItem(drive.RootDirectory.FullName, name));
+        }
+    }
+
+    private TreeViewItem CreateFileBrowserDirectoryItem(string fullPath, string displayName)
+    {
+        var item = new TreeViewItem { Header = BuildFileBrowserHeader(displayName, true), Tag = new FileBrowserNode(fullPath, true) };
+        item.Items.Add(FileBrowserPlaceholder);
+        item.Expanded += FileBrowserDirectory_Expanded;
+        return item;
+    }
+
+    private FrameworkElement BuildFileBrowserHeader(string name, bool isDirectory)
+    {
+        var sp = new StackPanel { Orientation = Orientation.Horizontal };
+        sp.Children.Add(new TextBlock
+        {
+            Text = isDirectory ? "" : "",
+            FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 11, Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted")
+        });
+        sp.Children.Add(new TextBlock
+        {
+            Text = name, FontSize = 10.5, VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Body")
+        });
+        return sp;
+    }
+
+    // Folders expand in place (§6.10) — real children replace the single placeholder on first expand.
+    private void FileBrowserDirectory_Expanded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not TreeViewItem item || item.Tag is not FileBrowserNode node || !node.IsDirectory) return;
+        if (item.Items.Count != 1 || !ReferenceEquals(item.Items[0], FileBrowserPlaceholder)) return;
+        item.Items.Clear();
+        PopulateFileBrowserChildren(item, node.FullPath);
+    }
+
+    private void PopulateFileBrowserChildren(TreeViewItem parent, string path)
+    {
+        try
+        {
+            foreach (var dir in Directory.GetDirectories(path).OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+                parent.Items.Add(CreateFileBrowserDirectoryItem(dir, System.IO.Path.GetFileName(dir)));
+
+            foreach (var file in Directory.GetFiles(path).OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
+            {
+                parent.Items.Add(new TreeViewItem
+                {
+                    Header = BuildFileBrowserHeader(System.IO.Path.GetFileName(file), false),
+                    Tag = new FileBrowserNode(file, false)
+                });
+            }
+
+            if (parent.Items.Count == 0) AddFileBrowserPlaceholderRow(parent, "(empty)", "Brush.Claude.Text.Muted");
+        }
+        catch (UnauthorizedAccessException)
+        {
+            AddFileBrowserPlaceholderRow(parent, "(access denied)", "Brush.Status.Blocked");
+        }
+        catch (IOException ex)
+        {
+            AddFileBrowserPlaceholderRow(parent, $"(error: {ex.Message})", "Brush.Status.Blocked");
+        }
+    }
+
+    private void AddFileBrowserPlaceholderRow(TreeViewItem parent, string text, string brushKey)
+    {
+        parent.Items.Add(new TreeViewItem
+        {
+            Header = new TextBlock
+            {
+                Text = text, FontStyle = FontStyles.Italic, FontSize = 10,
+                Foreground = (Brush)FindResource(brushKey)
+            },
+            IsEnabled = false
+        });
+    }
+
+    // Selecting a file shows its full path (word-break, §6.10) and enables Copy Path. Selecting a
+    // folder just disables Copy Path — the panel exists to hand Claude a file path, not a folder.
+    private void FileBrowserTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (e.NewValue is TreeViewItem item && item.Tag is FileBrowserNode { IsDirectory: false } node)
+        {
+            FileBrowserSelectedPath.Text = node.FullPath;
+            BtnFileBrowserCopyPath.IsEnabled = true;
+        }
+        else
+        {
+            BtnFileBrowserCopyPath.IsEnabled = false;
+        }
+    }
+
+    private void BtnFileBrowserCopyPath_Click(object sender, RoutedEventArgs e)
+    {
+        if (FileBrowserTree.SelectedItem is not TreeViewItem item || item.Tag is not FileBrowserNode { IsDirectory: false } node) return;
+        Clipboard.SetText(node.FullPath);
+        ToastEngine.Show("File Browser", "Path copied.", ToastKind.Info);
     }
 }
