@@ -59,6 +59,11 @@ namespace BuildConsole.Services
     {
         private const string Repo = "shanemccaw/Shane-McCaw-MSP";
 
+        /// <summary>Git #2195 — the one real issue URL construction used by any caller (the Floating
+        /// Chat Window's side dock included) that needs to open an issue number without already
+        /// holding a live-fetched <c>html_url</c> for it.</summary>
+        public static string IssueUrl(int issueNumber) => $"https://github.com/{Repo}/issues/{issueNumber}";
+
         public static async Task<List<GitHubIssueSummary>> ListOpenByLabelAsync(string label, int limit = 50)
         {
             var psi = new ProcessStartInfo

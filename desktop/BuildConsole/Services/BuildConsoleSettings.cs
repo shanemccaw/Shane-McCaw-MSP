@@ -403,6 +403,12 @@ namespace BuildConsole.Services
         /// <summary>Whether the floating chat window's live bridge strip was expanded when last closed. Collapsed pauses real-time capture (WebView2 throttles when hidden), so it defaults expanded.</summary>
         public bool FloatingChatBridgeExpanded { get; set; } = true;
 
+        /// <summary>Git #2195 — whether the side dock (synthesized pending-items relationship map)
+        /// was expanded when last closed. Defaults OFF: it's a new panel that widens the window, so
+        /// it starts hidden until Shane opts in via the header toggle, same as most first-run panels
+        /// in this app.</summary>
+        public bool FloatingChatDockExpanded { get; set; } = false;
+
         /// <summary>
         /// Git #2105 — active pinned-question detection. When on, each open floating-chat tab, on
         /// every settled assistant turn (the real "turn completed" event, not polling), is probed

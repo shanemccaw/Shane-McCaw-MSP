@@ -13,6 +13,9 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
+using System.Windows.Threading;
+using System.Text.RegularExpressions;
+using System.Threading;
 using ShaneBuilder.Services;
 
 namespace ShaneBuilder;
@@ -342,26 +345,38 @@ public partial class MainWindow : Window
         public bool IsHome { get; }
         public bool IsChat { get; }
         public bool IsGitDoctor { get; }
+<<<<<<< HEAD
         public TabKind? Kind { get; }
         public string? Ext { get; }
+=======
+        public bool IsLogViewer { get; }
+>>>>>>> 2ef0f85eb422052c2313c56feb3d2afe71bec9da
         public Brush? Dot { get; }
         public string? BuildSet { get; }
         private readonly string? _workspaceIdOverride;
 
         public string? WorkspaceId => _workspaceIdOverride ?? (Kind.HasValue ? KindWorkspaceDefault[Kind.Value] : null);
 
+<<<<<<< HEAD
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null,
             Brush? dot = null, string? buildSet = null)
+=======
+        public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false, bool isLogViewer = false, Brush? dot = null, string? buildSet = null)
+>>>>>>> 2ef0f85eb422052c2313c56feb3d2afe71bec9da
         {
             Id = id;
             Title = title;
             IsHome = isHome;
             IsChat = isChat;
             IsGitDoctor = isGitDoctor;
+<<<<<<< HEAD
             Kind = kind;
             _workspaceIdOverride = workspaceId;
             Ext = ext;
+=======
+            IsLogViewer = isLogViewer;
+>>>>>>> 2ef0f85eb422052c2313c56feb3d2afe71bec9da
             Dot = dot;
             BuildSet = buildSet;
         }
@@ -747,13 +762,16 @@ public partial class MainWindow : Window
         HomeTabContent.Visibility = tab.IsHome ? Visibility.Visible : Visibility.Collapsed;
         ClaudeChatDock.Visibility = tab.IsChat ? Visibility.Visible : Visibility.Collapsed;
         GitDoctorDock.Visibility = tab.IsGitDoctor ? Visibility.Visible : Visibility.Collapsed;
-        StubTabContent.Visibility = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor ? Visibility.Visible : Visibility.Collapsed;
-        if (!tab.IsHome && !tab.IsChat && !tab.IsGitDoctor)
+        LogViewerDock.Visibility = tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
+        StubTabContent.Visibility = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
+        if (!tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsLogViewer)
             StubTabContent.Text = tab.Title + " — nothing here yet";
         if (tab.IsChat)
             RenderClaudeChatContext(tab);
         if (tab.IsGitDoctor)
             _ = EnsureGitDoctorLoadedAsync();
+        if (tab.IsLogViewer)
+            EnsureLogViewerLoaded();
     }
 
     private void CloseTab(string id)
@@ -2340,6 +2358,11 @@ public partial class MainWindow : Window
             (Brush)FindResource("Brush.Epic.Gate"), "Git Doctor",
             "Every check git can fail, in plain English, each with real remedies you can run.",
             () => OpenGitDoctor()));
+
+        results.Add(new PaletteResult("ClaudeUrls", "Log Viewer", "9 real log sources — Websites, Services, Local",
+            (Brush)FindResource("Brush.LogSource.Console"), "Log Viewer",
+            "COLD search, BURST/LIVE tail, and the real on-disk archive.",
+            () => OpenLogViewer()));
 
         foreach (var tab in _tabs)
         {
@@ -4289,5 +4312,1019 @@ public partial class MainWindow : Window
             return;
         }
         _ = RunGitDoctorStepsAsync(approved, $"Running Claude's plan — {approved.Count} commands", null);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Log Viewer — Step 10 (wpf-handoff/readme-phase2.md), corrected by issue
+    // #2200's 2026-09-02 comment: level handling is per-source (Services/
+    // LogService.cs), never one uniform InferLevel pass. Two surfaces share
+    // this same state block — the Log Peek flyout (LogPeekPanel, 280px, bolted
+    // onto ClaudeChatDock) and the full Log Viewer document (LogViewerDock) —
+    // per the spec's "two surfaces, one state." "Send to chat" copies a
+    // fenced ```log block to the clipboard and toasts, the same precedent
+    // Git Doctor's own "send all findings" already set: ClaudeChatDock is the
+    // real claude.ai site in a WebView2, not a composer this app owns, so
+    // there is nothing to inject text into directly.
+    // ══════════════════════════════════════════════════════════════════════
+
+    private readonly LogService _logService = new();
+    private bool _logViewerLoaded;
+
+    private LogStreamMode _logStreamMode = LogStreamMode.Cold;
+    private CancellationTokenSource? _logStreamCts;
+    private DispatcherTimer? _logBurstTimer;
+    private DispatcherTimer? _logRenderPumpTimer;
+    private volatile bool _logBufferDirty;
+    private int _logBurstSecondsLeft;
+    private const int LogBurstDefaultSeconds = 30;
+
+    private readonly List<LogLine> _logLiveBuffer = new();
+    private readonly object _logBufferLock = new();
+    private List<LogLine> _logDisplayed = new();
+    private List<LogLine> _logLastRenderedLines = new();
+
+    private readonly HashSet<string> _logEnabledSourceIds = new(LogService.Sources.Select(s => s.Id));
+    private string _logSearchText = "";
+    private bool _logRegex;
+    private string _logExcludeText = "";
+    private bool _logHighlight;
+    private string? _logLoggerFilter;
+    private readonly HashSet<LogLevel> _logSelectedLevels = new(Enum.GetValues<LogLevel>());
+    private int _logScrubberMinutesBack;
+
+    private LogLine? _logSelectedLine;
+    private readonly List<LogLine> _logPinned = new();
+
+    private string _logRailTab = "Sources";
+    private readonly Dictionary<string, bool> _logRailGroupOpen = new() { ["Websites"] = true, ["Services"] = true, ["Local"] = true };
+    private readonly HashSet<string> _logArchiveOpenDays = new();
+    private IReadOnlyList<ArchiveNode>? _logArchiveCache;
+    private bool _logViewingArchive;
+
+    private readonly List<(string Name, LogQuery Query)> _logSavedFilters = new();
+
+    private bool _logPeekOpen;
+    private string _logPeekSearchText = "";
+    private readonly HashSet<LogLine> _logPeekChecked = new();
+
+    private void OpenLogViewer()
+    {
+        if (_tabs.Find(t => t.Id == "logviewer") == null)
+            _tabs.Add(new TabDef("logviewer", "Log Viewer", isLogViewer: true, dot: (Brush)FindResource("Brush.LogSource.Console")));
+        SelectTab("logviewer");
+    }
+
+    private void EnsureLogViewerLoaded()
+    {
+        if (!_logViewerLoaded)
+        {
+            _logViewerLoaded = true;
+            SeedLogSavedFilters();
+            RefreshLogViewerQuery();
+        }
+        RenderLogViewer();
+    }
+
+    private void SeedLogSavedFilters()
+    {
+        _logSavedFilters.Add(("Graph 401s", new LogQuery("401", false, null, null, null, null, null, null)));
+        _logSavedFilters.Add(("Drift aborts", new LogQuery("drift", false, new[] { "success" }, new[] { LogLevel.Error, LogLevel.Warn }, null, null, null, null)));
+        _logSavedFilters.Add(("Build failures", new LogQuery("failed", false, null, new[] { LogLevel.Error, LogLevel.Fatal }, new[] { "build" }, null, null, null)));
+    }
+
+    private static string LogLevelBrushKey(LogLevel level) => level switch
+    {
+        LogLevel.Trace => "Brush.LogLevel.Trace",
+        LogLevel.Debug => "Brush.LogLevel.Debug",
+        LogLevel.Info => "Brush.LogLevel.Info",
+        LogLevel.Warn => "Brush.LogLevel.Warn",
+        LogLevel.Error => "Brush.LogLevel.Error",
+        LogLevel.Fatal => "Brush.LogLevel.Fatal",
+        _ => "Brush.LogLevel.Info"
+    };
+
+    private static string LogSourceBrushKey(string sourceId) => sourceId switch
+    {
+        "marketing" => "Brush.LogSource.Marketing",
+        "portal" => "Brush.LogSource.Portal",
+        "admin" => "Brush.LogSource.Admin",
+        "api" => "Brush.LogSource.Api",
+        "sql" => "Brush.LogSource.Sql",
+        "build" => "Brush.LogSource.Build",
+        "ssh" => "Brush.LogSource.Ssh",
+        "terminal" => "Brush.LogSource.Terminal",
+        "console" => "Brush.LogSource.Console",
+        _ => "Brush.Text.Muted"
+    };
+
+    private List<LogLine> SnapshotLiveBuffer() { lock (_logBufferLock) { return _logLiveBuffer.ToList(); } }
+
+    private List<LogLine> CurrentLoadedLines() =>
+        _logStreamMode == LogStreamMode.Cold ? _logDisplayed : SnapshotLiveBuffer();
+
+    // ── Top-level render ────────────────────────────────────────────────────
+    private void RenderLogViewer()
+    {
+        RenderStreamSwitch(LogViewerStreamSwitch);
+        RenderLogViewerStatusPill();
+        RenderLogViewerRail();
+        RenderLogViewerLevelPills();
+        RenderLogViewerSavedFilterChips();
+        if (!_logViewingArchive) RenderLogViewerLines();
+        RenderLogViewerLineDetail();
+        RenderLogViewerScratchPad();
+        RenderLogViewerFilterChips();
+    }
+
+    private void RenderStreamSwitch(StackPanel host)
+    {
+        host.Children.Clear();
+        foreach (var mode in new[] { LogStreamMode.Cold, LogStreamMode.Burst, LogStreamMode.Live })
+        {
+            bool active = _logStreamMode == mode;
+            var btn = new Border
+            {
+                Padding = new Thickness(8, 3, 8, 3),
+                Margin = new Thickness(0, 0, 2, 0),
+                CornerRadius = new CornerRadius(4),
+                Cursor = Cursors.Hand,
+                Background = active ? (Brush)FindResource("Brush.Accent.Primary") : (Brush)FindResource("Brush.Bg.Chip"),
+                Child = new TextBlock
+                {
+                    Text = mode.ToString().ToUpperInvariant(),
+                    FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                    FontSize = 9,
+                    FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"),
+                    Foreground = active ? Brushes.Black : (Brush)FindResource("Brush.Text.Muted")
+                }
+            };
+            btn.MouseLeftButtonDown += (s, e) => SetLogStreamMode(mode);
+            host.Children.Add(btn);
+        }
+    }
+
+    private void RenderLogViewerStatusPill()
+    {
+        bool narrow = ActualWidth > 0 && ActualWidth < 1250;
+        string text = _logStreamMode switch
+        {
+            LogStreamMode.Cold => narrow ? "COLD" : "COLD · NOT STREAMING",
+            LogStreamMode.Burst => narrow ? $"{_logBurstSecondsLeft}s" : $"BURST · {_logBurstSecondsLeft}s LEFT",
+            LogStreamMode.Live => narrow ? "LIVE" : "LIVE · TAILING",
+            _ => ""
+        };
+        LogViewerStatusPill.Text = text;
+        LogViewerStatusPill.Foreground = _logStreamMode switch
+        {
+            LogStreamMode.Live => (Brush)FindResource("Brush.Status.Running"),
+            LogStreamMode.Burst => (Brush)FindResource("Brush.Status.Capped"),
+            _ => (Brush)FindResource("Brush.Text.Dim")
+        };
+    }
+
+    // ── Streaming — COLD/BURST/LIVE ─────────────────────────────────────────
+    private void SetLogStreamMode(LogStreamMode mode)
+    {
+        StopLogStream();
+        _logStreamMode = mode;
+
+        if (mode != LogStreamMode.Cold)
+        {
+            lock (_logBufferLock) { _logLiveBuffer.Clear(); _logLiveBuffer.AddRange(_logDisplayed); }
+
+            _logStreamCts = new CancellationTokenSource();
+            var ct = _logStreamCts.Token;
+            _ = Task.Run(() => ConsumeLogTailAsync(ct));
+
+            _logRenderPumpTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+            _logRenderPumpTimer.Tick += (s, e) =>
+            {
+                if (!_logBufferDirty) return;
+                _logBufferDirty = false;
+                if (!_logViewingArchive) RenderLogViewerLines();
+                RenderLogPeekLines();
+                RenderLogViewerRail();
+            };
+            _logRenderPumpTimer.Start();
+
+            if (mode == LogStreamMode.Burst)
+            {
+                _logBurstSecondsLeft = LogBurstDefaultSeconds;
+                _logBurstTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                _logBurstTimer.Tick += (s, e) =>
+                {
+                    _logBurstSecondsLeft--;
+                    RenderLogViewerStatusPill();
+                    // BURST self-cancels back to COLD when the countdown hits zero —
+                    // the "BURST counts down and self-cancels" done-when criterion.
+                    if (_logBurstSecondsLeft <= 0) SetLogStreamMode(LogStreamMode.Cold);
+                };
+                _logBurstTimer.Start();
+            }
+        }
+
+        RenderLogViewerStatusPill();
+        RenderStreamSwitch(LogViewerStreamSwitch);
+        RenderStreamSwitch(LogPeekStreamSwitch);
+        if (mode == LogStreamMode.Cold)
+        {
+            if (!_logViewingArchive) RenderLogViewerLines();
+            RenderLogPeekLines();
+        }
+    }
+
+    private void StopLogStream()
+    {
+        _logBurstTimer?.Stop(); _logBurstTimer = null;
+        _logRenderPumpTimer?.Stop(); _logRenderPumpTimer = null;
+        _logStreamCts?.Cancel(); _logStreamCts = null;
+    }
+
+    private void RestartLogStreamIfActive()
+    {
+        if (_logStreamMode == LogStreamMode.Cold) return;
+        var mode = _logStreamMode;
+        var secondsLeft = _logBurstSecondsLeft;
+        SetLogStreamMode(mode);
+        if (mode == LogStreamMode.Burst) _logBurstSecondsLeft = secondsLeft; // source set changed — keep the same countdown
+    }
+
+    private async Task ConsumeLogTailAsync(CancellationToken ct)
+    {
+        try
+        {
+            await foreach (var line in _logService.Tail(_logEnabledSourceIds, ct))
+            {
+                if (ct.IsCancellationRequested) break;
+                lock (_logBufferLock)
+                {
+                    _logLiveBuffer.Add(line);
+                    if (_logLiveBuffer.Count > 5000) _logLiveBuffer.RemoveAt(0);
+                }
+                _logBufferDirty = true;
+            }
+        }
+        catch (OperationCanceledException) { /* expected on stop/mode-switch */ }
+        catch { /* a streaming hiccup must never crash the app */ }
+    }
+
+    // ── COLD query (works regardless of streaming state) ────────────────────
+    private void RefreshLogViewerQuery()
+    {
+        if (_logViewingArchive) return; // archive view owns the lines panel while open
+        var q = BuildCurrentLogQuery();
+        _logDisplayed = _logService.Query(q).ToList();
+        if (_logStreamMode == LogStreamMode.Cold) RenderLogViewerLines();
+        RenderLogViewerFilterChips();
+    }
+
+    private LogQuery BuildCurrentLogQuery()
+    {
+        DateTime? from = _logScrubberMinutesBack > 0 ? DateTime.Now.AddMinutes(-_logScrubberMinutesBack) : null;
+        var excludes = string.IsNullOrWhiteSpace(_logExcludeText)
+            ? null
+            : _logExcludeText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var levels = _logSelectedLevels.Count == Enum.GetValues<LogLevel>().Length ? null : _logSelectedLevels.ToArray();
+        var sourceIds = _logEnabledSourceIds.Count == LogService.Sources.Count ? null : _logEnabledSourceIds.ToArray();
+        // HIGHLIGHT mode dims non-matches instead of hiding them, so the search
+        // text is deliberately withheld from the query itself when active —
+        // RenderLogViewerLines applies it client-side as a dim, not a filter.
+        var text = _logHighlight ? null : (string.IsNullOrWhiteSpace(_logSearchText) ? null : _logSearchText);
+        return new LogQuery(text, _logRegex, excludes, levels, sourceIds, from, null, _logLoggerFilter);
+    }
+
+    private bool LineMatchesSearchText(LogLine line)
+    {
+        if (string.IsNullOrWhiteSpace(_logSearchText)) return true;
+        if (_logRegex)
+        {
+            try { return Regex.IsMatch(line.Message, _logSearchText, RegexOptions.IgnoreCase); }
+            catch { return false; }
+        }
+        return line.Message.Contains(_logSearchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── Center stream ────────────────────────────────────────────────────────
+    private void RenderLogViewerLines()
+    {
+        LogViewerLinesPanel.Children.Clear();
+
+        var ordered = CurrentLoadedLines().OrderBy(l => l.Ts).TakeLast(600).ToList();
+        _logLastRenderedLines = ordered;
+
+        if (ordered.Count == 0)
+        {
+            LogViewerLinesPanel.Children.Add(new TextBlock
+            {
+                Text = "No lines match the current filter.",
+                FontStyle = FontStyles.Italic,
+                Margin = new Thickness(6),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = (double)FindResource("FontSize.11"),
+                Foreground = (Brush)FindResource("Brush.Text.Dim")
+            });
+            return;
+        }
+
+        foreach (var line in ordered)
+        {
+            bool dim = _logHighlight && !string.IsNullOrWhiteSpace(_logSearchText) && !LineMatchesSearchText(line);
+            LogViewerLinesPanel.Children.Add(BuildLogLineRow(line, dim));
+        }
+    }
+
+    private Border BuildLogLineRow(LogLine line, bool dim)
+    {
+        var levelBrush = (Brush)FindResource(LogLevelBrushKey(line.Level));
+        var sourceBrush = (Brush)FindResource(LogSourceBrushKey(line.SourceId));
+        bool isPinned = _logPinned.Contains(line);
+        bool isSelected = _logSelectedLine != null && _logSelectedLine.Equals(line);
+
+        // An inferred level renders outline-only, never filled — a real
+        // platform_log_stream level is the only one that gets the solid
+        // tinted background. See InferLevel's own doc comment for why this
+        // distinction is mandatory, not cosmetic.
+        var levelPill = new Border
+        {
+            CornerRadius = new CornerRadius(3),
+            Padding = new Thickness(5, 1, 5, 1),
+            Margin = new Thickness(0, 0, 8, 0),
+            BorderThickness = new Thickness(line.LevelIsInferred ? 1 : 0),
+            BorderBrush = levelBrush,
+            Background = line.LevelIsInferred
+                ? Brushes.Transparent
+                : new SolidColorBrush(((SolidColorBrush)levelBrush).Color) { Opacity = 0.22 },
+            ToolTip = line.LevelIsInferred
+                ? "Inferred from message text — no structured level exists for this source"
+                : "Real level from platform_log_stream",
+            Child = new TextBlock
+            {
+                Text = (line.LevelIsInferred ? "~" : "") + line.Level.ToString().ToUpperInvariant(),
+                Foreground = levelBrush,
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"),
+                FontSize = 9,
+                FontWeight = line.LevelIsInferred ? (FontWeight)FindResource("FontWeight.Regular") : (FontWeight)FindResource("FontWeight.Bold")
+            }
+        };
+
+        var row = new DockPanel
+        {
+            Margin = new Thickness(0, 1, 0, 1),
+            Background = isSelected ? (Brush)FindResource("Brush.Bg.Chip") : Brushes.Transparent,
+            Opacity = dim ? 0.35 : 1.0
+        };
+
+        var pin = new TextBlock
+        {
+            Text = isPinned ? "★" : "☆",
+            Margin = new Thickness(6, 0, 6, 0),
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            FontSize = 11,
+            Foreground = isPinned ? (Brush)FindResource("Brush.Accent.IssueNum") : (Brush)FindResource("Brush.Text.Dim")
+        };
+        pin.MouseLeftButtonDown += (s, e) => { e.Handled = true; ToggleLogLinePin(line); };
+        DockPanel.SetDock(pin, Dock.Right);
+
+        var dot = new Ellipse { Width = 6, Height = 6, Fill = sourceBrush, Margin = new Thickness(6, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+        var ts = new TextBlock
+        {
+            Text = line.Ts.ToString("HH:mm:ss.fff"), Foreground = (Brush)FindResource("Brush.Text.Dim"),
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10, Margin = new Thickness(0, 0, 8, 0),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        var msg = new TextBlock
+        {
+            Text = line.Message, Foreground = (Brush)FindResource("Brush.Text.Primary"),
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 11,
+            TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center
+        };
+
+        DockPanel.SetDock(dot, Dock.Left);
+        DockPanel.SetDock(ts, Dock.Left);
+        DockPanel.SetDock(levelPill, Dock.Left);
+        row.Children.Add(pin);
+        row.Children.Add(dot);
+        row.Children.Add(ts);
+        row.Children.Add(levelPill);
+        row.Children.Add(msg);
+
+        var outer = new Border { Child = row, Padding = new Thickness(0, 2, 4, 2), Cursor = Cursors.Hand };
+        outer.MouseLeftButtonDown += (s, e) => LogViewerSelectLine(line);
+        outer.ContextMenu = BuildLogLineContextMenu(line);
+        return outer;
+    }
+
+    private ContextMenu BuildLogLineContextMenu(LogLine line)
+    {
+        return BuildContextMenu(
+            ("", "Copy", () => Clipboard.SetText(FormatLogLine(line)), true, false),
+            ("", "Copy ±3 context", () => CopyLogLineContext(line), true, false),
+            ("", _logPinned.Contains(line) ? "Unpin" : "Pin", () => ToggleLogLinePin(line), true, false),
+            ("", "Send to chat", () => SendLogLinesToChat(new[] { line }), true, false),
+            ("", string.IsNullOrEmpty(line.Logger) ? "Follow this logger" : $"Follow logger: {line.Logger}",
+                () => { _logLoggerFilter = line.Logger; RefreshLogViewerQuery(); RenderLogViewerFilterChips(); }, !string.IsNullOrEmpty(line.Logger), false)
+        );
+    }
+
+    private static string FormatLogLine(LogLine l) =>
+        $"[{l.Ts:HH:mm:ss.fff}] {(l.LevelIsInferred ? "~" : "")}{l.Level.ToString().ToUpperInvariant()} {l.SourceId}/{l.Logger}: {l.Message}";
+
+    private void CopyLogLineContext(LogLine line)
+    {
+        int idx = _logLastRenderedLines.FindIndex(l => l.Equals(line));
+        if (idx < 0) { Clipboard.SetText(FormatLogLine(line)); return; }
+        int from = Math.Max(0, idx - 3), to = Math.Min(_logLastRenderedLines.Count - 1, idx + 3);
+        var text = string.Join(Environment.NewLine, _logLastRenderedLines.Skip(from).Take(to - from + 1).Select(FormatLogLine));
+        Clipboard.SetText(text);
+        ToastEngine.Show("Log Viewer", "Copied line with ±3 context.", ToastKind.Info);
+    }
+
+    private void SendLogLinesToChat(IEnumerable<LogLine> lines)
+    {
+        var list = lines.ToList();
+        if (list.Count == 0) { ToastEngine.Show("Log Viewer", "Nothing selected.", ToastKind.Warning); return; }
+        var body = string.Join(Environment.NewLine, list.Select(FormatLogLine));
+        Clipboard.SetText("```log\n" + body + "\n```");
+        ToastEngine.Show("Log Viewer", $"Copied {list.Count} line(s) as a fenced log block — paste into the chat.", ToastKind.Info);
+    }
+
+    private void ToggleLogLinePin(LogLine line)
+    {
+        if (_logPinned.Contains(line)) _logPinned.Remove(line); else _logPinned.Add(line);
+        RenderLogViewerLines();
+        RenderLogViewerScratchPad();
+    }
+
+    private void LogViewerSelectLine(LogLine line)
+    {
+        _logSelectedLine = line;
+        RenderLogViewerLines();
+        RenderLogViewerLineDetail();
+    }
+
+    // ── Right inspector ──────────────────────────────────────────────────────
+    private void RenderLogViewerLineDetail()
+    {
+        LogViewerLineDetail.Children.Clear();
+        if (_logSelectedLine == null)
+        {
+            LogViewerLineDetail.Children.Add(new TextBlock
+            {
+                Text = "Select a line to see its detail.",
+                FontStyle = FontStyles.Italic, TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
+                Foreground = (Brush)FindResource("Brush.Text.Dim")
+            });
+            return;
+        }
+
+        var l = _logSelectedLine;
+        void Row(string label, string value)
+        {
+            var dock = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            dock.Children.Add(new TextBlock
+            {
+                Text = label, Width = 92, Foreground = (Brush)FindResource("Brush.Text.Dim"),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold")
+            });
+            dock.Children.Add(new TextBlock
+            {
+                Text = value, TextWrapping = TextWrapping.Wrap, Foreground = (Brush)FindResource("Brush.Text.Primary"),
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5
+            });
+            LogViewerLineDetail.Children.Add(dock);
+        }
+
+        Row("LEVEL", l.Level.ToString().ToUpperInvariant() + (l.LevelIsInferred ? " (inferred — no structured level for this source)" : " (real)"));
+        Row("TIMESTAMP", l.Ts.ToString("yyyy-MM-dd HH:mm:ss.fff"));
+        var src = LogService.Sources.FirstOrDefault(s => s.Id == l.SourceId);
+        Row("SOURCE", src?.Label ?? l.SourceId);
+        Row("LOGGER", string.IsNullOrEmpty(l.Logger) ? "—" : l.Logger);
+        Row("CORRELATION ID", string.IsNullOrEmpty(l.CorrelationId) ? "—" : l.CorrelationId);
+
+        LogViewerLineDetail.Children.Add(new TextBlock
+        {
+            Text = "MESSAGE", Margin = new Thickness(0, 4, 0, 4), Foreground = (Brush)FindResource("Brush.Text.Dim"),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold")
+        });
+        LogViewerLineDetail.Children.Add(new TextBox
+        {
+            Text = l.Message, IsReadOnly = true, TextWrapping = TextWrapping.Wrap, BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent, Foreground = (Brush)FindResource("Brush.Text.Primary"),
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5
+        });
+    }
+
+    private void RenderLogViewerFilterChips()
+    {
+        LogViewerFilterChips.Children.Clear();
+        void Chip(string text, Action clear)
+        {
+            var chip = new Border
+            {
+                Margin = new Thickness(0, 0, 6, 6), Padding = new Thickness(8, 3, 6, 3), CornerRadius = new CornerRadius(10),
+                Background = (Brush)FindResource("Brush.Bg.Chip")
+            };
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new TextBlock
+            {
+                Text = text, FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+                Foreground = (Brush)FindResource("Brush.Text.Primary"), VerticalAlignment = VerticalAlignment.Center
+            });
+            var x = new TextBlock
+            {
+                Text = " ×", Cursor = Cursors.Hand, FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+                Foreground = (Brush)FindResource("Brush.Text.Dim"), VerticalAlignment = VerticalAlignment.Center
+            };
+            x.MouseLeftButtonDown += (s, e) => clear();
+            row.Children.Add(x);
+            chip.Child = row;
+            LogViewerFilterChips.Children.Add(chip);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_logSearchText))
+            Chip($"search: {_logSearchText}", () => { _logSearchText = ""; LogViewerSearchBox.Text = ""; RefreshLogViewerQuery(); });
+        if (_logRegex)
+            Chip("regex", () => { _logRegex = false; RefreshLogViewerQuery(); });
+        if (!string.IsNullOrWhiteSpace(_logExcludeText))
+            Chip($"exclude: {_logExcludeText}", () => { _logExcludeText = ""; LogViewerExcludeBox.Text = ""; RefreshLogViewerQuery(); });
+        if (!string.IsNullOrEmpty(_logLoggerFilter))
+            Chip($"logger: {_logLoggerFilter}", () => { _logLoggerFilter = null; RefreshLogViewerQuery(); });
+        if (_logSelectedLevels.Count < Enum.GetValues<LogLevel>().Length)
+            Chip($"levels: {string.Join(",", _logSelectedLevels)}", () =>
+            {
+                _logSelectedLevels.Clear();
+                foreach (LogLevel lv in Enum.GetValues<LogLevel>()) _logSelectedLevels.Add(lv);
+                RefreshLogViewerQuery(); RenderLogViewerLevelPills();
+            });
+        if (_logEnabledSourceIds.Count < LogService.Sources.Count)
+            Chip($"sources: {_logEnabledSourceIds.Count}/{LogService.Sources.Count}", () =>
+            {
+                _logEnabledSourceIds.Clear();
+                foreach (var s in LogService.Sources) _logEnabledSourceIds.Add(s.Id);
+                RefreshLogViewerQuery(); RenderLogViewerRail();
+            });
+
+        if (LogViewerFilterChips.Children.Count == 0)
+            LogViewerFilterChips.Children.Add(new TextBlock
+            {
+                Text = "None", FontStyle = FontStyles.Italic, FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = 10, Foreground = (Brush)FindResource("Brush.Text.Dim")
+            });
+    }
+
+    // ── Scratch pad — pinned lines survive a filter change, per the
+    // "pinned lines survive a filter change and paste as one block" done-when
+    // criterion: they live in _logPinned, a set entirely separate from
+    // _logDisplayed/_logLiveBuffer, so re-filtering never touches it.
+    private void RenderLogViewerScratchPad()
+    {
+        LogViewerScratchPad.Children.Clear();
+        if (_logPinned.Count == 0)
+        {
+            LogViewerScratchPad.Children.Add(new TextBlock
+            {
+                Text = "Pin a line to build a set here — it survives filter changes.",
+                TextWrapping = TextWrapping.Wrap, FontStyle = FontStyles.Italic,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
+                Foreground = (Brush)FindResource("Brush.Text.Dim")
+            });
+            return;
+        }
+        foreach (var line in _logPinned)
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+            var unpin = new TextBlock
+            {
+                Text = "✕", FontSize = 10, Cursor = Cursors.Hand, Foreground = (Brush)FindResource("Brush.Text.Dim"),
+                Margin = new Thickness(6, 0, 0, 0)
+            };
+            unpin.MouseLeftButtonDown += (s, e) => ToggleLogLinePin(line);
+            DockPanel.SetDock(unpin, Dock.Right);
+            row.Children.Add(unpin);
+            row.Children.Add(new TextBlock
+            {
+                Text = FormatLogLine(line), TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10,
+                Foreground = (Brush)FindResource("Brush.Text.Primary")
+            });
+            LogViewerScratchPad.Children.Add(row);
+        }
+    }
+
+    private void LogViewerScratchCopy_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (_logPinned.Count == 0) { ToastEngine.Show("Log Viewer", "Nothing pinned.", ToastKind.Warning); return; }
+        Clipboard.SetText(string.Join(Environment.NewLine, _logPinned.Select(FormatLogLine)));
+        ToastEngine.Show("Log Viewer", $"Copied {_logPinned.Count} pinned line(s) as one block.", ToastKind.Success);
+    }
+
+    private void LogViewerScratchSendToChat_Click(object sender, MouseButtonEventArgs e) => SendLogLinesToChat(_logPinned);
+
+    // ── Filter bar ───────────────────────────────────────────────────────────
+    private void LogViewerSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _logSearchText = LogViewerSearchBox.Text;
+        if (_logStreamMode == LogStreamMode.Cold) RefreshLogViewerQuery();
+        else { RenderLogViewerLines(); RenderLogViewerFilterChips(); }
+    }
+
+    private void BtnLogViewerRegex_Click(object sender, RoutedEventArgs e)
+    {
+        _logRegex = !_logRegex;
+        BtnLogViewerRegex.Background = _logRegex ? (Brush)FindResource("Brush.Accent.Primary") : (Brush)FindResource("Brush.Bg.Chip");
+        if (_logStreamMode == LogStreamMode.Cold) RefreshLogViewerQuery();
+        else { RenderLogViewerLines(); RenderLogViewerFilterChips(); }
+    }
+
+    private void LogViewerExcludeBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _logExcludeText = LogViewerExcludeBox.Text;
+        RefreshLogViewerQuery();
+    }
+
+    private void BtnLogViewerHighlight_Click(object sender, RoutedEventArgs e)
+    {
+        _logHighlight = !_logHighlight;
+        BtnLogViewerHighlight.Background = _logHighlight ? (Brush)FindResource("Brush.Accent.Primary") : (Brush)FindResource("Brush.Bg.Chip");
+        RefreshLogViewerQuery();
+        RenderLogViewerLines();
+    }
+
+    private void LogViewerScrubber_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        _logScrubberMinutesBack = (int)e.NewValue;
+        if (LogViewerScrubberReadout != null)
+            LogViewerScrubberReadout.Text = _logScrubberMinutesBack == 0 ? "now" : $"{_logScrubberMinutesBack}m back";
+        if (_logStreamMode == LogStreamMode.Cold) RefreshLogViewerQuery();
+    }
+
+    private void LogViewerSaveCurrentFilter_Click(object sender, MouseButtonEventArgs e)
+    {
+        var name = $"Filter {_logSavedFilters.Count + 1}";
+        _logSavedFilters.Add((name, BuildCurrentLogQuery()));
+        RenderLogViewerSavedFilterChips();
+        ToastEngine.Show("Log Viewer", $"Saved as \"{name}\".", ToastKind.Success);
+    }
+
+    private void RenderLogViewerSavedFilterChips()
+    {
+        LogViewerSavedFilters.Children.Clear();
+        foreach (var (name, query) in _logSavedFilters)
+        {
+            var chip = new Border
+            {
+                Margin = new Thickness(0, 0, 6, 0), Padding = new Thickness(8, 3, 8, 3), CornerRadius = new CornerRadius(10), Cursor = Cursors.Hand,
+                Background = (Brush)FindResource("Brush.Bg.Chip"),
+                Child = new TextBlock { Text = name, FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5, Foreground = (Brush)FindResource("Brush.Text.Primary") }
+            };
+            chip.MouseLeftButtonDown += (s, e) => ApplySavedLogFilter(query);
+            LogViewerSavedFilters.Children.Add(chip);
+        }
+    }
+
+    private void ApplySavedLogFilter(LogQuery q)
+    {
+        _logSearchText = q.Text ?? ""; LogViewerSearchBox.Text = _logSearchText;
+        _logRegex = q.Regex;
+        _logExcludeText = q.Exclude != null ? string.Join(", ", q.Exclude) : ""; LogViewerExcludeBox.Text = _logExcludeText;
+        _logSelectedLevels.Clear();
+        foreach (var lv in q.Levels ?? Enum.GetValues<LogLevel>()) _logSelectedLevels.Add(lv);
+        _logEnabledSourceIds.Clear();
+        foreach (var id in q.SourceIds ?? LogService.Sources.Select(s => s.Id).ToArray()) _logEnabledSourceIds.Add(id);
+        _logLoggerFilter = q.Logger;
+        RenderLogViewerLevelPills();
+        RenderLogViewerRail();
+        RefreshLogViewerQuery();
+    }
+
+    private void RenderLogViewerLevelPills()
+    {
+        LogViewerLevelPills.Children.Clear();
+        foreach (LogLevel level in Enum.GetValues<LogLevel>())
+        {
+            bool active = _logSelectedLevels.Contains(level);
+            var brush = (Brush)FindResource(LogLevelBrushKey(level));
+            var pill = new Border
+            {
+                Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(0, 0, 4, 0), CornerRadius = new CornerRadius(4), Cursor = Cursors.Hand,
+                BorderThickness = new Thickness(1), BorderBrush = brush,
+                Background = active ? new SolidColorBrush(((SolidColorBrush)brush).Color) { Opacity = 0.22 } : Brushes.Transparent,
+                Child = new TextBlock
+                {
+                    Text = level.ToString().ToUpperInvariant(), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9,
+                    Foreground = active ? brush : (Brush)FindResource("Brush.Text.Dim")
+                }
+            };
+            pill.MouseLeftButtonDown += (s, e) =>
+            {
+                if (_logSelectedLevels.Contains(level)) _logSelectedLevels.Remove(level); else _logSelectedLevels.Add(level);
+                RefreshLogViewerQuery();
+                RenderLogViewerLevelPills();
+            };
+            LogViewerLevelPills.Children.Add(pill);
+        }
+    }
+
+    // ── Left rail — Sources / Archive ───────────────────────────────────────
+    private void BtnLogViewerRailSources_Click(object sender, RoutedEventArgs e) { _logRailTab = "Sources"; RenderLogViewerRail(); }
+    private void BtnLogViewerRailArchive_Click(object sender, RoutedEventArgs e) { _logRailTab = "Archive"; RenderLogViewerRail(); }
+
+    private void RenderLogViewerRail()
+    {
+        LogViewerRailContent.Children.Clear();
+        BtnLogViewerRailSources.Background = _logRailTab == "Sources" ? (Brush)FindResource("Brush.Bg.Chip") : Brushes.Transparent;
+        BtnLogViewerRailArchive.Background = _logRailTab == "Archive" ? (Brush)FindResource("Brush.Bg.Chip") : Brushes.Transparent;
+
+        if (_logRailTab == "Sources") RenderLogViewerSourcesRail();
+        else RenderLogViewerArchiveRail();
+    }
+
+    private void RenderLogViewerSourcesRail()
+    {
+        var counts = LogErrorCountsBySource();
+        foreach (var group in LogService.Sources.Select(s => s.Group).Distinct())
+        {
+            bool open = _logRailGroupOpen.TryGetValue(group, out var o) && o;
+            LogViewerRailContent.Children.Add(CollapsibleSection(group, "", open, () =>
+            {
+                _logRailGroupOpen[group] = !open;
+                RenderLogViewerRail();
+            }, () =>
+            {
+                var stack = new StackPanel();
+                foreach (var src in LogService.Sources.Where(s => s.Group == group))
+                    stack.Children.Add(BuildLogSourceRow(src, counts.GetValueOrDefault(src.Id, 0)));
+                return stack;
+            }));
+        }
+    }
+
+    private Dictionary<string, int> LogErrorCountsBySource() =>
+        CurrentLoadedLines()
+            .Where(l => l.Level == LogLevel.Error || l.Level == LogLevel.Fatal)
+            .GroupBy(l => l.SourceId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+    private Border BuildLogSourceRow(LogSource src, int errorCount)
+    {
+        bool enabled = _logEnabledSourceIds.Contains(src.Id);
+        var brush = new SolidColorBrush(src.Colour);
+        bool streamingNow = enabled && _logStreamMode != LogStreamMode.Cold;
+
+        var row = new DockPanel { Margin = new Thickness(4, 5, 4, 5) };
+
+        var toggle = new Border
+        {
+            Width = 30, Height = 16, CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand,
+            Background = enabled ? (Brush)FindResource("Brush.Status.Running") : (Brush)FindResource("Brush.Bg.Chip"),
+            Child = new Ellipse
+            {
+                Width = 12, Height = 12, Fill = Brushes.White,
+                HorizontalAlignment = enabled ? HorizontalAlignment.Right : HorizontalAlignment.Left, Margin = new Thickness(2)
+            }
+        };
+        toggle.MouseLeftButtonDown += (s, e) => { e.Handled = true; ToggleLogSourceEnabled(src.Id); };
+        DockPanel.SetDock(toggle, Dock.Right);
+        row.Children.Add(toggle);
+
+        if (errorCount > 0)
+        {
+            var badge = new TextBlock
+            {
+                Text = errorCount.ToString(), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center,
+                Foreground = (Brush)FindResource("Brush.LogLevel.Error"), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"),
+                FontSize = 9.5, FontWeight = (FontWeight)FindResource("FontWeight.Bold")
+            };
+            DockPanel.SetDock(badge, Dock.Right);
+            row.Children.Add(badge);
+        }
+
+        var dotBorder = new Border
+        {
+            Width = 8, Height = 8, CornerRadius = new CornerRadius(4), Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center,
+            Background = brush,
+            Effect = streamingNow ? new System.Windows.Media.Effects.DropShadowEffect { Color = src.Colour, BlurRadius = 8, ShadowDepth = 0, Opacity = 0.9 } : null
+        };
+        row.Children.Add(dotBorder);
+
+        row.Children.Add(new TextBlock
+        {
+            Text = src.Label, VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
+            Foreground = (Brush)FindResource("Brush.Text.Primary")
+        });
+
+        return new Border { Child = row };
+    }
+
+    private void ToggleLogSourceEnabled(string sourceId)
+    {
+        if (_logEnabledSourceIds.Contains(sourceId)) _logEnabledSourceIds.Remove(sourceId); else _logEnabledSourceIds.Add(sourceId);
+        RenderLogViewerRail();
+        RenderLogViewerFilterChips();
+        RefreshLogViewerQuery();
+        RestartLogStreamIfActive();
+        RenderLogPeekSourceChips();
+    }
+
+    // ── Archive tab — real day → build → bookend tree, see LogService.Archive()'s
+    // own header comment for why there is no fabricated stdout.log leaf.
+    private void RenderLogViewerArchiveRail()
+    {
+        var openBox = new TextBox
+        {
+            Height = 26, Margin = new Thickness(0, 0, 0, 8), Padding = new Thickness(6, 0, 6, 0), VerticalContentAlignment = VerticalAlignment.Center,
+            Background = (Brush)FindResource("Brush.Bg.Card"), BorderBrush = (Brush)FindResource("Brush.Border.Card"),
+            Foreground = (Brush)FindResource("Brush.Text.Heading"), FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
+            Tag = "Open bookend by Git ID…"
+        };
+        openBox.KeyDown += (s, e) =>
+        {
+            if (e.Key != Key.Enter || string.IsNullOrWhiteSpace(openBox.Text)) return;
+            var id = openBox.Text.Trim();
+            var content = _logService.OpenBookendByGitId(id);
+            if (content == null) { ToastEngine.Show("Log Viewer", $"No bookend found for #{id}.", ToastKind.Warning); return; }
+            var leaf = new ArchiveNode(id + "-bookend", $"{id}.md (bookend)", "bookend", Array.Empty<ArchiveNode>(),
+                FilePath: System.IO.Path.Combine(_logService.MainRepoRoot ?? "", "build-journal", id + ".md"), GitIssueId: id);
+            LogViewerOpenArchiveLeaf(leaf);
+        };
+        LogViewerRailContent.Children.Add(openBox);
+
+        _logArchiveCache ??= _logService.Archive();
+        if (_logArchiveCache.Count == 0)
+        {
+            LogViewerRailContent.Children.Add(new TextBlock
+            {
+                Text = "No build-journal bookends found.", TextWrapping = TextWrapping.Wrap, FontStyle = FontStyles.Italic,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
+                Foreground = (Brush)FindResource("Brush.Text.Dim")
+            });
+            return;
+        }
+        foreach (var day in _logArchiveCache.Take(30))
+            LogViewerRailContent.Children.Add(BuildArchiveDayNode(day));
+    }
+
+    private Border BuildArchiveDayNode(ArchiveNode day)
+    {
+        bool open = _logArchiveOpenDays.Contains(day.Id);
+        return CollapsibleSection($"{day.Label} ({day.Children.Count})", "", open, () =>
+        {
+            if (open) _logArchiveOpenDays.Remove(day.Id); else _logArchiveOpenDays.Add(day.Id);
+            RenderLogViewerRail();
+        }, () =>
+        {
+            var stack = new StackPanel();
+            foreach (var build in day.Children) stack.Children.Add(BuildArchiveBuildNode(build));
+            return stack;
+        });
+    }
+
+    private FrameworkElement BuildArchiveBuildNode(ArchiveNode build)
+    {
+        var stack = new StackPanel { Margin = new Thickness(10, 2, 4, 6) };
+        stack.Children.Add(new TextBlock
+        {
+            Text = build.Label, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 2),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10, FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = (Brush)FindResource("Brush.Text.Primary")
+        });
+        foreach (var leaf in build.Children)
+        {
+            var leafRow = new TextBlock
+            {
+                Text = leaf.Label, Cursor = Cursors.Hand, Margin = new Thickness(0, 0, 0, 2),
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5, Foreground = (Brush)FindResource("Brush.Claude.Accent")
+            };
+            leafRow.MouseLeftButtonDown += (s, e) => LogViewerOpenArchiveLeaf(leaf);
+            stack.Children.Add(leafRow);
+        }
+        return stack;
+    }
+
+    private void LogViewerOpenArchiveLeaf(ArchiveNode leaf)
+    {
+        if (leaf.FilePath == null) return;
+        var content = _logService.ReadArchiveFile(leaf.FilePath);
+        if (content == null) { ToastEngine.Show("Log Viewer", "Could not read that archive file.", ToastKind.Error); return; }
+
+        StopLogStream();
+        _logStreamMode = LogStreamMode.Cold;
+        _logViewingArchive = true;
+        LogViewerArchiveBanner.Visibility = Visibility.Visible;
+        LogViewerArchiveBannerText.Text = $"ARCHIVE — READ-ONLY — {leaf.GitIssueId} ({leaf.Label})";
+
+        LogViewerLinesPanel.Children.Clear();
+        LogViewerLinesPanel.Children.Add(new TextBox
+        {
+            Text = content, IsReadOnly = true, TextWrapping = TextWrapping.NoWrap, AcceptsReturn = true,
+            Background = Brushes.Transparent, BorderThickness = new Thickness(0),
+            Foreground = (Brush)FindResource("Brush.Text.Primary"),
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 11
+        });
+
+        RenderLogViewerStatusPill();
+        RenderStreamSwitch(LogViewerStreamSwitch);
+    }
+
+    private void LogViewerCloseArchiveBanner_Click(object sender, MouseButtonEventArgs e)
+    {
+        _logViewingArchive = false;
+        LogViewerArchiveBanner.Visibility = Visibility.Collapsed;
+        RefreshLogViewerQuery();
+    }
+
+    // ── Log Peek — the chat document's own 280px tool-panel flyout ──────────
+    private void BtnToggleLogPeek_Click(object sender, RoutedEventArgs e)
+    {
+        _logPeekOpen = !_logPeekOpen;
+        LogPeekColumn.Width = new GridLength(_logPeekOpen ? 280 : 0);
+        if (_logPeekOpen) RenderLogPeek();
+    }
+
+    private void LogPeekMaximize_Click(object sender, MouseButtonEventArgs e)
+    {
+        _logPeekOpen = false;
+        LogPeekColumn.Width = new GridLength(0);
+        OpenLogViewer();
+    }
+
+    private void LogPeekSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _logPeekSearchText = LogPeekSearchBox.Text;
+        RenderLogPeekLines();
+    }
+
+    private void RenderLogPeek()
+    {
+        if (!_logPeekOpen) return;
+        RenderLogPeekSourceChips();
+        RenderStreamSwitch(LogPeekStreamSwitch);
+        RenderLogPeekLines();
+    }
+
+    private void RenderLogPeekSourceChips()
+    {
+        LogPeekSourceChips.Children.Clear();
+        foreach (var src in LogService.Sources)
+        {
+            bool enabled = _logEnabledSourceIds.Contains(src.Id);
+            var chip = new Border
+            {
+                Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(6, 2, 6, 2), CornerRadius = new CornerRadius(8), Cursor = Cursors.Hand,
+                Background = enabled ? new SolidColorBrush(src.Colour) { Opacity = 0.28 } : (Brush)FindResource("Brush.Claude.Bg.Button"),
+                BorderBrush = new SolidColorBrush(src.Colour), BorderThickness = new Thickness(1),
+                Child = new TextBlock
+                {
+                    Text = src.Label, FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 8.5,
+                    Foreground = enabled ? new SolidColorBrush(src.Colour) : (Brush)FindResource("Brush.Claude.Text.Muted")
+                }
+            };
+            chip.MouseLeftButtonDown += (s, e) => ToggleLogSourceEnabled(src.Id);
+            LogPeekSourceChips.Children.Add(chip);
+        }
+    }
+
+    private void RenderLogPeekLines()
+    {
+        if (!_logPeekOpen) return;
+        LogPeekLinesPanel.Children.Clear();
+        var lines = CurrentLoadedLines()
+            .Where(l => string.IsNullOrWhiteSpace(_logPeekSearchText) || l.Message.Contains(_logPeekSearchText, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(l => l.Ts)
+            .Take(100)
+            .ToList();
+
+        foreach (var line in lines)
+        {
+            var row = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+            var cb = new CheckBox { IsChecked = _logPeekChecked.Contains(line), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 6, 0) };
+            cb.Checked += (s, e) => { _logPeekChecked.Add(line); UpdateLogPeekSendLabel(); };
+            cb.Unchecked += (s, e) => { _logPeekChecked.Remove(line); UpdateLogPeekSendLabel(); };
+            DockPanel.SetDock(cb, Dock.Left);
+            row.Children.Add(cb);
+            row.Children.Add(new TextBlock
+            {
+                Text = $"[{line.Ts:HH:mm:ss}] {line.Message}", TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+                Foreground = (Brush)FindResource(LogLevelBrushKey(line.Level))
+            });
+            LogPeekLinesPanel.Children.Add(row);
+        }
+        UpdateLogPeekSendLabel();
+    }
+
+    private void UpdateLogPeekSendLabel()
+    {
+        if (LogPeekSendToChatLabel != null) LogPeekSendToChatLabel.Text = $"Send {_logPeekChecked.Count} to chat";
+    }
+
+    private void BtnLogPeekSendToChat_Click(object sender, RoutedEventArgs e)
+    {
+        SendLogLinesToChat(_logPeekChecked);
+        _logPeekChecked.Clear();
+        RenderLogPeekLines();
     }
 }
