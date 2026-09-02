@@ -111,6 +111,13 @@ public sealed class TestPadImportCandidate
     /// Feature auto-match (#2349) reads this as one of its inputs.</summary>
     public string? Section { get; set; }
 
+    /// <summary>Git #2349 — the feature this candidate auto-matched to (from <see cref="Section"/>
+    /// or its body text), or null when nothing matched and the row falls back to the manual
+    /// dropdown. The matcher itself is #2349's own open scope; this field is here now so the
+    /// header stats line (#2350) and the per-row dropdown fallback have something real to read
+    /// the moment #2349 starts setting it — every candidate is honestly unmatched until then.</summary>
+    public string? MatchedFeature { get; set; }
+
     /// <summary>Whether this candidate is checked to actually be filed on Import. Defaults to
     /// included — the user unchecks what they don't want rather than opting every row in.</summary>
     public bool Include { get; set; } = true;

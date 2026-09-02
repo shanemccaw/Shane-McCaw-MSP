@@ -15,13 +15,18 @@ namespace ShaneBuilder
     /// <see cref="TestPadImportParser"/> and renders a checkable preview; then Import files every
     /// checked candidate as a real <see cref="TestPadNote"/> via <see cref="TestPadService.AddNote"/>
     /// (so it picks up the same auto-stamping every other note-filing path gets, #2331) and closes.
-    /// The header-stats line (chars/notes/sections/matched, #2350), per-row type-chip correction
-    /// (#2351), and merge-up UI (#2352-#2354) are separate open sub-issues that extend
-    /// <see cref="PreviewHost"/>/<see cref="PreviewHeaderText"/> in place — this issue's preview is
-    /// deliberately just a checkable list of what the baseline splitter produced.</summary>
+    /// Git #2350 — <see cref="PreviewHeaderText"/> reports real stats off the parsed candidates:
+    /// chars pasted, notes/sections found, how many auto-matched a feature, and a per-type tally.
+    /// "Sections" and "matched" read <see cref="TestPadImportCandidate.Section"/>/
+    /// <see cref="TestPadImportCandidate.MatchedFeature"/> — real fields, honestly 0/empty until
+    /// the matcher (#2349) actually starts setting <c>MatchedFeature</c>. Per-row type-chip
+    /// correction (#2351) and merge-up UI (#2352-#2354) are separate open sub-issues that extend
+    /// <see cref="PreviewHost"/> in place — this issue's preview is deliberately just a checkable
+    /// list of what the splitter produced.</summary>
     public partial class TestPadImportWindow : Window
     {
         private List<TestPadImportCandidate> _candidates = new();
+        private int _lastParsedCharCount;
 
         private TestPadImportWindow()
         {
@@ -44,6 +49,7 @@ namespace ShaneBuilder
 
         private void BtnParse_Click(object sender, RoutedEventArgs e)
         {
+            _lastParsedCharCount = (PasteBox.Text ?? string.Empty).Length;
             _candidates = TestPadImportParser.Parse(PasteBox.Text).ToList();
             RenderPreview();
         }
@@ -63,7 +69,7 @@ namespace ShaneBuilder
             }
 
             PreviewHeaderText.Visibility = Visibility.Visible;
-            PreviewHeaderText.Text = $"{_candidates.Count} {(_candidates.Count == 1 ? "note" : "notes")} found — uncheck any you don't want imported.";
+            PreviewHeaderText.Text = $"{BuildHeaderStatsText()} — uncheck any you don't want imported.";
 
             // Git #2344 — a Section header line in the paste doesn't become a note of its own;
             // it's surfaced here instead, as a divider above the notes parsed under it.
@@ -78,6 +84,35 @@ namespace ShaneBuilder
             }
 
             UpdateImportButton();
+        }
+
+        /// <summary>Git #2350 — the header-stats line: chars pasted, notes/sections the splitter
+        /// found, how many auto-matched a feature, and a per-type tally. Every number here is a
+        /// real count off <see cref="_candidates"/> (or the raw paste for chars) — "sections" and
+        /// "matched" read genuinely 0 until #2344/#2349 have something to set, they are not
+        /// placeholders that get swapped out later.</summary>
+        private string BuildHeaderStatsText()
+        {
+            var noteCount = _candidates.Count;
+            var sectionCount = _candidates
+                .Select(c => c.Section)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+            var matchedCount = _candidates.Count(c => !string.IsNullOrEmpty(c.MatchedFeature));
+
+            var tally = _candidates
+                .GroupBy(c => c.Type)
+                .OrderByDescending(g => g.Count())
+                .ThenBy(g => g.Key.ToString(), StringComparer.OrdinalIgnoreCase)
+                .Select(g => $"{g.Count()} {g.Key.ToString().ToLowerInvariant()}")
+                .ToList();
+            var tallyText = tally.Count > 0 ? string.Join(", ", tally) : "0 notes";
+
+            var sectionsPhrase = sectionCount == 1 ? "1 section" : $"{sectionCount} sections";
+            var notesPhrase = noteCount == 1 ? "1 note" : $"{noteCount} notes";
+
+            return $"{_lastParsedCharCount:N0} chars → {notesPhrase}, {sectionsPhrase}, {matchedCount} matched — {tallyText}";
         }
 
         private TextBlock BuildSectionHeaderRow(string section)

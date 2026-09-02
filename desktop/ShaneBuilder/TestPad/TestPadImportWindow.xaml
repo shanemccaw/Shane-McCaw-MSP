@@ -142,6 +142,7 @@
                 <TextBlock x:Name="PreviewHeaderText" Grid.Row="2" Margin="0,12,0,4"
                            FontSize="{StaticResource FontSize.11.5}" FontWeight="{StaticResource FontWeight.SemiBold}"
                            Foreground="{StaticResource Brush.Text.Muted}"
+                           TextWrapping="Wrap"
                            Text="" Visibility="Collapsed"/>
 
                 <ScrollViewer Grid.Row="3" Margin="0,0,0,16" VerticalScrollBarVisibility="Auto" MaxHeight="280">
