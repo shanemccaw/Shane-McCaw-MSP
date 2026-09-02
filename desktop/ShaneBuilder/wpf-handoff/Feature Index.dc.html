@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <script src="./lucide-local.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%;background:#0d1117;color-scheme:dark}
+    a{color:#7da7cd;text-decoration:none}
+    a:hover{color:#9fc0dd;text-decoration:underline}
+    .om-scroll{scrollbar-width:auto;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:13px;height:13px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:3px solid #0f141b;border-radius:8px;min-height:52px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    button{font-family:inherit}
+  </style>
+</helmet>
+
+<div style="height:100%;display:flex;flex-direction:column;background:#0d1117;color:#c9d1d9;font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;overflow:hidden">
+
+  <div style="height:36px;flex:none;display:flex;align-items:stretch;background:#161b22;border-bottom:1px solid #21262d;padding:0 6px">
+    <div onClick="{{ tabIdx.onClick }}" style="display:flex;align-items:center;gap:8px;padding:0 14px;font-size:11.5px;font-weight:600;cursor:pointer;border-right:1px solid #21262d;background:{{ tabIdx.bg }};color:{{ tabIdx.color }};box-shadow:inset 0 2px 0 {{ tabIdx.top }}">
+      <span style="display:inline-flex;width:12px;height:12px;color:#7c8cf0;flex:none"><i data-lucide="layers" width="12" height="12"></i></span>
+      <span style="white-space:nowrap">Feature Index</span>
+    </div>
+    <sc-if value="{{ tabFeat.show }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ tabFeat.onClick }}" style="display:flex;align-items:center;gap:8px;padding:0 8px 0 14px;font-size:11.5px;font-weight:600;cursor:pointer;border-right:1px solid #21262d;background:{{ tabFeat.bg }};color:{{ tabFeat.color }};box-shadow:inset 0 2px 0 {{ tabFeat.top }}">
+        <span style="width:7px;height:7px;border-radius:99px;background:{{ tabFeat.accent }};flex:none"></span>
+        <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10.5px;font-weight:700;color:#fde047">#{{ tabFeat.num }}</span>
+        <span style="white-space:nowrap">{{ tabFeat.label }}</span>
+        <button onClick="{{ tabFeat.onClose }}" title="Close" style="width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;background:none;border:none;border-radius:4px;color:#576069;cursor:pointer;margin-left:2px;padding:0" style-hover="background:#1c2128;color:#e6edf3"><span style="display:inline-flex;width:11px;height:11px"><i data-lucide="x" width="11" height="11"></i></span></button>
+      </div>
+    </sc-if>
+    <div style="flex:1 1 0;min-width:8px"></div>
+    <div style="display:flex;align-items:center;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9.5px;color:#3f4756;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:0 1 auto"><span style="overflow:hidden;text-overflow:ellipsis">rollup: subIssuesSummary · synced Sep 1, 14:32</span></div>
+  </div>
+
+  <sc-if value="{{ isIndex }}" hint-placeholder-val="{{ true }}">
+    <div class="om-scroll" data-screen-label="Feature Index" style="flex:1;overflow-y:auto;padding:22px 26px 40px">
+      <div style="max-width:1040px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#8b949e;margin-bottom:10px;font-family:Consolas,ui-monospace,Menlo,monospace">
+          <span title="v1.1 Milestone document" style="color:#7c8cf0;cursor:pointer" style-hover="text-decoration:underline">v1.1 Milestone</span>
+          <span style="display:inline-flex;width:10px;height:10px;color:#3f4756"><i data-lucide="chevron-right" width="10" height="10"></i></span>
+          <span title="Epic document" style="color:#7c8cf0;cursor:pointer;display:inline-flex;gap:5px" style-hover="text-decoration:underline"><span style="color:#fde047;font-weight:700">#{{ crumb.epicNum }}</span><span>{{ crumb.epicName }}</span></span>
+          <span style="display:inline-flex;width:10px;height:10px;color:#3f4756"><i data-lucide="chevron-right" width="10" height="10"></i></span>
+          <span style="color:#c9d1d9">Features</span>
+        </div>
+
+        <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+          <span style="font-size:18px;font-weight:800;color:#e6edf3;letter-spacing:-.01em">Feature Index</span>
+          <span style="font-size:11px;color:#576069">Issues titled <span style="font-family:Consolas,ui-monospace,Menlo,monospace;color:#8b949e">Feature: Name (Surface)</span>, grouped by surface. Same module name on two surfaces is two separate Features.</span>
+        </div>
+
+        <div style="display:flex;align-items:flex-end;gap:2px;border-bottom:1px solid #21262d;margin:14px 0 12px;flex-wrap:wrap">
+          <sc-for list="{{ surfaceTabs }}" as="st" hint-placeholder-count="3">
+            <button onClick="{{ st.onClick }}" style="height:34px;padding:0 12px;background:none;border:none;border-bottom:2px solid {{ st.underline }};color:{{ st.color }};font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:7px;margin-bottom:-1px;white-space:nowrap" style-hover="color:#e6edf3">
+              <span style="width:7px;height:7px;border-radius:99px;background:{{ st.accent }};flex:none"></span>
+              <span>{{ st.label }}</span>
+              <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;background:#1c2129;border:1px solid #2e3742;color:{{ st.countColor }}">{{ st.count }}</span>
+            </button>
+          </sc-for>
+          <div style="flex:1"></div>
+          <div style="display:flex;align-items:center;gap:6px;padding-bottom:6px">
+            <span style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#576069;margin-right:2px">Sort</span>
+            <sc-for list="{{ sortOpts }}" as="so" hint-placeholder-count="3">
+              <button onClick="{{ so.onClick }}" title="{{ so.title }}" style="height:24px;padding:0 10px;border-radius:99px;font-size:10.5px;font-weight:700;cursor:pointer;border:1px solid {{ so.border }};background:{{ so.bg }};color:{{ so.color }};display:inline-flex;align-items:center;gap:5px;white-space:nowrap" style-hover="border-color:#576069">
+                <span>{{ so.label }}</span>
+                <sc-if value="{{ so.active }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;width:10px;height:10px"><i data-lucide="{{ so.dirIcon }}" width="10" height="10"></i></span></sc-if>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="font-size:10.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;margin-bottom:12px">{{ summaryLine }}</div>
+
+        <sc-if value="{{ hasRows }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:52px minmax(110px,1fr) minmax(150px,300px) 44px auto;gap:12px;padding:0 12px 6px;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#576069">
+            <span>#</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Feature</span><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Progress · closed / total</span><span style="text-align:right">Open</span><span style="min-width:112px"></span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="6">
+              <div onClick="{{ r.onOpen }}" title="{{ r.rawTitle }}" style="display:grid;grid-template-columns:52px minmax(110px,1fr) minmax(150px,300px) 44px auto;gap:12px;align-items:center;background:#12151c;border:1px solid #21262d;border-radius:7px;padding:10px 12px;cursor:pointer" style-hover="border-color:#333a46">
+                <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10.5px;font-weight:700;color:#fde047">#{{ r.num }}</span>
+                <span style="font-size:12.5px;font-weight:600;color:#dbe1e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="{{ r.trackStyle }}"><div style="height:100%;border-radius:99px;background:{{ r.barColor }};width:{{ r.pct }}%"></div></div>
+                  <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10.5px;color:#8b949e;width:44px;text-align:right;flex:none">{{ r.fraction }}</span>
+                  <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10px;color:#576069;width:32px;text-align:right;flex:none;white-space:nowrap">{{ r.pctLabel }}</span>
+                </div>
+                <span style="text-align:right;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:18px;font-weight:800;line-height:1;color:{{ r.openColor }}">{{ r.openLabel }}</span>
+                <div style="display:flex;justify-content:flex-end;min-height:18px;min-width:0">
+                  <sc-if value="{{ r.badge }}" hint-placeholder-val="{{ false }}"><span style="font-size:9px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px;background:{{ r.badgeBg }};border:1px solid {{ r.badgeBorder }};color:{{ r.badgeColor }};white-space:nowrap">{{ r.badge }}</span></sc-if>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ noRows }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed #30363d;border-radius:8px;padding:28px 24px;text-align:center;color:#576069;font-size:11.5px;line-height:1.6">No issues titled <span style="font-family:Consolas,ui-monospace,Menlo,monospace;color:#8b949e">Feature: … ({{ activeSurfaceLabel }})</span> yet.</div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ isFeature }}" hint-placeholder-val="{{ false }}">
+    <div class="om-scroll" data-screen-label="Feature Burndown" style="flex:1;overflow-y:auto;padding:22px 26px 40px">
+      <div style="max-width:1040px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:10.5px;color:#8b949e;margin-bottom:10px;font-family:Consolas,ui-monospace,Menlo,monospace;flex-wrap:wrap">
+          <span title="v1.1 Milestone document" style="color:#7c8cf0;cursor:pointer" style-hover="text-decoration:underline">v1.1 Milestone</span>
+          <span style="display:inline-flex;width:10px;height:10px;color:#3f4756"><i data-lucide="chevron-right" width="10" height="10"></i></span>
+          <span title="Epic document" style="color:#7c8cf0;cursor:pointer;display:inline-flex;gap:5px" style-hover="text-decoration:underline"><span style="color:#fde047;font-weight:700">#{{ bd.epicNum }}</span><span>{{ bd.epicName }}</span></span>
+          <span style="display:inline-flex;width:10px;height:10px;color:#3f4756"><i data-lucide="chevron-right" width="10" height="10"></i></span>
+          <span onClick="{{ goIndex }}" style="color:#7c8cf0;cursor:pointer" style-hover="text-decoration:underline">Features</span>
+          <span style="display:inline-flex;width:10px;height:10px;color:#3f4756"><i data-lucide="chevron-right" width="10" height="10"></i></span>
+          <span style="color:#c9d1d9">#{{ bd.num }}</span>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap">
+          <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:13px;font-weight:700;color:#fde047">#{{ bd.num }}</span>
+          <span style="font-size:18px;font-weight:800;color:#e6edf3;letter-spacing:-.01em">{{ bd.name }}</span>
+          <span style="font-size:9.5px;font-weight:700;padding:2px 8px;border-radius:99px;background:{{ bd.accent }}22;border:1px solid {{ bd.accent }}55;color:{{ bd.accent }};white-space:nowrap">{{ bd.surfaceLabel }}</span>
+          <sc-if value="{{ bd.badge }}" hint-placeholder-val="{{ false }}"><span style="font-size:9px;font-weight:700;letter-spacing:.06em;padding:2px 8px;border-radius:99px;background:{{ bd.badgeBg }};border:1px solid {{ bd.badgeBorder }};color:{{ bd.badgeColor }};white-space:nowrap">{{ bd.badge }}</span></sc-if>
+          <div style="flex:1"></div>
+          <a href="{{ bd.ghUrl }}" target="_blank" rel="noreferrer" title="Open the live issue on GitHub" style="display:inline-flex;align-items:center;gap:6px;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10.5px;padding:4px 10px;border:1px solid #262c36;border-radius:6px;background:#12151c;white-space:nowrap" style-hover="border-color:#333a46">
+            <span>shanemccaw/Shane-McCaw-MSP#{{ bd.num }}</span>
+            <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="external-link" width="11" height="11"></i></span>
+          </a>
+        </div>
+        <div style="font-size:11px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;margin-bottom:18px">{{ bd.rawTitle }}</div>
+
+        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+          <div style="flex:1;min-width:120px;background:#12151c;border:1px solid #21262d;border-radius:8px;padding:11px 14px">
+            <div style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#576069;margin-bottom:6px">Open</div>
+            <div style="font-size:24px;font-weight:800;line-height:1;font-family:Consolas,ui-monospace,Menlo,monospace;color:{{ bd.openColor }}">{{ bd.openLabel }}</div>
+          </div>
+          <div style="flex:1;min-width:120px;background:#12151c;border:1px solid #21262d;border-radius:8px;padding:11px 14px">
+            <div style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#576069;margin-bottom:6px">Completed</div>
+            <div style="font-size:24px;font-weight:800;line-height:1;font-family:Consolas,ui-monospace,Menlo,monospace;color:#c9d1d9">{{ bd.closed }}</div>
+          </div>
+          <div style="flex:1;min-width:120px;background:#12151c;border:1px solid #21262d;border-radius:8px;padding:11px 14px">
+            <div style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#576069;margin-bottom:6px">Total sub-issues</div>
+            <div style="font-size:24px;font-weight:800;line-height:1;font-family:Consolas,ui-monospace,Menlo,monospace;color:#c9d1d9">{{ bd.total }}</div>
+          </div>
+        </div>
+
+        <sc-if value="{{ bd.hasChart }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#12151c;border:1px solid #21262d;border-radius:8px;padding:14px 16px 8px;margin-bottom:22px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;flex-wrap:wrap">
+              <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#576069">Burndown · remaining open sub-issues</span>
+              <span style="font-size:10.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ bd.caption }}</span>
+            </div>
+            <svg viewBox="0 0 760 240" style="width:100%;height:auto;display:block;overflow:visible">
+              <sc-for list="{{ bd.yTicks }}" as="yt" hint-placeholder-count="3">
+                <line x1="{{ yt.x1 }}" x2="{{ yt.x2 }}" y1="{{ yt.y }}" y2="{{ yt.y }}" style="stroke:#21262d;stroke-width:1"></line>
+                <text x="{{ yt.lx }}" y="{{ yt.ty }}" style="fill:#576069;font-size:10px;font-family:Consolas,ui-monospace,Menlo,monospace;text-anchor:end">{{ yt.label }}</text>
+              </sc-for>
+              <sc-for list="{{ bd.xTicks }}" as="xt" hint-placeholder-count="2">
+                <line x1="{{ xt.x }}" x2="{{ xt.x }}" y1="{{ xt.y1 }}" y2="{{ xt.y2 }}" style="stroke:#21262d;stroke-width:1;stroke-dasharray:2 3"></line>
+                <text x="{{ xt.x }}" y="{{ xt.ly }}" style="fill:#576069;font-size:10px;font-family:Consolas,ui-monospace,Menlo,monospace;text-anchor:middle">{{ xt.label }}</text>
+              </sc-for>
+              <path d="{{ bd.areaPath }}" style="fill:{{ bd.accent }};fill-opacity:.12"></path>
+              <path d="{{ bd.linePath }}" style="fill:none;stroke:{{ bd.accent }};stroke-width:2;stroke-linejoin:round;stroke-linecap:round"></path>
+              <line x1="{{ bd.todayX }}" x2="{{ bd.todayX }}" y1="{{ bd.plotT }}" y2="{{ bd.plotB }}" style="stroke:#576069;stroke-width:1;stroke-dasharray:3 3"></line>
+              <circle cx="{{ bd.todayX }}" cy="{{ bd.todayY }}" r="3.5" style="fill:{{ bd.accent }};stroke:#12151c;stroke-width:2"></circle>
+              <text x="{{ bd.todayLabelX }}" y="{{ bd.todayLabelY }}" style="fill:#e6edf3;font-size:11px;font-weight:700;font-family:Consolas,ui-monospace,Menlo,monospace">{{ bd.todayLabel }}</text>
+              <text x="{{ bd.todayX }}" y="{{ bd.xLabelY }}" style="fill:#8b949e;font-size:10px;font-family:Consolas,ui-monospace,Menlo,monospace;text-anchor:middle">Today</text>
+              <text x="{{ bd.startX }}" y="{{ bd.xLabelY }}" style="fill:#576069;font-size:10px;font-family:Consolas,ui-monospace,Menlo,monospace;text-anchor:start">{{ bd.startLabel }}</text>
+            </svg>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ bd.notDecomposed }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed #30363d;border-radius:8px;padding:24px;margin-bottom:22px;display:flex;gap:16px;align-items:flex-start;background:#0f131a">
+            <div style="width:36px;height:36px;border-radius:10px;background:#1e2338;border:1px solid #2d375a;color:#8fa7c4;display:flex;align-items:center;justify-content:center;flex:none"><span style="display:inline-flex;width:16px;height:16px"><i data-lucide="circle-dashed" width="16" height="16"></i></span></div>
+            <div style="min-width:0">
+              <div style="font-size:13px;font-weight:700;color:#e6edf3">Not broken down yet</div>
+              <div style="font-size:11.5px;color:#8b949e;line-height:1.55;max-width:560px;margin-top:4px">#{{ bd.num }} is a live Feature node with no sub-issues — a single leaf, not an error. There is nothing to burn down until the first sub-issue exists.</div>
+              <a href="{{ bd.newIssueUrl }}" target="_blank" rel="noreferrer" style="display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:11px;font-weight:700;padding:6px 12px;border:1px solid #30363d;border-radius:6px;background:#1c2128;color:#e6edf3" style-hover="border-color:#576069;text-decoration:none">
+                <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="plus" width="11" height="11"></i></span>
+                <span>File the first sub-issue</span>
+                <span style="display:inline-flex;width:10px;height:10px;color:#8b949e"><i data-lucide="external-link" width="10" height="10"></i></span>
+              </a>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ bd.hasOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+            <span style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#576069">Open sub-issues · {{ bd.openCount }}</span>
+            <span style="font-size:9.5px;color:#3f4756;font-family:Consolas,ui-monospace,Menlo,monospace">age since opened · amber past {{ bd.staleDays }}d</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:5px">
+            <sc-for list="{{ bd.openRows }}" as="oi" hint-placeholder-count="5">
+              <a href="{{ oi.url }}" target="_blank" rel="noreferrer" style="display:grid;grid-template-columns:56px minmax(0,1fr) 48px;gap:12px;align-items:center;background:#12151c;border:1px solid #21262d;border-radius:7px;padding:8px 12px;color:#dbe1e6" style-hover="border-color:#333a46;text-decoration:none">
+                <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10.5px;font-weight:700;color:#fde047">#{{ oi.num }}</span>
+                <span style="font-size:11.5px;color:#dbe1e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ oi.title }}</span>
+                <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10.5px;text-align:right;color:{{ oi.ageColor }}">{{ oi.age }}</span>
+              </a>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ bd.isDone }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px solid rgba(95,158,109,.35);border-radius:8px;padding:16px 18px;display:flex;align-items:center;gap:10px;background:rgba(95,158,109,.08);color:#7fb08a;font-size:12px;font-weight:600">
+            <span style="display:inline-flex;width:14px;height:14px"><i data-lucide="check-circle-2" width="14" height="14"></i></span>
+            <span>All {{ bd.total }} sub-issues closed. Nothing left on this Feature.</span>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultSurface&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;portal&quot;,&quot;msp&quot;,&quot;admin&quot;],&quot;default&quot;:&quot;portal&quot;,&quot;tsType&quot;:&quot;'portal' | 'msp' | 'admin'&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;defaultSort&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;open&quot;,&quot;pct&quot;,&quot;name&quot;],&quot;default&quot;:&quot;open&quot;,&quot;tsType&quot;:&quot;'open' | 'pct' | 'name'&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;staleDays&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:30,&quot;min&quot;:7,&quot;max&quot;:120,&quot;step&quot;:1,&quot;unit&quot;:&quot;d&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  state = { surface: null, sortKey: null, sortDir: null, openNum: null, view: 'index' };
+  TODAY = Date.UTC(2026, 8, 2);
+  DAY = 86400000;
+  REPO = 'https://github.com/shanemccaw/Shane-McCaw-MSP';
+  MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  SURFACES = [
+    { key: 'portal', label: 'Portal', accent: '#a374ea', epicNum: 1485, epicName: 'Portal' },
+    { key: 'msp', label: 'MSP Console', accent: '#37b8b0', epicNum: 1571, epicName: 'Portal Admin' },
+    { key: 'admin', label: 'Admin Panel', accent: '#e2678a', epicNum: 1095, epicName: 'Admin Panel' }
+  ];
+  // Rollups (closed/total) are the live 2026-09-01 numbers. Sub-issue titles, numbers and timestamps are mock stand-ins for the real closedAt/createdAt feed.
+  FEATURES = [
+    { num: 1489, surface: 'portal', name: 'Remediation Tracking', closed: 26, total: 39, created: '2026-06-10', open: [
+      'Remediation detail drawer — history tab', 'Bulk re-assign owner from list view', 'Weekly overdue-remediation digest email',
+      'Link remediation item to originating Drift finding', 'Evidence upload accepts .msg / .eml', 'Snooze with reason + auto-unsnooze job',
+      'Export remediation register to CSV', 'Persist status filter chips per user', 'Close-out requires verification note',
+      'SLA-breach badge on list rows', 'Tenant-scoped counts on dashboard tile', 'Audit log entries for status transitions', 'Narrow-viewport layout for remediation list' ] },
+    { num: 1490, surface: 'portal', name: 'Policy Decisions', closed: 16, total: 22, created: '2026-06-10', open: [
+      'Decision record: attach approver + date', 'Supersede a decision and keep the chain visible', 'Cross-links from Policy Decisions to Security Plan controls',
+      'Decision search by control ID', 'Print / PDF view for a decision record', 'Empty-state copy for tenants with no decisions' ] },
+    { num: 1494, surface: 'portal', name: 'Microsoft Changes / Message Center', closed: 14, total: 17, created: '2026-06-11', open: [
+      'Message Center sync: dedupe edited MC posts by id', '“Affects my tenant” heuristic from license SKUs', 'Mark-as-reviewed bulk action' ] },
+    { num: 1486, surface: 'portal', name: 'Change Control', closed: 12, total: 19, created: '2026-06-09', open: [
+      'Approval flow — second approver for high-risk changes', 'Change calendar week view', 'Emergency change type + post-review reminder',
+      'Attach Graph diff snapshot to change record', 'Rollback plan required for high-risk changes', 'Link change record to Remediation item', 'Notification on change window start' ] },
+    { num: 1491, surface: 'portal', name: 'Ownership / RACI', closed: 10, total: 17, created: '2026-06-10', open: [
+      'RACI matrix editor: drag to reassign', 'Import owners from Entra group membership', 'Orphaned-asset report (no Accountable owner)',
+      'Owner change history per control', 'Vacation / delegate coverage', 'RACI export (xlsx)', 'Enforce exactly one Accountable per row' ] },
+    { num: 1487, surface: 'portal', name: 'Risk Register / RBD', closed: 9, total: 11, created: '2026-06-09', open: [
+      'Residual-risk scoring after mitigation', 'RBD heat map print layout' ] },
+    { num: 1495, surface: 'portal', name: 'Security Plan', closed: 9, total: 13, created: '2026-06-11', open: [
+      'Control status rollup from Security Engine signals', 'Plan versioning + diff between versions', 'Evidence due-date reminders', 'Secure Score mapping table' ] },
+    { num: 1493, surface: 'portal', name: 'SOPs', closed: 6, total: 9, created: '2026-06-11', open: [
+      'SOP review cadence + stale badge', 'SOP → Runbook link picker', 'Markdown editor: paste-image upload' ] },
+    { num: 1595, surface: 'portal', name: 'Account Security', closed: 3, total: 8, created: '2026-07-01', open: [
+      'Passkey enrollment flow', 'Active session list with revoke', 'MFA reset requires a second admin', 'Sign-in alert email on new device', 'Recovery codes: regenerate + download' ] },
+    { num: 1598, surface: 'portal', name: 'Billing', closed: 2, total: 7, created: '2026-07-01', open: [
+      'Seat-count true-up preview before invoice', 'Invoice PDF download', 'Payment method update (Stripe portal handoff)', 'Proration on mid-cycle plan change', 'Failed-payment banner + retry' ] },
+    { num: 1596, surface: 'portal', name: 'Settings', closed: 2, total: 5, created: '2026-07-01', open: [
+      'Notification preferences per signal engine', 'Tenant display name + logo', 'Data retention window selector' ] },
+    { num: 1488, surface: 'portal', name: 'Runbooks', closed: 1, total: 2, created: '2026-06-09', open: [
+      'Runbook step checklist with timestamps' ] },
+    { num: 1597, surface: 'portal', name: 'Webhooks', closed: 1, total: 7, created: '2026-07-01', open: [
+      'Webhook endpoint CRUD', 'HMAC signature + secret rotation', 'Delivery log with retry', 'Event type picker (engine.* taxonomy)', 'Test-send with sample payload', 'Disable endpoint after N consecutive failures' ] },
+    { num: 1616, surface: 'portal', name: 'ShaneBot + Active Cards', closed: 0, total: 5, created: '2026-07-08', open: [
+      'Active Card: open remediation summary', 'Active Card: drift since last visit', 'ShaneBot intent routing for “what’s left on X”', 'Card dismiss + snooze persistence', 'Rate-limit ShaneBot Graph calls per tenant' ] },
+    { num: 1681, surface: 'msp', name: 'Change Control', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1682, surface: 'msp', name: 'Risk Register/RBD', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1683, surface: 'msp', name: 'Runbooks', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1684, surface: 'msp', name: 'Remediation Tracking', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1685, surface: 'msp', name: 'Policy Decisions + Policy Engine', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1686, surface: 'msp', name: 'Ownership/RACI', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1687, surface: 'msp', name: 'SOPs', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1688, surface: 'msp', name: 'Microsoft Changes', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1689, surface: 'msp', name: 'Security Plan', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1690, surface: 'msp', name: 'Settings', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1691, surface: 'msp', name: 'Billing', closed: 0, total: 0, created: '2026-08-24', open: [] },
+    { num: 1692, surface: 'msp', name: 'Webhooks', closed: 0, total: 0, created: '2026-08-24', open: [] }
+  ];
+
+  componentDidMount() {
+    const run = () => { if (window.lucide) { window.lucide.createIcons(); return true; } return false; };
+    if (!run()) this._it = setInterval(() => { if (run()) clearInterval(this._it); }, 200);
+  }
+  componentDidUpdate() { if (window.lucide) window.lucide.createIcons(); }
+  componentWillUnmount() { if (this._it) clearInterval(this._it); }
+
+  _rng(seed) {
+    let a = seed >>> 0;
+    return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  }
+  _utc(iso) { const [y, m, d] = iso.split('-').map(Number); return Date.UTC(y, m - 1, d); }
+  _fmt(t) { const d = new Date(t); return this.MON[d.getUTCMonth()] + ' ' + d.getUTCDate(); }
+  _subs(f) {
+    this._memo = this._memo || {};
+    if (this._memo[f.num]) return this._memo[f.num];
+    const rnd = this._rng(f.num * 2654435761), D = this.DAY;
+    const t0 = this._utc(f.created), span = this.TODAY - t0;
+    const closes = [];
+    for (let i = 0; i < f.closed; i++) closes.push(t0 + 2 * D + Math.pow(rnd(), 0.85) * (span - 4 * D));
+    closes.sort((a, b) => a - b);
+    const opens = [];
+    for (let i = 0; i < f.total - f.closed; i++) opens.push({ created: t0 + rnd() * (span - 2 * D), title: f.open[i] || ('Sub-issue ' + (i + 1)) });
+    opens.sort((a, b) => a.created - b.created);
+    let n = 1500 + ((f.num * 7) % 400);
+    const closed = closes.map(c => { n += 1 + Math.floor(rnd() * 13); return { num: n, closedAt: c }; });
+    const open = opens.map(o => { n += 1 + Math.floor(rnd() * 13); return { num: n, title: o.title, age: Math.max(0, Math.floor((this.TODAY - o.created) / D)) }; });
+    return (this._memo[f.num] = { closes, closed, open });
+  }
+  _decorate(f) {
+    const open = f.total - f.closed, dec = f.total > 0, isDone = dec && open === 0;
+    return { ...f, open, dec, isDone, pct: dec ? Math.round(f.closed / f.total * 100) : 0 };
+  }
+  _badge(f) {
+    if (!f.dec) return { badge: 'NOT DECOMPOSED', badgeBg: '#1e2338', badgeBorder: '#2d375a', badgeColor: '#8fa7c4' };
+    if (f.isDone) return { badge: 'DONE', badgeBg: 'rgba(95,158,109,.15)', badgeBorder: 'rgba(95,158,109,.45)', badgeColor: '#7fb08a' };
+    return { badge: '', badgeBg: 'transparent', badgeBorder: 'transparent', badgeColor: 'transparent' };
+  }
+
+  renderVals() {
+    const P = this.props, S = this.state;
+    const surfaceKey = S.surface ?? (P.defaultSurface ?? 'portal');
+    const sortKey = S.sortKey ?? (P.defaultSort ?? 'open');
+    const sortDir = S.sortDir ?? (sortKey === 'name' ? 'asc' : 'desc');
+    const staleDays = P.staleDays ?? 30;
+    const surf = this.SURFACES.find(s => s.key === surfaceKey) || this.SURFACES[0];
+    const feats = this.FEATURES.filter(f => f.surface === surf.key).map(f => this._decorate(f));
+
+    const cmp = (a, b) => {
+      let r = 0;
+      if (sortKey === 'name') r = a.name.localeCompare(b.name);
+      else if (sortKey === 'pct') r = (a.pct - b.pct) || (a.open - b.open);
+      else r = (a.open - b.open) || (a.pct - b.pct);
+      return sortDir === 'asc' ? r : -r;
+    };
+    let list;
+    if (sortKey === 'name') list = feats.slice().sort(cmp);
+    else list = feats.filter(f => f.dec).sort(cmp).concat(feats.filter(f => !f.dec).sort((a, b) => a.name.localeCompare(b.name)));
+
+    const rows = list.map(f => ({
+      num: f.num, name: f.name, rawTitle: 'Feature: ' + f.name + ' (' + surf.label + ')',
+      pct: f.pct, fraction: f.closed + '/' + f.total, pctLabel: f.dec ? f.pct + '%' : '—',
+      barColor: f.isDone ? '#5f9e6d' : surf.accent,
+      trackStyle: f.dec ? 'flex:1;height:6px;border-radius:99px;background:#1c2129;overflow:hidden' : 'flex:1;height:6px;border-radius:99px;background:transparent;border:1px dashed #30363d;overflow:hidden',
+      openLabel: f.dec ? String(f.open) : '—',
+      openColor: !f.dec ? '#3f4756' : f.isDone ? '#5f9e6d' : '#e6edf3',
+      ...this._badge(f),
+      onOpen: () => this.setState({ openNum: f.num, view: 'feature' })
+    }));
+
+    const nDec = feats.filter(f => f.dec).length;
+    const totalSubs = feats.reduce((a, f) => a + f.total, 0), closedSubs = feats.reduce((a, f) => a + f.closed, 0);
+    let summaryLine;
+    if (!feats.length) summaryLine = '0 Features tagged (' + surf.label + ')';
+    else if (!nDec) summaryLine = feats.length + ' Features · none decomposed yet — each is still a single leaf issue (0/0)';
+    else summaryLine = feats.length + ' Features · ' + (totalSubs - closedSubs) + ' open across ' + totalSubs + ' sub-issues · ' + closedSubs + ' closed (' + Math.round(closedSubs / totalSubs * 100) + '%)' + (nDec < feats.length ? ' · ' + (feats.length - nDec) + ' not yet decomposed' : '');
+
+    const surfaceTabs = this.SURFACES.map(s => {
+      const active = s.key === surf.key;
+      return { label: s.label, accent: s.accent, count: this.FEATURES.filter(f => f.surface === s.key).length, underline: active ? s.accent : 'transparent', color: active ? '#e6edf3' : '#8b949e', countColor: active ? '#c9d1d9' : '#576069', onClick: () => this.setState({ surface: s.key }) };
+    });
+    const sortOpts = [{ key: 'open', label: 'Open' }, { key: 'pct', label: '% Complete' }, { key: 'name', label: 'Name' }].map(o => {
+      const active = o.key === sortKey;
+      return { label: o.label, active, dirIcon: sortDir === 'asc' ? 'arrow-up' : 'arrow-down', title: active ? 'Click to flip direction' : 'Sort by ' + o.label.toLowerCase(),
+        border: active ? '#6a8fb5' : '#30363d', bg: active ? 'rgba(106,143,181,.15)' : '#1c2128', color: active ? '#e6edf3' : '#8b949e',
+        onClick: () => active ? this.setState({ sortKey: o.key, sortDir: sortDir === 'asc' ? 'desc' : 'asc' }) : this.setState({ sortKey: o.key, sortDir: o.key === 'name' ? 'asc' : 'desc' }) };
+    });
+
+    // Burndown
+    const f0 = this.FEATURES.find(f => f.num === S.openNum);
+    const isFeature = !!f0 && S.view === 'feature';
+    let bd = {};
+    if (f0) {
+      const f = this._decorate(f0), fs = this.SURFACES.find(s => s.key === f.surface), subs = this._subs(f0);
+      const W = 760, H = 240, pl = 44, pr = W - 84, pt = 14, pb = H - 30;
+      const t0 = this._utc(f.created), t1 = this.TODAY;
+      const x = t => pl + (t - t0) / (t1 - t0) * (pr - pl), y = v => pt + (1 - v / (f.total || 1)) * (pb - pt);
+      const r1 = n => Math.round(n * 10) / 10;
+      let line = '', area = '', yTicks = [], xTicks = [];
+      if (f.dec) {
+        let level = f.total;
+        line = 'M' + r1(x(t0)) + ' ' + r1(y(level));
+        subs.closes.forEach(c => { line += ' H' + r1(x(c)); level -= 1; line += ' V' + r1(y(level)); });
+        line += ' H' + r1(pr);
+        area = line + ' V' + r1(y(0)) + ' H' + r1(x(t0)) + ' Z';
+        const step = f.total <= 8 ? 2 : f.total <= 20 ? 5 : 10;
+        const vals = []; for (let v = 0; v < f.total; v += step) vals.push(v);
+        if (vals.length > 1 && f.total - vals[vals.length - 1] < step * 0.4) vals.pop();
+        vals.push(f.total);
+        yTicks = vals.map(v => ({ x1: pl, x2: pr, lx: pl - 8, y: r1(y(v)), ty: r1(y(v) + 3.5), label: String(v) }));
+        const d0 = new Date(t0); let m = Date.UTC(d0.getUTCFullYear(), d0.getUTCMonth() + 1, 1);
+        while (m < t1) { const xx = x(m); if (xx > pl + 28 && xx < pr - 30) xTicks.push({ x: r1(xx), y1: pt, y2: pb, ly: pb + 18, label: this.MON[new Date(m).getUTCMonth()] }); const dm = new Date(m); m = Date.UTC(dm.getUTCFullYear(), dm.getUTCMonth() + 1, 1); }
+      }
+      const last = subs.closes[subs.closes.length - 1];
+      bd = {
+        num: f.num, name: f.name, rawTitle: 'Feature: ' + f.name + ' (' + fs.label + ')', surfaceLabel: fs.label, accent: fs.accent,
+        epicNum: fs.epicNum, epicName: fs.epicName, ghUrl: this.REPO + '/issues/' + f.num,
+        newIssueUrl: this.REPO + '/issues/new?title=' + encodeURIComponent('') + '&body=' + encodeURIComponent('Sub-issue of #' + f.num + ' — Feature: ' + f.name + ' (' + fs.label + ')'),
+        closed: f.closed, total: f.total, openCount: f.open,
+        openLabel: f.dec ? String(f.open) : '—', openColor: !f.dec ? '#3f4756' : f.isDone ? '#5f9e6d' : '#e6edf3',
+        ...this._badge(f),
+        hasChart: f.dec, notDecomposed: !f.dec, hasOpen: f.dec && f.open > 0, isDone: f.isDone, staleDays,
+        caption: subs.closes.length ? subs.closes.length + ' closed · first ' + this._fmt(subs.closes[0]) + ' · last ' + this._fmt(last) + ' (' + Math.floor((t1 - last) / this.DAY) + 'd ago)' : '0 closed · ' + f.total + ' open since ' + this._fmt(t0),
+        yTicks, xTicks, linePath: line, areaPath: area,
+        plotT: pt, plotB: pb, xLabelY: pb + 18, startX: pl, startLabel: this._fmt(t0),
+        todayX: r1(pr), todayY: r1(y(f.open)), todayLabelX: r1(pr + 9), todayLabelY: r1(y(f.open) + 4), todayLabel: f.open + ' open',
+        openRows: subs.open.map(o => ({ num: o.num, title: o.title, age: o.age + 'd', ageColor: o.age > staleDays ? '#e2b039' : '#576069', url: this.REPO + '/issues/' + o.num }))
+      };
+    }
+
+    const isIndex = !isFeature;
+    const featSurf = f0 ? this.SURFACES.find(s => s.key === f0.surface) : null;
+    return {
+      isIndex, isFeature, hasRows: rows.length > 0, noRows: rows.length === 0, rows, surfaceTabs, sortOpts, summaryLine,
+      activeSurfaceLabel: surf.label,
+      crumb: { epicNum: surf.epicNum, epicName: surf.epicName },
+      tabIdx: { bg: isIndex ? '#0d1117' : 'transparent', color: isIndex ? '#e6edf3' : '#8b949e', top: isIndex ? '#7c8cf0' : 'transparent', onClick: () => this.setState({ view: 'index' }) },
+      tabFeat: f0 ? { show: true, num: f0.num, label: f0.name, accent: featSurf.accent, bg: isFeature ? '#0d1117' : 'transparent', color: isFeature ? '#e6edf3' : '#8b949e', top: isFeature ? featSurf.accent : 'transparent',
+        onClick: () => this.setState({ view: 'feature' }), onClose: e => { e.stopPropagation(); this.setState({ openNum: null, view: 'index' }); } } : { show: false },
+      goIndex: () => this.setState({ view: 'index' }),
+      bd
+    };
+  }
+}
+</script>
+</body>
+</html>

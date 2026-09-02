@@ -219,6 +219,7 @@
       <div onClick="{{ onOpenVaultTab }}" title="Shot Vault" style="{{ vaultTileStyle }}"><span style="display:inline-flex;width:16px;height:16px"><i data-lucide="camera" width="16" height="16"></i></span></div>
       <div onClick="{{ onOpenBatterTab }}" title="Batter Up" style="{{ batterTileStyle }}"><span style="display:inline-flex;width:16px;height:16px"><i data-lucide="bat" width="16" height="16"></i></span></div>
       <div onClick="{{ onOpenBuildWatchTab }}" title="Build Watch" style="{{ buildWatchTileStyle }}"><span style="display:inline-flex;width:16px;height:16px"><i data-lucide="activity" width="16" height="16"></i></span></div>
+      <div onClick="{{ onOpenFeaturesTab }}" title="Feature Index — what's left on each Feature" style="{{ featuresTileStyle }}"><span style="display:inline-flex;width:16px;height:16px"><i data-lucide="layers" width="16" height="16"></i></span></div>
       <div onClick="{{ onToggleLeftAutomation }}" title="UI Automation" style="{{ automationTileStyle }}"><span style="display:inline-flex;width:16px;height:16px"><i data-lucide="flask-conical" width="16" height="16"></i></span></div>
       <div onClick="{{ onToggleLeftFavorites }}" title="Favorites" style="{{ favoritesTileStyle }}"><span style="display:inline-flex;width:16px;height:16px"><i data-lucide="star" width="16" height="16"></i></span></div>
       <div style="width:20px;height:1px;background:#262c36;margin:2px 0;flex:none"></div>
@@ -1627,6 +1628,11 @@
           </div>
         </div>
       </sc-if>
+      <sc-if value="{{ activeTab.isGitMap }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Git Map" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#0a0d12;overflow:hidden">
+          <dc-import name="Git Map" hint-size="100%,100%" style="width:100%;height:100%;flex:1;min-height:0"></dc-import>
+        </div>
+      </sc-if>
       <sc-if value="{{ activeTab.isGitDoctor }}" hint-placeholder-val="{{ false }}">
         <div data-screen-label="Git Doctor" style="flex:1;min-height:0;display:flex;flex-direction:column;background:#0d1117">
           <div style="flex:none;display:flex;align-items:center;gap:14px;padding:12px 16px;border-bottom:1px solid #21262d;background:#0b0e14;flex-wrap:wrap">
@@ -2368,7 +2374,7 @@
         </div>
       </sc-if>
       <sc-if value="{{ activeTab.isChat }}" hint-placeholder-val="{{ false }}">
-        <div style="flex:none;position:relative;background:#12151c;border-bottom:1px solid #21262d;overflow:hidden">
+        <div style="flex:none;position:relative;z-index:40;background:#12151c;border-bottom:1px solid #21262d">
           <div style="{{ ctxBarFillStyle }}"></div>
           <div style="position:relative;z-index:1;display:flex;align-items:center;flex-wrap:wrap;gap:8px 10px;padding:8px 14px">
             <span onClick="{{ onOpenChatEpic }}" style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:17px;font-weight:800;color:#fde047;cursor:pointer;flex:none" style-hover="color:#fff4a3">#1202</span>
@@ -2500,6 +2506,182 @@
                 </div>
               </sc-for>
               <sc-if value="{{ domReaderEmpty }}" hint-placeholder-val="{{ false }}"><div style="text-align:center;padding:24px 0;font-size:11px;color:#7a7975;font-style:italic">Nothing caught yet — keep talking.</div></sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isChatToolGitMap }}" hint-placeholder-val="{{ false }}">
+            <div style="height:36px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid #302f2d">
+              <span style="display:inline-flex;width:13px;height:13px;color:#6a8fb5"><i data-lucide="columns" width="13" height="13"></i></span>
+              <span style="font-size:12px;font-weight:700;color:#ece9e4;flex:1">Git Map</span>
+              <span onClick="{{ gm.onOpenFull }}" title="Open the full Git Map" style="display:inline-flex;width:12px;height:12px;color:#7a7975;cursor:pointer" style-hover="color:#ece9e4"><i data-lucide="maximize-2" width="12" height="12"></i></span>
+              <span onClick="{{ onCloseChatTool }}" style="font-size:15px;color:#7a7975;cursor:pointer;line-height:1" style-hover="color:#ece9e4">×</span>
+            </div>
+            <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column">
+              <sc-if value="{{ gm.hasFocus }}" hint-placeholder-val="{{ true }}">
+                <div style="flex:none;margin:8px;padding:9px 10px;border-radius:7px;background:rgba(127,176,138,.08);border:1px solid #2f5238">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                    <span style="font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#7fb08a">Focus build</span>
+                    <span style="font-size:8.5px;color:#7a7975;font-family:Consolas,ui-monospace,Menlo,monospace;margin-left:auto">#{{ gm.focus.num }}</span>
+                  </div>
+                  <div style="font-size:12px;font-weight:700;color:#ece9e4;line-height:1.35">{{ gm.focus.name }}</div>
+                  <div style="font-size:9px;color:#7a7975;margin-top:3px">{{ gm.focus.surface }}</div>
+                  <div style="display:flex;align-items:center;gap:7px;margin-top:8px">
+                    <div style="flex:1;height:4px;background:#0d0f10;border-radius:99px;overflow:hidden"><div style="{{ gm.focus.barStyle }}"></div></div>
+                    <span style="font-size:9.5px;font-weight:700;color:#c2c0bc;font-family:Consolas,ui-monospace,Menlo,monospace">{{ gm.focus.frac }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:9px;margin-top:6px">
+                    <span style="font-size:9.5px;color:#c2c0bc">{{ gm.focus.left }} left</span>
+                    <span style="font-size:9.5px;color:#e0a879">{{ gm.focus.bugs }} bugs</span>
+                    <span onClick="{{ gm.focus.onSend }}" style="margin-left:auto;font-size:9.5px;font-weight:700;color:#d97757;cursor:pointer;white-space:nowrap">send to chat</span>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ gm.stalledCount }}" hint-placeholder-val="{{ true }}">
+                <div style="flex:none;margin:0 8px 8px;padding:8px 9px;border-radius:7px;background:#1d1211;border:1px solid #4a2320">
+                  <div style="font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#e8746f;margin-bottom:7px">Started and dropped · {{ gm.stalledCount }}</div>
+                  <div style="display:flex;flex-direction:column;gap:5px">
+                    <sc-for list="{{ gm.stalledItems }}" as="si" hint-placeholder-count="3">
+                      <div onClick="{{ si.onClick }}" style="display:flex;align-items:center;gap:7px;cursor:pointer">
+                        <span style="{{ si.dot }}"></span>
+                        <span style="flex:1;min-width:0;font-size:10px;color:#c2c0bc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ si.name }}</span>
+                        <span style="flex:none;font-size:9px;color:#a5817d;font-family:Consolas,ui-monospace,Menlo,monospace">{{ si.frac }}</span>
+                        <span style="flex:none;font-size:9.5px;font-weight:800;color:#e8746f;font-family:Consolas,ui-monospace,Menlo,monospace">{{ si.gap }}b</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-for list="{{ gm.questions }}" as="qq" hint-placeholder-count="0">
+                <div style="flex:none;margin:0 8px 8px">
+                  <div style="{{ qq.cardStyle }}">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                      <span style="font-size:8.5px;font-weight:800;color:#c2c0bc;font-family:Consolas,ui-monospace,Menlo,monospace">{{ qq.epicLabel }}</span>
+                      <span style="{{ qq.statusStyle }}">{{ qq.statusLabel }}</span>
+                      <span onClick="{{ qq.onDrop }}" style="margin-left:auto;font-size:13px;color:#5a5955;cursor:pointer;line-height:1;flex:none" style-hover="color:#ece9e4">×</span>
+                    </div>
+                    <div style="font-size:10px;color:#a8a6a1;line-height:1.45;text-wrap:pretty">{{ qq.q }}</div>
+                    <sc-if value="{{ qq.showAnswer }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin-top:7px;padding:7px 8px;border-radius:5px;background:#12151c;border:1px solid #26262a;font-size:10px;color:#c2c0bc;line-height:1.5;text-wrap:pretty">{{ qq.answer }}</div>
+                    </sc-if>
+                    <div style="display:flex;align-items:center;gap:7px;margin-top:8px">
+                      <button onClick="{{ qq.onPrimary }}" style="{{ qq.primaryStyle }}">{{ qq.primaryLabel }}</button>
+                      <span onClick="{{ qq.onGo }}" style="font-size:9.5px;font-weight:700;color:#7a7975;cursor:pointer;white-space:nowrap" style-hover="color:#ece9e4">open that chat</span>
+                    </div>
+                  </div>
+                </div>
+              </sc-for>
+
+              <div style="flex:none;padding:0 8px 4px;display:flex;align-items:center;gap:6px">
+                <span style="font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#5a5955">Epics · this chat is on {{ gm.chatEpicLabel }}</span>
+              </div>
+              <div style="flex:none;padding:0 8px 10px;display:flex;flex-direction:column;gap:3px">
+                <sc-for list="{{ gm.surfaces }}" as="su" hint-placeholder-count="5">
+                  <div>
+                    <div onClick="{{ su.onClick }}" style="{{ su.headStyle }}">
+                      <span style="{{ su.dot }}"></span>
+                      <div style="flex:1;min-width:0">
+                        <div style="display:flex;align-items:center;gap:5px">
+                          <span style="min-width:0;font-size:10.5px;font-weight:700;color:#ece9e4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ su.name }}</span>
+                          <sc-if value="{{ su.isChat }}" hint-placeholder-val="{{ false }}">
+                            <span style="{{ su.chatTagStyle }}">this chat</span>
+                          </sc-if>
+                        </div>
+                        <div style="font-size:8.5px;color:#5a5955;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ su.sub }}</div>
+                      </div>
+                      <sc-if value="{{ su.stalledN }}" hint-placeholder-val="{{ false }}">
+                        <span style="{{ su.stalledStyle }}">{{ su.stalledN }}</span>
+                      </sc-if>
+                      <span style="flex:none;font-size:9px;color:#7a7975;font-family:Consolas,ui-monospace,Menlo,monospace">{{ su.frac }}</span>
+                      <span style="display:inline-flex;width:11px;height:11px;color:#5a5955;flex:none"><i data-lucide="{{ su.chevron }}" width="11" height="11"></i></span>
+                    </div>
+                    <sc-if value="{{ su.showChatActions }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;align-items:center;gap:7px;padding:0 8px 4px 22px">
+                        <span onClick="{{ su.onGoChat }}" style="display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;color:#7c8cf0;cursor:pointer;white-space:nowrap" style-hover="color:#9aa6f5"><span style="display:inline-flex;width:10px;height:10px"><i data-lucide="message-square" width="10" height="10"></i></span>Go to chat</span>
+                        <span onClick="{{ su.onAsk }}" style="display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;color:#d97757;cursor:pointer;white-space:nowrap" style-hover="color:#e79070"><span style="display:inline-flex;width:10px;height:10px"><i data-lucide="alert-circle" width="10" height="10"></i></span>Go with a question</span>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ su.askOpen }}" hint-placeholder-val="{{ false }}">
+                      <div style="margin:0 8px 8px 22px;padding:8px 9px;border-radius:7px;background:#0d0f10;border:1px solid #3d3b37">
+                        <div style="font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#7a7975;margin-bottom:6px">Ask that chat</div>
+                        <textarea value="{{ su.askText }}" onChange="{{ su.onAskText }}" rows="3" placeholder="What do you need to know over there?" style="width:100%;box-sizing:border-box;background:#0a0c0d;border:1px solid #302f2d;border-radius:5px;padding:6px 7px;color:#ece9e4;font-size:10px;line-height:1.5;outline:none;resize:vertical"></textarea>
+                        <div style="display:flex;flex-direction:column;gap:3px;margin-top:6px">
+                          <sc-for list="{{ su.askPresets }}" as="ap" hint-placeholder-count="3">
+                            <span onClick="{{ ap.onClick }}" style="font-size:9.5px;color:#8a8985;cursor:pointer;line-height:1.4;padding:3px 5px;border-radius:4px;text-wrap:pretty" style-hover="background:#1a1a19;color:#ece9e4">{{ ap.label }}</span>
+                          </sc-for>
+                        </div>
+                        <button onClick="{{ su.onSendAsk }}" style="width:100%;height:26px;margin-top:7px;background:#d97757;border:none;border-radius:5px;color:#1a0f0a;font-size:10px;font-weight:800;cursor:pointer">Take it to that chat</button>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ su.open }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:5px;padding:5px 0 7px 8px">
+                        <sc-for list="{{ su.features }}" as="gf" hint-placeholder-count="3">
+                          <div style="{{ gf.style }}">
+                            <div style="display:flex;align-items:center;gap:6px">
+                              <span style="flex:1;min-width:0;font-size:10.5px;font-weight:600;color:#ece9e4;line-height:1.35">{{ gf.name }}</span>
+                              <span style="{{ gf.statePill }}">{{ gf.state }}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:6px">
+                              <div style="flex:1;height:3px;background:#0a0c0d;border-radius:99px;overflow:hidden"><div style="{{ gf.barStyle }}"></div></div>
+                              <span style="flex:none;font-size:9px;color:#a8a6a1;font-family:Consolas,ui-monospace,Menlo,monospace">{{ gf.frac }}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:8px">
+                              <span style="flex:1;min-width:0;font-size:8.5px;color:{{ gf.touchColor }};font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ gf.touch }}</span>
+                              <span onClick="{{ gf.onFocus }}" title="Make this the focus build" style="flex:none;font-size:9px;font-weight:700;color:#7fb08a;cursor:pointer">focus</span>
+                              <span onClick="{{ gf.onSend }}" title="Send what is left to the chat" style="flex:none;font-size:9px;font-weight:700;color:#d97757;cursor:pointer">send</span>
+                            </div>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isChatToolHealth }}" hint-placeholder-val="{{ false }}">
+            <div style="height:36px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid #302f2d">
+              <span style="display:inline-flex;width:13px;height:13px;color:#e0a879"><i data-lucide="scan-eye" width="13" height="13"></i></span>
+              <span style="font-size:12px;font-weight:700;color:#ece9e4;flex:1">Repo Health</span>
+              <span onClick="{{ onCloseChatTool }}" style="font-size:15px;color:#7a7975;cursor:pointer;line-height:1" style-hover="color:#ece9e4">×</span>
+            </div>
+            <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column">
+              <div style="flex:none;padding:8px;display:flex;flex-direction:column;gap:7px;border-bottom:1px solid #302f2d">
+                <div style="font-size:9px;color:#7a7975;font-family:Consolas,ui-monospace,Menlo,monospace">{{ rh.scanLine }}</div>
+                <div style="display:flex;gap:4px">
+                  <sc-for list="{{ rh.counts }}" as="rc" hint-placeholder-count="4">
+                    <div style="{{ rc.style }}">
+                      <div style="{{ rc.nStyle }}">{{ rc.n }}</div>
+                      <div style="{{ rc.labelStyle }}">{{ rc.label }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="flex:none;display:flex;align-items:center;gap:7px;padding:7px 8px 5px">
+                <span style="flex:1;font-size:9px;font-weight:800;letter-spacing:.09em;color:#7a7975">OPEN · {{ rh.openCount }}</span>
+                <span onClick="{{ rh.onPickNext }}" style="font-size:9.5px;font-weight:700;color:#d97757;cursor:pointer">pick next 5</span>
+              </div>
+              <div style="flex:none;padding:0 8px;display:flex;flex-direction:column;gap:4px">
+                <sc-for list="{{ rh.items }}" as="ri" hint-placeholder-count="5">
+                  <div onClick="{{ ri.onClick }}" style="{{ ri.style }}">
+                    <span style="{{ ri.boxStyle }}">{{ ri.mark }}</span>
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">
+                        <span style="{{ ri.rulePill }}">{{ ri.rule }}</span>
+                        <span style="font-size:8.5px;color:#7a7975;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ ri.num }}</span>
+                      </div>
+                      <div style="font-size:10px;color:{{ ri.titleColor }};line-height:1.35">{{ ri.title }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+                <sc-if value="{{ rh.empty }}" hint-placeholder-val="{{ false }}">
+                  <div style="border:1px dashed #302f2d;border-radius:6px;padding:16px 10px;text-align:center;font-size:10px;color:#5a5955">Nothing open. Scan queue clear.</div>
+                </sc-if>
+              </div>
+              <div style="flex:none;padding:8px;display:flex;flex-direction:column;gap:6px;border-top:1px solid #302f2d;margin-top:8px">
+                <button onClick="{{ rh.onSend }}" style="{{ rh.sendStyle }}"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="send" width="12" height="12"></i></span>{{ rh.sendLabel }}</button>
+                <span style="font-size:8.5px;color:#7a7975;line-height:1.45;text-wrap:pretty">{{ rh.note }}</span>
+              </div>
             </div>
           </sc-if>
           <sc-if value="{{ isChatToolGd }}" hint-placeholder-val="{{ false }}">
@@ -2802,6 +2984,11 @@
       <sc-if value="{{ activeTab.isBuildWatch }}" hint-placeholder-val="{{ false }}">
         <div style="flex:1 1 0%;min-width:0;min-height:0;overflow:hidden;position:relative">
           <dc-import name="Build Watch" hint-size="100%,100%"></dc-import>
+        </div>
+      </sc-if>
+      <sc-if value="{{ activeTab.isFeatures }}" hint-placeholder-val="{{ false }}">
+        <div data-vault-host="1" style="flex:1 1 0%;min-width:0;min-height:0;overflow:hidden;position:relative">
+          <dc-import name="Feature Index" hint-size="100%,100%"></dc-import>
         </div>
       </sc-if>
       <sc-if value="{{ activeTab.isFinder }}" hint-placeholder-val="{{ false }}">
@@ -4105,6 +4292,7 @@ class Component extends DCLogic {
       vault:{label:'Shot Vault', icon:'camera', color:'#37b8b0', tabId:'shot-vault', kind:'vault', subs:[{id:'wall', label:'Wall', icon:'layout-grid'}, {id:'index', label:'Text Index', icon:'text'}]},
       batter:{label:'Batter Up', icon:'bat', color:'#7fb08a', tabId:'batter-up', kind:'batter', subs:[{id:'queue', label:'Batter Up', icon:'bat', color:'#7fb08a'}, {id:'gate', label:'AI Batter Up', icon:'bot', color:'#c9ab72'}, {id:'ask', label:'AI For Shane', icon:'messages-square', color:'#c08a84'}]},
       buildwatch:{label:'Build Watch', icon:'activity', color:'#6a8fb5', tabId:'build-watch', kind:'buildwatch'},
+      features:{label:'Feature Index', icon:'layers', color:'#a374ea', tabId:'feature-index', kind:'features'},
       matrix:{label:'Build Matrix', icon:'layout-grid', color:'#e2984a', tabId:'build-matrix', kind:'matrix', subs:[{id:'kanban', label:'Kanban', icon:'columns'}, {id:'grid', label:'Grid Matrix', icon:'layout-grid'}, {id:'graph', label:'Dep Graph', icon:'git-fork'}]},
       gate:{label:'Release Gate', icon:'check-circle-2', color:'#c084fc', tabId:'gate-v11', kind:'gate'},
       health:{label:'Project Health', icon:'activity', color:'#86b3a2', tabId:'health-v11', kind:'health'},
@@ -4498,7 +4686,7 @@ class Component extends DCLogic {
     this.sendLogLinesToChat = (rows) => {
       if (!rows.length) return;
       const md = '```log\n' + rows.map(this.logLineText).join('\n') + '\n```';
-      this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + md}));
+      this.appendDraft(md);
       this.showToast(rows.length + (rows.length === 1 ? ' line' : ' lines') + ' sent to the chat box.');
     };
     this.ALERT_SEED = {
@@ -4787,7 +4975,53 @@ class Component extends DCLogic {
       return out;
     })();
     this.GD_SEV = {low:{label:'LOW', tone:'143,167,196'}, medium:{label:'MEDIUM', tone:'226,176,57'}, high:{label:'HIGH', tone:'226,89,63'}};
+    this.GM_SURFACES = [
+      {id:'mkt', name:'Marketing Website', accent:'#e2984a', features:[
+        {num:1101, epic:1093, name:'Assessments', closed:11, total:11, last:2176, bugs:0, state:'done', left:[]},
+        {num:1104, epic:1093, name:'Signal Intelligence Diagnostics', closed:6, total:9, last:2188, bugs:1, state:'stalled', left:['#1744 Quiz result → retainer mapping (half-written)','#1741 Resume a half-finished diagnostic (never started)','#1738 Empty state on slow API (bug, found #2188)']},
+        {num:1108, epic:1093, name:'Retainer Pricing Page', closed:0, total:7, last:null, bugs:0, state:'todo', left:['#1751 Retainer tier cards','#1753 Compare monitoring vs. retainer']}
+      ]},
+      {id:'cust', name:'Customer Portal', accent:'#a374ea', features:[
+        {num:1489, epic:1485, name:'Remediation Tracking', closed:26, total:39, last:2199, bugs:2, state:'active', left:['#1712 Detail drawer — history tab','#1715 Bulk re-assign owner','#1718 Evidence upload rejects .msg over 8MB (bug)']},
+        {num:1486, epic:1485, name:'Change Control', closed:12, total:19, last:2181, bugs:1, state:'stalled', left:['#1524 Second approver state machine (half-built)','#1521 Change calendar week view','#1518 Rollback plan rule (blocked on MSP mirror)']},
+        {num:1494, epic:1485, name:'Microsoft Changes / Message Center', closed:17, total:17, last:2195, bugs:0, state:'signoff', left:[]},
+        {num:1497, epic:1485, name:'Governance Policies', closed:5, total:12, last:2178, bugs:0, state:'stalled', left:['#1601 Policy library overrides (stopped mid-schema)','#1604 Oversharing schema v2 (blocked on Gate item)']},
+        {num:1616, epic:1485, name:'ShaneBot + Active Cards', closed:0, total:5, last:2190, bugs:0, state:'parked', left:['#1655 Active Card layout — needs a design pass']}
+      ]},
+      {id:'msp', name:'MSP Portal', accent:'#37b8b0', features:[
+        {num:1684, epic:1571, name:'Remediation Tracking (MSP)', closed:0, total:5, last:null, bugs:0, state:'todo', left:['#1693 Cross-tenant remediation backlog']},
+        {num:1681, epic:1571, name:'Change Control (MSP)', closed:0, total:4, last:null, bugs:0, state:'todo', left:['#1690 Operator view of tenant change windows']},
+        {num:1685, epic:1571, name:'Policy Decisions + Policy Engine', closed:0, total:6, last:null, bugs:0, state:'todo', left:['#1699 Push a policy to N tenants']},
+        {num:1689, epic:1571, name:'Tenant Onboarding', closed:3, total:8, last:2184, bugs:0, state:'stalled', left:['#1720 Consent walkthrough (blocked on prod consent)','#1722 First-sync progress']}
+      ]},
+      {id:'admin', name:'Admin Portal', accent:'#6a8fb5', features:[
+        {num:2044, epic:1202, name:'Log Viewer', closed:9, total:15, last:2200, bugs:2, state:'focus', left:['#2210 Live tail pause + burst replay','#2208 Filter rail (half wired)','#2206 Cold start drops first 118 lines (bug)','#2204 Row virtualization above 5k lines','#2199 WARN colouring lost after re-render (bug)']},
+        {num:2035, epic:1202, name:'Build Queue', closed:8, total:15, last:2198, bugs:1, state:'active', left:['#2074 Slot pinning across restarts','#2068 Blocked builds nest under their blocker','#2021 Queue scroll wheel + stuck state (bug)']},
+        {num:1787, epic:1202, name:'Git Board & Chats', closed:4, total:16, last:2186, bugs:0, state:'stalled', left:['#2104 Pinned Questions Phase 1 (depth violation)','#2086 Search chats by issue number','#2083 Epic → chat tree with milestone header']},
+        {num:1120, epic:1096, name:'Graph Sync', closed:11, total:14, last:2197, bugs:0, state:'active', left:['#1908 Delta-token expiry fallback','#1901 Throttle backoff on 429']},
+        {num:1128, epic:1096, name:'Signal Engines', closed:13, total:22, last:2172, bugs:3, state:'stalled', left:['#1955 SOW line-item diffing (half-built)','#1949 SLA pause (blocked on Change Control)','#1946 Drift double-fires on DST (bug)']}
+      ]}
+    ];
+    this.GM_EPICS = {
+      1093:{name:'Marketing Site', sid:'mkt'}, 1485:{name:'Portal', sid:'cust'},
+      1571:{name:'Portal Admin', sid:'msp'}, 1202:{name:'Build Console', sid:'admin'},
+      1096:{name:'Application Core', sid:'admin'}
+    };
+    this.RH_FINDINGS = [
+      {id:'d1', rule:'depth', num:2104, title:'Pinned Questions Phase 1', evidence:'#1202 → #1787 → #2036 → #2104 (depth 4, max is 3)'},
+      {id:'d2', rule:'depth', num:2098, title:'Pinned Questions — storage schema', evidence:'same chain under #2036; 6 more siblings at depth 4'},
+      {id:'n1', rule:'naming', num:2036, title:'Epic: Pinned Questions', evidence:'titled "Epic:" but sits at L3 with 4 sub-issues — should be "Feature:"'},
+      {id:'n2', rule:'naming', num:1489, title:'Portal New Design: Remediation Tracking', evidence:'39 sub-issues, dead "Portal New Design:" prefix (11 more like it)'},
+      {id:'n3', rule:'naming', num:1616, title:'ShaneBot + Active Cards', evidence:'5 sub-issues, no convention marker at all (23 more like it)'},
+      {id:'s1', rule:'stale', num:1827, title:'Fix fixture loader path in portal-v2 build step', evidence:'matches known-dead path "portal-v2", retired 2026-08-29 — issue still active'},
+      {id:'s2', rule:'stale', num:1921, title:'msp-portal dashboard cards drop tenant filter', evidence:'matches known-dead path "msp-portal", retired 2026-08-29'},
+      {id:'o1', rule:'orphan', num:1866, title:'Footer nav duplicates Resources link on mobile', evidence:'open child of #1094, which closed 2026-08-29'}
+    ];
     this.GD_RISK = {safe:{label:'SAFE', tone:'127,176,138'}, careful:{label:'CAREFUL', tone:'226,176,57'}, destructive:{label:'DESTRUCTIVE', tone:'226,89,63'}};
+    this.openGitMap = () => {
+      this.openOrSelectTab('gitmap', 'Git Map', 'gitmap', '#6a8fb5', {ws:'git'});
+      this.setState({apiMenuOpen:false, paletteOpen:false, leftPanelOpen:false, queuePanelOpen:false, buildPanelNum:null});
+    };
     this.openGitDoctor = () => {
       this.openOrSelectTab('gitdoctor', 'Git Doctor', 'gitdoctor', '#e2593f', {ws:'git'});
       this.setState({apiMenuOpen:false, paletteOpen:false, leftPanelOpen:false, queuePanelOpen:false, buildPanelNum:null});
@@ -4837,7 +5071,7 @@ class Component extends DCLogic {
     this.gdAskClaude = (f) => {
       const r = this.gdRemedyFor(f);
       const md = '**Git Doctor \u2014 ' + f.title + '** (' + f.where + ')\n\n```\n' + f.evidence + '\n```\n\nProposed remedy: ' + r.label + ' (' + r.risk + ')\n```bash\n' + r.steps.map(s => s.cmd).join('\n') + '\n```\nIs this the right call, or is there something safer?';
-      this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + md}));
+      this.appendDraft(md);
       this.showToast('Finding and proposed fix sent to the chat box.');
     };
     this.gdParseInbound = () => {
@@ -5171,7 +5405,7 @@ class Component extends DCLogic {
       hudTermLog:[], hudSqlRes:null, hudSqlFile:null,
       dialogRecover:false, activeNumsSet:null, qPaused:false, leftPanelOpen:false, leftPanelSource:'chats', issueTrail:[], gitPeek:null, gitPeekTrail:[], gitPeekExpanded:false, externalIssues:{}, usagePanelOpen:false, shelfNums:[], shelfNotified:{}, quickThoughtOpen:false, quickThoughtDraft:'', quickThoughts:[], homeVelMult:1, sysHealthExpanded:null, migrationsLoaded:{}, sysHealthCheckedAt:Date.now(), nextUpOpenEpics:[],
       sqlRunnerOpen:false, sqlQuery:'SELECT * FROM issues\nWHERE status = \'blocked\';', sqlView:'table', sqlHasRun:false, sqlCols:null, sqlRows:null,
-      chatToolOpen:null, chatToolMenuOpen:false, toolboxMenuOpen:false, toolboxMenuPos:{top:60, left:400},
+      chatToolOpen:null, chatToolMenuOpen:false, toolboxMenuOpen:false, rhSel:[], rhState:{}, gmState:{}, gmAskEpic:null, gmAskText:'', gmQuestions:[], toolboxMenuPos:{top:60, left:400},
       logsMode:'cold', logsBurstLeft:0, logsBurstLen:30, logsLive:[],
       logsSrcOn:{api:true, build:true}, logsGroupOpen:{web:true, svc:true, local:true}, logsRail:'sources',
       logsQuery:'', logsRegex:false, logsExclude:'', logsLevels:[], logsHighlight:false, logsTail:null,
@@ -5193,7 +5427,7 @@ class Component extends DCLogic {
       chatSqlQuery:'SELECT * FROM issues\nWHERE epic_id = 1202;', chatSqlView:'table', chatSqlHasRun:false, chatSqlCols:null, chatSqlRows:null,
       chatPsCmd:'', chatPsLog:[], chatTermCmd:'', chatTermLog:[], chatJsonInput:'{\n  "epic": 1202,\n  "status": "blocked"\n}', chatJsonPretty:'', chatJsonError:'', chatFilesExpanded:{'src':true}, chatFileSelected:'',
       automationEnv:'dev', automationSearch:'', automationOpenSuites:['copilot','governance','marketing'], favOpenGroups:['external','dev'], favAdding:false, favDraftLabel:'', favDraftUrl:'', favoritesCustom:[], spineEdges:[], todaysObjectives:[1202], nudgeLevel:3, statusHoverKey:null, buildPanelNum:null, buildLogOpen:true, buildDescOpen:false, commentExpanded:{}, queueIconHoverNum:null, buildPanelExpanded:false, domReaderOpen:false, domReaderDismissed:[], domReaderGroupsOpen:{verifying:true, mentioned:true, claude:true}, inspectorPhase:'idle', matrixSetFilter:'ALL', matrixView:'kanban',
-      activeTabId:'bc-1096', wsCollapsed:[], wsStashed:[], wsMenuOpen:false, chatDraft:'', toast:null, qaAdding:false, qaDraft:'', customQuickActions:[], toolBelts:{}, chatDone:{}, chatEpicOpen:{}, finderQ:'', finderPeek:null, chatsFindQ:'',
+      activeTabId:'bc-1096', wsCollapsed:[], wsStashed:[], wsMenuOpen:false, chatDraft:'', chatDrafts:{}, toast:null, qaAdding:false, qaDraft:'', customQuickActions:[], toolBelts:{}, chatDone:{}, chatEpicOpen:{}, finderQ:'', finderPeek:null, chatsFindQ:'',
       chatSessionStart:Date.now() - 102 * 60000,
       gitEpicsOpen:true, gitExpandedEpics:[1202], queuePanelOpen:true,
       milestoneScope:'all', milestoneSort:'progress',
@@ -5370,6 +5604,10 @@ class Component extends DCLogic {
     if (!q || 'settings environment variables credentials tokens accounts'.includes(q)) {
       items.push({category:'apis', icon:'settings', iconColor:'#8fa7c4', title:'Settings', sub:'Test variables, tokens, accounts, watchers', badge:'API', status:null,
         spec:'Everything configurable, triaged by what still needs a value.', primaryLabel:'Open Settings', onPrimary:() => self.openSettings()});
+    }
+    if (!q || 'git map milestone epic feature focus build stalled burndown'.includes(q)) {
+      items.push({category:'apis', icon:'columns', iconColor:'#6a8fb5', title:'Git Map', sub:'Milestone → product → epic → feature, and what stalled', badge:'VIEW', status:null,
+        spec:'Every product surface with its features, focus build, stalled work and the untriaged pile.', primaryLabel:'Open Git Map', onPrimary:() => self.openGitMap()});
     }
     if (!q || 'git doctor fix git nightmare pull'.includes(q)) {
       items.push({category:'apis', icon:'git-branch', iconColor:'#e2593f', title:'Git Doctor', sub:'Diagnose and fix whatever git is refusing to do', badge:'API', status:null,
@@ -5847,7 +6085,7 @@ class Component extends DCLogic {
         json:resp.json, raw:resp.raw || resp.json,
         statusStyle:'font-size:10px;font-weight:800;padding:3px 8px;border-radius:4px;font-family:Consolas,ui-monospace,Menlo,monospace;background:rgba(' + (resp.denied ? '226,89,63' : resp.dry ? '127,176,138' : '79,143,240') + ',.16);color:' + (resp.denied ? '#e2593f' : resp.dry ? '#7fb08a' : '#7dc4f5'),
         onCopy:() => this.copyText(resp.json, 'Response'),
-        onSendChat:() => { this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + '```json\n' + resp.json + '\n```'})); this.showToast('Response sent to the chat box.'); }
+        onSendChat:() => { this.appendDraft('```json\n' + resp.json + '\n```'); this.showToast('Response sent to the chat box.'); }
       } : null,
       respTabs:['json', 'raw'].map(k => ({
         label:k === 'json' ? 'JSON Output' : 'Raw Response',
@@ -5968,7 +6206,7 @@ class Component extends DCLogic {
         onSend:() => {
           if (!S.hudTermLog.length) { this.showToast('Run something first.'); return; }
           const md = '```bash\n' + S.hudTermLog.map(l => '$ ' + l.cmd + '\n' + l.out).join('\n') + '\n```';
-          this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + md, paletteOpen:false}));
+          this.appendDraft(md); this.setState({paletteOpen:false});
           this.showToast('Terminal session sent to the chat box.');
         },
         onOpenTool:() => { close(); this.setState({chatToolOpen:'terminal'}); }
@@ -5993,7 +6231,7 @@ class Component extends DCLogic {
         onSendChat:() => {
           if (!r) { this.showToast('Run a query first.'); return; }
           const md = '```\n' + r.sql + '\n\n' + this.sqlToCsv(r.cols, r.rows) + '\n```';
-          this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + md, paletteOpen:false}));
+          this.appendDraft(md); this.setState({paletteOpen:false});
           this.showToast('Query and result sent to the chat box.');
         }
       }});
@@ -6145,6 +6383,255 @@ class Component extends DCLogic {
       onLinkProject:() => this.showToast('Pick a Claude project to link to this account\u2026')
     };
   }
+  draftFor(S, tabId) { return (S.chatDrafts || {})[tabId || S.activeTabId] || ''; }
+  appendDraft(text, tabId) {
+    this.setState(s => {
+      const id = tabId || s.activeTabId;
+      const d = Object.assign({}, s.chatDrafts || {});
+      d[id] = (d[id] ? d[id] + '\n\n' : '') + text;
+      return {chatDrafts:d};
+    });
+  }
+  setDraftFor(tabId, text) {
+    this.setState(s => { const d = Object.assign({}, s.chatDrafts || {}); d[tabId] = text; return {chatDrafts:d}; });
+  }
+  chatEpicOf(S) {
+    const t = S.tabDefs.find(x => x.id === S.activeTabId);
+    const m = t && t.chatSub ? String(t.chatSub).match(/#(\d+)/) : null;
+    const n = m ? Number(m[1]) : 1202;
+    return this.GM_EPICS[n] ? n : 1202;
+  }
+  gmEpicEvidence(epicNum, epicName) {
+    const surf = this.GM_SURFACES.find(x => x.id === (this.GM_EPICS[epicNum] || {}).sid);
+    const list = surf ? surf.features.filter(f => f.epic === epicNum) : [];
+    const done = list.filter(f => f.closed === f.total && f.total > 0);
+    const best = done[0] || list.slice().sort((a, b) => (b.closed / b.total) - (a.closed / a.total))[0];
+    if (!best) return 'Checked #' + epicNum + ' ' + epicName + ' — nothing here covers it.';
+    const openLeft = best.total - best.closed;
+    return 'Checked #' + epicNum + ' ' + epicName + ' — it lives under ' + best.name + ' (#' + best.num + '), ' +
+      best.closed + '/' + best.total + ' closed' + (best.last ? ', last touched build #' + best.last : '') + '. ' +
+      (openLeft === 0
+        ? 'Every issue on it is closed, so it already exists — you did check, it just landed on this side.'
+        : openLeft + ' issue' + (openLeft === 1 ? '' : 's') + ' still open here: ' + (best.left || []).slice(0, 2).join('; ') + '.');
+  }
+  gmGoToEpicChat(epicNum, epicName, question) {
+    const S = this.state;
+    const from = this.chatEpicOf(S), fromName = (this.GM_EPICS[from] || {}).name || 'this chat';
+    const fromTab = S.activeTabId;
+    const destTab = 'chat-epic-' + epicNum;
+    if (question) {
+      this.setState(s => ({
+        gmQuestions:(s.gmQuestions || []).concat([{id:'q' + Date.now(), epic:epicNum, epicName, from, fromName, fromTab, q:question, status:'asked'}]),
+        gmAskEpic:null, gmAskText:''
+      }));
+      this.setDraftFor(destTab, '**Question from #' + from + ' ' + fromName + '**\n\n' + question + '\n\n_Answer here, then take it back to #' + from + '._');
+      this.showToast('Question carried to #' + epicNum + ' ' + epicName + '.');
+    } else {
+      this.setState({gmAskEpic:null});
+      this.showToast('Switched to the #' + epicNum + ' ' + epicName + ' chat.');
+    }
+    this.openOrSelectTab(destTab, '#' + epicNum + ' ' + epicName, 'chat', '#7c8cf0',
+      {chatTitle:epicName, chatSub:'#' + epicNum + ' ' + epicName});
+  }
+  computeGitMapMini(S) {
+    const B = 2200, MONO = 'Consolas,ui-monospace,Menlo,monospace';
+    const ST = {
+      focus:{label:'Focus', color:'#7fb08a'}, active:{label:'In flight', color:'#6a8fb5'},
+      stalled:{label:'Stalled', color:'#e8746f'}, parked:{label:'Parked', color:'#e2984a'},
+      signoff:{label:'Sign-off', color:'#c084fc'}, done:{label:'Signed off', color:'#5f9e6d'},
+      todo:{label:'Not started', color:'#7a7975'}
+    };
+    const pill = (c, l) => 'flex:none;font-size:7.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:1px 5px;border-radius:99px;white-space:nowrap;background:' + c + '22;border:1px solid ' + c + '55;color:' + c;
+    const feats = [];
+    this.GM_SURFACES.forEach(s => s.features.forEach(f => feats.push(Object.assign({}, f, {surface:s.name, accent:s.accent, sid:s.id}))));
+    const state = (f) => S.gmState[f.num] || f.state;
+    const focusF = feats.find(f => state(f) === 'focus');
+    const chatEpic = this.chatEpicOf(S);
+    const openEpic = S.gmEpic === undefined ? chatEpic : S.gmEpic;
+    const stalled = feats.filter(f => state(f) === 'stalled').sort((a, b) => a.last - b.last);
+
+    const epicNums = Object.keys(this.GM_EPICS).map(Number);
+    epicNums.sort((a, b) => (a === chatEpic ? -1 : b === chatEpic ? 1 : a - b));
+
+    const surfaces = epicNums.map(en => {
+      const meta = this.GM_EPICS[en];
+      const surf = this.GM_SURFACES.find(x => x.id === meta.sid);
+      const list = feats.filter(f => f.epic === en);
+      const closed = list.reduce((a, f) => a + f.closed, 0);
+      const total = list.reduce((a, f) => a + f.total, 0);
+      const on = openEpic === en;
+      const stalledN = list.filter(f => state(f) === 'stalled').length;
+      const isChat = en === chatEpic;
+      return {
+        name:'EPIC: ' + meta.name, sub:surf.name, num:en, isChat,
+        chatTagStyle:'flex:none;font-size:7px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:1px 5px;border-radius:99px;background:rgba(217,119,87,.16);border:1px solid #5c3a2c;color:#d97757',
+        frac:closed + '/' + total, open:on,
+        dot:'flex:none;width:7px;height:7px;border-radius:99px;background:' + surf.accent,
+        barStyle:'height:100%;width:' + Math.round(closed / total * 100) + '%;background:' + surf.accent,
+        stalledN: stalledN || '',
+        stalledStyle:'flex:none;font-size:8px;font-weight:800;padding:0 5px;border-radius:99px;background:rgba(232,116,111,.15);border:1px solid #4a2320;color:#e8746f;font-family:' + MONO,
+        chevron: on ? 'chevron-down' : 'chevron-right',
+        headStyle:'display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:6px;cursor:pointer;background:' + (on ? '#1a1a19' : 'transparent') + (isChat ? ';border:1px solid #3d2b22' : ''),
+        onClick:() => this.setState(s2 => ({gmEpic: (s2.gmEpic === undefined ? chatEpic : s2.gmEpic) === en ? null : en})),
+        showChatActions: !isChat,
+        onGoChat:(ev) => { ev.stopPropagation(); this.gmGoToEpicChat(en, meta.name, ''); },
+        epicName:meta.name,
+        onAsk:(ev) => { ev.stopPropagation(); this.setState(s2 => ({gmAskEpic: s2.gmAskEpic === en ? null : en, gmAskText:''})); },
+        askOpen: S.gmAskEpic === en,
+        askText: S.gmAskEpic === en ? S.gmAskText : '',
+        onAskText:(e) => this.setState({gmAskText:e.target.value}),
+        askPresets:[
+          'Does this already exist? Show me the closed issues and the evidence.',
+          'Is there a monitoring API on this side? Where does it live?',
+          'What is actually left open here?'
+        ].map(q => ({
+          label:q,
+          onClick:(ev) => { ev.stopPropagation(); this.setState({gmAskText:q}); }
+        })),
+        onSendAsk:(ev) => {
+          ev.stopPropagation();
+          const q = (S.gmAskText || '').trim();
+          if (!q) { this.showToast('Type a question first.'); return; }
+          this.gmGoToEpicChat(en, meta.name, q);
+        },
+        features: on ? list.map(f => {
+          const st = state(f), m = ST[st], gap = f.last ? B - f.last : null;
+          return {
+            num:f.num, name:f.name, frac:f.closed + '/' + f.total,
+            state:m.label, statePill:pill(m.color, m.label),
+            barStyle:'height:100%;width:' + Math.round(f.closed / f.total * 100) + '%;background:' + m.color,
+            touch: f.last ? '#' + f.last + ' · ' + gap + ' builds ago' : 'never built',
+            touchColor: gap !== null && gap >= 6 ? '#e8746f' : '#7a7975',
+            style:'display:flex;flex-direction:column;gap:5px;padding:7px 8px;border-radius:6px;background:#0d0f10;border:1px solid #26262a;border-left:2px solid ' + m.color,
+            onSend:() => {
+              const md = '**' + f.name + '** (' + f.surface + ' · #' + f.num + ')\n\n' + (f.total - f.closed) + ' issues left of ' + f.total + '. Last touched build #' + (f.last || '\u2014') + '.\n\nWhat is left:\n' + (f.left || []).map(l => '- ' + l).join('\n');
+              this.appendDraft(md);
+              this.showToast(f.name + ' sent to the chat box.');
+            },
+            onFocus:() => this.setState(s2 => {
+              const g = Object.assign({}, s2.gmState);
+              feats.forEach(x => { if ((g[x.num] || x.state) === 'focus') g[x.num] = 'active'; });
+              g[f.num] = 'focus';
+              return {gmState:g};
+            })
+          };
+        }) : []
+      };
+    });
+
+    return {
+      surfaces, stalledCount: stalled.length,
+      stalledItems: stalled.slice(0, 3).map(f => ({
+        name:f.name, gap:B - f.last, frac:f.closed + '/' + f.total,
+        dot:'flex:none;width:6px;height:6px;border-radius:99px;background:' + f.accent,
+        onClick:() => this.setState({gmEpic:f.epic})
+      })),
+      chatEpicLabel:'#' + chatEpic + ' ' + this.GM_EPICS[chatEpic].name,
+      questions:(S.gmQuestions || []).map(q => {
+        const answered = q.status === 'answered';
+        return {
+          id:q.id, q:q.q, epicLabel:'#' + q.epic + ' ' + q.epicName,
+          statusLabel: answered ? 'Answer ready' : 'Waiting on that chat',
+          statusStyle:'flex:none;font-size:7.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:99px;' +
+            (answered ? 'background:rgba(127,176,138,.16);border:1px solid #2f5238;color:#7fb08a' : 'background:rgba(226,176,57,.14);border:1px solid #5c4a22;color:#e2b039'),
+          cardStyle:'padding:9px 10px;border-radius:7px;background:#0d0f10;border:1px solid ' + (answered ? '#2f5238' : '#3d3b37') + ';border-left:2px solid ' + (answered ? '#7fb08a' : '#e2b039'),
+          answer:q.answer || '',
+          showAnswer:answered,
+          primaryLabel: answered ? 'Paste answer into this chat' : 'Bring the answer back',
+          primaryStyle:'height:24px;padding:0 10px;border-radius:5px;font-size:9.5px;font-weight:700;cursor:pointer;' +
+            (answered ? 'background:#d97757;border:none;color:#1a0f0a' : 'background:transparent;border:1px solid #3d3b37;color:#c2c0bc'),
+          onPrimary:() => {
+            if (!answered) {
+              const ans = this.gmEpicEvidence(q.epic, q.epicName);
+              this.setState(s2 => ({gmQuestions:(s2.gmQuestions || []).map(x => x.id === q.id ? Object.assign({}, x, {status:'answered', answer:ans}) : x)}));
+              this.showToast('Answer captured from #' + q.epic + '.');
+              return;
+            }
+            const back = q.fromTab || 'bc-1096';
+            this.appendDraft('**Answer from #' + q.epic + ' ' + q.epicName + '**\n\n> ' + q.q + '\n\n' + q.answer, back);
+            this.setState(s2 => ({gmQuestions:(s2.gmQuestions || []).filter(x => x.id !== q.id), activeTabId:back}));
+            this.showToast('Pasted back into #' + q.from + ' ' + q.fromName + '.');
+          },
+          onGo:() => this.gmGoToEpicChat(q.epic, q.epicName, ''),
+          onDrop:() => this.setState(s2 => ({gmQuestions:(s2.gmQuestions || []).filter(x => x.id !== q.id)}))
+        };
+      }),
+      hasFocus: !!focusF,
+      focus: focusF ? {
+        name:focusF.name, num:focusF.num, surface:focusF.surface,
+        frac:focusF.closed + '/' + focusF.total,
+        left:focusF.total - focusF.closed, bugs:focusF.bugs,
+        barStyle:'height:100%;width:' + Math.round(focusF.closed / focusF.total * 100) + '%;background:#7fb08a',
+        onSend:() => {
+          const md = '**Focus build — ' + focusF.name + '** (' + focusF.surface + ' · #' + focusF.num + ')\n\n' +
+            (focusF.total - focusF.closed) + ' issues left, ' + focusF.bugs + ' bugs found during the build.\n\n' +
+            (focusF.left || []).map(l => '- ' + l).join('\n') + '\n\nPick up where the last build stopped.';
+          this.appendDraft(md);
+          this.showToast('Focus build sent to the chat box.');
+        }
+      } : null,
+      onOpenFull:() => this.openGitMap()
+    };
+  }
+  computeRepoHealth(S) {
+    const RH_RULES = {
+      depth:  {short:'Depth', color:'#e8746f'},
+      naming: {short:'Naming', color:'#e2b039'},
+      stale:  {short:'Stale', color:'#d4a03c'},
+      orphan: {short:'Orphan', color:'#a374ea'}
+    };
+    const F = this.RH_FINDINGS;
+    const st = (f) => S.rhState[f.id] || 'Open';
+    const sel = S.rhSel || [];
+    const open = F.filter(f => st(f) === 'Open');
+    const counts = [
+      {label:'Depth', n:8, color:'#e8746f', rule:'depth'},
+      {label:'Naming', n:42, color:'#e2b039', rule:'naming'},
+      {label:'Stale', n:6, color:'#d4a03c', rule:'stale'},
+      {label:'Orphan', n:3, color:'#a374ea', rule:'orphan'}
+    ].map(c => ({
+      label:c.label, n:c.n,
+      style:'flex:1;min-width:0;text-align:center;padding:5px 4px;border-radius:5px;background:' + c.color + '18;border:1px solid ' + c.color + '3d',
+      nStyle:'font-size:13px;font-weight:800;color:' + c.color + ';font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1.1',
+      labelStyle:'font-size:8px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7a7975'
+    }));
+    const items = F.filter(f => ['Open','In chat'].indexOf(st(f)) >= 0).map(f => {
+      const r = RH_RULES[f.rule], s = st(f), on = sel.indexOf(f.id) >= 0, inChat = s === 'In chat';
+      return {
+        num:f.num, title:f.title, rule:r.short, state:s,
+        rulePill:'flex:none;font-size:7.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:1px 5px;border-radius:99px;background:' + r.color + '22;border:1px solid ' + r.color + '55;color:' + r.color,
+        titleColor: inChat ? '#7a7975' : '#c2c0bc',
+        mark: on ? '\u2713' : '',
+        boxStyle:'flex:none;width:13px;height:13px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:8px;font-weight:800;margin-top:1px;' +
+          (on ? 'background:#d97757;border:1px solid #e08b6d;color:#1a0f0a' : 'background:transparent;border:1px solid ' + (inChat ? '#302f2d' : '#4a4844') + ';color:transparent'),
+        style:'display:flex;gap:7px;padding:6px 7px;border-radius:6px;cursor:' + (inChat ? 'default' : 'pointer') + ';background:' + (on ? 'rgba(217,119,87,.12)' : '#0d0f10') + ';border:1px solid ' + (on ? '#5c3a2c' : '#26262a') + (inChat ? ';opacity:.5' : ''),
+        onClick: () => { if (inChat) return; this.setState(s2 => ({rhSel: (s2.rhSel || []).indexOf(f.id) >= 0 ? s2.rhSel.filter(x => x !== f.id) : ((s2.rhSel || []).length >= 5 ? s2.rhSel : (s2.rhSel || []).concat(f.id))})); }
+      };
+    });
+    return {
+      scanLine:'scan 2026-09-02 08:42 · 60 findings', counts, items,
+      openCount:open.length, empty:items.length === 0,
+      inChatCount:F.filter(f => st(f) === 'In chat').length,
+      sendLabel: sel.length ? 'Send ' + sel.length + ' to this chat' : 'Select up to 5',
+      sendStyle:'height:28px;border:none;border-radius:6px;font-size:11px;font-weight:800;cursor:' + (sel.length ? 'pointer' : 'default') + ';display:flex;align-items:center;justify-content:center;gap:6px;' +
+        (sel.length ? 'background:#d97757;color:#1a0f0a' : 'background:#1a1a19;border:1px solid #302f2d;color:#5a5955'),
+      note: sel.length >= 5 ? 'Batch full — five at a time.' : 'Evidence travels with them: chains, matched paths, parent state.',
+      onPickNext: () => this.setState({rhSel: open.slice(0, 5).map(f => f.id)}),
+      onSend: () => {
+        if (!sel.length) return;
+        const batch = sel.map(id => F.find(f => f.id === id)).filter(Boolean);
+        const md = '**Repo Health \u2014 ' + batch.length + ' findings from the 2026-09-02 scan**\n\n' +
+          batch.map(f => '- **#' + f.num + '** ' + f.title + '\n  - rule: ' + RH_RULES[f.rule].short + '\n  - evidence: ' + f.evidence).join('\n') +
+          '\n\nFix the depth and naming ones directly. Report stale references and leave them open.';
+        this.setState(s2 => {
+          const rs = Object.assign({}, s2.rhState);
+          sel.forEach(id => { rs[id] = 'In chat'; });
+          this.appendDraft(md); return {rhState:rs, rhSel:[]};
+        });
+        this.showToast(batch.length + ' findings sent to the chat box.');
+      }
+    };
+  }
   computeGitDoctor(S) {
     const R = this.GD_REPO;
     const findings = S.gdFindings.length ? S.gdFindings : this.GD_SEED.map(f => Object.assign({}, f, {fixed:false}));
@@ -6168,7 +6655,7 @@ class Component extends DCLogic {
       onShow:() => this.copyText('git show ' + hit.sha.slice(0, 9) + ' --stat', 'git show command'),
       onAsk:() => {
         const md = '**Git Doctor \u2014 commit ' + hit.sha.slice(0, 9) + '**\n\n```\ncommit ' + hit.sha + '\nAuthor: ' + hit.author + '\nDate:   ' + hit.when + '\n\n    ' + hit.subject + '\n\n' + hit.stat + '\n```\n' + hit.notes;
-        this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + md}));
+        this.appendDraft(md);
         this.showToast('Commit details sent to the chat box.');
       }
     } : {
@@ -6303,7 +6790,7 @@ class Component extends DCLogic {
       planCount:(S.gdPlan || []).filter(p => p.approved).length,
       onSendAll:() => {
         const md = '**Git Doctor \u2014 ' + open.length + ' open findings on ' + R.name + '**\n\n' + open.map(f => '- ' + f.title + ' (' + f.sev + ', ' + f.where + ')\n```\n' + f.evidence + '\n```').join('\n');
-        this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + md}));
+        this.appendDraft(md);
         this.showToast('All open findings sent to the chat box.');
       }
     };
@@ -6362,7 +6849,7 @@ class Component extends DCLogic {
       respStatus:resp ? resp.status : '',
       respStatusStyle:resp ? 'font-size:9px;font-weight:800;padding:2px 6px;border-radius:3px;font-family:Consolas,ui-monospace,Menlo,monospace;background:rgba(' + (resp.denied ? '226,89,63' : resp.dry ? '127,176,138' : '79,143,240') + ',.16);color:' + (resp.denied ? '#e2593f' : resp.dry ? '#9fd0a9' : '#7dc4f5') : '',
       respMeta:resp ? resp.ms + ' ms · ' + resp.size : '',
-      onSendChat:() => { if (!resp) { this.showToast('Send the request first.'); return; } this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + '```json\n' + resp.json + '\n```'})); this.showToast('Response pasted into the chat box.'); },
+      onSendChat:() => { if (!resp) { this.showToast('Send the request first.'); return; } this.appendDraft('```json\n' + resp.json + '\n```'); this.showToast('Response pasted into the chat box.'); },
       onCopy:() => this.copyText(resp ? resp.json : '', 'Response'),
       onOpenFull:() => this.openApiDoc(mode)
     };
@@ -6384,7 +6871,7 @@ class Component extends DCLogic {
       onSendReply:() => {
         const txt = (S.alertReplies[a.aid] || '').trim();
         if (!txt) { this.showToast('Type a reply first.'); return; }
-        this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + txt, alerts:s.alerts.filter(x => x.aid !== a.aid)}));
+        this.appendDraft(txt); this.setState(s => ({alerts:s.alerts.filter(x => x.aid !== a.aid)}));
         this.showToast('Replied to Claude \u2014 the build is moving again.');
       },
       onPrimary:() => {
@@ -6778,10 +7265,14 @@ class Component extends DCLogic {
     }, 5000);
   }
   sendChatMessage() {
-    const text = this.state.chatDraft.trim();
+    const S = this.state;
+    const text = this.draftFor(S, S.activeTabId).trim();
     if (!text) return;
     const time = new Date().toLocaleTimeString([], {hour:'numeric', minute:'2-digit'});
-    this.setState(s => ({chatMessages:s.chatMessages.concat([{author:'You', time, text, code:null}]), chatDraft:''}));
+    this.setState(s => {
+      const d = Object.assign({}, s.chatDrafts || {}); d[s.activeTabId] = '';
+      return {chatMessages:s.chatMessages.concat([{author:'You', time, text, code:null}]), chatDrafts:d};
+    });
   }
   qRecoverRetry(num) { this.setState(s => ({gTasks:s.gTasks.map(t => t.n === num ? Object.assign({}, t, {st:'UP NEXT'}) : t)})); }
   qRecoverPark(num) { this.setState(s => ({gTasks:s.gTasks.map(t => t.n === num ? Object.assign({}, t, {st:'PARKED'}) : t)})); }
@@ -7169,15 +7660,17 @@ class Component extends DCLogic {
       onCloseBuildDetail:() => this.setState({buildPanelNum:null}),
       onToggleDomReader:() => this.setState(s => ({domReaderOpen:!s.domReaderOpen, chatToolOpen:null, chatToolMenuOpen:false})),
       domReaderOpen:S.domReaderOpen,
-      onToggleToolboxMenu:() => { const r = this._toolboxIconEl ? this._toolboxIconEl.getBoundingClientRect() : {bottom:60, right:400}; this.setState(s => ({toolboxMenuOpen:!s.toolboxMenuOpen, toolboxMenuPos:{top:r.bottom + 6, left:r.right - 190}})); },
+      onToggleToolboxMenu:() => this.setState(s => ({toolboxMenuOpen:!s.toolboxMenuOpen})),
       toolboxMenuOpen:S.toolboxMenuOpen,
-      toolboxMenuStyle:'position:fixed;top:' + S.toolboxMenuPos.top + 'px;left:' + S.toolboxMenuPos.left + 'px;z-index:60;width:190px;background:#232320;border:1px solid #35342f;border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.5);padding:5px;display:flex;flex-direction:column;gap:1px',
+      toolboxMenuStyle:'position:absolute;top:calc(100% + 7px);right:0;z-index:60;width:190px;background:#232320;border:1px solid #35342f;border-radius:8px;box-shadow:0 10px 24px rgba(0,0,0,.5);padding:5px;display:flex;flex-direction:column;gap:1px',
       toolboxItems:[
         {id:'logs', icon:'activity', color:'#7fb08a', label:'Log Peek'},
         {id:'api-local', icon:'zap', color:'#c084fc', label:'API Runner'},
         {id:'api-read', icon:'zap', color:'#00b4d8', label:'Graph Read'},
         {id:'api-write', icon:'zap', color:'#e2593f', label:'Graph Write'},
         {id:'gitdoctor', icon:'git-branch', color:'#e2593f', label:'Git Doctor'},
+        {id:'gitmap', icon:'columns', color:'#6a8fb5', label:'Git Map'},
+        {id:'health', icon:'scan-eye', color:'#e0a879', label:'Repo Health'},
         {id:'sql', icon:'database', color:'#38bdf8', label:'SQL Runner'},
         {id:'ps', icon:'terminal-square', color:'#4f8ff0', label:'PowerShell'},
         {id:'terminal', icon:'terminal', color:'#6ee7b7', label:'Terminal'},
@@ -7192,6 +7685,10 @@ class Component extends DCLogic {
       isChatToolLogs:S.chatToolOpen === 'logs',
       isChatToolApi:(S.chatToolOpen || '').indexOf('api-') === 0,
       isChatToolGd:S.chatToolOpen === 'gitdoctor',
+      isChatToolHealth:S.chatToolOpen === 'health',
+      isChatToolGitMap:S.chatToolOpen === 'gitmap',
+      gm:this.computeGitMapMini(S),
+      rh:this.computeRepoHealth(S),
       gd:this.computeGitDoctor(S),
       apiPeek:this.computeApiPeek(S),
       logs:this.computeLogs(S),
@@ -7228,7 +7725,7 @@ class Component extends DCLogic {
       chatFileSelected:S.chatFileSelected,
       onCopyChatFilePath:() => this.copyText(S.chatFileSelected, 'Path'),
       onCloseChatSql:() => this.setState({chatToolOpen:null}),
-      chatSqlPanel:Object.assign(this.computeSqlRunner(S, 'chatSql'), {onSendToChat:() => { const t = this.sqlSampleFor(S.chatSqlQuery); const rows = S.chatSqlRows || t.rows; const cols = S.chatSqlCols || t.cols; const md = '```\n' + this.sqlToCsv(cols, rows) + '\n```'; this.setState(s => ({chatDraft:(s.chatDraft ? s.chatDraft + '\n' : '') + md})); this.showToast('Query result sent to the chat box.'); }}),
+      chatSqlPanel:Object.assign(this.computeSqlRunner(S, 'chatSql'), {onSendToChat:() => { const t = this.sqlSampleFor(S.chatSqlQuery); const rows = S.chatSqlRows || t.rows; const cols = S.chatSqlCols || t.cols; const md = '```\n' + this.sqlToCsv(cols, rows) + '\n```'; this.appendDraft(md); this.showToast('Query result sent to the chat box.'); }}),
       sqlRunnerOpen:S.sqlRunnerOpen,
       onCloseSqlRunner:() => this.setState({sqlRunnerOpen:false}),
       sqlRunner:this.computeSqlRunner(S, 'sql'),
@@ -7292,6 +7789,8 @@ class Component extends DCLogic {
       onOpenBatterTab:() => this.openTool('batter'),
       buildWatchTileStyle:'width:32px;height:32px;flex:none;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;' + ((this.beltToolActive(S,'buildwatch') || (S.tabDefs.find(x => x.id === S.activeTabId) || {}).kind === 'buildwatch') ? 'background:rgba(106,143,181,.14);border:1px solid rgba(106,143,181,.5);color:#7dc4f5' : 'background:#1c2128;border:1px solid #30363d;color:#8b949e'),
       onOpenBuildWatchTab:() => this.openTool('buildwatch'),
+      featuresTileStyle:'width:32px;height:32px;flex:none;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;' + ((this.beltToolActive(S,'features') || (S.tabDefs.find(x => x.id === S.activeTabId) || {}).kind === 'features') ? 'background:rgba(163,116,234,.14);border:1px solid rgba(163,116,234,.5);color:#c4a6f2' : 'background:#1c2128;border:1px solid #30363d;color:#8b949e'),
+      onOpenFeaturesTab:() => this.openTool('features'),
       automationTileStyle:'width:32px;height:32px;flex:none;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;' + ((S.leftPanelOpen && S.leftPanelSource === 'automation') ? 'background:rgba(0,120,212,.22);border:1px solid rgba(0,120,212,.7);color:#7cc4f5' : 'background:rgba(0,120,212,.12);border:1px solid rgba(0,120,212,.4);color:#5bafe8'),
       onToggleLeftAutomation:() => this.setState(s => ({ leftPanelOpen: s.leftPanelOpen && s.leftPanelSource === 'automation' ? false : true, leftPanelSource:'automation' })),
       favoritesTileStyle:'width:32px;height:32px;flex:none;border-radius:6px;display:flex;align-items:center;justify-content:center;cursor:pointer;' + ((S.leftPanelOpen && S.leftPanelSource === 'favorites') ? 'background:rgba(251,191,36,.22);border:1px solid rgba(251,191,36,.7);color:#fcd980' : 'background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);color:#fbbf24'),
@@ -7897,7 +8396,7 @@ class Component extends DCLogic {
         const belt = S.toolBelts[S.activeTabId];
         const tool = belt && belt.activeToolId ? belt.activeToolId : null;
         const k = tool ? null : t.kind;
-        return {id:t.id, title:t.title, isHome:k === 'home', isStub:k === 'stub', isChat:k === 'chat', isMilestone:k === 'milestone', isGate:tool ? tool === 'gate' : k === 'gate', isEpic:k === 'epic', isIssue:k === 'issue', isHealth:tool ? tool === 'health' : k === 'health', isMatrix:tool ? tool === 'matrix' : k === 'matrix', isVault:tool ? tool === 'vault' : k === 'vault', vaultView:tool === 'vault' ? (((belt && belt.subs) || {}).vault || 'wall') : '', isBatter:tool ? tool === 'batter' : k === 'batter', batterLane:tool === 'batter' ? (((belt && belt.subs) || {}).batter || 'queue') : '', isBuildWatch:tool ? tool === 'buildwatch' : k === 'buildwatch', isSettingsTool:tool === 'settings', isFinder:tool ? tool === 'finder' : k === 'finder', isLogs:k === 'logs', isApi:k === 'api', isGitDoctor:k === 'gitdoctor', isSettingsDoc:k === 'settingsdoc', showSettings:k === 'settingsdoc' || tool === 'settings', chatTitle:t.chatTitle, chatSub:t.chatSub, epicNum:t.epicNum, issueNum:t.issueNum};
+        return {id:t.id, title:t.title, isHome:k === 'home', isStub:k === 'stub', isChat:k === 'chat', isMilestone:k === 'milestone', isGate:tool ? tool === 'gate' : k === 'gate', isEpic:k === 'epic', isIssue:k === 'issue', isHealth:tool ? tool === 'health' : k === 'health', isMatrix:tool ? tool === 'matrix' : k === 'matrix', isVault:tool ? tool === 'vault' : k === 'vault', vaultView:tool === 'vault' ? (((belt && belt.subs) || {}).vault || 'wall') : '', isBatter:tool ? tool === 'batter' : k === 'batter', batterLane:tool === 'batter' ? (((belt && belt.subs) || {}).batter || 'queue') : '', isBuildWatch:tool ? tool === 'buildwatch' : k === 'buildwatch', isFeatures:tool ? tool === 'features' : k === 'features', isSettingsTool:tool === 'settings', isFinder:tool ? tool === 'finder' : k === 'finder', isLogs:k === 'logs', isApi:k === 'api', isGitDoctor:k === 'gitdoctor', isGitMap:k === 'gitmap', isSettingsDoc:k === 'settingsdoc', showSettings:k === 'settingsdoc' || tool === 'settings', chatTitle:t.chatTitle, chatSub:t.chatSub, epicNum:t.epicNum, issueNum:t.issueNum};
       })(),
       composerBarStyle:'flex:none;position:relative;padding:14px 16px;border-top:1px solid ' + ((S.tabDefs.find(x => x.id === S.activeTabId) || {}).kind === 'chat' ? '#302f2d;background:#1a1a19' : '#30363d;background:#161b22'),
       onOpenGateTab:(e) => { if (e) e.stopPropagation(); this.openTool('gate'); },
@@ -8202,6 +8701,7 @@ class Component extends DCLogic {
       onOpenGitDoctor:() => this.openGitDoctor(),
       apiMenuItems:[
         {mode:'settings', label:'Settings', sub:'Environment, credentials, accounts', color:'#8fa7c4'},
+        {mode:'gitmap', label:'Git Map', sub:'Milestone → product → epic → feature', color:'#6a8fb5'},
         {mode:'gitdoctor', label:'Git Doctor', sub:'Fix whatever git is refusing to do', color:'#e2593f'},
         {mode:'local', label:'API Endpoint Runner', sub:'Local API server \u00b7 1,748 routes', color:'#c084fc'},
         {mode:'read', label:'Microsoft Graph Read', sub:'Graph v1.0 \u00b7 read endpoints', color:'#00b4d8'},
@@ -8209,7 +8709,7 @@ class Component extends DCLogic {
       ].map(x => ({
         label:x.label, sub:x.sub,
         dotStyle:'width:7px;height:7px;border-radius:99px;flex:none;background:' + x.color,
-        onClick:() => { this.setState({apiMenuOpen:false}); if (x.mode === 'gitdoctor') this.openGitDoctor(); else if (x.mode === 'settings') this.openSettings(); else this.openApiDoc(x.mode); }
+        onClick:() => { this.setState({apiMenuOpen:false}); if (x.mode === 'gitdoctor') this.openGitDoctor(); else if (x.mode === 'gitmap') this.openGitMap(); else if (x.mode === 'settings') this.openSettings(); else this.openApiDoc(x.mode); }
       })),
       swallowClick:(e) => e.stopPropagation(),
       onToggleDevServices:(e) => { e.stopPropagation(); this.setState(s => ({devServicesOpen:!s.devServicesOpen})); },
@@ -8286,8 +8786,8 @@ class Component extends DCLogic {
         else list = list.slice().sort((a, b) => b.pct - a.pct);
         return list;
       })(),
-      chatDraft:S.chatDraft,
-      onChatDraft:(e) => this.setState({chatDraft:e.target.value}),
+      chatDraft:this.draftFor(S, S.activeTabId),
+      onChatDraft:(e) => this.setDraftFor(S.activeTabId, e.target.value),
       onChatDraftKey:(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendChatMessage(); } },
       onChatSend:() => this.sendChatMessage(),
       toast:S.toast,

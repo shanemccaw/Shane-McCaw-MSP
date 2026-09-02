@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <script src="./lucide-local.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%;background:#0a0d12;color-scheme:dark}
+    body > div{height:100%}
+    a{color:#7da7cd;text-decoration:none}
+    a:hover{color:#9fc0dd;text-decoration:underline}
+    .om-scroll{scrollbar-width:auto;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:12px;height:12px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:3px solid #0d1117;border-radius:8px;min-height:48px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    button{font-family:inherit}
+  </style>
+</helmet>
+
+<div style="height:100%;min-height:900px;width:100%;display:flex;background:#0a0d12;color:#c9d1d9;font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden">
+
+  <div data-screen-label="Git Panel" style="width:412px;flex:none;display:flex;flex-direction:column;background:#0d1117;border-right:1px solid #21262d;min-height:0">
+
+    <div style="height:34px;flex:none;display:flex;align-items:center;gap:7px;padding:0 10px;background:#161b22;border-bottom:1px solid #21262d">
+      <span style="display:inline-flex;width:13px;height:13px;color:#6a8fb5"><i data-lucide="git-branch" width="13" height="13"></i></span>
+      <span style="font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:#8b949e;flex:1">Git</span>
+      <span style="font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ nodeCountLabel }}</span>
+    </div>
+
+    <div class="om-scroll" style="flex:1;overflow-y:auto;min-height:0;padding:10px">
+
+      <div style="background:#12151c;border:1px solid #21262d;border-radius:8px;padding:10px 11px 11px">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+          <span style="display:inline-flex;width:12px;height:12px;color:#6a8fb5;flex:none"><i data-lucide="flag" width="12" height="12"></i></span>
+          <span style="font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#6a8fb5">Milestone progress</span>
+          <span style="font-size:8.5px;color:#576069;margin-left:auto;letter-spacing:.04em">work closed</span>
+        </div>
+        <div style="font-size:12px;font-weight:700;color:#e6edf3;margin-bottom:9px">v1.1 — Monitoring &amp; Launch Control</div>
+        <div style="display:flex;align-items:flex-end;gap:9px">
+          <span style="font-size:30px;font-weight:800;color:#e6edf3;line-height:.85;letter-spacing:-.02em">{{ msPct }}<span style="font-size:15px;color:#8b949e">%</span></span>
+          <div style="flex:1;min-width:0;padding-bottom:2px">
+            <div style="height:6px;background:#0a0d12;border:1px solid #1b212a;border-radius:99px;overflow:hidden;margin-bottom:5px">
+              <div style="height:100%;width:{{ msPct }}%;background:linear-gradient(90deg,#4d7aa8,#6a8fb5)"></div>
+            </div>
+            <div style="font-size:9.5px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">{{ msClosed }} / {{ msTotal }} issues closed</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 2px">
+        <div style="flex:1;height:1px;background:#21262d"></div>
+        <span style="font-size:11px;font-weight:800;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">≠</span>
+        <span style="font-size:9px;color:#576069;letter-spacing:.03em">progress is not permission</span>
+        <div style="flex:1;height:1px;background:#21262d"></div>
+      </div>
+
+      <div style="border:2px solid {{ gate.border }};border-radius:8px;background:{{ gate.bg }};overflow:hidden">
+        <div style="height:26px;display:flex;align-items:center;gap:7px;padding:0 10px;background:{{ gate.stampBg }};border-bottom:1px solid {{ gate.border }}">
+          <span style="display:inline-flex;width:12px;height:12px;color:{{ gate.stampColor }};flex:none"><i data-lucide="shield-alert" width="12" height="12"></i></span>
+          <span style="font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:{{ gate.stampColor }};font-family:Consolas,ui-monospace,Menlo,monospace">{{ gate.stampLabel }}</span>
+        </div>
+        <div style="padding:10px 11px 11px">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+            <span style="font-size:9.5px;font-weight:800;color:#c084fc;font-family:Consolas,ui-monospace,Menlo,monospace">GATE #1281</span>
+            <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8b7aa8">Shane-tested sign-off</span>
+            <span onClick="{{ gate.onToggle }}" style="margin-left:auto;font-size:9px;font-weight:700;color:#8b949e;cursor:pointer;letter-spacing:.04em" style-hover="color:#e6edf3">{{ gate.toggleLabel }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex;gap:4px;flex:none">
+              <sc-for list="{{ gate.pips }}" as="p" hint-placeholder-count="7">
+                <span title="{{ p.title }}" style="{{ p.style }}"></span>
+              </sc-for>
+            </div>
+            <span style="font-size:14px;font-weight:800;color:#e6edf3;font-family:Consolas,ui-monospace,Menlo,monospace">{{ gate.passed }}<span style="color:#576069">/{{ gate.total }}</span></span>
+            <span style="font-size:9px;color:#8b7aa8;letter-spacing:.03em;line-height:1.3">checks signed off<br>by Shane, by hand</span>
+          </div>
+          <sc-if value="{{ gate.open }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top:10px;padding-top:9px;border-top:1px solid {{ gate.border }};display:flex;flex-direction:column;gap:1px">
+              <sc-for list="{{ gate.checks }}" as="c" hint-placeholder-count="7">
+                <div onClick="{{ c.onToggle }}" style="display:flex;gap:7px;align-items:flex-start;padding:5px 6px;border-radius:5px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+                  <span style="{{ c.boxStyle }}">{{ c.mark }}</span>
+                  <span style="font-size:10.5px;line-height:1.4;color:{{ c.textColor }};flex:1;text-wrap:pretty">{{ c.label }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="margin-top:9px;font-size:9.5px;color:#8b7aa8;line-height:1.45;text-wrap:pretty">{{ gate.note }}</div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px">
+        <div style="display:flex;gap:0;background:#12151c;border:1px solid #21262d;border-radius:7px;padding:2px">
+          <sc-for list="{{ levels }}" as="lv" hint-placeholder-count="3">
+            <button onClick="{{ lv.onClick }}" style="{{ lv.style }}">{{ lv.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
+          <span style="font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#576069;margin-right:2px">Status</span>
+          <sc-for list="{{ statusChips }}" as="sc" hint-placeholder-count="5">
+            <span onClick="{{ sc.onClick }}" style="{{ sc.style }}">{{ sc.label }}</span>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;gap:8px;margin:11px 0 9px;padding:6px 8px;background:#12151c;border:1px solid #21262d;border-radius:6px">
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1;min-width:0">
+          <sc-for list="{{ crumbs }}" as="cr" hint-placeholder-count="1">
+            <span onClick="{{ cr.onClick }}" style="{{ cr.style }}">{{ cr.label }}</span>
+          </sc-for>
+        </div>
+        <sc-if value="{{ scopeActive }}" hint-placeholder-val="{{ false }}">
+          <span onClick="{{ onClearScope }}" title="Back to the whole milestone" style="font-size:9px;font-weight:700;color:#8b949e;cursor:pointer;flex:none" style-hover="color:#e6edf3">clear scope ×</span>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ showTree }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ epicRows }}" as="ep" hint-placeholder-count="5">
+            <div style="{{ ep.boxStyle }}">
+              <div style="display:flex;align-items:center;gap:7px;padding:9px 10px;cursor:{{ ep.headCursor }}" onClick="{{ ep.onToggle }}">
+                <span style="{{ ep.tileStyle }}"><i data-lucide="git-branch" width="11" height="11"></i></span>
+                <span style="font-size:9.5px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ ep.num }}</span>
+                <span style="font-size:12px;font-weight:700;color:#e6edf3;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ep.name }}</span>
+                <span style="{{ ep.fracStyle }}">{{ ep.frac }}</span>
+                <span onClick="{{ ep.onScope }}" title="Show only this epic" style="{{ ep.scopeBtnStyle }}"><i data-lucide="{{ ep.scopeIcon }}" width="11" height="11"></i></span>
+                <sc-if value="{{ ep.showChev }}" hint-placeholder-val="{{ true }}">
+                  <span style="display:inline-flex;width:12px;height:12px;color:#576069;flex:none;transform:rotate({{ ep.chevRot }}deg);transition:transform .14s"><i data-lucide="chevron-down" width="12" height="12"></i></span>
+                </sc-if>
+              </div>
+              <div style="padding:0 10px 9px;display:flex;align-items:center;gap:8px">
+                <div style="height:3px;flex:1;background:#0a0d12;border-radius:99px;overflow:hidden"><div style="{{ ep.barStyle }}"></div></div>
+                <span style="font-size:8.5px;color:#576069;flex:none;white-space:nowrap;letter-spacing:.04em">{{ ep.metaLabel }}</span>
+              </div>
+
+              <sc-if value="{{ ep.expanded }}" hint-placeholder-val="{{ true }}">
+                <div style="padding:0 8px 9px;display:flex;flex-direction:column;gap:6px">
+
+                  <sc-if value="{{ ep.showFeatures }}" hint-placeholder-val="{{ true }}">
+                    <div style="font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#576069;padding:2px 2px 0">Features · {{ ep.featureCount }}</div>
+                    <sc-for list="{{ ep.features }}" as="ft" hint-placeholder-count="3">
+                      <div style="background:#161b22;border:1px solid #262c36;border-left:2px solid {{ ft.accent }};border-radius:7px;overflow:hidden">
+                        <div onClick="{{ ft.onToggle }}" style="display:flex;align-items:center;gap:8px;padding:8px 9px;cursor:pointer" style-hover="background:#1a2029">
+                          <span style="{{ ft.tileStyle }}"><i data-lucide="layers" width="11" height="11"></i></span>
+                          <div style="flex:1;min-width:0">
+                            <div style="display:flex;align-items:baseline;gap:6px">
+                              <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ ft.num }}</span>
+                              <span style="font-size:11.5px;font-weight:700;color:#e6edf3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Feature: {{ ft.name }}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:7px;margin-top:5px">
+                              <div style="height:3px;width:74px;flex:none;background:#0a0d12;border-radius:99px;overflow:hidden"><div style="{{ ft.barStyle }}"></div></div>
+                              <span style="font-size:9px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">{{ ft.frac }}</span>
+                              <span style="{{ ft.statusStyle }}">{{ ft.status }}</span>
+                            </div>
+                          </div>
+                          <span onClick="{{ ft.onDrill }}" title="Scope into this feature" style="flex:none;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #2e3742;border-radius:5px;color:#8b949e;cursor:pointer" style-hover="border-color:#4d7aa8;color:#9fc0dd"><i data-lucide="chevrons-right" width="11" height="11"></i></span>
+                        </div>
+                        <sc-if value="{{ ft.expanded }}" hint-placeholder-val="{{ false }}">
+                          <div style="padding:0 9px 8px 9px;display:flex;flex-direction:column;gap:2px;border-top:1px solid #21262d;padding-top:7px">
+                            <sc-for list="{{ ft.issues }}" as="is" hint-placeholder-count="3">
+                              <div style="display:flex;align-items:center;gap:7px;padding:3px 2px">
+                                <span style="{{ is.dotStyle }}"></span>
+                                <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ is.num }}</span>
+                                <span style="font-size:10.5px;color:{{ is.textColor }};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ is.title }}</span>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </sc-if>
+
+                  <sc-if value="{{ ep.showBugs }}" hint-placeholder-val="{{ true }}">
+                    <div style="border:1px dashed #333b47;border-radius:6px;background:rgba(255,255,255,.012);margin-top:2px">
+                      <div style="display:flex;align-items:center;gap:6px;padding:6px 8px 5px">
+                        <span style="display:inline-flex;width:11px;height:11px;color:#6e7681;flex:none"><i data-lucide="bug" width="11" height="11"></i></span>
+                        <span style="font-size:8.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#6e7681">Loose issues · not decomposed</span>
+                        <span style="font-size:9px;color:#576069;margin-left:auto;font-family:Consolas,ui-monospace,Menlo,monospace">{{ ep.bugCount }}</span>
+                      </div>
+                      <sc-for list="{{ ep.bugs }}" as="bg" hint-placeholder-count="4">
+                        <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border-top:1px solid #1b212a;font-family:Consolas,ui-monospace,Menlo,monospace" style-hover="background:rgba(255,255,255,.03)">
+                          <span style="font-size:10px;font-weight:700;color:#8b949e;flex:none">#{{ bg.num }}</span>
+                          <span style="font-size:10px;color:#8b949e;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:Inter,sans-serif">{{ bg.title }}</span>
+                          <span style="{{ bg.statusStyle }}">{{ bg.status }}</span>
+                        </div>
+                      </sc-for>
+                      <sc-if value="{{ ep.bugsEmpty }}" hint-placeholder-val="{{ false }}">
+                        <div style="padding:6px 8px;border-top:1px solid #1b212a;font-size:9.5px;color:#4d5561">Nothing loose — every open issue sits under a Feature.</div>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+
+                  <sc-if value="{{ ep.hiddenLabel }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:9px;color:#576069;padding:1px 3px">{{ ep.hiddenLabel }}</div>
+                  </sc-if>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <sc-if value="{{ treeEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px dashed #30363d;border-radius:8px;padding:22px 16px;text-align:center;font-size:11px;color:#576069;line-height:1.6">No node matches this status filter.</div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ featureView.on }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#12151c;border:1px solid #262c36;border-left:2px solid {{ featureView.accent }};border-radius:8px;padding:11px 12px">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px">
+            <span style="{{ featureView.tileStyle }}"><i data-lucide="layers" width="12" height="12"></i></span>
+            <span style="font-size:9.5px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ featureView.num }}</span>
+            <span style="{{ featureView.statusStyle }}">{{ featureView.status }}</span>
+          </div>
+          <div style="font-size:14px;font-weight:800;color:#e6edf3;letter-spacing:-.01em;margin-bottom:10px">Feature: {{ featureView.name }}</div>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <div style="flex:1;background:#0f1319;border:1px solid #21262d;border-radius:6px;padding:8px 9px">
+              <div style="font-size:8.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#576069;margin-bottom:3px">Closed</div>
+              <div style="font-size:18px;font-weight:800;color:#7fb08a;font-family:Consolas,ui-monospace,Menlo,monospace">{{ featureView.closed }}</div>
+            </div>
+            <div style="flex:1;background:#0f1319;border:1px solid #21262d;border-radius:6px;padding:8px 9px">
+              <div style="font-size:8.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#576069;margin-bottom:3px">Open gap</div>
+              <div style="font-size:18px;font-weight:800;color:#e6edf3;font-family:Consolas,ui-monospace,Menlo,monospace">{{ featureView.openCount }}</div>
+            </div>
+            <div style="flex:1;background:#0f1319;border:1px solid #21262d;border-radius:6px;padding:8px 9px">
+              <div style="font-size:8.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#576069;margin-bottom:3px">Rollup</div>
+              <div style="font-size:18px;font-weight:800;color:#e6edf3;font-family:Consolas,ui-monospace,Menlo,monospace">{{ featureView.pct }}<span style="font-size:11px;color:#576069">%</span></div>
+            </div>
+          </div>
+          <div style="font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#576069;margin-bottom:6px">The gap — {{ featureView.openCount }} open</div>
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <sc-for list="{{ featureView.openIssues }}" as="oi" hint-placeholder-count="6">
+              <div style="display:flex;align-items:flex-start;gap:7px;padding:5px 3px;border-bottom:1px solid #1b212a">
+                <span style="width:6px;height:6px;border-radius:99px;border:1.5px solid #6e7681;flex:none;margin-top:4px"></span>
+                <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none;margin-top:1px">#{{ oi.num }}</span>
+                <span style="font-size:10.5px;color:#c9d1d9;flex:1;line-height:1.4;text-wrap:pretty">{{ oi.title }}</span>
+                <span style="{{ oi.statusStyle }}">{{ oi.status }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:9px;font-size:9.5px;color:#576069;line-height:1.5">{{ featureView.closedNote }}</div>
+        </div>
+      </sc-if>
+
+      <div style="margin-top:12px;padding-top:8px;border-top:1px solid #1b212a;font-size:9.5px;color:#4d5561;line-height:1.5">Epic → Feature → Issue is BuildConsole's shape, layered on plain GitHub sub-issues. GitHub has no Feature level and no gate.</div>
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:26px 28px;gap:18px;overflow:hidden">
+    <div>
+      <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#576069;margin-bottom:7px">Git panel redesign · 2026-09-02</div>
+      <div style="font-size:22px;font-weight:800;color:#e6edf3;letter-spacing:-.02em">Two numbers that must never merge</div>
+      <div style="font-size:12.5px;color:#8b949e;line-height:1.6;max-width:520px;margin-top:8px;text-wrap:pretty">Milestone progress is a bar. The gate is a stamp and seven discrete pips. Different shape, different color, different geometry, separated by an explicit ≠ — a 95% milestone still reads NOT RELEASABLE at a glance.</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:9px;max-width:520px">
+      <sc-for list="{{ notes }}" as="nt" hint-placeholder-count="4">
+        <div style="display:flex;gap:10px;background:#0f1319;border:1px solid #1b212a;border-radius:7px;padding:10px 12px">
+          <span style="font-size:9px;font-weight:800;color:#4d5561;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none;margin-top:2px">{{ nt.idx }}</span>
+          <div style="min-width:0">
+            <div style="font-size:11.5px;font-weight:700;color:#e6edf3;margin-bottom:3px">{{ nt.title }}</div>
+            <div style="font-size:11px;color:#8b949e;line-height:1.5;text-wrap:pretty">{{ nt.body }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="font-size:10.5px;color:#4d5561;line-height:1.6;max-width:520px">Try it: <span style="color:#8b949e">Epics</span> trims to six rows · the ⤢ on any epic hides the other five · <span style="color:#8b949e">Features</span> under a scoped epic is the "just Build Console's Features" state · <span style="color:#8b949e">≫</span> on a Feature drills to its gap list.</div>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:900},&quot;startLevel&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;tree&quot;,&quot;epics&quot;,&quot;features&quot;],&quot;default&quot;:&quot;tree&quot;,&quot;tsType&quot;:&quot;'tree' | 'epics' | 'features'&quot;,&quot;section&quot;:&quot;Tree&quot;}}">
+class Component extends DCLogic {
+  MONO = 'Consolas,ui-monospace,Menlo,monospace';
+  STATUSES = [
+    {label:'Backlog', c:'#6e7681'},
+    {label:'AI Batter Up', c:'#a374ea'},
+    {label:'Batter Up', c:'#7fb08a'},
+    {label:'Ask Shane', c:'#e2984a'},
+    {label:'Shane Declined', c:'#c08a84'}
+  ];
+  GATE_CHECKS = [
+    {done:true,  label:'Portal-v2 fixture wiring signed off'},
+    {done:false, label:'ShaneBot (public + paid) sign-off'},
+    {done:false, label:'Teams admin role grant + ps-execution rebuild'},
+    {done:true,  label:'Governance Oversharing schema sign-off'},
+    {done:false, label:'Run pending manual migrations against Replit/staging'},
+    {done:true,  label:'Pre-release cleanup (portal-v2 + Copilot Readiness branch strip)'},
+    {done:false, label:'Apply prod write-app consent, prove a real live write end to end'}
+  ];
+  EPICS = [
+    {num:1093, name:'Marketing Site', accent:'#e2984a', closed:19, total:24, last:'2d ago',
+      features:[
+        {num:1101, name:'Assessments (Marketing)', closed:9, total:11, status:'Batter Up', issues:[
+          {num:1712, title:'Assessment intake: seat-count step validation', closed:false, status:'Batter Up'},
+          {num:1709, title:'Pricing table pulls live seat tiers', closed:false, status:'Backlog'},
+          {num:1703, title:'Assessment PDF deliverable template', closed:true, status:'Batter Up'}
+        ]},
+        {num:1104, name:'Signal Intelligence Diagnostics', closed:6, total:9, status:'Ask Shane', issues:[
+          {num:1744, title:'Quiz result → recommended retainer mapping', closed:false, status:'Ask Shane'},
+          {num:1741, title:'Resume a half-finished diagnostic', closed:false, status:'Backlog'},
+          {num:1736, title:'Diagnostic email capture + follow-up', closed:true, status:'Batter Up'}
+        ]}
+      ],
+      bugs:[
+        {num:1866, title:'Footer nav duplicates Resources link on mobile', status:'Backlog'},
+        {num:1859, title:'OG image cache-busting after redeploy', status:'Backlog'}
+      ]},
+    {num:1096, name:'Application Core', accent:'#37b8b0', closed:22, total:31, last:'6h ago',
+      features:[
+        {num:1120, name:'Graph Sync', closed:11, total:14, status:'Batter Up', issues:[
+          {num:1908, title:'Delta-token expiry: fall back to full sync', closed:false, status:'Batter Up'},
+          {num:1901, title:'Per-tenant throttle backoff on 429', closed:false, status:'Batter Up'},
+          {num:1894, title:'Sync run log with per-resource timings', closed:true, status:'Batter Up'}
+        ]},
+        {num:1128, name:'Signal Engines', closed:13, total:22, status:'AI Batter Up', issues:[
+          {num:1955, title:'Scope Creep Engine: SOW line-item diffing', closed:false, status:'AI Batter Up'},
+          {num:1949, title:'SLA Engine: pause clock during approved change window', closed:false, status:'Ask Shane'},
+          {num:1940, title:'Drift Engine fingerprint dedupe', closed:true, status:'Batter Up'}
+        ]}
+      ],
+      bugs:[
+        {num:1979, title:'Nightly job runs twice on DST boundary', status:'Ask Shane'}
+      ]},
+    {num:1202, name:'Build Console', accent:'#6a8fb5', closed:14, total:37, last:'active now',
+      features:[
+        {num:2040, name:'Git Doctor', closed:5, total:12, status:'Batter Up', issues:[
+          {num:2062, title:'Detect orphaned worktrees and offer a prune', closed:false, status:'Batter Up'},
+          {num:2059, title:'Stale-branch report: agent/* older than 14 days', closed:false, status:'Batter Up'},
+          {num:2057, title:'Repair a detached HEAD without losing agent work', closed:false, status:'Ask Shane'},
+          {num:2054, title:'Diagnose push rejected — rebase-or-force prompt', closed:false, status:'Backlog'},
+          {num:2051, title:'Surface merge conflicts as a fixable checklist', closed:false, status:'Backlog'},
+          {num:2049, title:'Warn when two agents share one worktree', closed:false, status:'AI Batter Up'},
+          {num:2047, title:'Doctor run history per repo', closed:false, status:'Shane Declined'},
+          {num:2044, title:'Baseline health check on repo open', closed:true, status:'Batter Up'}
+        ]},
+        {num:2035, name:'Build Queue', closed:8, total:15, status:'Batter Up', issues:[
+          {num:2074, title:'Slot pinning: keep a build in slot 1 across restarts', closed:false, status:'Batter Up'},
+          {num:2071, title:'Queue sort: numbered first, biggest GithubNumber first', closed:true, status:'Batter Up'},
+          {num:2068, title:'Blocked builds nest under their blocker', closed:false, status:'Ask Shane'}
+        ]},
+        {num:2038, name:'Chats Panel', closed:2, total:9, status:'AI Batter Up', issues:[
+          {num:2086, title:'Search chats by issue number or Claude URL', closed:false, status:'AI Batter Up'},
+          {num:2083, title:'Epic → chat tree with milestone progress header', closed:false, status:'Backlog'},
+          {num:2080, title:'Chat rename writes back to the epic link', closed:true, status:'Batter Up'}
+        ]}
+      ],
+      bugs:[
+        {num:2031, title:'Build Queue panel spec', status:'Ask Shane'},
+        {num:2021, title:'Queue scroll wheel + stuck state', status:'Batter Up'},
+        {num:2020, title:'Queue virtualization fix', status:'Batter Up'},
+        {num:2013, title:'Chat epic_id FK', status:'Batter Up'}
+      ]},
+    {num:1485, name:'Portal', accent:'#a374ea', closed:28, total:40, last:'1d ago',
+      features:[
+        {num:1489, name:'Remediation Tracking (Portal)', closed:26, total:39, status:'Batter Up', issues:[
+          {num:1712, title:'Remediation detail drawer — history tab', closed:false, status:'Batter Up'},
+          {num:1715, title:'Bulk re-assign owner from list view', closed:false, status:'Backlog'},
+          {num:1706, title:'Evidence upload accepts .msg / .eml', closed:true, status:'Batter Up'}
+        ]},
+        {num:1486, name:'Change Control (Portal)', closed:12, total:19, status:'Batter Up', issues:[
+          {num:1524, title:'Approval flow — second approver for high-risk changes', closed:false, status:'Batter Up'},
+          {num:1521, title:'Change calendar week view', closed:false, status:'Backlog'},
+          {num:1518, title:'Rollback plan required for high-risk changes', closed:false, status:'Ask Shane'},
+          {num:1512, title:'Attach Graph diff snapshot to change record', closed:true, status:'Batter Up'}
+        ]},
+        {num:1494, name:'Microsoft Changes / Message Center', closed:14, total:17, status:'Batter Up', issues:[
+          {num:1560, title:'Message Center sync: dedupe edited MC posts by id', closed:false, status:'Batter Up'},
+          {num:1557, title:'"Affects my tenant" heuristic from license SKUs', closed:false, status:'Ask Shane'},
+          {num:1551, title:'Mark-as-reviewed bulk action', closed:true, status:'Batter Up'}
+        ]},
+        {num:1616, name:'ShaneBot + Active Cards', closed:0, total:5, status:'Ask Shane', issues:[
+          {num:1655, title:'Active Card: open remediation summary', closed:false, status:'Ask Shane'},
+          {num:1652, title:'ShaneBot intent routing for "what\u2019s left on X"', closed:false, status:'Backlog'},
+          {num:1649, title:'Rate-limit ShaneBot on the public tier', closed:false, status:'Backlog'}
+        ]}
+      ],
+      bugs:[
+        {num:1701, title:'Status filter chips reset on tab switch', status:'Backlog'},
+        {num:1694, title:'Narrow-viewport layout for remediation list', status:'Shane Declined'}
+      ]},
+    {num:1571, name:'Portal Admin', accent:'#37b8b0', closed:10, total:19, last:'4d ago',
+      features:[
+        {num:1681, name:'Change Control (MSP Console)', closed:0, total:0, status:'Backlog', issues:[]},
+        {num:1684, name:'Remediation Tracking (MSP Console)', closed:0, total:0, status:'Backlog', issues:[]},
+        {num:1685, name:'Policy Decisions + Policy Engine (MSP Console)', closed:0, total:0, status:'Backlog', issues:[]}
+      ],
+      bugs:[
+        {num:1744, title:'Operator impersonation banner missing tenant name', status:'Ask Shane'}
+      ]}
+  ];
+
+  componentDidMount() {
+    const run = () => { if (window.lucide) { window.lucide.createIcons(); return true; } return false; };
+    if (!run()) this._it = setInterval(() => { if (run()) clearInterval(this._it); }, 200);
+  }
+  componentDidUpdate() { if (window.lucide) window.lucide.createIcons(); }
+  componentWillUnmount() { if (this._it) clearInterval(this._it); }
+
+  state = {
+    level: null, scopeEpic: null, scopeFeature: null, statuses: [],
+    expandedEpics: [1202], expandedFeatures: [], gateOpen: false, gateDone: {}
+  };
+
+  _statusPill(label) {
+    const s = this.STATUSES.find(x => x.label === label) || this.STATUSES[0];
+    return 'flex:none;font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:99px;white-space:nowrap;background:' + s.c + '1f;border:1px solid ' + s.c + '55;color:' + s.c;
+  }
+
+  renderVals() {
+    const S = this.state, self = this;
+    const level = S.level || this.props.startLevel || 'tree';
+    const active = S.statuses;
+    const pass = (st) => active.length === 0 || active.indexOf(st) >= 0;
+
+    const gatePassed = this.GATE_CHECKS.filter((c, i) => (S.gateDone[i] === undefined ? c.done : S.gateDone[i])).length;
+    const gateTotal = this.GATE_CHECKS.length;
+    const cleared = gatePassed === gateTotal;
+    const gate = {
+      passed: gatePassed, total: gateTotal, open: S.gateOpen,
+      toggleLabel: S.gateOpen ? 'hide checklist' : 'show checklist',
+      onToggle: () => this.setState(s => ({gateOpen: !s.gateOpen})),
+      border: cleared ? '#1f4a2c' : '#7a2f2a',
+      bg: cleared ? '#0e1c14' : '#1a1118',
+      stampBg: cleared ? 'rgba(127,176,138,.12)' : 'repeating-linear-gradient(135deg,rgba(229,83,75,.22) 0 7px,rgba(229,83,75,.07) 7px 14px)',
+      stampColor: cleared ? '#7fb08a' : '#ef6f66',
+      stampLabel: cleared ? 'Cleared to release' : 'Not releasable',
+      note: cleared
+        ? 'All seven Shane-verified checks are signed off. Release is unblocked.'
+        : (gateTotal - gatePassed) + ' of 7 checks still need Shane, by hand. The milestone can hit 100% and this stays red — automated-done is not sign-off.',
+      pips: this.GATE_CHECKS.map((c, i) => {
+        const done = S.gateDone[i] === undefined ? c.done : S.gateDone[i];
+        return {
+          title: (done ? 'Signed off — ' : 'Open — ') + c.label,
+          style: 'width:22px;height:11px;border-radius:2px;display:inline-block;' + (done
+            ? 'background:#5f9e6d;border:1px solid #7fb08a'
+            : 'background:transparent;border:1px solid #6d4340')
+        };
+      }),
+      checks: this.GATE_CHECKS.map((c, i) => {
+        const done = S.gateDone[i] === undefined ? c.done : S.gateDone[i];
+        return {
+          label: c.label, mark: done ? '\u2713' : '',
+          textColor: done ? '#8b949e' : '#e6edf3',
+          boxStyle: 'flex:none;width:13px;height:13px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;margin-top:1px;' + (done
+            ? 'background:#5f9e6d;border:1px solid #7fb08a;color:#0d1117'
+            : 'background:transparent;border:1px solid #6d4340;color:transparent'),
+          onToggle: () => this.setState(s => {
+            const nd = Object.assign({}, s.gateDone);
+            nd[i] = !(s.gateDone[i] === undefined ? c.done : s.gateDone[i]);
+            return {gateDone: nd};
+          })
+        };
+      })
+    };
+
+    const lvDefs = [
+      {id:'tree', label:'Full tree'},
+      {id:'epics', label:'Epics only'},
+      {id:'features', label:'Features only'}
+    ];
+    const levels = lvDefs.map(l => ({
+      label: l.label,
+      onClick: () => this.setState({level: l.id, scopeFeature: null}),
+      style: 'flex:1;height:24px;border:none;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.03em;cursor:pointer;' + (level === l.id
+        ? 'background:#233247;color:#cfe0f0;box-shadow:inset 0 0 0 1px #3d5875'
+        : 'background:transparent;color:#8b949e')
+    }));
+
+    const statusChips = this.STATUSES.map(s => {
+      const on = active.indexOf(s.label) >= 0;
+      return {
+        label: s.label,
+        onClick: () => this.setState(st => ({statuses: st.statuses.indexOf(s.label) >= 0 ? st.statuses.filter(x => x !== s.label) : st.statuses.concat(s.label)})),
+        style: 'font-size:9px;font-weight:700;padding:3px 8px;border-radius:99px;cursor:pointer;letter-spacing:.02em;white-space:nowrap;' + (on
+          ? 'background:' + s.c + '2e;border:1px solid ' + s.c + ';color:' + s.c
+          : 'background:#12151c;border:1px solid #262c36;color:#6e7681')
+      };
+    });
+
+    const scopedEpic = S.scopeEpic ? this.EPICS.find(e => e.num === S.scopeEpic) : null;
+    const scopedFeature = S.scopeFeature
+      ? (scopedEpic || this.EPICS[2]).features.find(f => f.num === S.scopeFeature)
+      : null;
+
+    const crumbStyle = (last, clickable) => 'font-size:10px;font-weight:' + (last ? '700' : '600') + ';color:' + (last ? '#e6edf3' : '#8b949e') + ';cursor:' + (clickable ? 'pointer' : 'default') + ';padding:1px 0;white-space:nowrap';
+    const crumbs = [];
+    crumbs.push({
+      label: 'v1.1 Milestone',
+      onClick: () => this.setState({scopeEpic: null, scopeFeature: null}),
+      style: crumbStyle(!scopedEpic, !!scopedEpic)
+    });
+    if (scopedEpic) {
+      crumbs.push({label: '\u203a', onClick: null, style: 'font-size:10px;color:#3f4756'});
+      crumbs.push({
+        label: '#' + scopedEpic.num + ' ' + scopedEpic.name,
+        onClick: () => this.setState({scopeFeature: null}),
+        style: crumbStyle(!scopedFeature, !!scopedFeature)
+      });
+    }
+    if (scopedFeature) {
+      crumbs.push({label: '\u203a', onClick: null, style: 'font-size:10px;color:#3f4756'});
+      crumbs.push({label: 'Feature: ' + scopedFeature.name, onClick: null, style: crumbStyle(true, false)});
+    }
+
+    const epicPool = scopedEpic ? [scopedEpic] : this.EPICS;
+    const showFeatures = level !== 'epics';
+    const showBugs = level === 'tree';
+
+    const epicRows = epicPool.map(e => {
+      const feats = showFeatures ? e.features.filter(f => pass(f.status)) : [];
+      const bugs = showBugs ? e.bugs.filter(b => pass(b.status)) : [];
+      const hidden = (showFeatures ? e.features.length - feats.length : 0) + (showBugs ? e.bugs.length - bugs.length : 0);
+      const pct = Math.round(e.closed / e.total * 100);
+      const expanded = level !== 'epics' && (!!scopedEpic || S.expandedEpics.indexOf(e.num) >= 0);
+      return {
+        num: e.num, name: e.name, frac: e.closed + '/' + e.total,
+        boxStyle: 'background:#0f1319;border:1px solid ' + (scopedEpic ? '#3d5875' : '#21262d') + ';border-radius:8px;overflow:hidden',
+        tileStyle: 'flex:none;width:20px;height:20px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:' + e.accent + '1c;border:1px solid ' + e.accent + '3d;color:' + e.accent,
+        fracStyle: 'flex:none;font-size:9.5px;font-weight:700;color:#8b949e;font-family:' + this.MONO,
+        barStyle: 'height:100%;width:' + pct + '%;background:' + e.accent + ';opacity:.75',
+        metaLabel: pct + '% · ' + e.last,
+        headCursor: level === 'epics' ? 'default' : 'pointer',
+        showChev: level !== 'epics',
+        chevRot: expanded ? 0 : -90,
+        expanded, features: feats, bugs,
+        featureCount: e.features.length, bugCount: e.bugs.length,
+        bugsEmpty: showBugs && bugs.length === 0 && e.bugs.length === 0,
+        showFeatures: showFeatures && feats.length > 0,
+        showBugs: showBugs && (bugs.length > 0 || e.bugs.length === 0),
+        hiddenLabel: hidden > 0 ? hidden + ' node' + (hidden === 1 ? '' : 's') + ' hidden by the status filter' : '',
+        scopeIcon: scopedEpic ? 'minimize-2' : 'maximize-2',
+        scopeBtnStyle: 'flex:none;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border:1px solid ' + (scopedEpic ? '#3d5875' : '#2e3742') + ';border-radius:5px;color:' + (scopedEpic ? '#9fc0dd' : '#8b949e') + ';cursor:pointer',
+        onScope: (ev) => { ev.stopPropagation(); this.setState(s => ({scopeEpic: s.scopeEpic ? null : e.num, scopeFeature: null})); },
+        onToggle: () => { if (level === 'epics') return; this.setState(s => ({expandedEpics: s.expandedEpics.indexOf(e.num) >= 0 ? s.expandedEpics.filter(n => n !== e.num) : s.expandedEpics.concat(e.num)})); },
+        featuresMapped: null
+      };
+    }).map(row => {
+      const e = this.EPICS.find(x => x.num === row.num);
+      row.features = row.features.map(f => {
+        const pct = f.total ? Math.round(f.closed / f.total * 100) : 0;
+        const fexp = S.expandedFeatures.indexOf(f.num) >= 0 && f.issues.length > 0;
+        return {
+          num: f.num, name: f.name, accent: e.accent, frac: f.total ? f.closed + '/' + f.total : 'no children',
+          status: f.status, statusStyle: self._statusPill(f.status),
+          tileStyle: 'flex:none;width:20px;height:20px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:' + e.accent + '1c;border:1px solid ' + e.accent + '3d;color:' + e.accent,
+          barStyle: 'height:100%;width:' + pct + '%;background:' + (pct === 100 ? '#5f9e6d' : e.accent),
+          expanded: fexp,
+          issues: f.issues.map(i => ({
+            num: i.num, title: i.title, textColor: i.closed ? '#6e7681' : '#c9d1d9',
+            dotStyle: 'flex:none;width:6px;height:6px;border-radius:99px;' + (i.closed ? 'background:#5f9e6d' : 'background:transparent;border:1.5px solid #6e7681')
+          })),
+          onToggle: () => self.setState(s => ({expandedFeatures: s.expandedFeatures.indexOf(f.num) >= 0 ? s.expandedFeatures.filter(n => n !== f.num) : s.expandedFeatures.concat(f.num)})),
+          onDrill: (ev) => { ev.stopPropagation(); self.setState({scopeEpic: e.num, scopeFeature: f.num}); }
+        };
+      });
+      row.bugs = row.bugs.map(b => ({num: b.num, title: b.title, status: b.status, statusStyle: self._statusPill(b.status)}));
+      return row;
+    });
+
+    let featureView = {on: false, openIssues: []};
+    if (scopedFeature) {
+      const e = scopedEpic;
+      const open = scopedFeature.issues.filter(i => !i.closed);
+      featureView = {
+        on: true, num: scopedFeature.num, name: scopedFeature.name, accent: e.accent,
+        status: scopedFeature.status, statusStyle: this._statusPill(scopedFeature.status),
+        closed: scopedFeature.closed, openCount: scopedFeature.total - scopedFeature.closed,
+        pct: scopedFeature.total ? Math.round(scopedFeature.closed / scopedFeature.total * 100) : 0,
+        tileStyle: 'flex:none;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:' + e.accent + '1c;border:1px solid ' + e.accent + '3d;color:' + e.accent,
+        openIssues: open.map(i => ({num: i.num, title: i.title, status: i.status, statusStyle: this._statusPill(i.status)})),
+        closedNote: scopedFeature.closed + ' closed sub-issues hidden. Same rollup the Feature Index and burndown read from.'
+      };
+    }
+
+    const nodeCounts = {
+      tree: this.EPICS.length + 1 + ' epics · ' + this.EPICS.reduce((a, e) => a + e.features.length, 0) + ' features',
+      epics: this.EPICS.length + 1 + ' epics',
+      features: this.EPICS.reduce((a, e) => a + e.features.length, 0) + ' features'
+    };
+
+    return {
+      msPct: 60, msClosed: 96, msTotal: 158,
+      nodeCountLabel: scopedFeature ? '1 feature scoped' : (scopedEpic ? '#' + scopedEpic.num + ' scoped' : nodeCounts[level]),
+      gate, levels, statusChips, crumbs,
+      scopeActive: !!scopedEpic || !!scopedFeature,
+      onClearScope: () => this.setState({scopeEpic: null, scopeFeature: null}),
+      showTree: !scopedFeature,
+      treeEmpty: !scopedFeature && epicRows.length === 0,
+      epicRows, featureView,
+      notes: [
+        {idx:'01', title:'GATE #1281 is not a row in the tree', body:'It sits above the tree as its own block with a hatched NOT RELEASABLE header, seven discrete pips, and its own checklist. Toggle a check to watch it flip to CLEARED — nothing about the 60% moves.'},
+        {idx:'02', title:'Features are cards, bugs are a dashed list', body:'A Feature: node carries a rollup bar and its own m/n. Bare bugs sit in a dashed "loose issues · not decomposed" group in mono, with no bar to roll up.'},
+        {idx:'03', title:'Level and scope compose', body:'The segmented control trims depth; the ⤢ on an epic hides the other five. Both stay on together, so "just Build Console\u2019s Features" is one state.'},
+        {idx:'04', title:'Status is a filter band, never a level', body:'Backlog / AI Batter Up / Batter Up / Ask Shane / Shane Declined trim features and bugs alike in place; each epic reports what it hid.'}
+      ]
+    };
+  }
+}
+
+</script>
+</body>
+</html>

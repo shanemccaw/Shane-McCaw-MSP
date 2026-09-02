@@ -1,0 +1,1252 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/fonts.css">
+  <script src="./lucide-local.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;height:100%;background:#0a0d12;color-scheme:dark}
+    body > div{height:100%}
+    a{color:#7da7cd;text-decoration:none}
+    a:hover{color:#9fc0dd;text-decoration:underline}
+    .om-scroll{scrollbar-width:auto;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:12px;height:12px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:3px solid #0d1117;border-radius:8px;min-height:48px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    button{font-family:inherit}
+  </style>
+</helmet>
+
+<div style="height:100%;min-height:860px;width:100%;display:flex;flex-direction:column;background:#0a0d12;color:#c9d1d9;font-family:Inter,ui-sans-serif,system-ui,sans-serif;overflow:hidden">
+
+  <div style="height:44px;flex:none;display:flex;align-items:center;gap:14px;padding:0 14px;background:#0d1117;border-bottom:1px solid #21262d">
+    <span style="display:inline-flex;width:15px;height:15px;color:#6a8fb5"><i data-lucide="activity" width="15" height="15"></i></span>
+    <span style="font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#8b949e">Git Health Map</span>
+    <div style="display:flex;gap:2px;background:#12151c;border:1px solid #21262d;border-radius:7px;padding:2px;margin-left:6px">
+      <sc-for list="{{ screens }}" as="s" hint-placeholder-count="3">
+        <button onClick="{{ s.onClick }}" style="{{ s.style }}">
+          <span style="display:inline-flex;width:12px;height:12px"><i data-lucide="{{ s.icon }}" width="12" height="12"></i></span>
+          <span>{{ s.label }}</span>
+          <sc-if value="{{ s.count }}" hint-placeholder-val="{{ false }}">
+            <span style="{{ s.countStyle }}">{{ s.count }}</span>
+          </sc-if>
+        </button>
+      </sc-for>
+    </div>
+    <div style="flex:1"></div>
+    <span style="font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ scanLabel }}</span>
+    <button onClick="{{ onRescan }}" style="height:24px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;background:#1a2029;border:1px solid #2e3742;border-radius:6px;color:#c9d1d9;font-size:10px;font-weight:700;cursor:pointer" style-hover="border-color:#4d7aa8;color:#e6edf3">
+      <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="refresh-cw" width="11" height="11"></i></span>Rescan
+    </button>
+  </div>
+
+  <div style="flex:1;min-height:0;display:flex">
+
+    <sc-if value="{{ isMap }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="Git Panel" style="flex:1;min-width:0;display:flex">
+        <div style="width:430px;flex:none;display:flex;flex-direction:column;background:#0d1117;border-right:1px solid #21262d;min-height:0">
+          <div class="om-scroll" style="flex:1;overflow-y:auto;min-height:0;padding:11px">
+
+            <div style="background:#12151c;border:1px solid #21262d;border-radius:8px;padding:10px 11px 11px">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+                <span style="display:inline-flex;width:12px;height:12px;color:#6a8fb5;flex:none"><i data-lucide="flag" width="12" height="12"></i></span>
+                <span style="font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#6a8fb5">Milestone progress</span>
+                <span style="font-size:8.5px;color:#576069;margin-left:auto">work closed</span>
+              </div>
+              <div style="font-size:12px;font-weight:700;color:#e6edf3;margin-bottom:9px">v1.1 — Monitoring &amp; Launch Control</div>
+              <div style="display:flex;align-items:flex-end;gap:9px">
+                <span style="font-size:30px;font-weight:800;color:#e6edf3;line-height:.85;letter-spacing:-.02em">60<span style="font-size:15px;color:#8b949e">%</span></span>
+                <div style="flex:1;min-width:0;padding-bottom:2px">
+                  <div style="height:6px;background:#0a0d12;border:1px solid #1b212a;border-radius:99px;overflow:hidden;margin-bottom:5px">
+                    <div style="height:100%;width:60%;background:linear-gradient(90deg,#4d7aa8,#6a8fb5)"></div>
+                  </div>
+                  <div style="font-size:9.5px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">96 / 158 issues closed</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;padding:7px 2px">
+              <div style="flex:1;height:1px;background:#21262d"></div>
+              <span style="font-size:11px;font-weight:800;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">≠</span>
+              <span style="font-size:9px;color:#576069">progress is not permission</span>
+              <div style="flex:1;height:1px;background:#21262d"></div>
+            </div>
+
+            <div style="border:2px solid {{ gate.border }};border-radius:8px;background:{{ gate.bg }};overflow:hidden">
+              <div style="height:26px;display:flex;align-items:center;gap:7px;padding:0 10px;background:{{ gate.stampBg }};border-bottom:1px solid {{ gate.border }}">
+                <span style="display:inline-flex;width:12px;height:12px;color:{{ gate.stampColor }};flex:none"><i data-lucide="shield-alert" width="12" height="12"></i></span>
+                <span style="font-size:10px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:{{ gate.stampColor }};font-family:Consolas,ui-monospace,Menlo,monospace">{{ gate.stampLabel }}</span>
+              </div>
+              <div style="padding:10px 11px 11px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+                  <span style="font-size:9.5px;font-weight:800;color:#c084fc;font-family:Consolas,ui-monospace,Menlo,monospace">GATE #1281</span>
+                  <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8b7aa8">Shane-tested sign-off</span>
+                  <span onClick="{{ gate.onToggle }}" style="margin-left:auto;font-size:9px;font-weight:700;color:#8b949e;cursor:pointer" style-hover="color:#e6edf3">{{ gate.toggleLabel }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <div style="display:flex;gap:4px;flex:none">
+                    <sc-for list="{{ gate.pips }}" as="p" hint-placeholder-count="7">
+                      <span title="{{ p.title }}" style="{{ p.style }}"></span>
+                    </sc-for>
+                  </div>
+                  <span style="font-size:14px;font-weight:800;color:#e6edf3;font-family:Consolas,ui-monospace,Menlo,monospace">{{ gate.passed }}<span style="color:#576069">/{{ gate.total }}</span></span>
+                  <span style="font-size:9px;color:#8b7aa8;line-height:1.3">checks signed off<br>by Shane, by hand</span>
+                </div>
+                <sc-if value="{{ gate.open }}" hint-placeholder-val="{{ false }}">
+                  <div style="margin-top:10px;padding-top:9px;border-top:1px solid {{ gate.border }};display:flex;flex-direction:column;gap:1px">
+                    <sc-for list="{{ gate.checks }}" as="c" hint-placeholder-count="7">
+                      <div onClick="{{ c.onToggle }}" style="display:flex;gap:7px;align-items:flex-start;padding:5px 6px;border-radius:5px;cursor:pointer" style-hover="background:rgba(255,255,255,.04)">
+                        <span style="{{ c.boxStyle }}">{{ c.mark }}</span>
+                        <span style="font-size:10.5px;line-height:1.4;color:{{ c.textColor }};flex:1;text-wrap:pretty">{{ c.label }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:7px">
+              <div style="display:flex;background:#12151c;border:1px solid #21262d;border-radius:7px;padding:2px">
+                <sc-for list="{{ levels }}" as="lv" hint-placeholder-count="3">
+                  <button onClick="{{ lv.onClick }}" style="{{ lv.style }}">{{ lv.label }}</button>
+                </sc-for>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;padding:1px 2px">
+                <span onClick="{{ onToggleDead }}" style="{{ deadToggleStyle }}">
+                  <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="{{ deadIcon }}" width="11" height="11"></i></span>{{ deadLabel }}
+                </span>
+                <span style="font-size:9px;color:#4d5561;line-height:1.35;flex:1">{{ deadNote }}</span>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;margin:11px 0 9px;padding:6px 8px;background:#12151c;border:1px solid #21262d;border-radius:6px">
+              <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1;min-width:0">
+                <sc-for list="{{ crumbs }}" as="cr" hint-placeholder-count="1">
+                  <span onClick="{{ cr.onClick }}" style="{{ cr.style }}">{{ cr.label }}</span>
+                </sc-for>
+              </div>
+              <sc-if value="{{ scopeActive }}" hint-placeholder-val="{{ false }}">
+                <span onClick="{{ onClearScope }}" style="font-size:9px;font-weight:700;color:#8b949e;cursor:pointer;flex:none" style-hover="color:#e6edf3">clear scope ×</span>
+              </sc-if>
+            </div>
+
+            <sc-if value="{{ showTree }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <sc-for list="{{ epicRows }}" as="ep" hint-placeholder-count="6">
+                  <div style="{{ ep.boxStyle }}">
+                    <div onClick="{{ ep.onToggle }}" style="display:flex;align-items:center;gap:7px;padding:9px 10px;cursor:{{ ep.headCursor }}">
+                      <span style="{{ ep.tileStyle }}"><i data-lucide="{{ ep.icon }}" width="11" height="11"></i></span>
+                      <span style="font-size:9.5px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ ep.num }}</span>
+                      <span style="{{ ep.nameStyle }}">{{ ep.name }}</span>
+                      <sc-if value="{{ ep.flagCount }}" hint-placeholder-val="{{ false }}">
+                        <span onClick="{{ ep.onFlags }}" title="Open findings on this epic" style="{{ ep.flagStyle }}"><i data-lucide="alert-triangle" width="9" height="9"></i>{{ ep.flagCount }}</span>
+                      </sc-if>
+                      <span style="flex:none;font-size:9.5px;font-weight:700;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">{{ ep.frac }}</span>
+                      <span onClick="{{ ep.onScope }}" style="{{ ep.scopeBtnStyle }}"><i data-lucide="{{ ep.scopeIcon }}" width="11" height="11"></i></span>
+                      <sc-if value="{{ ep.showChev }}" hint-placeholder-val="{{ true }}">
+                        <span style="display:inline-flex;width:12px;height:12px;color:#576069;flex:none;transform:rotate({{ ep.chevRot }}deg);transition:transform .14s"><i data-lucide="chevron-down" width="12" height="12"></i></span>
+                      </sc-if>
+                    </div>
+                    <div style="padding:0 10px 9px;display:flex;align-items:center;gap:8px">
+                      <div style="height:3px;flex:1;background:#0a0d12;border-radius:99px;overflow:hidden"><div style="{{ ep.barStyle }}"></div></div>
+                      <span style="font-size:8.5px;color:#576069;flex:none;white-space:nowrap">{{ ep.metaLabel }}</span>
+                    </div>
+
+                    <sc-if value="{{ ep.expanded }}" hint-placeholder-val="{{ false }}">
+                      <div style="padding:0 8px 9px;display:flex;flex-direction:column;gap:6px">
+                        <sc-if value="{{ ep.showFeatures }}" hint-placeholder-val="{{ true }}">
+                          <div style="font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#576069;padding:2px 2px 0">Features · {{ ep.featureCount }}</div>
+                          <sc-for list="{{ ep.features }}" as="ft" hint-placeholder-count="3">
+                            <div style="background:#161b22;border:1px solid #262c36;border-left:2px solid {{ ft.accent }};border-radius:7px;overflow:hidden">
+                              <div onClick="{{ ft.onToggle }}" style="display:flex;align-items:center;gap:8px;padding:8px 9px;cursor:pointer" style-hover="background:#1a2029">
+                                <span style="{{ ft.tileStyle }}"><i data-lucide="layers" width="11" height="11"></i></span>
+                                <div style="flex:1;min-width:0">
+                                  <div style="display:flex;align-items:baseline;gap:6px">
+                                    <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ ft.num }}</span>
+                                    <span style="{{ ft.nameStyle }}">{{ ft.name }}</span>
+                                  </div>
+                                  <div style="display:flex;align-items:center;gap:7px;margin-top:5px">
+                                    <div style="height:3px;width:70px;flex:none;background:#0a0d12;border-radius:99px;overflow:hidden"><div style="{{ ft.barStyle }}"></div></div>
+                                    <span style="font-size:9px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">{{ ft.frac }}</span>
+                                    <sc-if value="{{ ft.flagLabel }}" hint-placeholder-val="{{ false }}">
+                                      <span onClick="{{ ft.onFlags }}" style="{{ ft.flagStyle }}">{{ ft.flagLabel }}</span>
+                                    </sc-if>
+                                  </div>
+                                </div>
+                                <span onClick="{{ ft.onDrill }}" style="flex:none;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border:1px solid #2e3742;border-radius:5px;color:#8b949e;cursor:pointer" style-hover="border-color:#4d7aa8;color:#9fc0dd"><i data-lucide="chevrons-right" width="11" height="11"></i></span>
+                              </div>
+                              <sc-if value="{{ ft.expanded }}" hint-placeholder-val="{{ false }}">
+                                <div style="padding:7px 9px 8px;display:flex;flex-direction:column;gap:2px;border-top:1px solid #21262d">
+                                  <sc-for list="{{ ft.issues }}" as="is" hint-placeholder-count="3">
+                                    <div style="display:flex;align-items:center;gap:7px;padding:3px 2px">
+                                      <span style="{{ is.dotStyle }}"></span>
+                                      <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ is.num }}</span>
+                                      <span style="font-size:10.5px;color:{{ is.textColor }};flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ is.title }}</span>
+                                      <sc-if value="{{ is.flagLabel }}" hint-placeholder-val="{{ false }}">
+                                        <span onClick="{{ is.onFlags }}" style="{{ is.flagStyle }}">{{ is.flagLabel }}</span>
+                                      </sc-if>
+                                    </div>
+                                  </sc-for>
+                                </div>
+                              </sc-if>
+                            </div>
+                          </sc-for>
+                        </sc-if>
+
+                        <sc-if value="{{ ep.showBugs }}" hint-placeholder-val="{{ true }}">
+                          <div style="border:1px dashed #333b47;border-radius:6px;background:rgba(255,255,255,.012)">
+                            <div style="display:flex;align-items:center;gap:6px;padding:6px 8px 5px">
+                              <span style="display:inline-flex;width:11px;height:11px;color:#6e7681;flex:none"><i data-lucide="bug" width="11" height="11"></i></span>
+                              <span style="font-size:8.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#6e7681">Loose issues · not decomposed</span>
+                              <span style="font-size:9px;color:#576069;margin-left:auto;font-family:Consolas,ui-monospace,Menlo,monospace">{{ ep.bugCount }}</span>
+                            </div>
+                            <sc-for list="{{ ep.bugs }}" as="bg" hint-placeholder-count="4">
+                              <div style="display:flex;align-items:center;gap:7px;padding:5px 8px;border-top:1px solid #1b212a" style-hover="background:rgba(255,255,255,.03)">
+                                <span style="font-size:10px;font-weight:700;color:#8b949e;flex:none;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ bg.num }}</span>
+                                <span style="font-size:10px;color:#8b949e;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ bg.title }}</span>
+                                <sc-if value="{{ bg.flagLabel }}" hint-placeholder-val="{{ false }}">
+                                  <span onClick="{{ bg.onFlags }}" style="{{ bg.flagStyle }}">{{ bg.flagLabel }}</span>
+                                </sc-if>
+                              </div>
+                            </sc-for>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-for>
+
+                <sc-if value="{{ deadRow.show }}" hint-placeholder-val="{{ false }}">
+                  <div style="border:1px dashed #2e3742;border-radius:8px;background:rgba(255,255,255,.012);opacity:.72">
+                    <div onClick="{{ deadRow.onToggle }}" style="display:flex;align-items:center;gap:7px;padding:9px 10px;cursor:pointer">
+                      <span style="flex:none;width:20px;height:20px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:#1a1d22;border:1px solid #2e3742;color:#6e7681"><i data-lucide="archive" width="11" height="11"></i></span>
+                      <span style="font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#1094</span>
+                      <span style="font-size:11.5px;font-weight:600;color:#6e7681;text-decoration:line-through;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">EPIC: Customer Portal</span>
+                      <span style="flex:none;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:1px 6px;border-radius:99px;background:rgba(110,118,129,.14);border:1px solid #3a424e;color:#8b949e">Dead subtree</span>
+                    </div>
+                    <div style="padding:0 10px 9px 37px;font-size:9.5px;color:#576069;line-height:1.5">69 descendants, all closed. Retired 2026-08-29. Nothing broken — hide it to stop it crowding the map.</div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ featureView.on }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#12151c;border:1px solid #262c36;border-left:2px solid {{ featureView.accent }};border-radius:8px;padding:11px 12px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px">
+                  <span style="{{ featureView.tileStyle }}"><i data-lucide="layers" width="12" height="12"></i></span>
+                  <span style="font-size:9.5px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ featureView.num }}</span>
+                </div>
+                <div style="font-size:14px;font-weight:800;color:#e6edf3;letter-spacing:-.01em;margin-bottom:10px">{{ featureView.name }}</div>
+                <div style="display:flex;gap:8px;margin-bottom:12px">
+                  <sc-for list="{{ featureView.stats }}" as="st" hint-placeholder-count="3">
+                    <div style="flex:1;background:#0f1319;border:1px solid #21262d;border-radius:6px;padding:8px 9px">
+                      <div style="font-size:8.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#576069;margin-bottom:3px">{{ st.label }}</div>
+                      <div style="font-size:18px;font-weight:800;color:{{ st.color }};font-family:Consolas,ui-monospace,Menlo,monospace">{{ st.value }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-size:8.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#576069;margin-bottom:6px">The gap — {{ featureView.openCount }} open</div>
+                <div style="display:flex;flex-direction:column;gap:1px">
+                  <sc-for list="{{ featureView.openIssues }}" as="oi" hint-placeholder-count="5">
+                    <div style="display:flex;align-items:flex-start;gap:7px;padding:5px 3px;border-bottom:1px solid #1b212a">
+                      <span style="width:6px;height:6px;border-radius:99px;border:1.5px solid #6e7681;flex:none;margin-top:4px"></span>
+                      <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none;margin-top:1px">#{{ oi.num }}</span>
+                      <span style="font-size:10.5px;color:#c9d1d9;flex:1;line-height:1.4;text-wrap:pretty">{{ oi.title }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <div style="margin-top:12px;padding-top:8px;border-top:1px solid #1b212a;font-size:9.5px;color:#4d5561;line-height:1.5">Epic → Feature → Issue is BuildConsole's shape, layered on plain GitHub sub-issues. Depth &gt; 3 is a defect, not a variant.</div>
+          </div>
+        </div>
+
+        <div class="om-scroll" style="flex:1;min-width:0;overflow-y:auto;padding:22px 26px">
+          <div style="max-width:640px">
+            <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#576069;margin-bottom:7px">Shape of the milestone</div>
+            <div style="font-size:20px;font-weight:800;color:#e6edf3;letter-spacing:-.02em">Same milestone, wildly different shapes</div>
+            <div style="font-size:12.5px;color:#8b949e;line-height:1.6;margin-top:8px;text-wrap:pretty">Application Core carries 98 sub-issues, almost all flat bugs. Marketing carries 32, mostly closed. Nothing in a plain issue list shows that. Bar width is subtree size; the fill is closed work; the notch marks how much of it is decomposed into Features.</div>
+
+            <div style="margin-top:20px;display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ shapeRows }}" as="sr" hint-placeholder-count="6">
+                <div>
+                  <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:5px">
+                    <span style="font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ sr.num }}</span>
+                    <span style="font-size:12px;font-weight:700;color:#e6edf3;flex:1;min-width:0">{{ sr.name }}</span>
+                    <span style="font-size:10px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">{{ sr.meta }}</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:9px">
+                    <div style="width:{{ sr.widthPct }}%;min-width:34px;height:16px;background:#12151c;border:1px solid #21262d;border-radius:4px;overflow:hidden;position:relative">
+                      <div style="{{ sr.fillStyle }}"></div>
+                      <div style="{{ sr.notchStyle }}"></div>
+                    </div>
+                    <span style="font-size:9.5px;color:#576069;flex:none;white-space:nowrap">{{ sr.shapeLabel }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="margin-top:22px;display:flex;gap:16px;flex-wrap:wrap;font-size:9.5px;color:#576069">
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:8px;background:#4d7aa8;border-radius:2px;display:inline-block"></span>closed</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:14px;height:8px;background:#12151c;border:1px solid #21262d;border-radius:2px;display:inline-block"></span>open</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:2px;height:12px;background:#e2984a;display:inline-block"></span>decomposition line — left of it lives under a Feature</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isFindings }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Health Findings" style="flex:1;min-width:0;display:flex;min-height:0">
+        <div class="om-scroll" style="flex:1;min-width:0;overflow-y:auto;padding:20px 24px">
+          <div style="max-width:900px">
+            <div style="display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:16px">
+              <div style="flex:1;min-width:260px">
+                <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#576069;margin-bottom:6px">Health findings</div>
+                <div style="font-size:20px;font-weight:800;color:#e6edf3;letter-spacing:-.02em">{{ openFindingCount }} open findings from the 2026-09-02 scan</div>
+                <div style="font-size:12px;color:#8b949e;line-height:1.55;margin-top:6px;text-wrap:pretty">Every rule below runs off data GitHub already returns — subIssuesSummary, parent, state, and full-text title/body match. No new backend state.</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px">
+              <sc-for list="{{ ruleCards }}" as="rc" hint-placeholder-count="5">
+                <div onClick="{{ rc.onClick }}" style="{{ rc.style }}">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">
+                    <span style="{{ rc.tileStyle }}"><i data-lucide="{{ rc.icon }}" width="11" height="11"></i></span>
+                    <span style="font-size:8.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:{{ rc.color }};line-height:1.2">{{ rc.label }}</span>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:5px">
+                    <span style="font-size:22px;font-weight:800;color:#e6edf3;font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1">{{ rc.count }}</span>
+                    <span style="font-size:9px;color:#576069">{{ rc.unit }}</span>
+                  </div>
+                  <div style="font-size:9.5px;color:#6e7681;line-height:1.4;margin-top:6px;text-wrap:pretty">{{ rc.rule }}</div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+              <sc-for list="{{ stateChips }}" as="sc" hint-placeholder-count="4">
+                <span onClick="{{ sc.onClick }}" style="{{ sc.style }}">{{ sc.label }}</span>
+              </sc-for>
+              <div style="flex:1"></div>
+              <sc-if value="{{ ruleFilterLabel }}" hint-placeholder-val="{{ false }}">
+                <span onClick="{{ onClearRule }}" style="font-size:9.5px;font-weight:700;color:#9fc0dd;cursor:pointer;padding:3px 9px;background:rgba(77,122,168,.14);border:1px solid #3d5875;border-radius:99px">{{ ruleFilterLabel }} ×</span>
+              </sc-if>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <sc-for list="{{ findings }}" as="f" hint-placeholder-count="5">
+                <div style="{{ f.cardStyle }}">
+                  <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 12px 0">
+                    <span style="{{ f.tileStyle }}"><i data-lucide="{{ f.icon }}" width="13" height="13"></i></span>
+                    <div style="flex:1;min-width:0">
+                      <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:5px">
+                        <span style="{{ f.rulePill }}">{{ f.rule }}</span>
+                        <span style="{{ f.sevPill }}">{{ f.severity }}</span>
+                        <span style="{{ f.statePill }}">{{ f.state }}</span>
+                        <span style="font-size:9px;color:#4d5561;font-family:Consolas,ui-monospace,Menlo,monospace;margin-left:auto">{{ f.detected }}</span>
+                      </div>
+                      <div style="display:flex;align-items:baseline;gap:7px">
+                        <span style="font-size:11px;font-weight:700;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ f.num }}</span>
+                        <span style="font-size:13.5px;font-weight:700;color:#e6edf3;line-height:1.35;text-wrap:pretty">{{ f.title }}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="padding:9px 12px 0 44px">
+                    <div style="background:#0a0d12;border:1px solid #1b212a;border-radius:6px;padding:9px 10px">
+                      <div style="font-size:8px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#4d5561;margin-bottom:6px">Evidence</div>
+
+                      <sc-if value="{{ f.hasChain }}" hint-placeholder-val="{{ false }}">
+                        <div style="display:flex;flex-direction:column;gap:3px">
+                          <sc-for list="{{ f.chain }}" as="cn" hint-placeholder-count="4">
+                            <div style="display:flex;align-items:center;gap:7px;padding-left:{{ cn.indent }}px">
+                              <span style="font-size:9px;color:#3f4756;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">{{ cn.rail }}</span>
+                              <span style="{{ cn.depthStyle }}">L{{ cn.depth }}</span>
+                              <span style="font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ cn.num }}</span>
+                              <span style="font-size:10.5px;color:{{ cn.color }};min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ cn.title }}</span>
+                              <sc-if value="{{ cn.note }}" hint-placeholder-val="{{ false }}">
+                                <span style="font-size:9px;font-weight:700;color:#ef6f66;flex:none">{{ cn.note }}</span>
+                              </sc-if>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+
+                      <sc-if value="{{ f.hasMatch }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:10.5px;color:#8b949e;line-height:1.6;font-family:Consolas,ui-monospace,Menlo,monospace;text-wrap:pretty">{{ f.matchPre }}<span style="background:rgba(226,152,74,.2);border-bottom:1px solid #e2984a;color:#f0b568;padding:1px 3px;border-radius:2px">{{ f.matchTerm }}</span>{{ f.matchPost }}</div>
+                        <div style="font-size:9.5px;color:#576069;margin-top:7px;line-height:1.5">{{ f.matchNote }}</div>
+                      </sc-if>
+
+                      <sc-if value="{{ f.hasPlain }}" hint-placeholder-val="{{ false }}">
+                        <div style="font-size:10.5px;color:#8b949e;line-height:1.55;text-wrap:pretty">{{ f.plain }}</div>
+                      </sc-if>
+                    </div>
+                  </div>
+
+                  <div style="padding:10px 12px 11px 44px;display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                    <sc-if value="{{ f.sendLabel }}" hint-placeholder-val="{{ true }}">
+                      <button onClick="{{ f.onSend }}" style="{{ f.sendStyle }}">
+                        <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="{{ f.sendIcon }}" width="11" height="11"></i></span>{{ f.sendLabel }}
+                      </button>
+                    </sc-if>
+                    <sc-if value="{{ f.fixLabel }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ f.onFix }}" style="{{ f.fixStyle }}">
+                        <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="{{ f.fixIcon }}" width="11" height="11"></i></span>{{ f.fixLabel }}
+                      </button>
+                    </sc-if>
+                    <sc-if value="{{ f.reviewLabel }}" hint-placeholder-val="{{ false }}">
+                      <button onClick="{{ f.onReview }}" style="height:26px;padding:0 11px;display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid #6d5426;border-radius:6px;color:#e2984a;font-size:10.5px;font-weight:700;cursor:pointer" style-hover="background:rgba(226,152,74,.12)">
+                        <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="eye" width="11" height="11"></i></span>{{ f.reviewLabel }}
+                      </button>
+                    </sc-if>
+                    <button onClick="{{ f.onDismiss }}" style="height:26px;padding:0 11px;display:inline-flex;align-items:center;gap:6px;background:transparent;border:1px solid #2e3742;border-radius:6px;color:#8b949e;font-size:10.5px;font-weight:700;cursor:pointer" style-hover="border-color:#3d4856;color:#c9d1d9">
+                      <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="x" width="11" height="11"></i></span>{{ f.dismissLabel }}
+                    </button>
+                    <span style="font-size:9.5px;color:#4d5561;margin-left:4px;flex:1;min-width:120px;text-wrap:pretty">{{ f.actionNote }}</span>
+                  </div>
+                </div>
+              </sc-for>
+
+              <sc-if value="{{ findingsEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px dashed #30363d;border-radius:8px;padding:30px 18px;text-align:center;font-size:11.5px;color:#576069;line-height:1.6">Nothing in this slice. Clear a filter, or the queue is genuinely clean.</div>
+              </sc-if>
+            </div>
+          </div>
+        </div>
+
+        <div style="width:288px;flex:none;background:#0d1117;border-left:1px solid #21262d;padding:18px 16px;overflow-y:auto" class="om-scroll">
+          <div style="font-size:8.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069;margin-bottom:10px">Known-dead paths</div>
+          <div style="font-size:10.5px;color:#8b949e;line-height:1.55;margin-bottom:11px;text-wrap:pretty">The stale-reference rule matches against this list. It is maintained by hand — a path only lands here after the restructure that killed it.</div>
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <sc-for list="{{ deadPaths }}" as="dp" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid #1b212a">
+                <span style="font-size:10.5px;color:#e6edf3;font-family:Consolas,ui-monospace,Menlo,monospace;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ dp.path }}</span>
+                <span style="font-size:9px;color:#576069;flex:none;font-family:Consolas,ui-monospace,Menlo,monospace">{{ dp.retired }}</span>
+                <span style="{{ dp.hitStyle }}">{{ dp.hits }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="margin-top:12px;padding:9px 10px;background:#12151c;border:1px solid #21262d;border-radius:6px;font-size:10px;color:#8b949e;line-height:1.55;text-wrap:pretty"><span style="color:#e2984a;font-weight:700">Never auto-closed.</span> A live bug can mention a dead path in passing. Every stale-reference hit goes to a human.</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Claude Handoff" style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+        <div style="flex:none;padding:16px 22px 13px;border-bottom:1px solid #21262d;display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap">
+          <div style="flex:1;min-width:280px">
+            <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#576069;margin-bottom:6px">Working the list</div>
+            <div style="font-size:20px;font-weight:800;color:#e6edf3;letter-spacing:-.02em">Send a batch to Claude, not to a board</div>
+            <div style="font-size:12px;color:#8b949e;line-height:1.55;margin-top:6px;max-width:560px;text-wrap:pretty">Pick five, hand them over, work them in the chat. Findings flip state from what actually happens in the conversation — there is no pile to groom and no card to drag.</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <sc-for list="{{ queueStats }}" as="qs" hint-placeholder-count="4">
+              <div style="min-width:74px;background:#0f1319;border:1px solid #1b212a;border-radius:7px;padding:8px 10px">
+                <div style="font-size:8px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#576069;margin-bottom:4px">{{ qs.label }}</div>
+                <div style="font-size:19px;font-weight:800;color:{{ qs.color }};font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1">{{ qs.value }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="flex:1;min-height:0;display:flex">
+          <div style="width:376px;flex:none;display:flex;flex-direction:column;border-right:1px solid #21262d;min-height:0">
+            <div style="flex:none;padding:11px 13px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #1b212a">
+              <span style="font-size:8.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:#576069;flex:1">Open findings · {{ openFindingCount }}</span>
+              <span onClick="{{ onAutoPick }}" style="font-size:9.5px;font-weight:700;color:#9fc0dd;cursor:pointer" style-hover="color:#cfe0f0">pick next 5</span>
+            </div>
+            <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:9px 11px;display:flex;flex-direction:column;gap:6px">
+              <sc-for list="{{ pickList }}" as="pk" hint-placeholder-count="6">
+                <div onClick="{{ pk.onToggle }}" style="{{ pk.style }}">
+                  <span style="{{ pk.boxStyle }}">{{ pk.mark }}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                      <span style="{{ pk.rulePill }}">{{ pk.rule }}</span>
+                      <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ pk.num }}</span>
+                      <span style="{{ pk.statePill }}">{{ pk.state }}</span>
+                    </div>
+                    <div style="font-size:10.5px;color:{{ pk.titleColor }};line-height:1.4;text-wrap:pretty">{{ pk.title }}</div>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ pickEmpty }}" hint-placeholder-val="{{ false }}">
+                <div style="border:1px dashed #21262d;border-radius:7px;padding:22px 12px;text-align:center;font-size:10.5px;color:#3f4756;line-height:1.6">Nothing open. The scan queue is clear.</div>
+              </sc-if>
+            </div>
+            <div style="flex:none;padding:10px 12px 12px;border-top:1px solid #1b212a;background:#0d1117">
+              <button onClick="{{ onSendBatch }}" style="{{ sendBatchStyle }}">
+                <span style="display:inline-flex;width:13px;height:13px"><i data-lucide="send" width="13" height="13"></i></span>{{ sendBatchLabel }}
+              </button>
+              <div style="font-size:9.5px;color:#4d5561;line-height:1.5;margin-top:7px;text-wrap:pretty">{{ sendBatchNote }}</div>
+            </div>
+          </div>
+
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#0a0d12;min-height:0">
+            <div style="flex:none;height:34px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid #1b212a">
+              <span style="display:inline-flex;width:13px;height:13px;color:#c08552"><i data-lucide="sparkles" width="13" height="13"></i></span>
+              <span style="font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8b949e;flex:1">Claude · repo triage</span>
+              <span style="font-size:9px;color:#4d5561;font-family:Consolas,ui-monospace,Menlo,monospace">{{ chatMeta }}</span>
+            </div>
+            <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+              <sc-for list="{{ messages }}" as="m" hint-placeholder-count="1">
+                <div style="{{ m.wrapStyle }}">
+                  <div style="{{ m.roleStyle }}">{{ m.role }}</div>
+                  <div style="{{ m.bodyStyle }}">
+                    <sc-if value="{{ m.text }}" hint-placeholder-val="{{ false }}">
+                      <div style="font-size:12px;line-height:1.6;color:{{ m.textColor }};text-wrap:pretty">{{ m.text }}</div>
+                    </sc-if>
+                    <sc-if value="{{ m.hasItems }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex;flex-direction:column;gap:5px;margin-top:9px">
+                        <sc-for list="{{ m.items }}" as="mi" hint-placeholder-count="5">
+                          <div style="{{ mi.style }}">
+                            <span style="{{ mi.iconStyle }}"><i data-lucide="{{ mi.icon }}" width="10" height="10"></i></span>
+                            <span style="font-size:10px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ mi.num }}</span>
+                            <span style="font-size:11px;color:{{ mi.color }};flex:1;min-width:0;line-height:1.4">{{ mi.text }}</span>
+                            <span style="{{ mi.statePill }}">{{ mi.state }}</span>
+                          </div>
+                        </sc-for>
+                      </div>
+                    </sc-if>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ chatEmpty }}" hint-placeholder-val="{{ true }}">
+                <div style="margin:auto;max-width:340px;text-align:center">
+                  <div style="width:34px;height:34px;margin:0 auto 11px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:rgba(192,133,82,.12);border:1px solid rgba(192,133,82,.3);color:#c08552"><i data-lucide="message-square" width="16" height="16"></i></div>
+                  <div style="font-size:12.5px;color:#8b949e;line-height:1.6;text-wrap:pretty">Select findings on the left and send them over. Claude gets the evidence — chain, matched path, parent state — not just the issue number.</div>
+                </div>
+              </sc-if>
+            </div>
+            <div style="flex:none;padding:10px 14px 13px;border-top:1px solid #1b212a">
+              <div style="display:flex;align-items:center;gap:9px;background:#0f1319;border:1px solid #21262d;border-radius:8px;padding:9px 11px">
+                <span style="font-size:11.5px;color:#3f4756;flex:1">{{ composerHint }}</span>
+                <span style="display:inline-flex;width:13px;height:13px;color:#3f4756"><i data-lucide="corner-down-left" width="13" height="13"></i></span>
+              </div>
+              <div style="font-size:9.5px;color:#4d5561;line-height:1.5;margin-top:7px;text-wrap:pretty">Whatever the chat resolves writes straight back to the finding. Stale references never auto-resolve — Claude reports and stops.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isAtlas }}" hint-placeholder-val="{{ false }}">
+      <div data-screen-label="Atlas" style="flex:1;min-width:0;display:flex;min-height:0">
+        <div class="om-scroll" style="flex:1;min-width:0;overflow:auto;padding:18px 22px 24px">
+          <div style="display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+            <div style="flex:1;min-width:300px">
+              <div style="font-size:9px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#576069;margin-bottom:6px">Atlas · v1.1</div>
+              <div style="font-size:20px;font-weight:800;color:#e6edf3;letter-spacing:-.02em">Every issue in the milestone, one cell each</div>
+              <div style="font-size:12px;color:#8b949e;line-height:1.55;margin-top:6px;max-width:620px;text-wrap:pretty">158 issues, no scrolling, no expanding. Territory area is subtree size, each cell is one real issue, cells cluster by Feature. Anomalies glow where they actually live — you see that Build Console's damage is concentrated in one Feature, not sprinkled.</div>
+            </div>
+            <div style="display:flex;gap:5px;background:#12151c;border:1px solid #21262d;border-radius:7px;padding:2px">
+              <sc-for list="{{ atlasModes }}" as="am" hint-placeholder-count="3">
+                <button onClick="{{ am.onClick }}" style="{{ am.style }}">{{ am.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:9px;align-items:stretch;flex-wrap:wrap;margin-bottom:14px">
+            <sc-for list="{{ territories }}" as="t" hint-placeholder-count="6">
+              <div style="{{ t.style }}">
+                <div style="display:flex;align-items:center;gap:6px;padding:9px 10px 7px">
+                  <span style="{{ t.tileStyle }}"><i data-lucide="{{ t.icon }}" width="10" height="10"></i></span>
+                  <span style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">#{{ t.num }}</span>
+                  <span style="{{ t.nameStyle }}">{{ t.name }}</span>
+                  <span style="font-size:9.5px;font-weight:700;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">{{ t.frac }}</span>
+                </div>
+                <div style="padding:0 10px 10px;display:flex;flex-direction:column;gap:7px">
+                  <sc-for list="{{ t.clusters }}" as="cl" hint-placeholder-count="3">
+                    <div>
+                      <div style="display:flex;align-items:center;gap:5px;margin-bottom:4px">
+                        <span style="{{ cl.dashStyle }}"></span>
+                        <span style="{{ cl.labelStyle }}">{{ cl.label }}</span>
+                        <sc-if value="{{ cl.flag }}" hint-placeholder-val="{{ false }}">
+                          <span style="{{ cl.flagStyle }}">{{ cl.flag }}</span>
+                        </sc-if>
+                      </div>
+                      <div style="display:flex;flex-wrap:wrap;gap:3px">
+                        <sc-for list="{{ cl.cells }}" as="ce" hint-placeholder-count="12">
+                          <span title="{{ ce.title }}" style="{{ ce.style }}"></span>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;gap:18px;flex-wrap:wrap;padding:11px 13px;background:#0f1319;border:1px solid #1b212a;border-radius:8px">
+            <sc-for list="{{ atlasLegend }}" as="lg" hint-placeholder-count="5">
+              <span style="display:inline-flex;align-items:center;gap:7px;font-size:10px;color:#8b949e;white-space:nowrap">
+                <span style="{{ lg.swatch }}"></span>{{ lg.label }}
+              </span>
+            </sc-for>
+          </div>
+        </div>
+
+        <div style="width:264px;flex:none;background:#0d1117;border-left:1px solid #21262d;padding:18px 15px;overflow-y:auto" class="om-scroll">
+          <div style="font-size:8.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#576069;margin-bottom:11px">What the map shows</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <sc-for list="{{ atlasReads }}" as="ar" hint-placeholder-count="4">
+              <div style="background:#0f1319;border:1px solid #1b212a;border-left:2px solid {{ ar.accent }};border-radius:7px;padding:9px 10px">
+                <div style="font-size:10.5px;font-weight:700;color:#e6edf3;margin-bottom:4px">{{ ar.title }}</div>
+                <div style="font-size:10.5px;color:#8b949e;line-height:1.5;text-wrap:pretty">{{ ar.body }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;map&quot;,&quot;atlas&quot;,&quot;findings&quot;,&quot;chat&quot;],&quot;default&quot;:&quot;map&quot;,&quot;tsType&quot;:&quot;'map' | 'atlas' | 'findings' | 'chat'&quot;,&quot;section&quot;:&quot;View&quot;},&quot;batchSize&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:5,&quot;min&quot;:3,&quot;max&quot;:8,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Claude handoff&quot;}}">
+class Component extends DCLogic {
+  MONO = 'Consolas,ui-monospace,Menlo,monospace';
+
+  RULES = {
+    depth:   {label:'Depth violation', short:'Depth', color:'#ef6f66', icon:'git-fork', unit:'issues', rule:'Sits deeper than Epic → Feature → Issue.'},
+    naming:  {label:'Naming violation', short:'Naming', color:'#e2984a', icon:'type', unit:'issues', rule:'Has real sub-issues but is not titled to convention.'},
+    dead:    {label:'Dead subtree', short:'Dead', color:'#6e7681', icon:'archive', unit:'subtree', rule:'Closed parent, every descendant closed. Noise only.'},
+    stale:   {label:'Stale reference', short:'Stale', color:'#d4a03c', icon:'file-x', unit:'issues', rule:'Open issue naming a path that no longer exists.'},
+    orphan:  {label:'Orphan', short:'Orphan', color:'#a374ea', icon:'unlink', unit:'issues', rule:'Parent closed, child still open.'}
+  };
+
+  FINDINGS = [
+    {id:'d1', rule:'depth', severity:'Blocking', num:2104, title:'Pinned Questions Phase 1', detected:'09-02 08:41',
+      chain:[
+        {depth:1, num:1202, title:'Epic: Build Console'},
+        {depth:2, num:1787, title:'Feature: Git Board & Chats'},
+        {depth:3, num:2036, title:'Epic: Pinned Questions', note:'mislabeled "Epic:" at L3'},
+        {depth:4, num:2104, title:'Pinned Questions Phase 1', note:'depth 4'}
+      ],
+      fix:'Flatten — re-parent to #1787', fixIcon:'git-merge',
+      actionNote:'Re-parents to the nearest legal Feature. #2036 stays, renamed by its own finding.'},
+    {id:'d2', rule:'depth', severity:'Blocking', num:2098, title:'Pinned Questions — storage schema', detected:'09-02 08:41',
+      chain:[
+        {depth:1, num:1202, title:'Epic: Build Console'},
+        {depth:2, num:1787, title:'Feature: Git Board & Chats'},
+        {depth:3, num:2036, title:'Epic: Pinned Questions'},
+        {depth:4, num:2098, title:'Pinned Questions — storage schema', note:'depth 4'}
+      ],
+      fix:'Flatten — re-parent to #1787', fixIcon:'git-merge',
+      actionNote:'6 more depth-4 issues share this chain. Fixing the chain fixes all 8.'},
+    {id:'n1', rule:'naming', severity:'Convention', num:2036, title:'Epic: Pinned Questions', detected:'09-02 08:41',
+      plain:'Titled "Epic:" but sits at level 3 under a Feature. 4 real sub-issues, so it is not a leaf either. Correct form at this level is "Feature: Pinned Questions".',
+      fix:'Rename → Feature: Pinned Questions', fixIcon:'pencil',
+      actionNote:'Title-only edit. Parent, children, and state are untouched.'},
+    {id:'n2', rule:'naming', severity:'Convention', num:1489, title:'Portal New Design: Remediation Tracking', detected:'09-02 08:41',
+      plain:'39 sub-issues, sits at level 2 under #1485 Portal. Prefix "Portal New Design:" is not a convention marker — 11 other nodes use the same dead prefix.',
+      fix:'Rename → Feature: Remediation Tracking (Portal)', fixIcon:'pencil',
+      actionNote:'Part of a 42-issue naming sweep. Fix one, or batch the whole prefix.'},
+    {id:'n3', rule:'naming', severity:'Convention', num:1616, title:'ShaneBot + Active Cards', detected:'09-02 08:41',
+      plain:'5 sub-issues, level 2, no convention marker at all. Reads as a bare leaf in every list view despite owning a subtree.',
+      fix:'Rename → Feature: ShaneBot + Active Cards', fixIcon:'pencil',
+      actionNote:'No marker is the most common violation of the 42 — 23 of them.'},
+    {id:'s1', rule:'stale', severity:'Needs review', num:1827, title:'Fix fixture loader path in portal-v2 build step', detected:'09-02 08:42',
+      matchPre:'…build step still resolves ', matchTerm:'portal-v2', matchPost:'/fixtures/tenant.seed.json, which 404s after the restructure…',
+      matchNote:'Matched known-dead path "portal-v2", retired 2026-08-29. Issue is open and recently active — the bug is likely real and just names the old tree.',
+      review:'Needs review', actionNote:'Never auto-closed. A human decides whether the path is the bug or just the wording.'},
+    {id:'s2', rule:'stale', severity:'Needs review', num:1921, title:'msp-portal dashboard cards drop tenant filter on reload', detected:'09-02 08:42',
+      matchPre:'Reported against ', matchTerm:'msp-portal', matchPost:' — repro steps reference the pre-restructure route table…',
+      matchNote:'Matched known-dead path "msp-portal", retired 2026-08-29. Behaviour may still reproduce in the current portal under a different route.',
+      review:'Needs review', actionNote:'Reviewing marks it seen; it will not resurface on the next scan unless the body changes.'},
+    {id:'o1', rule:'orphan', severity:'Blocking', num:1866, title:'Footer nav duplicates Resources link on mobile', detected:'09-02 08:42',
+      plain:'Open child of #1094 EPIC: Customer Portal, which closed 2026-08-29. The parent is retired but this issue is still live, so it belongs to nobody.',
+      fix:'Re-parent → #1093 Marketing Site', fixIcon:'git-merge',
+      actionNote:'orphan_sweep.py logic, with the destination pickable instead of guessed.'},
+    {id:'k1', rule:'dead', severity:'Informational', num:1094, title:'EPIC: Customer Portal', detected:'09-02 08:40',
+      plain:'Closed 2026-08-29 with 69 descendants, all closed. Nothing is broken and nothing needs fixing — it simply occupies a top-level row on the map forever.',
+      actionNote:'Not a defect. Hide it from the map instead; the toggle lives on the Git Map screen.'}
+  ];
+
+  DEAD_PATHS = [
+    {path:'portal-v2/', retired:'08-29', hits:6},
+    {path:'msp-portal/', retired:'08-29', hits:4},
+    {path:'Design/portal (pre 08-29)', retired:'08-29', hits:3},
+    {path:'artifacts/shane-mobile-old/', retired:'07-14', hits:0}
+  ];
+
+  EPICS = [
+    {num:1093, name:'Epic: Marketing Site', accent:'#e2984a', closed:24, total:32, last:'2d ago', flags:1,
+      features:[
+        {num:1101, name:'Feature: Assessments (Marketing)', closed:9, total:11, issues:[
+          {num:1712, title:'Assessment intake: seat-count step validation', closed:false},
+          {num:1709, title:'Pricing table pulls live seat tiers', closed:false},
+          {num:1703, title:'Assessment PDF deliverable template', closed:true}
+        ]},
+        {num:1104, name:'Feature: Signal Intelligence Diagnostics', closed:6, total:9, issues:[
+          {num:1744, title:'Quiz result → recommended retainer mapping', closed:false},
+          {num:1741, title:'Resume a half-finished diagnostic', closed:false},
+          {num:1736, title:'Diagnostic email capture + follow-up', closed:true}
+        ]}
+      ],
+      bugs:[
+        {num:1866, title:'Footer nav duplicates Resources link on mobile', flag:'orphan'},
+        {num:1859, title:'OG image cache-busting after redeploy'}
+      ]},
+    {num:1096, name:'Epic: Application Core', accent:'#37b8b0', closed:61, total:98, last:'6h ago', flags:0,
+      features:[
+        {num:1120, name:'Feature: Graph Sync', closed:11, total:14, issues:[
+          {num:1908, title:'Delta-token expiry: fall back to full sync', closed:false},
+          {num:1901, title:'Per-tenant throttle backoff on 429', closed:false},
+          {num:1894, title:'Sync run log with per-resource timings', closed:true}
+        ]},
+        {num:1128, name:'Feature: Signal Engines', closed:13, total:22, issues:[
+          {num:1955, title:'Scope Creep Engine: SOW line-item diffing', closed:false},
+          {num:1949, title:'SLA Engine: pause clock during approved change window', closed:false},
+          {num:1940, title:'Drift Engine fingerprint dedupe', closed:true}
+        ]}
+      ],
+      bugs:[
+        {num:1979, title:'Nightly job runs twice on DST boundary'},
+        {num:1968, title:'Graph 429 retry storms on large tenants'},
+        {num:1962, title:'Engine run log truncates at 500 rows'},
+        {num:1921, title:'msp-portal dashboard cards drop tenant filter on reload', flag:'stale'}
+      ]},
+    {num:1202, name:'Epic: Build Console', accent:'#6a8fb5', closed:14, total:37, last:'active now', flags:3,
+      features:[
+        {num:1787, name:'Feature: Git Board & Chats', closed:4, total:16, flag:'depth', issues:[
+          {num:2036, title:'Epic: Pinned Questions', closed:false, flag:'naming'},
+          {num:2104, title:'Pinned Questions Phase 1', closed:false, flag:'depth'},
+          {num:2086, title:'Search chats by issue number or Claude URL', closed:false},
+          {num:2080, title:'Chat rename writes back to the epic link', closed:true}
+        ]},
+        {num:2040, name:'Feature: Git Doctor', closed:5, total:12, issues:[
+          {num:2062, title:'Detect orphaned worktrees and offer a prune', closed:false},
+          {num:2059, title:'Stale-branch report: agent/* older than 14 days', closed:false},
+          {num:2057, title:'Repair a detached HEAD without losing agent work', closed:false},
+          {num:2044, title:'Baseline health check on repo open', closed:true}
+        ]},
+        {num:2035, name:'Feature: Build Queue', closed:8, total:15, issues:[
+          {num:2074, title:'Slot pinning: keep a build in slot 1 across restarts', closed:false},
+          {num:2071, title:'Queue sort: numbered first, biggest GithubNumber first', closed:true},
+          {num:2068, title:'Blocked builds nest under their blocker', closed:false}
+        ]}
+      ],
+      bugs:[
+        {num:2031, title:'Build Queue panel spec'},
+        {num:2021, title:'Queue scroll wheel + stuck state'},
+        {num:2020, title:'Queue virtualization fix'},
+        {num:2013, title:'Chat epic_id FK'}
+      ]},
+    {num:1281, name:'GATE: v1.1 release', accent:'#c084fc', closed:3, total:7, last:'1h ago', flags:0, gate:true,
+      features:[], bugs:[]},
+    {num:1485, name:'Epic: Portal', accent:'#a374ea', closed:28, total:40, last:'1d ago', flags:2,
+      features:[
+        {num:1489, name:'Portal New Design: Remediation Tracking', closed:26, total:39, flag:'naming', issues:[
+          {num:1712, title:'Remediation detail drawer — history tab', closed:false},
+          {num:1715, title:'Bulk re-assign owner from list view', closed:false},
+          {num:1706, title:'Evidence upload accepts .msg / .eml', closed:true}
+        ]},
+        {num:1486, name:'Feature: Change Control (Portal)', closed:12, total:19, issues:[
+          {num:1524, title:'Approval flow — second approver for high-risk changes', closed:false},
+          {num:1521, title:'Change calendar week view', closed:false},
+          {num:1512, title:'Attach Graph diff snapshot to change record', closed:true}
+        ]},
+        {num:1616, name:'ShaneBot + Active Cards', closed:0, total:5, flag:'naming', issues:[
+          {num:1655, title:'Active Card: open remediation summary', closed:false},
+          {num:1652, title:'ShaneBot intent routing for "what\u2019s left on X"', closed:false}
+        ]}
+      ],
+      bugs:[
+        {num:1827, title:'Fix fixture loader path in portal-v2 build step', flag:'stale'},
+        {num:1701, title:'Status filter chips reset on tab switch'}
+      ]},
+    {num:1571, name:'Epic: Portal Admin', accent:'#37b8b0', closed:10, total:19, last:'4d ago', flags:0,
+      features:[
+        {num:1681, name:'Feature: Change Control (MSP Console)', closed:0, total:4, issues:[
+          {num:1690, title:'Operator view of every tenant change window', closed:false}
+        ]},
+        {num:1684, name:'Feature: Remediation Tracking (MSP Console)', closed:0, total:5, issues:[
+          {num:1693, title:'Cross-tenant remediation backlog', closed:false}
+        ]}
+      ],
+      bugs:[
+        {num:1744, title:'Operator impersonation banner missing tenant name'}
+      ]}
+  ];
+
+  GATE_CHECKS = [
+    {done:true,  label:'Portal-v2 fixture wiring signed off'},
+    {done:false, label:'ShaneBot (public + paid) sign-off'},
+    {done:false, label:'Teams admin role grant + ps-execution rebuild'},
+    {done:true,  label:'Governance Oversharing schema sign-off'},
+    {done:false, label:'Run pending manual migrations against Replit/staging'},
+    {done:true,  label:'Pre-release cleanup (portal-v2 + Copilot Readiness branch strip)'},
+    {done:false, label:'Apply prod write-app consent, prove a real live write end to end'}
+  ];
+
+  SHAPES = [
+    {num:1096, name:'Application Core', total:98, closed:61, inFeature:36, accent:'#37b8b0', shapeLabel:'98 subs · 63% flat bugs'},
+    {num:1485, name:'Portal', total:40, closed:28, inFeature:36, accent:'#a374ea', shapeLabel:'40 subs · well decomposed'},
+    {num:1202, name:'Build Console', total:37, closed:14, inFeature:33, accent:'#6a8fb5', shapeLabel:'37 subs · depth defects'},
+    {num:1093, name:'Marketing Site', total:32, closed:24, inFeature:20, accent:'#e2984a', shapeLabel:'32 subs · mostly closed'},
+    {num:1571, name:'Portal Admin', total:19, closed:10, inFeature:9, accent:'#37b8b0', shapeLabel:'19 subs · thin'},
+    {num:1281, name:'GATE: v1.1 release', total:7, closed:3, inFeature:0, accent:'#c084fc', shapeLabel:'7 checks · not sub-issues'}
+  ];
+
+  componentDidMount() {
+    const run = () => { if (window.lucide) { window.lucide.createIcons(); return true; } return false; };
+    if (!run()) this._it = setInterval(() => { if (run()) clearInterval(this._it); }, 200);
+  }
+  componentDidUpdate() { if (window.lucide) window.lucide.createIcons(); }
+  componentWillUnmount() { if (this._it) clearInterval(this._it); (this._timers || []).forEach(clearTimeout); }
+
+  state = {
+    screen: null, level: 'tree', scopeEpic: null, scopeFeature: null,
+    expandedEpics: [1202], expandedFeatures: [1787], gateOpen: false, gateDone: {},
+    showDead: false, ruleFilter: null, stateFilter: 'Open', fState: {},
+    selected: [], messages: [], atlasMode: 'state'
+  };
+
+  RESULTS = {
+    d1: 'Re-parented to #1787. Depth 4 → 3.',
+    d2: 'Re-parented to #1787 along with the 6 siblings in the same chain.',
+    n1: 'Renamed → Feature: Pinned Questions.',
+    n2: 'Renamed → Feature: Remediation Tracking (Portal).',
+    n3: 'Renamed → Feature: ShaneBot + Active Cards.',
+    o1: 'Re-parented to #1093 Marketing Site.',
+    s1: 'portal-v2 is dead, but the loader bug reads live. Left open for you.',
+    s2: 'msp-portal route table is gone. Repro may still hold — your call.',
+    k1: 'Nothing to fix. Hidden from the map instead.'
+  };
+
+  sendBatch(ids) {
+    if (!ids.length) return;
+    const batch = ids.map(id => this.FINDINGS.find(f => f.id === id)).filter(Boolean);
+    this.setState(s => {
+      const fs = Object.assign({}, s.fState);
+      ids.forEach(id => { fs[id] = 'In chat'; });
+      return {
+        fState: fs, selected: [],
+        messages: s.messages.concat([
+          {role:'you', text:'Work these ' + batch.length + ' findings from the 2026-09-02 scan. Evidence attached — chains, matched paths, parent states.',
+            items: batch.map(f => ({id:f.id, num:f.num, text:f.title, rule:f.rule, state:'Queued'}))},
+          {role:'claude', text:'Reading the sub-issue graph. Depth and naming violations I can write back directly. Stale references I will report and leave open — a live bug can name a dead path in passing.',
+            items: batch.map(f => ({id:f.id, num:f.num, text:this.RESULTS[f.id] || 'Working…', rule:f.rule, state:'Working'}))}
+        ])
+      };
+    });
+    this._timers = this._timers || [];
+    batch.forEach((f, i) => {
+      this._timers.push(setTimeout(() => {
+        const outcome = f.rule === 'stale' ? 'Needs review' : (f.rule === 'dead' ? 'Dismissed' : 'Fixed');
+        this.setState(s => {
+          const fs = Object.assign({}, s.fState);
+          fs[f.id] = outcome;
+          return {
+            fState: fs,
+            messages: s.messages.map(m => (!m.items || m.role !== 'claude') ? m : Object.assign({}, m, {
+              items: m.items.map(it => it.id === f.id ? Object.assign({}, it, {state: outcome}) : it)
+            }))
+          };
+        });
+      }, 620 * (i + 1)));
+    });
+  }
+
+  _fs(f) { return this.state.fState[f.id] || 'Open'; }
+
+  _pill(color, label, solid) {
+    return 'flex:none;font-size:8px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:99px;white-space:nowrap;' +
+      (solid ? 'background:' + color + ';color:#0a0d12' : 'background:' + color + '1f;border:1px solid ' + color + '55;color:' + color);
+  }
+
+  _setF(id, v) { this.setState(s => { const n = Object.assign({}, s.fState); n[id] = v; return {fState: n}; }); }
+
+  renderVals() {
+    const S = this.state, self = this;
+    const screen = S.screen || this.props.startScreen || 'map';
+    const R = this.RULES;
+
+    const scr = [
+      {id:'map', label:'Git Panel', icon:'git-branch'},
+      {id:'atlas', label:'Atlas', icon:'map'},
+      {id:'findings', label:'Health Findings', icon:'scan-eye'},
+      {id:'chat', label:'Claude Handoff', icon:'message-square'}
+    ];
+    const openCount = this.FINDINGS.filter(f => this._fs(f) === 'Open').length;
+    const screens = scr.map(s => ({
+      label: s.label, icon: s.icon,
+      count: s.id === 'findings' && openCount ? openCount : '',
+      countStyle: 'font-size:9px;font-weight:800;padding:0 5px;border-radius:99px;background:rgba(239,111,102,.18);border:1px solid #7a2f2a;color:#ef6f66;font-family:' + this.MONO,
+      onClick: () => this.setState({screen: s.id}),
+      style: 'height:26px;padding:0 11px;display:inline-flex;align-items:center;gap:6px;border:none;border-radius:5px;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap;flex:none;' +
+        (screen === s.id ? 'background:#233247;color:#cfe0f0;box-shadow:inset 0 0 0 1px #3d5875' : 'background:transparent;color:#8b949e')
+    }));
+
+    const gatePassed = this.GATE_CHECKS.filter((c, i) => (S.gateDone[i] === undefined ? c.done : S.gateDone[i])).length;
+    const cleared = gatePassed === this.GATE_CHECKS.length;
+    const gate = {
+      passed: gatePassed, total: this.GATE_CHECKS.length, open: S.gateOpen,
+      toggleLabel: S.gateOpen ? 'hide checklist' : 'show checklist',
+      onToggle: () => this.setState(s => ({gateOpen: !s.gateOpen})),
+      border: cleared ? '#1f4a2c' : '#7a2f2a',
+      bg: cleared ? '#0e1c14' : '#1a1118',
+      stampBg: cleared ? 'rgba(127,176,138,.12)' : 'repeating-linear-gradient(135deg,rgba(229,83,75,.22) 0 7px,rgba(229,83,75,.07) 7px 14px)',
+      stampColor: cleared ? '#7fb08a' : '#ef6f66',
+      stampLabel: cleared ? 'Cleared to release' : 'Not releasable',
+      pips: this.GATE_CHECKS.map((c, i) => {
+        const done = S.gateDone[i] === undefined ? c.done : S.gateDone[i];
+        return {title: (done ? 'Signed off — ' : 'Open — ') + c.label,
+          style: 'width:22px;height:11px;border-radius:2px;display:inline-block;' + (done ? 'background:#5f9e6d;border:1px solid #7fb08a' : 'background:transparent;border:1px solid #6d4340')};
+      }),
+      checks: this.GATE_CHECKS.map((c, i) => {
+        const done = S.gateDone[i] === undefined ? c.done : S.gateDone[i];
+        return {label: c.label, mark: done ? '\u2713' : '', textColor: done ? '#8b949e' : '#e6edf3',
+          boxStyle: 'flex:none;width:13px;height:13px;border-radius:3px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;margin-top:1px;' +
+            (done ? 'background:#5f9e6d;border:1px solid #7fb08a;color:#0d1117' : 'background:transparent;border:1px solid #6d4340;color:transparent'),
+          onToggle: () => this.setState(s => { const nd = Object.assign({}, s.gateDone); nd[i] = !done; return {gateDone: nd}; })};
+      })
+    };
+
+    const lvDefs = [{id:'tree', label:'Full tree'}, {id:'epics', label:'Epics only'}, {id:'features', label:'Features only'}];
+    const levels = lvDefs.map(l => ({
+      label: l.label,
+      onClick: () => this.setState({level: l.id, scopeFeature: null}),
+      style: 'flex:1;height:24px;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;' +
+        (S.level === l.id ? 'background:#233247;color:#cfe0f0;box-shadow:inset 0 0 0 1px #3d5875' : 'background:transparent;color:#8b949e')
+    }));
+
+    const scopedEpic = S.scopeEpic ? this.EPICS.find(e => e.num === S.scopeEpic) : null;
+    const scopedFeature = S.scopeFeature && scopedEpic ? scopedEpic.features.find(f => f.num === S.scopeFeature) : null;
+
+    const crumbStyle = (last, click) => 'font-size:10px;font-weight:' + (last ? '700' : '600') + ';color:' + (last ? '#e6edf3' : '#8b949e') + ';cursor:' + (click ? 'pointer' : 'default') + ';white-space:nowrap';
+    const crumbs = [{label:'v1.1 Milestone', onClick: () => this.setState({scopeEpic:null, scopeFeature:null}), style: crumbStyle(!scopedEpic, !!scopedEpic)}];
+    if (scopedEpic) {
+      crumbs.push({label:'\u203a', onClick:null, style:'font-size:10px;color:#3f4756'});
+      crumbs.push({label:'#' + scopedEpic.num + ' ' + scopedEpic.name.replace(/^Epic: /, ''), onClick: () => this.setState({scopeFeature:null}), style: crumbStyle(!scopedFeature, !!scopedFeature)});
+    }
+    if (scopedFeature) {
+      crumbs.push({label:'\u203a', onClick:null, style:'font-size:10px;color:#3f4756'});
+      crumbs.push({label: scopedFeature.name, onClick:null, style: crumbStyle(true, false)});
+    }
+
+    const showFeatures = S.level !== 'epics';
+    const showBugs = S.level === 'tree';
+    const gotoFinding = (rule) => (ev) => { if (ev && ev.stopPropagation) ev.stopPropagation(); this.setState({screen:'findings', ruleFilter: rule, stateFilter:'All'}); };
+
+    const flagChip = (rule) => {
+      const r = R[rule];
+      return {label: r.short, style: 'flex:none;display:inline-flex;align-items:center;gap:3px;font-size:8px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:1px 6px;border-radius:99px;cursor:pointer;background:' + r.color + '22;border:1px solid ' + r.color + '66;color:' + r.color};
+    };
+
+    const epicRows = (scopedEpic ? [scopedEpic] : this.EPICS).map(e => {
+      const pct = Math.round(e.closed / e.total * 100);
+      const expanded = S.level !== 'epics' && (!!scopedEpic || S.expandedEpics.indexOf(e.num) >= 0);
+      return {
+        num: e.num, name: e.name, frac: e.closed + '/' + e.total,
+        icon: e.gate ? 'shield-alert' : 'git-branch',
+        nameStyle: 'font-size:12px;font-weight:' + (e.gate ? '800' : '700') + ';color:' + (e.gate ? '#d8b4fe' : '#e6edf3') + ';flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
+        boxStyle: 'background:#0f1319;border:' + (e.gate ? '1px solid #4a2f6d' : '1px solid ' + (scopedEpic ? '#3d5875' : '#21262d')) + ';border-radius:8px;overflow:hidden',
+        tileStyle: 'flex:none;width:20px;height:20px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:' + e.accent + '1c;border:1px solid ' + e.accent + '3d;color:' + e.accent,
+        barStyle: 'height:100%;width:' + pct + '%;background:' + e.accent + ';opacity:.75',
+        metaLabel: pct + '% · ' + e.last,
+        flagCount: e.flags || '',
+        flagStyle: 'flex:none;display:inline-flex;align-items:center;gap:3px;font-size:8.5px;font-weight:800;padding:1px 6px;border-radius:99px;cursor:pointer;background:rgba(239,111,102,.16);border:1px solid #7a2f2a;color:#ef6f66;font-family:' + this.MONO,
+        onFlags: gotoFinding(null),
+        headCursor: S.level === 'epics' ? 'default' : 'pointer',
+        showChev: S.level !== 'epics', chevRot: expanded ? 0 : -90, expanded,
+        featureCount: e.features.length, bugCount: e.bugs.length,
+        showFeatures: showFeatures && e.features.length > 0,
+        showBugs: showBugs && e.bugs.length > 0,
+        scopeIcon: scopedEpic ? 'minimize-2' : 'maximize-2',
+        scopeBtnStyle: 'flex:none;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;border:1px solid ' + (scopedEpic ? '#3d5875' : '#2e3742') + ';border-radius:5px;color:' + (scopedEpic ? '#9fc0dd' : '#8b949e') + ';cursor:pointer',
+        onScope: (ev) => { ev.stopPropagation(); this.setState(s => ({scopeEpic: s.scopeEpic ? null : e.num, scopeFeature: null})); },
+        onToggle: () => { if (S.level === 'epics') return; this.setState(s => ({expandedEpics: s.expandedEpics.indexOf(e.num) >= 0 ? s.expandedEpics.filter(n => n !== e.num) : s.expandedEpics.concat(e.num)})); },
+        features: (showFeatures ? e.features : []).map(f => {
+          const fp = f.total ? Math.round(f.closed / f.total * 100) : 0;
+          const chip = f.flag ? flagChip(f.flag) : null;
+          return {
+            num: f.num, accent: e.accent, name: f.name, frac: f.closed + '/' + f.total,
+            nameStyle: 'font-size:11.5px;font-weight:700;color:' + (f.flag === 'naming' ? '#f0b568' : '#e6edf3') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis' + (f.flag === 'naming' ? ';text-decoration:underline;text-decoration-style:wavy;text-decoration-color:#6d5426;text-underline-offset:3px' : ''),
+            tileStyle: 'flex:none;width:20px;height:20px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:' + e.accent + '1c;border:1px solid ' + e.accent + '3d;color:' + e.accent,
+            barStyle: 'height:100%;width:' + fp + '%;background:' + (fp === 100 ? '#5f9e6d' : e.accent),
+            flagLabel: chip ? chip.label : '', flagStyle: chip ? chip.style : '', onFlags: gotoFinding(f.flag),
+            expanded: S.expandedFeatures.indexOf(f.num) >= 0 && f.issues.length > 0,
+            issues: f.issues.map(i => {
+              const ic = i.flag ? flagChip(i.flag) : null;
+              return {num: i.num, title: i.title, textColor: i.closed ? '#6e7681' : '#c9d1d9',
+                dotStyle: 'flex:none;width:6px;height:6px;border-radius:99px;' + (i.closed ? 'background:#5f9e6d' : 'background:transparent;border:1.5px solid #6e7681'),
+                flagLabel: ic ? ic.label : '', flagStyle: ic ? ic.style : '', onFlags: gotoFinding(i.flag)};
+            }),
+            onToggle: () => self.setState(s => ({expandedFeatures: s.expandedFeatures.indexOf(f.num) >= 0 ? s.expandedFeatures.filter(n => n !== f.num) : s.expandedFeatures.concat(f.num)})),
+            onDrill: (ev) => { ev.stopPropagation(); self.setState({scopeEpic: e.num, scopeFeature: f.num}); }
+          };
+        }),
+        bugs: (showBugs ? e.bugs : []).map(b => {
+          const bc = b.flag ? flagChip(b.flag) : null;
+          return {num: b.num, title: b.title, flagLabel: bc ? bc.label : '', flagStyle: bc ? bc.style : '', onFlags: gotoFinding(b.flag)};
+        })
+      };
+    });
+
+    let featureView = {on:false, openIssues:[], stats:[]};
+    if (scopedFeature) {
+      const open = scopedFeature.issues.filter(i => !i.closed);
+      featureView = {
+        on:true, num: scopedFeature.num, name: scopedFeature.name, accent: scopedEpic.accent,
+        openCount: scopedFeature.total - scopedFeature.closed,
+        tileStyle: 'flex:none;width:22px;height:22px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:' + scopedEpic.accent + '1c;border:1px solid ' + scopedEpic.accent + '3d;color:' + scopedEpic.accent,
+        stats: [
+          {label:'Closed', value: scopedFeature.closed, color:'#7fb08a'},
+          {label:'Open gap', value: scopedFeature.total - scopedFeature.closed, color:'#e6edf3'},
+          {label:'Rollup', value: Math.round(scopedFeature.closed / scopedFeature.total * 100) + '%', color:'#e6edf3'}
+        ],
+        openIssues: open.map(i => ({num: i.num, title: i.title}))
+      };
+    }
+
+    const maxTotal = 98;
+    const shapeRows = this.SHAPES.map(s => {
+      const closedPct = Math.round(s.closed / s.total * 100);
+      const featPct = Math.round(s.inFeature / s.total * 100);
+      return {
+        num: s.num, name: s.name, meta: s.closed + '/' + s.total + ' closed',
+        widthPct: Math.max(14, Math.round(s.total / maxTotal * 100)),
+        shapeLabel: s.shapeLabel,
+        fillStyle: 'position:absolute;inset:0;width:' + closedPct + '%;background:' + s.accent + ';opacity:.55',
+        notchStyle: 'position:absolute;top:0;bottom:0;left:' + featPct + '%;width:2px;background:#e2984a'
+      };
+    });
+
+    const ruleOrder = ['depth','naming','stale','orphan','dead'];
+    const ruleCards = ruleOrder.map(k => {
+      const r = R[k];
+      const items = this.FINDINGS.filter(f => f.rule === k);
+      const openN = items.filter(f => this._fs(f) === 'Open').length;
+      const on = S.ruleFilter === k;
+      const totals = {depth:8, naming:42, dead:1, stale:6, orphan:3};
+      return {
+        label: r.label, icon: r.icon, color: r.color, rule: r.rule,
+        count: totals[k], unit: r.unit + (openN ? ' · ' + openN + ' queued' : ''),
+        onClick: () => this.setState(s => ({ruleFilter: s.ruleFilter === k ? null : k})),
+        tileStyle: 'flex:none;width:20px;height:20px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:' + r.color + '1c;border:1px solid ' + r.color + '3d;color:' + r.color,
+        style: 'text-align:left;background:#0f1319;border:1px solid ' + (on ? r.color + '88' : '#1b212a') + ';border-radius:8px;padding:10px 11px;cursor:pointer;' + (on ? 'box-shadow:inset 0 0 0 1px ' + r.color + '33' : '')
+      };
+    });
+
+    const stDefs = ['Open','In chat','Needs review','Fixed','All'];
+    const stateChips = stDefs.map(st => {
+      const on = S.stateFilter === st;
+      return {label: st, onClick: () => this.setState({stateFilter: st}),
+        style: 'font-size:9.5px;font-weight:700;padding:4px 10px;border-radius:99px;cursor:pointer;' +
+          (on ? 'background:#233247;border:1px solid #3d5875;color:#cfe0f0' : 'background:#12151c;border:1px solid #262c36;color:#6e7681')};
+    });
+
+    const visible = this.FINDINGS.filter(f => (!S.ruleFilter || f.rule === S.ruleFilter) && (S.stateFilter === 'All' || this._fs(f) === S.stateFilter));
+    const sevColor = {Blocking:'#ef6f66', Convention:'#e2984a', 'Needs review':'#d4a03c', Informational:'#6e7681'};
+    const stColor = {Open:'#8b949e', 'In chat':'#c08552', Reviewed:'#e2984a', 'Needs review':'#d4a03c', Working:'#c08552', Queued:'#6e7681', Fixed:'#7fb08a', Dismissed:'#4d5561'};
+
+    const findings = visible.map(f => {
+      const r = R[f.rule], st = this._fs(f), done = st === 'Fixed' || st === 'Dismissed';
+      return {
+        num: f.num, title: f.title, detected: f.detected, rule: r.label, icon: r.icon,
+        severity: f.severity, state: st,
+        cardStyle: 'background:#0f1319;border:1px solid ' + (done ? '#1b212a' : r.color + '3a') + ';border-left:3px solid ' + (done ? '#2e3742' : r.color) + ';border-radius:9px;' + (done ? 'opacity:.55' : ''),
+        tileStyle: 'flex:none;width:26px;height:26px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;background:' + r.color + '1c;border:1px solid ' + r.color + '3d;color:' + r.color,
+        rulePill: this._pill(r.color, r.label),
+        sevPill: this._pill(sevColor[f.severity] || '#6e7681', f.severity),
+        statePill: this._pill(stColor[st], st, st === 'Fixed'),
+        hasChain: !!f.chain, hasMatch: !!f.matchTerm, hasPlain: !!f.plain, plain: f.plain,
+        chain: (f.chain || []).map((c, i) => ({
+          depth: c.depth, num: c.num, title: c.title, note: c.note || '',
+          indent: i * 13, rail: i === 0 ? '' : '└',
+          color: c.depth > 3 ? '#ef6f66' : (c.note ? '#f0b568' : '#c9d1d9'),
+          depthStyle: 'flex:none;font-size:8.5px;font-weight:800;padding:1px 5px;border-radius:3px;font-family:' + this.MONO + ';' +
+            (c.depth > 3 ? 'background:rgba(239,111,102,.18);border:1px solid #7a2f2a;color:#ef6f66' : 'background:#12151c;border:1px solid #262c36;color:#6e7681')
+        })),
+        matchPre: f.matchPre, matchTerm: f.matchTerm, matchPost: f.matchPost, matchNote: f.matchNote,
+        sendLabel: done || st === 'In chat' ? '' : 'Send to Claude', sendIcon: 'sparkles',
+        sendStyle: 'height:26px;padding:0 11px;display:inline-flex;align-items:center;gap:6px;background:rgba(192,133,82,.14);border:1px solid rgba(192,133,82,.45);border-radius:6px;color:#e0a879;font-size:10.5px;font-weight:700;cursor:pointer;white-space:nowrap',
+        onSend: () => { this.sendBatch([f.id]); this.setState({screen:'chat'}); },
+        fixLabel: f.fix && !done ? f.fix : '', fixIcon: f.fixIcon || 'wrench',
+        fixStyle: 'height:26px;padding:0 11px;display:inline-flex;align-items:center;gap:6px;background:#1d3450;border:1px solid #3d5875;border-radius:6px;color:#cfe0f0;font-size:10.5px;font-weight:700;cursor:pointer',
+        reviewLabel: f.review && !done && st !== 'Reviewed' ? f.review : '',
+        dismissLabel: done ? 'Reopen' : 'Dismiss',
+        actionNote: f.actionNote,
+        onFix: () => this._setF(f.id, 'Fixed'),
+        onReview: () => this._setF(f.id, 'Reviewed'),
+        onDismiss: () => this._setF(f.id, done ? 'Open' : 'Dismissed')
+      };
+    });
+
+    const queueStats = [
+      {id:'Open', label:'Open', color:'#8b949e'},
+      {id:'In chat', label:'In chat', color:'#c08552'},
+      {id:'Needs review', label:'Needs review', color:'#d4a03c'},
+      {id:'Fixed', label:'Fixed', color:'#7fb08a'}
+    ].map(c => ({label: c.label, color: c.color, value: this.FINDINGS.filter(f => this._fs(f) === c.id).length}));
+
+    const batchSize = this.props.batchSize || 5;
+    const openFindings = this.FINDINGS.filter(f => this._fs(f) === 'Open');
+    const sel = S.selected;
+    const pickList = this.FINDINGS.filter(f => ['Open','In chat'].indexOf(this._fs(f)) >= 0).map(f => {
+      const r = R[f.rule], st = this._fs(f), on = sel.indexOf(f.id) >= 0, inChat = st === 'In chat';
+      return {
+        num: f.num, title: f.title, rule: r.short, state: st,
+        rulePill: this._pill(r.color, r.short),
+        statePill: this._pill(stColor[st] || '#6e7681', st),
+        titleColor: inChat ? '#6e7681' : '#c9d1d9',
+        mark: on ? '\u2713' : '',
+        boxStyle: 'flex:none;width:14px;height:14px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;margin-top:2px;' +
+          (on ? 'background:#4d7aa8;border:1px solid #6a8fb5;color:#0a0d12' : 'background:transparent;border:1px solid ' + (inChat ? '#262c36' : '#3d4856') + ';color:transparent'),
+        style: 'display:flex;gap:9px;padding:9px 10px;border-radius:7px;cursor:' + (inChat ? 'default' : 'pointer') + ';background:' + (on ? 'rgba(77,122,168,.1)' : '#0f1319') + ';border:1px solid ' + (on ? '#3d5875' : '#1b212a') + (inChat ? ';opacity:.5' : ''),
+        onToggle: () => { if (inChat) return; this.setState(s => ({selected: s.selected.indexOf(f.id) >= 0 ? s.selected.filter(x => x !== f.id) : (s.selected.length >= batchSize ? s.selected : s.selected.concat(f.id))})); }
+      };
+    });
+
+    const messages = S.messages.map(m => {
+      const you = m.role === 'you';
+      return {
+        role: you ? 'You' : 'Claude', text: m.text,
+        wrapStyle: 'display:flex;flex-direction:column;gap:5px;max-width:640px' + (you ? ';align-self:flex-end;align-items:flex-end' : ''),
+        roleStyle: 'font-size:8.5px;font-weight:800;letter-spacing:.11em;text-transform:uppercase;color:' + (you ? '#576069' : '#c08552'),
+        bodyStyle: 'padding:11px 13px;border-radius:9px;background:' + (you ? '#182231' : '#0f1319') + ';border:1px solid ' + (you ? '#2b3d55' : '#1f242c'),
+        textColor: you ? '#cfe0f0' : '#c9d1d9',
+        hasItems: !!(m.items && m.items.length), items: (m.items || []).map(it => {
+          const r = R[it.rule], done = it.state === 'Fixed' || it.state === 'Dismissed';
+          return {
+            num: it.num, text: it.text, state: it.state,
+            color: it.state === 'Needs review' ? '#e0be7d' : (done ? '#8b949e' : '#c9d1d9'),
+            icon: done ? 'check' : (it.state === 'Needs review' ? 'eye' : (it.state === 'Working' ? 'loader' : 'dot')),
+            iconStyle: 'flex:none;width:15px;height:15px;border-radius:4px;display:inline-flex;align-items:center;justify-content:center;background:' + (stColor[it.state] || '#6e7681') + '22;color:' + (stColor[it.state] || '#6e7681'),
+            statePill: this._pill(stColor[it.state] || '#6e7681', it.state),
+            style: 'display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:6px;background:#0a0d12;border:1px solid ' + (done ? '#1b212a' : r.color + '2e')
+          };
+        })
+      };
+    });
+
+    const atlasMode = S.atlasMode;
+    const atlasModes = [{id:'state', label:'Open / closed'}, {id:'health', label:'Health'}].map(m => ({
+      label: m.label, onClick: () => this.setState({atlasMode: m.id}),
+      style: 'height:24px;padding:0 12px;border:none;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;' +
+        (atlasMode === m.id ? 'background:#233247;color:#cfe0f0;box-shadow:inset 0 0 0 1px #3d5875' : 'background:transparent;color:#8b949e')
+    }));
+
+    const cellFor = (opts) => {
+      const flagged = opts.flag;
+      const base = 'width:9px;height:9px;border-radius:2px;display:inline-block;';
+      if (atlasMode === 'health') {
+        if (flagged) return base + 'background:' + R[flagged].color + ';box-shadow:0 0 0 1.5px ' + R[flagged].color + '55';
+        return base + 'background:#161b22;border:1px solid #1f242c';
+      }
+      if (flagged) return base + 'background:' + (opts.closed ? R[flagged].color + '77' : R[flagged].color) + ';box-shadow:0 0 0 1.5px ' + R[flagged].color + '44';
+      return base + (opts.closed ? 'background:' + opts.accent + '99' : 'background:transparent;border:1px solid ' + opts.accent + '55');
+    };
+
+    const territories = this.EPICS.map(e => {
+      const featTotal = e.features.reduce((a, f) => a + f.total, 0);
+      const loose = Math.max(e.bugs.length, e.total - featTotal);
+      const clusters = e.features.map(f => {
+        const cells = [];
+        for (let i = 0; i < f.total; i++) {
+          const closed = i < f.closed;
+          const flag = (!closed && i === f.closed && f.flag) ? f.flag : null;
+          cells.push({title: f.name + ' — ' + (closed ? 'closed' : 'open'), style: cellFor({closed, accent: e.accent, flag})});
+        }
+        return {
+          label: f.name.replace(/^Feature: /, '').replace(/^Portal New Design: /, ''),
+          labelStyle: 'font-size:8.5px;font-weight:700;color:' + (f.flag ? '#e0a879' : '#6e7681') + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0',
+          dashStyle: 'flex:none;width:6px;height:2px;border-radius:2px;background:' + e.accent + '99',
+          flag: f.flag ? R[f.flag].short : '',
+          flagStyle: f.flag ? 'flex:none;font-size:7.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:0 5px;border-radius:99px;background:' + R[f.flag].color + '22;border:1px solid ' + R[f.flag].color + '55;color:' + R[f.flag].color : '',
+          cells
+        };
+      });
+      if (loose > 0) {
+        const cells = [];
+        for (let i = 0; i < loose; i++) {
+          const b = e.bugs[i];
+          const closed = i >= e.bugs.length;
+          cells.push({title: b ? '#' + b.num + ' ' + b.title : 'closed leaf issue', style: cellFor({closed, accent: '#6e7681', flag: b && b.flag ? b.flag : null})});
+        }
+        clusters.push({
+          label: 'loose issues', labelStyle: 'font-size:8.5px;font-weight:700;color:#4d5561;white-space:nowrap',
+          dashStyle: 'flex:none;width:6px;height:2px;border-radius:2px;background:#3a424e;border-top:1px dashed #4d5561',
+          flag: '', flagStyle: '', cells
+        });
+      }
+      return {
+        num: e.num, name: e.name.replace(/^Epic: /, ''), frac: e.closed + '/' + e.total,
+        icon: e.gate ? 'shield-alert' : 'git-branch',
+        nameStyle: 'font-size:11px;font-weight:700;color:' + (e.gate ? '#d8b4fe' : '#e6edf3') + ';flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis',
+        tileStyle: 'flex:none;width:18px;height:18px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;background:' + e.accent + '1c;border:1px solid ' + e.accent + '3d;color:' + e.accent,
+        style: 'flex:' + e.total + ' 1 ' + Math.max(168, Math.round(e.total * 3.4)) + 'px;min-width:168px;background:#0f1319;border:1px solid ' + (e.gate ? '#4a2f6d' : '#1b212a') + ';border-top:2px solid ' + e.accent + ';border-radius:8px',
+        clusters
+      };
+    });
+
+    const atlasLegend = [
+      {label:'closed', swatch:'width:10px;height:10px;border-radius:2px;background:#6a8fb599;display:inline-block'},
+      {label:'open', swatch:'width:10px;height:10px;border-radius:2px;border:1px solid #6a8fb555;display:inline-block'},
+      {label:'depth violation', swatch:'width:10px;height:10px;border-radius:2px;background:#ef6f66;box-shadow:0 0 0 1.5px #ef6f6655;display:inline-block'},
+      {label:'naming violation', swatch:'width:10px;height:10px;border-radius:2px;background:#e2984a;box-shadow:0 0 0 1.5px #e2984a55;display:inline-block'},
+      {label:'stale reference', swatch:'width:10px;height:10px;border-radius:2px;background:#d4a03c;box-shadow:0 0 0 1.5px #d4a03c55;display:inline-block'},
+      {label:'orphan', swatch:'width:10px;height:10px;border-radius:2px;background:#a374ea;box-shadow:0 0 0 1.5px #a374ea55;display:inline-block'}
+    ];
+
+    const atlasReads = [
+      {accent:'#37b8b0', title:'Application Core is a wall', body:'98 cells, and the two Feature clusters only account for 36 of them. The rest is one undifferentiated block of leaf bugs.'},
+      {accent:'#6a8fb5', title:'Build Console\u2019s damage is local', body:'Every depth and naming cell sits inside Git Board & Chats. The other two Features are clean.'},
+      {accent:'#e2984a', title:'Naming rot clusters by surface', body:'Portal carries two mis-titled Features side by side — the same dead prefix era, not scattered mistakes.'},
+      {accent:'#c084fc', title:'GATE is 7 cells, not 7 issues', body:'It sits on the map at true size. Small area, absolute veto — the map never implies it is minor work.'}
+    ];
+
+    return {
+      screens, isMap: screen === 'map', isAtlas: screen === 'atlas', isFindings: screen === 'findings', isChat: screen === 'chat',
+      scanLabel: 'last scan 2026-09-02 08:42 · 60 findings',
+      onRescan: () => this.forceUpdate(),
+      gate, levels, crumbs,
+      scopeActive: !!scopedEpic || !!scopedFeature,
+      onClearScope: () => this.setState({scopeEpic:null, scopeFeature:null}),
+      showTree: !scopedFeature, epicRows, featureView, shapeRows,
+      showDead: S.showDead,
+      deadIcon: S.showDead ? 'eye-off' : 'eye',
+      deadLabel: S.showDead ? 'Hide dead subtree' : 'Show dead subtree',
+      deadNote: S.showDead ? '#1094 and its 69 closed descendants are on the map.' : '1 dead subtree hidden — #1094, 69 closed descendants.',
+      deadToggleStyle: 'display:inline-flex;align-items:center;gap:5px;flex:none;white-space:nowrap;font-size:9.5px;font-weight:700;padding:4px 9px;border-radius:6px;cursor:pointer;' +
+        (S.showDead ? 'background:#1a2029;border:1px solid #3d4856;color:#c9d1d9' : 'background:#12151c;border:1px solid #262c36;color:#8b949e'),
+      onToggleDead: () => this.setState(s => ({showDead: !s.showDead})),
+      deadRow: {show: S.showDead && !scopedEpic && S.level !== 'features', onToggle: () => this.setState({showDead:false})},
+      openFindingCount: openCount,
+      ruleCards, stateChips, findings, findingsEmpty: findings.length === 0,
+      ruleFilterLabel: S.ruleFilter ? R[S.ruleFilter].label : '',
+      onClearRule: () => this.setState({ruleFilter: null}),
+      deadPaths: this.DEAD_PATHS.map(d => ({
+        path: d.path, retired: d.retired, hits: d.hits + ' hit' + (d.hits === 1 ? '' : 's'),
+        hitStyle: 'flex:none;font-size:8.5px;font-weight:800;padding:1px 6px;border-radius:99px;font-family:' + this.MONO + ';' +
+          (d.hits ? 'background:rgba(212,160,60,.16);border:1px solid #6d5426;color:#d4a03c' : 'background:#12151c;border:1px solid #262c36;color:#4d5561')
+      })),
+      queueStats, pickList, pickEmpty: pickList.length === 0,
+      onAutoPick: () => this.setState({selected: openFindings.slice(0, batchSize).map(f => f.id)}),
+      onSendBatch: () => this.sendBatch(sel),
+      sendBatchLabel: sel.length ? 'Send ' + sel.length + ' to Claude' : 'Select up to ' + batchSize,
+      sendBatchStyle: 'width:100%;height:32px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border-radius:7px;font-size:11.5px;font-weight:700;white-space:nowrap;cursor:' + (sel.length ? 'pointer' : 'default') + ';' +
+        (sel.length ? 'background:#c08552;border:1px solid #d69a63;color:#160e07' : 'background:#12151c;border:1px solid #262c36;color:#4d5561'),
+      sendBatchNote: sel.length >= batchSize ? 'Batch full. A small batch keeps the chat honest.' : batchSize + ' at a time. The batch carries evidence, not just numbers.',
+      messages, chatEmpty: messages.length === 0,
+      chatMeta: messages.length ? (messages.length / 2) + ' batch' + (messages.length > 2 ? 'es' : '') + ' this session' : 'no batch sent',
+      composerHint: messages.length ? 'Ask about any finding, or send the next five…' : 'Send a batch to start…',
+      atlasModes, territories, atlasLegend, atlasReads
+    };
+  }
+}
+
+</script>
+</body>
+</html>
