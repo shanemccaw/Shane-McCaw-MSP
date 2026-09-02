@@ -29,6 +29,16 @@
                 <TextBlock Text="Test Pad" FontSize="13" FontWeight="SemiBold"
                            Foreground="{StaticResource Brush.Text.Heading}" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Git #2343 — "Import: paste a whole Notepad file." Opens the paste/preview
+                         dialog; imported notes land in the same shared store as every other note. -->
+                    <Border x:Name="BtnImport" Height="20" CornerRadius="4" Cursor="Hand"
+                            Padding="6,0" Margin="0,0,6,0" Background="Transparent"
+                            MouseLeftButtonUp="BtnImport_Click"
+                            ToolTip="Import — paste a whole Notepad file">
+                        <TextBlock Text="Import" FontSize="10"
+                                   Foreground="{StaticResource Brush.Text.Muted}"
+                                   VerticalAlignment="Center"/>
+                    </Border>
                     <!-- Git #2334 — "By feature" regroups the list. Toggles the notes list below
                          between flat (newest-first) and grouped-by-Feature. -->
                     <Border x:Name="BtnGroupByFeature" Height="20" CornerRadius="4" Cursor="Hand"
