@@ -320,12 +320,21 @@ public partial class MainWindow : Window
             return;
         }
 
+        OpenLeftPanel(source);
+    }
+
+    /// <summary>Git #2203 — pulled out of RailToggle_Click so the Command Center's per-category
+    /// right pane (Git panel / Build Watch / Sidebar buttons) can open a real rail panel too,
+    /// not just a physical rail-icon click. Matches rail buttons by <c>Tag</c> instead of by
+    /// reference, since there's no clicked ToggleButton in this call path.</summary>
+    private void OpenLeftPanel(string source)
+    {
         _leftPanelSource = source;
         LeftPanel.Width = LeftPanelWidth;
         LeftPanelTitle.Text = RailPanelLabels.TryGetValue(source, out var label) ? label : source.ToUpperInvariant();
 
         foreach (var rail in RailButtons)
-            rail.IsChecked = ReferenceEquals(rail, clicked);
+            rail.IsChecked = (string)rail.Tag == source;
 
         ChatsPanelBody.Visibility = source == "Chat" ? Visibility.Visible : Visibility.Collapsed;
         GitPanelBody.Visibility = source == "Git" ? Visibility.Visible : Visibility.Collapsed;
@@ -3154,12 +3163,15 @@ public partial class MainWindow : Window
         }
     }
 
-    // ── Command Palette — Ctrl+K (or the title bar search trigger). Results
-    // are built from real data only (_tabs, _queueItems). The reference
-    // screenshot's other categories (Git Epics, Git Issues, Services,
-    // Terminal, SQL, Build IDs, Files) are kept for visual parity but stay
-    // an honest (0) — ShaneBuilder has no real data source for any of them
-    // yet, so they're never populated with invented rows.
+    // ── Command Palette — Ctrl+K (or the title bar search trigger). Git #2203 —
+    // every category now renders its own real right-pane per readme-phase2.md Step 14:
+    // Git Epics/Issues off live `gh` (GitMapService/GitIssuesService), Builds/Build IDs off
+    // real bt_build_queue rows (QueueReadClient) plus the real per-build stdout log
+    // (BuildLogTailReader), Claude & URLs off _tabs, Services off scripts/dev-all.mjs's own
+    // real .meta.json files (DevServicesReadClient), Terminal off a real TerminalSession,
+    // SQL off the real SqlRunnerService + on-disk .sql files (RepoSqlFileScanner). "Files"
+    // stays an honest (0) — Tab Workspaces (Step 9) isn't built yet, and Step 14's own
+    // contract doesn't list Files as one of the seven panes to build.
     private sealed class PaletteResult
     {
         public string Category { get; }
@@ -3169,8 +3181,14 @@ public partial class MainWindow : Window
         public string PreviewTitle { get; }
         public string? PreviewBody { get; }
         public Action OnSelect { get; }
+        /// <summary>The real typed row backing this result (GitMapEpic / GitIssueRow /
+        /// BuildQueueRow / TabDef / DevServiceRow) — null for the handful of static quick-open
+        /// items (Git Doctor, Log Viewer, Git Map). <see cref="RenderPaletteDetailPane"/> reads
+        /// this to build the category-specific right pane instead of the old one-sentence
+        /// generic preview.</summary>
+        public object? Payload { get; }
 
-        public PaletteResult(string category, string title, string? subtitle, Brush? dot, string previewTitle, string? previewBody, Action onSelect)
+        public PaletteResult(string category, string title, string? subtitle, Brush? dot, string previewTitle, string? previewBody, Action onSelect, object? payload = null)
         {
             Category = category;
             Title = title;
@@ -3179,6 +3197,7 @@ public partial class MainWindow : Window
             PreviewTitle = previewTitle;
             PreviewBody = previewBody;
             OnSelect = onSelect;
+            Payload = payload;
         }
     }
 
@@ -3199,6 +3218,29 @@ public partial class MainWindow : Window
     private string _paletteCategory = "All";
     private List<PaletteResult> _paletteFiltered = new();
     private int _paletteSelectedIndex;
+
+    // ── Real per-category data caches (Git #2203). Populated by EnsurePaletteRealDataAsync,
+    // never inline in BuildAllPaletteResults — that stays a fast synchronous read of whatever
+    // was last loaded, so it's still safe to call on every keystroke.
+    private readonly List<Services.GitMapEpic> _paletteEpics = new();
+    private readonly Dictionary<int, List<Services.GitMapFeature>> _paletteEpicFeatures = new();
+    private readonly List<Services.GitIssueRow> _paletteIssues = new();
+    private readonly List<Services.BuildQueueRow> _paletteBuilds = new();
+    private readonly List<Services.DevServiceRow> _paletteServices = new();
+    private List<Services.RepoSqlFile> _paletteSqlFiles = new();
+    private bool _paletteRealDataLoaded;
+    private DateTime _paletteRealDataLoadedAtUtc = DateTime.MinValue;
+    private int _paletteRealDataLoadSeq;
+    private int _paletteEpicFeaturesLoadSeq;
+
+    // Terminal category — one dedicated session for the palette itself (not tied to any chat
+    // tab, since the palette is a global overlay). SQL category — the last real execution
+    // result, kept independent of CommandPaletteInput's live text so it "survives without
+    // touching the input" per Step 14's own done-when criteria.
+    private TerminalSession? _paletteTerminalSession;
+    private List<Services.SqlStatementResult>? _paletteSqlResult;
+    private string? _paletteSqlError;
+    private string? _paletteSqlLastRunAt;
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -3228,7 +3270,17 @@ public partial class MainWindow : Window
             if (e.Key == Key.Escape) { e.Handled = true; CloseCommandPalette(); }
             else if (e.Key == Key.Down) { e.Handled = true; MovePaletteSelection(1); }
             else if (e.Key == Key.Up) { e.Handled = true; MovePaletteSelection(-1); }
-            else if (e.Key == Key.Enter) { e.Handled = true; ActivatePaletteSelection(); }
+            else if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                // Terminal/SQL — the search box IS the prompt; Enter runs the real command
+                // instead of activating a list row (README-phase2.md Step 14's "Enter in
+                // Terminal/SQL executes").
+                string cmd = CommandPaletteInput.Text.Trim();
+                if (_paletteCategory == "Terminal" && cmd.Length > 0) PaletteRunTerminalCommand(cmd);
+                else if (_paletteCategory == "SQL" && cmd.Length > 0) _ = PaletteRunSqlAsync(cmd);
+                else ActivatePaletteSelection();
+            }
             else if (e.Key == Key.Tab)
             {
                 e.Handled = true;
@@ -3276,6 +3328,54 @@ public partial class MainWindow : Window
         RenderPaletteCategories();
         RenderCommandPaletteResults();
         CommandPaletteInput.Focus();
+        _ = EnsurePaletteRealDataAsync();
+    }
+
+    /// <summary>Loads every category's real backing data in parallel — real `gh` epics/issues,
+    /// real bt_build_queue rows, real dev-service status, real on-disk .sql files. Cached for
+    /// 30s so repeated Ctrl+K taps don't re-hit GitHub/Postgres/gh every time; a stale cache is
+    /// still real data, just not the freshest possible read.</summary>
+    private async Task EnsurePaletteRealDataAsync(bool force = false)
+    {
+        if (!force && _paletteRealDataLoaded && (DateTime.UtcNow - _paletteRealDataLoadedAtUtc) < TimeSpan.FromSeconds(30))
+            return;
+
+        int seq = ++_paletteRealDataLoadSeq;
+        string repoRoot = _logService.MainRepoRoot ?? Environment.CurrentDirectory;
+
+        var epicsTask = Services.GitMapService.GetOpenEpicsAsync(_activeChatTab?.EpicNumber);
+        var issuesTask = Services.GitIssuesService.GetRecentOpenIssuesAsync();
+        var servicesTask = Services.DevServicesReadClient.GetAllAsync(repoRoot);
+        var queueClient = Services.QueueReadClient.CreateFromEnvironment();
+        var buildsTask = queueClient?.GetRecentBuildsAsync() ?? Task.FromResult(new List<Services.BuildQueueRow>());
+
+        try { await Task.WhenAll(epicsTask, issuesTask, servicesTask, buildsTask); }
+        catch { /* individual tasks report their own honest failure below */ }
+        if (seq != _paletteRealDataLoadSeq) return; // superseded by a newer load
+
+        _paletteEpics.Clear();
+        _paletteEpicFeatures.Clear(); // real reload — an epic's real sub-issues can have changed since the last fetch
+        if (epicsTask.IsCompletedSuccessfully && epicsTask.Result.Ok) _paletteEpics.AddRange(epicsTask.Result.Epics);
+
+        _paletteIssues.Clear();
+        if (issuesTask.IsCompletedSuccessfully && issuesTask.Result.Ok) _paletteIssues.AddRange(issuesTask.Result.Issues);
+
+        _paletteServices.Clear();
+        if (servicesTask.IsCompletedSuccessfully) _paletteServices.AddRange(servicesTask.Result);
+
+        _paletteBuilds.Clear();
+        if (buildsTask.IsCompletedSuccessfully) _paletteBuilds.AddRange(buildsTask.Result);
+
+        _paletteSqlFiles = Services.RepoSqlFileScanner.Scan(repoRoot);
+
+        _paletteRealDataLoaded = true;
+        _paletteRealDataLoadedAtUtc = DateTime.UtcNow;
+
+        if (CommandPaletteOverlay.Visibility == Visibility.Visible)
+        {
+            RenderPaletteCategories();
+            RenderCommandPaletteResults(preserveSelection: true);
+        }
     }
 
     private void CloseCommandPalette()
@@ -3370,19 +3470,95 @@ public partial class MainWindow : Window
         {
             results.Add(new PaletteResult("ClaudeUrls", tab.Title, tab.IsHome ? "Home tab" : "Chat tab",
                 tab.Dot, tab.Title, tab.IsHome ? "Today's objectives and Next Up." : "Real claude.ai, embedded via WebView2.",
-                () => SelectTab(tab.Id)));
+                () => SelectTab(tab.Id), payload: tab));
         }
 
-        foreach (var item in _queueItems)
+        // Git #2203 — the "Builds" category used to be populated from _queueItems here, but that
+        // list is pre-existing sample/fixture data (SeedSampleQueueData — the Build Queue side
+        // panel's own out-of-scope debt, see #2176's bookend), never real. Mixing fabricated rows
+        // into the same category as the real _paletteBuilds rows below would violate this
+        // project's "never invent data to display" rule and confuse the two lists (they don't
+        // even share a real key). Removed — "Builds"/"Build IDs" are real-only, from
+        // _paletteBuilds (real bt_build_queue rows) further down.
+
+        // ── Git Epics — real, off live `gh` (Git #2203). ─────────────────────────────────────
+        foreach (var epic in _paletteEpics)
         {
-            string title = item.GithubNumber.HasValue ? $"#{item.GithubNumber.Value} {item.Title}" : item.Title;
-            results.Add(new PaletteResult("Builds", title, $"{item.BuildSet} · {StatusDisplayLabel(item.Status)}",
-                StatusBrush(item.Status), title, item.Branch != null ? $"Branch: {item.Branch}" : null,
-                () => OpenBuildDetail(item)));
+            string title = $"#{epic.Number} {StripEpicTitlePrefix(epic.Title)}";
+            results.Add(new PaletteResult("GitEpics", title, epic.Milestone != null ? $"Milestone: {epic.Milestone}" : "No milestone",
+                (Brush)FindResource("Brush.Epic.Gate"), title, null,
+                () => { OpenIssueInBrowser(epic.Number); CloseCommandPalette(); }, payload: epic));
         }
+
+        // ── Git Issues — real, off live `gh` (Git #2203). ────────────────────────────────────
+        foreach (var issue in _paletteIssues)
+        {
+            string title = $"#{issue.Number} {issue.Title}";
+            string subtitle = issue.Labels.Count > 0 ? string.Join(", ", issue.Labels) : "No labels";
+            results.Add(new PaletteResult("GitIssues", title, subtitle,
+                (Brush)FindResource("Brush.Text.Dim"), title, null,
+                () => { OpenIssueInBrowser(issue.Number); CloseCommandPalette(); }, payload: issue));
+        }
+
+        // ── Builds & Build IDs — real bt_build_queue rows, shown under both category tabs
+        // (Step 14 pairs them under one right-pane shape), keyed differently per tab so
+        // searching by title or by raw build id both work. ──────────────────────────────────
+        foreach (var build in _paletteBuilds)
+        {
+            string byTitle = build.GithubNumber.HasValue ? $"#{build.GithubNumber.Value} {build.Title}" : build.Title;
+            string subtitle = $"{build.BuildSet ?? "—"} · {build.Status}";
+            var dot = QueueStatusBrush(build.Status);
+            results.Add(new PaletteResult("Builds", byTitle, subtitle, dot, byTitle, null,
+                () => { if (build.GithubNumber.HasValue) OpenIssueInBrowser(build.GithubNumber.Value); CloseCommandPalette(); }, payload: build));
+            results.Add(new PaletteResult("BuildIDs", $"Build {build.Id} — {build.Title}", subtitle, dot, byTitle, null,
+                () => { if (build.GithubNumber.HasValue) OpenIssueInBrowser(build.GithubNumber.Value); CloseCommandPalette(); }, payload: build));
+        }
+
+        // ── Services — real, off scripts/dev-all.mjs's own .meta.json files (Git #2203). ────
+        foreach (var svc in _paletteServices)
+        {
+            results.Add(new PaletteResult("Services", svc.Title, $"Port {svc.Port} · {(svc.PortOpen ? "Running" : "Stopped")}",
+                svc.PortOpen ? (Brush)FindResource("Brush.Status.Done") : (Brush)FindResource("Brush.Text.Dim"),
+                svc.Title, null,
+                () => { if (svc.PortOpen) Process.Start(new ProcessStartInfo($"http://localhost:{svc.Port}") { UseShellExecute = true }); CloseCommandPalette(); },
+                payload: svc));
+        }
+
+        // ── Terminal / SQL — one fixed quick-open item each, deliberately NOT filtered by the
+        // query box (BuildAllPaletteResults always includes them; RenderCommandPaletteResults
+        // skips the text filter entirely for these two categories) so the tool item can't
+        // unmount out from under the user while they're typing a command. ──────────────────
+        // Selecting either row (e.g. from the "All" category, before the query box has become a
+        // command buffer) switches into that category rather than no-opping — a selectable row
+        // that does nothing on Enter/click would be a real, surprising dead end.
+        int termCount = _paletteTerminalSession?.Lines.Count ?? 0;
+        results.Add(new PaletteResult("Terminal", "Terminal session", termCount > 0 ? $"{termCount} lines" : "Type a command below and press Enter",
+            (Brush)FindResource("Brush.LogSource.Terminal"), "Terminal", null,
+            () => SetPaletteCategory("Terminal"), payload: null));
+
+        string sqlSubtitle = _paletteSqlResult != null ? $"Last run {_paletteSqlLastRunAt}" : "Type SQL below and press Enter";
+        results.Add(new PaletteResult("SQL", "SQL Runner", sqlSubtitle,
+            (Brush)FindResource("Brush.LogSource.Sql"), "SQL", null,
+            () => SetPaletteCategory("SQL"), payload: null));
 
         return results;
     }
+
+    private static string StripEpicTitlePrefix(string title) =>
+        System.Text.RegularExpressions.Regex.Replace(title ?? "", @"^epic:\s*", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private Brush QueueStatusBrush(string status) => (Brush)FindResource(status switch
+    {
+        "done" => "Brush.Status.Done",
+        "running" => "Brush.Status.Running",
+        "failed" => "Brush.Status.Crashed",
+        "verifying" => "Brush.Status.Verifying",
+        "blocked" => "Brush.Status.Blocked",
+        "parked" => "Brush.Status.Parked",
+        "canceled" or "cancelled" => "Brush.Status.Cancelled",
+        "external" => "Brush.Status.External",
+        _ => "Brush.Status.Queued"
+    });
 
     private void RenderPaletteCategories()
     {
@@ -3449,17 +3625,31 @@ public partial class MainWindow : Window
     private void ActivatePaletteSelection()
     {
         if (_paletteSelectedIndex < 0 || _paletteSelectedIndex >= _paletteFiltered.Count) return;
-        _paletteFiltered[_paletteSelectedIndex].OnSelect();
-        CloseCommandPalette();
+        ActivatePaletteResult(_paletteFiltered[_paletteSelectedIndex]);
+    }
+
+    /// <summary>Runs a result's primary action. Every category closes the palette afterward
+    /// except Terminal/SQL's own quick-open row, whose action is switching INTO that category
+    /// (e.g. from "All") — closing the palette right after would defeat the point of landing on
+    /// a live command buffer to keep typing into.</summary>
+    private void ActivatePaletteResult(PaletteResult result)
+    {
+        result.OnSelect();
+        if (result.Category != "Terminal" && result.Category != "SQL")
+            CloseCommandPalette();
     }
 
     private void RenderCommandPaletteResults(bool preserveSelection = false)
     {
+        // Git #2203 — Terminal/SQL: the search box IS the prompt (a command buffer, not a list
+        // filter), so their one tool-item result is exempt from the text filter entirely — it
+        // can never unmount out from under a query the user is still typing.
+        bool isConsoleTab = _paletteCategory == "Terminal" || _paletteCategory == "SQL";
         string query = CommandPaletteInput.Text.Trim();
         var all = BuildAllPaletteResults();
         var scoped = _paletteCategory == "All" ? all : all.Where(r => r.Category == _paletteCategory);
 
-        _paletteFiltered = (query.Length == 0
+        _paletteFiltered = (isConsoleTab || query.Length == 0
             ? scoped
             : scoped.Where(r => r.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                                  (r.Subtitle?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false))
@@ -3489,33 +3679,579 @@ public partial class MainWindow : Window
         for (int i = 0; i < _paletteFiltered.Count; i++)
             CommandPaletteResults.Children.Add(PaletteRow(_paletteFiltered[i], i == _paletteSelectedIndex));
 
-        RenderPalettePreview(_paletteFiltered[_paletteSelectedIndex]);
+        if (_paletteCategory == "Terminal") RenderPaletteTerminalPane();
+        else if (_paletteCategory == "SQL") RenderPaletteSqlPane();
+        else RenderPaletteDetailPane(_paletteFiltered[_paletteSelectedIndex]);
     }
 
-    private void RenderPalettePreview(PaletteResult result)
+    /// <summary>Git #2203 — the per-category right pane. Every category with real backing data
+    /// gets its own real render; everything else (Git Doctor/Log Viewer/Git Map quick items,
+    /// and any category with no selection yet) falls back to the original one-line preview.</summary>
+    private void RenderPaletteDetailPane(PaletteResult result)
     {
         CommandPalettePreview.Children.Clear();
-        CommandPalettePreview.Children.Add(new TextBlock
+
+        switch (result.Payload)
         {
-            Text = result.PreviewTitle,
-            TextWrapping = TextWrapping.Wrap,
-            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
-            FontSize = (double)FindResource("FontSize.13"),
-            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
-            Foreground = (Brush)FindResource("Brush.Text.Heading")
-        });
-        if (result.PreviewBody != null)
-        {
-            CommandPalettePreview.Children.Add(new TextBlock
-            {
-                Text = result.PreviewBody,
-                Margin = new Thickness(0, 8, 0, 0),
-                TextWrapping = TextWrapping.Wrap,
-                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
-                FontSize = (double)FindResource("FontSize.11.5"),
-                Foreground = (Brush)FindResource("Brush.Text.Muted")
-            });
+            case Services.GitMapEpic epic: RenderPaletteEpicDetail(epic); return;
+            case Services.GitIssueRow issue: RenderPaletteIssueDetail(issue); return;
+            case Services.BuildQueueRow build: RenderPaletteBuildDetail(build); return;
+            case TabDef tab: RenderPaletteTabDetail(tab); return;
+            case Services.DevServiceRow svc: RenderPaletteServiceDetail(svc); return;
         }
+
+        RenderPaletteGenericPreview(result);
+    }
+
+    private void RenderPaletteGenericPreview(PaletteResult result)
+    {
+        CommandPalettePreview.Children.Add(PaletteDetailTitle(result.PreviewTitle));
+        if (result.PreviewBody != null)
+            CommandPalettePreview.Children.Add(PaletteDetailBody(result.PreviewBody));
+    }
+
+    // ── Shared right-pane building blocks ────────────────────────────────────────────────────
+    private TextBlock PaletteDetailTitle(string text) => new()
+    {
+        Text = text, TextWrapping = TextWrapping.Wrap,
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.13"),
+        FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("Brush.Text.Heading")
+    };
+
+    private TextBlock PaletteDetailBody(string text) => new()
+    {
+        Text = text, Margin = new Thickness(0, 8, 0, 0), TextWrapping = TextWrapping.Wrap,
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11.5"),
+        Foreground = (Brush)FindResource("Brush.Text.Muted")
+    };
+
+    private TextBlock PaletteDetailMeta(string text) => new()
+    {
+        Text = text, Margin = new Thickness(0, 4, 0, 0), TextWrapping = TextWrapping.Wrap,
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10"),
+        Foreground = (Brush)FindResource("Brush.Text.Dim")
+    };
+
+    private TextBlock PaletteSectionLabel(string text) => new()
+    {
+        Text = text.ToUpperInvariant(), Margin = new Thickness(0, 14, 0, 6),
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9,
+        FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("Brush.Text.Dim")
+    };
+
+    private TextBlock PaletteMutedNote(string text) => new()
+    {
+        Text = text, TextWrapping = TextWrapping.Wrap, FontStyle = FontStyles.Italic,
+        FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
+        Foreground = (Brush)FindResource("Brush.Text.Dim")
+    };
+
+    private WrapPanel PaletteButtonRow(params (string Label, Action OnClick)[] buttons)
+    {
+        var wrap = new WrapPanel { Margin = new Thickness(0, 14, 0, 0) };
+        foreach (var (label, onClick) in buttons)
+        {
+            var btn = new Button
+            {
+                Content = label, Margin = new Thickness(0, 0, 6, 6), Padding = new Thickness(10, 5, 10, 5),
+                Background = (Brush)FindResource("Brush.Bg.Chip"), Foreground = (Brush)FindResource("Brush.Text.Primary"),
+                BorderBrush = (Brush)FindResource("Brush.Border.Default"), BorderThickness = new Thickness(1),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
+                Cursor = Cursors.Hand
+            };
+            btn.Click += (_, _) => onClick();
+            wrap.Children.Add(btn);
+        }
+        return wrap;
+    }
+
+    // ── Git Epics detail (Git #2203) — milestone + real "contains" tiles off
+    // GitMapService.GetFeaturesForEpicAsync, lazy-loaded per epic and cached. ──────────────────
+    private void RenderPaletteEpicDetail(Services.GitMapEpic epic)
+    {
+        CommandPalettePreview.Children.Add(PaletteDetailTitle($"#{epic.Number} {StripEpicTitlePrefix(epic.Title)}"));
+        CommandPalettePreview.Children.Add(PaletteDetailMeta(epic.Milestone != null ? $"Milestone: {epic.Milestone}" : "No milestone set"));
+
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Contains"));
+        if (_paletteEpicFeatures.TryGetValue(epic.Number, out var features))
+        {
+            if (features.Count == 0)
+                CommandPalettePreview.Children.Add(PaletteMutedNote("No open sub-issues."));
+            else
+                foreach (var f in features)
+                    CommandPalettePreview.Children.Add(PaletteEpicFeatureRow(f));
+        }
+        else
+        {
+            CommandPalettePreview.Children.Add(PaletteMutedNote("Loading…"));
+            _ = LoadPaletteEpicFeaturesAsync(epic.Number);
+        }
+
+        CommandPalettePreview.Children.Add(PaletteButtonRow(
+            ("Open the epic page", () => { OpenIssueInBrowser(epic.Number); CloseCommandPalette(); }),
+            ("Git panel", () => { OpenLeftPanel("Git"); CloseCommandPalette(); })
+        ));
+    }
+
+    private async Task LoadPaletteEpicFeaturesAsync(int epicNumber)
+    {
+        int seq = ++_paletteEpicFeaturesLoadSeq;
+        var (ok, features, _) = await Services.GitMapService.GetFeaturesForEpicAsync(epicNumber);
+        _paletteEpicFeatures[epicNumber] = ok ? features : new List<Services.GitMapFeature>();
+        if (seq != _paletteEpicFeaturesLoadSeq) return; // a newer load superseded this one
+
+        if (CommandPaletteOverlay.Visibility != Visibility.Visible || _paletteCategory != "GitEpics") return;
+        if (_paletteSelectedIndex < 0 || _paletteSelectedIndex >= _paletteFiltered.Count) return;
+        if (_paletteFiltered[_paletteSelectedIndex].Payload is Services.GitMapEpic sel && sel.Number == epicNumber)
+            RenderPaletteDetailPane(_paletteFiltered[_paletteSelectedIndex]);
+    }
+
+    private StackPanel PaletteEpicFeatureRow(Services.GitMapFeature f)
+    {
+        string coarse = f.IsComplete || f.IsClosed ? "done" : f.IsBlocked ? "blocked" : f.IsInFlight ? "running" : "queued";
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4), Cursor = Cursors.Hand };
+        row.Children.Add(new Ellipse { Width = 7, Height = 7, Margin = new Thickness(0, 0, 7, 0), VerticalAlignment = VerticalAlignment.Center, Fill = QueueStatusBrush(coarse) });
+        row.Children.Add(new TextBlock
+        {
+            Text = $"#{f.Number} {f.Title}", TextWrapping = TextWrapping.Wrap, MaxWidth = 240,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.10.5"),
+            Foreground = (Brush)FindResource("Brush.Text.Primary")
+        });
+        row.MouseLeftButtonDown += (_, _) => { OpenIssueInBrowser(f.Number); CloseCommandPalette(); };
+        return row;
+    }
+
+    // ── Git Issues detail (Git #2203) — real labels + real parent epic (GraphQL). ─────────────
+    private void RenderPaletteIssueDetail(Services.GitIssueRow issue)
+    {
+        CommandPalettePreview.Children.Add(PaletteDetailTitle($"#{issue.Number} {issue.Title}"));
+        CommandPalettePreview.Children.Add(PaletteDetailMeta(issue.Labels.Count > 0 ? string.Join(", ", issue.Labels) : "No labels"));
+        CommandPalettePreview.Children.Add(PaletteDetailMeta(issue.ParentNumber.HasValue
+            ? $"Parent: #{issue.ParentNumber} {issue.ParentTitle}"
+            : "No parent epic"));
+
+        var buttons = new List<(string, Action)>
+        {
+            ("Open the issue page", () => { OpenIssueInBrowser(issue.Number); CloseCommandPalette(); }),
+            ("Git panel", () => { OpenLeftPanel("Git"); CloseCommandPalette(); })
+        };
+        if (issue.ParentNumber.HasValue)
+            buttons.Add(("Its epic", () => { OpenIssueInBrowser(issue.ParentNumber!.Value); CloseCommandPalette(); }));
+        buttons.Add(("Dispatch build", () => { SendFeatureToComposer(issue.Number, issue.Title); CloseCommandPalette(); }));
+        CommandPalettePreview.Children.Add(PaletteButtonRow(buttons.ToArray()));
+    }
+
+    // ── Builds & Build IDs detail (Git #2203) — real bt_build_queue row, best-effort real
+    // step/% (report-progress.mjs's own durable JSON snapshot, when one exists for this build
+    // id), and the real last-10 stdout lines off the machine-global per-build log file. ───────
+    private void RenderPaletteBuildDetail(Services.BuildQueueRow build)
+    {
+        string titleLine = build.GithubNumber.HasValue ? $"#{build.GithubNumber} {build.Title}" : build.Title;
+        CommandPalettePreview.Children.Add(PaletteDetailTitle(titleLine));
+        CommandPalettePreview.Children.Add(PaletteDetailMeta($"Build {build.Id} · {build.BuildSet ?? "—"} · {build.Model ?? "—"} / {build.Effort ?? "—"}"));
+
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Progress"));
+        var (step, total, label) = ReadPaletteBuildProgress(build.Id);
+        if (step.HasValue && total.HasValue && total.Value > 0)
+        {
+            CommandPalettePreview.Children.Add(PaletteProgressBar(step.Value, total.Value));
+            int pct = (int)Math.Round(100.0 * step.Value / total.Value);
+            CommandPalettePreview.Children.Add(PaletteDetailMeta($"Step {step}/{total} ({pct}%) — {label}"));
+        }
+        else
+        {
+            // No live cross-process %/step is reliably readable for a build that ran in an
+            // isolated worktree (report-progress.mjs's JSON snapshot is worktree-relative, so
+            // it never merges into the main checkout — same real constraint GitMapService's
+            // own FocusBuild already documents). Real coarse queue status, never a guess.
+            CommandPalettePreview.Children.Add(PaletteDetailMeta($"Real queue status: {build.Status} — no step/% has been reported here yet"));
+        }
+
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Last 10 stdout lines"));
+        var tail = Services.BuildLogTailReader.TailLines(build.Id, 10);
+        if (tail.Count == 0)
+        {
+            CommandPalettePreview.Children.Add(PaletteMutedNote("No real stdout log on disk for this build id."));
+        }
+        else
+        {
+            foreach (var line in tail)
+                CommandPalettePreview.Children.Add(new TextBlock
+                {
+                    Text = line, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 2),
+                    FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+                    Foreground = (Brush)FindResource("Brush.Text.Muted")
+                });
+        }
+
+        var buttons = new List<(string, Action)>
+        {
+            ("Focus in the queue", () => { BtnToggleQueue_Click(BtnToggleQueue, new RoutedEventArgs()); CloseCommandPalette(); }),
+            ("Build Watch", () => { OpenLeftPanel("BuildWatch"); CloseCommandPalette(); })
+        };
+        if (Services.BuildLogTailReader.HasLog(build.Id))
+            buttons.Add(("Full log", () => { OpenLogViewer(); CloseCommandPalette(); }));
+        CommandPalettePreview.Children.Add(PaletteButtonRow(buttons.ToArray()));
+    }
+
+    private (int? Step, int? Total, string? Label) ReadPaletteBuildProgress(int buildId)
+    {
+        try
+        {
+            string repoRoot = _logService.MainRepoRoot ?? Environment.CurrentDirectory;
+            var path = System.IO.Path.Combine(repoRoot, ".logs", "dev-all", "progress", $"{buildId}.json");
+            if (!File.Exists(path)) return (null, null, null);
+            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            var root = doc.RootElement;
+            int? step = root.TryGetProperty("step", out var s) ? s.GetInt32() : null;
+            int? total = root.TryGetProperty("total", out var t) ? t.GetInt32() : null;
+            string? label = root.TryGetProperty("label", out var l) ? l.GetString() : null;
+            return (step, total, label);
+        }
+        catch { return (null, null, null); }
+    }
+
+    private Border PaletteProgressBar(int step, int total)
+    {
+        double pct = total > 0 ? Math.Clamp((double)step / total, 0, 1) : 0;
+        var track = new Border
+        {
+            Height = 6, CornerRadius = new CornerRadius(3), Background = (Brush)FindResource("Brush.Bg.Chip"),
+            Margin = new Thickness(0, 4, 0, 0), ClipToBounds = true
+        };
+        track.Child = new Border
+        {
+            CornerRadius = new CornerRadius(3), Background = (Brush)FindResource("Brush.Status.Running"),
+            HorizontalAlignment = HorizontalAlignment.Left, Width = 268 * pct
+        };
+        return track;
+    }
+
+    // ── Claude & URLs detail (Git #2203) — real epic tie via TabDef.EpicNumber, real builds
+    // cross-referenced through the just-fetched issue parent data. Context meter has no real
+    // reading available: the chat is a claude.ai session embedded via WebView2, not a metered
+    // API call, so there's no real token/context count to show — an honest note, not a guess. ──
+    private void RenderPaletteTabDetail(TabDef tab)
+    {
+        CommandPalettePreview.Children.Add(PaletteDetailTitle(tab.Title));
+        CommandPalettePreview.Children.Add(PaletteDetailMeta(tab.IsHome ? "Home tab" : "Chat tab"));
+
+        var epic = tab.EpicNumber.HasValue ? _paletteEpics.FirstOrDefault(e => e.Number == tab.EpicNumber.Value) : null;
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Epic"));
+        if (tab.EpicNumber.HasValue)
+        {
+            string epicLine = $"#{tab.EpicNumber} " + (epic != null ? StripEpicTitlePrefix(epic.Title) : "(not in the open-epics list)");
+            CommandPalettePreview.Children.Add(PaletteDetailMeta(epicLine));
+            if (epic?.Milestone != null)
+                CommandPalettePreview.Children.Add(PaletteDetailMeta($"Milestone: {epic.Milestone}"));
+        }
+        else
+        {
+            CommandPalettePreview.Children.Add(PaletteMutedNote("No epic derived for this chat."));
+        }
+
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Context meter"));
+        CommandPalettePreview.Children.Add(PaletteMutedNote("Not exposed by the embedded claude.ai session — no real token/context reading is available here."));
+
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Builds tied to this epic"));
+        if (tab.EpicNumber.HasValue)
+        {
+            var tied = _paletteBuilds.Where(b => b.GithubNumber.HasValue &&
+                _paletteIssues.Any(i => i.Number == b.GithubNumber.Value && i.ParentNumber == tab.EpicNumber.Value)).ToList();
+            if (tied.Count == 0)
+                CommandPalettePreview.Children.Add(PaletteMutedNote("None found among the most recently updated open issues checked."));
+            else
+                foreach (var b in tied)
+                    CommandPalettePreview.Children.Add(PaletteDetailMeta($"#{b.GithubNumber} {b.Title} — {b.Status}"));
+        }
+        else
+        {
+            CommandPalettePreview.Children.Add(PaletteMutedNote("No epic derived for this chat."));
+        }
+
+        var buttons = new List<(string, Action)> { ("Open the chat", () => { SelectTab(tab.Id); CloseCommandPalette(); }) };
+        if (tab.EpicNumber.HasValue)
+            buttons.Add(("Its epic", () => { OpenIssueInBrowser(tab.EpicNumber!.Value); CloseCommandPalette(); }));
+        buttons.Add(("Sidebar", () => { OpenLeftPanel("Chat"); CloseCommandPalette(); }));
+        CommandPalettePreview.Children.Add(PaletteButtonRow(buttons.ToArray()));
+    }
+
+    // ── Services detail (Git #2203) — real status/port/pid off scripts/dev-all.mjs's own
+    // .meta.json, real Start/Stop via the same --start/--stop flags dev-all.mjs defines. ──────
+    private void RenderPaletteServiceDetail(Services.DevServiceRow svc)
+    {
+        CommandPalettePreview.Children.Add(PaletteDetailTitle(svc.Title));
+        CommandPalettePreview.Children.Add(PaletteDetailMeta(
+            $"Port {svc.Port} · {(svc.PortOpen ? "Running" : "Stopped")}" + (svc.Pid.HasValue ? $" · PID {svc.Pid}" : "")));
+
+        string repoRoot = _logService.MainRepoRoot ?? Environment.CurrentDirectory;
+        var buttons = new List<(string, Action)>();
+        if (svc.PortOpen)
+        {
+            buttons.Add(("Stop", () =>
+            {
+                Services.DevServicesReadClient.StopService(repoRoot, svc.Name);
+                ToastEngine.Show("Services", $"Stopping {svc.Title}…", ToastKind.Info);
+                _ = EnsurePaletteRealDataAsync(force: true);
+            }));
+            buttons.Add(("Open in Edge", () => { Process.Start(new ProcessStartInfo($"http://localhost:{svc.Port}") { UseShellExecute = true }); CloseCommandPalette(); }));
+        }
+        else
+        {
+            buttons.Add(("Start", () =>
+            {
+                Services.DevServicesReadClient.StartService(repoRoot, svc.Name);
+                ToastEngine.Show("Services", $"Starting {svc.Title}…", ToastKind.Info);
+                _ = EnsurePaletteRealDataAsync(force: true);
+            }));
+        }
+        // "Open in tab" (a generic-URL WebView2 tab) has no real surface to wire yet —
+        // ShaneBuilder's only embedded browser today is ClaudeWebView, dedicated to claude.ai —
+        // so it's left out rather than faked; filed as a real finding (see #2203's completion
+        // comment) instead of building a placeholder tab kind.
+        buttons.Add(("See logs", () => { OpenLogViewer(); CloseCommandPalette(); }));
+        CommandPalettePreview.Children.Add(PaletteButtonRow(buttons.ToArray()));
+    }
+
+    // ── Terminal (Git #2203) — one dedicated real TerminalSession for the palette itself. ────
+    private TerminalSession GetOrCreatePaletteTerminalSession()
+    {
+        if (_paletteTerminalSession != null && !_paletteTerminalSession.HasExited) return _paletteTerminalSession;
+        _paletteTerminalSession?.Dispose();
+        var session = new TerminalSession(TerminalSessionKind.Cmd);
+        session.Updated += () => Dispatcher.Invoke(() =>
+        {
+            if (CommandPaletteOverlay.Visibility == Visibility.Visible && _paletteCategory == "Terminal")
+                RenderPaletteTerminalPane();
+        });
+        _paletteTerminalSession = session;
+        return session;
+    }
+
+    private void RenderPaletteTerminalPane()
+    {
+        var session = GetOrCreatePaletteTerminalSession();
+
+        CommandPalettePreview.Children.Clear();
+        CommandPalettePreview.Children.Add(PaletteDetailTitle("Terminal"));
+        CommandPalettePreview.Children.Add(PaletteDetailMeta(session.HasExited ? "Session ended" : $"cmd.exe — {session.Lines.Count} lines"));
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Session"));
+
+        if (session.Lines.Count == 0)
+        {
+            CommandPalettePreview.Children.Add(PaletteMutedNote("Type a command in the search box above and press Enter."));
+        }
+        else
+        {
+            foreach (var line in session.Lines)
+                CommandPalettePreview.Children.Add(new TextBlock
+                {
+                    Text = line.Text, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 2),
+                    FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+                    FontWeight = line.IsPrompt ? FontWeights.SemiBold : FontWeights.Normal,
+                    Foreground = line.IsPrompt ? (Brush)FindResource("Brush.LogSource.Terminal") : (Brush)FindResource("Brush.Text.Muted")
+                });
+        }
+
+        CommandPalettePreview.Children.Add(PaletteButtonRow(
+            ("Send session to chat", PaletteSendTerminalSessionToChat),
+            ("Open tool", () => { BtnToggleTerminal_Click(this, new RoutedEventArgs()); CloseCommandPalette(); }),
+            ("Clear", () => { _paletteTerminalSession?.Dispose(); _paletteTerminalSession = null; RenderCommandPaletteResults(preserveSelection: true); })
+        ));
+    }
+
+    private void PaletteRunTerminalCommand(string cmd)
+    {
+        CommandPaletteInput.Text = "";
+        _ = GetOrCreatePaletteTerminalSession().RunAsync(cmd);
+    }
+
+    private void PaletteSendTerminalSessionToChat()
+    {
+        var session = _paletteTerminalSession;
+        if (session == null || session.Lines.Count == 0) { CloseCommandPalette(); return; }
+        var text = string.Join("\n", session.Lines.Select(l => l.Text));
+        AppendToComposer("```\n" + text + "\n```");
+        ToastEngine.Show("Terminal", "Session sent to the composer.", ToastKind.Info);
+        CloseCommandPalette();
+    }
+
+    // ── SQL (Git #2203) — real SqlRunnerService execution + real on-disk .sql files. ─────────
+    private void RenderPaletteSqlPane()
+    {
+        CommandPalettePreview.Children.Clear();
+        CommandPalettePreview.Children.Add(PaletteDetailTitle("SQL Runner"));
+        CommandPalettePreview.Children.Add(PaletteDetailMeta(_paletteSqlResult != null
+            ? $"Last run {_paletteSqlLastRunAt}"
+            : "Type SQL in the search box above and press Enter"));
+
+        if (_paletteSqlError != null)
+            CommandPalettePreview.Children.Add(PaletteMutedNote($"Error: {_paletteSqlError}"));
+        else if (_paletteSqlResult != null)
+            foreach (var stmt in _paletteSqlResult)
+                CommandPalettePreview.Children.Add(PaletteSqlResultBlock(stmt));
+
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Repo .sql files"));
+        if (_paletteSqlFiles.Count == 0)
+        {
+            CommandPalettePreview.Children.Add(PaletteMutedNote("No .sql files found."));
+        }
+        else
+        {
+            foreach (var group in _paletteSqlFiles.GroupBy(f => f.Group))
+            {
+                CommandPalettePreview.Children.Add(new TextBlock
+                {
+                    Text = group.Key, Margin = new Thickness(0, 8, 0, 3),
+                    FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+                    FontWeight = (FontWeight)FindResource("FontWeight.SemiBold"), Foreground = (Brush)FindResource("Brush.Text.Dim")
+                });
+                foreach (var file in group.Take(12)) // bounded — some real dirs here run long
+                    CommandPalettePreview.Children.Add(PaletteSqlFileRow(file));
+            }
+        }
+
+        CommandPalettePreview.Children.Add(PaletteButtonRow(
+            ("Send result to chat", PaletteSendSqlResultToChat),
+            ("Full SQL Runner", () => { BtnToggleSqlRunner_Click(this, new RoutedEventArgs()); CloseCommandPalette(); })
+        ));
+    }
+
+    private DockPanel PaletteSqlFileRow(Services.RepoSqlFile file)
+    {
+        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
+        var btns = new StackPanel { Orientation = Orientation.Horizontal };
+        DockPanel.SetDock(btns, Dock.Right);
+
+        Button MakeBtn(string label) => new()
+        {
+            Content = label, Margin = new Thickness(4, 0, 0, 0), Padding = new Thickness(6, 2, 6, 2), FontSize = 9,
+            Cursor = Cursors.Hand, Background = (Brush)FindResource("Brush.Bg.Chip"), Foreground = (Brush)FindResource("Brush.Text.Primary"),
+            BorderThickness = new Thickness(0)
+        };
+
+        var loadBtn = MakeBtn("Load");
+        loadBtn.Click += (_, _) =>
+        {
+            try
+            {
+                CommandPaletteInput.Text = File.ReadAllText(file.FullPath);
+                ToastEngine.Show("SQL Runner", $"{file.Name} loaded — press Enter to run it.", ToastKind.Info);
+            }
+            catch (Exception ex) { ToastEngine.Show("SQL Runner", $"Couldn't read {file.Name}: {ex.Message}", ToastKind.Info); }
+        };
+
+        var runBtn = MakeBtn("Run");
+        runBtn.Click += (_, _) =>
+        {
+            try { _ = PaletteRunSqlAsync(File.ReadAllText(file.FullPath)); }
+            catch (Exception ex) { _paletteSqlError = ex.Message; _paletteSqlResult = null; RenderPaletteSqlPane(); }
+        };
+
+        btns.Children.Add(loadBtn);
+        btns.Children.Add(runBtn);
+        row.Children.Add(btns);
+        row.Children.Add(new TextBlock
+        {
+            Text = file.Name, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center,
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+            Foreground = (Brush)FindResource("Brush.Text.Muted")
+        });
+        return row;
+    }
+
+    private async Task PaletteRunSqlAsync(string sql)
+    {
+        CommandPaletteInput.Text = "";
+        var connStr = Services.SqlRunnerService.ResolveConnectionString();
+        if (string.IsNullOrWhiteSpace(connStr))
+        {
+            _paletteSqlError = "No DATABASE_URL found — add it to .env.local at the repo root.";
+            _paletteSqlResult = null;
+            if (_paletteCategory == "SQL") RenderPaletteSqlPane();
+            return;
+        }
+
+        try
+        {
+            var results = await Services.SqlRunnerService.ExecuteAsync(connStr, sql);
+            _paletteSqlResult = results;
+            _paletteSqlError = results.FirstOrDefault(r => !r.Success)?.Error;
+            _paletteSqlLastRunAt = DateTime.Now.ToString("HH:mm:ss");
+        }
+        catch (Exception ex)
+        {
+            _paletteSqlError = ex.Message;
+            _paletteSqlResult = null;
+        }
+
+        if (CommandPaletteOverlay.Visibility == Visibility.Visible && _paletteCategory == "SQL")
+            RenderPaletteSqlPane();
+    }
+
+    private void PaletteSendSqlResultToChat()
+    {
+        var stmt = _paletteSqlResult?.LastOrDefault();
+        if (stmt == null) { CloseCommandPalette(); return; }
+        var sb = new StringBuilder();
+        sb.AppendLine("```");
+        sb.AppendLine(string.Join(" | ", stmt.Fields));
+        foreach (var row in stmt.Rows.Take(50))
+            sb.AppendLine(string.Join(" | ", stmt.Fields.Select(f => row.TryGetValue(f, out var je) ? je.ToString() : "")));
+        sb.AppendLine("```");
+        AppendToComposer(sb.ToString());
+        ToastEngine.Show("SQL Runner", "Result sent to the composer.", ToastKind.Info);
+        CloseCommandPalette();
+    }
+
+    private FrameworkElement PaletteSqlResultBlock(Services.SqlStatementResult stmt)
+    {
+        var stack = new StackPanel { Margin = new Thickness(0, 8, 0, 0) };
+        stack.Children.Add(new TextBlock
+        {
+            Text = stmt.Success ? $"{stmt.RowCount} rows · {stmt.ExecutionMs}ms" : $"Error: {stmt.Error}",
+            TextWrapping = TextWrapping.Wrap,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+            Foreground = stmt.Success ? (Brush)FindResource("Brush.Text.Dim") : (Brush)FindResource("Brush.Status.Crashed")
+        });
+
+        if (stmt.Success && stmt.Fields.Count > 0 && stmt.Rows.Count > 0)
+        {
+            var grid = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+            for (int c = 0; c < stmt.Fields.Count; c++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.RowDefinitions.Add(new RowDefinition());
+            for (int c = 0; c < stmt.Fields.Count; c++)
+            {
+                var h = new TextBlock
+                {
+                    Text = stmt.Fields[c], FontSize = 9, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 6, 2),
+                    FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = (Brush)FindResource("Brush.Text.Dim")
+                };
+                Grid.SetColumn(h, c); Grid.SetRow(h, 0);
+                grid.Children.Add(h);
+            }
+            int rowIdx = 1;
+            foreach (var row in stmt.Rows.Take(20))
+            {
+                grid.RowDefinitions.Add(new RowDefinition());
+                for (int c = 0; c < stmt.Fields.Count; c++)
+                {
+                    var val = row.TryGetValue(stmt.Fields[c], out var je) ? je.ToString() : "";
+                    var cell = new TextBlock
+                    {
+                        Text = val, FontSize = 9, TextTrimming = TextTrimming.CharacterEllipsis, Margin = new Thickness(0, 0, 6, 2),
+                        Foreground = (Brush)FindResource("Brush.Text.Muted")
+                    };
+                    Grid.SetColumn(cell, c); Grid.SetRow(cell, rowIdx);
+                    grid.Children.Add(cell);
+                }
+                rowIdx++;
+            }
+            stack.Children.Add(grid);
+            if (stmt.Rows.Count > 20)
+                stack.Children.Add(PaletteMutedNote($"…and {stmt.Rows.Count - 20} more rows (Full SQL Runner shows all)."));
+        }
+        return stack;
     }
 
     private Border PaletteRow(PaletteResult result, bool isSelected)
@@ -3584,7 +4320,7 @@ public partial class MainWindow : Window
         };
         border.MouseEnter += (s, e) => { if (!isSelected) border.Background = (Brush)FindResource("Brush.Bg.Chip"); };
         border.MouseLeave += (s, e) => { if (!isSelected) border.Background = Brushes.Transparent; };
-        border.MouseLeftButtonDown += (s, e) => { result.OnSelect(); CloseCommandPalette(); };
+        border.MouseLeftButtonDown += (s, e) => ActivatePaletteResult(result);
         return border;
     }
 
@@ -7815,5 +8551,7 @@ public partial class MainWindow : Window
         foreach (var s in _terminalSessionsByTab.Values) s.Dispose();
         _psSessionsByTab.Clear();
         _terminalSessionsByTab.Clear();
+        _paletteTerminalSession?.Dispose(); // Git #2203 — the Command Center's own terminal session
+        _paletteTerminalSession = null;
     }
 }

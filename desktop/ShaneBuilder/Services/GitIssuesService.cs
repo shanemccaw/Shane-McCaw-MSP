@@ -1,0 +1,188 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.Tasks;
+
+namespace ShaneBuilder.Services;
+
+/// <summary>Git #2203 — one real open issue for the Command Center's "Git Issues" category.
+/// <see cref="ParentNumber"/>/<see cref="ParentTitle"/> come from a real GitHub GraphQL
+/// <c>issue.parent</c> lookup (batched, see <see cref="GitIssuesService"/>), not a fabricated
+/// epic tag — null means the issue genuinely has no sub-issue parent, not a lookup failure.</summary>
+public sealed class GitIssueRow
+{
+    public int Number { get; init; }
+    public string Title { get; init; } = "";
+    public string State { get; init; } = "open";
+    public List<string> Labels { get; init; } = new();
+    public int? ParentNumber { get; init; }
+    public string? ParentTitle { get; init; }
+}
+
+/// <summary>Git #2203 — read-only data layer for the Command Center's "Git Issues" category.
+/// Same real fail-closed `gh` shellout pattern <see cref="GitMapService"/> already established
+/// (kept local rather than shared, same rationale as that class's own header comment) — never a
+/// second data path, never an invented row.</summary>
+public static class GitIssuesService
+{
+    private const string Owner = "shanemccaw";
+    private const string RepoName = "Shane-McCaw-MSP";
+    private const string Repo = "shanemccaw/Shane-McCaw-MSP";
+
+    private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>Real, live open issues, most recently updated first, with real labels — then a
+    /// single batched GraphQL call resolves each one's real parent (if any). Two calls total,
+    /// never N+1.</summary>
+    public static async Task<(bool Ok, List<GitIssueRow> Issues, string? Error)> GetRecentOpenIssuesAsync(int limit = 30)
+    {
+        var (ok, stdout, stderr) = await RunGhAsync(new[]
+        {
+            "issue", "list", "--repo", Repo, "--state", "open",
+            "--json", "number,title,labels", "--limit", limit.ToString(),
+            "--search", "sort:updated-desc"
+        });
+        if (!ok)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] gh issue list failed: {stderr.Trim()}");
+            return (false, new List<GitIssueRow>(), $"gh issue list failed: {stderr.Trim()}");
+        }
+
+        List<IssueRow> rows;
+        try
+        {
+            rows = JsonSerializer.Deserialize<List<IssueRow>>(stdout, JsonOpts) ?? new();
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] couldn't parse gh output: {ex.Message}");
+            return (false, new List<GitIssueRow>(), $"couldn't parse gh output: {ex.Message}");
+        }
+
+        var issues = rows.Select(r => new GitIssueRow
+        {
+            Number = r.Number,
+            Title = r.Title ?? $"#{r.Number}",
+            Labels = r.Labels?.Select(l => l.Name ?? "").Where(n => n.Length > 0).ToList() ?? new List<string>()
+        }).ToList();
+
+        return (true, await ResolveParentsAsync(issues), null);
+    }
+
+    /// <summary>One real GraphQL call with an alias per issue (<c>i0..iN</c>) resolving each
+    /// issue's real <c>parent</c> sub-issue edge — the same relationship
+    /// <see cref="GitMapService"/> reads the other direction (epic → features). A failed lookup
+    /// leaves every row's parent honestly null rather than guessing.</summary>
+    private static async Task<List<GitIssueRow>> ResolveParentsAsync(List<GitIssueRow> issues)
+    {
+        if (issues.Count == 0) return issues;
+
+        var sb = new StringBuilder();
+        sb.Append("query { repository(owner: \"").Append(Owner).Append("\", name: \"").Append(RepoName).Append("\") { ");
+        for (int i = 0; i < issues.Count; i++)
+            sb.Append($"i{i}: issue(number: {issues[i].Number}) {{ parent {{ number title }} }} ");
+        sb.Append("} }");
+
+        var (ok, stdout, stderr) = await RunGhAsync(new[] { "api", "graphql", "-f", $"query={sb}" });
+        if (!ok)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] parent graphql lookup failed: {stderr.Trim()}");
+            return issues; // honest — every ParentNumber stays null, not fabricated
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(stdout);
+            var repoEl = doc.RootElement.GetProperty("data").GetProperty("repository");
+            var withParents = new List<GitIssueRow>(issues.Count);
+            for (int i = 0; i < issues.Count; i++)
+            {
+                var issue = issues[i];
+                int? parentNum = null;
+                string? parentTitle = null;
+                if (repoEl.TryGetProperty($"i{i}", out var issueEl) && issueEl.ValueKind == JsonValueKind.Object &&
+                    issueEl.TryGetProperty("parent", out var parentEl) && parentEl.ValueKind == JsonValueKind.Object)
+                {
+                    if (parentEl.TryGetProperty("number", out var numEl)) parentNum = numEl.GetInt32();
+                    if (parentEl.TryGetProperty("title", out var titleEl)) parentTitle = titleEl.GetString();
+                }
+                withParents.Add(new GitIssueRow
+                {
+                    Number = issue.Number,
+                    Title = issue.Title,
+                    State = issue.State,
+                    Labels = issue.Labels,
+                    ParentNumber = parentNum,
+                    ParentTitle = parentTitle
+                });
+            }
+            return withParents;
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] couldn't parse parent graphql response: {ex.Message}");
+            return issues;
+        }
+    }
+
+    // ── gh process runner — mirrors GitMapService's own local copy (kept local for the same
+    // reason: this feature can't regress that one's already-shipped surface). ──────────────────
+    private static Task<(bool Ok, string StdOut, string StdErr)> RunGhAsync(string[] args, int timeoutMs = 30000)
+        => RunProcessAsync("gh", args, timeoutMs);
+
+    private static async Task<(bool Ok, string StdOut, string StdErr)> RunProcessAsync(string fileName, string[] args, int timeoutMs)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+        };
+        foreach (var a in args) psi.ArgumentList.Add(a);
+
+        try
+        {
+            using var proc = new Process { StartInfo = psi };
+            var sbOut = new StringBuilder();
+            var sbErr = new StringBuilder();
+            proc.OutputDataReceived += (_, e) => { if (e.Data != null) sbOut.AppendLine(e.Data); };
+            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) sbErr.AppendLine(e.Data); };
+
+            if (!proc.Start()) return (false, "", $"failed to start {fileName}");
+            proc.BeginOutputReadLine();
+            proc.BeginErrorReadLine();
+
+            using var cts = new System.Threading.CancellationTokenSource(timeoutMs);
+            try { await proc.WaitForExitAsync(cts.Token); }
+            catch (OperationCanceledException)
+            {
+                try { proc.Kill(true); } catch { }
+                return (false, sbOut.ToString(), $"{fileName} timed out after {timeoutMs}ms");
+            }
+            return (proc.ExitCode == 0, sbOut.ToString(), sbErr.ToString());
+        }
+        catch (Exception ex)
+        {
+            return (false, "", $"couldn't run {fileName}: {ex.Message}");
+        }
+    }
+
+    private sealed class IssueRow
+    {
+        [JsonPropertyName("number")] public int Number { get; set; }
+        [JsonPropertyName("title")] public string? Title { get; set; }
+        [JsonPropertyName("labels")] public List<LabelRow>? Labels { get; set; }
+    }
+    private sealed class LabelRow
+    {
+        [JsonPropertyName("name")] public string? Name { get; set; }
+    }
+}

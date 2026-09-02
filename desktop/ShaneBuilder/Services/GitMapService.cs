@@ -19,6 +19,9 @@ public sealed class GitMapEpic
     public int Number { get; init; }
     public string Title { get; init; } = "";
     public bool IsThisChat { get; init; }
+    /// <summary>Real GitHub milestone title, or null when the epic genuinely has none set —
+    /// never a fabricated default, per Git #2203's "Git Epics" palette category.</summary>
+    public string? Milestone { get; init; }
 }
 
 /// <summary>One real sub-issue ("feature") of an epic, straight off GitHub's own sub_issues edge —
@@ -119,7 +122,7 @@ public static class GitMapService
     public static async Task<(bool Ok, List<GitMapEpic> Epics, string? Error)> GetOpenEpicsAsync(int? thisChatEpic)
     {
         var (ok, stdout, stderr) = await RunGhAsync(
-            new[] { "issue", "list", "--repo", Repo, "--search", "Epic in:title", "--state", "open", "--json", "number,title", "--limit", "200" });
+            new[] { "issue", "list", "--repo", Repo, "--search", "Epic in:title", "--state", "open", "--json", "number,title,milestone", "--limit", "200" });
         if (!ok)
         {
             ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] gh issue list (epics) failed: {stderr.Trim()}");
@@ -130,7 +133,13 @@ public static class GitMapService
             var rows = JsonSerializer.Deserialize<List<NumberTitleRow>>(stdout, JsonOpts) ?? new();
             var epics = rows
                 .Where(r => EpicTitlePrefix.IsMatch(r.Title ?? ""))
-                .Select(r => new GitMapEpic { Number = r.Number, Title = r.Title ?? $"#{r.Number}", IsThisChat = thisChatEpic.HasValue && r.Number == thisChatEpic.Value })
+                .Select(r => new GitMapEpic
+                {
+                    Number = r.Number,
+                    Title = r.Title ?? $"#{r.Number}",
+                    IsThisChat = thisChatEpic.HasValue && r.Number == thisChatEpic.Value,
+                    Milestone = r.Milestone?.Title
+                })
                 .OrderByDescending(e => e.IsThisChat)
                 .ThenBy(e => e.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -365,6 +374,11 @@ public static class GitMapService
     private sealed class NumberTitleRow
     {
         [JsonPropertyName("number")] public int Number { get; set; }
+        [JsonPropertyName("title")] public string? Title { get; set; }
+        [JsonPropertyName("milestone")] public MilestoneRow? Milestone { get; set; }
+    }
+    private sealed class MilestoneRow
+    {
         [JsonPropertyName("title")] public string? Title { get; set; }
     }
     private sealed class StateRow { [JsonPropertyName("state")] public string? State { get; set; } }

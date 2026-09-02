@@ -2456,11 +2456,12 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Category tabs — real counts for the two categories backed by real
-                     data (Builds ← _queueItems, Claude & URLs ← _tabs); every other
-                     category shown for visual parity with the reference stays an
-                     honest (0) since ShaneBuilder has no Git/Services/Terminal/SQL/
-                     Files data source yet, not a fabricated count. -->
+                <!-- Category tabs — Git #2203: every category now has a real backing data
+                     source (Git Epics/Issues off live `gh`, Builds/Build IDs off real
+                     bt_build_queue rows, Claude & URLs off _tabs, Services off
+                     scripts/dev-all.mjs's own .meta.json, Terminal/SQL off real live
+                     sessions) except Files, which stays an honest (0) — Tab Workspaces
+                     (Step 9) isn't built yet and Step 14's own contract doesn't list it. -->
                 <Border DockPanel.Dock="Top" Padding="14,8" BorderThickness="0,0,0,1"
                         BorderBrush="{StaticResource Brush.Border.Default}">
                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
@@ -2481,13 +2482,23 @@
                     </DockPanel>
                 </Border>
 
+                <!-- Git #2203 — bounded grid: Height="*" on the (only) row + the two column
+                     ScrollViewers give the body one real scroll region each, so a per-category
+                     right pane (Git Epics' contains tiles, a build's last-10 stdout lines, a
+                     SQL result table) can genuinely grow past 300px without pushing its own
+                     primary buttons outside the dialog — the reference README's own "grid-
+                     template-rows: minmax(0,1fr) + overflow:hidden" fix, ported to WPF as
+                     Grid.RowDefinitions="*" + ScrollViewer per column instead of a bare Grid. -->
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="300"/>
                     </Grid.ColumnDefinitions>
 
-                    <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer Grid.Row="0" Grid.Column="0" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                             <!-- Quick-action tiles — only the actions that are genuinely
                                  real in ShaneBuilder today, not the reference's
@@ -2498,8 +2509,10 @@
                         </StackPanel>
                     </ScrollViewer>
 
-                    <Border Grid.Column="1" BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Border.Default}">
-                        <StackPanel x:Name="CommandPalettePreview" Margin="16"/>
+                    <Border Grid.Row="0" Grid.Column="1" BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Border.Default}">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="CommandPalettePreview" Margin="16"/>
+                        </ScrollViewer>
                     </Border>
                 </Grid>
             </DockPanel>
