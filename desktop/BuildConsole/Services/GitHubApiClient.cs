@@ -539,18 +539,50 @@ namespace BuildConsole.Services
         /// empty sub-issues list (e.g. before issues were added as sub-issues),
         /// a 304 would hand back that stale empty list for the entire app session.
         /// </summary>
+        // Git #2475 (Build Chain Map data layer) finding, fixed same-session — confirmed live:
+        // `GET /issues/{n}/sub_issues` is a genuinely paginated REST endpoint (GitHub defaults to
+        // 30 items/page, same as any other list endpoint) but this call never sent `per_page` or
+        // walked additional pages, so any parent with more than 30 real sub-issues was silently
+        // truncated. Confirmed against #1202 (EPIC: Build Console) live: the unpaginated call
+        // returned exactly 30 children and stopped; the real `Link` response header showed
+        // `rel="last"` at page 4 — #1202 actually has ~130+ real sub-issues (#2326 "Feature: Test
+        // Pad", among many others, sat past the truncation point and never came back). Every
+        // existing caller of this method (BuildQueuePanel's "Issues in this Epic" panel, the
+        // "Assign to Epic…" flow, and now Build Chain Map) inherits the fix — this was silently
+        // wrong for any Epic/Feature past 30 real children, not a Build-Chain-Map-only bug. Filed
+        // as its own issue per CLAUDE.md's mandatory-finding rule; see that issue for the number.
+        private const int SubIssuesPageSize = 100;
+        private const int SubIssuesMaxPages = 20; // runaway guard: 2,000 sub-issues, generous headroom over the real ~130 seen live
+
         public async Task<List<GitHubSubIssue>> GetSubIssuesAsync(int parentNumber, bool bypassCache = false)
         {
-            try
+            var result = new List<GitHubSubIssue>();
+            for (int page = 1; page <= SubIssuesMaxPages; page++)
             {
-                var subIssues = await GetConditionalAsync<List<GitHubSubIssue>>(
-                    $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues", bypassCache);
-                return subIssues ?? new List<GitHubSubIssue>();
+                List<GitHubSubIssue>? pageItems;
+                try
+                {
+                    pageItems = await GetConditionalAsync<List<GitHubSubIssue>>(
+                        $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues?per_page={SubIssuesPageSize}&page={page}",
+                        bypassCache);
+                }
+                catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+                {
+                    // 404 on page 1 = parent has no real sub-issues (or doesn't exist) — same
+                    // behavior as before. 404 on a later page shouldn't happen in practice; treat
+                    // it the same as "no more pages" rather than losing what's already gathered.
+                    break;
+                }
+
+                if (pageItems == null || pageItems.Count == 0) break;
+                result.AddRange(pageItems);
+                if (pageItems.Count < SubIssuesPageSize) break; // short page = last page
+
+                if (page == SubIssuesMaxPages)
+                    ActivityLog.Log("git-board.data",
+                        $"GetSubIssuesAsync(#{parentNumber}): hit the {SubIssuesMaxPages}-page ({SubIssuesMaxPages * SubIssuesPageSize}-item) cap with more sub-issues possibly remaining — results may be incomplete; raise SubIssuesMaxPages.");
             }
-            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
-            {
-                return new List<GitHubSubIssue>();
-            }
+            return result;
         }
 
         /// <summary>Git #840 (Git Board Phase 2) — real `GET /issues/{n}`, the full current title/body for the issue detail panel.</summary>
@@ -892,6 +924,26 @@ namespace BuildConsole.Services
         /// rather than a local-only 'failed' row. Id confirmed live: 6c8640a8.
         /// </summary>
         public const string CrashedOptionId = "6c8640a8";
+
+        /// <summary>
+        /// Git #2475 (Build Chain Map data layer) — "Done" as a real board Status column, confirmed
+        /// live via a direct GraphQL field-options read against <see cref="BatterUpProjectId"/>'s
+        /// `Status` field (<see cref="StatusFieldId"/>): id <c>0003ae3b</c>. Used only as a fallback
+        /// display value in <see cref="Services.BuildMap.BuildChainMapService"/> — the ChainDoc
+        /// model's authoritative `done` signal is <see cref="DoneBookendVerifier"/>'s real §7
+        /// merge-ancestor check, not this board label (a label can be stale or wrong; the bookend
+        /// check can't).
+        /// </summary>
+        public const string DoneOptionId = "0003ae3b";
+
+        /// <summary>
+        /// Git #2475 (Build Chain Map data layer) — "Ask Shane" as a real board Status column,
+        /// confirmed live the same way as <see cref="DoneOptionId"/>: id <c>404998bb</c>. This is
+        /// the literal `ask` value in the ChainDoc `Status` vocabulary (BuildMap/README.md's "State
+        /// & data model" section) — an issue in this column carries an open question, not a
+        /// dispatch, and sits outside the §5 cascade.
+        /// </summary>
+        public const string AskShaneOptionId = "404998bb";
 
         /// <summary>
         /// Git #1710 — every real, OPEN issue currently sitting in the project board's
