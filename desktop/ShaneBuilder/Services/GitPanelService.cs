@@ -33,6 +33,12 @@ public sealed class GitPanelIssueNode
     public int OpenChildCount { get; init; }
     public int OpenBugCount { get; init; }
     public bool HasChildren => Children.Count > 0;
+    /// <summary>Git #2301 — real GraphQL <c>closedAt</c>/<c>createdAt</c>/<c>updatedAt</c>, used by
+    /// the Milestone panel's recent-velocity projection and stalled-feature detection. Null when
+    /// the node hasn't closed / GitHub genuinely returned none — never backfilled with a guess.</summary>
+    public DateTimeOffset? ClosedAt { get; init; }
+    public DateTimeOffset? CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
 }
 
 /// <summary>One ancestor step of a real GitHub sub-issue `parent` chain, top-down.</summary>
@@ -107,12 +113,75 @@ public sealed class GitPanelAncestry
     public List<GitPanelAncestryStep> Chain { get; init; } = new();
 }
 
+/// <summary>Git #2301 — one open feature genuinely stalled under a milestone: either carrying the
+/// real `blocked` label, or open past <see cref="GitPanelService.StallThresholdDays"/> days with
+/// no real recent forward motion (a child issue closing, or — for a childless feature — the
+/// issue's own `updatedAt`). Never a guessed "looks slow"; both signals are real GitHub state.</summary>
+public sealed class GitPanelStalledFeature
+{
+    public int Number { get; init; }
+    public string Title { get; init; } = "";
+    public int EpicNumber { get; init; }
+    public string EpicTitle { get; init; } = "";
+    public string Reason { get; init; } = "";
+}
+
+/// <summary>Git #2301 — one epic's real completion snapshot for the Milestone panel's per-epic row:
+/// features and their children combined into one closed-vs-total (drives the mini ring), plus a
+/// real recent-velocity projection. <see cref="WeeksToDone"/> is null when there is genuinely no
+/// recent close to project from — an honest "no recent progress" rather than a divide-by-zero
+/// guess or an invented ETA.</summary>
+public sealed class GitPanelEpicSnapshot
+{
+    public int Number { get; init; }
+    public string Title { get; init; } = "";
+    public int TotalFeatures { get; init; }
+    public int ClosedFeatures { get; init; }
+    public int TotalChildIssues { get; init; }
+    public int ClosedChildIssues { get; init; }
+    public int TotalIssues => TotalFeatures + TotalChildIssues;
+    public int ClosedIssues => ClosedFeatures + ClosedChildIssues;
+    public int OpenIssues => TotalIssues - ClosedIssues;
+    public double PercentDone => TotalIssues == 0 ? 0 : (double)ClosedIssues / TotalIssues;
+    /// <summary>Real count of this epic's features+children closed within the last
+    /// <see cref="GitPanelService.VelocityWindowDays"/> days.</summary>
+    public int ClosedRecently { get; init; }
+    public double? WeeksToDone { get; init; }
+    public List<GitPanelStalledFeature> StalledFeatures { get; init; } = new();
+}
+
+/// <summary>Git #2301 — the Milestone detail panel's full real snapshot: overall vitals (open
+/// epics/features/issues, gate-check pass count), every open epic's completion row, and the
+/// combined stalled-feature list. <see cref="PartialErrors"/> carries any per-epic fetch that
+/// failed so the panel can say so honestly instead of silently under-counting.</summary>
+public sealed class GitPanelMilestoneSnapshot
+{
+    public int MilestoneNumber { get; init; }
+    public int OpenEpicCount { get; init; }
+    public int OpenFeatureCount { get; init; }
+    public int OpenIssueCount { get; init; }
+    public int GateTotal { get; init; }
+    public int GateClosedCount { get; init; }
+    public List<GitPanelEpicSnapshot> EpicRows { get; init; } = new();
+    public List<GitPanelStalledFeature> StalledFeatures { get; init; } = new();
+    public List<string> PartialErrors { get; init; } = new();
+}
+
 /// <summary>Git #2290 — read-only data layer for the Git Panel navigation shell (Feature #2289
 /// items 1-11). Same real fail-closed `gh` shellout pattern <see cref="GitMapService"/> and
 /// <see cref="GitIssuesService"/> already established (kept local for the same
 /// don't-regress-shipped-surfaces rationale as those two classes' own headers).</summary>
 public static class GitPanelService
 {
+    /// <summary>Git #2301 — the window a "recent close" counts toward the per-epic velocity used
+    /// for weeks-to-done. 28 days / 4 weeks gives a real rolling-month rate without needing a
+    /// second, longer-range fetch.</summary>
+    public const int VelocityWindowDays = 28;
+    /// <summary>Git #2301 — how long an open feature can go with no real forward motion before the
+    /// Milestone panel calls it stalled. Picked to clear normal in-progress noise (a feature mid-
+    /// build for a week is not stalled) while still catching genuinely stuck work.</summary>
+    public const int StallThresholdDays = 21;
+
     private const string Owner = "shanemccaw";
     private const string RepoName = "Shane-McCaw-MSP";
     private const string Repo = "shanemccaw/Shane-McCaw-MSP";
@@ -195,11 +264,15 @@ public static class GitPanelService
     {
         if (epicNumber <= 0) return (true, new List<GitPanelIssueNode>(), 0, null);
 
+        // Git #2301 — closedAt/createdAt/updatedAt added at both levels: the Milestone panel's
+        // recent-velocity projection and stalled-feature detection need real timestamps, not just
+        // state/labels. Same single GraphQL call the tree already made; no second fetch.
+        const string timeFields = "closedAt createdAt updatedAt";
         string query =
             "query { repository(owner: \"" + Owner + "\", name: \"" + RepoName + "\") { " +
             "issue(number: " + epicNumber + ") { subIssues(first: 100) { totalCount nodes { " +
-            "number title state labels(first: 20) { nodes { name } } " +
-            "subIssues(first: 100) { nodes { number title state labels(first: 20) { nodes { name } } } } " +
+            "number title state " + timeFields + " labels(first: 20) { nodes { name } } " +
+            "subIssues(first: 100) { nodes { number title state " + timeFields + " labels(first: 20) { nodes { name } } } } " +
             "} } } } }";
 
         var (ok, stdout, stderr) = await RunGhAsync(new[] { "api", "graphql", "-f", $"query={query}" });
@@ -303,8 +376,17 @@ public static class GitPanelService
             Labels = labels,
             Children = children,
             OpenChildCount = openChildCount,
-            OpenBugCount = openBugCount
+            OpenBugCount = openBugCount,
+            ClosedAt = ReadDate(el, "closedAt"),
+            CreatedAt = ReadDate(el, "createdAt"),
+            UpdatedAt = ReadDate(el, "updatedAt")
         };
+    }
+
+    private static DateTimeOffset? ReadDate(JsonElement el, string propertyName)
+    {
+        if (!el.TryGetProperty(propertyName, out var dateEl) || dateEl.ValueKind != JsonValueKind.String) return null;
+        return DateTimeOffset.TryParse(dateEl.GetString(), out var dt) ? dt : (DateTimeOffset?)null;
     }
 
     /// <summary>Git #2300 — one GraphQL call resolving an issue's own real state/labels/milestone
@@ -526,6 +608,147 @@ public static class GitPanelService
         }
     }
 
+    /// <summary>Git #2301 — real GATE: pass count for one milestone: every issue whose title starts
+    /// with "GATE:" (same genuine-prefix filter <see cref="GetOpenGatesAsync"/> uses) scoped to this
+    /// milestone via `gh`'s own `milestone:"..."` search qualifier, `--state all` so closed gates
+    /// count toward the total instead of only ever showing 0/0.</summary>
+    private static async Task<(bool Ok, int Total, int Closed, string? Error)> GetGateStatusForMilestoneAsync(string milestoneTitle)
+    {
+        var (ok, stdout, stderr) = await RunGhAsync(new[]
+        {
+            "issue", "list", "--repo", Repo, "--search", $"GATE in:title milestone:\"{milestoneTitle}\"",
+            "--state", "all", "--json", "number,title,state", "--limit", "50"
+        });
+        if (!ok)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] gate status fetch failed for milestone '{milestoneTitle}': {stderr.Trim()}");
+            return (false, 0, 0, $"gate status fetch failed: {stderr.Trim()}");
+        }
+        try
+        {
+            var rows = JsonSerializer.Deserialize<List<NumberTitleStateRow>>(stdout, JsonOpts) ?? new();
+            var gates = rows.Where(r => (r.Title ?? "").StartsWith("GATE:", StringComparison.OrdinalIgnoreCase)).ToList();
+            int closed = gates.Count(r => string.Equals(r.State, "CLOSED", StringComparison.OrdinalIgnoreCase));
+            return (true, gates.Count, closed, null);
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-panel] couldn't parse gate status for milestone '{milestoneTitle}': {ex.Message}");
+            return (false, 0, 0, $"couldn't parse gh output: {ex.Message}");
+        }
+    }
+
+    /// <summary>Git #2301 — the Milestone detail panel's full real snapshot. Fetches every open
+    /// epic's feature tree (throttled — #1202 alone carries dozens of open epics under v1.1, and
+    /// spawning that many `gh` processes unbounded is real resource pressure) plus this milestone's
+    /// real GATE: pass count, all in parallel, then aggregates client-side. A per-epic fetch failure
+    /// is recorded in <see cref="GitPanelMilestoneSnapshot.PartialErrors"/> and that epic is simply
+    /// missing from the rows — never backfilled with an invented row.</summary>
+    public static async Task<GitPanelMilestoneSnapshot> GetMilestoneSnapshotAsync(GitPanelMilestone milestone, List<GitMapEpic> epicsInMilestone)
+    {
+        var throttle = new System.Threading.SemaphoreSlim(6);
+        var errors = new List<string>();
+
+        var epicTasks = epicsInMilestone.Select(async epic =>
+        {
+            await throttle.WaitAsync();
+            try
+            {
+                var (ok, features, _, error) = await GetFeatureTreeAsync(epic.Number);
+                if (!ok)
+                {
+                    lock (errors) errors.Add($"epic #{epic.Number}: {error}");
+                    return (GitPanelEpicSnapshot?)null;
+                }
+                return BuildEpicSnapshot(epic, features);
+            }
+            finally { throttle.Release(); }
+        }).ToList();
+
+        var gateTask = GetGateStatusForMilestoneAsync(milestone.Title);
+
+        await Task.WhenAll(epicTasks.Cast<Task>().Append(gateTask));
+        throttle.Dispose();
+
+        var epicRows = epicTasks.Select(t => t.Result).Where(r => r != null).Select(r => r!).ToList();
+        var (gateOk, gateTotal, gateClosed, gateError) = gateTask.Result;
+        if (!gateOk) lock (errors) errors.Add($"gate status: {gateError}");
+
+        return new GitPanelMilestoneSnapshot
+        {
+            MilestoneNumber = milestone.Number,
+            OpenEpicCount = epicsInMilestone.Count,
+            OpenFeatureCount = epicRows.Sum(r => r.TotalFeatures - r.ClosedFeatures),
+            OpenIssueCount = epicRows.Sum(r => r.TotalChildIssues - r.ClosedChildIssues),
+            GateTotal = gateTotal,
+            GateClosedCount = gateClosed,
+            EpicRows = epicRows.OrderByDescending(r => r.StalledFeatures.Count).ThenBy(r => r.Title, StringComparer.OrdinalIgnoreCase).ToList(),
+            StalledFeatures = epicRows.SelectMany(r => r.StalledFeatures).ToList(),
+            PartialErrors = errors
+        };
+    }
+
+    private static GitPanelEpicSnapshot BuildEpicSnapshot(GitMapEpic epic, List<GitPanelIssueNode> features)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var velocityCutoff = now.AddDays(-VelocityWindowDays);
+        var stallCutoff = now.AddDays(-StallThresholdDays);
+
+        int totalFeatures = features.Count;
+        int closedFeatures = 0, closedRecently = 0;
+        int totalChildren = 0, closedChildren = 0;
+        var stalled = new List<GitPanelStalledFeature>();
+
+        foreach (var f in features)
+        {
+            if (f.IsClosed)
+            {
+                closedFeatures++;
+                if (f.ClosedAt.HasValue && f.ClosedAt.Value >= velocityCutoff) closedRecently++;
+            }
+            foreach (var c in f.Children)
+            {
+                totalChildren++;
+                if (c.IsClosed)
+                {
+                    closedChildren++;
+                    if (c.ClosedAt.HasValue && c.ClosedAt.Value >= velocityCutoff) closedRecently++;
+                }
+            }
+
+            if (f.IsClosed) continue;
+
+            bool blocked = f.Labels.Contains("blocked", StringComparer.OrdinalIgnoreCase);
+            bool recentMotion = f.HasChildren
+                ? f.Children.Any(c => c.IsClosed && c.ClosedAt.HasValue && c.ClosedAt.Value >= stallCutoff)
+                : f.UpdatedAt.HasValue && f.UpdatedAt.Value >= stallCutoff;
+            bool oldEnough = f.CreatedAt.HasValue && f.CreatedAt.Value <= stallCutoff;
+
+            string? reason = blocked ? "blocked" : (oldEnough && !recentMotion ? $"no closes in {StallThresholdDays}d" : null);
+            if (reason != null)
+                stalled.Add(new GitPanelStalledFeature { Number = f.Number, Title = f.Title, EpicNumber = epic.Number, EpicTitle = epic.Title, Reason = reason });
+        }
+
+        int openIssues = (totalFeatures - closedFeatures) + (totalChildren - closedChildren);
+        double? weeksToDone;
+        if (openIssues <= 0) weeksToDone = 0;
+        else if (closedRecently <= 0) weeksToDone = null;
+        else weeksToDone = openIssues / (closedRecently / (VelocityWindowDays / 7.0));
+
+        return new GitPanelEpicSnapshot
+        {
+            Number = epic.Number,
+            Title = epic.Title,
+            TotalFeatures = totalFeatures,
+            ClosedFeatures = closedFeatures,
+            TotalChildIssues = totalChildren,
+            ClosedChildIssues = closedChildren,
+            ClosedRecently = closedRecently,
+            WeeksToDone = weeksToDone,
+            StalledFeatures = stalled
+        };
+    }
+
     // ── gh process runner — mirrors GitMapService's own local copy (kept local for the same
     // reason: this feature can't regress that one's already-shipped surface). ──────────────────
     private static Task<(bool Ok, string StdOut, string StdErr)> RunGhAsync(string[] args, int timeoutMs = 30000)
@@ -585,6 +808,12 @@ public static class GitPanelService
         [JsonPropertyName("title")] public string? Title { get; set; }
     }
     private sealed class BlockerEdgeRow
+    {
+        [JsonPropertyName("number")] public int Number { get; set; }
+        [JsonPropertyName("title")] public string? Title { get; set; }
+        [JsonPropertyName("state")] public string? State { get; set; }
+    }
+    private sealed class NumberTitleStateRow
     {
         [JsonPropertyName("number")] public int Number { get; set; }
         [JsonPropertyName("title")] public string? Title { get; set; }

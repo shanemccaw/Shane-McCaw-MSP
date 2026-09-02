@@ -67,6 +67,11 @@ public partial class MainWindow
     private readonly Dictionary<int, GitGateDetail> _gitGateDetailCache = new();
     private readonly HashSet<int> _gitGateDetailLoading = new();
 
+    // ── Milestone panel (#2301, item 12) ────────────────────────────────────────────────────
+    private readonly Dictionary<int, GitPanelMilestoneSnapshot> _gitMilestoneSnapshotCache = new();
+    private readonly HashSet<int> _gitMilestoneSnapshotLoading = new();
+    private int _gitMilestoneSnapshotSeq;
+
     // ── load ─────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Fires the three real reads the tree renders from (open milestones, open GATE:
@@ -321,6 +326,27 @@ public partial class MainWindow
     private void OpenGitMilestonePeek(GitPanelMilestone ms)
     {
         SetGitTrail(new List<GitCrumb> { new() { Kind = GitCrumbKind.Milestone, Number = ms.Number, Title = ms.Title } });
+        _ = FetchGitMilestoneSnapshotAsync(ms);
+    }
+
+    /// <summary>Git #2301 — the Milestone panel's real snapshot: fetched once per milestone number,
+    /// cached, re-rendered in place when it lands. Guarded by a request sequence so a user who
+    /// navigates away before this resolves doesn't have a stale fetch clobber whatever they opened
+    /// next — same pattern <see cref="FetchGitPeekStateAsync"/> already uses.</summary>
+    private async Task FetchGitMilestoneSnapshotAsync(GitPanelMilestone ms)
+    {
+        if (_gitMilestoneSnapshotCache.ContainsKey(ms.Number)) { RenderGitPanel(); return; }
+        if (!_gitMilestoneSnapshotLoading.Add(ms.Number)) return;
+
+        int seq = ++_gitMilestoneSnapshotSeq;
+        var epicsInMilestone = _gitEpics.Where(e => string.Equals(e.Milestone, ms.Title, StringComparison.OrdinalIgnoreCase)).ToList();
+        var snapshot = await GitPanelService.GetMilestoneSnapshotAsync(ms, epicsInMilestone);
+        _gitMilestoneSnapshotLoading.Remove(ms.Number);
+        if (seq != _gitMilestoneSnapshotSeq) return; // user already navigated elsewhere
+
+        _gitMilestoneSnapshotCache[ms.Number] = snapshot;
+        if (_gitTrail.Count > 0 && _gitTrail[^1].Kind == GitCrumbKind.Milestone && _gitTrail[^1].Number == ms.Number)
+            RenderGitPanel();
     }
 
     private void OpenGitEpicPeek(GitMapEpic epic)
@@ -502,19 +528,11 @@ public partial class MainWindow
 
         if (current.Kind == GitCrumbKind.Milestone)
         {
-            var ms = _gitMilestones.FirstOrDefault(m => m.Number == current.Number);
-            if (ms != null)
-            {
-                var counts = new WrapPanel { Margin = new Thickness(6, 0, 6, 8) };
-                counts.Children.Add(GitCountPill($"{ms.OpenCount} open", "Brush.Text.Muted"));
-                counts.Children.Add(GitCountPill($"{ms.ClosedCount} closed", "Brush.Status.Done"));
-                GitPeekHost.Children.Add(counts);
-            }
-            var note = GitDimLine("Peek detail content (vitals, rings, actions) lands in later builds under Feature #2289.", indent: 6);
-            note.Margin = new Thickness(6, 10, 6, 0);
-            GitPeekHost.Children.Add(note);
+            RenderGitMilestonePanel(current.Number);
+            return;
         }
-        else if (current.Kind == GitCrumbKind.Feature)
+
+        if (current.Kind == GitCrumbKind.Feature)
         {
             // Git #2309/#2310 — the real Feature detail panel: ring, state, epic, bug count,
             // last build, six real build-state chips, and the (chip-filterable) issue list.
@@ -866,6 +884,246 @@ public partial class MainWindow
         return grid;
     }
 
+    // ── Milestone panel content (#2301, item 12) ────────────────────────────────────────────
+
+    /// <summary>Git #2301 — the Milestone detail panel: the big ring (real open/closed issue
+    /// counts straight off GitHub's own milestone endpoint — already loaded, no wait), the
+    /// epics/features/issues/gate-check vitals and per-epic rows (both need the real snapshot
+    /// fetch triggered on open — rendered once it lands), and the stalled-feature warning.</summary>
+    private void RenderGitMilestonePanel(int milestoneNumber)
+    {
+        var ms = _gitMilestones.FirstOrDefault(m => m.Number == milestoneNumber);
+        if (ms == null)
+        {
+            GitPeekHost.Children.Add(GitDimLine("Milestone no longer in the real open list.", indent: 6));
+            return;
+        }
+
+        int totalIssues = ms.OpenCount + ms.ClosedCount;
+        double overallPercent = totalIssues == 0 ? 0 : (double)ms.ClosedCount / totalIssues;
+
+        // Big ring + real open/closed legend.
+        var ringRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 0, 6, 10) };
+        ringRow.Children.Add(GitRing(overallPercent, 76, 9,
+            overallPercent >= 1.0 ? "Brush.Status.Done" : "Brush.Status.Running",
+            $"{Math.Round(overallPercent * 100)}%", 13));
+        var legend = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        legend.Children.Add(GitLegendLine($"{ms.ClosedCount} closed", "Brush.Status.Done"));
+        legend.Children.Add(GitLegendLine($"{ms.OpenCount} open", "Brush.Status.Running"));
+        legend.Children.Add(GitDimLine($"{totalIssues} real issue{(totalIssues == 1 ? "" : "s")} on this milestone", indent: 0));
+        ringRow.Children.Add(legend);
+        GitPeekHost.Children.Add(ringRow);
+
+        if (!_gitMilestoneSnapshotCache.TryGetValue(milestoneNumber, out var snap))
+        {
+            GitPeekHost.Children.Add(GitDimLine("Loading real epics/features/issues/gate-check breakdown…", indent: 6));
+            return;
+        }
+
+        // Vitals — epics / features / issues / gate-check, all real counts off this session's snapshot.
+        var vitals = new WrapPanel { Margin = new Thickness(6, 0, 6, 10) };
+        vitals.Children.Add(GitVitalTile(snap.OpenEpicCount.ToString(), "OPEN EPICS"));
+        vitals.Children.Add(GitVitalTile(snap.OpenFeatureCount.ToString(), "FEATURES OPEN"));
+        vitals.Children.Add(GitVitalTile(snap.OpenIssueCount.ToString(), "ISSUES OPEN"));
+        vitals.Children.Add(GitVitalTile(snap.GateTotal == 0 ? "—" : $"{snap.GateClosedCount}/{snap.GateTotal}", "GATE CHECKS",
+            snap.GateTotal > 0 && snap.GateClosedCount == snap.GateTotal ? "Brush.Status.Done" : "Brush.Text.Heading"));
+        GitPeekHost.Children.Add(vitals);
+
+        // Stalled-feature warning — real, only rendered when something genuinely qualifies.
+        if (snap.StalledFeatures.Count > 0)
+        {
+            var warnBorder = new Border
+            {
+                Margin = new Thickness(4, 0, 4, 10),
+                Padding = new Thickness(9, 7, 9, 7),
+                CornerRadius = new CornerRadius(7),
+                Background = (Brush)FindResource("Brush.NextUp.NeedsReview.Bg"),
+                BorderThickness = new Thickness(1),
+                BorderBrush = (Brush)FindResource("Brush.NextUp.NeedsReview.Border")
+            };
+            var warnStack = new StackPanel();
+            var warnHeader = GitText($"⚠ {snap.StalledFeatures.Count} stalled feature{(snap.StalledFeatures.Count == 1 ? "" : "s")}", 10.5, "Brush.NextUp.NeedsReview.Fg");
+            warnHeader.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
+            warnStack.Children.Add(warnHeader);
+            foreach (var sf in snap.StalledFeatures.Take(8))
+            {
+                var row = new TextBlock
+                {
+                    Margin = new Thickness(0, 3, 0, 0),
+                    FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                    FontSize = 9.5,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Cursor = Cursors.Hand,
+                    Foreground = (Brush)FindResource("Brush.NextUp.NeedsReview.Fg")
+                };
+                row.Inlines.Add(new System.Windows.Documents.Run($"#{sf.Number} {StripGitPrefix(sf.Title)} ") { FontWeight = (FontWeight)FindResource("FontWeight.Bold") });
+                row.Inlines.Add(new System.Windows.Documents.Run($"— {sf.Reason} · under {StripGitPrefix(sf.EpicTitle)}") { Foreground = (Brush)FindResource("Brush.Text.Muted") });
+                int captured = sf.Number;
+                row.MouseLeftButtonDown += (_, e) => { e.Handled = true; OpenGitIssuePeekDerived(captured); };
+                warnStack.Children.Add(row);
+            }
+            if (snap.StalledFeatures.Count > 8)
+                warnStack.Children.Add(GitDimLine($"+ {snap.StalledFeatures.Count - 8} more.", indent: 0));
+            warnBorder.Child = warnStack;
+            GitPeekHost.Children.Add(warnBorder);
+        }
+
+        // Per-epic rows — mini ring + weeks-to-done, every open epic under this milestone.
+        var epicsHeader = GitText($"EPICS ({snap.EpicRows.Count})", 9, "Brush.Text.Dim");
+        epicsHeader.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        epicsHeader.Margin = new Thickness(6, 0, 6, 4);
+        GitPeekHost.Children.Add(epicsHeader);
+
+        if (snap.EpicRows.Count == 0)
+        {
+            GitPeekHost.Children.Add(GitDimLine("No open epics carry this milestone.", indent: 6));
+        }
+        foreach (var row in snap.EpicRows)
+        {
+            var epicMatch = _gitEpics.FirstOrDefault(e => e.Number == row.Number);
+            var card = new Border
+            {
+                Margin = new Thickness(4, 0, 4, 4),
+                Padding = new Thickness(8, 6, 8, 6),
+                CornerRadius = new CornerRadius(6),
+                Background = (Brush)FindResource("Brush.Bg.Chip"),
+                Cursor = Cursors.Hand
+            };
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var ring = GitRing(row.PercentDone, 30, 4, row.PercentDone >= 1.0 ? "Brush.Status.Done" : "Brush.Status.Running", null);
+            Grid.SetColumn(ring, 0);
+            grid.Children.Add(ring);
+
+            var mid = new StackPanel { Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            var nameLine = GitText($"#{row.Number} {StripGitPrefix(row.Title)}", 10.5, "Brush.Text.Primary");
+            nameLine.TextTrimming = TextTrimming.CharacterEllipsis;
+            mid.Children.Add(nameLine);
+            var subLine = GitText($"{row.OpenIssues} open of {row.TotalIssues}" + (row.StalledFeatures.Count > 0 ? $" · {row.StalledFeatures.Count} stalled" : ""),
+                8.5, row.StalledFeatures.Count > 0 ? "Brush.NextUp.NeedsReview.Fg" : "Brush.Text.Muted");
+            mid.Children.Add(subLine);
+            Grid.SetColumn(mid, 1);
+            grid.Children.Add(mid);
+
+            var weeks = GitText(GitFormatWeeksToDone(row), 9, "Brush.Text.Muted");
+            weeks.VerticalAlignment = VerticalAlignment.Center;
+            weeks.TextAlignment = TextAlignment.Right;
+            Grid.SetColumn(weeks, 2);
+            grid.Children.Add(weeks);
+
+            card.Child = grid;
+            card.MouseLeftButtonDown += (_, e) =>
+            {
+                e.Handled = true;
+                if (epicMatch != null) OpenGitEpicPeek(epicMatch);
+                else OpenGitIssuePeekDerived(row.Number); // epic fell out of the open list between fetches — derive instead of failing silently
+            };
+            GitPeekHost.Children.Add(card);
+        }
+
+        if (snap.PartialErrors.Count > 0)
+        {
+            var errNote = GitDimLine("Partial data — " + string.Join(" · ", snap.PartialErrors), indent: 6);
+            errNote.Margin = new Thickness(6, 6, 6, 0);
+            GitPeekHost.Children.Add(errNote);
+        }
+    }
+
+    private static string GitFormatWeeksToDone(GitPanelEpicSnapshot row)
+    {
+        if (row.OpenIssues <= 0) return "done";
+        if (row.WeeksToDone == null) return "no recent closes";
+        double w = row.WeeksToDone.Value;
+        return w < 0.1 ? "<0.1w to done" : $"~{w:0.#}w to done";
+    }
+
+    private TextBlock GitLegendLine(string text, string brushKey)
+    {
+        var tb = GitText(text, 10, brushKey);
+        tb.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
+        return tb;
+    }
+
+    /// <summary>One real stat tile for the Milestone panel's vitals row — a big number over a
+    /// small caption, no ring, no fabricated trend arrow.</summary>
+    private Border GitVitalTile(string value, string caption, string valueBrushKey = "Brush.Text.Heading")
+    {
+        var stack = new StackPanel();
+        var valueText = GitText(value, 15, valueBrushKey);
+        valueText.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        stack.Children.Add(valueText);
+        var captionText = GitText(caption, 8, "Brush.Text.Dim");
+        captionText.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
+        stack.Children.Add(captionText);
+        return new Border
+        {
+            Margin = new Thickness(0, 0, 8, 6),
+            Padding = new Thickness(8, 5, 12, 5),
+            CornerRadius = new CornerRadius(6),
+            Background = (Brush)FindResource("Brush.Bg.Chip"),
+            Child = stack
+        };
+    }
+
+    /// <summary>Git #2301 — a real WPF-drawn progress ring (background track + a clockwise arc from
+    /// 12 o'clock for <paramref name="percent"/>), no image assets. Used for both the Milestone
+    /// panel's big overall ring and its per-epic mini rings.</summary>
+    private FrameworkElement GitRing(double percent, double size, double thickness, string fgBrushKey, string? centerText, double centerFontSize = 9)
+    {
+        percent = Math.Clamp(percent, 0, 1);
+        var grid = new Grid { Width = size, Height = size };
+
+        grid.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Width = size,
+            Height = size,
+            Stroke = (Brush)FindResource("Brush.Border.Default"),
+            StrokeThickness = thickness,
+            Opacity = 0.4
+        });
+
+        if (percent > 0.002)
+        {
+            double radius = (size - thickness) / 2;
+            var center = new Point(size / 2, size / 2);
+            const double startAngle = -90;
+            double sweep = Math.Min(percent * 360.0, 359.9);
+            double endAngle = startAngle + sweep;
+
+            Point OnCircle(double angleDeg)
+            {
+                double rad = angleDeg * Math.PI / 180.0;
+                return new Point(center.X + radius * Math.Cos(rad), center.Y + radius * Math.Sin(rad));
+            }
+
+            var figure = new PathFigure { StartPoint = OnCircle(startAngle), IsClosed = false };
+            figure.Segments.Add(new ArcSegment(OnCircle(endAngle), new Size(radius, radius), 0, sweep > 180, SweepDirection.Clockwise, true));
+            var geometry = new PathGeometry();
+            geometry.Figures.Add(figure);
+            grid.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = geometry,
+                Stroke = (Brush)FindResource(fgBrushKey),
+                StrokeThickness = thickness,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round
+            });
+        }
+
+        if (centerText != null)
+        {
+            var text = GitText(centerText, centerFontSize, "Brush.Text.Heading");
+            text.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+            text.HorizontalAlignment = HorizontalAlignment.Center;
+            text.VerticalAlignment = VerticalAlignment.Center;
+            grid.Children.Add(text);
+        }
+        return grid;
+    }
+
     private void GitPeekBack()
     {
         if (_gitTrail.Count > 0) _gitTrail.RemoveAt(_gitTrail.Count - 1);
@@ -882,10 +1140,19 @@ public partial class MainWindow
     private void AfterGitTrailChanged()
     {
         RenderGitPanel();
-        if (_gitTrail.Count > 0 && _gitTrail[^1].Kind != GitCrumbKind.Milestone)
-            _ = FetchGitPeekStateAsync(_gitTrail[^1].Number);
-        if (_gitTrail.Count > 0 && _gitTrail[^1].Kind == GitCrumbKind.Feature)
-            _ = EnsureGitFeatureDetailAsync(_gitTrail[^1].Number);
+        if (_gitTrail.Count == 0) return;
+        var current = _gitTrail[^1];
+        if (current.Kind == GitCrumbKind.Milestone)
+        {
+            var ms = _gitMilestones.FirstOrDefault(m => m.Number == current.Number);
+            if (ms != null) _ = FetchGitMilestoneSnapshotAsync(ms);
+        }
+        else
+        {
+            _ = FetchGitPeekStateAsync(current.Number);
+            if (current.Kind == GitCrumbKind.Feature)
+                _ = EnsureGitFeatureDetailAsync(current.Number);
+        }
     }
 
     /// <summary>Opens an issue from inside the Feature detail panel's own issue list — appends
