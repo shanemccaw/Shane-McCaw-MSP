@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -8,6 +9,10 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace ShaneBuilder.Services;
+
+/// <summary>Git #2201 — one open, <c>blocked</c>-labelled issue, for the Alerts/Critters GitHub
+/// watcher's "Issue blocked" alert/whammy.</summary>
+public sealed record BlockedIssue(int Number, string Title);
 
 /// <summary>
 /// Git #2176 — ShaneBuilder's real, read-only GitHub API client for app-shell startup
@@ -93,6 +98,16 @@ public sealed class GitHubReadClient
     {
         [JsonPropertyName("total_count")]
         public int TotalCount { get; set; }
+        [JsonPropertyName("items")]
+        public List<SearchItem>? Items { get; set; }
+    }
+
+    private sealed class SearchItem
+    {
+        [JsonPropertyName("number")]
+        public int Number { get; set; }
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = "";
     }
 
     /// <summary>Real, live open-issue count for shanemccaw/Shane-McCaw-MSP via GitHub's real
@@ -102,5 +117,18 @@ public sealed class GitHubReadClient
         string q = Uri.EscapeDataString($"repo:{Owner}/{Repo} is:issue is:open");
         var res = await _http.GetFromJsonAsync<SearchResponse>($"search/issues?q={q}");
         return res?.TotalCount ?? 0;
+    }
+
+    /// <summary>Git #2201 — every open issue carrying the real <c>blocked</c> label (CLAUDE.md's own
+    /// "blocked" label convention), for the Alerts/Critters "Issue blocked" watcher. Live search, no
+    /// cache — same shape as <see cref="GetOpenIssueCountAsync"/>.</summary>
+    public async Task<List<BlockedIssue>> GetBlockedOpenIssuesAsync()
+    {
+        string q = Uri.EscapeDataString($"repo:{Owner}/{Repo} is:issue is:open label:blocked");
+        var res = await _http.GetFromJsonAsync<SearchResponse>($"search/issues?q={q}&per_page=30");
+        var list = new List<BlockedIssue>();
+        if (res?.Items == null) return list;
+        foreach (var item in res.Items) list.Add(new BlockedIssue(item.Number, item.Title));
+        return list;
     }
 }

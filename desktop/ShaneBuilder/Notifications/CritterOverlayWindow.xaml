@@ -1,0 +1,22 @@
+<Window x:Class="ShaneBuilder.CritterOverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Celebrations"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Focusable="False"
+        IsHitTestVisible="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Git #2201 — readme-phase2.md Step 11, Channel 2: "A full-screen IsHitTestVisible=False
+         overlay, tiered by how big the win is." Covers the primary work area; genuinely click-through
+         at the Win32 level too (WS_EX_TRANSPARENT, set in code-behind) so a party never blocks using
+         the shell underneath it. Everything is built procedurally in code-behind per celebration —
+         same "dynamic UI built in C#" convention MainWindow.xaml.cs already uses for Git Doctor/Repo
+         Health rather than data-templating a variable-shape tree. -->
+    <Canvas x:Name="RootCanvas" ClipToBounds="True"/>
+</Window>

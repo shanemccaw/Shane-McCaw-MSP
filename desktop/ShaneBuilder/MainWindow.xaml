@@ -363,6 +363,24 @@
                         <TextBlock Text="&#xE7A8;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
                     </Button>
 
+                    <!-- Git #2201 — Alert Lab bell (readme-phase2.md Step 11): "Bell in the topbar
+                         opens the Alert Lab: fire any alert or celebration on demand (this is also
+                         the QA harness), plus recent history. Badge = live card count." -->
+                    <Button x:Name="BtnAlertBell" Style="{StaticResource CaptionButton}"
+                            ToolTip="Alert Lab" Click="BtnAlertBell_Click"
+                            WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Grid>
+                            <TextBlock Text="&#xEA8F;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                            <Border x:Name="BellBadge" Visibility="Collapsed"
+                                    Width="14" Height="14" CornerRadius="7"
+                                    Background="{StaticResource Brush.Epic.Gate}"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-6,-6,0">
+                                <TextBlock x:Name="BellBadgeText" FontSize="8.5" FontWeight="Bold"
+                                           Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                    </Button>
+
                     <Button x:Name="BtnMinimize" Style="{StaticResource CaptionButton}" ToolTip="Minimize" Click="BtnMinimize_Click">
                         <TextBlock Text="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
                     </Button>

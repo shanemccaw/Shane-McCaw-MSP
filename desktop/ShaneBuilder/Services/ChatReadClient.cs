@@ -255,6 +255,38 @@ public sealed class ChatReadClient
         return result;
     }
 
+    /// <summary>Git #2201 — every open pinned question across ALL chats (not scoped to one chat_id
+    /// like <see cref="GetOpenPinnedQuestionsForChatAsync"/>), for the Alerts/Critters "Claude is
+    /// waiting on you" watcher (AlertWatchers.cs). Also carries <c>conversation_id</c> so the alert's
+    /// reply action can open the real chat if no matching tab is open in this session. Read-only, same
+    /// <c>resolved_at IS NULL</c> filter, no purge.</summary>
+    public async Task<List<PinnedQuestion>> GetAllOpenPinnedQuestionsAsync()
+    {
+        var result = new List<PinnedQuestion>();
+        await using var conn = await OpenAsync();
+        const string sql = @"
+            SELECT p.id, p.chat_id, p.question_text, p.created_at, c.conversation_id, c.title
+            FROM chat_pinned_questions p
+            JOIN bt_chats c ON c.id = p.chat_id
+            WHERE p.resolved_at IS NULL
+            ORDER BY p.created_at ASC";
+        await using var cmd = new NpgsqlCommand(sql, conn);
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            result.Add(new PinnedQuestion
+            {
+                Id = reader.GetInt32(0),
+                ChatId = reader.GetInt32(1),
+                QuestionText = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                CreatedAt = reader.GetDateTime(3),
+                ConversationId = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                ChatTitle = reader.IsDBNull(5) ? "" : reader.GetString(5),
+            });
+        }
+        return result;
+    }
+
     // ── Git #2213 — Git Map read-only lookups against bt_build_queue ────────────────────────
     /// <summary>The real <c>status</c> (lowercase — <c>queued</c>/<c>running</c>/<c>done</c>/…, as
     /// stored) of the MOST RECENT <c>bt_build_queue</c> row for one issue number, or null when this

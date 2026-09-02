@@ -47,6 +47,99 @@ public partial class MainWindow : Window
         RenderBuildDetail(); // starts closed (BuildDetailColumn.Width = 0) — no item selected yet
 
         RunStartupConnectivityCheckAsync();
+        InitializeAlertsAndCritters();
+    }
+
+    // ── Git #2201 — Alerts and Critters (readme-phase2.md Step 11) ────────────────────────────
+    private AlertStackWindow? _alertStackWindow;
+    private CritterOverlayWindow? _critterOverlayWindow;
+    private AlertLabWindow? _alertLabWindow;
+
+    private void InitializeAlertsAndCritters()
+    {
+        _alertStackWindow = new AlertStackWindow { OnOpenAlertLab = OpenAlertLab };
+        _critterOverlayWindow = new CritterOverlayWindow();
+        _alertLabWindow = new AlertLabWindow();
+
+        AlertCenter.AlertsChanged += OnAlertsChanged;
+        AlertCenter.CelebrationRequested += OnCelebrationRequested;
+
+        // Wire the real actions a card/lab fire — AlertWatchers.cs and AlertLabWindow build their
+        // AlertAction delegates against these static fields (Notifications/AlertActions.cs) rather
+        // than depending on MainWindow directly, same static-bridge shape ToastEngine already uses.
+        AlertActions.OpenLogAt = (sourceId, levels, query) => OpenLogAt(sourceId, levels, query);
+        AlertActions.OpenGitDoctor = OpenGitDoctor;
+        AlertActions.OpenIssueInGitPanel = _ => OpenLeftPanelGit();
+        AlertActions.AppendToComposer = AppendToComposer;
+        AlertActions.OpenChatInBrowser = conversationId =>
+        {
+            if (string.IsNullOrWhiteSpace(conversationId)) return;
+            try { Process.Start(new ProcessStartInfo($"https://claude.ai/chat/{conversationId}") { UseShellExecute = true }); }
+            catch { /* opening the browser must never crash the card */ }
+        };
+
+        AlertWatchers.Start();
+    }
+
+    private void OnAlertsChanged()
+    {
+        var live = AlertCenter.LiveAlerts;
+        _alertStackWindow?.Render(live);
+        BellBadge.Visibility = live.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        BellBadgeText.Text = live.Count.ToString();
+    }
+
+    private void OnCelebrationRequested(Celebration c) => _critterOverlayWindow?.Play(c);
+
+    private void BtnAlertBell_Click(object sender, RoutedEventArgs e) => OpenAlertLab();
+
+    private void OpenAlertLab()
+    {
+        if (_alertLabWindow == null) return;
+        var point = BtnAlertBell.PointToScreen(new Point(BtnAlertBell.ActualWidth - 296, BtnAlertBell.ActualHeight + 4));
+        _alertLabWindow.ShowNear(point);
+    }
+
+    /// <summary>The real "lands you in the pre-filtered log" primary action for a Crash/BuildFailed
+    /// alert — sets the Log Viewer's own filter state (same fields BuildCurrentLogQuery reads) and
+    /// switches to it, then refreshes.</summary>
+    private void OpenLogAt(string? sourceId, IReadOnlyList<LogLevel>? levels, string? query)
+    {
+        _logEnabledSourceIds.Clear();
+        if (sourceId != null && LogService.Sources.Any(s => s.Id == sourceId))
+            _logEnabledSourceIds.Add(sourceId);
+        else
+            foreach (var s in LogService.Sources) _logEnabledSourceIds.Add(s.Id);
+
+        _logSelectedLevels.Clear();
+        if (levels != null && levels.Count > 0)
+            foreach (var l in levels) _logSelectedLevels.Add(l);
+        else
+            foreach (var l in Enum.GetValues<LogLevel>()) _logSelectedLevels.Add(l);
+
+        _logHighlight = false;
+        _logRegex = false;
+        _logSearchText = query ?? "";
+        _logExcludeText = "";
+        _logScrubberMinutesBack = 0;
+
+        OpenLogViewer();
+        RefreshLogViewerQuery();
+    }
+
+    /// <summary>The real "opens #N in the Git panel — your document stayed put" secondary action for
+    /// an IssueBlocked alert. Reuses RailToggle_Click's own panel-opening logic against BtnRailGit.</summary>
+    private void OpenLeftPanelGit()
+    {
+        if (_leftPanelSource == "Git") return;
+        _leftPanelSource = "Git";
+        LeftPanel.Width = LeftPanelWidth;
+        LeftPanelTitle.Text = RailPanelLabels["Git"];
+        foreach (var rail in RailButtons) rail.IsChecked = ReferenceEquals(rail, BtnRailGit);
+        ChatsPanelBody.Visibility = Visibility.Collapsed;
+        GitPanelBody.Visibility = Visibility.Visible;
+        NextUpPanelBody.Visibility = Visibility.Collapsed;
+        NotBuiltPanelBody.Visibility = Visibility.Collapsed;
     }
 
     // ── Git #2176 — real live-connectivity proof at startup ────────────────────────────────
@@ -221,6 +314,17 @@ public partial class MainWindow : Window
         catch { /* best-effort teardown on shutdown */ }
 
         DisposeAllTerminalSessions(); // Git #2216 — never leave a live powershell.exe/cmd.exe running after exit
+
+        try
+        {
+            AlertWatchers.Stop();
+            AlertCenter.AlertsChanged -= OnAlertsChanged;
+            AlertCenter.CelebrationRequested -= OnCelebrationRequested;
+            _alertStackWindow?.Close();
+            _critterOverlayWindow?.Close();
+            _alertLabWindow?.Close();
+        }
+        catch { /* best-effort teardown on shutdown */ }
 
         base.OnClosed(e);
     }
