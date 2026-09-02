@@ -11,13 +11,20 @@ namespace ShaneBuilder.Services.TestPad;
 /// Git #2344 adds the one refinement layered on top so far: a block that opens with a line
 /// <see cref="NotepadImportLineClassifier"/> reads as a Section header is not itself filed as a
 /// note — it becomes the <see cref="TestPadImportCandidate.Section"/> every candidate parsed
-/// after it (until the next Section header) carries. The wrapped-line rejoin refinement,
-/// bullet/numbering stripping, bare-short-line splitting, "&lt;need screen shots&gt;" flagging,
-/// and feature auto-match are each their own open sub-issue (#2345-#2349) that will
-/// replace/extend this splitter in place — this issue only has to get a whole pasted file turned
-/// into real notes at all, not perfectly.</summary>
+/// after it (until the next Section header) carries. Git #2348 layered "&lt;need screen
+/// shots&gt;" stripping/flagging on top of the same splitter. The wrapped-line rejoin
+/// refinement, bullet/numbering stripping, bare-short-line splitting, and feature auto-match are
+/// each their own open sub-issue (#2345-#2347, #2349) that will replace/extend this splitter in
+/// place — this issue only has to get a whole pasted file turned into real notes at all, not
+/// perfectly.</summary>
 public static class TestPadImportParser
 {
+    /// <summary>Git #2348 — the literal marker a Notepad note uses to call out that it needs a
+    /// screenshot attached. Matched case-insensitively and stripped from the note body; its
+    /// presence flags the resulting candidate's <see cref="TestPadImportCandidate.NeedsShot"/>.</summary>
+    private static readonly System.Text.RegularExpressions.Regex NeedsShotMarker =
+        new(@"<\s*need\s+screen\s*shots?\s*>", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
     /// <summary>Parses <paramref name="rawText"/> into candidate notes ready for preview. Never
     /// throws — a pathological paste degrades to an empty result rather than crashing the import
     /// dialog.</summary>
@@ -56,11 +63,21 @@ public static class TestPadImportParser
 
             if (joined.Length == 0) return;
 
+            // Git #2348 — strip the "<need screen shots>" marker wherever it falls in the block
+            // and flag the candidate, rather than requiring it at a fixed position.
+            var needsShot = NeedsShotMarker.IsMatch(joined);
+            if (needsShot)
+            {
+                joined = NeedsShotMarker.Replace(joined, " ");
+                joined = System.Text.RegularExpressions.Regex.Replace(joined, @"\s+", " ").Trim();
+            }
+            if (joined.Length == 0) return;
+
             var (type, body) = NoteMarkerParser.Parse(joined);
             body = body.Trim();
             if (body.Length == 0) return;
 
-            candidates.Add(new TestPadImportCandidate(body, type) { Section = currentSection });
+            candidates.Add(new TestPadImportCandidate(body, type) { Section = currentSection, NeedsShot = needsShot });
         }
 
         foreach (var line in text.Split('\n'))
@@ -121,4 +138,10 @@ public sealed class TestPadImportCandidate
     /// <summary>Whether this candidate is checked to actually be filed on Import. Defaults to
     /// included — the user unchecks what they don't want rather than opting every row in.</summary>
     public bool Include { get; set; } = true;
+
+    /// <summary>Git #2348 — set when the source block contained a "&lt;need screen shots&gt;"
+    /// marker (already stripped out of <see cref="Text"/> by the time this is true). Filed notes
+    /// carry this through to <see cref="TestPadNote.HasShotSlot"/> — the same droppable-thumbnail
+    /// slot the manual "Attach shot" composer chip (#2340) arms.</summary>
+    public bool NeedsShot { get; set; }
 }

@@ -144,6 +144,7 @@ namespace ShaneBuilder
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var check = new CheckBox
             {
@@ -192,6 +193,30 @@ namespace ShaneBuilder
             Grid.SetColumn(typeChip, 2);
             grid.Children.Add(typeChip);
 
+            if (candidate.NeedsShot)
+            {
+                // Git #2348 — visible confirmation that the stripped "<need screen shots>" marker
+                // will carry through as a droppable shot slot on the filed note (#2340's mechanism).
+                var shotChip = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 1, 5, 1),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Background = (Brush)FindResource("Brush.Bg.Card"),
+                    ToolTip = "Flagged for a screenshot — imports with an empty shot slot.",
+                };
+                shotChip.Child = new TextBlock
+                {
+                    Text = "needs shot",
+                    FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                };
+                Grid.SetColumn(shotChip, 3);
+                grid.Children.Add(shotChip);
+            }
+
             row.Child = grid;
             return row;
         }
@@ -222,7 +247,14 @@ namespace ShaneBuilder
 
             foreach (var candidate in toImport)
             {
-                TestPadService.AddNote(new TestPadNote { Text = candidate.Text, Type = candidate.Type });
+                // Git #2348 — a candidate flagged "<need screen shots>" files with the same
+                // droppable-thumbnail slot the manual "Attach shot" composer chip arms (#2340).
+                TestPadService.AddNote(new TestPadNote
+                {
+                    Text = candidate.Text,
+                    Type = candidate.Type,
+                    HasShotSlot = candidate.NeedsShot,
+                });
             }
 
             var imported = toImport.Count;
