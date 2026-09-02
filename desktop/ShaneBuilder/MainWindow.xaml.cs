@@ -522,6 +522,18 @@ public partial class MainWindow : Window
         }
         catch { /* best-effort teardown on shutdown */ }
 
+        // Git #2487 — TestPadPillWindow (and the pad it toggles) are second top-level windows
+        // created independently of MainWindow at startup. Under the default
+        // ShutdownMode="OnLastWindowClose", closing MainWindow alone left them running and kept
+        // the whole process alive, invisibly. Close them explicitly here, same pattern as the
+        // alert/critter windows above.
+        try
+        {
+            _testPadPillWindow?.Close();
+            _testPadWindow?.Close();
+        }
+        catch { /* best-effort teardown on shutdown */ }
+
         base.OnClosed(e);
     }
 
