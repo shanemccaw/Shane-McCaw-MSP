@@ -928,6 +928,18 @@
                                                Cursor="Hand" MouseLeftButtonDown="CtxEpic_Click"
                                                FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
                                                Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                    <TextBlock x:Name="CrumbFeatureSep" Text="&#xE76C;" Margin="7,0" VerticalAlignment="Center"
+                                               FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                               Visibility="Collapsed"/>
+                                    <!-- Git #2324 — Feature-tier segment, resolved async (ResolveChatFeatureNumbersAsync,
+                                         #2319) onto TabDef.FeatureNumber. Collapsed (not just empty) when the tab's
+                                         Epic genuinely has no Feature-tier ancestor, matching the tab-strip badge. -->
+                                    <TextBlock x:Name="CrumbFeature" Text="" VerticalAlignment="Center"
+                                               Cursor="Hand" MouseLeftButtonDown="CtxFeature_Click"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                               Visibility="Collapsed"/>
                                     <TextBlock Text="&#xE76C;" Margin="7,0" VerticalAlignment="Center"
                                                FontFamily="Segoe MDL2 Assets" FontSize="9"
                                                Foreground="{StaticResource Brush.Claude.Text.Muted}"/>

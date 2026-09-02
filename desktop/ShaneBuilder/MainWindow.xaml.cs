@@ -878,7 +878,15 @@ public partial class MainWindow : Window
             }
         }
 
-        if (changed) RenderTabStrip();
+        if (changed)
+        {
+            RenderTabStrip();
+            // Git #2324 — the breadcrumb bar is a separate render path from the tab strip; a
+            // FeatureNumber resolved after RenderClaudeChatContext already ran for the active tab
+            // would otherwise leave the breadcrumb stuck without its Feature segment.
+            if (_activeChatTab != null && targets.Contains(_activeChatTab))
+                RenderClaudeChatContext(_activeChatTab);
+        }
     }
 
     private void RenderTabStrip()
@@ -2723,6 +2731,23 @@ public partial class MainWindow : Window
         _activeChatTab = tab;
         CtxEpicNum.Text = tab.EpicNumber.HasValue ? $"#{tab.EpicNumber}" : "#—";
         CrumbEpic.Text = tab.EpicNumber.HasValue ? $"Epic #{tab.EpicNumber}" : "Epic";
+
+        // Git #2324 — Feature segment, only shown once genuinely resolved (ResolveChatFeatureNumbersAsync,
+        // #2319). No Feature-tier ancestor is a genuinely honest state, not a loading state — collapsed,
+        // matching the tab-strip badge's own null handling.
+        if (tab.FeatureNumber.HasValue)
+        {
+            CrumbFeature.Text = $"⬡ Feature #{tab.FeatureNumber}";
+            CrumbFeature.Visibility = Visibility.Visible;
+            CrumbFeatureSep.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            CrumbFeature.Text = "";
+            CrumbFeature.Visibility = Visibility.Collapsed;
+            CrumbFeatureSep.Visibility = Visibility.Collapsed;
+        }
+
         CrumbChat.Text = tab.Title;
 
         // §8 — bind this tab's own draft into the composer (guard the load so setting .Text doesn't
@@ -3443,6 +3468,28 @@ public partial class MainWindow : Window
         else
         {
             ToastEngine.Show("Epic", "This chat has no epic assigned yet.", ToastKind.Info);
+        }
+    }
+
+    // Git #2324 — Feature click-target, mirroring CtxEpic_Click above.
+    private void CtxFeature_Click(object sender, MouseButtonEventArgs e)
+    {
+        var feature = _activeChatTab?.FeatureNumber;
+        if (feature.HasValue)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = $"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{feature}",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] open feature failed: {ex.Message}"); }
+        }
+        else
+        {
+            ToastEngine.Show("Feature", "This chat has no Feature-tier ancestor.", ToastKind.Info);
         }
     }
 
