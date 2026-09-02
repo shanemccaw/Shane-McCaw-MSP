@@ -52,6 +52,28 @@ public static class TestPadService
         note.BuildNumber ??= stamp.BuildNumber;
     }
 
+    /// <summary>Git #2335 — saves an edit loaded back into the composer onto the same note (rather
+    /// than filing a duplicate), marking it <see cref="TestPadNote.IsEdited"/> so the list can show
+    /// an EDITED tag. A no-op for a note that's already gone, or already sent — a sent note is
+    /// locked (#2336) and this is the same funnel that lock has to hold at.</summary>
+    public static void UpdateNote(string id, string text, NoteType type)
+    {
+        try
+        {
+            lock (_notes)
+            {
+                var note = _notes.FirstOrDefault(n => n.Id == id);
+                if (note == null || note.IsSent) return;
+
+                note.Text = text;
+                note.Type = type;
+                note.IsEdited = true;
+            }
+            RaiseChanged();
+        }
+        catch { /* an edit failing to save must never take down the caller */ }
+    }
+
     public static void RemoveNote(string id)
     {
         try

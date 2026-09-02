@@ -7,17 +7,22 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using ShaneBuilder.Services;
+using ShaneBuilder.Services.TestPad;
 
 namespace ShaneBuilder
 {
     /// <summary>
     /// Git #2327 — the pad the pill expands to. Reads live off <see cref="TestPadService"/> so it
-    /// never goes stale relative to the badge. Composer/edit/import behavior is built out across
-    /// #2328, #2330-#2332, #2335-#2354. Git #2334 adds the "By feature" toggle that regroups this
-    /// list under a header per <see cref="TestPadNote.Feature"/> stamp instead of the flat
-    /// newest-first order. Git #2333 adds the real per-note row: a select checkbox, a delete
+    /// never goes stale relative to the badge. A minimal Composer (#2328) files a new note on
+    /// Enter, Type Chips (#2330) insert a marker into it, and clicking a note's text (#2335) loads
+    /// it back into the composer for in-place editing — Enter there saves the edit (marking
+    /// <see cref="TestPadNote.IsEdited"/> so the row shows an EDITED tag) and Esc cancels back to
+    /// an empty box, leaving the note untouched. Git #2334 adds the "By feature" toggle that
+    /// regroups the list under a header per <see cref="TestPadNote.Feature"/> stamp instead of the
+    /// flat newest-first order. Git #2333 adds the real per-note row: a select checkbox, a delete
     /// button wired to <see cref="TestPadService.RemoveNote"/>, and a "SENT" badge that locks the
-    /// row's visual treatment once the note has gone out — an honest "No notes yet." otherwise.
+    /// row's visual treatment — and its clickability for edit (#2335/#2336) — once the note has
+    /// gone out. An honest "No notes yet." otherwise.
     /// </summary>
     public partial class TestPadWindow : Window
     {
@@ -40,6 +45,10 @@ namespace ShaneBuilder
         private bool _groupByFeature;
         private const string NoFeatureLabel = "No feature";
 
+        /// <summary>Non-null while a click on a note body (#2335) has loaded it into the composer
+        /// for editing; null when the composer's next Enter files a brand-new note instead.</summary>
+        private string? _editingNoteId;
+
         public TestPadWindow()
         {
             InitializeComponent();
@@ -47,6 +56,8 @@ namespace ShaneBuilder
             SizeChanged += (_, _) => Reposition();
             Loaded += (_, _) => { Reposition(); ForceTopmost(); Render(); };
             Deactivated += (_, _) => ForceTopmost();
+
+            TypeChips.TargetTextBox = ComposerBox;
 
             TestPadService.NotesChanged += Render;
             ClaudeActivityService.Changed += Render;
@@ -67,6 +78,66 @@ namespace ShaneBuilder
         {
             _groupByFeature = !_groupByFeature;
             Render();
+        }
+
+        private void ComposerBox_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                SaveComposer();
+            }
+            else if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                CancelEdit();
+            }
+        }
+
+        /// <summary>Enter in the composer. Files a new note (#2328) unless a note is currently
+        /// loaded for editing (#2335), in which case it saves the edit onto that same note instead
+        /// of creating a duplicate.</summary>
+        private void SaveComposer()
+        {
+            var (type, text) = NoteMarkerParser.Parse(ComposerBox.Text);
+            text = text.Trim();
+            if (text.Length == 0)
+            {
+                return;
+            }
+
+            if (_editingNoteId != null)
+            {
+                TestPadService.UpdateNote(_editingNoteId, text, type);
+            }
+            else
+            {
+                TestPadService.AddNote(new TestPadNote { Text = text, Type = type });
+            }
+
+            CancelEdit();
+        }
+
+        /// <summary>Esc — or a completed save. Clears the composer and drops out of edit mode
+        /// without touching whatever note was loaded, per #2335's "Esc cancels."</summary>
+        private void CancelEdit()
+        {
+            _editingNoteId = null;
+            EditingBanner.Visibility = Visibility.Collapsed;
+            ComposerBox.Text = "";
+        }
+
+        /// <summary>#2335 — click a note body to load it back into the composer, marker restored,
+        /// ready to re-save on Enter. A sent note is locked (#2336) so it's not clickable at all.</summary>
+        private void LoadNoteIntoComposer(TestPadNote note)
+        {
+            var marker = NoteMarkerParser.MarkerFor(note.Type);
+            ComposerBox.Text = marker == null ? note.Text : $"{marker} {note.Text}";
+            ComposerBox.CaretIndex = ComposerBox.Text.Length;
+            ComposerBox.Focus();
+
+            _editingNoteId = note.Id;
+            EditingBanner.Visibility = Visibility.Visible;
         }
 
         public void Render()
@@ -128,9 +199,11 @@ namespace ShaneBuilder
             Reposition();
         }
 
-        /// <summary>Git #2333 — one note row: select checkbox, text, a "SENT" badge once the note
-        /// has gone out, and a delete button that removes the note straight from the shared store
-        /// so the pill's unsent-count badge (#2327) and any other subscriber stay in sync.</summary>
+        /// <summary>Git #2333 — one note row: select checkbox, text (with an EDITED tag from #2335
+        /// once the note's been re-saved, and clickable to load it back into the composer for
+        /// editing unless it's locked by #2336's "SENT" badge), and a delete button that removes
+        /// the note straight from the shared store so the pill's unsent-count badge (#2327) and
+        /// any other subscriber stay in sync.</summary>
         private UIElement BuildRow(TestPadNote note)
         {
             var root = new Border
@@ -158,19 +231,42 @@ namespace ShaneBuilder
             Grid.SetColumn(select, 0);
             grid.Children.Add(select);
 
-            var text = new TextBlock
+            var textLine = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 4, 6, 4),
+                Cursor = note.IsSent ? Cursors.Arrow : Cursors.Hand,
+            };
+            textLine.Children.Add(new TextBlock
             {
                 Text = note.Text,
                 FontSize = 11,
                 TextTrimming = TextTrimming.CharacterEllipsis,
-                VerticalAlignment = VerticalAlignment.Center,
                 Foreground = note.IsSent
                     ? (Brush)FindResource("Brush.Text.Dim")
                     : (Brush)FindResource("Brush.Text.Primary"),
-                Margin = new Thickness(0, 4, 6, 4),
-            };
-            Grid.SetColumn(text, 1);
-            grid.Children.Add(text);
+            });
+            if (note.IsEdited)
+            {
+                textLine.Children.Add(new TextBlock
+                {
+                    Text = "EDITED",
+                    FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                });
+            }
+            if (!note.IsSent)
+            {
+                // Git #2335 — click the note body to load it back into the composer for editing.
+                // A sent note is locked (#2336), so it's not wired up at all.
+                textLine.MouseLeftButtonUp += (_, _) => LoadNoteIntoComposer(note);
+            }
+            Grid.SetColumn(textLine, 1);
+            grid.Children.Add(textLine);
 
             if (note.IsSent)
             {
