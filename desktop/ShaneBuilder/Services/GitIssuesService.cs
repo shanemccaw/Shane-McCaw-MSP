@@ -34,6 +34,8 @@ public static class GitIssuesService
     private const string Repo = "shanemccaw/Shane-McCaw-MSP";
 
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+    private static readonly System.Text.RegularExpressions.Regex FeatureTitlePrefix =
+        new(@"^feature:\s*", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>Real, live open issues, most recently updated first, with real labels — then a
     /// single batched GraphQL call resolves each one's real parent (if any). Two calls total,
@@ -126,6 +128,51 @@ public static class GitIssuesService
         {
             ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] couldn't parse parent graphql response: {ex.Message}");
             return issues;
+        }
+    }
+
+    /// <summary>Git #2319 — the real Feature-tier ancestor of one issue (a chat's EpicNumber
+    /// anchor, currently), found by walking GitHub's own `parent` sub-issue edge up to 4 levels in
+    /// a SINGLE nested GraphQL query (no N+1 — same real-parent edge <see cref="ResolveParentsAsync"/>
+    /// already reads the other direction, batched). Stops at the first ancestor whose title genuinely
+    /// starts with "Feature:"/"feature:" (the repo's own real naming convention — see
+    /// <c>GitMapService.EpicTitlePrefix</c>'s sibling pattern for "Epic:"). Returns
+    /// <c>(null, null)</c> when the issue genuinely has no Feature-tier ancestor within that depth —
+    /// e.g. an Epic-tier anchor sitting at the top of the tree — or when the lookup itself fails;
+    /// never guessed or fabricated.</summary>
+    public static async Task<(int? Number, string? Title)> ResolveFeatureTierAncestorAsync(int issueNumber)
+    {
+        var query = "query { repository(owner: \"" + Owner + "\", name: \"" + RepoName + "\") { issue(number: " + issueNumber + ") { " +
+            "parent { number title parent { number title parent { number title parent { number title } } } } } } }";
+
+        var (ok, stdout, stderr) = await RunGhAsync(new[] { "api", "graphql", "-f", $"query={query}" });
+        if (!ok)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] feature-tier ancestor lookup failed for #{issueNumber}: {stderr.Trim()}");
+            return (null, null);
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(stdout);
+            var el = doc.RootElement.GetProperty("data").GetProperty("repository").GetProperty("issue");
+            for (int depth = 0; depth < 4; depth++)
+            {
+                if (!el.TryGetProperty("parent", out el) || el.ValueKind != JsonValueKind.Object)
+                    return (null, null); // real end of the chain — no Feature-tier ancestor found
+                var title = el.TryGetProperty("title", out var titleEl) ? titleEl.GetString() : null;
+                if (title != null && FeatureTitlePrefix.IsMatch(title))
+                {
+                    int number = el.TryGetProperty("number", out var numEl) ? numEl.GetInt32() : 0;
+                    return (number, title);
+                }
+            }
+            return (null, null); // walked 4 real levels, none were Feature-tier — honest null, not a guess
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-issues] couldn't parse feature-tier ancestor response for #{issueNumber}: {ex.Message}");
+            return (null, null);
         }
     }
 
