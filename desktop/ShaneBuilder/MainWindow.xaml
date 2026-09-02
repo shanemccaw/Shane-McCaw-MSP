@@ -524,6 +524,25 @@
                                     ToolTip="Collapse panel" Click="BtnCollapseLeftPanel_Click">
                                 <TextBlock Text="&#xE76B;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
                             </Button>
+                            <!-- Git #2320 (Feature #2318 item 2) — New Chat button at the top
+                                 of the Chats panel. Only shown while the Chats panel is the
+                                 visible left-panel source (Visibility bound in RailToggle_Click
+                                 alongside ChatsPanelBody). Opens a fresh claude.ai tab today —
+                                 #2321 builds the real anchor-disclosure flow this button hands
+                                 off into via OpenNewChatFlow(). -->
+                            <Button x:Name="BtnNewChat" DockPanel.Dock="Right"
+                                    Style="{StaticResource PanelCollapseButton}"
+                                    Width="Auto" Height="20" Padding="8,2" Margin="0,0,6,0"
+                                    ToolTip="Start a new chat"
+                                    Click="BtnNewChat_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="+" FontFamily="{StaticResource FontFamily.Sans}"
+                                               FontSize="11" FontWeight="{StaticResource FontWeight.Bold}"
+                                               Margin="0,0,4,0" Foreground="{StaticResource Brush.Accent.IssueNum}"/>
+                                    <TextBlock Text="New Chat" FontFamily="{StaticResource FontFamily.Sans}"
+                                               FontSize="9.5" Foreground="{StaticResource Brush.Accent.IssueNum}"/>
+                                </StackPanel>
+                            </Button>
                             <TextBlock x:Name="LeftPanelTitle" Text="CHATS" Margin="14,0,0,0"
                                        VerticalAlignment="Center"
                                        Foreground="{StaticResource Brush.Text.Muted}"

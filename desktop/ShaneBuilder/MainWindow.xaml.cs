@@ -571,6 +571,7 @@ public partial class MainWindow : Window
             rail.IsChecked = (string)rail.Tag == source;
 
         ChatsPanelBody.Visibility = source == "Chat" ? Visibility.Visible : Visibility.Collapsed;
+        BtnNewChat.Visibility = source == "Chat" ? Visibility.Visible : Visibility.Collapsed; // Git #2320
         GitPanelBody.Visibility = source == "Git" ? Visibility.Visible : Visibility.Collapsed;
         NextUpPanelBody.Visibility = source == "NextUp" ? Visibility.Visible : Visibility.Collapsed;
         BatterUpPanelBody.Visibility = source == "BatterUp" ? Visibility.Visible : Visibility.Collapsed;
@@ -3308,6 +3309,25 @@ public partial class MainWindow : Window
             ClaudeWebView.Source = new Uri("https://claude.ai/new");
         }
         catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] start-new failed: {ex.Message}"); }
+    }
+
+    /// <summary>Git #2320 (Feature #2318 item 2) — New Chat button at the top of the Chats
+    /// panel. Pure UI addition; hands off into OpenNewChatFlow() so #2321 (the real
+    /// anchor-disclosure — active features, epic/state, "decide later") has one seam to
+    /// build against instead of a second copy of this button's wiring.</summary>
+    private void BtnNewChat_Click(object sender, RoutedEventArgs e) => OpenNewChatFlow();
+
+    /// <summary>Today: opens a fresh claude.ai tab, same navigation BtnStartNewChat_Click
+    /// already uses. #2321 replaces this body with the real disclosure listing active
+    /// features + their epic/state and a "no feature yet — decide later" option before
+    /// writing the anchor into the new tab's subtitle.</summary>
+    private void OpenNewChatFlow()
+    {
+        try
+        {
+            ClaudeWebView.Source = new Uri("https://claude.ai/new");
+        }
+        catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] new-chat failed: {ex.Message}"); }
     }
 
     private void BtnWrench_Click(object sender, RoutedEventArgs e)
