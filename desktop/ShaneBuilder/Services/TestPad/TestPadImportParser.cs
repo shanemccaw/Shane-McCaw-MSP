@@ -17,14 +17,16 @@ namespace ShaneBuilder.Services.TestPad;
 /// a sentence) still becomes its own note, while a soft-wrapped continuation (prior line has no
 /// terminal punctuation — it was just wrapped mid-thought) rejoins into the same note. Git
 /// #2348 layered "&lt;need screen shots&gt;" stripping/flagging on top of the same pipeline. Git
-/// #2468 (re-dispatch of #2347) closed the gap #2344 left documented in place: a line that reads
-/// as a Section header (<see cref="NotepadImportLineClassifier.IsSectionHeader"/>) is only ever
+/// #2467/#2346 layered bullet/numbering handling on top of that: a line
+/// <see cref="NotepadImportBulletParser"/> recognizes as a list item always starts its own
+/// paragraph (own note) inside <see cref="SplitIntoParagraphs"/>, marker stripped. Git #2468
+/// (re-dispatch of #2347) closed the gap #2344 left documented in place: a line that reads as a
+/// Section header (<see cref="NotepadImportLineClassifier.IsSectionHeader"/>) is only ever
 /// treated as one once real content is actually filed under it — see the "pending header"
 /// tracking in <see cref="ParseCore"/>. A header line superseded by another header, or hit at
 /// end-of-paste, with zero content ever added underneath it, was never really a header; it's
-/// demoted and filed as its own note instead of silently dropped.
-/// Bullet/numbering stripping and feature auto-match are each their
-/// own open sub-issue (#2346, #2349) that will further extend this in place.</summary>
+/// demoted and filed as its own note instead of silently dropped. Feature auto-match is the one
+/// remaining open sub-issue (#2349) that will further extend this in place.</summary>
 public static class TestPadImportParser
 {
     /// <summary>Git #2348 — the literal marker a Notepad note uses to call out that it needs a
@@ -136,8 +138,13 @@ public static class TestPadImportParser
     /// paragraphs it actually contains. A line starts a new paragraph unless the immediately
     /// preceding line ends mid-sentence (no <see cref="SentenceEndings"/>), in which case it's
     /// treated as that paragraph's wrapped continuation and rejoined instead. The very first
-    /// line of the block always starts the first paragraph. Each returned paragraph is the
-    /// already-trimmed lines that belong to it, in order — dewrapping (single-space join,
+    /// line of the block always starts the first paragraph. Git #2467/#2346 layers one more
+    /// always-split rule on top: a line that opens with a bullet or numbering marker
+    /// (<see cref="NotepadImportBulletParser"/>) always starts its own new paragraph regardless
+    /// of how the previous line ended — a list is a sequence of distinct notes, not one paragraph
+    /// — and the marker itself is stripped before the line is added, so it never survives into
+    /// the note body. Each returned paragraph is the already-trimmed (and, for a bulleted line,
+    /// already-stripped) lines that belong to it, in order — dewrapping (single-space join,
     /// whitespace-run collapse) is left to the caller.</summary>
     private static IEnumerable<List<string>> SplitIntoParagraphs(IReadOnlyList<string> lines)
     {
@@ -150,7 +157,10 @@ public static class TestPadImportParser
             var trimmed = raw.Trim();
             if (trimmed.Length == 0) continue;
 
+            var isBullet = NotepadImportBulletParser.TryStripMarker(trimmed, out var effective);
+
             var startsNewParagraph = current is null
+                || isBullet
                 || (previous is { Length: > 0 } && SentenceEndings.Contains(previous[^1]));
 
             if (startsNewParagraph)
@@ -159,8 +169,8 @@ public static class TestPadImportParser
                 paragraphs.Add(current);
             }
 
-            current!.Add(trimmed);
-            previous = trimmed;
+            current!.Add(effective);
+            previous = effective;
         }
 
         return paragraphs;

@@ -7,8 +7,10 @@ namespace ShaneBuilder.Services.TestPad;
 /// <see cref="Section"/> is the only kind this file resolves (Git #2344); everything else
 /// starts life as <see cref="Note"/> and gets refined by the rules landing on top of this one
 /// — paragraph joining (#2345) merges consecutive <see cref="Note"/> lines under a
-/// <see cref="Section"/> into one note, bullet/number splitting (#2346) and bare-short-line
-/// splitting (#2347) both start from a line this classifier already called <see cref="Note"/>.
+/// <see cref="Section"/> into one note, bullet/number splitting (#2467/#2346, now landed via
+/// <see cref="NotepadImportBulletParser"/>) and orphaned/bare-line handling (#2468/#2347, now
+/// landed via <see cref="TestPadImportParser.ParseCore"/>'s pending-header tracking) both start
+/// from a line this classifier already called <see cref="Note"/>.
 /// </summary>
 public enum ImportLineKind
 {
@@ -51,6 +53,15 @@ public static class NotepadImportLineClassifier
     {
         var trimmed = line?.Trim();
         if (string.IsNullOrEmpty(trimmed))
+        {
+            return false;
+        }
+
+        // Git #2467/#2346 — a bulleted or numbered line ("- did A thing", "1. did C thing") can
+        // easily be 4 words or fewer and would otherwise satisfy the bare-header rule below,
+        // swallowing the very first bullet of a list as a spurious Section instead of a note.
+        // A list item is never a header, regardless of word count.
+        if (NotepadImportBulletParser.TryStripMarker(trimmed, out _))
         {
             return false;
         }
