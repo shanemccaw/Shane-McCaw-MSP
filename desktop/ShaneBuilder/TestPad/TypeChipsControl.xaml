@@ -1,0 +1,57 @@
+<UserControl x:Class="ShaneBuilder.TypeChipsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- Git #2330 (Feature: Test Pad, #2326) — "Type chips insert the marker for you." One chip
+         per NoteType that carries a leading marker (#2329's NoteMarkerParser/NoteType — Note itself
+         has none). Clicking a chip does the same thing typing "! ", "? ", "+ " or ". " at the head
+         of the composer does; it's just a click instead of remembering the punctuation. Wired up
+         in code-behind (TypeChipsControl.xaml.cs) via TargetTextBox/ChipClicked so #2328's Composer
+         can drop this control in once it lands, without this issue needing to build the Composer
+         itself. -->
+    <UserControl.Resources>
+        <!-- Local, scoped chip style — ShaneBuilder has no shared button/chip style system yet
+             (see ToastCard.xaml's identical note), so this stays local rather than reaching for a
+             style that doesn't exist. -->
+        <Style x:Key="TypeChipStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource Brush.Bg.Chip}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Brush.Border.Default}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="11"/>
+            <Setter Property="Padding" Value="8,3"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource Brush.Border.Hover}"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel Orientation="Horizontal">
+        <Border x:Name="ChipBug" Style="{StaticResource TypeChipStyle}" Margin="0,0,6,0"
+                ToolTip="Bug — leading ! marker" MouseLeftButtonUp="ChipBug_Click">
+            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Brush.Toast.Error}">
+                <Run Text="!"/><Run Text=" Bug"/>
+            </TextBlock>
+        </Border>
+        <Border x:Name="ChipQuestion" Style="{StaticResource TypeChipStyle}" Margin="0,0,6,0"
+                ToolTip="Question — leading ? marker" MouseLeftButtonUp="ChipQuestion_Click">
+            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Brush.Toast.Info}">
+                <Run Text="?"/><Run Text=" Question"/>
+            </TextBlock>
+        </Border>
+        <Border x:Name="ChipIdea" Style="{StaticResource TypeChipStyle}" Margin="0,0,6,0"
+                ToolTip="Idea — leading + marker" MouseLeftButtonUp="ChipIdea_Click">
+            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Brush.Toast.Warning}">
+                <Run Text="+"/><Run Text=" Idea"/>
+            </TextBlock>
+        </Border>
+        <Border x:Name="ChipWorks" Style="{StaticResource TypeChipStyle}"
+                ToolTip="Works — leading . marker" MouseLeftButtonUp="ChipWorks_Click">
+            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource Brush.Toast.Success}">
+                <Run Text="."/><Run Text=" Works"/>
+            </TextBlock>
+        </Border>
+    </StackPanel>
+</UserControl>
