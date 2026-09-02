@@ -251,7 +251,7 @@ namespace BuildConsole
                     "The application will now shut down to prevent system freeze.\n\n" +
                     "Details:\n" + details;
                 
-                AppDialog.Alert(null, friendlyMessage, "BuildConsole Error: Fatal Render Error", AppDialogIcon.Error);
+                MessageBox.Show(friendlyMessage, "BuildConsole Error: Fatal Render Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 Environment.Exit(-1);
                 return;
             }
@@ -384,7 +384,7 @@ namespace BuildConsole
         {
             string errMessage = FormatExceptionDetails(title, ex);
             LogExceptionToDisk(title, ex);
-            AppDialog.Alert(null, errMessage, $"BuildConsole Error: {title}", AppDialogIcon.Error);
+            MessageBox.Show(errMessage, $"BuildConsole Error: {title}", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }

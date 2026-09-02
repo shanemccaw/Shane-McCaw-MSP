@@ -445,12 +445,12 @@ namespace BuildConsole.Controls
             if (_api == null) return;
             if (sender is Button btn && btn.DataContext is ChatMappingItem item)
             {
-                bool confirmed = AppDialog.Confirm(Window.GetWindow(this),
-                    $"Are you sure you want to delete the mapping for chat \"{item.Title}\"?\nThis will remove it from the database entirely.",
-                    "Confirm Delete",
-                    AppDialogButtons.YesNo,
-                    AppDialogIcon.Warning);
-                if (!confirmed) return;
+                var result = MessageBox.Show(
+                    $"Are you sure you want to delete the mapping for chat \"{item.Title}\"?\nThis will remove it from the database entirely.", 
+                    "Confirm Delete", 
+                    MessageBoxButton.YesNo, 
+                    MessageBoxImage.Warning);
+                if (result != MessageBoxResult.Yes) return;
 
                 TxtStatus.Text = "Deleting chat mapping...";
 

@@ -57,7 +57,7 @@ namespace BuildConsole
         {
             if (string.IsNullOrWhiteSpace(TitleBox.Text))
             {
-                AppDialog.Alert(this, "Title is required.", "New Issue");
+                MessageBox.Show("Title is required.", "New Issue");
                 return;
             }
             DialogResult = true;

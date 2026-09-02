@@ -254,8 +254,8 @@ namespace BuildConsole.Controls
             catch (Exception ex)
             {
                 Services.ActivityLog.Log("ai-batter-up", $"#{r.Number} — decision FAILED: {ex.Message}");
-                AppDialog.Alert(Window.GetWindow(this), $"Couldn't update #{r.Number} on GitHub: {ex.Message}", "AI Batter Up",
-                    AppDialogIcon.Warning);
+                MessageBox.Show($"Couldn't update #{r.Number} on GitHub: {ex.Message}", "AI Batter Up",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
                 foreach (var child in footer.Children) if (child is Button b) b.IsEnabled = true;
                 return;
             }

@@ -6275,10 +6275,10 @@ namespace BuildConsole
                 return;
             }
 
-            bool confirmed = AppDialog.Confirm(this,
+            var confirmResult = System.Windows.MessageBox.Show(this,
                 $"Release {capped.Count} parked build{(capped.Count == 1 ? "" : "s")} at full model?",
-                "Drain Conservation Cap", AppDialogButtons.YesNo, AppDialogIcon.Question);
-            if (!confirmed) return;
+                "Drain Conservation Cap", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (confirmResult != MessageBoxResult.Yes) return;
 
             // Turn the toggle off FIRST — the deliberate exception to the one-shot override
             // rule (the per-item "Run at Full Model" override does NOT touch the toggle;
@@ -7336,11 +7336,11 @@ namespace BuildConsole
                                 var elapsed = DateTimeOffset.UtcNow - dedupMatch.UpdatedAt.Value;
                                 agoText = elapsed.TotalHours >= 1 ? $"{(int)elapsed.TotalHours}h {elapsed.Minutes}m ago" : $"{Math.Max(1, (int)elapsed.TotalMinutes)}m ago";
                             }
-                            bool confirmed = AppDialog.Confirm(this,
+                            var confirmResult = System.Windows.MessageBox.Show(this,
                                 $"“{dedupMatch.Title}” already ran — {statusWord} {agoText}. Run it again?",
                                 park ? "Already Ran — Park Again?" : "Already Ran — Run Again?",
-                                AppDialogButtons.YesNo, AppDialogIcon.Question);
-                            if (!confirmed)
+                                MessageBoxButton.YesNo, MessageBoxImage.Question);
+                            if (confirmResult != MessageBoxResult.Yes)
                             {
                                 BuildConsole.Services.ActivityLog.Log("build-queue-panel.dedup",
                                     $"{(park ? "Park" : "Queue")} click for \"{Str("title")}\" declined re-run of terminal queue #{dedupMatch.Id} ({dedupMatch.Status}).");

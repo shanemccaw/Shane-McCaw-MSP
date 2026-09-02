@@ -727,7 +727,7 @@ namespace BuildConsole
                     var manifest = Services.TestManifest.LoadFromFile(ofd.FileName);
                     if (manifest == null)
                     {
-                        AppDialog.Alert(this, "Failed to load manifest: file did not deserialize to a valid manifest.", "Error", AppDialogIcon.Error);
+                        MessageBox.Show("Failed to load manifest: file did not deserialize to a valid manifest.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                         return;
                     }
                     var viewer = new ManifestViewerWindow(manifest, showChartFirst: false) { Owner = this };
@@ -735,7 +735,7 @@ namespace BuildConsole
                 }
                 catch (Exception ex)
                 {
-                    AppDialog.Alert(this, $"Failed to load manifest: {ex.Message}", "Error", AppDialogIcon.Error);
+                    MessageBox.Show($"Failed to load manifest: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
