@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Text.Json;
@@ -345,38 +346,34 @@ public partial class MainWindow : Window
         public bool IsHome { get; }
         public bool IsChat { get; }
         public bool IsGitDoctor { get; }
-<<<<<<< HEAD
         public TabKind? Kind { get; }
         public string? Ext { get; }
-=======
         public bool IsLogViewer { get; }
->>>>>>> 2ef0f85eb422052c2313c56feb3d2afe71bec9da
+        // Git #2211 — set for a Markdown Viewer tab opened by dropping a .md file;
+        // the real path SelectTab reads from and MarkdownRenderer.Render()s into
+        // MarkdownViewerDock. Null for every other tab kind.
+        public string? MdFilePath { get; }
+        public bool IsMarkdownViewer => MdFilePath != null;
         public Brush? Dot { get; }
         public string? BuildSet { get; }
         private readonly string? _workspaceIdOverride;
 
         public string? WorkspaceId => _workspaceIdOverride ?? (Kind.HasValue ? KindWorkspaceDefault[Kind.Value] : null);
 
-<<<<<<< HEAD
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
-            TabKind? kind = null, string? workspaceId = null, string? ext = null,
-            Brush? dot = null, string? buildSet = null)
-=======
-        public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false, bool isLogViewer = false, Brush? dot = null, string? buildSet = null)
->>>>>>> 2ef0f85eb422052c2313c56feb3d2afe71bec9da
+            TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
+            string? mdFilePath = null, Brush? dot = null, string? buildSet = null)
         {
             Id = id;
             Title = title;
             IsHome = isHome;
             IsChat = isChat;
             IsGitDoctor = isGitDoctor;
-<<<<<<< HEAD
             Kind = kind;
             _workspaceIdOverride = workspaceId;
             Ext = ext;
-=======
             IsLogViewer = isLogViewer;
->>>>>>> 2ef0f85eb422052c2313c56feb3d2afe71bec9da
+            MdFilePath = mdFilePath;
             Dot = dot;
             BuildSet = buildSet;
         }
@@ -763,8 +760,10 @@ public partial class MainWindow : Window
         ClaudeChatDock.Visibility = tab.IsChat ? Visibility.Visible : Visibility.Collapsed;
         GitDoctorDock.Visibility = tab.IsGitDoctor ? Visibility.Visible : Visibility.Collapsed;
         LogViewerDock.Visibility = tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
-        StubTabContent.Visibility = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsLogViewer ? Visibility.Visible : Visibility.Collapsed;
-        if (!tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsLogViewer)
+        MarkdownViewerDock.Visibility = tab.IsMarkdownViewer ? Visibility.Visible : Visibility.Collapsed;
+        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsLogViewer && !tab.IsMarkdownViewer;
+        StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
+        if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
         if (tab.IsChat)
             RenderClaudeChatContext(tab);
@@ -772,6 +771,84 @@ public partial class MainWindow : Window
             _ = EnsureGitDoctorLoadedAsync();
         if (tab.IsLogViewer)
             EnsureLogViewerLoaded();
+        if (tab.IsMarkdownViewer)
+            LoadMarkdownViewerTab(tab);
+    }
+
+    // ── Markdown Viewer — Git #2211. Real OS file drag-and-drop onto the
+    // document host: DataFormats.FileDrop, filtered to .md, each dropped file
+    // opened as its own tab rendered through the ported MarkdownRenderer. A
+    // non-.md file in the drop is a clean no-op (toast), not a silent error.
+    private void DocumentHostGrid_DragEnter(object sender, DragEventArgs e)
+    {
+        bool hasMarkdown = e.Data.GetDataPresent(DataFormats.FileDrop) &&
+            ((string[])e.Data.GetData(DataFormats.FileDrop)!).Any(f =>
+                string.Equals(System.IO.Path.GetExtension(f), ".md", StringComparison.OrdinalIgnoreCase));
+        e.Effects = hasMarkdown ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private void DocumentHostGrid_Drop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+
+        var dropped = (string[])e.Data.GetData(DataFormats.FileDrop)!;
+        var mdFiles = dropped.Where(f => string.Equals(System.IO.Path.GetExtension(f), ".md", StringComparison.OrdinalIgnoreCase)).ToList();
+
+        if (mdFiles.Count == 0)
+        {
+            ToastEngine.Show("Markdown Viewer", "Only .md files can be opened here.", ToastKind.Info);
+            return;
+        }
+
+        string? lastOpenedId = null;
+        foreach (var path in mdFiles)
+            lastOpenedId = OpenMarkdownFileTab(path);
+
+        if (lastOpenedId != null)
+            SelectTab(lastOpenedId);
+    }
+
+    private string OpenMarkdownFileTab(string path)
+    {
+        var existing = _tabs.Find(t => t.MdFilePath != null &&
+            string.Equals(t.MdFilePath, path, StringComparison.OrdinalIgnoreCase));
+        if (existing != null) return existing.Id;
+
+        var tab = new TabDef(
+            "md-" + Guid.NewGuid().ToString("N"),
+            System.IO.Path.GetFileName(path),
+            kind: TabKind.File,
+            mdFilePath: path,
+            dot: (Brush)FindResource("Brush.Ext.Md"));
+        _tabs.Add(tab);
+        return tab.Id;
+    }
+
+    private void LoadMarkdownViewerTab(TabDef tab)
+    {
+        MarkdownViewerFileNameText.Text = tab.Title;
+        MarkdownViewerContentHost.Child = null;
+
+        string content;
+        try
+        {
+            content = File.ReadAllText(tab.MdFilePath!);
+        }
+        catch (Exception ex)
+        {
+            ToastEngine.Show("Markdown Viewer", $"Could not read {tab.Title}: {ex.Message}", ToastKind.Error);
+            return;
+        }
+
+        var options = new MarkdownRenderer.RenderOptions
+        {
+            OnUrlClick = url => { try { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); } catch { /* real navigation failure, nothing more this can do */ } },
+            OnFileClick = _ => { },
+            OnIssueClick = _ => { }
+        };
+        MarkdownViewerContentHost.Child = MarkdownRenderer.Render(content, options);
     }
 
     private void CloseTab(string id)
