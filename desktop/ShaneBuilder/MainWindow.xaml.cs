@@ -5606,22 +5606,21 @@ public partial class MainWindow : Window
         }
     }
 
-    private Border BuildLogLineRow(LogLine line, bool dim)
+    // An inferred level renders outline-only, never filled — a real
+    // platform_log_stream level is the only one that gets the solid tinted
+    // background. See InferLevel's own doc comment for why this distinction
+    // is mandatory, not cosmetic. Shared by the full Log Viewer document AND
+    // Log Peek (#2219 §6.4) — the mini panel must not re-derive its own
+    // lighter-weight treatment of the same fact.
+    private Border BuildLogLevelPill(LogLine line, double fontSize = 9)
     {
         var levelBrush = (Brush)FindResource(LogLevelBrushKey(line.Level));
-        var sourceBrush = (Brush)FindResource(LogSourceBrushKey(line.SourceId));
-        bool isPinned = _logPinned.Contains(line);
-        bool isSelected = _logSelectedLine != null && _logSelectedLine.Equals(line);
-
-        // An inferred level renders outline-only, never filled — a real
-        // platform_log_stream level is the only one that gets the solid
-        // tinted background. See InferLevel's own doc comment for why this
-        // distinction is mandatory, not cosmetic.
-        var levelPill = new Border
+        return new Border
         {
             CornerRadius = new CornerRadius(3),
             Padding = new Thickness(5, 1, 5, 1),
-            Margin = new Thickness(0, 0, 8, 0),
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Top,
             BorderThickness = new Thickness(line.LevelIsInferred ? 1 : 0),
             BorderBrush = levelBrush,
             Background = line.LevelIsInferred
@@ -5635,10 +5634,18 @@ public partial class MainWindow : Window
                 Text = (line.LevelIsInferred ? "~" : "") + line.Level.ToString().ToUpperInvariant(),
                 Foreground = levelBrush,
                 FontFamily = (FontFamily)FindResource("FontFamily.Monospace"),
-                FontSize = 9,
+                FontSize = fontSize,
                 FontWeight = line.LevelIsInferred ? (FontWeight)FindResource("FontWeight.Regular") : (FontWeight)FindResource("FontWeight.Bold")
             }
         };
+    }
+
+    private Border BuildLogLineRow(LogLine line, bool dim)
+    {
+        var sourceBrush = (Brush)FindResource(LogSourceBrushKey(line.SourceId));
+        bool isPinned = _logPinned.Contains(line);
+        bool isSelected = _logSelectedLine != null && _logSelectedLine.Equals(line);
+        var levelPill = BuildLogLevelPill(line);
 
         var row = new DockPanel
         {
@@ -6273,16 +6280,21 @@ public partial class MainWindow : Window
         foreach (var line in lines)
         {
             var row = new DockPanel { Margin = new Thickness(0, 0, 0, 4) };
-            var cb = new CheckBox { IsChecked = _logPeekChecked.Contains(line), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 6, 0) };
+            var cb = new CheckBox { IsChecked = _logPeekChecked.Contains(line), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 4, 0) };
             cb.Checked += (s, e) => { _logPeekChecked.Add(line); UpdateLogPeekSendLabel(); };
             cb.Unchecked += (s, e) => { _logPeekChecked.Remove(line); UpdateLogPeekSendLabel(); };
             DockPanel.SetDock(cb, Dock.Left);
             row.Children.Add(cb);
+
+            var pill = BuildLogLevelPill(line, fontSize: 8);
+            DockPanel.SetDock(pill, Dock.Left);
+            row.Children.Add(pill);
+
             row.Children.Add(new TextBlock
             {
                 Text = $"[{line.Ts:HH:mm:ss}] {line.Message}", TextWrapping = TextWrapping.Wrap,
                 FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
-                Foreground = (Brush)FindResource(LogLevelBrushKey(line.Level))
+                Foreground = (Brush)FindResource("Brush.Text.Primary")
             });
             LogPeekLinesPanel.Children.Add(row);
         }
