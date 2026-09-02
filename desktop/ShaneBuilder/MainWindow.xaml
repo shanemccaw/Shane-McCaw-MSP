@@ -551,17 +551,35 @@
                                    FontFamily="{StaticResource FontFamily.Sans}"
                                    FontSize="{StaticResource FontSize.11}"/>
 
-                        <!-- Shared placeholder for the 5 rail panels that don't have
-                             real content or a design yet (Batter Up / Build Console /
-                             Build Watch / UI Testing / Shot Vault) — text is set per
-                             panel in RailToggle_Click rather than duplicating this
-                             block 5 times. -->
+                        <!-- Shared placeholder for the 4 rail panels that don't have
+                             real content or a design yet (Build Console / Build Watch /
+                             UI Testing / Shot Vault) — text is set per panel in
+                             RailToggle_Click rather than duplicating this block 4 times.
+                             Batter Up moved out to its own real BatterUpPanelBody below
+                             (Git #2356, Feature #2355 item 1). -->
                         <TextBlock x:Name="NotBuiltPanelBody" Margin="14,16,14,0"
                                    TextWrapping="Wrap"
                                    Visibility="Collapsed"
                                    Foreground="{StaticResource Brush.Text.Dim}"
                                    FontFamily="{StaticResource FontFamily.Sans}"
                                    FontSize="{StaticResource FontSize.11}"/>
+
+                        <!-- Git #2356 (Feature #2355 item 1) — Batter Up rail panel shell: the
+                             lane switch (All / Batter Up / AI Batter Up / Ask Shane) with a real
+                             live count per tab, off ChatGitHubFilter.GetBatterUpLaneCountsAsync().
+                             Rows/grouping/item content are later builds on #2357 onward — this is
+                             the shell + lanes + counts only. Built in code-behind
+                             (MainWindow.BatterUpPanel.cs). -->
+                        <StackPanel x:Name="BatterUpPanelBody" Margin="8,8,8,12" Visibility="Collapsed">
+                            <TextBlock x:Name="BatterUpPanelStatus" Margin="6,4,6,10"
+                                       TextWrapping="Wrap"
+                                       Text="Loading real board counts…"
+                                       Foreground="{StaticResource Brush.Text.Dim}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.10.5}"/>
+                            <WrapPanel x:Name="BatterUpLaneTabs" Margin="6,0,6,10"/>
+                            <StackPanel x:Name="BatterUpLaneBody"/>
+                        </StackPanel>
 
                         <!-- Git #2290 — the Git Panel navigation shell (Feature #2289 items
                              1-11): Milestones / Gate cards / Epic → FEATURE → Issue tree plus

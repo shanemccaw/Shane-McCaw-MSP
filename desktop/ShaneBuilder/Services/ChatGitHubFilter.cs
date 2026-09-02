@@ -27,6 +27,29 @@ public sealed class LiveOpenIssuesResult
     public static LiveOpenIssuesResult Failure(string error) => new() { Success = false, Error = error };
 }
 
+/// <summary>Git #2356 (Feature #2355 item 1) — real per-lane item counts for the Batter Up rail
+/// panel's four tabs. <c>Success=false</c> means the walk got NOTHING (gh unreachable on the very
+/// first page) — same fail-closed convention as <see cref="LiveOpenIssuesResult"/>. <c>Complete</c>
+/// distinguishes a full walk to the start of the board from one that hit the page cap or lost a
+/// later page mid-walk (counts are a real partial in that case, not silently treated as final).
+/// <c>All</c> is the sum of the three actionable lanes — Status is a single-select field, so an
+/// item can only ever be counted in one of them, and Backlog/Done/Park/etc. items are deliberately
+/// excluded (they aren't staging-area items).</summary>
+public sealed class BatterUpLaneCounts
+{
+    public bool Success { get; init; }
+    public int BatterUp { get; init; }
+    public int AiBatterUp { get; init; }
+    public int AskShane { get; init; }
+    public int All => BatterUp + AiBatterUp + AskShane;
+    public bool Complete { get; init; } = true;
+    public string? Error { get; init; }
+
+    public static BatterUpLaneCounts Ok(int batterUp, int aiBatterUp, int askShane, bool complete) =>
+        new() { Success = true, BatterUp = batterUp, AiBatterUp = aiBatterUp, AskShane = askShane, Complete = complete };
+    public static BatterUpLaneCounts Failure(string error) => new() { Success = false, Error = error };
+}
+
 /// <summary>
 /// Git #2197 — ShaneBuilder's live-GitHub filter for the chat dock read layer. This is the
 /// ShaneBuilder-side port of the GitHub calls #2195's <c>ChatDockService</c> made through
@@ -48,6 +71,14 @@ public sealed class ChatGitHubFilter
     private const string RepoName = "Shane-McCaw-MSP";
     /// <summary>The AI/Batter-Up project board, same id BuildConsole's <c>GitHubApiClient</c> uses.</summary>
     private const string BatterUpProjectId = "PVT_kwHOEiBDdc4BeoiY";
+
+    // ── Status field option ids (Git #2356) — confirmed live via `gh api graphql` against the
+    // real board's Status field (id PVTSSF_lAHOEiBDdc4BeoiYzhZBRB0). "Batter Up" and "AI Batter Up"
+    // match BuildConsole's own GitHubApiClient.BatterUpOptionId / AiBatterUpOptionId. "Ask Shane" is
+    // new here — the design doc's stale "AI For Shane" name, corrected by Shane 2026-09-01.
+    private const string BatterUpOptionId = "09b1927f";
+    private const string AiBatterUpOptionId = "a0296971";
+    private const string AskShaneOptionId = "404998bb";
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
@@ -251,6 +282,103 @@ public sealed class ChatGitHubFilter
         return result;
     }
 
+    // ── Batter Up lane counts (reverse of board status — status → items) ────────────────────────
+    private const int LanePageSize = 100;
+    private const int LaneMaxPages = 50; // runaway guard; real board is ~2,403 items / ~25 pages today
+
+    /// <summary>Git #2356 — the real per-lane counts (Batter Up / AI Batter Up / Ask Shane) driving
+    /// the Batter Up rail panel's four tabs. This is the REVERSE of <see cref="GetBoardStatusAsync"/>
+    /// (issue number → status): here we walk the whole project board and tally by status. Same
+    /// backward `items(last, before)` pagination shape as BuildConsole's own
+    /// <c>GitHubApiClient.ScanProjectItemsForStatusAsync</c> (Git #1784/#1995) — no early-stop on
+    /// empty pages, since an item's position in the board's <c>items</c> connection reflects when it
+    /// was ADDED to the project, never when its Status last changed, so a walk that gives up early
+    /// can silently miss a long-lived issue only just promoted into one of these lanes today.
+    /// Real GraphQL field is <c>ProjectV2.items</c> (not <c>issue.projectItems</c>, which is the
+    /// per-issue direction <see cref="GetBoardStatusAsync"/> already uses) — ported through
+    /// <c>gh api graphql</c> per this file's established no-PAT CLI convention.</summary>
+    public async Task<BatterUpLaneCounts> GetBatterUpLaneCountsAsync()
+    {
+        int batterUp = 0, aiBatterUp = 0, askShane = 0;
+        string? before = null;
+        int pagesWalked = 0;
+
+        for (int page = 0; page < LaneMaxPages; page++)
+        {
+            pagesWalked = page + 1;
+            string beforeArg = before == null ? "null" : $"\"{before}\"";
+            string query = $@"query {{
+  node(id: ""{BatterUpProjectId}"") {{
+    ... on ProjectV2 {{
+      items(last: {LanePageSize}, before: {beforeArg}) {{
+        pageInfo {{ hasPreviousPage startCursor }}
+        nodes {{
+          fieldValueByName(name: ""Status"") {{
+            ... on ProjectV2ItemFieldSingleSelectValue {{ optionId }}
+          }}
+          content {{
+            ... on Issue {{
+              state
+              repository {{ nameWithOwner }}
+            }}
+          }}
+        }}
+      }}
+    }}
+  }}
+}}";
+            var (ok, stdout, stderr) = await RunAsync("gh", new[] { "api", "graphql", "-f", "query=" + query });
+            if (!ok)
+            {
+                ConsoleOutputSink.Log(LogLevel.Warn, $"[batterup.lanes] gh api graphql failed on page {pagesWalked}: {stderr.Trim()}");
+                if (page == 0) return BatterUpLaneCounts.Failure($"gh api graphql failed: {stderr.Trim()}");
+                return BatterUpLaneCounts.Ok(batterUp, aiBatterUp, askShane, complete: false); // real partial, walk cut short
+            }
+
+            LaneGraphQlResponse? parsed;
+            try { parsed = JsonSerializer.Deserialize<LaneGraphQlResponse>(stdout, JsonOpts); }
+            catch (Exception ex)
+            {
+                ConsoleOutputSink.Log(LogLevel.Warn, $"[batterup.lanes] couldn't parse gh graphql output on page {pagesWalked}: {ex.Message}");
+                if (page == 0) return BatterUpLaneCounts.Failure($"couldn't parse gh output: {ex.Message}");
+                return BatterUpLaneCounts.Ok(batterUp, aiBatterUp, askShane, complete: false);
+            }
+
+            var conn = parsed?.Data?.Node?.Items;
+            if (conn?.Nodes == null) break;
+
+            foreach (var n in conn.Nodes)
+            {
+                var issue = n.Content;
+                if (issue == null) continue; // a PR / draft item — not an issue, not a lane candidate
+                if (!string.Equals(issue.Repository?.NameWithOwner, Repo, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(issue.State, "OPEN", StringComparison.OrdinalIgnoreCase)) continue;
+
+                switch (n.FieldValueByName?.OptionId)
+                {
+                    case BatterUpOptionId: batterUp++; break;
+                    case AiBatterUpOptionId: aiBatterUp++; break;
+                    case AskShaneOptionId: askShane++; break;
+                    // any other Status (Backlog/Done/Park/etc.) — not one of the 4 lanes, skip
+                }
+            }
+
+            bool more = conn.PageInfo?.HasPreviousPage == true && !string.IsNullOrEmpty(conn.PageInfo.StartCursor);
+            if (!more)
+            {
+                ConsoleOutputSink.Log(LogLevel.Info,
+                    $"[batterup.lanes] full walk reached the start of the board after {pagesWalked} page(s) — " +
+                    $"Batter Up={batterUp} AI Batter Up={aiBatterUp} Ask Shane={askShane}.");
+                return BatterUpLaneCounts.Ok(batterUp, aiBatterUp, askShane, complete: true);
+            }
+            before = conn.PageInfo!.StartCursor;
+        }
+
+        ConsoleOutputSink.Log(LogLevel.Warn,
+            $"[batterup.lanes] hit the {LaneMaxPages}-page cap with more items remaining — counts are a real partial, not final.");
+        return BatterUpLaneCounts.Ok(batterUp, aiBatterUp, askShane, complete: false);
+    }
+
     // ── gh process runner ────────────────────────────────────────────────────────────────────
     private static async Task<(bool Ok, string StdOut, string StdErr)> RunAsync(string fileName, string[] args, int timeoutMs = 30000)
     {
@@ -307,4 +435,31 @@ public sealed class ChatGitHubFilter
         [JsonPropertyName("title")] public string? Title { get; set; }
         [JsonPropertyName("state")] public string? State { get; set; }
     }
+
+    // ── Lane-count GraphQL response shape (Git #2356) — ProjectV2.items, backward-paginated ────
+    private sealed class LaneGraphQlResponse { [JsonPropertyName("data")] public LaneGraphQlData? Data { get; set; } }
+    private sealed class LaneGraphQlData { [JsonPropertyName("node")] public LaneProjectNode? Node { get; set; } }
+    private sealed class LaneProjectNode { [JsonPropertyName("items")] public LaneItemConnection? Items { get; set; } }
+    private sealed class LaneItemConnection
+    {
+        [JsonPropertyName("pageInfo")] public LanePageInfo? PageInfo { get; set; }
+        [JsonPropertyName("nodes")] public List<LaneItemNode>? Nodes { get; set; }
+    }
+    private sealed class LanePageInfo
+    {
+        [JsonPropertyName("hasPreviousPage")] public bool HasPreviousPage { get; set; }
+        [JsonPropertyName("startCursor")] public string? StartCursor { get; set; }
+    }
+    private sealed class LaneItemNode
+    {
+        [JsonPropertyName("fieldValueByName")] public LaneFieldValue? FieldValueByName { get; set; }
+        [JsonPropertyName("content")] public LaneIssueContent? Content { get; set; }
+    }
+    private sealed class LaneFieldValue { [JsonPropertyName("optionId")] public string? OptionId { get; set; } }
+    private sealed class LaneIssueContent
+    {
+        [JsonPropertyName("state")] public string? State { get; set; }
+        [JsonPropertyName("repository")] public LaneRepository? Repository { get; set; }
+    }
+    private sealed class LaneRepository { [JsonPropertyName("nameWithOwner")] public string? NameWithOwner { get; set; } }
 }
