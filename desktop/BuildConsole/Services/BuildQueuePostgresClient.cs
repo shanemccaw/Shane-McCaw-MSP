@@ -2502,6 +2502,72 @@ namespace BuildConsole.Services
             return result;
         }
 
+        /// <summary>Git #2195 — one row of a chat's mention registry: the issue number plus WHEN it
+        /// was last mentioned, so the dock's staleness filter can act on real data instead of
+        /// assuming everything the table has ever seen is still "pending right now".</summary>
+        public readonly record struct ChatIssueMention(int Number, DateTimeOffset LastSeenAt);
+
+        /// <summary>
+        /// Git #2195 — the single-chat-scoped equivalent of <see cref="GetChatIssueMentionsAsync"/>
+        /// (which reads every chat's mentions for the board's grouping). The Floating Chat Window's
+        /// side dock needs just the one chat it's docked to, so this scopes the same table at the SQL
+        /// layer instead of fetching every chat's rows and filtering in C#. Carries last_seen_at (not
+        /// just the bare number) because a real live chat can rack up hundreds of mentions over its
+        /// life (confirmed: one chat_url in production has 449) — the dock needs that timestamp to
+        /// tell "still pending" apart from "mentioned once, months ago, never closed".
+        /// </summary>
+        public async Task<List<ChatIssueMention>> GetChatIssueMentionsForUrlAsync(string chatUrl)
+        {
+            var result = new List<ChatIssueMention>();
+            if (string.IsNullOrWhiteSpace(chatUrl)) return result;
+
+            await using var conn = await OpenAsync();
+            const string sql = "SELECT issue_number, last_seen_at FROM bt_chat_mentioned_issues WHERE chat_url = @chatUrl ORDER BY last_seen_at DESC";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@chatUrl", chatUrl);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                result.Add(new ChatIssueMention(reader.GetInt32(0), reader.GetFieldValue<DateTimeOffset>(1)));
+            return result;
+        }
+
+        /// <summary>
+        /// Git #2195 — the single-chat-scoped equivalent of <see cref="GetOpenPinnedQuestionsAsync"/>
+        /// for the Floating Chat Window's side dock, which only ever needs the one chat it's docked
+        /// to. Same purge-then-read shape as the unscoped version.
+        /// </summary>
+        public async Task<List<PinnedQuestion>> GetOpenPinnedQuestionsForChatAsync(int chatId)
+        {
+            var result = new List<PinnedQuestion>();
+            if (chatId <= 0) return result;
+
+            await using var conn = await OpenAsync();
+            await PurgeResolvedPinnedQuestionsAsync(conn);
+
+            const string sql = @"
+                SELECT p.id, p.chat_id, p.question_text, p.created_at, c.conversation_id, c.title
+                FROM chat_pinned_questions p
+                JOIN bt_chats c ON c.id = p.chat_id
+                WHERE p.resolved_at IS NULL AND p.chat_id = @chatId
+                ORDER BY p.created_at ASC";
+            await using var cmd = new NpgsqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@chatId", chatId);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                result.Add(new PinnedQuestion
+                {
+                    Id = reader.GetInt32(0),
+                    ChatId = reader.GetInt32(1),
+                    QuestionText = reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    CreatedAt = reader.GetDateTime(3),
+                    ConversationId = reader.IsDBNull(4) ? "" : reader.GetString(4),
+                    ChatTitle = reader.IsDBNull(5) ? "" : reader.GetString(5),
+                });
+            }
+            return result;
+        }
+
         public async Task UpdateModelAndEffortAsync(int id, string? model, string? effort, string? status = null)
         {
             await using var conn = await OpenAsync();

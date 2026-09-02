@@ -108,6 +108,11 @@ namespace BuildConsole
         private bool _loaded;
         private bool _bridgeExpanded = true;
         private double _bridgeHeight = 170;
+        // Git #2195 — side dock (synthesized pending-items relationship map). A fixed column
+        // width rather than resizing the whole window, so toggling never fights the window's own
+        // saved bounds — it just reclaims space from the chat column.
+        private bool _dockExpanded;
+        private const double DockWidth = 230;
 
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
@@ -140,6 +145,8 @@ namespace BuildConsole
             }
             _bridgeExpanded = settings.FloatingChatBridgeExpanded;
             ApplyBridgeState();
+            _dockExpanded = settings.FloatingChatDockExpanded;
+            ApplyDockState();
 
             // Seed the first tab (activated once the window loads and the shared WebView2
             // environment is ready).
@@ -235,6 +242,11 @@ namespace BuildConsole
             // scraper resumes. An already-initialised tab just flips back to Visible.
             await EnsureTabBridgeAsync(tab);
             if (tab.Wv != null) tab.Wv.Visibility = Visibility.Visible;
+
+            // Git #2195 — the dock always tracks whichever tab is active; switching tabs re-syncs
+            // it to the newly active chat's own mentions/pins rather than leaving the previous
+            // tab's snapshot on screen.
+            _ = RefreshDockAsync(tab);
         }
 
         // ── Bridge (WebView2 engine) — one per tab ───────────────────────────────
@@ -352,11 +364,16 @@ namespace BuildConsole
                 }
                 // Git #2134 — eager color-by-type/status push for on-screen mentions in a
                 // floating tab, mirroring MainWindow's BT_ISSUE_MENTIONS_SCAN handling of the
-                // same message (cache-only; the mention-registry recording that message also
-                // drives in MainWindow is out of scope here).
+                // same message.
+                // Git #2195 — real gap found in the #2134 comment above ("the mention-registry
+                // recording ... is out of scope here"): a chat that only ever lived in THIS window
+                // never wrote into bt_chat_mentioned_issues at all, so the side dock's #2066 data
+                // source would be permanently empty for it. Recording is now wired here too, exact
+                // same call MainWindow.ChatWv_WebMessageReceived makes for its own tabs.
                 else if (type == "BT_ISSUE_MENTIONS_SCAN")
                 {
                     _ = PushMentionColorsAsync(tab, root);
+                    _ = RecordChatIssueMentionsAsync(tab, root);
                 }
             }
             catch { /* a malformed frame is not fatal — the next poll re-posts */ }
@@ -380,6 +397,123 @@ namespace BuildConsole
                 if (js != null) await tab.Wv.CoreWebView2.ExecuteScriptAsync(js);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Git #2195 — writes this tab's real mention scan into <c>bt_chat_mentioned_issues</c>
+        /// (#2066's table), the exact same upsert <see cref="MainWindow"/>'s own
+        /// <c>BT_ISSUE_MENTIONS_SCAN</c> handler performs for its embedded chat tabs. A floating tab
+        /// never went through that path before — see the call site's doc comment for why that was a
+        /// real gap, not a deliberate scope cut. Refreshes the dock afterward when this is the
+        /// active, dock-expanded tab so a newly-detected mention shows up without a manual refresh.
+        /// </summary>
+        private async System.Threading.Tasks.Task RecordChatIssueMentionsAsync(FloatingChatTab tab, JsonElement root)
+        {
+            var db = _owner?.QueueDb;
+            if (db == null) return;
+            if (!root.TryGetProperty("numbers", out var numsEl) || numsEl.ValueKind != JsonValueKind.Array) return;
+
+            var numbers = new List<int>();
+            foreach (var x in numsEl.EnumerateArray())
+            {
+                if (x.ValueKind == JsonValueKind.Number && x.TryGetInt32(out var n) && n > 0) numbers.Add(n);
+            }
+            if (numbers.Count == 0) return;
+            if (string.IsNullOrWhiteSpace(tab.Chat.ConversationId)) return;
+
+            string chatUrl = $"https://claude.ai/chat/{tab.Chat.ConversationId}";
+            try
+            {
+                await db.RecordChatIssueMentionsAsync(chatUrl, numbers);
+                ActivityLog.Log("chat.issue-mention", $"BT_ISSUE_MENTIONS_SCAN (floating) {chatUrl}: {string.Join(", ", numbers.Select(n => $"#{n}"))}");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log("chat.issue-mention", $"BT_ISSUE_MENTIONS_SCAN (floating) FAILED for {chatUrl}: {ex.Message}");
+                return;
+            }
+
+            if (ReferenceEquals(tab, _active) && _dockExpanded)
+                _ = RefreshDockAsync(tab);
+        }
+
+        // ── Git #2195 — side dock (synthesized pending-items relationship map) ───────────
+        private void BtnToggleDock_Click(object sender, RoutedEventArgs e)
+        {
+            _dockExpanded = !_dockExpanded;
+            ApplyDockState();
+            try
+            {
+                var settings = BuildConsoleSettings.Load();
+                settings.FloatingChatDockExpanded = _dockExpanded;
+                settings.Save();
+            }
+            catch { }
+
+            if (_dockExpanded && _active != null) _ = RefreshDockAsync(_active);
+        }
+
+        private void ApplyDockState()
+        {
+            DockColumn.Width = _dockExpanded ? new GridLength(DockWidth) : new GridLength(0);
+            DockBorder.Visibility = _dockExpanded ? Visibility.Visible : Visibility.Collapsed;
+            BtnToggleDock.ToolTip = _dockExpanded
+                ? "Hide the pending-items dock for this chat"
+                : "Show the pending-items dock for this chat";
+        }
+
+        private void BtnRefreshDock_Click(object sender, RoutedEventArgs e)
+        {
+            if (_active != null) _ = RefreshDockAsync(_active);
+        }
+
+        /// <summary>
+        /// Git #2195 — rebuilds and renders the side dock for <paramref name="tab"/>: #2066's
+        /// mentioned-issue registry joined with #2104/#2105's active pinned questions, live-filtered
+        /// against real GitHub state (<see cref="Services.ChatDockService.BuildAsync"/>). No-ops when
+        /// the dock isn't currently shown, or this isn't (or is no longer, by the time the async load
+        /// finishes) the active tab — a background tab's dock never overwrites what's on screen.
+        /// </summary>
+        private async System.Threading.Tasks.Task RefreshDockAsync(FloatingChatTab tab)
+        {
+            if (!_dockExpanded || tab == null) return;
+            var db = _owner?.QueueDb;
+            if (db == null) return;
+
+            string chatUrl = string.IsNullOrWhiteSpace(tab.Chat.ConversationId)
+                ? tab.Chat.ClaudeUrl
+                : $"https://claude.ai/chat/{tab.Chat.ConversationId}";
+
+            Services.ChatDockData data;
+            try
+            {
+                data = await Services.ChatDockService.BuildAsync(db, chatUrl, tab.Chat.Id);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(LogChannel, $"dock refresh failed for chat {tab.Chat.ConversationId}: {ex.Message}");
+                return;
+            }
+
+            if (!ReferenceEquals(tab, _active) || !_dockExpanded) return; // stale by the time it landed
+
+            ChatDock.Render(
+                data,
+                onOpenIssue: n =>
+                {
+                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Services.GitHubIssuesService.IssueUrl(n)) { UseShellExecute = true }); }
+                    catch { }
+                },
+                onResolvePin: async (pq, text) =>
+                {
+                    string status = await SendToActiveTabAsync(text);
+                    if (status != "sent") return false;
+                    try { await db.ResolvePinnedQuestionAsync(pq.Id); }
+                    catch (Exception ex) { ActivityLog.Log(LogChannel, $"pin #{pq.Id} resolve-persist failed: {ex.Message}"); }
+                    ActivityLog.Log(LogChannel, $"pin #{pq.Id} resolved via dock reply (floating chat, {tab.Chat.ConversationId})");
+                    _ = RefreshDockAsync(tab);
+                    return true;
+                });
         }
 
         private async System.Threading.Tasks.Task ResolveAndShowIssueTipAsync(FloatingChatTab tab, int n)

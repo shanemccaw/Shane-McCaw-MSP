@@ -1,6 +1,7 @@
 <Window x:Class="BuildConsole.FloatingChatWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:BuildConsole.Controls"
         Title="Chat"
         Width="380" Height="500"
         MinWidth="280" MinHeight="300"
@@ -31,6 +32,12 @@
             BorderThickness="1"
             CornerRadius="6">
         <Grid Margin="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition x:Name="DockColumn" Width="0"/>
+            </Grid.ColumnDefinitions>
+
+        <Grid Grid.Column="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -40,7 +47,7 @@
                 <RowDefinition x:Name="BridgeRow" Height="170"/>
             </Grid.RowDefinitions>
 
-            <!-- Header strip: active chat title + collapse-bridge + close; doubles as drag handle -->
+            <!-- Header strip: active chat title + toggle-dock + collapse-bridge + close; doubles as drag handle -->
             <Border x:Name="HeaderStrip" Grid.Row="0"
                     Background="{StaticResource CrustBrush}"
                     CornerRadius="6,6,0,0"
@@ -50,6 +57,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
@@ -62,7 +70,19 @@
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center"
                                Foreground="{StaticResource TextBrush}"/>
-                    <Button x:Name="BtnToggleBridge" Grid.Column="2"
+                    <!-- Git #2195 — side dock toggle: synthesized pending-items relationship map
+                         (mentioned issues cross-checked live against GitHub + active pinned
+                         questions) for whichever tab is active. -->
+                    <Button x:Name="BtnToggleDock" Grid.Column="2"
+                            Content="&#xE8A1;"
+                            FontFamily="Segoe MDL2 Assets"
+                            Style="{StaticResource IconButton}"
+                            FontSize="10"
+                            Padding="4,1,4,1"
+                            Margin="0,0,2,0"
+                            ToolTip="Show/hide the pending-items dock for this chat"
+                            Click="BtnToggleDock_Click"/>
+                    <Button x:Name="BtnToggleBridge" Grid.Column="3"
                             Content="&#xE010;"
                             FontFamily="Segoe MDL2 Assets"
                             Style="{StaticResource IconButton}"
@@ -71,7 +91,7 @@
                             Margin="0,0,2,0"
                             ToolTip="Show/hide the live chat page (hiding pauses live capture)"
                             Click="BtnToggleBridge_Click"/>
-                    <Button x:Name="BtnClose" Grid.Column="3"
+                    <Button x:Name="BtnClose" Grid.Column="4"
                             Content="&#x2715;"
                             Style="{StaticResource IconButton}"
                             FontSize="10"
@@ -166,5 +186,33 @@
                 <Grid x:Name="BridgeHost"/>
             </Border>
         </Grid>
+
+        <!-- Git #2195 — side dock: one synthesized "what's actually pending in this chat right
+             now" panel per active tab (mentioned-issue relationship map + pinned questions). Hidden
+             (DockColumn Width=0) until BtnToggleDock is clicked; content is rebuilt in code-behind
+             (ChatDockPanel.Render) whenever the active tab changes or new data arrives. -->
+        <Border x:Name="DockBorder" Grid.Column="1"
+                Margin="0,0,0,0"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="1,0,0,0"
+                Background="{StaticResource CrustBrush}"
+                Visibility="Collapsed">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <local:ChatDockPanel x:Name="ChatDock" Grid.Row="0"/>
+                <Button x:Name="BtnRefreshDock" Grid.Row="1"
+                        Content="⟳ Refresh"
+                        Style="{StaticResource IconButton}"
+                        FontSize="10.5"
+                        Padding="6,4,6,4"
+                        Margin="6,0,6,6"
+                        ToolTip="Re-check mentioned issues and pinned questions for this chat"
+                        Click="BtnRefreshDock_Click"/>
+            </Grid>
+        </Border>
+    </Grid>
     </Border>
 </Window>
