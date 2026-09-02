@@ -16,9 +16,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import os from "node:os";
+import { loadConfig } from "./dev-server/config.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
+
+// The progress snapshot must land in the SAME shared location regardless of which
+// worktree the reporting build actually ran in, because ShaneBuilder's cross-process
+// reader (MainWindow.xaml.cs ReadPaletteBuildProgress, Git #2203) reads it from the
+// real main checkout, not from any individual worktree (Git #2236). loadConfig()
+// resolves that shared root the same way (`git rev-parse --git-common-dir`) the
+// dev-server restart coordinator already relies on for cross-worktree coordination.
+const { devAllLogDir } = loadConfig({ cwd: repoRoot });
 
 const args = process.argv.slice(2);
 if (args.length < 3) {
@@ -38,9 +47,11 @@ if (isNaN(buildId) || isNaN(step) || isNaN(total)) {
 
 const uri = `shaneapp://reportProgress?buildId=${buildId}&step=${step}&total=${total}&label=${encodeURIComponent(label)}&src=agent-cli`;
 
-// Also persist local progress snapshot file for durable diagnostic record
+// Also persist a durable progress snapshot file, in the SHARED main-checkout
+// location (not this worktree's own copy) so a cross-process reader in any
+// worktree can find it regardless of which worktree the build actually ran in.
 try {
-  const progressDir = path.join(repoRoot, ".logs", "dev-all", "progress");
+  const progressDir = path.join(devAllLogDir, "progress");
   fs.mkdirSync(progressDir, { recursive: true });
   fs.writeFileSync(
     path.join(progressDir, `${buildId}.json`),
