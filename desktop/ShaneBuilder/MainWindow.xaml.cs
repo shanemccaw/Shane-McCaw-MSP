@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         _tabs.Add(new TabDef("home", "Home", isHome: true));
         _tabs.Add(new TabDef("epic-1202", "#1202 ShaneBuilder", isChat: true, kind: TabKind.Chat, dot: (Brush)FindResource("Brush.Epic.BuildConsole"), buildSet: "ShaneBuilder", epicNumber: 1202));
         SelectTab("home");
+        _ = ResolveChatFeatureNumbersAsync(); // Git #2319 — real FeatureNumber per chat tab, lands async below
 
         RenderQueue(); // _queueItems starts empty — real rows land async below (Git #2413)
         RenderBuildDetail(); // starts closed (BuildDetailColumn.Width = 0) — no item selected yet
@@ -730,6 +731,13 @@ public partial class MainWindow : Window
         // which chat you were in after a tab switch; the fix is that the epic number lives HERE,
         // once, and every chat-chrome surface reads it off the active tab.
         public int? EpicNumber { get; }
+        // Git #2319 — the real Feature-tier ancestor of EpicNumber's issue (GitHub's own `parent`
+        // sub-issue edge, walked via GitIssuesService.ResolveFeatureTierAncestorAsync — see
+        // ResolveChatFeatureNumbersAsync). Null is a genuinely honest state (an Epic-tier anchor
+        // sitting at the top of the tree, or a lookup that hasn't resolved/failed yet) — never
+        // guessed. Mutable (not init), same pattern as GitMapFeature.IsParked: resolved
+        // asynchronously AFTER the tab is constructed, then the tab strip is re-rendered.
+        public int? FeatureNumber { get; set; }
         // Git #2312 — set for a Git Panel peek sent to a tab via "Send to tab"; the real crumb
         // trail snapshot GitItemDock's RenderGitItemDoc renders through the same
         // RenderGitIdentityBlock the rail peek uses. Null for every other tab kind.
@@ -773,6 +781,37 @@ public partial class MainWindow : Window
     // workspaces still show in the strip but shrunk to their header chip.
     private readonly HashSet<string> _stashedWorkspaces = new();
     private readonly HashSet<string> _collapsedWorkspaces = new();
+
+    // Git #2319 — real FeatureNumber per chat tab, resolved off GitHub's own `parent` sub-issue
+    // edge (GitIssuesService.ResolveFeatureTierAncestorAsync — same real-fail-closed `gh` shellout
+    // pattern GitMapService/GitIssuesService already use, never a second data path). Runs once at
+    // startup for the tabs that exist then; called again for any tab created afterward whose
+    // FeatureNumber hasn't been resolved yet (the "New Chat" flow lands in #2320-#2323).
+    private async Task ResolveChatFeatureNumbersAsync()
+    {
+        var targets = _tabs.Where(t => t.IsChat && t.EpicNumber.HasValue && t.FeatureNumber == null).ToList();
+        if (targets.Count == 0) return;
+
+        bool changed = false;
+        foreach (var tab in targets)
+        {
+            try
+            {
+                var (number, _) = await Services.GitIssuesService.ResolveFeatureTierAncestorAsync(tab.EpicNumber!.Value);
+                if (number.HasValue)
+                {
+                    tab.FeatureNumber = number.Value;
+                    changed = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat.feature] resolve failed for tab {tab.Id} (epic #{tab.EpicNumber}): {ex.Message}");
+            }
+        }
+
+        if (changed) RenderTabStrip();
+    }
 
     private void RenderTabStrip()
     {
@@ -1045,6 +1084,25 @@ public partial class MainWindow : Window
             Foreground = isActive ? (Brush)FindResource("Brush.Text.Heading") : (Brush)FindResource("Brush.Text.Muted"),
             VerticalAlignment = VerticalAlignment.Center
         });
+
+        // Git #2319 — every chat row shows the real Feature it's anchored to, once resolved
+        // (ResolveChatFeatureNumbersAsync). No badge at all when FeatureNumber is genuinely null
+        // (a still-resolving lookup, a failed one, or an Epic-tier anchor with no Feature-tier
+        // ancestor) — never a placeholder in its place.
+        if (t.IsChat && t.FeatureNumber.HasValue)
+        {
+            content.Children.Add(new TextBlock
+            {
+                Text = $"⬡ #{t.FeatureNumber}",
+                Margin = new Thickness(6, 0, 0, 0),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = 10.5,
+                FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+                Foreground = (Brush)FindResource("Brush.Text.Dim"),
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "Feature this chat is anchored to"
+            });
+        }
 
         bool closable = !t.IsHome || _tabs.Count > 1;
         if (closable)
@@ -4343,6 +4401,12 @@ public partial class MainWindow : Window
         {
             CommandPalettePreview.Children.Add(PaletteMutedNote("No epic derived for this chat."));
         }
+
+        // Git #2319 — the real Feature-tier ancestor, once resolved (ResolveChatFeatureNumbersAsync).
+        CommandPalettePreview.Children.Add(PaletteSectionLabel("Feature"));
+        CommandPalettePreview.Children.Add(tab.FeatureNumber.HasValue
+            ? PaletteDetailMeta($"#{tab.FeatureNumber}")
+            : PaletteMutedNote("No Feature-tier ancestor found for this chat's epic."));
 
         CommandPalettePreview.Children.Add(PaletteSectionLabel("Context meter"));
         CommandPalettePreview.Children.Add(PaletteMutedNote("Not exposed by the embedded claude.ai session — no real token/context reading is available here."));
