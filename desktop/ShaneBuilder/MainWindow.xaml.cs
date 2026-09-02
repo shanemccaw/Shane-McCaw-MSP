@@ -49,6 +49,25 @@ public partial class MainWindow : Window
 
         RunStartupConnectivityCheckAsync();
         InitializeAlertsAndCritters();
+        InitializeTestPad();
+    }
+
+    // ── Git #2327 — Test Pad pill + pad (Feature: Test Pad, #2326, item 1 of 28) ──────────────
+    private TestPadPillWindow? _testPadPillWindow;
+    private TestPadWindow? _testPadWindow;
+
+    private void InitializeTestPad()
+    {
+        _testPadPillWindow = new TestPadPillWindow { OnTogglePad = ToggleTestPad };
+        _testPadWindow = new TestPadWindow();
+        _testPadPillWindow.Show();
+    }
+
+    private void ToggleTestPad()
+    {
+        if (_testPadWindow == null) return;
+        if (_testPadWindow.IsVisible) _testPadWindow.Hide();
+        else _testPadWindow.Show();
     }
 
     // ── Git #2201 — Alerts and Critters (readme-phase2.md Step 11) ────────────────────────────

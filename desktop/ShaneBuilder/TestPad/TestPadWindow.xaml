@@ -1,0 +1,47 @@
+<Window x:Class="ShaneBuilder.TestPadWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Test Pad"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        SizeToContent="Height"
+        Width="320"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Git #2327 — "expands to the pad." What the pill opens. The composer (#2328), type chips
+         (#2330), status band (#2332), notes list/grouping/edit/lock (#2333-#2336), Send to Claude
+         (#2337-#2338), copy-as-markdown (#2339), shots/Paste Tray (#2340-#2342) and import
+         (#2343-#2354) each build out this body in their own issue — this shell is only the
+         floating, non-layout-shifting container the pill expands into, with an honest empty state
+         until a note actually exists. -->
+    <Border CornerRadius="10" Background="{StaticResource Brush.Bg.Panel}"
+            BorderBrush="{StaticResource Brush.Border.Popover}" BorderThickness="1" Margin="14">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.4" Color="Black"/>
+        </Border.Effect>
+        <StackPanel>
+            <Grid Margin="14,12,10,10">
+                <TextBlock Text="Test Pad" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource Brush.Text.Heading}" VerticalAlignment="Center"/>
+                <Border x:Name="BtnClose" Width="22" Height="22" CornerRadius="4" Cursor="Hand"
+                        HorizontalAlignment="Right" Background="Transparent"
+                        MouseLeftButtonUp="BtnClose_Click">
+                    <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                               Foreground="{StaticResource Brush.Text.Muted}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+            </Grid>
+            <Border Height="1" Background="{StaticResource Brush.Border.Default}"/>
+            <Grid x:Name="EmptyState" Margin="16,28,16,28">
+                <TextBlock Text="No notes yet." FontSize="11.5"
+                           Foreground="{StaticResource Brush.Text.Muted}"
+                           HorizontalAlignment="Center"/>
+            </Grid>
+            <StackPanel x:Name="NotesHost" Margin="10,4,10,10"/>
+        </StackPanel>
+    </Border>
+</Window>
