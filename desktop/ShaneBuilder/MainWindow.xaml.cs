@@ -3461,15 +3461,27 @@ public partial class MainWindow : Window
     /// build against instead of a second copy of this button's wiring.</summary>
     private void BtnNewChat_Click(object sender, RoutedEventArgs e) => OpenNewChatFlow();
 
-    /// <summary>Today: opens a fresh claude.ai tab, same navigation BtnStartNewChat_Click
-    /// already uses. #2321 replaces this body with the real disclosure listing active
-    /// features + their epic/state and a "no feature yet — decide later" option before
-    /// writing the anchor into the new tab's subtitle.</summary>
+    /// <summary>Git #2321 — shows the real anchor disclosure (active Features + their real Epic
+    /// and state, off <see cref="Services.GitIssuesService.GetActiveFeaturesAsync"/>) before
+    /// navigating. A picked feature's anchor is logged for now (Console/Toast) — writing it into
+    /// the new tab's own subtitle is #2323's real remaining work (a new anchored TabDef doesn't
+    /// exist yet; today's single persistent chat tab just gets renavigated, same as
+    /// BtnStartNewChat_Click always has). Cancelling the dialog is a real no-op: no navigation,
+    /// nothing anchored — the "no feature yet — decide later" option (#2322) still needs building.</summary>
     private void OpenNewChatFlow()
     {
+        var dlg = NewChatAnchorDialog.ShowFor(this);
+        if (dlg.SelectedFeatureNumber == null)
+            return; // cancelled — no anchor chosen, don't navigate
+
         try
         {
             ClaudeWebView.Source = new Uri("https://claude.ai/new");
+            string anchorLabel = dlg.SelectedEpicNumber.HasValue
+                ? $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\" (Epic #{dlg.SelectedEpicNumber})"
+                : $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\"";
+            Services.ConsoleOutputSink.Log(Services.LogLevel.Info, $"[chat] new chat anchored to {anchorLabel}");
+            ToastEngine.Show("New chat", $"Anchored to {anchorLabel}.", ToastKind.Info);
         }
         catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] new-chat failed: {ex.Message}"); }
     }
