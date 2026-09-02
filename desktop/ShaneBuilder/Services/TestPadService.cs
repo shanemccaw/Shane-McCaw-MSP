@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using ShaneBuilder.Services.TestPad;
 
 namespace ShaneBuilder.Services;
 
@@ -28,11 +29,27 @@ public static class TestPadService
     {
         try
         {
+            StampIfUnset(note);
             lock (_notes) _notes.Insert(0, note);
             RaiseChanged();
         }
         catch { /* a note failing to file must never take down the caller */ }
         return note;
+    }
+
+    /// <summary>Git #2331 — every note stamps screen, feature, and the build number running at the
+    /// moment it's filed. Applied here, in the one funnel every note passes through, so a caller
+    /// (composer, import, ...) never has to remember to stamp — only fills in whatever the caller
+    /// left <c>null</c>, so an already-stamped note (e.g. re-filed from an edit) keeps its original
+    /// stamp rather than being overwritten with the current moment's context.</summary>
+    private static void StampIfUnset(TestPadNote note)
+    {
+        if (note.Screen != null && note.Feature != null && note.BuildNumber != null) return;
+
+        var stamp = NoteContextStamper.Current.Capture();
+        note.Screen ??= stamp.Screen;
+        note.Feature ??= stamp.Feature;
+        note.BuildNumber ??= stamp.BuildNumber;
     }
 
     public static void RemoveNote(string id)
