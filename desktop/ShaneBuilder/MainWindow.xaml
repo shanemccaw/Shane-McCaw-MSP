@@ -2393,6 +2393,40 @@
                         </ScrollViewer>
                     </Grid>
 
+                    <!-- Git #2312 — "Send to tab" document surface for a Git Panel peek
+                         (Milestone/Gate/Epic/Feature/Issue). Reuses RenderGitIdentityBlock, the
+                         exact same builder the rail peek (GitPeekHost) renders through — one real
+                         data path, two hosts — same "single wide column, same card builders"
+                         precedent GitMapDock set above. A frozen snapshot of the trail at the
+                         moment it was sent, not a live drill surface. -->
+                    <Grid x:Name="GitItemDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,10" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="16" Margin="0,0,10,0"
+                                           Foreground="{StaticResource Brush.Accent.Primary}"/>
+                                <StackPanel>
+                                    <TextBlock x:Name="GitItemDocTitleText" Text="Git item" FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                               FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                               Foreground="{StaticResource Brush.Text.Heading}"/>
+                                    <TextBlock Text="Sent from the Git Panel peek — same real GitHub state, frozen at send time."
+                                               Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="620"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                               Foreground="{StaticResource Brush.Text.Dim}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="GitItemDocHost" Margin="24,16" MaxWidth="640" HorizontalAlignment="Left"/>
+                        </ScrollViewer>
+                    </Grid>
+
                     <!-- Settings, redesigned — Step 15 (wpf-handoff/readme-phase2.md), the real
                          Settings screen markup/computeSettings() spec in
                          wpf-handoff/Shell Skeleton v2.dc.html (lines 1441-1630, 6003-6147). One

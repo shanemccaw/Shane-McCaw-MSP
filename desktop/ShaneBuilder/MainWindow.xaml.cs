@@ -599,6 +599,11 @@ public partial class MainWindow : Window
         // which chat you were in after a tab switch; the fix is that the epic number lives HERE,
         // once, and every chat-chrome surface reads it off the active tab.
         public int? EpicNumber { get; }
+        // Git #2312 — set for a Git Panel peek sent to a tab via "Send to tab"; the real crumb
+        // trail snapshot GitItemDock's RenderGitItemDoc renders through the same
+        // RenderGitIdentityBlock the rail peek uses. Null for every other tab kind.
+        public List<GitCrumb>? GitItemTrail { get; }
+        public bool IsGitItemDoc => GitItemTrail != null;
         private readonly string? _workspaceIdOverride;
 
         public string? WorkspaceId => _workspaceIdOverride ?? (Kind.HasValue ? KindWorkspaceDefault[Kind.Value] : null);
@@ -606,7 +611,8 @@ public partial class MainWindow : Window
         public TabDef(string id, string title, bool isHome = false, bool isChat = false, bool isGitDoctor = false,
             TabKind? kind = null, string? workspaceId = null, string? ext = null, bool isLogViewer = false,
             string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
-            bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false)
+            bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false,
+            List<GitCrumb>? gitItemTrail = null)
         {
             Id = id;
             Title = title;
@@ -624,6 +630,7 @@ public partial class MainWindow : Window
             EpicNumber = epicNumber;
             IsGitMap = isGitMap;
             IsSettings = isSettings;
+            GitItemTrail = gitItemTrail;
         }
     }
 
@@ -1012,8 +1019,9 @@ public partial class MainWindow : Window
         MarkdownViewerDock.Visibility = tab.IsMarkdownViewer ? Visibility.Visible : Visibility.Collapsed;
         GitMapDock.Visibility = tab.IsGitMap ? Visibility.Visible : Visibility.Collapsed;
         SettingsDock.Visibility = tab.IsSettings ? Visibility.Visible : Visibility.Collapsed;
+        GitItemDock.Visibility = tab.IsGitItemDoc ? Visibility.Visible : Visibility.Collapsed;
         if (tab.IsSettings) RenderSettings();
-        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings;
+        bool isStub = !tab.IsHome && !tab.IsChat && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -1029,6 +1037,11 @@ public partial class MainWindow : Window
             LoadMarkdownViewerTab(tab);
         if (tab.IsGitMap)
             _ = RenderGitMapDocAsync();
+        if (tab.IsGitItemDoc)
+        {
+            GitItemDocTitleText.Text = tab.Title;
+            RenderGitItemDoc(tab);
+        }
     }
 
     // ── Markdown Viewer — Git #2211. Real OS file drag-and-drop onto the

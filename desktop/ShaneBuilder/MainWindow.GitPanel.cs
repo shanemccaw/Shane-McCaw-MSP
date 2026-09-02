@@ -72,6 +72,12 @@ public partial class MainWindow
     private readonly HashSet<int> _gitMilestoneSnapshotLoading = new();
     private int _gitMilestoneSnapshotSeq;
 
+    // Git #2312 — "Expand full page here" widens the rail panel in place (no tab opened);
+    // "Send to tab" is the explicit opt-in takeover that opens the same real identity/state
+    // in a document tab (GitItemDock). Both read the same _gitPeekCache — one data path.
+    private const double GitPeekExpandedWidth = 640;
+    private bool _gitPeekExpanded;
+
     // ── load ─────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Fires the three real reads the tree renders from (open milestones, open GATE:
@@ -128,6 +134,7 @@ public partial class MainWindow
     {
         if (_gitTrail.Count == 0)
         {
+            SetGitPeekExpanded(false); // closing the peek always returns the rail to its normal width
             GitPeekHost.Visibility = Visibility.Collapsed;
             GitTreeHost.Visibility = Visibility.Visible;
             RenderGitTree();
@@ -463,6 +470,25 @@ public partial class MainWindow
         DockPanel.SetDock(close, Dock.Right);
         header.Children.Add(close);
 
+        // #2312 — every peek offers "Expand full page here" (widen in place, no tab); "Send to
+        // tab" opens the same real identity as a document tab (GitItemDock), reusing this exact
+        // identity-rendering path — one data source for both surfaces.
+        var sendToTab = GitText(((char)0x2197).ToString(), 12, "Brush.Text.Dim"); // NE arrow — opt-in takeover, doc item 8
+        sendToTab.Cursor = Cursors.Hand;
+        sendToTab.Margin = new Thickness(0, 0, 10, 0);
+        sendToTab.ToolTip = "Send to tab";
+        sendToTab.MouseLeftButtonDown += (_, _) => OpenGitPeekInTab();
+        DockPanel.SetDock(sendToTab, Dock.Right);
+        header.Children.Add(sendToTab);
+
+        var expand = GitText(((char)0x26F6).ToString(), 12, "Brush.Text.Dim"); // fullscreen glyph — widen in place, doc item 7
+        expand.Cursor = Cursors.Hand;
+        expand.Margin = new Thickness(0, 0, 10, 0);
+        expand.ToolTip = _gitPeekExpanded ? "Collapse back to the rail width" : "Expand full page here";
+        expand.MouseLeftButtonDown += (_, _) => { SetGitPeekExpanded(!_gitPeekExpanded); RenderGitPeek(); };
+        DockPanel.SetDock(expand, Dock.Right);
+        header.Children.Add(expand);
+
         string backLabel = _gitTrail.Count >= 2 ? $"‹ Back to {GitCrumbLabel(_gitTrail[^2])}" : "‹ Back to Git tree";
         var back = GitText(backLabel, 10.5, "Brush.Text.Muted");
         back.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
@@ -472,59 +498,9 @@ public partial class MainWindow
         header.Children.Add(back);
         GitPeekHost.Children.Add(header);
 
-        // Breadcrumb strip — labelled chips, every non-current crumb clickable (#2297, #2298).
-        var chipWrap = new WrapPanel { Margin = new Thickness(4, 0, 4, 8) };
-        for (int i = 0; i < _gitTrail.Count; i++)
-        {
-            bool isCurrent = i == _gitTrail.Count - 1;
-            var crumb = _gitTrail[i];
-            var chip = new Border
-            {
-                Margin = new Thickness(0, 0, 3, 3),
-                Padding = new Thickness(6, 2, 6, 2),
-                CornerRadius = new CornerRadius(5),
-                Background = (Brush)FindResource("Brush.Bg.Chip"),
-                BorderThickness = new Thickness(1),
-                BorderBrush = (Brush)FindResource(isCurrent ? "Brush.Border.Popover" : "Brush.Border.Default"),
-                MaxWidth = 240
-            };
-            var chipText = GitText(GitCrumbLabel(crumb), 9.5, isCurrent ? "Brush.Text.Heading" : "Brush.Text.Muted");
-            chipText.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
-            chipText.TextTrimming = TextTrimming.CharacterEllipsis;
-            chip.Child = chipText;
-            if (!isCurrent)
-            {
-                chip.Cursor = Cursors.Hand;
-                chip.ToolTip = $"Back to {GitCrumbLabel(crumb)}";
-                int capturedIndex = i;
-                chip.MouseLeftButtonDown += (_, _) => GitTruncateTrailTo(capturedIndex);
-            }
-            chipWrap.Children.Add(chip);
-            if (!isCurrent)
-                chipWrap.Children.Add(GitText("›", 9.5, "Brush.Text.Dim", rightPad: 3));
-        }
-        GitPeekHost.Children.Add(chipWrap);
-
-        // Identity — the minimal real peek this build ships (#2292-#2296). Rich content is
-        // items 12-23, later builds under Feature #2289.
-        var kindCaption = GitText(current.Kind.ToString().ToUpperInvariant(), 9, null);
-        kindCaption.Foreground = (Brush)FindResource(current.Kind == GitCrumbKind.Gate ? "Brush.Epic.Gate" : "Brush.Accent.Primary");
-        kindCaption.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
-        kindCaption.Margin = new Thickness(6, 0, 6, 2);
-        GitPeekHost.Children.Add(kindCaption);
-
-        if (current.Kind != GitCrumbKind.Milestone)
-        {
-            var num = GitMono($"#{current.Number}", 11, "Brush.Accent.IssueNum");
-            num.Margin = new Thickness(6, 0, 6, 2);
-            GitPeekHost.Children.Add(num);
-        }
-
-        var title = GitText(current.Kind == GitCrumbKind.Milestone ? current.Title : StripGitPrefix(current.Title), 13, "Brush.Text.Heading");
-        title.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
-        title.TextWrapping = TextWrapping.Wrap;
-        title.Margin = new Thickness(6, 0, 6, 8);
-        GitPeekHost.Children.Add(title);
+        // Breadcrumb + identity — shared with the "Send to tab" doc surface (RenderGitItemDoc)
+        // via RenderGitIdentityBlock, same real data, one rendering path (#2312).
+        RenderGitIdentityBlock(GitPeekHost, _gitTrail, breadcrumbClickable: true, GitTruncateTrailTo);
 
         if (current.Kind == GitCrumbKind.Milestone)
         {
@@ -583,6 +559,163 @@ public partial class MainWindow
             note.Margin = new Thickness(6, 10, 6, 0);
             GitPeekHost.Children.Add(note);
         }
+    }
+
+    /// <summary>The breadcrumb + identity block shared by the rail peek (<see cref="RenderGitPeek"/>)
+    /// and the "Send to tab" document surface (<see cref="RenderGitItemDoc"/>) — labelled chips,
+    /// kind caption, number, and title off the same real trail. State/vitals below the identity
+    /// stay per-caller (the rail peek keeps its full Milestone/Gate/Epic-warning branching; the
+    /// doc tab uses a simpler generic fallback) since those depend on live-panel-only caches.</summary>
+    private void RenderGitIdentityBlock(Panel host, List<GitCrumb> trail, bool breadcrumbClickable, Action<int>? onTruncate)
+    {
+        var current = trail[^1];
+
+        // Breadcrumb strip — labelled chips, every non-current crumb clickable (#2297, #2298)
+        // on the live panel; a "Sent to tab" copy shows the same chips inert.
+        var chipWrap = new WrapPanel { Margin = new Thickness(4, 0, 4, 8) };
+        for (int i = 0; i < trail.Count; i++)
+        {
+            bool isCurrent = i == trail.Count - 1;
+            var crumb = trail[i];
+            var chip = new Border
+            {
+                Margin = new Thickness(0, 0, 3, 3),
+                Padding = new Thickness(6, 2, 6, 2),
+                CornerRadius = new CornerRadius(5),
+                Background = (Brush)FindResource("Brush.Bg.Chip"),
+                BorderThickness = new Thickness(1),
+                BorderBrush = (Brush)FindResource(isCurrent ? "Brush.Border.Popover" : "Brush.Border.Default"),
+                MaxWidth = 240
+            };
+            var chipText = GitText(GitCrumbLabel(crumb), 9.5, isCurrent ? "Brush.Text.Heading" : "Brush.Text.Muted");
+            chipText.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
+            chipText.TextTrimming = TextTrimming.CharacterEllipsis;
+            chip.Child = chipText;
+            if (!isCurrent && breadcrumbClickable)
+            {
+                chip.Cursor = Cursors.Hand;
+                chip.ToolTip = $"Back to {GitCrumbLabel(crumb)}";
+                int capturedIndex = i;
+                chip.MouseLeftButtonDown += (_, _) => onTruncate?.Invoke(capturedIndex);
+            }
+            chipWrap.Children.Add(chip);
+            if (!isCurrent)
+                chipWrap.Children.Add(GitText("›", 9.5, "Brush.Text.Dim", rightPad: 3));
+        }
+        host.Children.Add(chipWrap);
+
+        // Identity — the minimal real peek this build ships (#2292-#2296). Rich content per kind
+        // is #2301/#2302 (Milestone/Gate) and later builds under Feature #2289.
+        var kindCaption = GitText(current.Kind.ToString().ToUpperInvariant(), 9, null);
+        kindCaption.Foreground = (Brush)FindResource(current.Kind == GitCrumbKind.Gate ? "Brush.Epic.Gate" : "Brush.Accent.Primary");
+        kindCaption.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        kindCaption.Margin = new Thickness(6, 0, 6, 2);
+        host.Children.Add(kindCaption);
+
+        if (current.Kind != GitCrumbKind.Milestone)
+        {
+            var num = GitMono($"#{current.Number}", 11, "Brush.Accent.IssueNum");
+            num.Margin = new Thickness(6, 0, 6, 2);
+            host.Children.Add(num);
+        }
+
+        var title = GitText(current.Kind == GitCrumbKind.Milestone ? current.Title : StripGitPrefix(current.Title), 13, "Brush.Text.Heading");
+        title.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        title.TextWrapping = TextWrapping.Wrap;
+        title.Margin = new Thickness(6, 0, 6, 8);
+        host.Children.Add(title);
+    }
+
+    /// <summary>Widens/collapses the rail in place for "Expand full page here" (#2312). Only
+    /// touches the shared <c>LeftPanel</c> while the Git source is the one actually showing it —
+    /// switching rail sources (Chats/NextUp/NotBuilt) leaves this state behind rather than
+    /// stretching an unrelated panel.</summary>
+    private void SetGitPeekExpanded(bool expanded)
+    {
+        _gitPeekExpanded = expanded;
+        if (_leftPanelSource == "Git")
+            LeftPanel.Width = expanded ? GitPeekExpandedWidth : LeftPanelWidth;
+    }
+
+    /// <summary>"Send to tab" (#2312) — opens (or refreshes and focuses) a document tab holding a
+    /// real snapshot of the current peek's identity, via the exact same
+    /// <see cref="RenderGitIdentityBlock"/> the rail peek uses. One real GitHub-backed peek, two
+    /// surfaces.</summary>
+    private void OpenGitPeekInTab()
+    {
+        if (_gitTrail.Count == 0) return;
+        var snapshot = _gitTrail.Select(c => new GitCrumb { Kind = c.Kind, Number = c.Number, Title = c.Title }).ToList();
+        var current = snapshot[^1];
+        string tabId = $"gititem-{current.Kind}-{current.Number}";
+
+        var existing = _tabs.Find(t => t.Id == tabId);
+        if (existing != null)
+        {
+            existing.GitItemTrail!.Clear();
+            existing.GitItemTrail!.AddRange(snapshot); // refresh — ancestry may have moved since it was last sent
+        }
+        else
+        {
+            existing = new TabDef(tabId, GitCrumbLabel(current), gitItemTrail: snapshot,
+                dot: (Brush)FindResource(current.Kind == GitCrumbKind.Gate ? "Brush.Epic.Gate" : "Brush.Accent.Primary"));
+            _tabs.Add(existing);
+        }
+        SelectTab(tabId);
+    }
+
+    /// <summary>Renders a "Send to tab" document (#2312) into the shared GitItemDock — the same
+    /// breadcrumb/identity RenderGitIdentityBlock builds for the rail peek (non-interactive
+    /// breadcrumb, since this is a frozen snapshot rather than a live drill trail), plus a
+    /// generic real-state fallback (open/closed + labels) off the same _gitPeekCache. The rail
+    /// peek's full Milestone/Gate panels (rings, verdict, checklist, per-epic rows) and the Epic
+    /// no-burndown warning stay rail-only for now — they read live-panel-only caches
+    /// (_gitMilestoneSnapshotCache, _gitGateDetailCache, _gitEpicFeatureTotals) this build doesn't
+    /// extend to the doc tab; a real follow-up, not faked here.</summary>
+    private void RenderGitItemDoc(TabDef tab)
+    {
+        GitItemDocHost.Children.Clear();
+        if (tab.GitItemTrail == null || tab.GitItemTrail.Count == 0) return;
+        var current = tab.GitItemTrail[^1];
+        RenderGitIdentityBlock(GitItemDocHost, tab.GitItemTrail, breadcrumbClickable: false, onTruncate: null);
+
+        if (current.Kind == GitCrumbKind.Milestone)
+        {
+            var ms = _gitMilestones.FirstOrDefault(m => m.Number == current.Number);
+            if (ms != null)
+            {
+                var counts = new WrapPanel { Margin = new Thickness(6, 0, 6, 8) };
+                counts.Children.Add(GitCountPill($"{ms.OpenCount} open", "Brush.Text.Muted"));
+                counts.Children.Add(GitCountPill($"{ms.ClosedCount} closed", "Brush.Status.Done"));
+                GitItemDocHost.Children.Add(counts);
+            }
+        }
+        else if (_gitPeekCache.TryGetValue(current.Number, out var state))
+        {
+            var pills = new WrapPanel { Margin = new Thickness(6, 0, 6, 8) };
+            pills.Children.Add(GitCountPill(state.IsClosed ? "CLOSED" : "OPEN", state.IsClosed ? "Brush.Status.Done" : "Brush.Status.Running"));
+            foreach (var label in state.Labels)
+                pills.Children.Add(GitCountPill(label, "Brush.Text.Muted"));
+            GitItemDocHost.Children.Add(pills);
+        }
+        else
+        {
+            GitItemDocHost.Children.Add(GitDimLine("Loading real state…", indent: 6));
+        }
+
+        var note = GitDimLine("Peek detail content (vitals, rings, actions) lands in later builds under Feature #2289.", indent: 6);
+        note.Margin = new Thickness(6, 10, 6, 0);
+        GitItemDocHost.Children.Add(note);
+
+        _ = FetchGitItemDocStateAsync(tab);
+    }
+
+    private async Task FetchGitItemDocStateAsync(TabDef tab)
+    {
+        var current = tab.GitItemTrail![^1];
+        if (current.Kind == GitCrumbKind.Milestone || _gitPeekCache.ContainsKey(current.Number)) return;
+        var (ok, ancestry, _) = await GitPanelService.GetAncestryAsync(current.Number);
+        if (ok && ancestry != null) _gitPeekCache[current.Number] = ancestry;
+        if (_activeTabId == tab.Id) RenderGitItemDoc(tab);
     }
 
     // ── Gate peek body (#2302) ───────────────────────────────────────────────────────────────
