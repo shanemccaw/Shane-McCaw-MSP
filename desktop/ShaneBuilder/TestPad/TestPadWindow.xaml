@@ -27,13 +27,25 @@
             <Grid Margin="14,12,10,10">
                 <TextBlock Text="Test Pad" FontSize="13" FontWeight="SemiBold"
                            Foreground="{StaticResource Brush.Text.Heading}" VerticalAlignment="Center"/>
-                <Border x:Name="BtnClose" Width="22" Height="22" CornerRadius="4" Cursor="Hand"
-                        HorizontalAlignment="Right" Background="Transparent"
-                        MouseLeftButtonUp="BtnClose_Click">
-                    <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="9"
-                               Foreground="{StaticResource Brush.Text.Muted}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Git #2334 — "By feature" regroups the list. Toggles the notes list below
+                         between flat (newest-first) and grouped-by-Feature. -->
+                    <Border x:Name="BtnGroupByFeature" Height="20" CornerRadius="4" Cursor="Hand"
+                            Padding="6,0" Margin="0,0,6,0" Background="Transparent"
+                            MouseLeftButtonUp="BtnGroupByFeature_Click"
+                            ToolTip="Group notes by feature">
+                        <TextBlock x:Name="GroupByFeatureLabel" Text="By feature" FontSize="10"
+                                   Foreground="{StaticResource Brush.Text.Muted}"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <Border x:Name="BtnClose" Width="22" Height="22" CornerRadius="4" Cursor="Hand"
+                            Background="Transparent"
+                            MouseLeftButtonUp="BtnClose_Click">
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                   Foreground="{StaticResource Brush.Text.Muted}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </StackPanel>
             </Grid>
             <Border Height="1" Background="{StaticResource Brush.Border.Default}"/>
             <Grid x:Name="EmptyState" Margin="16,28,16,28">
