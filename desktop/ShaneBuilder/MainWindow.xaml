@@ -770,6 +770,15 @@
                                                 Click="BtnToggleLogPeek_Click">
                                             <TextBlock Text="&#xE81C;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
                                         </Button>
+                                        <!-- Git #2215 — SQL Runner mini panel toggle. Same PanelCollapseButton
+                                             precedent as the icon buttons above; text label (not a glyph) since
+                                             no MDL2 database icon reads cleanly at this size. -->
+                                        <Button x:Name="BtnToggleSqlRunner" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="SQL Runner — real query against local Postgres"
+                                                Click="BtnToggleSqlRunner_Click">
+                                            <TextBlock Text="SQL" FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5" FontWeight="{StaticResource FontWeight.Bold}"/>
+                                        </Button>
                                         <Button x:Name="BtnToggleDetectedItems" Style="{StaticResource PanelCollapseButton}"
                                                 Margin="8,0,0,0"
                                                 ToolTip="Detected in this chat — mentioned issues + pinned questions (⌘)"
@@ -882,6 +891,7 @@
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition x:Name="DetectedItemsColumn" Width="0"/>
                                 <ColumnDefinition x:Name="LogPeekColumn" Width="0"/>
+                                <ColumnDefinition x:Name="SqlRunnerColumn" Width="0"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Stat detail flyout — Shane's own addition, not in the mockup:
@@ -1049,6 +1059,159 @@
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                                         <StackPanel x:Name="LogPeekLinesPanel" Margin="8"/>
                                     </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Git #2215 — SQL Runner mini panel (README-ClaudeChat.md §6.7, per
+                                 #2215's issue-body paraphrase — the doc itself isn't committed, see
+                                 #2227). Same bolt-on-flyout mechanism as StatDetailPanel/
+                                 DetectedItemsPanel/LogPeekPanel above — a 6th single-purpose column.
+                                 Execution logic (Services/SqlRunnerService.cs +
+                                 Services/SqlScriptSplitter.cs) is a direct port of BuildConsole's
+                                 real, already-working SqlDocumentView/LocalSqlExecutor/
+                                 SqlScriptSplitter, not a reimplementation. No "full document" tab
+                                 in this pass — out of scope for this session, tracked separately. -->
+                            <Border x:Name="SqlRunnerPanel" Grid.Column="4" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="380">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="BtnToggleSqlRunner_Click"/>
+                                            <TextBlock Text="SQL Runner" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <!-- Toolbar: Execute + status -->
+                                    <Border DockPanel.Dock="Top" Padding="10,7" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel>
+                                            <Button x:Name="BtnSqlRunnerExecute" DockPanel.Dock="Left"
+                                                    Style="{StaticResource PanelCollapseButton}"
+                                                    Width="Auto" Height="24"
+                                                    Padding="10,4" ToolTip="Execute (Ctrl+Enter)"
+                                                    Click="BtnSqlRunnerExecute_Click">
+                                                <TextBlock Text="&#x26A1; Execute" FontFamily="{StaticResource FontFamily.Sans}"
+                                                           FontSize="10.5" FontWeight="{StaticResource FontWeight.SemiBold}"
+                                                           Foreground="{StaticResource Brush.Claude.Accent}"/>
+                                            </Button>
+                                            <TextBlock x:Name="SqlRunnerStatus" Text="Ready" Margin="10,0,0,0"
+                                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <!-- Bottom action bar: Copy CSV / Copy JSON / Send to chat -->
+                                    <Border DockPanel.Dock="Bottom" Padding="10,8" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                <Button x:Name="BtnSqlRunnerCopyCsv" Style="{StaticResource PanelCollapseButton}"
+                                                        Width="Auto" Height="22"
+                                                        Padding="8,3" Margin="0,0,6,0" IsEnabled="False"
+                                                        ToolTip="Copy all results as CSV" Click="BtnSqlRunnerCopyCsv_Click">
+                                                    <TextBlock Text="Copy CSV" FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                                               Foreground="{StaticResource Brush.Claude.Text.Body}"/>
+                                                </Button>
+                                                <Button x:Name="BtnSqlRunnerCopyJson" Style="{StaticResource PanelCollapseButton}"
+                                                        Width="Auto" Height="22"
+                                                        Padding="8,3" IsEnabled="False"
+                                                        ToolTip="Copy all results as JSON" Click="BtnSqlRunnerCopyJson_Click">
+                                                    <TextBlock Text="Copy JSON" FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                                               Foreground="{StaticResource Brush.Claude.Text.Body}"/>
+                                                </Button>
+                                            </StackPanel>
+                                            <Button x:Name="BtnSqlRunnerSendToChat" Width="Auto" Height="26" HorizontalAlignment="Stretch"
+                                                    Style="{StaticResource PanelCollapseButton}" IsEnabled="False"
+                                                    ToolTip="Send these results into the composer" Click="BtnSqlRunnerSendToChat_Click">
+                                                <TextBlock Text="Send result to chat" FontFamily="{StaticResource FontFamily.Sans}" FontSize="10.5"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition x:Name="SqlRunnerEditorRow" Height="90" MinHeight="54"/>
+                                            <RowDefinition Height="5"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*" MinHeight="60"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Gutter-numbered mono editor, 4 rows tall by default, resizable
+                                             via the GridSplitter below it (§6.7). Gutter + editor share one
+                                             ScrollViewer so the line numbers scroll in lockstep with the
+                                             text instead of drifting (TextBox owns no scrollbar of its own). -->
+                                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                                      Background="{StaticResource Brush.Claude.Bg.Content}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock x:Name="SqlRunnerGutter" Grid.Column="0" Text="1" Padding="6,6,6,6"
+                                                           FontFamily="{StaticResource FontFamily.Monospace}" FontSize="11.5"
+                                                           LineHeight="16" LineStackingStrategy="BlockLineHeight"
+                                                           TextAlignment="Right" IsHitTestVisible="False"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                                <TextBox x:Name="SqlRunnerEditor" Grid.Column="1" Padding="6,6,6,6"
+                                                         AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
+                                                         VerticalScrollBarVisibility="Disabled" HorizontalScrollBarVisibility="Disabled"
+                                                         Background="Transparent" BorderThickness="0"
+                                                         FontFamily="{StaticResource FontFamily.Monospace}" FontSize="11.5"
+                                                         Foreground="{StaticResource Brush.Claude.Text.Bright}"
+                                                         Text="SELECT *&#x0a;FROM public.users&#x0a;LIMIT 100;"
+                                                         TextChanged="SqlRunnerEditor_TextChanged"
+                                                         PreviewKeyDown="SqlRunnerEditor_PreviewKeyDown"/>
+                                            </Grid>
+                                        </ScrollViewer>
+
+                                        <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                                      Background="{StaticResource Brush.Claude.Border}" ResizeDirection="Rows"/>
+
+                                        <!-- Results header: row count + Table/JSON toggle -->
+                                        <DockPanel Grid.Row="2" Margin="10,7,10,5">
+                                            <TextBlock x:Name="SqlRunnerRowCount" DockPanel.Dock="Left" Text="No results"
+                                                       VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" HorizontalAlignment="Right">
+                                                <Button x:Name="SqlRunnerViewTableBtn" Content="Table"
+                                                        Width="Auto" Height="22"
+                                                        Padding="8,2" Margin="0,0,4,0"
+                                                        Style="{StaticResource PanelCollapseButton}"
+                                                        Click="SqlRunnerViewTableBtn_Click"/>
+                                                <Button x:Name="SqlRunnerViewJsonBtn" Content="JSON"
+                                                        Width="Auto" Height="22"
+                                                        Padding="8,2"
+                                                        Style="{StaticResource PanelCollapseButton}"
+                                                        Click="SqlRunnerViewJsonBtn_Click"/>
+                                            </StackPanel>
+                                        </DockPanel>
+
+                                        <!-- Table view: one compact grid per statement, stacked -->
+                                        <ScrollViewer x:Name="SqlRunnerTableScrollView" Grid.Row="3"
+                                                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                                            <StackPanel x:Name="SqlRunnerResultsStack" Margin="10,0,10,10"/>
+                                        </ScrollViewer>
+
+                                        <!-- JSON view -->
+                                        <TextBox x:Name="SqlRunnerJsonView" Grid.Row="3" Margin="10,0,10,10"
+                                                 IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"
+                                                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                                                 Background="{StaticResource Brush.Claude.Bg.Content}" BorderThickness="0"
+                                                 FontFamily="{StaticResource FontFamily.Monospace}" FontSize="10.5"
+                                                 Foreground="{StaticResource Brush.Claude.Text.Bright}"
+                                                 Visibility="Collapsed"/>
+                                    </Grid>
                                 </DockPanel>
                             </Border>
                         </Grid>

@@ -1,4 +1,5 @@
 using System;
+using System.Data;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -2978,6 +2979,8 @@ public partial class MainWindow : Window
             () => { WrenchPopup.IsOpen = false; BtnToggleDetectedItems_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem(_logPeekOpen ? "Hide Log Peek" : "Show Log Peek",
             () => { WrenchPopup.IsOpen = false; BtnToggleLogPeek_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_sqlRunnerOpen ? "Hide SQL Runner" : "Show SQL Runner",
+            () => { WrenchPopup.IsOpen = false; BtnToggleSqlRunner_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Pop into Claude Floaty", () => { WrenchPopup.IsOpen = false; BtnFloaty_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Start a new chat", () => { WrenchPopup.IsOpen = false; BtnStartNewChat_Click(this, new RoutedEventArgs()); }));
     }
@@ -6250,4 +6253,314 @@ public partial class MainWindow : Window
         _logPeekChecked.Clear();
         RenderLogPeekLines();
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    // Git #2215 — SQL Runner mini panel. Real execution against the local Postgres DATABASE_URL
+    // (Services/SqlRunnerService.cs), statement splitting/rendering ported from BuildConsole's
+    // already-working Controls/SqlDocumentView.xaml.cs + Services/LocalSqlExecutor.cs rather than
+    // reimplemented. Same bolt-on-flyout mechanism as Log Peek (5th tool-panel column).
+    // ═══════════════════════════════════════════════════════════════════════════════════════════
+    private bool _sqlRunnerOpen;
+    private const double SqlRunnerWidthOpen = 380;
+    private const int SqlRunnerMaxSendRows = 200;
+
+    private List<SqlStatementResult>? _sqlLastStatements;
+    private readonly List<DataTable> _sqlLastResultTables = new();
+    private string _sqlLastResultQuery = "";
+
+    private void BtnToggleSqlRunner_Click(object sender, RoutedEventArgs e)
+    {
+        _sqlRunnerOpen = !_sqlRunnerOpen;
+        SqlRunnerColumn.Width = new GridLength(_sqlRunnerOpen ? SqlRunnerWidthOpen : 0);
+        if (_sqlRunnerOpen) UpdateSqlRunnerGutter();
+    }
+
+    // Gutter-numbered mono editor (§6.7) — the gutter is regenerated on every keystroke rather than
+    // tracked incrementally; at mini-panel scale (a handful of ad-hoc statements, not a document)
+    // that's cheap enough not to matter and keeps this from needing a real text-editor dependency.
+    private void SqlRunnerEditor_TextChanged(object sender, TextChangedEventArgs e) => UpdateSqlRunnerGutter();
+
+    private void UpdateSqlRunnerGutter()
+    {
+        if (SqlRunnerGutter == null || SqlRunnerEditor == null) return;
+        int lineCount = Math.Max(1, SqlRunnerEditor.LineCount <= 0 ? 1 : SqlRunnerEditor.LineCount);
+        var sb = new StringBuilder();
+        for (int i = 1; i <= lineCount; i++)
+        {
+            if (i > 1) sb.Append('\n');
+            sb.Append(i);
+        }
+        SqlRunnerGutter.Text = sb.ToString();
+    }
+
+    private void SqlRunnerEditor_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+        {
+            e.Handled = true;
+            BtnSqlRunnerExecute_Click(sender, new RoutedEventArgs());
+        }
+    }
+
+    private async void BtnSqlRunnerExecute_Click(object sender, RoutedEventArgs e)
+    {
+        var query = SqlRunnerEditor.Text.Trim();
+        if (string.IsNullOrEmpty(query))
+        {
+            SqlRunnerStatus.Text = "Nothing to execute.";
+            return;
+        }
+
+        var connStr = SqlRunnerService.ResolveConnectionString();
+        if (string.IsNullOrWhiteSpace(connStr))
+        {
+            SqlRunnerStatus.Text = "No DATABASE_URL found — add it to .env.local at the repo root.";
+            return;
+        }
+
+        SqlRunnerStatus.Text = "Executing…";
+        BtnSqlRunnerExecute.IsEnabled = false;
+        try
+        {
+            var statements = await SqlRunnerService.ExecuteAsync(connStr, query);
+            RenderSqlRunnerResults(statements);
+        }
+        catch (Exception ex)
+        {
+            SqlRunnerStatus.Text = $"Execute failed: {ex.Message}";
+            SqlRunnerResultsStack.Children.Clear();
+            SqlRunnerRowCount.Text = "Error";
+            _sqlLastResultTables.Clear();
+            _sqlLastStatements = null;
+            BtnSqlRunnerCopyCsv.IsEnabled = false;
+            BtnSqlRunnerCopyJson.IsEnabled = false;
+            BtnSqlRunnerSendToChat.IsEnabled = false;
+        }
+        finally
+        {
+            BtnSqlRunnerExecute.IsEnabled = true;
+        }
+    }
+
+    private void RenderSqlRunnerResults(List<SqlStatementResult> statements)
+    {
+        _sqlLastStatements = statements;
+        _sqlLastResultTables.Clear();
+        SqlRunnerResultsStack.Children.Clear();
+        SqlRunnerJsonView.Text = "";
+
+        var failed = statements.Count(s => !s.Success);
+        var succeeded = statements.Count - failed;
+        var totalMs = statements.Sum(s => s.ExecutionMs);
+
+        if (statements.Count == 0)
+        {
+            SqlRunnerStatus.Text = "No statements found.";
+            SqlRunnerRowCount.Text = "0 rows";
+            BtnSqlRunnerCopyCsv.IsEnabled = false;
+            BtnSqlRunnerCopyJson.IsEnabled = false;
+            BtnSqlRunnerSendToChat.IsEnabled = false;
+            return;
+        }
+
+        SqlRunnerStatus.Text = failed > 0
+            ? $"{succeeded}/{statements.Count} succeeded, {failed} failed ({totalMs}ms). First error: {statements.First(s => !s.Success).Error}"
+            : $"{succeeded} statement{(succeeded == 1 ? "" : "s")} succeeded ({totalMs}ms).";
+
+        var jsonOpts = new JsonSerializerOptions { WriteIndented = true };
+        SqlRunnerJsonView.Text = JsonSerializer.Serialize(statements, jsonOpts);
+
+        int totalRows = 0;
+        for (int i = 0; i < statements.Count; i++)
+        {
+            var stmt = statements[i];
+            int stmtNum = stmt.StatementIndex >= 0 ? stmt.StatementIndex + 1 : i + 1;
+
+            if (stmt.Success && stmt.Fields.Count > 0)
+            {
+                var table = new DataTable();
+                foreach (var field in stmt.Fields) table.Columns.Add(field, typeof(string));
+                foreach (var row in stmt.Rows)
+                {
+                    var dr = table.NewRow();
+                    foreach (var field in stmt.Fields)
+                        dr[field] = row.TryGetValue(field, out var value) ? SqlRunnerService.JsonElementToDisplayString(value) : "";
+                    table.Rows.Add(dr);
+                }
+                _sqlLastResultTables.Add(table);
+                totalRows += table.Rows.Count;
+
+                SqlRunnerResultsStack.Children.Add(new TextBlock
+                {
+                    Text = $"Statement {stmtNum} — {table.Rows.Count} row{(table.Rows.Count == 1 ? "" : "s")} ({stmt.ExecutionMs}ms)",
+                    FontSize = 10, FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+                    Margin = new Thickness(0, i == 0 ? 0 : 10, 0, 4)
+                });
+
+                SqlRunnerResultsStack.Children.Add(new DataGrid
+                {
+                    IsReadOnly = true, AutoGenerateColumns = true, BorderThickness = new Thickness(0),
+                    MaxHeight = statements.Count > 1 ? 220 : double.PositiveInfinity,
+                    RowBackground = Brushes.Transparent, FontSize = 10.5,
+                    ItemsSource = table.DefaultView
+                });
+            }
+            else if (stmt.Success)
+            {
+                var sp = new StackPanel { Margin = new Thickness(0, i == 0 ? 0 : 8, 0, 4) };
+                sp.Children.Add(new TextBlock
+                {
+                    Text = $"✅ Statement {stmtNum}: OK" + (stmt.RowCount > 0 ? $" — {stmt.RowCount} row{(stmt.RowCount == 1 ? "" : "s")} affected" : "") + $" ({stmt.ExecutionMs}ms)",
+                    FontSize = 10.5, FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Brush.Status.Running"), TextWrapping = TextWrapping.Wrap
+                });
+                SqlRunnerResultsStack.Children.Add(sp);
+            }
+            else
+            {
+                var sp = new StackPanel { Margin = new Thickness(0, i == 0 ? 0 : 8, 0, 4) };
+                sp.Children.Add(new TextBlock
+                {
+                    Text = $"❌ Statement {stmtNum}: Failed ({stmt.ExecutionMs}ms)",
+                    FontSize = 10.5, FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Brush.Status.Blocked")
+                });
+                sp.Children.Add(new TextBlock
+                {
+                    Text = stmt.Error ?? "Execution error", FontSize = 10, TextWrapping = TextWrapping.Wrap,
+                    Foreground = (Brush)FindResource("Brush.Status.Blocked")
+                });
+                SqlRunnerResultsStack.Children.Add(sp);
+            }
+        }
+
+        SqlRunnerRowCount.Text = totalRows > 0
+            ? (_sqlLastResultTables.Count > 1 ? $"{totalRows} rows ({_sqlLastResultTables.Count} result sets)" : $"{totalRows} row{(totalRows == 1 ? "" : "s")}")
+            : failed > 0 ? $"{failed} error{(failed == 1 ? "" : "s")}" : $"{statements.Count} OK";
+
+        bool hasData = _sqlLastResultTables.Any(t => t.Rows.Count > 0);
+        BtnSqlRunnerCopyCsv.IsEnabled = hasData;
+        BtnSqlRunnerCopyJson.IsEnabled = statements.Count > 0;
+        BtnSqlRunnerSendToChat.IsEnabled = statements.Any(s => s.Success);
+
+        _sqlLastResultQuery = SqlRunnerEditor.Text.Trim();
+    }
+
+    private void SqlRunnerViewTableBtn_Click(object sender, RoutedEventArgs e)
+    {
+        SqlRunnerTableScrollView.Visibility = Visibility.Visible;
+        SqlRunnerJsonView.Visibility = Visibility.Collapsed;
+    }
+
+    private void SqlRunnerViewJsonBtn_Click(object sender, RoutedEventArgs e)
+    {
+        SqlRunnerJsonView.Visibility = Visibility.Visible;
+        SqlRunnerTableScrollView.Visibility = Visibility.Collapsed;
+    }
+
+    private void BtnSqlRunnerCopyCsv_Click(object sender, RoutedEventArgs e)
+    {
+        if (_sqlLastResultTables.Count == 0) return;
+        if (_sqlLastResultTables.Count == 1)
+        {
+            Clipboard.SetText(SqlRunnerBuildCsv(_sqlLastResultTables[0]));
+        }
+        else
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < _sqlLastResultTables.Count; i++)
+            {
+                sb.AppendLine($"-- Statement {i + 1}");
+                sb.AppendLine(SqlRunnerBuildCsv(_sqlLastResultTables[i]));
+                sb.AppendLine();
+            }
+            Clipboard.SetText(sb.ToString().TrimEnd());
+        }
+        SqlRunnerStatus.Text = "Copied CSV to clipboard.";
+    }
+
+    private void BtnSqlRunnerCopyJson_Click(object sender, RoutedEventArgs e)
+    {
+        if (_sqlLastStatements == null || _sqlLastStatements.Count == 0) return;
+        Clipboard.SetText(SqlRunnerJsonView.Text);
+        SqlRunnerStatus.Text = "Copied JSON to clipboard.";
+    }
+
+    // "Send result to chat box" (§6.7) — writes into the shared app-owned composer via
+    // AppendToComposer, the same tool-writes-to-composer path every other panel uses. Never
+    // auto-sends (§5).
+    private void BtnSqlRunnerSendToChat_Click(object sender, RoutedEventArgs e)
+    {
+        var table = _sqlLastResultTables.FirstOrDefault(t => t.Rows.Count > 0);
+        if (table != null)
+        {
+            AppendToComposer(SqlRunnerBuildMarkdownForChat(table));
+            SqlRunnerStatus.Text = "Sent to chat composer.";
+        }
+        else if (_sqlLastStatements != null && _sqlLastStatements.Count > 0)
+        {
+            AppendToComposer(SqlRunnerBuildNonSelectMarkdownForChat(_sqlLastStatements));
+            SqlRunnerStatus.Text = "Sent to chat composer.";
+        }
+        else
+        {
+            SqlRunnerStatus.Text = "Nothing to send — run a query first.";
+        }
+    }
+
+    private static string SqlRunnerBuildNonSelectMarkdownForChat(List<SqlStatementResult> statements)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"SQL Runner execution result — {statements.Count} statement{(statements.Count == 1 ? "" : "s")}:");
+        sb.AppendLine();
+        foreach (var s in statements)
+        {
+            int idx = s.StatementIndex >= 0 ? s.StatementIndex + 1 : 1;
+            sb.AppendLine(s.Success
+                ? $"- ✅ **Statement {idx}**: {(s.RowCount > 0 ? $"{s.RowCount} row(s) affected" : "OK")} ({s.ExecutionMs}ms)"
+                : $"- ❌ **Statement {idx}**: Failed — {s.Error} ({s.ExecutionMs}ms)");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string SqlRunnerBuildMarkdownForChat(DataTable table)
+    {
+        var cols = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
+        int total = table.Rows.Count;
+        int shown = Math.Min(total, SqlRunnerMaxSendRows);
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"SQL Runner result — {total} row{(total == 1 ? "" : "s")}" + (total > shown ? $" (showing first {shown})" : "") + ":");
+        sb.AppendLine();
+        sb.AppendLine("| " + string.Join(" | ", cols.Select(SqlRunnerEscapeCell)) + " |");
+        sb.AppendLine("| " + string.Join(" | ", cols.Select(_ => "---")) + " |");
+        for (int i = 0; i < shown; i++)
+        {
+            var row = table.Rows[i];
+            sb.AppendLine("| " + string.Join(" | ", cols.Select(c => SqlRunnerEscapeCell(row[c]?.ToString() ?? ""))) + " |");
+        }
+        if (total > shown)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"_…truncated — {total - shown} more row{(total - shown == 1 ? "" : "s")} not shown (capped at {SqlRunnerMaxSendRows})._");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string SqlRunnerEscapeCell(string value) =>
+        value.Replace("\\", "\\\\").Replace("|", "\\|").Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
+
+    private static string SqlRunnerBuildCsv(DataTable table)
+    {
+        var cols = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Join(",", cols.Select(SqlRunnerEscapeCsvCell)));
+        foreach (DataRow row in table.Rows)
+            sb.AppendLine(string.Join(",", cols.Select(c => SqlRunnerEscapeCsvCell(row[c]?.ToString() ?? ""))));
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string SqlRunnerEscapeCsvCell(string value) =>
+        value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0 ? "\"" + value.Replace("\"", "\"\"") + "\"" : value;
 }

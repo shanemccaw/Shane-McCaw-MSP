@@ -72,6 +72,10 @@ public sealed class ChatReadClient
     // Worktree-aware: a plain ".git" walk stops at the WORKTREE root, whose .env.local may be
     // absent — the real file lives at the MAIN checkout the dev stack runs from. Mirrors
     // LogService.ResolveMainRepoRoot (#2200) so both classes locate the identical .env.local.
+    /// <summary>Git #2215 — SQL Runner shares this exact same resolution (worktree-aware
+    /// <c>.env.local</c> lookup, same local Postgres) rather than owning a second copy.</summary>
+    public static string? ResolveConnectionStringForSqlRunner() => ResolveConnectionString();
+
     private static string? ResolveConnectionString()
     {
         var repoRoot = ResolveMainRepoRoot();
