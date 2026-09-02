@@ -292,7 +292,8 @@
                              GroupName="ActivityBar"
                              Style="{StaticResource ActivityBarButton}"
                              Checked="Btn_Checked" Tag="Settings"
-                             ToolTip="Settings">
+                             ToolTip="Settings"
+                             Visibility="Collapsed">
                     <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18"/>
                 </RadioButton>
             </StackPanel>
