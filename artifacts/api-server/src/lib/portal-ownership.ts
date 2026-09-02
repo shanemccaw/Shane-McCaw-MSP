@@ -466,14 +466,39 @@ export function isOwnRoleKey(value: unknown): value is OwnRoleKey {
 
 /**
  * The acceptance a freshly-set cell starts at. Setting a name starts the accept
- * clock (`pending`); clearing it to a gap carries none; and Consulted/Informed
- * never carry acceptance at all — being told is not something you accept. This
+ * clock (`pending`) ONLY when this customer's gate is "strict" (#2162, redo of
+ * #1518 — the gate is now a per-customer Settings toggle, not universal).
+ * Clearing to a gap carries none; Consulted/Informed never carry acceptance at
+ * all — being told is not something you accept. In "loose" mode an R/A
+ * assignment is effective immediately: "" is the same "no acceptance to
+ * track" value C/I already use, not a null standing in for `pending`. This
  * mirrors the client's `acceptanceOf`, so a reload reads the same chip.
  */
-export function initialAcceptance(ownerPersonId: string, roleKey: OwnRoleKey): string {
+export function initialAcceptance(
+  ownerPersonId: string,
+  roleKey: OwnRoleKey,
+  gateMode: "strict" | "loose",
+): string {
   if (!ownerPersonId) return "";
   if (roleKey === "c" || roleKey === "i") return "";
-  return "pending";
+  return gateMode === "strict" ? "pending" : "";
+}
+
+/**
+ * Whether an actor may accept/decline a given cell holder (#2162). #1518's
+ * gate is that whoever is NAMED must agree themselves — so in strict mode the
+ * actor must BE that holder, not merely a teammate on the same tenant (or,
+ * cross-boundary, the same MSP). Loose mode has no acceptance step to gate,
+ * so every actor passes. Both ids are wire person ids ("u{id}"), the same
+ * identity scheme on both sides of the tenant boundary (#1592/#1759).
+ */
+export function actorMayRespond(
+  gateMode: "strict" | "loose",
+  ownerPersonId: string,
+  actorPersonId: string,
+): boolean {
+  if (gateMode !== "strict") return true;
+  return !!ownerPersonId && ownerPersonId === actorPersonId;
 }
 
 /** One stored cell as the wire shape the overlay sends. */

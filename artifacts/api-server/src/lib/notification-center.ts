@@ -236,6 +236,60 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
 }
 
 /**
+ * Best-effort notification that a Ownership/RACI cell is newly `pending`
+ * (#2162, redo of #1518) — fires only from the strict-mode path, since loose
+ * mode has no pending state to notify about. `ownerPersonId` is the wire
+ * person id (`personIdForUser`, "u{id}") the assignment named; it resolves
+ * to a real `users` row on EITHER side of the tenant boundary, so the same
+ * call routes to a `customer_user` or `msp_user` notification depending on
+ * who was actually named — no separate "which side is this" branch needed at
+ * the call site in `routes/portal-ownership.ts` / `routes/msp-ownership.ts`.
+ * Deliberately does not print the object's real name: resolving `objectId`
+ * back to a name costs a second query for every assign write (re-running
+ * `gatherOwnershipObjects`), which is out of proportion to a best-effort
+ * nudge — the object id is carried for the log/link, not invented as prose.
+ * Never throws: a delivery failure here must not fail the assignment write.
+ */
+export async function notifyOwnershipPending(opts: {
+  customerId: number;
+  ownerPersonId: string;
+  objectId: string;
+  roleKey: "r" | "a";
+}): Promise<void> {
+  const { customerId, ownerPersonId, objectId, roleKey } = opts;
+  const match = /^u(\d+)$/.exec(ownerPersonId);
+  if (!match) return;
+  const userId = Number(match[1]);
+
+  try {
+    const [row] = await db
+      .select({ id: usersTable.id, mspRole: usersTable.mspRole, mspId: usersTable.mspId })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+    if (!row) return;
+
+    const roleLabel = roleKey === "r" ? "Responsible" : "Accountable";
+    const title = `New ${roleLabel} assignment on your Ownership matrix`;
+    const body = "Your acceptance is needed before this assignment counts.";
+    const isMspStaff = row.mspRole === "MSPAdmin" || row.mspRole === "MSPOperator";
+
+    await createNotification({
+      title,
+      body,
+      category: "ownership",
+      notifType: "general",
+      linkPath: "/ownership",
+      recipient: isMspStaff
+        ? { type: "msp_user", mspUserId: row.id, mspId: row.mspId ?? undefined }
+        : { type: "customer_user", userId: row.id },
+    });
+  } catch (err) {
+    log.warn({ err, customerId, ownerPersonId }, "notification-center: ownership pending notification failed (non-fatal)");
+  }
+}
+
+/**
  * Create notifications for ALL platform_admin users.
  * Used by the create_notification workflow node.
  */

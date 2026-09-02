@@ -21,6 +21,7 @@
  */
 import { describe, it, expect } from "vitest";
 import {
+  actorMayRespond,
   assignEventType,
   buildSources,
   crObject,
@@ -315,17 +316,37 @@ describe("isOwnRoleKey", () => {
 });
 
 describe("initialAcceptance", () => {
-  it("starts a newly-named Responsible/Accountable cell as pending — the accept clock", () => {
-    expect(initialAcceptance("u39", "r")).toBe("pending");
-    expect(initialAcceptance("u39", "a")).toBe("pending");
+  it("starts a newly-named Responsible/Accountable cell as pending in strict mode — the accept clock", () => {
+    expect(initialAcceptance("u39", "r", "strict")).toBe("pending");
+    expect(initialAcceptance("u39", "a", "strict")).toBe("pending");
   });
-  it("carries no acceptance for Consulted/Informed — being told is not accepted", () => {
-    expect(initialAcceptance("u39", "c")).toBe("");
-    expect(initialAcceptance("u39", "i")).toBe("");
+  it("is effective immediately, no pending, in loose mode (#2162)", () => {
+    expect(initialAcceptance("u39", "r", "loose")).toBe("");
+    expect(initialAcceptance("u39", "a", "loose")).toBe("");
   });
-  it("carries no acceptance for a cleared cell — a gap accepts nothing", () => {
-    expect(initialAcceptance("", "r")).toBe("");
-    expect(initialAcceptance("", "a")).toBe("");
+  it("carries no acceptance for Consulted/Informed — being told is not accepted, in either mode", () => {
+    expect(initialAcceptance("u39", "c", "strict")).toBe("");
+    expect(initialAcceptance("u39", "i", "strict")).toBe("");
+    expect(initialAcceptance("u39", "c", "loose")).toBe("");
+    expect(initialAcceptance("u39", "i", "loose")).toBe("");
+  });
+  it("carries no acceptance for a cleared cell — a gap accepts nothing, in either mode", () => {
+    expect(initialAcceptance("", "r", "strict")).toBe("");
+    expect(initialAcceptance("", "a", "strict")).toBe("");
+    expect(initialAcceptance("", "r", "loose")).toBe("");
+    expect(initialAcceptance("", "a", "loose")).toBe("");
+  });
+});
+
+describe("actorMayRespond", () => {
+  it("passes any actor in loose mode — there is no acceptance step to gate", () => {
+    expect(actorMayRespond("loose", "u39", "u40")).toBe(true);
+    expect(actorMayRespond("loose", "", "u40")).toBe(true);
+  });
+  it("requires the actor to BE the named holder in strict mode", () => {
+    expect(actorMayRespond("strict", "u39", "u39")).toBe(true);
+    expect(actorMayRespond("strict", "u39", "u40")).toBe(false);
+    expect(actorMayRespond("strict", "", "u40")).toBe(false);
   });
 });
 
