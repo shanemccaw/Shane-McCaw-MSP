@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <script src="./lucide-local.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:#0d1117;color-scheme:dark}
+    a{color:#7da7cd;text-decoration:none}
+    a:hover{color:#9fc0dd;text-decoration:underline}
+    .om-scroll{scrollbar-width:thin;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:10px;height:10px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:2px solid #1a1a19;border-radius:8px;min-height:40px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    input,textarea,select,button{font-family:inherit}
+    input::placeholder,textarea::placeholder{color:#576069}
+  </style>
+</helmet>
+
+<div style="height:100vh;position:relative;overflow:hidden;background:#0d1117;background-image:radial-gradient(#1a2029 1px, transparent 1px);background-size:24px 24px;font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#c9d1d9">
+
+  <div style="position:absolute;top:20px;left:24px;z-index:1;max-width:400px">
+    <div style="display:flex;align-items:center;gap:9px">
+      <span style="display:inline-flex;width:17px;height:17px;color:#d97757"><i data-lucide="picture-in-picture-2" width="17" height="17"></i></span>
+      <span style="font-size:15px;font-weight:800;color:#e6edf3;letter-spacing:-.01em">Claude Floaty</span>
+      <span style="font-size:8.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:rgba(217,119,87,.12);border:1px solid rgba(217,119,87,.4);color:#d97757;white-space:nowrap">Always on top</span>
+    </div>
+    <div style="font-size:11px;color:#8b949e;margin-top:6px;line-height:1.55">The [#1202] chat popped out of the Claude tab. Its attached panel expands and retracts from the floaty itself — Detected items and the chat dev tools ride along, so you never leave what you're doing.</div>
+    <div style="font-size:10px;color:#576069;margin-top:6px;line-height:1.5">Drag the title bar · toggle the panel from the header icon or the edge grip · minimize parks it in the tray</div>
+  </div>
+
+  <sc-if value="{{ windowShown }}" hint-placeholder-val="{{ true }}">
+  <div style="{{ winStyle }}">
+    <div onMouseDown="{{ onDragStart }}" style="height:34px;flex:none;display:flex;align-items:center;gap:7px;padding:0 8px 0 11px;background:#262019;border-bottom:1px solid #302f2d;cursor:grab;user-select:none">
+      <span style="display:inline-flex;width:13px;height:13px;color:#d97757;flex:none"><i data-lucide="bot" width="13" height="13"></i></span>
+      <span style="font-size:11.5px;font-weight:700;color:#ece9e4;white-space:nowrap"><span style="font-family:Consolas,ui-monospace,Menlo,monospace;color:#fde047">[#1202]</span> New Chat</span>
+      <span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9px;color:#e2b039;flex:none;margin-left:2px">64% ctx</span>
+      <div style="flex:1"></div>
+      <span onClick="{{ onTogglePin }}" title="{{ pinTitle }}" style="width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;color:{{ pinColor }};cursor:pointer;border-radius:4px;flex:none" style-hover="background:#ffffff14"><i data-lucide="pin" width="12" height="12"></i></span>
+      <span onClick="{{ onTogglePanel }}" title="{{ panelTitle }}" style="position:relative;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;color:{{ panelIconColor }};cursor:pointer;border-radius:4px;flex:none" style-hover="background:#ffffff14;color:#ece9e4">
+        <i data-lucide="panel-right" width="12" height="12"></i>
+        <sc-if value="{{ panelDot }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;top:-2px;right:-2px;width:6px;height:6px;border-radius:99px;background:#d97757"></span></sc-if>
+      </span>
+      <span onClick="{{ onMinimize }}" title="Minimize to tray" style="width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;color:#7a7975;cursor:pointer;border-radius:4px;flex:none" style-hover="background:#ffffff14;color:#ece9e4"><i data-lucide="minus" width="12" height="12"></i></span>
+      <span onClick="{{ onClose }}" title="Close" style="width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;color:#7a7975;cursor:pointer;border-radius:4px;flex:none" style-hover="background:#ffffff14;color:#fb7185"><i data-lucide="x" width="12" height="12"></i></span>
+    </div>
+    <div style="{{ bodyRowStyle }}">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;background:#1e1e1c">
+        <div class="om-scroll" style="flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:11px">
+          <sc-for list="{{ msgs }}" as="m" hint-placeholder-count="4">
+            <sc-if value="{{ m.isCmd }}" hint-placeholder-val="{{ false }}">
+              <div style="flex:none;align-self:stretch;background:#232320;border:1px solid #35342f;border-radius:7px;overflow:hidden">
+                <div onClick="{{ m.onToggle }}" style="display:flex;align-items:center;gap:7px;padding:7px 10px;cursor:pointer;font-size:11px;color:#a6a4a0" style-hover="background:#282824">
+                  <span style="display:inline-flex;width:11px;height:11px;color:#7a7975;flex:none"><i data-lucide="terminal" width="11" height="11"></i></span>
+                  <span style="flex:1">{{ m.text }}</span>
+                  <span style="display:inline-flex;width:10px;height:10px;color:#576069;flex:none"><i data-lucide="{{ m.chev }}" width="10" height="10"></i></span>
+                </div>
+                <sc-if value="{{ m.open }}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top:1px solid #35342f;background:#1a1a19;padding:8px 10px;display:flex;flex-direction:column;gap:3px">
+                    <sc-for list="{{ m.cmds }}" as="cc" hint-placeholder-count="3">
+                      <div style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9.5px;color:#9fd0a9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span style="color:#576069">$</span> {{ cc.cmd }}</div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+            <sc-if value="{{ m.isUser }}" hint-placeholder-val="{{ false }}">
+              <div style="align-self:flex-end;max-width:85%;background:#2f2f2b;border-radius:10px 10px 3px 10px;padding:8px 11px;font-size:12px;color:#ece9e4;line-height:1.5">{{ m.text }}</div>
+            </sc-if>
+            <sc-if value="{{ m.isClaude }}" hint-placeholder-val="{{ false }}">
+              <div style="align-self:flex-start;max-width:97%;font-size:12.5px;color:#dedbd5;line-height:1.6;font-family:ui-serif,Georgia,'Times New Roman',serif">{{ m.text }}
+                <sc-if value="{{ m.hasChips }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px">
+                    <sc-for list="{{ m.chips }}" as="ch" hint-placeholder-count="3"><span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10px;font-weight:700;color:#d97757;background:#2a2a27;border-radius:4px;padding:1px 7px">#{{ ch.n }}</span></sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ m.hasBlocks }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+                    <sc-for list="{{ m.blocks }}" as="bk" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:baseline;gap:5px;flex-wrap:wrap;padding-left:3px;font-family:Inter,ui-sans-serif,system-ui,sans-serif">
+                        <span style="color:#576069;flex:none;font-size:11px">•</span>
+                        <sc-for list="{{ bk.from }}" as="fn" hint-placeholder-count="2"><span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10px;font-weight:700;color:#d97757">#{{ fn.n }}</span></sc-for>
+                        <span style="color:#7a7975;font-size:10px">→ blocked by</span>
+                        <sc-for list="{{ bk.by }}" as="bn" hint-placeholder-count="1"><span style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10px;font-weight:700;color:#e2b039">#{{ bn.n }}</span></sc-for>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+          </sc-for>
+        </div>
+        <div style="flex:none;display:flex;gap:7px;padding:9px;border-top:1px solid #302f2d">
+          <input value="{{ draft }}" onChange="{{ onDraft }}" onKeyDown="{{ onDraftKey }}" placeholder="Reply to Claude…" style="flex:1;min-width:0;background:#141413;border:1px solid #35342f;border-radius:7px;color:#ece9e4;font-size:11.5px;padding:7px 10px;outline:none" style-focus="border-color:#5a5955"></input>
+          <button onClick="{{ onSend }}" style="flex:none;height:31px;padding:0 14px;border-radius:7px;border:none;background:#2563eb;color:#fff;font-size:11px;font-weight:700;cursor:pointer" style-hover="background:#1d4ed8">Send</button>
+        </div>
+      </div>
+      <div onClick="{{ onTogglePanel }}" title="{{ gripTitle }}" style="width:15px;flex:none;display:flex;align-items:center;justify-content:center;background:#232320;cursor:pointer;color:#7a7975" style-hover="background:#2a2a27;color:#ece9e4"><i data-lucide="{{ gripIcon }}" width="11" height="11"></i></div>
+      <div style="{{ panelWrapStyle }}">
+        <div style="width:250px;flex:1;min-height:0;display:flex;flex-direction:column">
+          <div style="flex:none;display:flex;align-items:center;gap:3px;padding:6px 8px;border-bottom:1px solid #302f2d">
+            <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="6">
+              <span onClick="{{ tb.onClick }}" title="{{ tb.label }}" style="{{ tb.style }}"><i data-lucide="{{ tb.icon }}" width="13" height="13"></i></span>
+            </sc-for>
+            <span style="margin-left:auto;font-size:8.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#7a7975;white-space:nowrap">{{ activeTabLabel }}</span>
+          </div>
+          <sc-if value="{{ isTabDetected }}" hint-placeholder-val="{{ true }}">
+            <div class="om-scroll" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:8px">
+              <div style="flex:none;border:1px solid #35342f;border-radius:8px;overflow:hidden">
+                <div onClick="{{ gVerify.onToggle }}" style="display:flex;align-items:center;gap:7px;padding:7px 9px;cursor:pointer;background:#232320" style-hover="background:#28281f">
+                  <span style="display:inline-flex;width:10px;height:10px;color:#7a7975;flex:none"><i data-lucide="{{ gVerify.chev }}" width="10" height="10"></i></span>
+                  <span style="font-size:10.5px;font-weight:700;color:#ece9e4;flex:1">Verifying</span>
+                  <span style="font-size:9px;font-weight:700;color:#7a7975;background:#1a1a19;border-radius:99px;padding:1px 7px;flex:none">6</span>
+                </div>
+                <sc-if value="{{ gVerify.open }}" hint-placeholder-val="{{ true }}">
+                  <div style="padding:8px;background:#1e1e1c">
+                    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-bottom:8px">
+                      <sc-for list="{{ gVerify.chips }}" as="vc" hint-placeholder-count="6">
+                        <span style="text-align:center;padding:3px 0;border-radius:5px;background:#2a2a27;border:1px solid #3a3a37;color:#d97757;font-size:9.5px;font-weight:700;font-family:Consolas,ui-monospace,Menlo,monospace">#{{ vc.n }}</span>
+                      </sc-for>
+                    </div>
+                    <span onClick="{{ gVerify.onInject }}" style="display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:700;color:#1a0f0a;background:#d97757;border-radius:6px;padding:5px 9px;cursor:pointer" style-hover="background:#e08b6c"><span style="display:inline-flex;width:10px;height:10px"><i data-lucide="terminal" width="10" height="10"></i></span>Inject "Landed" via DOM Injector</span>
+                  </div>
+                </sc-if>
+              </div>
+              <div style="flex:none;border:1px solid #35342f;border-radius:8px;overflow:hidden">
+                <div onClick="{{ gClaude.onToggle }}" style="display:flex;align-items:center;gap:7px;padding:7px 9px;cursor:pointer;background:#232320" style-hover="background:#28281f">
+                  <span style="display:inline-flex;width:10px;height:10px;color:#7a7975;flex:none"><i data-lucide="{{ gClaude.chev }}" width="10" height="10"></i></span>
+                  <span style="font-size:10.5px;font-weight:700;color:#ece9e4;flex:1">Claude</span>
+                  <span style="font-size:9px;font-weight:700;color:#7a7975;background:#1a1a19;border-radius:99px;padding:1px 7px;flex:none">3</span>
+                </div>
+                <sc-if value="{{ gClaude.open }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:8px;background:#1e1e1c;display:flex;flex-direction:column;gap:6px">
+                    <sc-for list="{{ gClaude.items }}" as="ci" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:flex-start;gap:6px;background:#232320;border:1px solid #35342f;border-radius:6px;padding:6px 8px">
+                        <span style="{{ ci.kindStyle }}">{{ ci.kindLabel }}</span>
+                        <span style="font-size:10px;color:#dedbd5;line-height:1.4">{{ ci.text }}</span>
+                      </div>
+                    </sc-for>
+                    <div style="display:flex;gap:5px;margin-top:1px;flex-wrap:wrap">
+                      <span onClick="{{ gClaude.onSummarize }}" style="white-space:nowrap;font-size:9.5px;font-weight:700;color:#ece9e4;background:#302f2d;border-radius:6px;padding:5px 8px;cursor:pointer" style-hover="background:#3a3937">Ask Claude to summarize</span>
+                      <span onClick="{{ gClaude.onSimulate }}" style="white-space:nowrap;font-size:9.5px;font-weight:700;color:#1a0f0a;background:#d97757;border-radius:6px;padding:5px 8px;cursor:pointer" style-hover="background:#e08b6c">Simulate check-in</span>
+                    </div>
+                  </div>
+                </sc-if>
+              </div>
+              <sc-for list="{{ detectedItems }}" as="di" hint-placeholder-count="3">
+                <div style="flex:none;background:#232320;border:1px solid #35342f;border-radius:8px;padding:8px 9px">
+                  <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                    <span style="{{ di.typeStyle }}">{{ di.typeLabel }}</span>
+                    <span style="font-size:9px;color:#7a7975;margin-left:auto">{{ di.ts }}</span>
+                  </div>
+                  <div style="font-size:10.5px;color:#ece9e4;line-height:1.45;margin-bottom:7px">{{ di.text }}</div>
+                  <div style="display:flex;gap:5px">
+                    <span onClick="{{ di.onPromote }}" style="font-size:9.5px;font-weight:700;color:#1a0f0a;background:#d97757;border-radius:5px;padding:3px 8px;cursor:pointer" style-hover="background:#e08b6c">Promote to Queue</span>
+                    <span onClick="{{ di.onDismiss }}" style="font-size:9.5px;font-weight:600;color:#a6a4a0;cursor:pointer;padding:3px 6px" style-hover="color:#ece9e4">Dismiss</span>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ detectedEmpty }}" hint-placeholder-val="{{ false }}"><div style="text-align:center;padding:14px 0;font-size:10px;color:#7a7975;font-style:italic">Nothing caught yet — keep talking.</div></sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isTabSql }}" hint-placeholder-val="{{ false }}">
+            <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:7px">
+              <textarea value="{{ sqlQ }}" onChange="{{ onSqlQ }}" rows="4" spellcheck="false" style="flex:none;resize:vertical;background:#0d0f10;border:1px solid #302f2d;border-radius:6px;outline:none;color:#c9d1d9;font-size:10px;font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1.5;padding:7px 8px" style-focus="border-color:#3d4856"></textarea>
+              <button onClick="{{ onSqlRun }}" style="flex:none;height:26px;border-radius:6px;border:none;background:#0e2744;color:#7dc4f5;font-size:10px;font-weight:700;cursor:pointer" style-hover="background:#123457">Execute ▶</button>
+              <sc-if value="{{ sqlHasRun }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:9px;color:#576069">{{ sqlRowCount }} rows</span>
+                <div class="om-scroll" style="flex:none;max-height:220px;overflow:auto;border:1px solid #302f2d;border-radius:6px">
+                  <table style="width:100%;border-collapse:collapse;font-size:9px;font-family:Consolas,ui-monospace,Menlo,monospace">
+                    <tr style="background:#141413">
+                      <sc-for list="{{ sqlCols }}" as="sc" hint-placeholder-count="3"><th style="text-align:left;padding:4px 6px;color:#7dc4f5;border-bottom:1px solid #302f2d;white-space:nowrap">{{ sc.label }}</th></sc-for>
+                    </tr>
+                    <sc-for list="{{ sqlRows }}" as="sr" hint-placeholder-count="3">
+                      <tr><sc-for list="{{ sr.cells }}" as="sv" hint-placeholder-count="3"><td style="padding:4px 6px;color:#c9d1d9;border-bottom:1px solid #232320;white-space:nowrap">{{ sv.v }}</td></sc-for></tr>
+                    </sc-for>
+                  </table>
+                </div>
+                <button onClick="{{ onSqlSend }}" style="flex:none;height:25px;border-radius:6px;border:1px solid #1e3a5f;background:#0e2744;color:#7dc4f5;font-size:9.5px;font-weight:700;cursor:pointer" style-hover="background:#123457">Send result to chat →</button>
+              </sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isTabPs }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:8px;gap:6px">
+              <div class="om-scroll" style="flex:1;min-height:0;background:#0d0f10;border:1px solid #302f2d;border-radius:6px;padding:7px 8px;font-size:9.5px;color:#9fd0a9;font-family:Consolas,ui-monospace,Menlo,monospace;overflow-y:auto;display:flex;flex-direction:column;gap:5px">
+                <sc-for list="{{ psLog }}" as="pl" hint-placeholder-count="1">
+                  <div><span style="color:#4f8ff0">PS&gt; {{ pl.cmd }}</span><br><span style="color:#9fd0a9;white-space:pre-wrap">{{ pl.output }}</span></div>
+                </sc-for>
+                <sc-if value="{{ psEmpty }}" hint-placeholder-val="{{ true }}"><span style="color:#576069">Session ready. Type a command below.</span></sc-if>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;flex:none">
+                <span style="color:#4f8ff0;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10px;flex:none">PS&gt;</span>
+                <input value="{{ psCmd }}" onChange="{{ onPsCmd }}" onKeyDown="{{ onPsKey }}" placeholder="Get-Process claude…" style="flex:1;min-width:0;background:#0d0f10;border:1px solid #302f2d;border-radius:5px;color:#e6edf3;font-size:9.5px;font-family:Consolas,ui-monospace,Menlo,monospace;padding:5px 7px;outline:none"></input>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isTabTerm }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;min-height:0;display:flex;flex-direction:column;padding:8px;gap:6px">
+              <div class="om-scroll" style="flex:1;min-height:0;background:#0d0f10;border:1px solid #302f2d;border-radius:6px;padding:7px 8px;font-size:9.5px;color:#9fd0a9;font-family:Consolas,ui-monospace,Menlo,monospace;overflow-y:auto;display:flex;flex-direction:column;gap:5px">
+                <sc-for list="{{ termLog }}" as="tl" hint-placeholder-count="1">
+                  <div><span style="color:#6ee7b7">$ {{ tl.cmd }}</span><br><span style="color:#9fd0a9;white-space:pre-wrap">{{ tl.output }}</span></div>
+                </sc-for>
+                <sc-if value="{{ termEmpty }}" hint-placeholder-val="{{ true }}"><span style="color:#576069">bash — worktree C:\wt\bld_1202</span></sc-if>
+              </div>
+              <div style="display:flex;align-items:center;gap:5px;flex:none">
+                <span style="color:#6ee7b7;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:10px;flex:none">$</span>
+                <input value="{{ termCmd }}" onChange="{{ onTermCmd }}" onKeyDown="{{ onTermKey }}" placeholder="git status…" style="flex:1;min-width:0;background:#0d0f10;border:1px solid #302f2d;border-radius:5px;color:#e6edf3;font-size:9.5px;font-family:Consolas,ui-monospace,Menlo,monospace;padding:5px 7px;outline:none"></input>
+              </div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isTabJson }}" hint-placeholder-val="{{ false }}">
+            <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:7px">
+              <textarea value="{{ jsonIn }}" onChange="{{ onJsonIn }}" rows="5" spellcheck="false" style="flex:none;resize:vertical;background:#0d0f10;border:1px solid #302f2d;border-radius:6px;outline:none;color:#c9d1d9;font-size:10px;font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1.5;padding:7px 8px" style-focus="border-color:#3d4856"></textarea>
+              <button onClick="{{ onJsonPretty }}" style="flex:none;height:26px;border-radius:6px;border:none;background:#2a1e3a;color:#c084fc;font-size:10px;font-weight:700;cursor:pointer" style-hover="background:#35264a">Pretty-print</button>
+              <sc-if value="{{ jsonErr }}" hint-placeholder-val="{{ false }}"><div style="flex:none;font-size:9.5px;color:#fb7185;line-height:1.4">{{ jsonErr }}</div></sc-if>
+              <sc-if value="{{ jsonOut }}" hint-placeholder-val="{{ false }}"><pre class="om-scroll" style="flex:none;max-height:220px;margin:0;overflow:auto;background:#0d0f10;border:1px solid #302f2d;border-radius:6px;padding:7px 8px;font-size:9.5px;color:#9fd0a9;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:pre">{{ jsonOut }}</pre></sc-if>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isTabFiles }}" hint-placeholder-val="{{ false }}">
+            <div style="flex:1;min-height:0;display:flex;flex-direction:column">
+              <div class="om-scroll" style="flex:1;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:1px">
+                <sc-for list="{{ fileRows }}" as="fr" hint-placeholder-count="6">
+                  <div onClick="{{ fr.onClick }}" style="display:flex;align-items:center;gap:6px;padding:3px 6px;border-radius:5px;cursor:pointer;padding-left:{{ fr.indent }}px" style-hover="background:#ffffff08">
+                    <span style="display:inline-flex;width:11px;height:11px;color:{{ fr.color }};flex:none"><i data-lucide="{{ fr.icon }}" width="11" height="11"></i></span>
+                    <span style="font-size:10.5px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ fr.name }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <sc-if value="{{ fileSel }}" hint-placeholder-val="{{ false }}">
+                <div style="flex:none;display:flex;align-items:center;gap:6px;padding:7px 9px;border-top:1px solid #302f2d">
+                  <span style="flex:1;min-width:0;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:8.5px;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ fileSel }}</span>
+                  <span onClick="{{ onCopyPath }}" title="Copy path" style="display:inline-flex;width:12px;height:12px;color:#7a7975;cursor:pointer;flex:none" style-hover="color:#ece9e4"><i data-lucide="copy" width="12" height="12"></i></span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <sc-if value="{{ minimized }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ onRestore }}" title="Restore Claude Floaty" style="position:fixed;bottom:16px;right:16px;z-index:10;display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;background:#232320;border:1px solid #35342f;box-shadow:0 8px 20px rgba(0,0,0,.45);cursor:pointer" style-hover="border-color:#4a4945">
+      <span style="display:inline-flex;width:13px;height:13px;color:#d97757"><i data-lucide="bot" width="13" height="13"></i></span>
+      <span style="font-size:10.5px;font-weight:700;color:#ece9e4"><span style="font-family:Consolas,ui-monospace,Menlo,monospace;color:#fde047">[#1202]</span> New Chat</span>
+    </div>
+  </sc-if>
+  <sc-if value="{{ closed }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ onReopen }}" title="Reopen the floaty" style="position:fixed;bottom:16px;right:16px;z-index:10;display:flex;align-items:center;gap:7px;height:34px;padding:0 12px;border-radius:8px;background:#232320;border:1px solid #35342f;box-shadow:0 8px 20px rgba(0,0,0,.45);cursor:pointer" style-hover="border-color:#4a4945">
+      <span style="display:inline-flex;width:13px;height:13px;color:#d97757"><i data-lucide="picture-in-picture-2" width="13" height="13"></i></span>
+      <span style="font-size:10.5px;font-weight:700;color:#ece9e4">Open Claude Floaty</span>
+    </div>
+  </sc-if>
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#232320;border:1px solid #3a3937;color:#ece9e4;font-size:11px;font-weight:600;border-radius:8px;padding:8px 14px;z-index:80;box-shadow:0 10px 28px rgba(0,0,0,.5);max-width:70vw">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: {&quot;width&quot;: 1180, &quot;height&quot;: 720},
+  &quot;startPanelOpen&quot;: {&quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Floaty&quot;},
+  &quot;panelSide&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;right&quot;, &quot;options&quot;: [&quot;right&quot;, &quot;left&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Floaty&quot;},
+  &quot;defaultTab&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;detected&quot;, &quot;options&quot;: [&quot;detected&quot;, &quot;sql&quot;, &quot;ps&quot;, &quot;term&quot;, &quot;json&quot;, &quot;files&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Floaty&quot;}
+}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    const editCmds = [1512, 1558, 1559, 1766, 2137].map(n => 'gh issue edit ' + n + ' --remove-label "batter-up" --add-label "done"');
+    const viewCmds = [1512, 1558, 1559, 1766, 2137].map(n => 'gh issue view ' + n + ' --json state,labels,comments');
+    this.SEED = [
+      {who:'c', text:'Checked all 5 — they\u2019re genuinely closed (4 completed, #1766 not-planned with a proper explanation comment already on it pointing to #2161 as the real landing).'},
+      {who:'cmd', text:'Ran 5 commands', cmds:viewCmds},
+      {who:'cmd', text:'Ran 5 commands', cmds:editCmds},
+      {who:'c', text:'All 5 stale closed items moved from Batter Up \u2192 Done:', chips:[1512, 1558, 1559, 1766, 2137]},
+      {who:'c', text:'That leaves the 28 open items. 11 of those are genuinely blocked and shouldn\u2019t be reading as ready. Want me to move those 11 to Backlog now too, so Batter Up only shows the 17 that are actually buildable? Full blocked list:', blocks:[
+        {from:[1602, 1604, 1603], by:[1625]},
+        {from:[1606, 1607, 1609, 1608], by:[1626]},
+        {from:[1612], by:[1627]},
+        {from:[1868], by:[1867]},
+        {from:[1734], by:[1491, 1597]},
+        {from:[1845], by:[1848, 1849, 1854, 1867, 1868]}
+      ]}
+    ];
+    this.DETECTED = [
+      {id:'d1', type:'todo', ts:'2m ago', text:'Move the 11 blocked items to Backlog once #1625 and #1626 land.'},
+      {id:'d2', type:'issue', ts:'6m ago', text:'#1766 needs its not-planned comment mirrored onto #2161 before close-out.'},
+      {id:'d3', type:'task', ts:'11m ago', text:'Re-run the Batter Up filter after the Done sweep so board counts match.'}
+    ];
+    this.CLAUDE_ITEMS = [
+      {kind:'todo', text:'Verify the 5 moved items show under Done on the next board refresh.'},
+      {kind:'decision', text:'Stale-closed sweep runs before blocked-item triage, not after.'},
+      {kind:'question', text:'Should Backlog moves post a comment on each issue?'}
+    ];
+    this.VERIFY_NUMS = [2044, 1988, 2016, 1927, 2003, 1842];
+    this.SQL_SAMPLE = {cols:['num', 'title', 'status', 'pts'], rows:[
+      [2031, 'Build Queue panel spec', 'batter up', 4],
+      [2021, 'Queue scroll: wheel + stuck state', 'blocked', 7],
+      [2020, 'Queue virtualization fix', 'in-flight', 5],
+      [2013, 'epic_id FK migration', 'complete', 3]
+    ]};
+    this.FILES = [
+      {path:'src', name:'src', depth:0, dir:true},
+      {path:'src/components', name:'components', depth:1, dir:true, parent:'src'},
+      {path:'src/components/BuildQueue.tsx', name:'BuildQueue.tsx', depth:2, parent:'src/components'},
+      {path:'src/components/ChatDock.tsx', name:'ChatDock.tsx', depth:2, parent:'src/components'},
+      {path:'src/components/GitPanel.tsx', name:'GitPanel.tsx', depth:2, parent:'src/components'},
+      {path:'src/shell.ts', name:'shell.ts', depth:1, parent:'src'},
+      {path:'package.json', name:'package.json', depth:0}
+    ];
+    this.state = {
+      x:480, y:96, panelOpenU:null, tabU:null, pinned:true, minimized:false, closed:false,
+      cmdOpen:{}, gVerifyOpen:true, gClaudeOpen:true, dismissed:[], extraMsgs:[], draft:'',
+      sqlQ:'SELECT * FROM issues\nWHERE epic_id = 1202;', sqlHasRun:false,
+      psLog:[], psCmd:'', termLog:[], termCmd:'',
+      jsonIn:'{\n  "epic": 1202,\n  "status": "blocked"\n}', jsonOut:'', jsonErr:'',
+      filesOpen:{'src':true, 'src/components':true}, fileSel:'', toast:null
+    };
+  }
+  componentDidMount() {
+    const run = () => { if (window.lucide) { window.lucide.createIcons(); return true; } return false; };
+    if (!run()) { this._it = setInterval(() => { if (run()) clearInterval(this._it); }, 200); }
+    this._clamp = () => this.setState(s => {
+      const h = Math.min(560, window.innerHeight - 24);
+      const x = Math.max(16, Math.min(window.innerWidth - 690, s.x));
+      let y = Math.max(10, Math.min(s.y, window.innerHeight - h - 10));
+      if (x < 430) y = Math.max(y, Math.min(160, window.innerHeight - h - 10));
+      return {x, y};
+    });
+    this._clamp();
+    window.addEventListener('resize', this._clamp);
+  }
+  componentDidUpdate() { if (window.lucide) window.lucide.createIcons(); }
+  componentWillUnmount() { if (this._it) clearInterval(this._it); if (this._tt) clearTimeout(this._tt); if (this._clamp) window.removeEventListener('resize', this._clamp); }
+  showToast(msg) {
+    if (this._tt) clearTimeout(this._tt);
+    this.setState({toast:msg});
+    this._tt = setTimeout(() => this.setState({toast:null}), 2600);
+  }
+  startDrag(e) {
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY, ox = this.state.x, oy = this.state.y;
+    const mv = (ev) => this.setState({x:Math.max(0, ox + ev.clientX - sx), y:Math.max(0, oy + ev.clientY - sy)});
+    const up = () => { document.removeEventListener('mousemove', mv); document.removeEventListener('mouseup', up); if (this._clamp) this._clamp(); };
+    document.addEventListener('mousemove', mv);
+    document.addEventListener('mouseup', up);
+  }
+  sendDraft() {
+    const t = (this.state.draft || '').trim();
+    if (!t) return;
+    this.setState(s => ({extraMsgs:s.extraMsgs.concat([{who:'u', text:t}, {who:'c', text:'Queued — running that against the tracker now. I\u2019ll report back in this floaty.'}]), draft:''}));
+  }
+  fakeOut(cmd, kind) {
+    const c = cmd.toLowerCase();
+    if (c.includes('status')) return 'On branch feat/1202-build-console\nnothing to commit, working tree clean';
+    if (c.includes('process')) return 'claude    18244  212 MB  Running\nnode      20031   96 MB  Running';
+    if (c.includes('test')) return '42 passed, 0 failed (6.2s)';
+    return kind === 'ps' ? 'Done. Exit code 0.' : 'ok';
+  }
+  renderVals() {
+    const S = this.state;
+    const side = this.props.panelSide ?? 'right';
+    const panelOpen = S.panelOpenU ?? (this.props.startPanelOpen ?? true);
+    const tab = S.tabU ?? (this.props.defaultTab ?? 'detected');
+    const detected = this.DETECTED.filter(d => !S.dismissed.includes(d.id));
+    const TYPEC = {issue:'#e8746f', task:'#6a8fb5', todo:'#e2b039'};
+    const togglePanel = () => this.setState({panelOpenU:!panelOpen});
+    const TABS = [
+      {id:'detected', icon:'list-checks', color:'#d97757', label:'Detected'},
+      {id:'sql', icon:'database', color:'#38bdf8', label:'SQL Runner'},
+      {id:'ps', icon:'terminal-square', color:'#4f8ff0', label:'PowerShell'},
+      {id:'term', icon:'terminal', color:'#6ee7b7', label:'Terminal'},
+      {id:'json', icon:'braces', color:'#c084fc', label:'JSON Viewer'},
+      {id:'files', icon:'folder-tree', color:'#7dc4f5', label:'File Browser'}
+    ];
+    const activeTab = TABS.find(t => t.id === tab) || TABS[0];
+    return {
+      windowShown:!S.minimized && !S.closed,
+      minimized:S.minimized, closed:S.closed,
+      onRestore:() => this.setState({minimized:false}),
+      onReopen:() => this.setState({closed:false, minimized:false}),
+      onMinimize:(e) => { e.stopPropagation(); this.setState({minimized:true}); },
+      onClose:(e) => { e.stopPropagation(); this.setState({closed:true}); },
+      winStyle:'position:absolute;left:' + S.x + 'px;top:' + S.y + 'px;width:' + (panelOpen ? 667 : 417) + 'px;height:' + Math.min(560, (typeof window !== 'undefined' ? window.innerHeight : 584) - 24) + 'px;background:#1e1e1c;border:1px solid #3a3937;border-radius:10px;box-shadow:0 24px 64px rgba(0,0,0,.65);display:flex;flex-direction:column;overflow:hidden;transition:width .2s ease;z-index:5',
+      bodyRowStyle:'flex:1;min-height:0;display:flex;flex-direction:' + (side === 'left' ? 'row-reverse' : 'row'),
+      panelWrapStyle:'flex:none;overflow:hidden;transition:width .2s ease;width:' + (panelOpen ? '250px' : '0px') + ';display:flex;flex-direction:column;background:#1a1a19;min-height:0;' + (side === 'left' ? 'border-right:1px solid #302f2d' : 'border-left:1px solid #302f2d'),
+      onDragStart:(e) => this.startDrag(e),
+      pinned:S.pinned,
+      onTogglePin:(e) => { e.stopPropagation(); this.setState({pinned:!S.pinned}); this.showToast(S.pinned ? 'Unpinned — the floaty now stacks like a normal window.' : 'Pinned — always on top of the shell.'); },
+      pinColor:S.pinned ? '#d97757' : '#7a7975',
+      pinTitle:S.pinned ? 'Always on top — click to unpin' : 'Pin above the shell',
+      onTogglePanel:(e) => { if (e && e.stopPropagation) e.stopPropagation(); togglePanel(); },
+      panelTitle:panelOpen ? 'Retract attached panel' : 'Expand attached panel — detected items and dev tools, without leaving the chat',
+      panelIconColor:panelOpen ? '#d97757' : '#7a7975',
+      panelDot:!panelOpen && detected.length > 0,
+      gripIcon:panelOpen ? 'chevrons-right-left' : 'chevrons-left-right',
+      gripTitle:panelOpen ? 'Retract panel' : 'Expand panel',
+      msgs:this.SEED.concat(S.extraMsgs).map((m, i) => ({
+        isCmd:m.who === 'cmd', isUser:m.who === 'u', isClaude:m.who === 'c',
+        text:m.text,
+        hasChips:!!(m.chips && m.chips.length), chips:(m.chips || []).map(n => ({n})),
+        hasBlocks:!!(m.blocks && m.blocks.length),
+        blocks:(m.blocks || []).map(b => ({from:b.from.map(n => ({n})), by:b.by.map(n => ({n}))})),
+        cmds:(m.cmds || []).map(cmd => ({cmd})),
+        open:!!S.cmdOpen[i],
+        chev:S.cmdOpen[i] ? 'chevron-down' : 'chevron-right',
+        onToggle:() => this.setState(s => ({cmdOpen:Object.assign({}, s.cmdOpen, {[i]:!s.cmdOpen[i]})}))
+      })),
+      draft:S.draft,
+      onDraft:(e) => this.setState({draft:e.target.value}),
+      onDraftKey:(e) => { if (e.key === 'Enter') this.sendDraft(); },
+      onSend:() => this.sendDraft(),
+      tabs:TABS.map(t => ({
+        icon:t.icon, label:t.label,
+        style:'width:27px;height:25px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;cursor:pointer;flex:none;' + (t.id === tab ? 'background:#2f2f2b;border:1px solid #3a3937;color:' + t.color : 'border:1px solid transparent;color:#7a7975'),
+        onClick:() => this.setState({tabU:t.id})
+      })),
+      activeTabLabel:activeTab.label,
+      isTabDetected:tab === 'detected', isTabSql:tab === 'sql', isTabPs:tab === 'ps', isTabTerm:tab === 'term', isTabJson:tab === 'json', isTabFiles:tab === 'files',
+      gVerify:{
+        open:S.gVerifyOpen, chev:S.gVerifyOpen ? 'chevron-down' : 'chevron-right',
+        onToggle:() => this.setState(s => ({gVerifyOpen:!s.gVerifyOpen})),
+        chips:this.VERIFY_NUMS.map(n => ({n})),
+        onInject:() => this.showToast('Injected "Landed — ' + this.VERIFY_NUMS.map(n => '#' + n).join(', ') + '" via the DOM injector.')
+      },
+      gClaude:{
+        open:S.gClaudeOpen, chev:S.gClaudeOpen ? 'chevron-down' : 'chevron-right',
+        onToggle:() => this.setState(s => ({gClaudeOpen:!s.gClaudeOpen})),
+        items:this.CLAUDE_ITEMS.map(it => ({
+          text:it.text, kindLabel:it.kind.toUpperCase(),
+          kindStyle:'font-size:8px;font-weight:800;letter-spacing:.04em;padding:2px 5px;border-radius:4px;flex:none;' + (it.kind === 'question' ? 'background:#2a2416;color:#e2b039;border:1px solid #4a3a13' : it.kind === 'todo' ? 'background:#1e2338;color:#8fa7c4;border:1px solid #2d375a' : 'background:#1f2a20;color:#7fb08a;border:1px solid #2c4a32')
+        })),
+        onSummarize:() => this.showToast('Asked Claude to summarize this chat\u2019s suggestions and open questions.'),
+        onSimulate:() => this.showToast('Inspector will ask Claude a check-in question in 5s\u2026')
+      },
+      detectedItems:detected.map(d => ({
+        text:d.text, ts:d.ts, typeLabel:d.type.toUpperCase(),
+        typeStyle:'font-size:8px;font-weight:800;letter-spacing:.05em;padding:2px 6px;border-radius:99px;background:' + (TYPEC[d.type] || '#6a8fb5') + '22;border:1px solid ' + (TYPEC[d.type] || '#6a8fb5') + '55;color:' + (TYPEC[d.type] || '#6a8fb5'),
+        onPromote:() => { this.showToast('Promoted "' + d.text.slice(0, 40) + '\u2026" to the Build Queue.'); this.setState(s => ({dismissed:s.dismissed.concat([d.id])})); },
+        onDismiss:() => this.setState(s => ({dismissed:s.dismissed.concat([d.id])}))
+      })),
+      detectedEmpty:detected.length === 0,
+      sqlQ:S.sqlQ, onSqlQ:(e) => this.setState({sqlQ:e.target.value}),
+      onSqlRun:() => this.setState({sqlHasRun:true}),
+      sqlHasRun:S.sqlHasRun,
+      sqlRowCount:this.SQL_SAMPLE.rows.length,
+      sqlCols:this.SQL_SAMPLE.cols.map(label => ({label})),
+      sqlRows:this.SQL_SAMPLE.rows.map(r => ({cells:r.map(v => ({v}))})),
+      onSqlSend:() => { this.setState(s => ({extraMsgs:s.extraMsgs.concat([{who:'cmd', text:'Attached 4-row query result to the chat box', cmds:this.SQL_SAMPLE.rows.map(r => 'row \u2192 ' + r.join(' \u00b7 '))}])})); this.showToast('Query result sent to the chat box.'); },
+      psLog:S.psLog, psEmpty:S.psLog.length === 0, psCmd:S.psCmd,
+      onPsCmd:(e) => this.setState({psCmd:e.target.value}),
+      onPsKey:(e) => { if (e.key === 'Enter' && S.psCmd.trim()) { const cmd = S.psCmd.trim(); this.setState(s => ({psLog:s.psLog.concat([{cmd, output:this.fakeOut(cmd, 'ps')}]), psCmd:''})); } },
+      termLog:S.termLog, termEmpty:S.termLog.length === 0, termCmd:S.termCmd,
+      onTermCmd:(e) => this.setState({termCmd:e.target.value}),
+      onTermKey:(e) => { if (e.key === 'Enter' && S.termCmd.trim()) { const cmd = S.termCmd.trim(); this.setState(s => ({termLog:s.termLog.concat([{cmd, output:this.fakeOut(cmd, 'bash')}]), termCmd:''})); } },
+      jsonIn:S.jsonIn, onJsonIn:(e) => this.setState({jsonIn:e.target.value}),
+      jsonOut:S.jsonOut, jsonErr:S.jsonErr,
+      onJsonPretty:() => { try { const v = JSON.parse(S.jsonIn); this.setState({jsonOut:JSON.stringify(v, null, 2), jsonErr:''}); } catch (err) { this.setState({jsonErr:'Invalid JSON \u2014 ' + err.message, jsonOut:''}); } },
+      fileRows:this.FILES.filter(f => !f.parent || S.filesOpen[f.parent]).map(f => ({
+        name:f.name, indent:6 + f.depth * 14,
+        icon:f.dir ? (S.filesOpen[f.path] ? 'folder-open' : 'folder') : 'file',
+        color:f.dir ? '#e2b039' : '#8b949e',
+        onClick:f.dir ? (() => this.setState(s => ({filesOpen:Object.assign({}, s.filesOpen, {[f.path]:!s.filesOpen[f.path]})}))) : (() => this.setState({fileSel:'C:\\wt\\bld_1202\\' + f.path.replace(/\//g, '\\')}))
+      })),
+      fileSel:S.fileSel,
+      onCopyPath:() => { try { navigator.clipboard.writeText(S.fileSel); } catch (e) {} this.showToast('Path copied.'); },
+      toast:S.toast
+    };
+  }
+}
+</script>
+</body>
+</html>

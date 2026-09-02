@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <script src="./lucide-local.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:#0d1117;color-scheme:dark;height:100%}
+    a{color:#7da7cd;text-decoration:none}
+    a:hover{color:#9fc0dd;text-decoration:underline}
+    @keyframes omPulse{0%,100%{opacity:1}50%{opacity:.3}}
+    @keyframes omToast{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+    .om-scroll{scrollbar-width:auto;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:13px;height:13px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:3px solid #10141b;border-radius:8px;min-height:52px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    input,textarea,select,button{font-family:inherit}
+    input::placeholder{color:#495261}
+  </style>
+</helmet>
+
+<div data-screen-label="Shot Vault" style="height:100%;min-height:560px;min-width:880px;display:flex;flex-direction:column;background:#0d1117;color:#c9d1d9;font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;overflow:hidden">
+
+  <div style="flex:none;display:flex;align-items:center;gap:14px;padding:11px 20px;border-bottom:1px solid #21262d;flex-wrap:wrap;row-gap:8px">
+    <div style="width:36px;height:36px;flex:none;border-radius:9px;background:rgba(55,184,176,.09);border:1px solid rgba(55,184,176,.3);display:flex;align-items:center;justify-content:center;color:#4fb3ac"><i data-lucide="camera" width="17" height="17"></i></div>
+    <div style="min-width:0;flex:0 1 auto;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:15px;font-weight:800;color:#e6edf3;letter-spacing:-.01em">Shot Vault</span>
+        <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;padding:2px 7px;border-radius:99px;background:rgba(55,184,176,.08);border:1px solid rgba(55,184,176,.28);color:#6db8b2;font-family:Consolas,ui-monospace,Menlo,monospace">SCREENSHOT MANAGER</span>
+      </div>
+      <div style="font-size:10.5px;color:#576069;margin-top:2px">Shoot and forget — every capture is OCR’d, captioned and fingerprinted on its own. Come here to find it again.</div>
+    </div>
+    <sc-if value="{{ viewTabsShow }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;gap:6px;flex:none;margin-left:8px">
+      <sc-for list="{{ viewTabs }}" as="vt" hint-placeholder-count="2">
+        <button onClick="{{ vt.onClick }}" style="{{ vt.style }}" style-hover="border-color:#3a4258"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="{{ vt.icon }}" width="12" height="12"></i></span><span>{{ vt.label }}</span></button>
+      </sc-for>
+    </div>
+    </sc-if>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:7px;flex:none">
+      <button onClick="{{ onIndexer }}" title="Capture pipeline — everything is indexed the moment you shoot" style="height:26px;padding:0 10px;border-radius:99px;background:#12161d;border:1px solid #262c36;color:#8b949e;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap" style-hover="border-color:#3a4258">
+        <span style="width:6px;height:6px;border-radius:99px;background:#7fb08a;flex:none"></span>
+        <span>{{ hdIndexed }} indexed · queue 0</span>
+      </button>
+      <button onClick="{{ onFolder }}" title="Open the capture folder" style="height:26px;padding:0 10px;border-radius:99px;background:#12161d;border:1px solid #262c36;color:#8b949e;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap" style-hover="border-color:#3a4258">
+        <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="hard-drive" width="11" height="11"></i></span>
+        <span>C:\Shots · 2.3 GB</span>
+      </button>
+      <button onClick="{{ onPurgePill }}" title="Show shots that purge within 7 days" style="{{ purgeStyle }}" style-hover="border-color:#3a4258">
+        <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="timer" width="11" height="11"></i></span>
+        <span>Auto-purge {{ hdPurgeDays }}d · {{ hdExpN }} expiring</span>
+      </button>
+    </div>
+  </div>
+
+  <div style="flex:none;display:flex;flex-direction:column;gap:8px;padding:10px 20px;border-bottom:1px solid #21262d;background:#0f131a">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <div style="position:relative;flex:1;min-width:280px;max-width:640px">
+        <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);display:inline-flex;width:13px;height:13px;color:#576069"><i data-lucide="search" width="13" height="13"></i></span>
+        <input value="{{ q }}" onChange="{{ onQ }}" onKeyDown="{{ onQKey }}" ref="{{ searchRef }}" placeholder="Search everything you saw — screen text, captions, apps… try app:ssms or has:error" style="width:100%;height:34px;background:#0d1117;border:1px solid #262c36;border-radius:8px;color:#e6edf3;font-size:11.5px;padding:0 60px 0 32px;outline:none;font-family:Consolas,ui-monospace,Menlo,monospace" style-focus="border-color:#3f8f89">
+        <span style="position:absolute;right:9px;top:50%;transform:translateY(-50%);display:flex;align-items:center;gap:6px">
+          <sc-if value="{{ q }}" hint-placeholder-val="{{ false }}"><span onClick="{{ clearQ }}" style="color:#576069;cursor:pointer;font-size:14px;line-height:1" style-hover="color:#e6edf3">×</span></sc-if>
+          <span style="font-size:8.5px;color:#3f4756;font-family:Consolas,ui-monospace,Menlo,monospace;border:1px solid #262c36;border-radius:4px;padding:1px 6px">/</span>
+        </span>
+      </div>
+      <span style="font-size:10px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">{{ countText }}</span>
+      <div style="width:1px;height:16px;background:#262c36;flex:none"></div>
+      <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;color:#495261;flex:none">RECALL</span>
+      <sc-for list="{{ recall }}" as="rc" hint-placeholder-count="4">
+        <button onClick="{{ rc.onClick }}" style="flex:none;height:22px;padding:0 8px;border-radius:99px;background:#12161d;border:1px solid #262c36;color:#7d8896;font-size:9.5px;font-weight:600;cursor:pointer;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap" style-hover="border-color:#3a4258;color:#adb8c4">{{ rc.label }}</button>
+      </sc-for>
+      <div style="flex:1"></div>
+      <button onClick="{{ onSort }}" style="flex:none;height:26px;padding:0 10px;border-radius:7px;background:#12161d;border:1px solid #262c36;color:#8b949e;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap" style-hover="border-color:#3a4258">
+        <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="history" width="11" height="11"></i></span>
+        <span>{{ sortLabel }}</span>
+      </button>
+      <div style="flex:none;display:flex;background:#12161d;border:1px solid #262c36;border-radius:7px;padding:2px;gap:2px">
+        <sc-for list="{{ sizeBtns }}" as="z" hint-placeholder-count="3">
+          <button onClick="{{ z.onClick }}" title="Thumbnail size" style="{{ z.style }}">{{ z.label }}</button>
+        </sc-for>
+      </div>
+      <sc-if value="{{ anyActive }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ clearAll }}" style="flex:none;height:26px;padding:0 10px;border-radius:7px;background:rgba(192,138,132,.08);border:1px solid rgba(192,138,132,.3);color:#c08a84;font-size:10px;font-weight:700;cursor:pointer" style-hover="background:rgba(192,138,132,.15)">Reset</button>
+      </sc-if>
+    </div>
+    <div class="om-scroll" style="display:flex;align-items:center;gap:6px;overflow-x:auto;padding-bottom:3px">
+      <sc-for list="{{ chips }}" as="ch" hint-placeholder-count="12">
+        <sc-if value="{{ ch.head }}" hint-placeholder-val="{{ false }}"><span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;color:#495261;flex:none;padding:0 2px">{{ ch.head }}</span></sc-if>
+        <sc-if value="{{ ch.sep }}" hint-placeholder-val="{{ false }}"><div style="width:1px;height:16px;background:#262c36;flex:none;margin:0 3px"></div></sc-if>
+        <sc-if value="{{ ch.chip }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ ch.onClick }}" title="{{ ch.title }}" style="{{ ch.style }}" style-hover="border-color:#3a4258">
+            <sc-if value="{{ ch.icon }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;width:11px;height:11px;color:{{ ch.iconColor }}"><i data-lucide="{{ ch.icon }}" width="11" height="11"></i></span></sc-if>
+            <sc-if value="{{ ch.swatch }}" hint-placeholder-val="{{ false }}"><span style="{{ ch.swatch }}"></span></sc-if>
+            <sc-if value="{{ ch.label }}" hint-placeholder-val="{{ true }}"><span>{{ ch.label }}</span></sc-if>
+            <sc-if value="{{ ch.count }}" hint-placeholder-val="{{ false }}"><span style="{{ ch.countStyle }}">{{ ch.count }}</span></sc-if>
+          </button>
+        </sc-if>
+      </sc-for>
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0">
+
+    <div class="om-scroll" style="flex:1;min-width:0;overflow-y:auto;background:#111219;padding:4px 20px 44px">
+      <sc-if value="{{ empty }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:100px 20px;color:#495261">
+          <span style="display:inline-flex;width:26px;height:26px"><i data-lucide="search" width="26" height="26"></i></span>
+          <div style="font-size:13px;font-weight:700;color:#8b949e">Nothing matches that</div>
+          <div style="font-size:11px;color:#576069;text-align:center;max-width:360px;line-height:1.6">Loosen a filter, or ride the day rail on the right — the bars show how heavy each day was.</div>
+          <button onClick="{{ clearAll }}" style="margin-top:4px;height:28px;padding:0 14px;border-radius:7px;background:#161b22;border:1px solid #30363d;color:#c9d1d9;font-size:11px;font-weight:700;cursor:pointer" style-hover="border-color:#3a4258">Reset all filters</button>
+        </div>
+      </sc-if>
+      <sc-if value="{{ isWall }}" hint-placeholder-val="{{ true }}">
+        <sc-for list="{{ groups }}" as="g" hint-placeholder-count="2">
+          <div style="margin-top:10px">
+            <div style="position:sticky;top:0;z-index:4;display:flex;align-items:center;gap:10px;padding:9px 0;background:rgba(17,18,25,.95)">
+              <span style="font-size:12px;font-weight:800;color:#e6edf3;letter-spacing:-.01em;white-space:nowrap">{{ g.label }}</span>
+              <span style="font-size:9.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">{{ g.count }}</span>
+              <sc-if value="{{ g.exp }}" hint-placeholder-val="{{ false }}">
+                <span style="font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:99px;background:rgba(179,152,95,.1);border:1px solid rgba(179,152,95,.35);color:#c9ab72;display:inline-flex;align-items:center;gap:4px;flex:none"><span style="display:inline-flex;width:9px;height:9px"><i data-lucide="timer" width="9" height="9"></i></span><span>{{ g.exp }}</span></span>
+              </sc-if>
+              <div style="flex:1;height:1px;background:#1b212a"></div>
+            </div>
+            <div style="{{ gridStyle }}">
+              <sc-for list="{{ g.cards }}" as="c" hint-placeholder-count="4">
+                <div onClick="{{ c.onSelect }}" onDoubleClick="{{ c.onCopy }}" title="{{ c.cap }}" style="{{ c.style }}" style-hover="border-color:#3a4258">
+                  <div style="{{ c.thumbStyle }}">
+                    <sc-for list="{{ c.art }}" as="b" hint-placeholder-count="6"><div style="{{ b }}"></div></sc-for>
+                    <span style="position:absolute;left:6px;top:6px;font-size:8.5px;font-weight:700;padding:2px 6px;border-radius:5px;background:rgba(5,8,13,.72);color:#9aa5b1;font-family:Consolas,ui-monospace,Menlo,monospace;letter-spacing:.02em">{{ c.time }}</span>
+                    <span style="position:absolute;right:6px;top:6px;display:flex;gap:4px">
+                      <sc-if value="{{ c.err }}" hint-placeholder-val="{{ false }}"><span title="Error on screen" style="width:18px;height:18px;border-radius:5px;background:rgba(5,8,13,.72);display:flex;align-items:center;justify-content:center;color:#c08a84"><i data-lucide="alert-triangle" width="10" height="10"></i></span></sc-if>
+                      <sc-if value="{{ c.kept }}" hint-placeholder-val="{{ false }}"><span title="Pinned — never purges" style="width:18px;height:18px;border-radius:5px;background:rgba(5,8,13,.72);display:flex;align-items:center;justify-content:center;color:#7fb08a"><i data-lucide="pin" width="10" height="10"></i></span></sc-if>
+                      <sc-if value="{{ c.dupN }}" hint-placeholder-val="{{ false }}"><span title="{{ c.dupTitle }}" style="height:18px;padding:0 5px;border-radius:5px;background:rgba(5,8,13,.72);display:flex;align-items:center;gap:3px;color:#9aa5b1;font-size:8.5px;font-weight:700;font-family:Consolas,ui-monospace,Menlo,monospace"><i data-lucide="layers" width="9" height="9"></i><span>×{{ c.dupN }}</span></span></sc-if>
+                      <sc-if value="{{ c.expIn }}" hint-placeholder-val="{{ false }}"><span title="{{ c.expTitle }}" style="height:18px;padding:0 5px;border-radius:5px;background:rgba(5,8,13,.72);display:flex;align-items:center;gap:3px;color:#c9ab72;font-size:8.5px;font-weight:700;font-family:Consolas,ui-monospace,Menlo,monospace"><i data-lucide="timer" width="9" height="9"></i><span>{{ c.expIn }}d</span></span></sc-if>
+                    </span>
+                    <span style="position:absolute;left:6px;bottom:6px;height:18px;padding:0 6px;border-radius:5px;background:rgba(5,8,13,.72);display:flex;align-items:center;gap:4px;color:#adb8c4;font-size:8.5px;font-weight:600"><span style="display:inline-flex;width:10px;height:10px;color:{{ c.appColor }}"><i data-lucide="{{ c.appIcon }}" width="10" height="10"></i></span><span>{{ c.appLabel }}</span></span>
+                  </div>
+                  <sc-if value="{{ showCaps }}" hint-placeholder-val="{{ true }}">
+                    <div style="padding:7px 9px 8px">
+                      <div style="font-size:10.5px;font-weight:600;color:#c3ccd6;line-height:1.35;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.cap }}</div>
+                      <div style="font-size:8.5px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.metaLine }}</div>
+                    </div>
+                  </sc-if>
+                  <sc-if value="{{ c.snipHit }}" hint-placeholder-val="{{ false }}">
+                    <div style="border-top:1px solid #21262d;background:#0d1117;padding:6px 9px;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9px;color:#6e7681;line-height:1.5;overflow:hidden;white-space:nowrap;text-overflow:ellipsis">{{ c.snipPre }}<span style="background:rgba(201,171,114,.22);color:#d9bc82;border-radius:2px;padding:0 2px">{{ c.snipHit }}</span>{{ c.snipPost }}</div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </sc-if>
+      <sc-if value="{{ isIndex }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px;max-width:1080px">
+          <sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+            <div onClick="{{ r.onSelect }}" onDoubleClick="{{ r.onCopy }}" style="{{ r.rowStyle }}" style-hover="border-color:#3a4258">
+              <div style="{{ r.thumbStyle }}"><sc-for list="{{ r.art }}" as="b" hint-placeholder-count="6"><div style="{{ b }}"></div></sc-for></div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:9px;font-weight:700;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">{{ r.when }}</span>
+                  <span style="display:inline-flex;width:10px;height:10px;color:{{ r.appColor }};flex:none"><i data-lucide="{{ r.appIcon }}" width="10" height="10"></i></span>
+                  <span style="font-size:11.5px;font-weight:700;color:#dbe2ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.cap }}</span>
+                  <sc-if value="{{ r.err }}" hint-placeholder-val="{{ false }}"><span style="flex:none;font-size:7.5px;font-weight:800;letter-spacing:.06em;padding:1.5px 5px;border-radius:4px;background:rgba(192,138,132,.12);border:1px solid rgba(192,138,132,.35);color:#c08a84;font-family:Consolas,ui-monospace,Menlo,monospace">ERROR</span></sc-if>
+                  <span style="margin-left:auto;flex:none;font-size:8.5px;color:#495261;font-family:Consolas,ui-monospace,Menlo,monospace">{{ r.file }}</span>
+                </div>
+                <sc-for list="{{ r.lines }}" as="l" hint-placeholder-count="2">
+                  <div style="font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9.5px;color:#6e7681;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ l.pre }}<sc-if value="{{ l.hit }}" hint-placeholder-val="{{ false }}"><span style="background:rgba(201,171,114,.22);color:#d9bc82;border-radius:2px;padding:0 2px">{{ l.hit }}</span></sc-if>{{ l.post }}</div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+
+    <sc-if value="{{ insShow }}" hint-placeholder-val="{{ false }}">
+      <div style="width:342px;flex:none;display:flex;flex-direction:column;min-height:0;border-left:1px solid #21262d;background:#0f141b">
+        <div style="flex:none;display:flex;align-items:flex-start;gap:9px;padding:12px 14px;border-bottom:1px solid #1b212a">
+          <span style="width:28px;height:28px;flex:none;border-radius:7px;background:#12161d;border:1px solid #262c36;display:flex;align-items:center;justify-content:center;color:{{ ins.appColor }}"><i data-lucide="{{ ins.appIcon }}" width="13" height="13"></i></span>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:11.5px;font-weight:700;color:#e6edf3;line-height:1.4">{{ ins.cap }}</div>
+            <div style="font-size:9px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;margin-top:2px">{{ ins.when }}</div>
+          </div>
+          <button onClick="{{ insClose }}" style="width:22px;height:22px;flex:none;border-radius:5px;background:none;border:none;color:#576069;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#1c2128;color:#c9d1d9"><i data-lucide="x" width="12" height="12"></i></button>
+        </div>
+        <div class="om-scroll" style="flex:1;overflow-y:auto;padding:12px 14px 16px;display:flex;flex-direction:column;gap:13px">
+          <div style="{{ ins.thumbStyle }}"><sc-for list="{{ ins.art }}" as="b" hint-placeholder-count="8"><div style="{{ b }}"></div></sc-for></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+            <sc-for list="{{ ins.actions }}" as="ac" hint-placeholder-count="4">
+              <button onClick="{{ ac.onClick }}" style="{{ ac.style }}" style-hover="filter:brightness(1.18)"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="{{ ac.icon }}" width="12" height="12"></i></span><span>{{ ac.label }}</span></button>
+            </sc-for>
+          </div>
+          <div style="background:#12161d;border:1px solid #1f2530;border-radius:9px;padding:10px 11px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <span style="display:inline-flex;width:11px;height:11px;color:#a58fc9"><i data-lucide="sparkles" width="11" height="11"></i></span>
+              <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;color:#5d6b7d">AUTO-CAPTION · HAIKU BATCH</span>
+              <button onClick="{{ ins.onRewrite }}" title="Queue a caption rewrite" style="margin-left:auto;width:20px;height:20px;border-radius:5px;background:none;border:none;color:#495261;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="background:#1c2128;color:#adb8c4"><i data-lucide="pencil" width="11" height="11"></i></button>
+            </div>
+            <div style="font-size:11px;color:#b8c2cd;line-height:1.55">{{ ins.caption }}</div>
+          </div>
+          <div style="background:#0c1016;border:1px solid #1f2530;border-radius:9px;overflow:hidden">
+            <div style="display:flex;align-items:center;gap:6px;padding:8px 11px;border-bottom:1px solid #171d26">
+              <span style="display:inline-flex;width:11px;height:11px;color:#4fb3ac"><i data-lucide="scan-text" width="11" height="11"></i></span>
+              <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;color:#5d6b7d">EXTRACTED TEXT · WINDOWS OCR</span>
+              <button onClick="{{ ins.onCopyOcr }}" style="margin-left:auto;height:19px;padding:0 8px;border-radius:5px;background:#161b22;border:1px solid #262c36;color:#8b949e;font-size:9px;font-weight:700;cursor:pointer" style-hover="border-color:#3a4258;color:#c9d1d9">Copy</button>
+            </div>
+            <div class="om-scroll" style="max-height:150px;overflow-y:auto;padding:8px 11px;display:flex;flex-direction:column;gap:3px">
+              <sc-for list="{{ ins.ocr }}" as="l" hint-placeholder-count="4"><div style="{{ l.style }}">{{ l.txt }}</div></sc-for>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ ins.details }}" as="dt" hint-placeholder-count="5">
+              <div style="display:flex;gap:10px;padding:5px 1px;border-bottom:1px solid #151b23">
+                <span style="width:66px;flex:none;font-size:9px;font-weight:700;letter-spacing:.05em;color:#495261;padding-top:1px">{{ dt.k }}</span>
+                <span style="{{ dt.style }}">{{ dt.v }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">
+              <span style="display:inline-flex;width:11px;height:11px;color:#8fa7c4"><i data-lucide="hash" width="11" height="11"></i></span>
+              <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;color:#5d6b7d">ENTITIES &amp; TAGS</span>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:5px">
+              <sc-for list="{{ ins.tags }}" as="tg" hint-placeholder-count="3">
+                <button onClick="{{ tg.onClick }}" title="Search this tag" style="height:21px;padding:0 8px;border-radius:99px;background:#12161d;border:1px solid #262c36;color:#8fa7c4;font-size:9.5px;font-weight:600;cursor:pointer;font-family:Consolas,ui-monospace,Menlo,monospace" style-hover="border-color:#3a4258">{{ tg.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+          <sc-if value="{{ ins.simShow }}" hint-placeholder-val="{{ false }}">
+            <div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:7px">
+                <span style="display:inline-flex;width:11px;height:11px;color:#c9ab72"><i data-lucide="layers" width="11" height="11"></i></span>
+                <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;color:#5d6b7d">NEAR-DUPLICATES · PHASH ≤ 4</span>
+              </div>
+              <div class="om-scroll" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:3px">
+                <sc-for list="{{ ins.sim }}" as="sm" hint-placeholder-count="2">
+                  <div style="flex:none">
+                    <div style="{{ sm.thumbStyle }}"><sc-for list="{{ sm.art }}" as="b" hint-placeholder-count="5"><div style="{{ b }}"></div></sc-for></div>
+                    <div style="font-size:8px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;text-align:center;margin-top:3px">{{ sm.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="font-size:9px;color:#495261;line-height:1.5;margin-top:5px">Stacked on the wall — auto-purge keeps only the newest of a stack.</div>
+            </div>
+          </sc-if>
+          <div style="{{ ins.retStyle }}">
+            <span style="display:inline-flex;width:13px;height:13px;flex:none;color:{{ ins.retIconColor }}"><i data-lucide="{{ ins.retIcon }}" width="13" height="13"></i></span>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:10.5px;font-weight:700;color:#c3ccd6">{{ ins.retText }}</div>
+              <div style="font-size:9px;color:#576069;margin-top:1px">{{ ins.retSub }}</div>
+            </div>
+            <div onClick="{{ ins.onKeep }}" title="Keep — exempt from auto-purge" style="{{ ins.togStyle }}"><div style="{{ ins.knobStyle }}"></div></div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <div style="width:118px;flex:none;display:flex;flex-direction:column;border-left:1px solid #21262d;background:#0d1117;padding:12px 10px 10px">
+      <div style="display:flex;align-items:center;justify-content:center;gap:5px;color:#5d6b7d;margin-bottom:10px;flex:none">
+        <span style="display:inline-flex;width:12px;height:12px"><i data-lucide="calendar" width="12" height="12"></i></span>
+        <span style="font-size:9px;font-weight:700;letter-spacing:.09em">DAYS</span>
+      </div>
+      <div class="om-scroll" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:2px">
+        <sc-for list="{{ rail }}" as="d" hint-placeholder-count="10">
+          <sc-if value="{{ d.month }}" hint-placeholder-val="{{ false }}"><div style="font-size:8.5px;font-weight:800;letter-spacing:.13em;color:#495261;padding:8px 4px 3px">{{ d.month }}</div></sc-if>
+          <sc-if value="{{ d.day }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ d.onClick }}" title="{{ d.title }}" style="{{ d.rowStyle }}" style-hover="background:#161b22">
+              <span style="{{ d.numStyle }}">{{ d.day }}</span>
+              <div style="flex:1;height:6px;border-radius:99px;background:#1a2029;overflow:hidden"><div style="{{ d.barStyle }}"></div></div>
+              <span style="{{ d.cntStyle }}">{{ d.cnt }}</span>
+            </div>
+          </sc-if>
+        </sc-for>
+      </div>
+      <div style="text-align:center;font-size:9.5px;color:#495261;font-family:Consolas,ui-monospace,Menlo,monospace;padding-top:8px;flex:none">{{ railTotal }}</div>
+    </div>
+  </div>
+
+  <div style="flex:none;height:26px;display:flex;align-items:center;gap:14px;padding:0 16px;border-top:1px solid #21262d;background:#0d1117;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9px;color:#495261;white-space:nowrap;overflow:hidden">
+    <span><span style="color:#5d6b7d">dbl-click</span> copy</span>
+    <span><span style="color:#5d6b7d">Enter</span> copy selected</span>
+    <span><span style="color:#5d6b7d">/</span> search</span>
+    <span><span style="color:#5d6b7d">Del</span> delete</span>
+    <span><span style="color:#5d6b7d">Esc</span> clear</span>
+    <span style="flex:1"></span>
+    <span style="overflow:hidden;text-overflow:ellipsis">F9 capture → OCR → caption → phash · median 6s behind the shutter · queue empty</span>
+  </div>
+
+  <sc-if value="{{ toastShow }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:44px;transform:translate(-50%,0);z-index:60;display:flex;align-items:center;gap:9px;background:#1c2128;border:1px solid #30363d;border-radius:9px;padding:9px 14px;box-shadow:0 10px 30px rgba(0,0,0,.55);animation:omToast .16s ease-out">
+      <span style="display:inline-flex;width:13px;height:13px;color:#4fb3ac"><i data-lucide="check" width="13" height="13"></i></span>
+      <span style="font-size:11.5px;font-weight:600;color:#e6edf3">{{ toastMsg }}</span>
+      <sc-if value="{{ toastAct }}" hint-placeholder-val="{{ false }}"><button onClick="{{ onToastAct }}" style="background:none;border:none;color:#6db8b2;font-size:11px;font-weight:700;cursor:pointer;padding:0 2px">{{ toastAct }}</button></sc-if>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1680,&quot;height&quot;:960},&quot;purgeDays&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:30,&quot;min&quot;:7,&quot;max&quot;:90,&quot;unit&quot;:&quot;days&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Retention&quot;},&quot;showCaptions&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Wall&quot;},&quot;defaultView&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;wall&quot;,&quot;index&quot;],&quot;default&quot;:&quot;wall&quot;,&quot;tsType&quot;:&quot;\&quot;wall\&quot; | \&quot;index\&quot;&quot;,&quot;section&quot;:&quot;Wall&quot;}}">
+class Component extends DCLogic {
+  state = { q:'', sel:null, day:null, app:null, kind:null, theme:null, color:null, fErr:false, fPin:false, fExp:false, sort:'new', size:'m', view:null, kept:{}, deleted:{}, toast:null };
+
+  ensureData() {
+    if (this.SHOTS) return;
+    this.MON = 'Consolas,ui-monospace,Menlo,monospace';
+    this.searchRef = React.createRef();
+    this.APPS = {
+      chrome:{label:'Chrome', icon:'globe', c:'#c8a86a'},
+      code:{label:'VS Code', icon:'file-code', c:'#6a8fb5'},
+      term:{label:'Terminal', icon:'terminal', c:'#7fb08a'},
+      ssms:{label:'SSMS', icon:'database', c:'#c08a84'},
+      bc:{label:'BuildConsole', icon:'box', c:'#37b8b0'},
+      outlook:{label:'Outlook', icon:'mail', c:'#7da7cd'},
+      teams:{label:'Teams', icon:'messages-square', c:'#a58fc9'},
+      explorer:{label:'Explorer', icon:'folder-open', c:'#8b949e'}
+    };
+    this.KINDS = {win:{label:'Window', icon:'app-window'}, reg:{label:'Region', icon:'crop'}, full:{label:'Full screen', icon:'monitor'}};
+    this.COLORS = {slate:'#6e7681', blue:'#6a8fb5', green:'#7fb08a', amber:'#c8a86a', red:'#c08a84', violet:'#a58fc9', teal:'#37b8b0'};
+    this.DAYS = {
+      '0901':{lab:'Today', sub:'Tue, Sep 1', sh:'Sep 1', n:1, m:'SEP'},
+      '0831':{lab:'Yesterday', sub:'Mon, Aug 31', sh:'Aug 31', n:31, m:'AUG'},
+      '0829':{lab:'', sub:'Sat, Aug 29', sh:'Aug 29', n:29, m:'AUG'},
+      '0828':{lab:'', sub:'Fri, Aug 28', sh:'Aug 28', n:28, m:'AUG'},
+      '0827':{lab:'', sub:'Thu, Aug 27', sh:'Aug 27', n:27, m:'AUG'},
+      '0826':{lab:'', sub:'Wed, Aug 26', sh:'Aug 26', n:26, m:'AUG'},
+      '0825':{lab:'', sub:'Tue, Aug 25', sh:'Aug 25', n:25, m:'AUG'},
+      '0824':{lab:'', sub:'Mon, Aug 24', sh:'Aug 24', n:24, m:'AUG'},
+      '0821':{lab:'', sub:'Fri, Aug 21', sh:'Aug 21', n:21, m:'AUG'},
+      '0819':{lab:'', sub:'Wed, Aug 19', sh:'Aug 19', n:19, m:'AUG'},
+      '0812':{lab:'', sub:'Wed, Aug 12', sh:'Aug 12', n:12, m:'AUG'},
+      '0808':{lab:'', sub:'Sat, Aug 8', sh:'Aug 8', n:8, m:'AUG'},
+      '0806':{lab:'', sub:'Thu, Aug 6', sh:'Aug 6', n:6, m:'AUG'}
+    };
+    this.DAYKEYS = Object.keys(this.DAYS);
+    this.AGE = {'0901':0,'0831':1,'0829':3,'0828':4,'0827':5,'0826':6,'0825':7,'0824':8,'0821':11,'0819':13,'0812':20,'0808':24,'0806':26};
+    const S = (id,d,t,app,kind,theme,ar,cols,art,cap,win,ocr,tags,x) => Object.assign({id,d,t,app,kind,theme,ar,cols,art,cap,win,ocr,tags,err:false,pin:false,dup:0,opt:null}, x||{});
+    this.SHOTS = [
+      S(1,'0901','14:32','term','win','dark',1.6,['green'],'term','pnpm build failing in api-server — TS2345 in billing invoice run','pnpm — dev:api — Windows Terminal',['> pnpm --filter @app/api-server build','src/engines/billing/invoice-run.ts:214:18 - error TS2345:',"Argument of type 'InvoiceDraft | null' is not assignable",'ELIFECYCLE Command failed with exit code 2'],['build-failure','typescript','api-server'],{err:true}),
+      S(2,'0901','13:58','chrome','win','light',1.6,['slate'],'browser','GitHub issue #2031 — Build Queue panel spec with acceptance list','#2031 Build Queue panel — GitHub — Chrome',['#2031 Build Queue panel — full spec','Acceptance: queue scroll keeps position on refresh (#2020)','blocked_by edges render nested under blocker (#1987)','Labels: in-flight · Milestone: v1.1'],['github','#2031','build-queue']),
+      S(3,'0901','11:47','bc','win','dark',1.6,['teal'],'console','Build Watch — slot 3 stale, no progress update in 14 minutes','Build Watch — BuildConsole',['Build Watch — 8 slots active','bld_1640_redis_sync · Implementation · step 4 of 9','No progress update in 14m','ETA heuristic: 22m (stale)'],['build-watch','stale'],{err:true, dup:2}),
+      S(4,'0901','10:15','ssms','reg','light',2.4,['amber','slate'],'grid','SSMS — row counts before applying manual migration 0043','seat_cap_backfill.sql — SSMS',['SELECT COUNT(*) FROM tenants WHERE seat_cap IS NULL','-- lib/db/migrations/manual/0043_seat_cap_backfill.sql','(147 rows affected)','Completion time: 2026-09-01T10:14:52'],['sql','migration','0043']),
+      S(5,'0901','09:02','outlook','win','light',1.55,['blue'],'mail','Outlook — Verizon alert: 85% of monthly bandwidth used','Verizon usage alert — Outlook',["Verizon: You've used 85% of your monthly data",'Estimated overage date: Sep 9','Manage plan · View usage'],['verizon','bandwidth']),
+      S(6,'0831','16:40','chrome','full','dark',1.78,['amber','red'],'browser','Clarity heatmap — pricing page, scroll depth dies at the engines grid','Microsoft Clarity — Chrome',['Microsoft Clarity — shanemccaw.com/pricing','Scroll depth: 38% reach the engines grid','Rage clicks: 3 sessions on See Monitoring Pricing'],['clarity','pricing','marketing'],{opt:'heat'}),
+      S(7,'0831','15:12','code','win','dark',1.6,['blue','violet'],'code','VS Code — EpicChatUrlBuilder diff, worktree path join fix','EpicChatUrlBuilder.cs — BuildConsole — VS Code',['- var url = _base + "/chat/" + epicId;','+ var url = new Uri(new Uri(_base), $"/chat/{epicId}");','desktop/BuildConsole/Services/EpicChatUrlBuilder.cs'],['diff','worktrees']),
+      S(8,'0831','09:20','explorer','win','light',1.35,['red'],'dialog','Access denied (0x80070005) moving a worktree node_modules folder','Error Moving File or Folder — Explorer',['Error 0x80070005: Access is denied.','C:\\wt\\bld_1640_redis_sync\\node_modules\\.pnpm','Try Again · Skip · Cancel'],['error-dialog','worktrees','0x80070005'],{err:true}),
+      S(9,'0829','12:04','chrome','win','light',1.6,['blue'],'browser','Azure — API permissions for BuildConsole-Graph, Directory.Read.All granted','App registrations — Azure portal — Chrome',['API permissions — BuildConsole-Graph','Microsoft Graph (5) · Directory.Read.All · Granted','User.Read.All — admin consent required'],['azure','graph','auth']),
+      S(10,'0829','12:31','term','win','dark',1.6,['green'],'term','Device code flow output for Graph auth test on secondary account','node auth-test — Windows Terminal',['To sign in, open microsoft.com/devicelogin','and enter the code KJ8-PQR2M to authenticate.','token cached: .token-cache.json (MSAL)'],['graph','device-code','auth'],{dup:1}),
+      S(11,'0828','17:26','bc','win','dark',1.6,['teal'],'console','Build Matrix — Redis sync chain blocked four deep in the Portal set','Build Matrix — BuildConsole',['#1640 Redis distributed cache sync — BLOCKED','blocked_by: #1485 Portal API gateway (RUNNING)','chain depth 4 · build set: Portal'],['build-matrix','blocked','#1640']),
+      S(12,'0828','16:02','chrome','win','light',1.6,['slate','blue'],'browser','Billing — three failed invoices queued for retry on Sep 2','Payments — Stripe test — Chrome',['Payments — 3 failed · retry scheduled Sep 2','in_1JXR44 seat overage — $184.00','Webhook attempts: 2 of 5'],['billing','stripe'],{opt:'table'}),
+      S(13,'0828','14:44','code','win','dark',1.6,['blue','red'],'code','47 TypeScript errors after schema regen — engine types drifted','Problems — api-server — VS Code',['Problems: 47 errors, 3 warnings',"Property 'slaBreachAt' does not exist on type 'TenantSignal'",'lib/schema/generated/tenant-signal.d.ts'],['typescript','schema','engines'],{err:true}),
+      S(14,'0828','13:15','teams','reg','dark',1.9,['violet'],'chat','Teams — Dominic lists three portal RBAC edge cases before Friday deploy','Dominic Okafor — Teams',['Dominic: guest users bypass the scope filter when…','shared-mailbox tenants — 3 edge cases total','still good for the Friday deploy?'],['teams','portal','rbac']),
+      S(15,'0828','11:38','chrome','win','dark',1.6,['green','slate'],'browser','Replit deploy log — api-server cold start down to 3.2s after bundle split','Deployments — Replit — Chrome',['replit deployments — api-server','cold start 3.2s (was 7.9s)','bundle 14.2 MB → 6.1 MB'],['replit','deploy','api-server']),
+      S(16,'0828','08:51','explorer','win','light',1.6,['amber'],'files','C:\\wt worktrees — eleven stale folders eating nine gigabytes','C:\\wt — Explorer',['C:\\wt — 11 folders','bld_0485_gw_rbac — 1.2 GB','bld_1766_ci_actions — 890 MB'],['worktrees','disk']),
+      S(17,'0827','18:20','chrome','full','dark',1.78,['teal','slate'],'browser','Portal dashboard dark mode — seat widget clips at 1366px wide','Acme Industrial — MSP Portal — Chrome',['Acme Industrial — 214 seats','Drift · Security · Health · SLA','Last sync 4m ago'],['portal','visual-bug','dark-mode'],{dup:3}),
+      S(18,'0827','17:55','chrome','win','light',1.6,['slate'],'browser','Portal SOW builder — architect retainer line items filled in','SOW #2026-041 — MSP Portal — Chrome',['SOW #2026-041 — Architect Retainer','24 hrs/mo · $4,800','Signature requested'],['portal','sow','retainer']),
+      S(19,'0827','16:31','bc','win','dark',1.6,['teal'],'console','Batter Up — six builds staged for the Portal set on secondary','Batter Up — BuildConsole',['Batter Up — launch queue (6)','#1489 edge smoke matrix · Sonnet · Low','--buildSet portal --account secondary'],['batter-up','queue']),
+      S(20,'0827','15:47','ssms','win','dark',1.35,['red'],'dialog','SSMS — Msg 8152 string truncation inserting into tenant_signals','Microsoft SQL Server Management Studio',['Msg 8152, Level 16, State 30, Line 12','String or binary data would be truncated in table',"'dbo.tenant_signals', column 'source_ref'."],['sql','error-dialog','8152'],{err:true}),
+      S(21,'0827','14:29','code','win','dark',1.6,['violet','blue'],'code','report-progress.mjs — phase weights for the three build phases','report-progress.mjs — VS Code',["const PHASES = ['Investigation','Implementation','Verification'];",'weight: steps[phase] / total * 100','shaneapp://reportProgress?step=4'],['progress','shaneapp']),
+      S(22,'0827','11:12','chrome','win','light',1.6,['blue'],'browser','Graph Explorer — /users delta query returns 412 objects with skiptoken','Graph Explorer — Chrome',['GET graph.microsoft.com/v1.0/users/delta','200 OK · 412 objects','@odata.nextLink … $skiptoken=X4F2'],['graph','delta'],{opt:'table'}),
+      S(23,'0827','09:36','outlook','win','light',1.55,['blue','amber'],'mail','Halvorsen Marine asks why drift alerts went quiet over the weekend','Drift alerts quiet? — Outlook',['From: Marcus Hale (Halvorsen Marine)','Subject: Drift alerts quiet since Friday?','nothing since Fri 6pm — did something break?'],['client','drift','halvorsen'],{pin:true}),
+      S(24,'0826','15:58','term','win','dark',1.6,['green','red'],'term','Postgres ECONNREFUSED after the worktree junction swap','pnpm dev:api — Windows Terminal',['Error: connect ECONNREFUSED 127.0.0.1:5432','at BuildQueuePostgresClient.connect','pnpm dev:api exited 1'],['postgres','build-queue'],{err:true}),
+      S(25,'0826','13:21','chrome','reg','light',2.6,['green','slate'],'browser','PR checks green after rerun — branch-merged gate passed','feat/portal-rbac-gateway — GitHub — Chrome',['portal-rbac-gateway → main','All checks have passed · branch-merged','Squash and merge'],['github','ci','#1447']),
+      S(26,'0826','10:05','bc','full','dark',1.78,['teal','amber'],'console','Home rollup — eight sessions up, two chats near context cap','Home — BuildConsole',['Sessions 8/8 · primary account at 82% cap','chat #1485 context 91% — consider /compact','Conservation mode: ON'],['usage','sessions','context']),
+      S(27,'0825','16:44','chrome','win','light',1.6,['blue'],'browser','LinkedIn — MSP reseller post at 2,412 impressions','LinkedIn — Chrome',['Your post is getting traction','2,412 impressions · 38 reactions','MSP partners: white-label monitoring for your seats'],['linkedin','marketing','msp']),
+      S(28,'0825','11:19','ssms','reg','light',2.0,['amber'],'grid','Audit log counts by channel — admin.* spiking this week','audit-channels.sql — SSMS',['channel · count(*)','admin.impersonation · 942','audit · 12,408 rows total'],['sql','audit','admin']),
+      S(29,'0824','17:03','code','win','dark',1.6,['blue'],'code','ToastEngine — coalescing rules sketched in comments','ToastEngine.cs — BuildConsole — VS Code',['// coalesce: same ToastKind within a 4s window','// max 3 visible, overflow rolls into a badge','desktop/BuildConsole/Notifications/ToastEngine.cs'],['wpf','toasts']),
+      S(30,'0824','12:40','chrome','full','dark',1.78,['teal'],'browser','Claude Design — Shell Skeleton v2 with the bottom log panel open','Shell Skeleton v2 — Claude — Chrome',['Shell Skeleton v2 — Build Console','engine.drift · workflow.dispatch · audit','Focus Mode · Ctrl+K'],['design','shell'],{dup:1}),
+      S(31,'0824','09:27','bc','win','light',1.35,['red','slate'],'dialog','Missing variable — DEVICE_CODE_CLIENT_ID unset on the secondary account','MissingVariableWindow — BuildConsole',['DEVICE_CODE_CLIENT_ID is not set','account: secondary — dispatch aborted','Open settings · Abort'],['error-dialog','config','accounts'],{err:true}),
+      S(32,'0821','14:52','chrome','win','light',1.6,['blue','red'],'browser','Entra sign-in logs — AADSTS53003 blocked by conditional access','Sign-in logs — Azure portal — Chrome',['Sign-in logs — BuildConsole-Graph','Status: Failure · AADSTS53003','Blocked by Conditional Access policy'],['azure','auth','aadsts53003'],{err:true}),
+      S(33,'0821','10:31','term','win','dark',1.6,['green'],'term','Junction re-link script — three worktrees re-attached in 41 seconds','relink-junctions — Windows Terminal',['mklink /J C:\\wt\\bld_1930\\node_modules …','junction created · 3 of 3 OK','done in 41s'],['worktrees','junctions']),
+      S(34,'0819','15:36','chrome','win','light',1.6,['amber'],'browser','GA funnel — 61% drop between quiz steps three and four','Analytics — Chrome',['Funnel: Signal Intelligence Diagnostic','Step 3 → 4: −61%','avg time on step: 2m 12s'],['analytics','quiz','funnel'],{opt:'table'}),
+      S(35,'0819','11:58','bc','win','dark',1.6,['teal','green'],'console','Git Board — portal-rbac twelve commits ahead of main','Git Board — BuildConsole',['feat/portal-rbac-gateway +12','sec/edge-mtls-cert-daemon +3','last fetch 20s ago'],['git','branches']),
+      S(36,'0812','16:20','chrome','win','light',1.6,['slate'],'browser','M365 service health — Exchange delivery advisory still active','Service health — Microsoft 365 admin — Chrome',['Service health — 1 advisory','EX1024501: possible delays in email delivery','Affected: Exchange Online'],['m365','health','exchange']),
+      S(37,'0812','13:44','teams','win','light',1.6,['violet'],'chat',"Priya's SLA breach thresholds for the retainer tiers",'Priya Raman — Teams',['Priya: proposed SLA thresholds','P1 4h · P2 8h · P3 next business day','matches retainer tier sheet v3'],['teams','sla','retainers'],{pin:true}),
+      S(38,'0808','10:12','explorer','win','light',1.6,['amber'],'files','C:\\Shots at 214 files — the pile this vault replaces','C:\\Shots — Explorer',['C:\\Shots — 214 items','Screenshot 2026-08-08 101150.png','Screenshot 2026-08-08 095412.png'],['meta','folder']),
+      S(39,'0806','15:27','ssms','reg','light',2.2,['amber'],'grid','Tenant seat counts snapshot saved before backfill 0038','pre-0038 snapshot — SSMS',['SELECT tenant_id, seat_count FROM tenants','(89 rows affected)','-- snapshot before 0038_backfill'],['sql','migration','0038']),
+      S(40,'0806','09:44','chrome','win','dark',1.6,['red','slate'],'browser','Replit deploy failed — JS heap out of memory in the bundle step','Deployments — Replit — Chrome',['Deployment failed','JavaScript heap out of memory','exit code 137 · view logs'],['replit','deploy','oom'],{err:true})
+    ];
+    this.ARTS = {};
+    this.SHOTS.forEach(s => { this.ARTS[s.id] = this.makeArt(s); });
+  }
+
+  mulberry(seed) { let a = seed | 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+  makeArt(s) {
+    const R = this.mulberry(s.id * 7 + 13);
+    const dark = s.theme === 'dark';
+    const P = dark ? {bg:'#151a21', bar:'#1f2630', panel:'#1a202a', line:'#3d4754', dim:'#2a323e', deep:'#10151c'}
+                   : {bg:'#e9edf2', bar:'#d5dae1', panel:'#f7f9fb', line:'#b3bcc7', dim:'#cdd4dc', deep:'#dde2e9'};
+    const AC = {blue:'#5b7fa6', green:'#6f9c7d', amber:'#b3985f', red:'#b07470', violet:'#94809f', teal:'#4f9c96'};
+    const b = [];
+    const B = (x,y,w,h,c,r) => { b.push('position:absolute;left:'+x+'%;top:'+y+'%;width:'+w+'%;height:'+h+'%;background:'+c+';border-radius:'+(r==null?2:r)+'px'); };
+    const lines = (x,y0,n,step,wMin,wVar,c) => { for (let i=0;i<n;i++) B(x, y0+i*step, wMin+R()*wVar, 3.6, c || ((i%3)?P.dim:P.line)); };
+    let bg = P.bg;
+    if (s.art === 'browser') {
+      B(0,0,100,11,P.bar,0); B(2.5,3.2,2.4,4.4,P.line,99); B(6,3.2,2.4,4.4,P.line,99); B(9.5,3.2,2.4,4.4,P.line,99); B(15,2.8,52,5.2,dark?P.panel:P.bg,3);
+      if (s.opt === 'table') { B(4,16,40,6,P.line); B(4,26,92,7,dark?P.panel:'#cfd6de'); for (let i=0;i<5;i++) B(4,35+i*10,92,7,(i%2)?(dark?'#181e27':'#eef1f5'):(dark?'#1c232d':'#f5f7fa'),1); }
+      else if (s.opt === 'heat') { B(4,16,92,76,P.panel,3); B(14,22,26,50,'rgba(179,152,95,.42)',99); B(30,40,20,34,'rgba(176,116,112,.5)',99); B(56,26,16,22,'rgba(179,152,95,.32)',99); B(22,62,38,18,'rgba(111,156,125,.32)',99); }
+      else { B(4,17,34+R()*14,7,P.line); lines(4,30,4,10,36,44); if (R() > .35) { B(66,28,30,44,P.panel,3); B(69,34,24,4,P.dim); B(69,42,20,4,P.dim); B(69,50,22,4,P.dim); } }
+    } else if (s.art === 'code') {
+      bg = '#141922';
+      B(0,0,4.5,100,'#10151c',0); B(4.5,0,17,100,'#171d26',0);
+      for (let i=0;i<4;i++) B(7,7+i*7,12,3.4,'#242c37');
+      const cols = [AC.blue, AC.green, AC.amber, AC.violet, '#3d4754', '#3d4754', '#2f3844'];
+      for (let i=0;i<8;i++) { const ind = [0,4,8][Math.floor(R()*3)]; B(26+ind, 8+i*10.5, 12+R()*42, 3.8, cols[Math.floor(R()*cols.length)]); }
+      if (s.err) B(26,87,50,3.8,AC.red);
+    } else if (s.art === 'term') {
+      bg = '#0e1218';
+      B(3.5,7,2.6,4,AC.green); B(7.5,7,34+R()*16,4,'#3d4754');
+      for (let i=0;i<5;i++) B(3.5,17+i*10,20+R()*52,3.6,'#2c3542');
+      if (s.err) { B(3.5,69,56+R()*10,3.8,AC.red); B(3.5,79,30,3.6,'#2c3542'); }
+      B(3.5,88,3,4.4,AC.green);
+    } else if (s.art === 'grid') {
+      B(0,0,100,9,P.bar,0); B(2,11,22,5,P.dim,2); B(26,11,18,5,P.dim,2);
+      B(2,20,96,8,'#c8d0d9');
+      for (let i=0;i<6;i++) B(2,30+i*9.5,96,7,(i%2)?'#eef1f5':'#f6f8fa',1);
+      B(2,30,9,63,'#e2e7ed',1);
+      if (s.err) B(2,88,72,5,'rgba(176,116,112,.5)');
+    } else if (s.art === 'mail') {
+      B(0,0,100,10,P.bar,0); B(0,10,31,90,P.panel,0);
+      for (let i=0;i<4;i++) B(2.5,14+i*13,26,9.5,(i===0)?'#dbe3ec':P.dim,2);
+      B(35,16,42,6,P.line); B(35,25,26,4,P.dim);
+      lines(35,35,5,9,30,28);
+    } else if (s.art === 'chat') {
+      B(0,0,100,10,P.bar,0);
+      let y = 15;
+      for (let i=0;i<4;i++) { const w = 34+R()*20; if (i%2) B(96-w,y,w,11,'rgba(91,127,166,'+(dark?'.42':'.38')+')',4); else B(4,y,w,11,dark?P.panel:'#dde3ea',4); y += 16; }
+      B(4,y+2,60,7,dark?P.deep:'#eef1f5',4);
+    } else if (s.art === 'dialog') {
+      bg = dark ? '#12161d' : '#dfe4ea';
+      lines(6,10,3,12,50,30, dark?'#1b212b':'#cbd2da');
+      B(58,14,34,26,dark?'#1b212b':'#cbd2da',2);
+      B(18,30,64,46,dark?'#232b36':'#f7f9fb',4);
+      B(18,30,64,9,dark?'#2b3442':'#e6eaef',4);
+      B(22,45,7,12,AC.red,99);
+      B(33,46,40,4,dark?'#48525f':'#9aa4b0'); B(33,53,32,4,dark?'#39424e':'#b6bec8'); B(33,60,24,4,dark?'#39424e':'#b6bec8');
+      B(55,66,12,6.5,AC.blue,2); B(69,66,10,6.5,dark?'#39424e':'#c3cad3',2);
+    } else if (s.art === 'console') {
+      bg = '#10141b';
+      B(0,0,100,7,'#161b22',0); B(0,7,5.5,93,'#0d1117',0);
+      for (let i=0;i<3;i++) B(1.5,11+i*8,2.6,4.6,'#242c37',1.5);
+      const acc = [AC.teal, AC.amber, AC.violet];
+      for (let i=0;i<3;i++) { const y = 13+i*27; B(9,y,54,21,'#171d26',3); B(9,y,1.4,21,acc[i],0); B(13,y+4,26+R()*14,3.4,'#39424e'); B(13,y+11,42,2.6,'#222b36',99); B(13,y+11,10+R()*30,2.6,acc[i],99); }
+      B(68,13,28,74,'#151a22',3); lines(71,18,5,11,16,8,'#2b333f');
+    } else if (s.art === 'files') {
+      B(0,0,100,10,P.bar,0); B(0,10,23,90,P.panel,0);
+      for (let i=0;i<4;i++) B(2.5,15+i*9,18,4,P.dim);
+      for (let i=0;i<8;i++) { const cx = 28+(i%4)*18, cy = 18+Math.floor(i/4)*36; B(cx,cy,11,16,'#c9a45f',2); B(cx-1,cy+20,13,3.4,P.dim); }
+    }
+    return {bg, blocks:b};
+  }
+
+  purgeDaysP() { return this.props.purgeDays == null ? 30 : this.props.purgeDays; }
+  isKept(s) { const o = this.state.kept[s.id]; return o === undefined ? !!s.pin : o; }
+  purgeIn(s) { return this.purgeDaysP() - this.AGE[s.d]; }
+  dims(s) { if (s.kind === 'full') return '2560×1440'; if (s.kind === 'reg') return Math.round(380*s.ar) + '×380'; return '1656×1035'; }
+  fileOf(s) { return '2026-' + s.d.slice(0,2) + '-' + s.d.slice(2) + '_' + s.t.replace(':','') + '_' + s.app + '.png'; }
+  hay(s) { return (s.cap + ' ' + s.win + ' ' + s.ocr.join(' ') + ' ' + s.tags.join(' ') + ' ' + this.APPS[s.app].label).toLowerCase(); }
+
+  parseQ() {
+    const out = {texts:[], app:null, err:false, pin:false};
+    this.state.q.trim().toLowerCase().split(/\s+/).filter(Boolean).forEach(t => {
+      if (t.indexOf('app:') === 0) out.app = t.slice(4);
+      else if (t === 'has:error' || t === 'has:err') out.err = true;
+      else if (t === 'is:pinned' || t === 'is:pin') out.pin = true;
+      else out.texts.push(t);
+    });
+    return out;
+  }
+
+  anyActiveNow() {
+    const s = this.state;
+    return !!(s.q || s.day || s.app || s.kind || s.theme || s.color || s.fErr || s.fPin || s.fExp);
+  }
+  clearAllNow() { this.setState({q:'', day:null, app:null, kind:null, theme:null, color:null, fErr:false, fPin:false, fExp:false}); }
+
+  showToast(msg, act, fn) {
+    clearTimeout(this._tt);
+    this._toastAct = fn || null;
+    this.setState({toast:{msg, act:act||null}});
+    this._tt = setTimeout(() => this.setState({toast:null}), 3400);
+  }
+  copySel() {
+    const s = this.SHOTS.find(x => x.id === this.state.sel);
+    if (s) this.showToast('Image copied — paste it anywhere');
+  }
+  deleteShot(id) {
+    const s = this.SHOTS.find(x => x.id === id);
+    this.setState(st => { const d = Object.assign({}, st.deleted); d[id] = true; return {deleted:d, sel: st.sel === id ? null : st.sel}; });
+    this.showToast('Deleted ' + (s ? this.fileOf(s) : 'shot'), 'Undo', () => {
+      this.setState(st => { const d = Object.assign({}, st.deleted); delete d[id]; return {deleted:d}; });
+    });
+  }
+
+  componentDidMount() {
+    this._ic();
+    this._kd = (e) => {
+      const tag = ((e.target && e.target.tagName) || '').toLowerCase();
+      const typing = tag === 'input' || tag === 'textarea';
+      if (e.key === '/' && !typing) { e.preventDefault(); const el = this.searchRef && this.searchRef.current; if (el) el.focus(); }
+      else if (e.key === 'Escape') { if (typing && e.target.blur) e.target.blur(); else if (this.state.sel !== null) this.setState({sel:null}); else if (this.anyActiveNow()) this.clearAllNow(); }
+      else if (!typing && e.key === 'Enter' && this.state.sel !== null) this.copySel();
+      else if (!typing && e.key === 'Delete' && this.state.sel !== null) this.deleteShot(this.state.sel);
+    };
+    window.addEventListener('keydown', this._kd);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._kd); clearTimeout(this._tt); }
+  componentDidUpdate() { this._ic(); }
+  _ic() { if (window.lucide) requestAnimationFrame(() => window.lucide.createIcons()); }
+
+  renderVals() {
+    this.ensureData();
+    const st = this.state, A = '#37b8b0', MON = this.MON;
+    const P = this.purgeDaysP();
+    const forcedView = this.props.view || null;
+    const view = forcedView || st.view || this.props.defaultView || 'wall';
+    const showCaps = this.props.showCaptions == null ? true : !!this.props.showCaptions;
+    const pq = this.parseQ();
+    const alive = this.SHOTS.filter(s => !st.deleted[s.id]);
+
+    const matches = (s) => {
+      if (st.day && s.d !== st.day) return false;
+      if (st.app && s.app !== st.app) return false;
+      if (st.kind && s.kind !== st.kind) return false;
+      if (st.theme && s.theme !== st.theme) return false;
+      if (st.color && s.cols.indexOf(st.color) < 0) return false;
+      if (st.fErr && !s.err) return false;
+      if (st.fPin && !this.isKept(s)) return false;
+      if (st.fExp && !(this.purgeIn(s) <= 7 && !this.isKept(s))) return false;
+      if (pq.app && this.APPS[s.app].label.toLowerCase().indexOf(pq.app) < 0 && s.app.indexOf(pq.app) < 0) return false;
+      if (pq.err && !s.err) return false;
+      if (pq.pin && !this.isKept(s)) return false;
+      const h = this.hay(s);
+      return pq.texts.every(t => h.indexOf(t) >= 0);
+    };
+    let vis = alive.filter(matches);
+    vis.sort((a,b) => { const ka = a.d + a.t, kb = b.d + b.t; return st.sort === 'new' ? (ka < kb ? 1 : -1) : (ka < kb ? -1 : 1); });
+
+    const term = (pq.texts.find(t => t.length >= 2) || '');
+    const snipOf = (s) => {
+      if (!term) return null;
+      for (const ln of s.ocr) {
+        const i = ln.toLowerCase().indexOf(term);
+        if (i >= 0) {
+          const pre = i > 26 ? '…' + ln.slice(i-22, i) : ln.slice(0, i);
+          return {pre, hit: ln.substr(i, term.length), post: ln.slice(i + term.length, i + term.length + 70)};
+        }
+      }
+      return null;
+    };
+
+    const mkCard = (s) => {
+      const app = this.APPS[s.app], art = this.ARTS[s.id], sel = st.sel === s.id, kept = this.isKept(s), pi = this.purgeIn(s);
+      const snip = snipOf(s);
+      return {
+        id: s.id, time: s.t, cap: s.cap, err: s.err, kept, dupN: s.dup,
+        dupTitle: s.dup + ' near-duplicates stacked under this shot',
+        expIn: (!kept && pi <= 7) ? pi : 0, expTitle: 'Auto-purges in ' + pi + ' days — pin to keep',
+        appIcon: app.icon, appLabel: app.label, appColor: app.c,
+        metaLine: s.t + ' · ' + app.label + ' · ' + this.dims(s),
+        style: 'background:#161b22;border:1px solid ' + (sel ? '#2f6f6a' : '#262c36') + ';border-radius:9px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column' + (sel ? ';box-shadow:0 0 0 1px rgba(55,184,176,.35)' : ''),
+        thumbStyle: 'position:relative;width:100%;aspect-ratio:' + s.ar + ';background:' + art.bg + ';overflow:hidden',
+        art: art.blocks,
+        snipPre: snip ? snip.pre : '', snipHit: snip ? snip.hit : '', snipPost: snip ? snip.post : '',
+        onSelect: () => this.setState({sel: s.id}),
+        onCopy: () => this.showToast('Image copied — paste it anywhere')
+      };
+    };
+    const cards = vis.map(mkCard);
+    const cardById = {}; cards.forEach(c => cardById[c.id] = c);
+
+    const thMin = {s:150, m:200, l:272}[st.size];
+    const groups = [];
+    const orderKeys = st.sort === 'new' ? this.DAYKEYS : this.DAYKEYS.slice().reverse();
+    orderKeys.forEach(k => {
+      const dayShots = vis.filter(s => s.d === k);
+      if (!dayShots.length) return;
+      const D = this.DAYS[k];
+      const pi = P - this.AGE[k];
+      const anyExp = pi <= 7 && dayShots.some(s => !this.isKept(s));
+      groups.push({
+        key: k,
+        label: D.lab ? D.lab + ' · ' + D.sub : D.sub,
+        count: dayShots.length + (dayShots.length === 1 ? ' shot' : ' shots'),
+        exp: anyExp ? 'purges in ' + pi + 'd' : null,
+        cards: dayShots.map(s => cardById[s.id])
+      });
+    });
+
+    const rows = vis.map(s => {
+      const c = cardById[s.id];
+      const w = Math.min(170, Math.round(72 * s.ar));
+      let lns = [];
+      if (term) {
+        s.ocr.forEach(ln => {
+          if (lns.length >= 2) return;
+          const i = ln.toLowerCase().indexOf(term);
+          if (i >= 0) lns.push({pre: ln.slice(0, i), hit: ln.substr(i, term.length), post: ln.slice(i + term.length)});
+        });
+      }
+      if (!lns.length) lns = s.ocr.slice(0, 2).map(ln => ({pre: ln, hit: '', post: ''}));
+      return {
+        id: s.id, cap: s.cap, err: s.err, when: this.DAYS[s.d].sh + ' · ' + s.t, file: this.fileOf(s),
+        appIcon: c.appIcon, appColor: c.appColor, art: c.art, lines: lns,
+        rowStyle: 'display:flex;gap:12px;padding:10px 12px;background:#161b22;border:1px solid ' + (st.sel === s.id ? '#2f6f6a' : '#262c36') + ';border-radius:9px;cursor:pointer;align-items:flex-start' + (st.sel === s.id ? ';box-shadow:0 0 0 1px rgba(55,184,176,.35)' : ''),
+        thumbStyle: 'position:relative;flex:none;width:' + w + 'px;height:72px;background:' + this.ARTS[s.id].bg + ';border-radius:6px;overflow:hidden;border:1px solid #21262d',
+        onSelect: () => this.setState({sel: s.id}),
+        onCopy: () => this.showToast('Image copied — paste it anywhere')
+      };
+    });
+
+    const chipBase = (act) => 'flex:none;height:24px;padding:0 9px;border-radius:99px;display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;' + (act ? 'background:rgba(55,184,176,.10);border:1px solid rgba(55,184,176,.4);color:#8fd0ca' : 'background:#12161d;border:1px solid #262c36;color:#8b949e');
+    const cnt = (act) => 'font-size:8px;font-family:' + MON + ';color:' + (act ? '#6db8b2' : '#576069');
+    const chips = [{head:'APPS'}];
+    Object.keys(this.APPS).forEach(k => {
+      const n = alive.filter(s => s.app === k).length;
+      if (!n) return;
+      const act = st.app === k;
+      chips.push({chip:true, icon:this.APPS[k].icon, iconColor:this.APPS[k].c, label:this.APPS[k].label, count:String(n), countStyle:cnt(act), style:chipBase(act), title:'Only ' + this.APPS[k].label + ' shots', onClick:() => this.setState({app: act ? null : k})});
+    });
+    chips.push({sep:true}, {head:'KIND'});
+    Object.keys(this.KINDS).forEach(k => {
+      const act = st.kind === k;
+      chips.push({chip:true, icon:this.KINDS[k].icon, iconColor:act ? '#8fd0ca' : '#576069', label:this.KINDS[k].label, style:chipBase(act), title:'Only ' + this.KINDS[k].label.toLowerCase() + ' captures', onClick:() => this.setState({kind: act ? null : k})});
+    });
+    chips.push({sep:true}, {head:'LOOKS'});
+    [['dark','moon','Dark UI'],['light','sun','Light UI']].forEach(([k, ic, lb]) => {
+      const act = st.theme === k;
+      chips.push({chip:true, icon:ic, iconColor:act ? '#8fd0ca' : '#576069', label:lb, style:chipBase(act), title:'I remember it being ' + k, onClick:() => this.setState({theme: act ? null : k})});
+    });
+    Object.keys(this.COLORS).forEach(k => {
+      const act = st.color === k;
+      chips.push({chip:true, swatch:'width:10px;height:10px;border-radius:99px;background:' + this.COLORS[k], style:'flex:none;width:24px;height:24px;border-radius:99px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:#12161d;border:1px solid ' + (act ? '#3f8f89' : '#262c36'), title:'Mostly ' + k + ' on screen', onClick:() => this.setState({color: act ? null : k})});
+    });
+    chips.push({sep:true}, {head:'FLAGS'});
+    chips.push({chip:true, icon:'alert-triangle', iconColor:st.fErr ? '#c08a84' : '#576069', label:'Has error', style:chipBase(st.fErr), title:'Shots with an error on screen', onClick:() => this.setState({fErr: !st.fErr})});
+    chips.push({chip:true, icon:'pin', iconColor:st.fPin ? '#7fb08a' : '#576069', label:'Pinned', style:chipBase(st.fPin), title:'Kept forever', onClick:() => this.setState({fPin: !st.fPin})});
+    chips.push({chip:true, icon:'timer', iconColor:st.fExp ? '#c9ab72' : '#576069', label:'Expiring ≤7d', style:chipBase(st.fExp), title:'About to auto-purge', onClick:() => this.setState({fExp: !st.fExp})});
+
+    const railDays = []; let lastM = null;
+    const railCounts = {}; let railMax = 1;
+    alive.forEach(s => { railCounts[s.d] = (railCounts[s.d] || 0) + 1; });
+    this.DAYKEYS.forEach(k => { railMax = Math.max(railMax, railCounts[k] || 0); });
+    this.DAYKEYS.forEach(k => {
+      const D = this.DAYS[k];
+      if (D.m !== lastM) { railDays.push({month: D.m}); lastM = D.m; }
+      const n = railCounts[k] || 0, act = st.day === k;
+      railDays.push({
+        day: D.n, title: D.sub + ' · ' + n + (n === 1 ? ' shot' : ' shots'),
+        cnt: n, cntStyle: 'width:13px;flex:none;text-align:right;font-size:8.5px;font-family:' + MON + ';color:' + (act ? '#6db8b2' : '#3f4756'),
+        rowStyle: 'display:flex;align-items:center;gap:6px;height:23px;padding:0 5px;border-radius:6px;cursor:pointer' + (act ? ';background:rgba(55,184,176,.09)' : ''),
+        numStyle: 'width:17px;flex:none;text-align:right;font-size:10px;font-family:' + MON + ';font-weight:700;color:' + (act ? '#6db8b2' : '#5d6b7d'),
+        barStyle: 'height:100%;border-radius:99px;width:' + Math.round(n / railMax * 100) + '%;background:' + (act ? A : '#39424f'),
+        onClick: () => this.setState({day: act ? null : k, sort: st.sort})
+      });
+    });
+
+    const selShot = st.sel !== null ? alive.find(s => s.id === st.sel) : null;
+    let ins = null;
+    if (selShot) {
+      const s = selShot, app = this.APPS[s.app], art = this.ARTS[s.id], kept = this.isKept(s), pi = this.purgeIn(s);
+      const actBase = 'height:30px;border-radius:7px;font-size:10.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;';
+      const pd = new Date(2026, +s.d.slice(0,2) - 1, +s.d.slice(2) + P);
+      const pdStr = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][pd.getMonth()] + ' ' + pd.getDate();
+      const exp = !kept && pi <= 7;
+      ins = {
+        cap: s.cap, when: this.DAYS[s.d].sub + ', 2026 · ' + s.t + ' · ' + this.fileOf(s),
+        appIcon: app.icon, appColor: app.c,
+        thumbStyle: 'position:relative;width:100%;aspect-ratio:' + s.ar + ';background:' + art.bg + ';border-radius:8px;overflow:hidden;border:1px solid #262c36',
+        art: art.blocks,
+        actions: [
+          {icon:'copy', label:'Copy image', style: actBase + 'border:1px solid rgba(55,184,176,.45);background:rgba(55,184,176,.14);color:#8fd0ca', onClick:() => this.showToast('Image copied — paste it anywhere')},
+          {icon:'file-text', label:'Copy text', style: actBase + 'border:1px solid #30363d;background:#161b22;color:#c9d1d9', onClick:() => this.showToast('Extracted text copied — ' + s.ocr.join(' ').split(' ').length + ' words')},
+          {icon:'folder-open', label:'Show in folder', style: actBase + 'border:1px solid #30363d;background:#161b22;color:#c9d1d9', onClick:() => this.showToast('Opening C:\\Shots with the file selected')},
+          {icon:'trash-2', label:'Delete', style: actBase + 'border:1px solid rgba(192,138,132,.35);background:rgba(192,138,132,.08);color:#c08a84', onClick:() => this.deleteShot(s.id)}
+        ],
+        caption: s.cap + '.',
+        onRewrite: () => this.showToast('Caption queued for a Haiku rewrite in the next batch'),
+        onCopyOcr: () => this.showToast('Extracted text copied'),
+        ocr: s.ocr.map(ln => {
+          const hl = term && ln.toLowerCase().indexOf(term) >= 0;
+          return {txt: ln, style: 'font-family:' + MON + ';font-size:10px;line-height:1.55;white-space:pre-wrap;word-break:break-word;' + (hl ? 'background:rgba(201,171,114,.14);color:#d9bc82;border-radius:3px;padding:0 3px;margin:0 -3px' : 'color:#8b949e')};
+        }),
+        details: [
+          {k:'CAPTURED', v: this.DAYS[s.d].sub + ', 2026 · ' + s.t, style:'flex:1;font-size:10.5px;color:#c3ccd6;line-height:1.5'},
+          {k:'APP', v: app.label, style:'flex:1;font-size:10.5px;color:#c3ccd6;line-height:1.5'},
+          {k:'WINDOW', v: s.win, style:'flex:1;font-size:10px;color:#adb8c4;font-family:' + MON + ';word-break:break-all;line-height:1.5'},
+          {k:'KIND', v: this.KINDS[s.kind].label + ' · ' + this.dims(s) + ' · Monitor ' + (1 + s.id % 2), style:'flex:1;font-size:10.5px;color:#c3ccd6;line-height:1.5'},
+          {k:'FILE', v: 'C:\\Shots\\' + this.fileOf(s), style:'flex:1;font-size:10px;color:#adb8c4;font-family:' + MON + ';word-break:break-all;line-height:1.5'}
+        ],
+        tags: s.tags.map(t => ({label: t, onClick: () => this.setState({q: t, sel: s.id})})),
+        simShow: s.dup > 0,
+        sim: Array.from({length: s.dup}, (_, i) => ({
+          label: ['+41s', '+2m 10s', '+6m 32s'][i] || ('+' + (i + 4) + 'm'),
+          thumbStyle: 'position:relative;width:96px;aspect-ratio:' + s.ar + ';background:' + art.bg + ';border:1px solid #262c36;border-radius:6px;overflow:hidden',
+          art: art.blocks
+        })),
+        retStyle: 'display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:9px;' + (kept ? 'background:rgba(127,176,138,.06);border:1px solid rgba(127,176,138,.28)' : exp ? 'background:rgba(179,152,95,.07);border:1px solid rgba(179,152,95,.32)' : 'background:#12161d;border:1px solid #1f2530'),
+        retIcon: kept ? 'pin' : 'timer',
+        retIconColor: kept ? '#7fb08a' : exp ? '#c9ab72' : '#576069',
+        retText: kept ? 'Pinned — never auto-purges' : 'Purges ' + pdStr + ' — in ' + pi + ' days',
+        retSub: kept ? 'Auto-purge skips this shot for good.' : 'Policy: anything older than ' + P + ' days goes, pins stay.',
+        onKeep: () => this.setState(prev => { const k2 = Object.assign({}, prev.kept); k2[s.id] = !kept; return {kept: k2}; }),
+        togStyle: 'width:30px;height:17px;border-radius:99px;position:relative;cursor:pointer;flex:none;background:' + (kept ? 'rgba(127,176,138,.45)' : '#262c36'),
+        knobStyle: 'position:absolute;top:2px;left:' + (kept ? 15 : 2) + 'px;width:13px;height:13px;border-radius:99px;background:' + (kept ? '#b6d9bc' : '#576069') + ';transition:left .15s'
+      };
+    }
+
+    const dupFolded = vis.reduce((n, s) => n + s.dup, 0);
+    const totalIndexed = alive.length + alive.reduce((n, s) => n + s.dup, 0);
+    const expN = alive.filter(s => this.purgeIn(s) <= 7 && !this.isKept(s)).length;
+    const anyActive = this.anyActiveNow();
+    const vtStyle = (act) => 'height:28px;padding:0 12px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;' + (act ? 'background:rgba(55,184,176,.10);border:1px solid rgba(55,184,176,.4);color:#8fd0ca' : 'background:none;border:1px solid transparent;color:#8b949e');
+
+    return {
+      searchRef: this.searchRef,
+      viewTabsShow: !forcedView,
+      viewTabs: [
+        {label:'Wall', icon:'layout-grid', style:vtStyle(view === 'wall'), onClick:() => this.setState({view:'wall'})},
+        {label:'Text Index', icon:'text', style:vtStyle(view === 'index'), onClick:() => this.setState({view:'index'})}
+      ],
+      hdIndexed: totalIndexed, hdPurgeDays: P, hdExpN: expN,
+      onIndexer: () => this.showToast('Index is current — OCR and caption queues are empty'),
+      onFolder: () => this.showToast('Opening C:\\Shots in Explorer'),
+      onPurgePill: () => this.setState({fExp: !st.fExp}),
+      purgeStyle: 'height:26px;padding:0 10px;border-radius:99px;font-size:10px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;font-family:' + MON + ';' + (st.fExp ? 'background:rgba(179,152,95,.1);border:1px solid rgba(179,152,95,.4);color:#c9ab72' : 'background:#12161d;border:1px solid #262c36;color:#8b949e'),
+      q: st.q,
+      onQ: (e) => this.setState({q: e.target.value}),
+      onQKey: (e) => { if (e.key === 'Escape') this.setState({q: ''}); },
+      clearQ: () => this.setState({q: ''}),
+      countText: vis.length + ' of ' + alive.length + (dupFolded ? ' · ' + dupFolded + ' dups folded' : ''),
+      recall: ['0x80070005', 'seat cap backfill', '#2031', 'truncated'].map(t => ({label: t, onClick: () => this.setState({q: t})})),
+      onSort: () => this.setState({sort: st.sort === 'new' ? 'old' : 'new'}),
+      sortLabel: st.sort === 'new' ? 'Newest first' : 'Oldest first',
+      sizeBtns: ['s','m','l'].map(z => ({label: z.toUpperCase(), style:'width:24px;height:20px;border-radius:5px;border:none;font-size:9px;font-weight:800;cursor:pointer;' + (st.size === z ? 'background:#1e242e;color:#dbe2ea' : 'background:none;color:#576069'), onClick:() => this.setState({size: z})})),
+      anyActive, clearAll: () => this.clearAllNow(),
+      chips,
+      empty: vis.length === 0,
+      isWall: view === 'wall' && vis.length > 0,
+      isIndex: view === 'index' && vis.length > 0,
+      gridStyle: 'display:grid;grid-template-columns:repeat(auto-fill,minmax(' + thMin + 'px,1fr));gap:12px',
+      showCaps, groups, rows,
+      insShow: !!ins, ins: ins || {}, insClose: () => this.setState({sel:null}),
+      rail: railDays, railTotal: totalIndexed + ' shots',
+      toastShow: !!st.toast, toastMsg: st.toast ? st.toast.msg : '', toastAct: st.toast ? st.toast.act : null,
+      onToastAct: () => { if (this._toastAct) this._toastAct(); this.setState({toast:null}); }
+    };
+  }
+}
+</script>
+</body>
+</html>

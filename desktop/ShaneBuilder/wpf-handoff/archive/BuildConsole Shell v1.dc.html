@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/colors.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/typography.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/spacing.css">
+  <link rel="stylesheet" href="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/tokens/elevation.css">
+  <script src="_ds/shane-mccaw-msp-design-system-25314893-05d9-45d6-bcae-ad11c1b78a39/_ds_bundle.js"></script>
+  <script src="lucide-local.js"></script>
+  <style>
+    html,body{margin:0;padding:0;background:#0d1117;color-scheme:dark}
+    .om-noscroll{scrollbar-width:none}
+    .om-noscroll::-webkit-scrollbar{display:none}
+    a{color:#7da7cd;text-decoration:none}
+    a:hover{color:#9fc0dd;text-decoration:underline}
+    @keyframes omPulse{0%,100%{opacity:1}50%{opacity:.3}}
+    @keyframes omFlash{0%{box-shadow:0 0 0 1px rgba(165,138,95,.7)}100%{box-shadow:0 0 0 8px rgba(165,138,95,0)}}
+    .om-scroll{scrollbar-width:auto;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:13px;height:13px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:3px solid #0f141b;border-radius:8px;min-height:52px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    ::selection{background:rgba(106,143,181,.35)}
+    input,textarea,select,button{font-family:inherit}
+    input::placeholder,textarea::placeholder{color:#576069}
+  </style>
+</helmet>
+<div class="dark" style="height:100vh;min-width:1240px;display:flex;flex-direction:column;background:#0d1117;color:#c9d1d9;font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:12px;position:relative;overflow:hidden">
+
+  <div data-screen-label="Top Bar" style="height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 8px;background:#0d1117;border-bottom:1px solid #21262d;position:relative;z-index:40">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="width:20px;height:20px;border-radius:5px;background:linear-gradient(135deg,#3d6a99,#4e8a8c);display:flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;color:#e6edf3;letter-spacing:.02em">SM</div>
+      <span style="font-size:12.5px;font-weight:600;color:#e6edf3">BuildConsole</span>
+      <span style="font-size:11px;color:#576069">Shane-McCaw-MSP</span>
+    </div>
+    <button onClick="{{ toggleFocus }}" title="Focus Mode — scope the shell to one milestone" style="{{ focusBtnStyle }}" style-hover="background:#1c2129">
+      <span style="display:inline-flex;width:13px;height:13px;flex:none"><i data-lucide="target" width="13" height="13"></i></span>
+      <span>{{ focusLabel }}</span>
+    </button>
+    <sc-if value="{{ focusMode }}" hint-placeholder-val="{{ false }}">
+      <span style="font-size:10px;font-weight:600;color:#b0956a;background:rgba(176,149,106,.1);border:1px solid rgba(176,149,106,.28);border-radius:99px;padding:2px 8px">v1.1 · 61%</span>
+    </sc-if>
+    <button onClick="{{ openPalette }}" style="position:absolute;left:50%;transform:translateX(-50%);width:380px;max-width:34vw;height:24px;display:flex;align-items:center;gap:7px;padding:0 9px;background:#161b22;border:1px solid #262c36;border-radius:6px;color:#576069;font-size:11px;cursor:pointer" style-hover="border-color:#3d4856;color:#8b949e">
+      <span style="display:inline-flex;width:12px;height:12px;flex:none"><i data-lucide="search" width="12" height="12"></i></span>
+      <span style="flex:1;text-align:left">{{ paletteHint }}</span>
+      <span style="font-size:9.5px;font-family:ui-monospace,Menlo,Consolas,monospace;background:#21262d;border:1px solid #2e3742;border-radius:4px;padding:1px 5px;color:#8b949e">Ctrl K</span>
+    </button>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+      <div title="Claude account routing" style="display:flex;align-items:center;gap:6px;height:22px;padding:0 8px;background:#161b22;border:1px solid #262c36;border-radius:5px;font-size:10.5px;color:#8b949e">
+        <span style="display:inline-flex;width:11px;height:11px;flex:none;color:#7fb08a"><i data-lucide="user" width="11" height="11"></i></span>
+        <span>Primary</span>
+        <span style="width:34px;height:3px;background:#262c36;border-radius:2px;overflow:hidden;display:inline-block"><span style="display:block;width:62%;height:100%;background:#6a8fb5"></span></span>
+        <span style="font-family:ui-monospace,Menlo,monospace;color:#6f7883">62%</span>
+      </div>
+      <div title="Location" style="display:flex;align-items:center;gap:5px;height:22px;padding:0 8px;background:#161b22;border:1px solid #262c36;border-radius:5px;font-size:10.5px;color:#8b949e">
+        <span style="display:inline-flex;width:11px;height:11px;flex:none"><i data-lucide="map-pin" width="11" height="11"></i></span>
+        <span>Vero Beach</span>
+      </div>
+      <div title="Conservation / drain" style="display:flex;align-items:center;gap:5px;height:22px;padding:0 8px;background:#161b22;border:1px solid #262c36;border-radius:5px;font-size:10.5px;color:#8b949e">
+        <span style="display:inline-flex;width:11px;height:11px;flex:none;color:#b09a4a"><i data-lucide="battery-medium" width="11" height="11"></i></span>
+        <span>Conserving</span>
+      </div>
+      <div style="display:flex;align-items:center;margin-left:4px">
+        <span style="width:28px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:#8b949e;border-radius:4px;cursor:default"><i data-lucide="minus" width="13" height="13"></i></span>
+        <span style="width:28px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:#8b949e;border-radius:4px;cursor:default"><i data-lucide="square" width="11" height="11"></i></span>
+        <span style="width:28px;height:24px;display:inline-flex;align-items:center;justify-content:center;color:#8b949e;border-radius:4px;cursor:default" style-hover="background:#8f4a44;color:#e6edf3"><i data-lucide="x" width="14" height="14"></i></span>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;min-height:0">
+
+    <div data-screen-label="Left Rail" style="width:46px;flex:none;display:flex;flex-direction:column;align-items:center;padding:6px 0;background:#0d1117;border-right:1px solid #21262d;position:relative;z-index:30">
+      <sc-for list="{{ railGroups }}" as="g" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:2px;width:100%">
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="2">
+            <div style="position:relative;width:100%;display:flex;justify-content:center" onMouseEnter="{{ it.onEnter }}" onMouseLeave="{{ it.onLeave }}">
+              <button onClick="{{ it.onClick }}" title="{{ it.label }}" style="{{ it.style }}" style-hover="color:#e6edf3;background:#1c2129">
+                <span style="display:inline-flex;width:18px;height:18px"><i data-lucide="{{ it.icon }}" width="18" height="18"></i></span>
+              </button>
+              <sc-if value="{{ it.dot }}" hint-placeholder-val="{{ false }}">
+                <span title="UI Automation: last run passed" style="position:absolute;right:8px;top:5px;width:7px;height:7px;border-radius:99px;background:#5f9e6d;border:1.5px solid #0d1117"></span>
+              </sc-if>
+              <sc-if value="{{ it.showPop }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;left:44px;top:-4px;min-width:176px;background:#161b22;border:1px solid #2e3742;border-radius:7px;padding:5px;box-shadow:0 10px 28px rgba(1,4,9,.6);z-index:60">
+                  <div style="font-size:9px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#576069;padding:4px 8px 5px">{{ it.label }}</div>
+                  <sc-for list="{{ it.popout }}" as="p" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:8px;padding:5.5px 8px;border-radius:5px;color:#c9d1d9;font-size:11.5px;cursor:pointer" style-hover="background:#1c2129;color:#e6edf3">
+                      <span style="flex:1">{{ p }}</span>
+                      <span style="display:inline-flex;width:11px;height:11px;color:#576069"><i data-lucide="external-link" width="11" height="11"></i></span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+          <div style="width:22px;height:1px;background:#21262d;margin:5px 0"></div>
+        </div>
+      </sc-for>
+      <div style="flex:1"></div>
+      <button onClick="{{ onSettings }}" title="Settings" style="{{ settingsStyle }}" style-hover="color:#e6edf3;background:#1c2129">
+        <span style="display:inline-flex;width:18px;height:18px"><i data-lucide="settings" width="18" height="18"></i></span>
+      </button>
+    </div>
+
+    <sc-if value="{{ leftOpen }}" hint-placeholder-val="{{ true }}">
+      <div data-screen-label="{{ leftPanelLabel }}" style="width:276px;flex:none;display:flex;flex-direction:column;background:#0f141b;border-right:1px solid #21262d;min-height:0">
+        <div style="height:34px;flex:none;display:flex;align-items:center;gap:6px;padding:0 12px;border-bottom:1px solid #1b212a">
+          <span style="font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#8b949e;flex:1">{{ leftPanelLabel }}</span>
+          <sc-if value="{{ isGitboard }}" hint-placeholder-val="{{ false }}">
+            <button onClick="{{ gbWorking }}" title="Jump to the issue being worked now" style="height:20px;padding:0 7px;font-size:9.5px;font-weight:600;letter-spacing:.04em;background:rgba(127,176,138,.1);border:1px solid rgba(127,176,138,.3);border-radius:4px;color:#7fb08a;cursor:pointer" style-hover="background:rgba(127,176,138,.18)">WORKING</button>
+            <button onClick="{{ gbLocate }}" title="Locate the active document's issue" style="height:20px;padding:0 7px;font-size:9.5px;font-weight:600;letter-spacing:.04em;background:#161b22;border:1px solid #2e3742;border-radius:4px;color:#8b949e;cursor:pointer" style-hover="color:#c9d1d9">LOCATE</button>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ isChats }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:10px 12px 8px;border-bottom:1px solid #1b212a">
+            <div style="display:flex;align-items:baseline;gap:6px">
+              <span style="font-size:12px;font-weight:700;color:#e6edf3">v1.1 — Milestone 5</span>
+              <span style="font-size:10px;color:#576069;margin-left:auto;font-family:ui-monospace,Menlo,monospace">96 / 158</span>
+            </div>
+            <div style="margin-top:7px;height:4px;background:#21262d;border-radius:3px;overflow:hidden"><div style="width:61%;height:100%;background:#6a8fb5;border-radius:3px"></div></div>
+            <sc-if value="{{ focusMode }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:7px;font-size:10px;color:#b0956a">Focus on — scoped to this milestone</div>
+            </sc-if>
+          </div>
+          <div style="padding:8px 12px 4px">
+            <input value="{{ chatQ }}" onChange="{{ onChatQ }}" onKeyDown="{{ onChatQKey }}" placeholder="Search by issue # or Claude URL — Enter" style="width:100%;box-sizing:border-box;height:24px;background:#161b22;border:1px solid #262c36;border-radius:5px;color:#c9d1d9;font-size:11px;padding:0 8px;outline:none" style-focus="border-color:#4d7aa8">
+          </div>
+          <div class="om-scroll" style="flex:1;overflow-y:auto;padding:4px 8px 12px;min-height:0">
+            <sc-for list="{{ chatGroups }}" as="grp" hint-placeholder-count="2">
+              <div style="{{ grp.style }}">
+                <div style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#576069;padding:8px 4px 3px">{{ grp.name }}</div>
+                <sc-for list="{{ grp.epics }}" as="ep" hint-placeholder-count="3">
+                  <div style="margin-bottom:2px">
+                    <div style="display:flex;align-items:center;gap:6px;padding:4px 4px;border-radius:5px" style-hover="background:#151b23">
+                      <span style="{{ ep.dotStyle }}"></span>
+                      <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8b949e">#{{ ep.num }}</span>
+                      <span style="font-size:11.5px;font-weight:600;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ep.name }}</span>
+                    </div>
+                    <sc-for list="{{ ep.chats }}" as="ch" hint-placeholder-count="2">
+                      <div style="{{ ch.rowStyle }}" style-hover="background:#151b23" onClick="{{ ch.onOpen }}">
+                        <span style="display:inline-flex;width:12px;height:12px;flex:none;color:#576069"><i data-lucide="message-square" width="12" height="12"></i></span>
+                        <sc-if value="{{ ch.renaming }}" hint-placeholder-val="{{ false }}">
+                          <input value="{{ ch.draft }}" onChange="{{ ch.onDraft }}" onKeyDown="{{ ch.onDraftKey }}" ref="{{ ch.inputRef }}" style="flex:1;min-width:0;height:18px;background:#0d1117;border:1px solid #4d7aa8;border-radius:4px;color:#e6edf3;font-size:11px;padding:0 5px;outline:none">
+                        </sc-if>
+                        <sc-if value="{{ ch.notRenaming }}" hint-placeholder-val="{{ true }}">
+                          <span style="flex:1;font-size:11.5px;color:#adb6bf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ ch.name }}</span>
+                          <span style="font-size:9px;font-family:ui-monospace,Menlo,monospace;color:#576069">{{ ch.ctx }}%</span>
+                          <button onClick="{{ ch.onRename }}" title="Rename chat" style="border:none;background:none;padding:2px;color:#576069;cursor:pointer;display:inline-flex" style-hover="color:#c9d1d9"><span style="display:inline-flex;width:11px;height:11px"><i data-lucide="pencil" width="11" height="11"></i></span></button>
+                          <button onClick="{{ ch.onAssign }}" title="Assign to epic" style="border:none;background:none;padding:2px;color:#576069;cursor:pointer;display:inline-flex" style-hover="color:#c9d1d9"><span style="display:inline-flex;width:11px;height:11px"><i data-lucide="corner-up-right" width="11" height="11"></i></span></button>
+                        </sc-if>
+                      </div>
+                      <sc-if value="{{ ch.assigning }}" hint-placeholder-val="{{ false }}">
+                        <div style="margin:2px 4px 6px 22px;background:#161b22;border:1px solid #2e3742;border-radius:6px;padding:4px">
+                          <div style="font-size:9px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#576069;padding:2px 6px 4px">Assign to epic — writes epic_id</div>
+                          <sc-for list="{{ ch.assignTargets }}" as="tg" hint-placeholder-count="3">
+                            <div onClick="{{ tg.onPick }}" style="display:flex;gap:6px;align-items:center;padding:4px 6px;border-radius:4px;font-size:11px;color:#c9d1d9;cursor:pointer" style-hover="background:#1c2129">
+                              <span style="font-family:ui-monospace,Menlo,monospace;font-size:10px;color:#8b949e">#{{ tg.num }}</span>
+                              <span>{{ tg.name }}</span>
+                            </div>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isGitboard }}" hint-placeholder-val="{{ false }}">
+          <div class="om-scroll" style="flex:1;overflow-y:auto;padding:8px;min-height:0">
+            <sc-for list="{{ gbEpics }}" as="ge" hint-placeholder-count="2">
+              <div style="margin-bottom:10px">
+                <div style="display:flex;align-items:center;gap:6px;padding:4px">
+                  <span style="{{ ge.dotStyle }}"></span>
+                  <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8b949e">#{{ ge.num }}</span>
+                  <span style="font-size:11.5px;font-weight:600;color:#c9d1d9">{{ ge.name }}</span>
+                  <span style="margin-left:auto;font-size:9.5px;color:#576069;font-family:ui-monospace,Menlo,monospace">{{ ge.count }}</span>
+                </div>
+                <sc-for list="{{ ge.issues }}" as="gi" hint-placeholder-count="4">
+                  <div style="{{ gi.rowStyle }}" style-hover="background:#151b23">
+                    <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8b949e;flex:none">#{{ gi.num }}</span>
+                    <span style="flex:1;font-size:11px;color:#adb6bf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ gi.title }}</span>
+                    <span style="{{ gi.pillStyle }}">{{ gi.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-for>
+            <div style="font-size:10px;color:#576069;padding:6px 4px;border-top:1px solid #1b212a">Rebuilt on the real epic_id FK (#2019) — WORKING / LOCATE are reliable now.</div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ isStub }}" hint-placeholder-val="{{ false }}">
+          <div class="om-scroll" style="flex:1;overflow-y:auto;padding:12px;min-height:0">
+            <div style="font-size:11px;color:#8b949e;line-height:1.5;margin-bottom:10px">{{ stubNote }}</div>
+            <sc-for list="{{ stubRows }}" as="sr" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:8px;padding:7px 8px;background:#161b22;border:1px solid #21262d;border-radius:6px;margin-bottom:5px">
+                <span style="flex:1;font-size:11px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ sr.a }}</span>
+                <span style="font-size:9.5px;color:#576069;font-family:ui-monospace,Menlo,monospace;flex:none">{{ sr.b }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <div data-screen-label="Document View" style="flex:1;display:flex;flex-direction:column;min-width:0;background:#0d1117;position:relative">
+      <div style="height:32px;flex:none;display:flex;align-items:stretch;background:#0f141b;border-bottom:1px solid #21262d;overflow-x:auto" class="om-noscroll">
+        <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
+          <div onClick="{{ t.onClick }}" style="{{ t.style }}" style-hover="color:#e6edf3">
+            <sc-if value="{{ t.pinned }}" hint-placeholder-val="{{ false }}"><span style="display:inline-flex;width:10px;height:10px;color:#576069;flex:none"><i data-lucide="pin" width="10" height="10"></i></span></sc-if>
+            <span style="white-space:nowrap">{{ t.title }}</span>
+            <button onClick="{{ t.onClose }}" title="Close tab" style="border:none;background:none;padding:1px;color:#576069;cursor:pointer;display:inline-flex;border-radius:3px" style-hover="color:#e6edf3;background:#262c36"><span style="display:inline-flex;width:11px;height:11px"><i data-lucide="x" width="11" height="11"></i></span></button>
+          </div>
+        </sc-for>
+      </div>
+
+      <div class="om-scroll" style="flex:1;overflow-y:auto;min-height:0">
+        <sc-if value="{{ doc.isHome }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:860px;padding:26px 30px">
+            <div style="font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:#576069;margin-bottom:6px">Home</div>
+            <div style="font-size:19px;font-weight:700;letter-spacing:-.02em;color:#e6edf3;margin-bottom:18px">Sunday, August 31</div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px">
+              <div style="background:#11161d;border:1px solid #21262d;border-radius:8px;padding:14px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;color:#8b949e"><span style="display:inline-flex;width:13px;height:13px"><i data-lucide="git-branch" width="13" height="13"></i></span><span style="font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase">Git status</span></div>
+                <div style="font-size:12px;color:#c9d1d9;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between"><span>main</span><span style="color:#7fb08a">clean · pushed</span></div>
+                  <div style="display:flex;justify-content:space-between"><span>wt/2020</span><span style="color:#b09a4a">3 files uncommitted</span></div>
+                  <div style="display:flex;justify-content:space-between"><span>agent branches</span><span style="color:#8b949e">0 unmerged</span></div>
+                </div>
+              </div>
+              <div style="background:#11161d;border:1px solid #21262d;border-radius:8px;padding:14px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;color:#8b949e"><span style="display:inline-flex;width:13px;height:13px"><i data-lucide="activity" width="13" height="13"></i></span><span style="font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase">Sessions</span></div>
+                <div style="font-size:12px;color:#c9d1d9;display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between"><span>#2020 · opus-5</span><span style="color:#7fb08a">Implementation 2/3</span></div>
+                  <div style="display:flex;justify-content:space-between"><span>#2013 · opus-5</span><span style="color:#8fa7c4">Verification 3/3</span></div>
+                  <div style="display:flex;justify-content:space-between"><span>3 of 8 slots</span><span style="color:#8b949e">queue active</span></div>
+                </div>
+              </div>
+              <div style="background:#11161d;border:1px solid #21262d;border-radius:8px;padding:14px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;color:#8b949e"><span style="display:inline-flex;width:13px;height:13px"><i data-lucide="alert-triangle" width="13" height="13"></i></span><span style="font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase">Shane To-Do</span></div>
+                <div style="font-size:12px;color:#c9d1d9;display:flex;flex-direction:column;gap:6px">
+                  <div>#1630 — 2 manual SQL migrations pending</div>
+                  <div>#1281 — grant admin consent (prod app reg)</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ doc.isIssue }}" hint-placeholder-val="{{ true }}">
+          <div style="max-width:860px;padding:26px 30px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#8b949e">#2013</span>
+              <span style="font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:rgba(176,154,74,.12);border:1px solid rgba(176,154,74,.3);color:#b09a4a">in-flight</span>
+              <span style="font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:#161b22;border:1px solid #262c36;color:#8b949e">Milestone 5</span>
+              <span style="font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:rgba(106,143,181,.1);border:1px solid rgba(106,143,181,.28);color:#6a8fb5">Epic #1202</span>
+            </div>
+            <h1 style="margin:0 0 12px;font-size:21px;font-weight:700;letter-spacing:-.02em;color:#e6edf3">Chat: add real epic_id FK — backfill + write path</h1>
+            <p style="margin:0 0 16px;font-size:12.5px;line-height:1.6;color:#adb6bf;max-width:640px;text-wrap:pretty">Chats currently resolve their epic through ChatMappings string matching, which silently breaks when a chat is opened from claude.ai directly. This adds a real <span style="font-family:ui-monospace,Menlo,monospace;background:#161b22;border:1px solid #262c36;border-radius:4px;padding:0 4px;font-size:11px">epic_id</span> foreign key on Chat, a backfill from the existing mappings, and moves every write path onto it.</p>
+            <div style="font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#576069;margin-bottom:6px">Blocks</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:18px">
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;padding:2px 8px;border-radius:5px;background:#161b22;border:1px solid #262c36;color:#8b949e">#1787</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;padding:2px 8px;border-radius:5px;background:#161b22;border:1px solid #262c36;color:#8b949e">#1788</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;padding:2px 8px;border-radius:5px;background:#161b22;border:1px solid #262c36;color:#8b949e">#2016</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;padding:2px 8px;border-radius:5px;background:#161b22;border:1px solid #262c36;color:#8b949e">#2017</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;padding:2px 8px;border-radius:5px;background:#161b22;border:1px solid #262c36;color:#8b949e">#2018</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;padding:2px 8px;border-radius:5px;background:#161b22;border:1px solid #262c36;color:#8b949e">#2019</span>
+            </div>
+            <div style="font-size:10px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#576069;margin-bottom:6px">Checklist</div>
+            <div style="display:flex;flex-direction:column;gap:6px;max-width:520px">
+              <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:#c9d1d9"><span style="display:inline-flex;width:13px;height:13px;color:#5f9e6d"><i data-lucide="check-circle-2" width="13" height="13"></i></span><span>Schema + manual migration under lib/db/migrations/manual/</span></div>
+              <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:#c9d1d9"><span style="display:inline-flex;width:13px;height:13px;color:#5f9e6d"><i data-lucide="check-circle-2" width="13" height="13"></i></span><span>Backfill script from ChatMappings — 412 rows resolved</span></div>
+              <div style="display:flex;gap:8px;align-items:center;font-size:12px;color:#8b949e"><span style="display:inline-flex;width:13px;height:13px;color:#576069"><i data-lucide="circle" width="13" height="13"></i></span><span>Write path: open-chat action + WebView2 nav listener (#2016)</span></div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ doc.isChat }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;height:100%">
+            <div style="flex:none;display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid #1b212a;background:#0f141b">
+              <span style="display:inline-flex;width:12px;height:12px;color:#576069"><i data-lucide="lock" width="12" height="12"></i></span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#8b949e">{{ doc.chatUrl }}</span>
+              <span style="font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:rgba(95,158,109,.12);border:1px solid rgba(95,158,109,.3);color:#5f9e6d">epic_id: {{ doc.linkedEpic }} linked</span>
+              <span style="margin-left:auto;font-size:10px;color:#576069">Context</span>
+              <span style="width:56px;height:4px;background:#21262d;border-radius:3px;overflow:hidden;display:inline-block"><span style="display:block;width:42%;height:100%;background:#8fa7c4"></span></span>
+              <span style="font-size:10px;font-family:ui-monospace,Menlo,monospace;color:#8b949e">42%</span>
+            </div>
+            <div style="flex:1;padding:22px 30px;display:flex;flex-direction:column;gap:12px;max-width:760px">
+              <div style="align-self:flex-end;width:52%;background:#1a2029;border:1px solid #262c36;border-radius:10px;padding:11px 13px;font-size:12px;color:#adb6bf;line-height:1.55">Rebuild the Git Board panel against the new epic_id FK — six UI-only rounds failed because the join was never real.</div>
+              <div style="align-self:flex-start;width:72%;background:#11161d;border:1px solid #21262d;border-radius:10px;padding:11px 13px;font-size:12px;color:#8b949e;line-height:1.55">
+                <div style="height:9px;background:#1b212a;border-radius:4px;margin-bottom:7px;width:88%"></div>
+                <div style="height:9px;background:#1b212a;border-radius:4px;margin-bottom:7px;width:96%"></div>
+                <div style="height:9px;background:#1b212a;border-radius:4px;width:61%"></div>
+              </div>
+              <div style="font-size:10.5px;color:#576069">WebView2 · claude.ai — manual navigation writes back via the NavigationCompleted listener (#2016)</div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ doc.isEpic }}" hint-placeholder-val="{{ false }}">
+          <div style="max-width:860px;padding:26px 30px">
+            <div style="width:44px;height:5px;border-radius:3px;margin-bottom:14px;background:{{ doc.epicAccent }}"></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:#8b949e">#{{ doc.epicNum }}</span>
+              <span style="font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:#161b22;border:1px solid #262c36;color:#8b949e">Epic · {{ doc.epicMilestone }}</span>
+            </div>
+            <h1 style="margin:0 0 6px;font-size:21px;font-weight:700;letter-spacing:-.02em;color:#e6edf3">{{ doc.epicName }}</h1>
+            <div style="font-size:12px;color:#8b949e;margin-bottom:18px">{{ doc.epicChildren }}</div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="sm" onClick="{{ doc.onNewChat }}" hint-size="auto,32px">New Chat — pre-linked to this epic</x-import>
+              <span style="font-size:10.5px;color:#576069">creates the chat with epic_id = {{ doc.epicNum }} from the start</span>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+      <sc-if value="{{ stickyOpen }}" hint-placeholder-val="{{ false }}">
+        <div data-screen-label="Sticky Note" style="position:absolute;right:18px;bottom:16px;width:210px;background:#332e1f;border:1px solid #57503a;border-radius:8px;padding:10px 12px;box-shadow:0 12px 30px rgba(1,4,9,.55);z-index:20">
+          <div style="display:flex;align-items:center;margin-bottom:6px">
+            <span style="font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#a89968">Sticky</span>
+            <button onClick="{{ toggleSticky }}" style="margin-left:auto;border:none;background:none;color:#a89968;cursor:pointer;display:inline-flex;padding:2px" style-hover="color:#d5c9a1"><span style="display:inline-flex;width:11px;height:11px"><i data-lucide="x" width="11" height="11"></i></span></button>
+          </div>
+          <div style="font-size:11.5px;line-height:1.5;color:#d5c9a1">Ask about Build Watch overhaul scope before filing — and #1630 has two migrations waiting on Replit.</div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div data-screen-label="Build Queue" style="{{ queuePanelStyle }}">
+      <div style="flex:none;padding:9px 10px 0;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;align-items:center">
+          <span style="font-size:10px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:#8b949e">Build Queue</span>
+          <button onClick="{{ togglePause }}" title="Queue active — click to pause dispatch" style="{{ pauseStyle }}">
+            <span style="{{ pauseDotStyle }}"></span>
+            <span>{{ pauseLabel }}</span>
+          </button>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button onClick="{{ openNew }}" style="flex:1;height:26px;display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(106,143,181,.13);border:1px solid rgba(106,143,181,.35);border-radius:6px;color:#9db8d2;font-size:11px;font-weight:600;cursor:pointer" style-hover="background:rgba(106,143,181,.2)">
+            <span style="display:inline-flex;width:12px;height:12px"><i data-lucide="plus" width="12" height="12"></i></span><span>New Build</span>
+          </button>
+          <button onClick="{{ openRecover }}" style="flex:1;height:26px;display:flex;align-items:center;justify-content:center;gap:6px;background:#161b22;border:1px solid #2e3742;border-radius:6px;color:#adb6bf;font-size:11px;font-weight:600;cursor:pointer" style-hover="border-color:#3d4856;color:#e6edf3">
+            <span style="display:inline-flex;width:12px;height:12px"><i data-lucide="rotate-ccw" width="12" height="12"></i></span><span>Recover</span>
+          </button>
+        </div>
+        <div style="position:relative">
+          <span style="position:absolute;left:8px;top:5px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#576069">#</span>
+          <input value="{{ dispatchDraft }}" onChange="{{ onDispatch }}" onKeyDown="{{ onDispatchKey }}" placeholder="Dispatch issue — Enter" title="Type an issue number, Enter dispatches it. No manual refresh." style="width:100%;box-sizing:border-box;height:25px;background:#161b22;border:1px solid #262c36;border-radius:6px;color:#c9d1d9;font-size:11px;padding:0 8px 0 18px;outline:none;font-family:ui-monospace,Menlo,monospace" style-focus="border-color:#4d7aa8">
+          <sc-if value="{{ dispatchMsg }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:4px;font-size:10px;color:#7fb08a">{{ dispatchMsg }}</div>
+          </sc-if>
+        </div>
+        <sc-if value="{{ showVelocity }}" hint-placeholder-val="{{ true }}">
+          <div title="Weekly issue velocity" style="background:#11161d;border:1px solid #21262d;border-radius:7px;padding:8px 9px">
+            <div style="display:flex;align-items:center;gap:5px">
+              <span style="display:inline-flex;width:12px;height:12px;color:#7fb08a"><i data-lucide="trending-up" width="12" height="12"></i></span>
+              <span style="font-size:10.5px;font-weight:600;color:#c9d1d9">Trending up</span>
+              <span style="margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:10px;color:#7fb08a">1.34x rate</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:6px;font-size:10px;color:#8b949e">
+              <span>Opened <span style="color:#c9d1d9;font-weight:600">41</span></span>
+              <span>Closed <span style="color:#c9d1d9;font-weight:600">55</span></span>
+              <span style="font-size:9px;font-weight:600;padding:1px 6px;border-radius:99px;background:rgba(95,158,109,.12);border:1px solid rgba(95,158,109,.3);color:#5f9e6d">14 cleared</span>
+            </div>
+            <div style="margin-top:6px;height:4px;background:#2a3038;border-radius:3px;overflow:hidden"><div style="width:57%;height:100%;background:#5f9e6d;border-radius:3px"></div></div>
+            <div style="display:flex;gap:6px;margin-top:7px;align-items:center">
+              <sc-for list="{{ velocityDots }}" as="d" hint-placeholder-count="7">
+                <span title="{{ d.day }}" style="display:flex;flex-direction:column;align-items:center;gap:3px">
+                  <span style="{{ d.style }}"></span>
+                  <span style="font-size:7.5px;color:#576069">{{ d.day }}</span>
+                </span>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+        <div style="display:flex;flex-wrap:wrap;gap:3px">
+          <sc-for list="{{ filters }}" as="f" hint-placeholder-count="6">
+            <button onClick="{{ f.onClick }}" style="{{ f.style }}">{{ f.name }}</button>
+          </sc-for>
+        </div>
+        <input value="{{ searchDraft }}" onChange="{{ onSearch }}" onKeyDown="{{ onSearchKey }}" placeholder="Search builds — Enter to apply" title="Submits on Enter only — never filters per keystroke" style="width:100%;box-sizing:border-box;height:25px;background:#161b22;border:1px solid #262c36;border-radius:6px;color:#c9d1d9;font-size:11px;padding:0 8px;outline:none;margin-bottom:2px" style-focus="border-color:#4d7aa8">
+      </div>
+
+      <div class="om-scroll" style="flex:1;overflow-y:auto;min-height:0;padding:6px 10px 14px;display:flex;flex-direction:column;gap:8px">
+        <sc-for list="{{ sets }}" as="s" hint-placeholder-count="4">
+          <div style="{{ s.boxStyle }}">
+            <div onClick="{{ s.onToggle }}" style="display:flex;align-items:center;gap:7px;padding:8px 9px;cursor:pointer;user-select:none" style-hover="background:rgba(255,255,255,.02)">
+              <span style="{{ s.chevStyle }}"><i data-lucide="chevron-right" width="13" height="13"></i></span>
+              <span style="display:inline-flex;width:13px;height:13px;flex:none;color:{{ s.accent }}"><i data-lucide="layers" width="13" height="13"></i></span>
+              <span style="font-size:11.5px;font-weight:600;color:#e6edf3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.name }}</span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:9.5px;color:#8b949e;background:#1c2129;border:1px solid #2a3038;border-radius:99px;padding:1px 7px;flex:none">{{ s.count }}</span>
+              <sc-if value="{{ s.priority }}" hint-placeholder-val="{{ false }}">
+                <span title="Priority set" style="display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:600;color:#b09a4a;background:rgba(176,154,74,.1);border:1px solid rgba(176,154,74,.3);border-radius:99px;padding:1px 6px;flex:none">
+                  <span style="display:inline-flex;width:9px;height:9px"><i data-lucide="star" width="9" height="9"></i></span><span>priority</span>
+                </span>
+              </sc-if>
+              <button onClick="{{ s.onChatLink }}" title="Open this epic's chat" style="margin-left:auto;border:none;background:none;padding:3px;color:#576069;cursor:pointer;display:inline-flex;border-radius:4px;flex:none" style-hover="color:#c9d1d9;background:#21262d">
+                <span style="display:inline-flex;width:12px;height:12px"><i data-lucide="message-square" width="12" height="12"></i></span>
+              </button>
+            </div>
+            <sc-if value="{{ s.expanded }}" hint-placeholder-val="{{ true }}">
+              <div style="position:relative;padding:2px 9px 10px 0">
+                <div style="position:absolute;left:18px;top:0;bottom:6px;width:1px;background:#2a3038"></div>
+                <div style="display:flex;flex-direction:column;gap:7px;padding-left:38px">
+                  <sc-for list="{{ s.visible }}" as="b" hint-placeholder-count="4">
+                    <div style="position:relative">
+                      <sc-if value="{{ b.isBlocked }}" hint-placeholder-val="{{ false }}">
+                        <div style="position:absolute;left:-21px;top:-16px;height:32px;width:0;border-left:2px dashed rgba(192,138,132,.55)"></div>
+                      </sc-if>
+                      <span style="{{ b.nodeStyle }}"></span>
+                      <div onClick="{{ b.onClick }}" title="Click to trace this build's full dependency chain" style="{{ b.cardStyle }}">
+                        <div style="{{ b.bandStyle }}"></div>
+                        <div style="display:flex;align-items:center;gap:6px">
+                          <span style="{{ b.badgeStyle }}">{{ b.state }}</span>
+                          <span style="font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8b949e">{{ b.numLabel }}</span>
+                          <span style="margin-left:auto;font-family:ui-monospace,Menlo,monospace;font-size:9px;color:#576069">{{ b.modelEffort }}</span>
+                          <sc-if value="{{ b.isBlocked }}" hint-placeholder-val="{{ false }}">
+                            <button onClick="{{ b.onJump }}" title="{{ b.jumpTitle }}" style="border:none;background:#1c2129;border-radius:4px;padding:2.5px;color:#c08a84;cursor:pointer;display:inline-flex" style-hover="background:#2a3038;color:#d8a49e">
+                              <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="locate" width="11" height="11"></i></span>
+                            </button>
+                          </sc-if>
+                        </div>
+                        <div style="margin-top:4px;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;font-weight:600;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ b.branch }}</div>
+                        <div style="margin-top:3px;font-size:10.5px;line-height:1.45;color:#8b949e;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">{{ b.desc }}</div>
+                        <sc-if value="{{ b.progress }}" hint-placeholder-val="{{ false }}">
+                          <div style="margin-top:6px;height:3px;background:#21262d;border-radius:2px;overflow:hidden"><div style="{{ b.progressStyle }}"></div></div>
+                        </sc-if>
+                        <sc-if value="{{ b.blocksN }}" hint-placeholder-val="{{ false }}">
+                          <div style="margin-top:6px"><span style="font-size:9px;font-weight:600;color:#8b949e;background:#1c2129;border:1px solid #2a3038;border-radius:99px;padding:1.5px 7px">blocks {{ b.blocksN }}</span></div>
+                        </sc-if>
+                        <sc-if value="{{ b.isBlocked }}" hint-placeholder-val="{{ false }}">
+                          <div style="margin-top:6px;display:flex;align-items:center;gap:6px;background:rgba(192,138,132,.07);border:1px solid rgba(192,138,132,.22);border-radius:5px;padding:4px 7px">
+                            <span style="display:inline-flex;width:10px;height:10px;color:#c08a84;flex:none"><i data-lucide="alert-triangle" width="10" height="10"></i></span>
+                            <span style="font-size:10px;color:#c9a49f">Prerequisites: <span style="font-family:ui-monospace,Menlo,monospace;font-weight:600">{{ b.prereq }}</span></span>
+                          </div>
+                        </sc-if>
+                      </div>
+                    </div>
+                  </sc-for>
+                  <sc-if value="{{ s.emptyMsg }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:10.5px;color:#576069;padding:6px 2px">{{ s.emptyMsg }}</div>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+        <div style="flex:none;font-size:9.5px;color:#3d4856;padding:2px 2px 0">Sorted by issue number, descending — dependency chains jump non-sequentially by design. Click a card to trace its chain.</div>
+      </div>
+    </div>
+  </div>
+
+  <div data-screen-label="Status Bar" style="height:23px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#0d1117;border-top:1px solid #21262d;font-size:10px;color:#6f7883">
+    <span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-flex;width:10px;height:10px"><i data-lucide="git-branch" width="10" height="10"></i></span><span>main</span><span style="color:#5f9e6d">clean</span></span>
+    <span>3 worktrees live</span>
+    <span>API :5000 <span style="color:#5f9e6d">up</span></span>
+    <span>PostgreSQL 18 <span style="color:#5f9e6d">localhost:5432</span></span>
+    <span style="margin-left:auto">3/8 sessions</span>
+    <span>CPU 41%</span>
+    <span>RAM 68%</span>
+    <span>Spaces: 2</span>
+    <span>UTF-8</span>
+  </div>
+
+  <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Command Palette" onClick="{{ closePalette }}" style="position:absolute;inset:0;background:rgba(1,4,9,.55);z-index:80;display:flex;justify-content:center;align-items:flex-start;padding-top:11vh">
+      <div onClick="{{ swallow }}" style="width:560px;max-width:88vw;background:#161b22;border:1px solid #30363d;border-radius:9px;box-shadow:0 24px 60px rgba(1,4,9,.7);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid #21262d">
+          <span style="display:inline-flex;width:14px;height:14px;color:#8b949e"><i data-lucide="search" width="14" height="14"></i></span>
+          <input value="{{ paletteQ }}" onChange="{{ onPaletteQ }}" onKeyDown="{{ onPaletteKey }}" ref="{{ paletteRef }}" placeholder="Search epics by number or text" style="flex:1;background:none;border:none;outline:none;color:#e6edf3;font-size:13px">
+          <sc-if value="{{ focusMode }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:9.5px;font-weight:600;padding:2px 8px;border-radius:99px;background:rgba(176,149,106,.1);border:1px solid rgba(176,149,106,.28);color:#b0956a">Scoped: v1.1</span>
+          </sc-if>
+        </div>
+        <div style="max-height:320px;overflow-y:auto" class="om-scroll">
+          <sc-for list="{{ paletteResults }}" as="r" hint-placeholder-count="5">
+            <div onClick="{{ r.onOpen }}" style="{{ r.style }}">
+              <span style="{{ r.dotStyle }}"></span>
+              <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#8b949e;width:44px;flex:none">#{{ r.num }}</span>
+              <span style="flex:1;font-size:12.5px;color:#e6edf3">{{ r.name }}</span>
+              <span style="font-size:10px;color:#576069">{{ r.milestone }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ paletteEmpty }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:16px 14px;font-size:11.5px;color:#576069">No epics match. Try a number — 1485, 1202…</div>
+          </sc-if>
+        </div>
+        <div style="display:flex;gap:14px;padding:7px 12px;border-top:1px solid #21262d;font-size:10px;color:#576069">
+          <span>Enter — open epic document</span>
+          <span>then New Chat pre-links epic_id</span>
+          <span style="margin-left:auto">Esc — close</span>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ dialogNew }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="New Build Dialog" onClick="{{ closeNew }}" style="position:absolute;inset:0;background:rgba(1,4,9,.55);z-index:80;display:flex;align-items:center;justify-content:center">
+      <div onClick="{{ swallow }}" style="width:520px;max-width:90vw;background:#161b22;border:1px solid #30363d;border-radius:9px;box-shadow:0 24px 60px rgba(1,4,9,.7);padding:16px 18px">
+        <div style="font-size:14px;font-weight:700;color:#e6edf3;letter-spacing:-.01em">New Build</div>
+        <div style="font-size:11px;color:#8b949e;margin:3px 0 12px">Save queues it to Batter Up. First line may carry --flags.</div>
+        <textarea value="{{ nbPrompt }}" onChange="{{ onNbPrompt }}" placeholder="--title 2016 --effort high --buildSet shell-rebuild&#10;Paste the build prompt…" style="width:100%;box-sizing:border-box;height:104px;background:#0d1117;border:1px solid #262c36;border-radius:6px;color:#c9d1d9;font-size:11.5px;font-family:ui-monospace,Menlo,Consolas,monospace;padding:8px 10px;outline:none;resize:vertical;line-height:1.5" style-focus="border-color:#4d7aa8"></textarea>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#576069">Model
+            <select value="{{ nbModel }}" onChange="{{ onNbModel }}" style="height:26px;background:#0d1117;border:1px solid #262c36;border-radius:5px;color:#c9d1d9;font-size:11.5px;padding:0 6px;outline:none">
+              <option value="claude-opus-5">claude-opus-5</option>
+              <option value="claude-sonnet-4-5">claude-sonnet-4-5</option>
+            </select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#576069">Effort
+            <select value="{{ nbEffort }}" onChange="{{ onNbEffort }}" style="height:26px;background:#0d1117;border:1px solid #262c36;border-radius:5px;color:#c9d1d9;font-size:11.5px;padding:0 6px;outline:none">
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#576069">Build Set
+            <select value="{{ nbSet }}" onChange="{{ onNbSet }}" style="height:26px;background:#0d1117;border:1px solid #262c36;border-radius:5px;color:#c9d1d9;font-size:11.5px;padding:0 6px;outline:none">
+              <option value="1202">Build Console — #1202</option>
+              <option value="1485">Portal — #1485</option>
+              <option value="1096">Application Core — #1096</option>
+              <option value="1093">Marketing Website — #1093</option>
+            </select>
+          </label>
+          <label style="display:flex;flex-direction:column;gap:4px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#576069">Blocked by
+            <input value="{{ nbBlockers }}" onChange="{{ onNbBlockers }}" placeholder="2013, 2019" style="height:26px;box-sizing:border-box;background:#0d1117;border:1px solid #262c36;border-radius:5px;color:#c9d1d9;font-size:11.5px;font-family:ui-monospace,Menlo,monospace;padding:0 8px;outline:none" style-focus="border-color:#4d7aa8">
+          </label>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+          <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="ghost" size="sm" onClick="{{ closeNew }}" hint-size="auto,32px">Cancel</x-import>
+          <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" size="sm" onClick="{{ saveNew }}" hint-size="auto,32px">Queue to Batter Up</x-import>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ dialogRecover }}" hint-placeholder-val="{{ false }}">
+    <div data-screen-label="Recover Dialog" onClick="{{ closeRecover }}" style="position:absolute;inset:0;background:rgba(1,4,9,.55);z-index:80;display:flex;align-items:center;justify-content:center">
+      <div onClick="{{ swallow }}" style="width:560px;max-width:90vw;background:#161b22;border:1px solid #30363d;border-radius:9px;box-shadow:0 24px 60px rgba(1,4,9,.7);padding:16px 18px">
+        <div style="font-size:14px;font-weight:700;color:#e6edf3;letter-spacing:-.01em">Recover builds</div>
+        <div style="font-size:11px;color:#8b949e;margin:3px 0 12px">Crashed, failed, or incomplete builds only.</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ recoverRows }}" as="rr" hint-placeholder-count="3">
+            <div style="background:#0f141b;border:1px solid #262c36;border-radius:7px;padding:9px 11px">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span style="{{ rr.badgeStyle }}">{{ rr.state }}</span>
+                <span style="font-family:ui-monospace,Menlo,monospace;font-size:11px;color:#8b949e">#{{ rr.num }}</span>
+                <span style="flex:1;font-size:11.5px;color:#c9d1d9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ rr.t }}</span>
+              </div>
+              <sc-if value="{{ rr.status }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-top:7px;font-size:10.5px;color:#7fb08a">{{ rr.status }}</div>
+              </sc-if>
+              <sc-if value="{{ rr.noStatus }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;gap:6px;margin-top:8px">
+                  <button onClick="{{ rr.onAccept }}" style="height:22px;padding:0 9px;font-size:10px;font-weight:600;background:#161b22;border:1px solid #2e3742;border-radius:5px;color:#adb6bf;cursor:pointer" style-hover="color:#e6edf3;border-color:#3d4856">Accept as-is</button>
+                  <button onClick="{{ rr.onRestart }}" style="height:22px;padding:0 9px;font-size:10px;font-weight:600;background:#161b22;border:1px solid #2e3742;border-radius:5px;color:#adb6bf;cursor:pointer" style-hover="color:#e6edf3;border-color:#3d4856">Restart the agent</button>
+                  <button onClick="{{ rr.onReply }}" style="height:22px;padding:0 9px;font-size:10px;font-weight:600;background:#161b22;border:1px solid #2e3742;border-radius:5px;color:#adb6bf;cursor:pointer" style-hover="color:#e6edf3;border-color:#3d4856">Reply to resume</button>
+                </div>
+                <sc-if value="{{ rr.replying }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;gap:6px;margin-top:7px">
+                    <input value="{{ rr.replyDraft }}" onChange="{{ rr.onReplyDraft }}" onKeyDown="{{ rr.onReplyKey }}" placeholder="Reply to the session — Enter sends" style="flex:1;height:24px;box-sizing:border-box;background:#0d1117;border:1px solid #262c36;border-radius:5px;color:#c9d1d9;font-size:11px;padding:0 8px;outline:none" style-focus="border-color:#4d7aa8">
+                  </div>
+                </sc-if>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;justify-content:flex-end;margin-top:14px">
+          <x-import component-from-global-scope="ShaneMcCawMSPDesignSystem_253148.Button" variant="ghost" size="sm" onClick="{{ closeRecover }}" hint-size="auto,32px">Close</x-import>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;queueWidth&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:348,&quot;min&quot;:300,&quot;max&quot;:420,&quot;step&quot;:4,&quot;unit&quot;:&quot;px&quot;,&quot;section&quot;:&quot;Build Queue&quot;,&quot;tsType&quot;:&quot;number&quot;},&quot;showVelocity&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;section&quot;:&quot;Build Queue&quot;,&quot;tsType&quot;:&quot;boolean&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.ACCENT = {1202:'#6a8fb5',1485:'#6ba3a0',1096:'#9184b8',1093:'#7d9471',1095:'#8f9aa8',1571:'#a08a9c',1281:'#b0956a',803:'#77808c'};
+    this.STATEC = {'RUNNING':'#7fb08a','VERIFYING':'#8fa7c4','BLOCKED':'#c08a84','UP NEXT':'#8b949e','CRASHED':'#b87d76','PARKED':'#a394b0','INCOMPLETE':'#b09a4a'};
+    this.FILTERS = ['Running & Queued','Running','Queued','Blocked','Crashed','Parked','Capped','External','Done','Cancelled','Tests','All'];
+    this.FMAP = {'Running & Queued':['RUNNING','VERIFYING','UP NEXT','BLOCKED'],'Running':['RUNNING','VERIFYING'],'Queued':['UP NEXT'],'Blocked':['BLOCKED'],'Crashed':['CRASHED'],'Parked':['PARKED'],'Capped':['CAPPED'],'External':['EXTERNAL'],'Done':['DONE'],'Cancelled':['CANCELLED'],'Tests':['TESTS'],'All':null};
+    this.EPICS = [
+      {num:1202,name:'Build Console',milestone:'Milestone 5',children:'21 sub-issues · 9 open'},
+      {num:1485,name:'Portal',milestone:'Milestone 5',children:'92 sub-issues · 87 open'},
+      {num:1096,name:'Application Core',milestone:'Milestone 5',children:'34 sub-issues · 12 open'},
+      {num:1095,name:'Admin Panel',milestone:'Milestone 5',children:'18 sub-issues · 5 open'},
+      {num:1571,name:'Portal Admin',milestone:'Milestone 5',children:'26 sub-issues · 19 open'},
+      {num:1093,name:'Marketing Website',milestone:'Milestone 5',children:'11 sub-issues · 3 open'},
+      {num:1281,name:'GATE: v1.1 release',milestone:'Milestone 5',children:'7 gate items · 4 open'},
+      {num:803,name:'Manifest UX',milestone:'Archived',children:'closed pre-v1.1'}
+    ];
+    this.state = {
+      activePanel:'chats', focusMode:false, stickyOpen:false, popout:null,
+      paletteOpen:false, paletteQ:'', paletteSel:0,
+      tabs:[{id:'home',title:'Home',kind:'home',pinned:true},{id:'issue-2013',title:'#2013 epic_id FK',kind:'issue',pinned:true},{id:'chat-plan',title:'Shell plan review',kind:'chat',pinned:false,linkedEpic:1202,url:'claude.ai/chat/8f2c41ae'}],
+      activeTab:'issue-2013',
+      paused:false, filter:'Running & Queued', searchDraft:'', searchQ:'',
+      dispatchDraft:'', dispatchMsg:'', selected:2018,
+      dialogNew:false, dialogRecover:false,
+      nb:{prompt:'',model:'claude-opus-5',effort:'high',set:'1202',blockers:''},
+      recover:[
+        {num:1974,state:'CRASHED',t:'Dangling worktree symlink — module resolution',status:null,replying:false,draft:''},
+        {num:1967,state:'INCOMPLETE',t:'Session ended mid-verification, branch unmerged',status:null,replying:false,draft:''},
+        {num:1955,state:'CRASHED',t:'pnpm resolve failure in wt/1955',status:null,replying:false,draft:''}
+      ],
+      sets:[
+        {num:1202,name:'Build Console',priority:true,expanded:true,extra:0,builds:[
+          {num:2020,state:'RUNNING',branch:'agent/2020-queue-scroll-virtualization',model:'opus-5',effort:'high',desc:'Real scrollbar: fix virtualization + scroll-position tracking, not styling. Round 7 — root cause this time.',blockedBy:[],blocks:0,progress:64},
+          {num:2019,state:'BLOCKED',branch:'agent/2019-git-board-epicid',model:'opus-5',effort:'high',desc:'Rebuild Git Board on the real epic_id FK. Six UI-only rounds failed; the problem was never the UI.',blockedBy:[2013],blocks:2},
+          {num:2018,state:'BLOCKED',branch:'agent/2018-chats-panel',model:'opus-5',effort:'medium',desc:'Chats panel: milestone progress, epic to chat tree, search by issue number or Claude URL.',blockedBy:[2019],blocks:1},
+          {num:2013,state:'VERIFYING',branch:'agent/2013-chat-epicid-fk',model:'opus-5',effort:'high',desc:'Add epic_id FK on Chat + backfill from ChatMappings. The foundational fix — blocks six shell issues.',blockedBy:[],blocks:6}
+        ]},
+        {num:1485,name:'Portal',priority:true,expanded:false,extra:12,builds:[]},
+        {num:1096,name:'Application Core',priority:false,expanded:false,extra:7,builds:[]},
+        {num:1093,name:'Marketing Website',priority:false,expanded:false,extra:3,builds:[]}
+      ],
+      chatQ:'', chatQCommitted:'', renameFor:null, renameDraft:'', assignFor:null, gbFlash:null,
+      chatGroups:[
+        {name:'v1.1 — Milestone 5',key:'m5',epics:[
+          {num:1202,name:'Build Console',chats:[
+            {id:'c1',name:'Shell plan review',ctx:42,url:'claude.ai/chat/8f2c41ae'},
+            {id:'c2',name:'Queue scroll — round 7',ctx:71,url:'claude.ai/chat/b91d02fc'},
+            {id:'c3',name:'epic_id FK design',ctx:88,url:'claude.ai/chat/44e0a913'}]},
+          {num:1485,name:'Portal',chats:[
+            {id:'c4',name:'Contract pack regen',ctx:23,url:'claude.ai/chat/7a3f55d0'},
+            {id:'c5',name:'Microsoft Changes page',ctx:55,url:'claude.ai/chat/c22e816b'}]},
+          {num:1096,name:'Application Core',chats:[{id:'c6',name:'Drift engine backfill',ctx:34,url:'claude.ai/chat/e83a4f77'}]},
+          {num:1093,name:'Marketing Website',chats:[{id:'c7',name:'Pricing page copy',ctx:12,url:'claude.ai/chat/91b6c2d4'}]}
+        ]},
+        {name:'Archived — pre-v1.1',key:'arch',archived:true,epics:[
+          {num:803,name:'Manifest UX',chats:[{id:'c8',name:'Manifest tree colors',ctx:96,url:'claude.ai/chat/0d5e77aa'}]}
+        ]}
+      ]
+    };
+  }
+  componentDidMount() {
+    const run = () => { if (window.lucide) { window.lucide.createIcons(); return true; } return false; };
+    if (!run()) { this._it = setInterval(() => { if (run()) clearInterval(this._it); }, 200); }
+    this._kd = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); this.setState(s => ({paletteOpen:!s.paletteOpen, paletteQ:'', paletteSel:0})); }
+      else if (e.key === 'Escape') { this.setState({paletteOpen:false, dialogNew:false, dialogRecover:false, assignFor:null}); }
+    };
+    window.addEventListener('keydown', this._kd);
+  }
+  componentWillUnmount() { window.removeEventListener('keydown', this._kd); if (this._it) clearInterval(this._it); if (this._dt) clearTimeout(this._dt); }
+  componentDidUpdate() { if (window.lucide) window.lucide.createIcons(); }
+
+  chainOf(num, builds) {
+    const map = {}; builds.forEach(b => map[b.num] = b);
+    const seen = new Set([num]); const stack = [num];
+    while (stack.length) { const n = stack.pop(); const b = map[n]; if (!b) continue; (b.blockedBy || []).forEach(p => { if (!seen.has(p)) { seen.add(p); stack.push(p); } }); }
+    return seen;
+  }
+  openTab(tab) {
+    this.setState(s => {
+      const tabs = s.tabs.some(t => t.id === tab.id) ? s.tabs : s.tabs.concat([tab]);
+      return {tabs, activeTab:tab.id};
+    });
+  }
+  openEpicTab(num) {
+    const e = this.EPICS.find(x => x.num === num);
+    this.openTab({id:'epic-' + num, title:'#' + num + ' ' + e.name, kind:'epic', epicNum:num, pinned:false});
+    this.setState({paletteOpen:false});
+  }
+  addBuild(setNum, build) {
+    this.setState(s => ({sets:s.sets.map(x => x.num === setNum ? Object.assign({}, x, {builds:[build].concat(x.builds), expanded:true}) : x)}));
+  }
+
+  renderVals() {
+    const S = this.state, self = this;
+    const qw = (this.props.queueWidth ?? 348);
+    const showVelocity = this.props.showVelocity ?? true;
+
+    const railDefs = [
+      [{id:'chats',icon:'messages-square',label:'Chats'},{id:'sticky',icon:'sticky-note',label:'Sticky Notes'}],
+      [{id:'batterup',icon:'list-checks',label:'Batter Up'},{id:'buildwatch',icon:'activity',label:'Build Watch'},{id:'gitboard',icon:'columns',label:'Git Board'}],
+      [{id:'web',icon:'globe',label:'Web',popout:['Replit','LinkedIn','Google Analytics','Microsoft Clarity','GitHub','Claude Design','Azure','Microsoft Admin']},
+       {id:'company',icon:'building-2',label:'My Company',popout:['Admin Panel','Portal','Marketing']}],
+      [{id:'sourcecontrol',icon:'git-branch',label:'Source Control'},{id:'files',icon:'files',label:'Files'}],
+      [{id:'vtt',icon:'eye',label:'Visual Test Tracker'},{id:'uiauto',icon:'bot',label:'UI Automation',dot:true}]
+    ];
+    const iconStyle = (active) => 'width:36px;height:32px;display:flex;align-items:center;justify-content:center;border:none;background:' + (active ? '#1c2129' : 'none') + ';border-radius:6px;cursor:pointer;color:' + (active ? '#e6edf3' : '#6f7883') + ';box-shadow:' + (active ? 'inset 2px 0 0 0 #6a8fb5' : 'none');
+    const railGroups = railDefs.map(items => ({items: items.map(it => Object.assign({}, it, {
+      style: iconStyle(S.activePanel === it.id),
+      showPop: S.popout === it.id && !!it.popout,
+      dot: !!it.dot,
+      onEnter: it.popout ? (() => self.setState({popout:it.id})) : (() => {}),
+      onLeave: it.popout ? (() => self.setState(s => s.popout === it.id ? {popout:null} : null)) : (() => {}),
+      onClick: () => {
+        if (it.id === 'sticky') { self.setState(s => ({stickyOpen:!s.stickyOpen})); return; }
+        if (it.popout) { self.setState(s => ({popout: s.popout === it.id ? null : it.id})); return; }
+        self.setState(s => ({activePanel: s.activePanel === it.id ? null : it.id}));
+      }
+    }))}));
+
+    const PANEL_META = {
+      chats:{label:'Chats'}, gitboard:{label:'Git Board'},
+      batterup:{label:'Batter Up',note:'The launch queue — issues promoted by your Yes from AI Batter Up. Picked up on the next queue refresh.',rows:[{a:'#2016 WebView2 nav listener',b:'promoted 2h ago'},{a:'#2031 Build Queue panel',b:'awaiting Yes / No'},{a:'#2017 Bottom panel channels',b:'awaiting Yes / No'}]},
+      buildwatch:{label:'Build Watch',note:'Separate window today — major UI overhaul flagged, scope not yet filed. Slots below are live.',rows:[{a:'Slot 1 · #2020 Implementation 2/3',b:'64%'},{a:'Slot 2 · #2013 Verification 3/3',b:'92%'},{a:'Slot 3 · idle',b:'—'}]},
+      sourcecontrol:{label:'Source Control',note:'The full module was cut — the working summary lives on Home. This view is the lightweight git status.',rows:[{a:'main — clean, pushed',b:'now'},{a:'wt/2020 — 3 files uncommitted',b:'12m'},{a:'agent branches unmerged',b:'0'}]},
+      files:{label:'Files',note:'Manifest areas, collapsed by default.',rows:[{a:'copilot-readiness',b:'6'},{a:'governance',b:'11'},{a:'tenant-monitoring',b:'9'},{a:'signal-engines',b:'14'}]},
+      vtt:{label:'Visual Test Tracker',note:'Refactored view — shape being decided at Design time.',rows:[{a:'portal/login — baseline ok',b:'1d'},{a:'portal/dashboard — 2px diff',b:'1d'},{a:'marketing/home — baseline ok',b:'3d'}]},
+      uiauto:{label:'UI Automation',note:'Headless, out-of-process test worker. Status only — drill in on failure. Agents wait on the real result.',rows:[{a:'Suite: shell smoke — PASS',b:'18m'},{a:'Suite: build queue — PASS',b:'18m'},{a:'Suite: dialogs — PASS',b:'19m'}]},
+      settings:{label:'Settings',note:'Findability pass pending — search-first layout.',rows:[{a:'General — accounts, conservation',b:''},{a:'SSH & Remote (Replit)',b:''},{a:'Worktree isolation',b:'ON'},{a:'Queue — refresh cadence',b:'15s'}]}
+    };
+    const leftOpen = !!S.activePanel;
+    const meta = PANEL_META[S.activePanel] || {label:''};
+    const isChats = S.activePanel === 'chats';
+    const isGitboard = S.activePanel === 'gitboard';
+    const isStub = leftOpen && !isChats && !isGitboard;
+
+    const q = S.chatQCommitted.trim().toLowerCase();
+    const chatGroups = S.chatGroups
+      .filter(g => !(S.focusMode && g.archived))
+      .map(g => ({
+        name:g.name,
+        style:'opacity:' + (g.archived ? '.62' : '1'),
+        epics:g.epics.map(ep => {
+          let chats = ep.chats;
+          if (q) chats = chats.filter(c => String(ep.num).includes(q.replace('#','')) || c.url.toLowerCase().includes(q));
+          return {
+            num:ep.num, name:ep.name,
+            dotStyle:'width:8px;height:8px;border-radius:3px;flex:none;background:' + (self.ACCENT[ep.num] || '#576069'),
+            chats:chats.map(c => {
+              const renaming = S.renameFor === c.id;
+              return {
+                name:c.name, ctx:c.ctx, renaming, notRenaming:!renaming, assigning:S.assignFor === c.id,
+                rowStyle:'display:flex;align-items:center;gap:6px;padding:3.5px 4px 3.5px 20px;border-radius:5px;cursor:pointer;' + (c.id === 'c1' && S.activeTab === 'chat-plan' ? 'background:#151d27;' : ''),
+                draft:S.renameDraft,
+                inputRef:(el) => { if (el && !el._f) { el._f = true; el.focus(); el.select(); } },
+                onDraft:(e) => self.setState({renameDraft:e.target.value}),
+                onDraftKey:(e) => { if (e.key === 'Enter') { const v = e.target.value; self.setState(s => ({renameFor:null, chatGroups:s.chatGroups.map(gg => Object.assign({}, gg, {epics:gg.epics.map(ee => Object.assign({}, ee, {chats:ee.chats.map(cc => cc.id === c.id ? Object.assign({}, cc, {name:v}) : cc)}))}))})); } if (e.key === 'Escape') self.setState({renameFor:null}); },
+                onRename:(e) => { e.stopPropagation(); self.setState({renameFor:c.id, renameDraft:c.name, assignFor:null}); },
+                onAssign:(e) => { e.stopPropagation(); self.setState(s => ({assignFor:s.assignFor === c.id ? null : c.id, renameFor:null})); },
+                onOpen:() => { if (c.id === 'c1') self.setState({activeTab:'chat-plan'}); else self.openTab({id:'chat-' + c.id, title:c.name, kind:'chat', pinned:false, linkedEpic:ep.num, url:c.url}); },
+                assignTargets:self.EPICS.filter(t => t.num !== ep.num && t.milestone === 'Milestone 5').slice(0,5).map(t => ({num:t.num, name:t.name, onPick:() => {
+                  self.setState(s => ({assignFor:null, chatGroups:s.chatGroups.map(gg => Object.assign({}, gg, {epics:gg.epics.map(ee => {
+                    let chs = ee.chats.filter(cc => cc.id !== c.id);
+                    if (ee.num === t.num) chs = chs.concat([Object.assign({}, c)]);
+                    return Object.assign({}, ee, {chats:chs});
+                  })}))}));
+                }}))
+              };
+            })
+          };
+        })
+      }));
+
+    const GB = [
+      {num:1202,name:'Build Console',issues:[
+        {num:2031,title:'Build Queue panel spec',label:'AI Batter Up',c:'#9184b8'},
+        {num:2021,title:'Queue scroll: wheel + stuck state',label:'blocked',c:'#c08a84'},
+        {num:2020,title:'Queue virtualization fix',label:'in-flight',c:'#b09a4a'},
+        {num:2019,title:'Git Board on epic_id',label:'blocked',c:'#c08a84'},
+        {num:2018,title:'Chats panel rebuild',label:'blocked',c:'#c08a84'},
+        {num:2016,title:'WebView2 nav listener',label:'batter up',c:'#6a8fb5'},
+        {num:2013,title:'Chat epic_id FK',label:'in-flight',c:'#b09a4a'}]},
+      {num:1485,name:'Portal',issues:[
+        {num:1616,title:'Contract pack regen',label:'Shane To-Do',c:'#b3665e'},
+        {num:1494,title:'Microsoft Changes',label:'complete',c:'#5f9e6d'}]}
+    ];
+    const gbEpics = GB.map(ge => ({
+      num:ge.num, name:ge.name, count:ge.issues.length + ' issues',
+      dotStyle:'width:8px;height:8px;border-radius:3px;flex:none;background:' + (self.ACCENT[ge.num] || '#576069'),
+      issues:ge.issues.map(gi => ({
+        num:gi.num, title:gi.title, label:gi.label,
+        rowStyle:'display:flex;align-items:center;gap:7px;padding:3.5px 4px 3.5px 20px;border-radius:5px;cursor:pointer;' + (S.gbFlash === gi.num ? 'animation:omFlash 1s ease-out 2;background:#151d27;' : ''),
+        pillStyle:'flex:none;font-size:8.5px;font-weight:600;padding:1px 6px;border-radius:99px;background:' + gi.c + '1f;border:1px solid ' + gi.c + '4d;color:' + gi.c
+      }))
+    }));
+
+    const tabs = S.tabs.map(t => ({
+      title:t.title, pinned:!!t.pinned,
+      style:'display:flex;align-items:center;gap:6px;padding:0 10px;font-size:11px;cursor:pointer;border-right:1px solid #1b212a;flex:none;' + (t.id === S.activeTab ? 'background:#0d1117;color:#e6edf3;box-shadow:inset 0 2px 0 0 #6a8fb5;' : 'color:#8b949e;'),
+      onClick:() => self.setState({activeTab:t.id}),
+      onClose:(e) => { e.stopPropagation(); self.setState(s => { const tabs = s.tabs.filter(x => x.id !== t.id); return {tabs, activeTab: s.activeTab === t.id ? (tabs.length ? tabs[tabs.length - 1].id : null) : s.activeTab}; }); }
+    }));
+    const at = S.tabs.find(t => t.id === S.activeTab) || {};
+    const epicInfo = at.kind === 'epic' ? this.EPICS.find(e => e.num === at.epicNum) : null;
+    const doc = {
+      isHome:at.kind === 'home', isIssue:at.kind === 'issue', isChat:at.kind === 'chat', isEpic:at.kind === 'epic',
+      chatUrl:at.url || '', linkedEpic:at.linkedEpic || '',
+      epicNum:at.epicNum || '', epicName:epicInfo ? epicInfo.name : '', epicMilestone:epicInfo ? epicInfo.milestone : '', epicChildren:epicInfo ? epicInfo.children : '', epicAccent:epicInfo ? (self.ACCENT[epicInfo.num] || '#6a8fb5') : '#6a8fb5',
+      onNewChat:() => { const n = at.epicNum; self.openTab({id:'chat-new-' + n, title:'New Chat · #' + n, kind:'chat', pinned:false, linkedEpic:n, url:'claude.ai/new?epic=' + n}); }
+    };
+
+    const allowed = this.FMAP[S.filter];
+    const sq = S.searchQ.trim().toLowerCase();
+    const chain = S.selected != null ? this.chainOf(S.selected, S.sets[0].builds) : null;
+    const sets = S.sets.map((st, si) => {
+      const accent = self.ACCENT[st.num] || '#6a8fb5';
+      const sorted = st.builds.slice().sort((a, b) => (b.num || 0) - (a.num || 0));
+      let vis = sorted.filter(b => !allowed || allowed.includes(b.state));
+      if (sq) vis = vis.filter(b => String(b.num).includes(sq.replace('#','')) || b.branch.toLowerCase().includes(sq) || b.desc.toLowerCase().includes(sq));
+      const visible = vis.map(b => {
+        const inChain = chain && chain.has(b.num);
+        const isSel = S.selected === b.num;
+        const stc = self.STATEC[b.state] || '#8b949e';
+        const dimmed = chain && !inChain;
+        const blocked = b.state === 'BLOCKED';
+        return {
+          numLabel: b.num ? '#' + b.num : '#—',
+          state:b.state, branch:b.branch, desc:b.desc,
+          modelEffort:b.model + ' · ' + b.effort,
+          isBlocked:blocked,
+          blocksN:b.blocks || 0,
+          prereq:(b.blockedBy || []).map(n => '#' + n).join(', '),
+          jumpTitle:'Jump to blocker ' + (b.blockedBy || []).map(n => '#' + n).join(', '),
+          progress:b.state === 'RUNNING' ? (b.progress || 0) : 0,
+          progressStyle:'width:' + (b.progress || 0) + '%;height:100%;background:#7fb08a;border-radius:2px',
+          cardStyle:'position:relative;overflow:hidden;background:' + (isSel ? '#181b17' : '#161b22') + ';border:1px solid ' + (isSel ? '#a58a5f' : inChain ? 'rgba(165,138,95,.5)' : '#262c36') + ';border-radius:6px;padding:9px 10px 9px;cursor:pointer;opacity:' + (dimmed ? '.42' : '1') + ';transition:border-color .15s,opacity .15s' + (isSel ? ';box-shadow:0 0 0 1px rgba(165,138,95,.3)' : ''),
+          bandStyle:'position:absolute;top:0;left:0;right:0;height:2px;background:' + (isSel ? '#a58a5f' : inChain ? 'rgba(165,138,95,.6)' : stc + '59'),
+          badgeStyle:'flex:none;font-size:8.5px;font-weight:700;letter-spacing:.05em;padding:1.5px 6px;border-radius:4px;background:' + stc + '1f;border:1px solid ' + stc + '4d;color:' + stc,
+          nodeStyle:'position:absolute;left:-25px;top:14px;width:10px;height:10px;z-index:1;box-sizing:border-box;' + (blocked ? 'border-radius:2px;background:#0d1117;border:2px solid #c08a84;' : 'border-radius:99px;background:' + stc + ';border:2px solid #0d1117;') + (b.state === 'RUNNING' ? 'animation:omPulse 1.6s ease-in-out infinite;' : ''),
+          onClick:() => self.setState(s => ({selected: s.selected === b.num ? null : b.num})),
+          onJump:(e) => { e.stopPropagation(); const tgt = (b.blockedBy || [])[0]; if (tgt) self.setState({selected:tgt}); }
+        };
+      });
+      return {
+        name:st.name, accent, priority:st.priority, expanded:st.expanded,
+        count:(st.builds.length || st.extra) + (st.expanded && sq ? ' · ' + visible.length + ' match' : ''),
+        boxStyle:'flex:none;background:#11161d;border:1px solid #232a33;border-left:3px solid ' + accent + ';border-radius:7px;overflow:hidden',
+        chevStyle:'display:inline-flex;width:13px;height:13px;flex:none;color:#576069;transform:rotate(' + (st.expanded ? '90deg' : '0deg') + ');transition:transform .15s',
+        visible,
+        emptyMsg: st.expanded && visible.length === 0 ? 'No builds match this filter' + (sq ? ' and search' : '') + '.' : '',
+        onToggle:() => self.setState(s => ({sets:s.sets.map((x, i) => i === si ? Object.assign({}, x, {expanded:!x.expanded}) : x)})),
+        onChatLink:(e) => { e.stopPropagation(); self.openEpicTab(st.num); }
+      };
+    });
+
+    const filters = this.FILTERS.map(f => ({
+      name:f,
+      style:'height:18px;padding:0 7px;font-size:9px;font-weight:600;border-radius:99px;cursor:pointer;white-space:nowrap;flex:none;' + (S.filter === f ? 'background:rgba(106,143,181,.16);border:1px solid rgba(106,143,181,.45);color:#9db8d2;' : 'background:#161b22;border:1px solid #262c36;color:#6f7883;'),
+      onClick:() => self.setState({filter:f})
+    }));
+
+    const vd = [{day:'M',v:3},{day:'T',v:5},{day:'W',v:2},{day:'T',v:6},{day:'F',v:4},{day:'S',v:1},{day:'S',v:0}];
+    const velocityDots = vd.map(d => ({day:d.day, style:'width:7px;height:7px;border-radius:99px;background:' + (d.v === 0 ? '#2a3038' : '#5f9e6d') + ';opacity:' + (d.v === 0 ? 1 : (0.3 + d.v / 6 * 0.7).toFixed(2))}));
+
+    const pq = S.paletteQ.trim().toLowerCase();
+    let cat = this.EPICS.filter(e => !S.focusMode || e.milestone === 'Milestone 5');
+    if (pq) cat = cat.filter(e => String(e.num).includes(pq.replace('#','')) || e.name.toLowerCase().includes(pq));
+    const paletteResults = cat.map((e, i) => ({
+      num:e.num, name:e.name, milestone:e.milestone,
+      style:'display:flex;align-items:center;gap:10px;padding:8px 14px;cursor:pointer;' + (i === S.paletteSel ? 'background:#1c2129;' : ''),
+      dotStyle:'width:9px;height:9px;border-radius:3px;flex:none;background:' + (self.ACCENT[e.num] || '#576069'),
+      onOpen:() => self.openEpicTab(e.num)
+    }));
+
+    const recoverRows = S.recover.map((r, i) => {
+      const c = self.STATEC[r.state] || '#8b949e';
+      const upd = (patch) => self.setState(s => ({recover:s.recover.map((x, j) => j === i ? Object.assign({}, x, patch) : x)}));
+      return {
+        num:r.num, state:r.state, t:r.t, status:r.status || '', noStatus:!r.status, replying:r.replying, replyDraft:r.draft,
+        badgeStyle:'flex:none;font-size:8.5px;font-weight:700;letter-spacing:.05em;padding:1.5px 6px;border-radius:4px;background:' + c + '1f;border:1px solid ' + c + '4d;color:' + c,
+        onAccept:() => upd({status:'Accepted as-is — marked complete, worktree cleaned.'}),
+        onRestart:() => upd({status:'Agent restarting — fresh worktree off origin/main queued.'}),
+        onReply:() => upd({replying:!r.replying}),
+        onReplyDraft:(e) => upd({draft:e.target.value}),
+        onReplyKey:(e) => { if (e.key === 'Enter' && e.target.value.trim()) upd({status:'Reply sent — session resuming with your message.', replying:false}); }
+      };
+    });
+
+    return {
+      focusMode:S.focusMode, focusLabel:S.focusMode ? 'Focus: v1.1' : 'Focus',
+      focusBtnStyle:'display:flex;align-items:center;gap:6px;height:24px;padding:0 9px;margin-left:10px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;' + (S.focusMode ? 'background:rgba(176,149,106,.12);border:1px solid rgba(176,149,106,.35);color:#b0956a;' : 'background:none;border:1px solid transparent;color:#8b949e;'),
+      toggleFocus:() => this.setState(s => ({focusMode:!s.focusMode})),
+      paletteHint:S.focusMode ? 'Search v1.1 epics, issues, chats' : 'Search epics, issues, chats',
+      openPalette:() => this.setState({paletteOpen:true, paletteQ:'', paletteSel:0}),
+      closePalette:() => this.setState({paletteOpen:false}),
+      swallow:(e) => e.stopPropagation(),
+      paletteOpen:S.paletteOpen, paletteQ:S.paletteQ, paletteResults, paletteEmpty:paletteResults.length === 0,
+      paletteRef:(el) => { if (el && !el._f) { el._f = true; el.focus(); } },
+      onPaletteQ:(e) => this.setState({paletteQ:e.target.value, paletteSel:0}),
+      onPaletteKey:(e) => {
+        if (e.key === 'ArrowDown') { e.preventDefault(); this.setState(s => ({paletteSel:Math.min(s.paletteSel + 1, paletteResults.length - 1)})); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); this.setState(s => ({paletteSel:Math.max(s.paletteSel - 1, 0)})); }
+        else if (e.key === 'Enter' && paletteResults[S.paletteSel]) paletteResults[S.paletteSel].onOpen();
+      },
+      railGroups,
+      settingsStyle:iconStyle(S.activePanel === 'settings'),
+      onSettings:() => this.setState(s => ({activePanel:s.activePanel === 'settings' ? null : 'settings'})),
+      leftOpen, leftPanelLabel:meta.label, isChats, isGitboard, isStub,
+      stubNote:meta.note || '', stubRows:meta.rows || [],
+      chatQ:S.chatQ,
+      onChatQ:(e) => this.setState({chatQ:e.target.value}),
+      onChatQKey:(e) => { if (e.key === 'Enter') this.setState({chatQCommitted:e.target.value}); },
+      chatGroups, gbEpics,
+      gbWorking:() => this.setState({gbFlash:2013}),
+      gbLocate:() => this.setState({gbFlash:S.activeTab === 'issue-2013' ? 2013 : 2019}),
+      tabs, doc,
+      stickyOpen:S.stickyOpen, toggleSticky:() => this.setState(s => ({stickyOpen:!s.stickyOpen})),
+      queuePanelStyle:'width:' + qw + 'px;flex:none;display:flex;flex-direction:column;background:#0f141b;border-left:1px solid #21262d;min-height:0',
+      pauseLabel:S.paused ? 'Paused' : 'Active',
+      pauseStyle:'margin-left:auto;display:flex;align-items:center;gap:6px;height:20px;padding:0 8px;border-radius:99px;cursor:pointer;font-size:10px;font-weight:600;' + (S.paused ? 'background:rgba(176,154,74,.1);border:1px solid rgba(176,154,74,.35);color:#b09a4a;' : 'background:rgba(127,176,138,.09);border:1px solid rgba(127,176,138,.3);color:#7fb08a;'),
+      pauseDotStyle:'width:6px;height:6px;border-radius:99px;background:' + (S.paused ? '#b09a4a' : '#7fb08a') + (S.paused ? '' : ';animation:omPulse 1.6s ease-in-out infinite'),
+      togglePause:() => this.setState(s => ({paused:!s.paused})),
+      openNew:() => this.setState({dialogNew:true}),
+      closeNew:() => this.setState({dialogNew:false}),
+      openRecover:() => this.setState({dialogRecover:true}),
+      closeRecover:() => this.setState({dialogRecover:false}),
+      dialogNew:S.dialogNew, dialogRecover:S.dialogRecover,
+      nbPrompt:S.nb.prompt, nbModel:S.nb.model, nbEffort:S.nb.effort, nbSet:S.nb.set, nbBlockers:S.nb.blockers,
+      onNbPrompt:(e) => this.setState(s => ({nb:Object.assign({}, s.nb, {prompt:e.target.value})})),
+      onNbModel:(e) => this.setState(s => ({nb:Object.assign({}, s.nb, {model:e.target.value})})),
+      onNbEffort:(e) => this.setState(s => ({nb:Object.assign({}, s.nb, {effort:e.target.value})})),
+      onNbSet:(e) => this.setState(s => ({nb:Object.assign({}, s.nb, {set:e.target.value})})),
+      onNbBlockers:(e) => this.setState(s => ({nb:Object.assign({}, s.nb, {blockers:e.target.value})})),
+      saveNew:() => {
+        const nb = S.nb;
+        const m = /--title\s+(\d+)/.exec(nb.prompt);
+        const firstLine = (nb.prompt.split('\n').find(l => l.trim() && !l.trim().startsWith('--')) || 'Queued to Batter Up').slice(0, 110);
+        const bb = nb.blockers.split(',').map(x => parseInt(x.trim(), 10)).filter(x => !isNaN(x));
+        this.addBuild(parseInt(nb.set, 10), {num:m ? parseInt(m[1], 10) : 0, state:bb.length ? 'BLOCKED' : 'UP NEXT', branch:m ? 'agent/' + m[1] + '-queued' : 'agent/queued-build', model:nb.model.replace('claude-',''), effort:nb.effort, desc:firstLine, blockedBy:bb, blocks:0});
+        this.setState({dialogNew:false, nb:{prompt:'',model:'claude-opus-5',effort:'high',set:'1202',blockers:''}});
+      },
+      recoverRows,
+      dispatchDraft:S.dispatchDraft, dispatchMsg:S.dispatchMsg,
+      onDispatch:(e) => this.setState({dispatchDraft:e.target.value}),
+      onDispatchKey:(e) => {
+        if (e.key !== 'Enter') return;
+        const n = parseInt(e.target.value.replace('#','').trim(), 10);
+        if (isNaN(n)) return;
+        this.addBuild(1202, {num:n, state:'UP NEXT', branch:'agent/' + n + '-dispatched', model:'opus-5', effort:'high', desc:'Dispatched via issue number — provisioning worktree off origin/main.', blockedBy:[], blocks:0});
+        this.setState({dispatchDraft:'', dispatchMsg:'Dispatched #' + n + ' — no refresh needed'});
+        if (this._dt) clearTimeout(this._dt);
+        this._dt = setTimeout(() => this.setState({dispatchMsg:''}), 2800);
+      },
+      showVelocity, velocityDots, filters,
+      searchDraft:S.searchDraft,
+      onSearch:(e) => this.setState({searchDraft:e.target.value}),
+      onSearchKey:(e) => { if (e.key === 'Enter') this.setState({searchQ:e.target.value}); },
+      sets
+    };
+  }
+}
+</script>
+</body>
+</html>

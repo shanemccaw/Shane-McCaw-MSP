@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <script src="./lucide-local.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;padding:0;background:#0d1117;color-scheme:dark;height:100%}
+    a{color:#7da7cd;text-decoration:none}
+    a:hover{color:#9fc0dd;text-decoration:underline}
+    @keyframes omPulse{0%,100%{opacity:1}50%{opacity:.3}}
+    @keyframes omToast{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+    @keyframes omSlideInRight{0%{transform:translateX(100%)}100%{transform:translateX(0)}}
+    .om-scroll{scrollbar-width:auto;scrollbar-color:#2e3742 transparent}
+    .om-scroll::-webkit-scrollbar{width:13px;height:13px}
+    .om-scroll::-webkit-scrollbar-track{background:transparent}
+    .om-scroll::-webkit-scrollbar-thumb{background:#2e3742;border:3px solid #10141b;border-radius:8px;min-height:52px}
+    .om-scroll::-webkit-scrollbar-thumb:hover{background:#3d4856}
+    input,textarea,select,button{font-family:inherit}
+    input::placeholder,textarea::placeholder{color:#495261}
+  </style>
+</helmet>
+
+<div data-screen-label="Batter Up" style="height:100%;min-height:560px;min-width:880px;display:flex;flex-direction:column;background:#0d1117;color:#c9d1d9;font-family:Inter,ui-sans-serif,system-ui,sans-serif;font-size:14px;overflow:hidden">
+
+  <div style="flex:none;display:flex;align-items:center;gap:14px;padding:11px 20px;border-bottom:1px solid #21262d;flex-wrap:wrap;row-gap:8px">
+    <div style="width:36px;height:36px;flex:none;border-radius:9px;background:rgba(127,176,138,.1);border:1px solid rgba(127,176,138,.32);display:flex;align-items:center;justify-content:center;color:#7fb08a"><i data-lucide="bat" width="16" height="16"></i></div>
+    <div style="min-width:0;flex:0 1 auto;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:15px;font-weight:800;color:#e6edf3;letter-spacing:-.01em;white-space:nowrap">Batter Up</span>
+        <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;padding:2px 7px;border-radius:99px;background:rgba(127,176,138,.08);border:1px solid rgba(127,176,138,.3);color:#9fd0a9;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap">BUILD FUNNEL</span>
+      </div>
+      <div style="font-size:10.5px;color:#576069;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Three Git buckets between you and the engine — stage launches, gate agent fixes, answer what blocks them.</div>
+    </div>
+    <span style="font-size:10px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none;white-space:nowrap">({{ statsTotal }}) &middot; {{ statsGated }} gated &middot; {{ statsTracked }} tracked</span>
+    <sc-if value="{{ laneTabsShow }}" hint-placeholder-val="{{ true }}">
+    <div style="display:flex;gap:6px;flex:none;margin-left:8px">
+      <sc-for list="{{ laneTabs }}" as="lt" hint-placeholder-count="3">
+        <button onClick="{{ lt.onClick }}" style="{{ lt.style }}" style-hover="border-color:#3a4258">
+          <span style="display:inline-flex;width:12px;height:12px"><i data-lucide="{{ lt.icon }}" width="12" height="12"></i></span>
+          <span>{{ lt.label }}</span>
+          <span style="{{ lt.countStyle }}">{{ lt.count }}</span>
+          <sc-if value="{{ lt.dot }}" hint-placeholder-val="{{ false }}"><span style="{{ lt.dot }}"></span></sc-if>
+        </button>
+      </sc-for>
+    </div>
+    </sc-if>
+    <div style="flex:1"></div>
+    <div style="display:flex;align-items:center;gap:7px;flex:none">
+      <span style="height:26px;padding:0 10px;border-radius:99px;background:#12161d;border:1px solid #262c36;color:#8b949e;font-size:10px;font-weight:600;display:flex;align-items:center;gap:6px;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap">
+        <span style="width:6px;height:6px;border-radius:99px;background:#c8a86a;flex:none;animation:omPulse 2s infinite"></span>
+        <span>engine 8/8 slots · {{ pickupLabel }}</span>
+      </span>
+      <span style="height:26px;padding:0 10px;border-radius:99px;background:#12161d;border:1px solid #262c36;color:#8b949e;font-size:10px;font-weight:600;display:flex;align-items:center;gap:6px;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap">
+        <span style="display:inline-flex;width:11px;height:11px"><i data-lucide="git-branch" width="11" height="11"></i></span>
+        <span>bucket refs synced 20s ago</span>
+      </span>
+    </div>
+  </div>
+
+  <div style="flex:none;display:flex;align-items:center;gap:10px;padding:9px 20px;border-bottom:1px solid #21262d;background:#0f131a;flex-wrap:wrap">
+    <div style="position:relative;flex:1;min-width:280px;max-width:560px">
+      <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);display:inline-flex;width:13px;height:13px;color:#576069"><i data-lucide="search" width="13" height="13"></i></span>
+      <input value="{{ q }}" onChange="{{ onQ }}" placeholder="{{ qPlaceholder }}" style="width:100%;height:32px;background:#0d1117;border:1px solid #262c36;border-radius:8px;color:#e6edf3;font-size:11.5px;padding:0 30px 0 32px;outline:none;font-family:Consolas,ui-monospace,Menlo,monospace" style-focus="border-color:#5a8a68">
+      <sc-if value="{{ q }}" hint-placeholder-val="{{ false }}"><span onClick="{{ clearQ }}" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);color:#576069;cursor:pointer;font-size:14px;line-height:1" style-hover="color:#e6edf3">×</span></sc-if>
+    </div>
+    <span style="font-size:10px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace;flex:none">{{ countText }}</span>
+    <div style="flex:1"></div>
+    <span style="font-size:8.5px;font-weight:700;letter-spacing:.09em;color:#495261;flex:none">SORT</span>
+    <select value="{{ sortVal }}" onChange="{{ onSort }}" style="height:28px;background:#12161d;border:1px solid #262c36;border-radius:7px;color:#c9d1d9;font-size:10.5px;font-weight:600;padding:0 8px;outline:none;cursor:pointer">
+      <sc-for list="{{ sortOpts }}" as="so" hint-placeholder-count="3"><option value="{{ so.v }}">{{ so.label }}</option></sc-for>
+    </select>
+  </div>
+
+  <div class="om-scroll" style="flex:1;min-height:0;overflow-y:auto;background:#111219;padding:14px 20px 40px">
+    <div style="max-width:1060px;display:flex;flex-direction:column;gap:10px">
+
+      <sc-if value="{{ laneEmpty }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:9px;padding:70px 20px;color:#495261">
+          <span style="display:inline-flex;width:22px;height:22px"><i data-lucide="search" width="22" height="22"></i></span>
+          <div style="font-size:12px;font-weight:700;color:#8b949e">Nothing in this bucket matches</div>
+          <div style="font-size:10.5px;color:#576069">Try a git ID — <span style="font-family:Consolas,ui-monospace,Menlo,monospace">#1640</span>, a file path, or a branch fragment.</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isQueue }}" hint-placeholder-val="{{ true }}">
+        <sc-for list="{{ queue }}" as="qi" hint-placeholder-count="4">
+          <div style="{{ qi.style }}">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:24px;height:24px;flex:none;border-radius:6px;background:rgba(127,176,138,.1);border:1px solid rgba(127,176,138,.3);display:flex;align-items:center;justify-content:center;color:#7fb08a"><i data-lucide="bat" width="12" height="12"></i></span>
+              <span onClick="{{ qi.onOpenGit }}" title="Open in Git slider" style="{{ qi.numStyle }}" style-hover="background:#3a2c0a;border-color:#7a6118">#{{ qi.num }}</span>
+              <span style="flex:none;display:inline-flex;align-items:center;gap:5px;font-size:9.5px;font-weight:600;color:#8b949e"><span style="width:7px;height:7px;border-radius:99px;background:{{ qi.epicColor }};flex:none"></span><span style="white-space:nowrap">{{ qi.epic }}</span></span>
+              <span style="margin-left:auto;flex:none;font-size:9px;color:#495261;font-family:Consolas,ui-monospace,Menlo,monospace">{{ qi.state }}</span>
+            </div>
+            <div style="{{ qi.titleStyle }}">{{ qi.title }}</div>
+            <div style="font-size:10.5px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ qi.flags }}</div>
+            <sc-if value="{{ qi.blocked }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span style="font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:99px;background:rgba(192,138,132,.1);border:1px solid rgba(192,138,132,.35);color:#c08a84;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap">blocked-by {{ qi.blocked }}</span></div>
+            </sc-if>
+            <div style="display:flex;gap:8px;align-items:center;padding-top:2px">
+              <button onClick="{{ qi.onDispatch }}" title="Skip the wait — send to the engine now" style="height:28px;padding:0 14px;border-radius:7px;background:rgba(127,176,138,.16);border:1px solid rgba(127,176,138,.5);color:#9fd0a9;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px" style-hover="background:rgba(127,176,138,.24)"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="corner-up-right" width="12" height="12"></i></span><span>Dispatch</span></button>
+              <button onClick="{{ qi.onBump }}" title="Bump to top" style="width:28px;height:28px;border-radius:7px;background:none;border:1px solid #262c36;color:#576069;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="border-color:#3a4258;color:#c9d1d9"><span style="display:inline-flex;width:12px;height:12px;transform:rotate(180deg)"><i data-lucide="arrow-down" width="12" height="12"></i></span></button>
+              <button onClick="{{ qi.onEdit }}" title="Edit build prompt" style="width:28px;height:28px;border-radius:7px;background:none;border:1px solid #262c36;color:#576069;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="border-color:#3a4258;color:#c9d1d9"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="pencil" width="12" height="12"></i></span></button>
+              <button onClick="{{ qi.onPull }}" title="Pull out of the bucket" style="width:28px;height:28px;border-radius:7px;background:none;border:1px solid #262c36;color:#576069;cursor:pointer;display:flex;align-items:center;justify-content:center" style-hover="border-color:#4a2f38;color:#c08a84"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="x" width="12" height="12"></i></span></button>
+            </div>
+          </div>
+        </sc-for>
+      </sc-if>
+
+      <sc-if value="{{ isGate }}" hint-placeholder-val="{{ false }}">
+        <sc-for list="{{ gate }}" as="gi" hint-placeholder-count="4">
+          <div style="background:#161b22;border:1px solid #262c36;border-radius:10px;padding:13px 15px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="width:24px;height:24px;flex:none;border-radius:6px;background:rgba(165,143,201,.1);border:1px solid rgba(165,143,201,.3);display:flex;align-items:center;justify-content:center;color:#a58fc9"><i data-lucide="bot" width="12" height="12"></i></span>
+              <span onClick="{{ gi.onOpenGit }}" title="Open in Git slider" style="{{ gi.numStyle }}" style-hover="background:#3a2c0a;border-color:#7a6118">#{{ gi.num }}</span>
+              <span style="font-size:9px;font-weight:700;letter-spacing:.06em;color:#5d6b7d;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">found during {{ gi.duringDesc }}</span>
+              <span style="margin-left:auto;flex:none;font-size:9px;color:#495261;font-family:Consolas,ui-monospace,Menlo,monospace;display:inline-flex;align-items:center;gap:4px"><span style="display:inline-flex;width:9px;height:9px"><i data-lucide="clock" width="9" height="9"></i></span>{{ gi.age }}</span>
+              <span style="{{ gi.riskStyle }}">{{ gi.risk }}</span>
+            </div>
+            <div style="{{ gi.titleStyle }}">{{ gi.title }}</div>
+            <div style="font-size:11px;color:#8b949e;line-height:1.55">{{ gi.why }}</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:9px;font-weight:600;padding:2.5px 8px;border-radius:5px;background:#0d1117;border:1px solid #21262d;color:#8fa7c4;font-family:Consolas,ui-monospace,Menlo,monospace">{{ gi.files }}</span>
+              <span style="font-size:9px;font-weight:600;padding:2.5px 8px;border-radius:5px;background:#0d1117;border:1px solid #21262d;color:#7d8896;font-family:Consolas,ui-monospace,Menlo,monospace;display:inline-flex;align-items:center;gap:5px"><span style="display:inline-flex;width:9px;height:9px"><i data-lucide="git-branch" width="9" height="9"></i></span>{{ gi.branch }}</span>
+            </div>
+            <sc-if value="{{ gi.isOpen }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex;align-items:center;gap:8px;padding-top:2px">
+                <button onClick="{{ gi.onApprove }}" style="height:28px;padding:0 14px;border-radius:7px;background:rgba(127,176,138,.16);border:1px solid rgba(127,176,138,.5);color:#9fd0a9;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px" style-hover="background:rgba(127,176,138,.24)"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="check" width="12" height="12"></i></span><span>Approve — stage it</span></button>
+                <button onClick="{{ gi.onRejectStart }}" style="height:28px;padding:0 14px;border-radius:7px;background:rgba(192,138,132,.08);border:1px solid rgba(192,138,132,.35);color:#c08a84;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px" style-hover="background:rgba(192,138,132,.15)"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="x" width="12" height="12"></i></span><span>Reject…</span></button>
+                <span style="margin-left:auto;font-size:9px;color:#3f4756;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap">sits in ai-batter-up/ until you decide</span>
+              </div>
+            </sc-if>
+            <sc-if value="{{ gi.isRejecting }}" hint-placeholder-val="{{ false }}">
+              <div style="background:#12161d;border:1px solid rgba(192,138,132,.3);border-radius:8px;padding:10px 11px;display:flex;flex-direction:column;gap:8px">
+                <span style="font-size:9px;font-weight:700;letter-spacing:.07em;color:#c08a84">WHY? THE AGENT LEARNS FROM THIS — REQUIRED</span>
+                <textarea value="{{ gi.reason }}" onChange="{{ gi.onReason }}" placeholder="e.g. Touches lib/shared — that refactor lands with #2013, park it until then." style="width:100%;min-height:52px;background:#0d1117;border:1px solid #262c36;border-radius:7px;color:#e6edf3;font-size:11px;line-height:1.5;padding:8px 10px;outline:none;resize:vertical;font-family:inherit" style-focus="border-color:#8a5550"></textarea>
+                <div style="display:flex;gap:8px">
+                  <button onClick="{{ gi.onRejectConfirm }}" style="{{ gi.confirmStyle }}">Confirm reject</button>
+                  <button onClick="{{ gi.onRejectCancel }}" style="height:26px;padding:0 12px;border-radius:7px;background:none;border:1px solid #262c36;color:#8b949e;font-size:10.5px;font-weight:700;cursor:pointer" style-hover="border-color:#3a4258">Cancel</button>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ gi.isDecided }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:flex-start;gap:8px">
+                <span style="{{ gi.decidedStyle }}">{{ gi.decidedLabel }}</span>
+                <sc-if value="{{ gi.decidedReason }}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;color:#8b949e;font-style:italic;line-height:1.5;padding-top:2px">“{{ gi.decidedReason }}”</span></sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </sc-if>
+
+      <sc-if value="{{ isAsk }}" hint-placeholder-val="{{ false }}">
+        <sc-for list="{{ ask }}" as="ai" hint-placeholder-count="4">
+          <div style="background:#161b22;border:1px solid #262c36;border-radius:10px;padding:13px 15px;display:flex;flex-direction:column;gap:9px">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="{{ ai.catStyle }}"><span style="display:inline-flex;width:10px;height:10px"><i data-lucide="{{ ai.catIcon }}" width="10" height="10"></i></span><span>{{ ai.cat }}</span></span>
+              <span onClick="{{ ai.onOpenGit }}" title="Open in Git slider" style="{{ ai.numStyle }}" style-hover="background:#3a2c0a;border-color:#7a6118">#{{ ai.blocks }}</span>
+              <span style="font-size:9px;font-weight:700;color:#5d6b7d;font-family:Consolas,ui-monospace,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">agent shut down · Git block set</span>
+              <span style="margin-left:auto;flex:none;font-size:9px;color:#495261;font-family:Consolas,ui-monospace,Menlo,monospace;display:inline-flex;align-items:center;gap:4px"><span style="display:inline-flex;width:9px;height:9px"><i data-lucide="clock" width="9" height="9"></i></span>{{ ai.asked }}</span>
+            </div>
+            <div style="{{ ai.titleStyle }}">{{ ai.q }}</div>
+            <div style="font-size:11px;color:#8b949e;line-height:1.6">{{ ai.ctx }}</div>
+            <sc-if value="{{ ai.isOpen }}" hint-placeholder-val="{{ true }}">
+              <textarea value="{{ ai.draft }}" onChange="{{ ai.onDraft }}" placeholder="Type the call — the agent picks it up, unblocks and re-dispatches itself." style="width:100%;min-height:48px;background:#0d1117;border:1px solid #262c36;border-radius:7px;color:#e6edf3;font-size:11px;line-height:1.5;padding:8px 10px;outline:none;resize:vertical;font-family:inherit" style-focus="border-color:#4d648a"></textarea>
+              <div style="display:flex;gap:8px">
+                <button onClick="{{ ai.onAnswer }}" style="{{ ai.answerStyle }}"><span style="display:inline-flex;width:12px;height:12px"><i data-lucide="check" width="12" height="12"></i></span><span>Answer &amp; unblock</span></button>
+                <button onClick="{{ ai.onPark }}" style="height:28px;padding:0 12px;border-radius:7px;background:none;border:1px solid #262c36;color:#8b949e;font-size:10.5px;font-weight:700;cursor:pointer" style-hover="border-color:#3a4258">Park for later</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ ai.isDone }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:flex-start;gap:8px">
+                <span style="{{ ai.doneStyle }}">{{ ai.doneLabel }}</span>
+                <sc-if value="{{ ai.doneText }}" hint-placeholder-val="{{ false }}"><span style="font-size:10.5px;color:#8b949e;font-style:italic;line-height:1.5;padding-top:2px">“{{ ai.doneText }}”</span></sc-if>
+              </div>
+            </sc-if>
+          </div>
+        </sc-for>
+      </sc-if>
+
+      <sc-if value="{{ pager.show }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:6px;padding:6px 2px 0">
+          <span style="font-size:10px;color:#576069;font-family:Consolas,ui-monospace,Menlo,monospace">{{ pager.range }}</span>
+          <div style="flex:1"></div>
+          <button onClick="{{ pager.onPrev }}" style="{{ pager.prevStyle }}">‹ Prev</button>
+          <sc-for list="{{ pager.pages }}" as="pg" hint-placeholder-count="5">
+            <sc-if value="{{ pg.gap }}" hint-placeholder-val="{{ false }}"><span style="color:#3f4756;font-size:10px;padding:0 2px">…</span></sc-if>
+            <sc-if value="{{ pg.label }}" hint-placeholder-val="{{ true }}"><button onClick="{{ pg.onClick }}" style="{{ pg.style }}">{{ pg.label }}</button></sc-if>
+          </sc-for>
+          <button onClick="{{ pager.onNext }}" style="{{ pager.nextStyle }}">Next ›</button>
+        </div>
+      </sc-if>
+
+    </div>
+  </div>
+
+  <div style="flex:none;height:26px;display:flex;align-items:center;gap:14px;padding:0 16px;border-top:1px solid #21262d;background:#0d1117;font-family:Consolas,ui-monospace,Menlo,monospace;font-size:9px;color:#495261;white-space:nowrap;overflow:hidden">
+    <span>buckets: <span style="color:#5d6b7d">batter-up/</span> · <span style="color:#5d6b7d">ai-batter-up/</span> · <span style="color:#5d6b7d">ai-for-shane/</span></span>
+    <span style="flex:1"></span>
+    <span style="overflow:hidden;text-overflow:ellipsis">{{ footerLine }}</span>
+  </div>
+
+  <sc-if value="{{ gitSliderOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeGitSlider }}" style="position:fixed;inset:0;background:rgba(1,4,9,.45);z-index:88"></div>
+    <div style="position:fixed;top:0;right:0;height:100%;width:380px;max-width:92vw;background:#12151c;border-left:1px solid #262c36;box-shadow:-24px 0 60px rgba(1,4,9,.6);z-index:89;display:flex;flex-direction:column;animation:omSlideInRight .2s ease-out">
+      <div style="flex:none;display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid #21262d">
+        <span style="display:inline-flex;width:15px;height:15px;color:#7fb08a"><i data-lucide="git-branch" width="15" height="15"></i></span>
+        <span style="font-size:11px;font-weight:700;color:#576069;text-transform:uppercase;letter-spacing:.06em;flex:1">Git &middot; #{{ gitSliderData.num }}</span>
+        <span onClick="{{ closeGitSlider }}" style="color:#576069;cursor:pointer;display:inline-flex" style-hover="color:#fff"><span style="display:inline-flex;width:16px;height:16px"><i data-lucide="x" width="16" height="16"></i></span></span>
+      </div>
+      <div class="om-scroll" style="flex:1;overflow-y:auto;padding:16px">
+        <div style="font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:{{ gitSliderData.epicColor }};margin-bottom:6px">{{ gitSliderData.epic }}</div>
+        <div style="font-size:15px;font-weight:700;color:#e6edf3;line-height:1.4;margin-bottom:10px">{{ gitSliderData.title }}</div>
+        <div style="font-size:10.5px;color:#8b949e;font-family:Consolas,ui-monospace,Menlo,monospace;line-height:1.6;margin-bottom:14px">{{ gitSliderData.flags }}</div>
+        <sc-if value="{{ gitSliderData.hasBlocked }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#576069;margin-bottom:6px">Blocked by</div>
+          <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 9px;background:rgba(192,138,132,.1);border:1px solid rgba(192,138,132,.35);border-radius:6px;color:#c08a84;font-size:11px;font-family:Consolas,ui-monospace,Menlo,monospace;font-weight:700">#{{ gitSliderData.blocked }}</div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+  <sc-if value="{{ toastShow }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;left:50%;bottom:44px;transform:translate(-50%,0);z-index:60;display:flex;align-items:center;gap:9px;background:#1c2128;border:1px solid #30363d;border-radius:9px;padding:9px 14px;box-shadow:0 10px 30px rgba(0,0,0,.55);animation:omToast .16s ease-out">
+      <span style="display:inline-flex;width:13px;height:13px;color:#7fb08a"><i data-lucide="check" width="13" height="13"></i></span>
+      <span style="font-size:11.5px;font-weight:600;color:#e6edf3">{{ toastMsg }}</span>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1500,&quot;height&quot;:900},&quot;pageSize&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:20,&quot;min&quot;:10,&quot;max&quot;:50,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;List&quot;},&quot;requireRejectReason&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Gate&quot;},&quot;autoPickup&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Engine&quot;},&quot;defaultLane&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;queue&quot;,&quot;gate&quot;,&quot;ask&quot;],&quot;default&quot;:&quot;queue&quot;,&quot;tsType&quot;:&quot;\&quot;queue\&quot; | \&quot;gate\&quot; | \&quot;ask\&quot;&quot;,&quot;section&quot;:&quot;View&quot;}}">
+class Component extends DCLogic {
+  state = { view:null, q:'', sorts:{queue:'pos', gate:'new', ask:'new'}, pages:{queue:0, gate:0, ask:0}, order:null, pulled:{}, gate:{}, rejectingId:null, reasons:{}, ask:{}, drafts:{}, toast:null };
+
+  mulberry(seed) { let a = seed | 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+  ensureData() {
+    if (this.QUEUE) return;
+    this.MON = 'Consolas,ui-monospace,Menlo,monospace';
+    this.QUEUE = [
+      {id:1489, t:'Run edge integration smoke test matrix against synthetic tokens', epic:'Portal', ec:'#79b3c8', model:'claude-sonnet-5', effort:'low', set:'portal', acct:'primary'},
+      {id:2020, t:'Build queue keeps scroll position on refresh', epic:'Build Console', ec:'#e2984a', model:'claude-sonnet-5', effort:'medium', set:'console', acct:'primary'},
+      {id:2021, t:'Queue flicker fix — stable row keys on repaint', epic:'Build Console', ec:'#e2984a', model:'claude-haiku-5', effort:'low', set:'console', acct:'secondary'},
+      {id:2101, t:'Tenant seat reconciliation job — nightly Graph diff', epic:'Portal Admin', ec:'#37b8b0', model:'claude-sonnet-5', effort:'medium', set:'admin', acct:'primary'},
+      {id:1768, t:'Pillar mapping auto-generator & markdown AST validator', epic:'Ungrouped', ec:'#8b949e', model:'claude-sonnet-5', effort:'low', set:'docs', acct:'secondary', bb:'1841'},
+      {id:1788, t:'Chats panel — epic_id FK wiring after #2013', epic:'Build Console', ec:'#e2984a', model:'claude-opus-5', effort:'high', set:'console', acct:'primary', bb:'2013'},
+      {id:2016, t:'Bottom panel — log channel filter chips', epic:'Build Console', ec:'#e2984a', model:'claude-sonnet-5', effort:'medium', set:'console', acct:'primary'},
+      {id:2017, t:'Bottom panel — pin a channel to always-on', epic:'Build Console', ec:'#e2984a', model:'claude-haiku-5', effort:'low', set:'console', acct:'secondary'},
+      {id:2018, t:'Chats panel rebuild — epic groups + context meters', epic:'Build Console', ec:'#e2984a', model:'claude-opus-5', effort:'high', set:'console', acct:'primary', bb:'2013'},
+      {id:2019, t:'Git Board rebuild — branch cards with ahead/behind', epic:'Build Console', ec:'#e2984a', model:'claude-opus-5', effort:'high', set:'console', acct:'primary'},
+      {id:1787, t:'Sticky notes — inherit epic color on assign', epic:'Build Console', ec:'#e2984a', model:'claude-haiku-5', effort:'low', set:'console', acct:'secondary', bb:'2013'},
+      {id:2103, t:'Admin impersonation audit log', epic:'Portal Admin', ec:'#37b8b0', model:'claude-opus-5', effort:'high', set:'admin', acct:'primary'},
+      {id:1929, t:'config-state-core — env validation preflight', epic:'config-state-core', ec:'#a58fc9', model:'claude-sonnet-5', effort:'medium', set:'core', acct:'primary'},
+      {id:1930, t:'Atomic state snapshot diff journal engine', epic:'config-state-core', ec:'#a58fc9', model:'claude-opus-5', effort:'high', set:'core', acct:'primary', bb:'1929'},
+      {id:1416, t:'Multi-account dispatch — round-robin under usage caps', epic:'Build Console', ec:'#e2984a', model:'claude-sonnet-5', effort:'medium', set:'console', acct:'secondary'}
+    ];
+    const DUR = [['#1640','Redis cache sync'],['#1485','Portal gateway'],['#1096','schema regen'],['#1932','template sandbox'],['#2101','seat reconciliation'],['#1489','edge smoke matrix'],['#1766','CI migration'],['#2019','Git Board rebuild'],['#2018','Chats panel'],['#1841','pillar docs']];
+    const T = [
+      ['Fix','Retry backoff has no jitter — thundering herd on reconnect','Every worker retries on the same tick after a Postgres drop; one bad minute stacks 8 simultaneous reconnects.','lib/db/queue-client.ts'],
+      ['Fix','Null tenant guard missing in drift signal fan-out','A deleted tenant mid-scan throws and kills the whole fan-out batch instead of skipping one row.','lib/engines/drift/fanout.ts'],
+      ['Fix','Build Watch ETA uses local time — off by the TZ offset','Heuristic mixes UTC step timestamps with local now(); estimates drift by exactly five hours.','desktop/BuildConsole/Controls/BuildWatchWindow.xaml.cs'],
+      ['Test','Regression test — queue scroll restore after refresh','Covers the #2020 fix; fails on the old code, pins the scroll container key.','desktop/BuildConsole/Controls/BuildQueuePanel.xaml.cs'],
+      ['Fix','Dispose WebView2 handlers on chat tab close','Each closed chat tab leaks its navigation handler; memory climbs ~40MB per day of tab churn.','desktop/BuildConsole/Controls/ChatTabView.cs'],
+      ['Chore','Move engine.* debug logging behind a flag','Debug channel writes 2GB a week into service logs nobody reads unless something breaks.','lib/logging/channels.ts'],
+      ['Fix','Worktree junction race when two builds share a dep set','Second mklink fires before the first commits; loser gets a half-linked node_modules.','scripts/relink-junctions.mjs'],
+      ['Fix','Webhook signature check skipped on the retry path','First attempt verifies, retries trust the cached payload — replay window until attempt 5.','artifacts/api-server/src/billing/webhooks.ts'],
+      ['Refactor','Extract SLA breach window calc — duplicated three times','Engine, portal widget and report each reimplement it; two already disagree on DST days.','lib/engines/sla/window.ts'],
+      ['Fix','Audit log export pagination off-by-one','Last row of each page repeats as the first row of the next; 500-row exports gain 4 dupes.','artifacts/api-server/src/admin/audit.ts'],
+      ['Fix','Missing index on tenant_signals.source_ref','Signal lookups table-scan past 100k rows; drift queries already at 900ms on the big tenant.','lib/db/migrations/manual/0044_signals_idx.sql'],
+      ['Chore','Pin pnpm to 9.12 in CI — 9.13 breaks the store cache','Cache misses on every run since the runner image bumped; adds six minutes per build.','.github/workflows/ci.yml'],
+      ['Fix','Stale snapshot served after a manual SQL migration','Snapshot cache keys on schema version, not migration stamp — manual runs never invalidate.','lib/db/snapshot-cache.ts'],
+      ['Fix','Graph delta sync loses the skiptoken on 429','Backoff path restarts from the base delta URL, re-pulling all 412 objects each throttle.','lib/graph/delta-sync.ts'],
+      ['Test','Device-code flow — expired-code path uncovered','Only the happy path has coverage; the expiry branch regressed twice already.','lib/graph/auth.test.ts'],
+      ['Fix','Toast overflow badge never clears at exactly three','Coalescing window decrements past the visible cap and the +N badge sticks at +0.','desktop/BuildConsole/Notifications/ToastEngine.cs'],
+      ['Refactor','ChatContextMeterStore polls twice per tick','Store and script both schedule the meter read; halving it drops one WebView2 eval per chat per 3s.','desktop/BuildConsole/Services/ChatContextMeterStore.cs'],
+      ['Fix','Conservation mode ignores the secondary account cap','Meter only watches primary; secondary blew past 90% twice last week without the banner.','desktop/BuildConsole/Services/ClaudeUsageMeterService.cs']
+    ];
+    const AGES = ['18m ago','1h ago','2h ago','4h ago','6h ago','9h ago','Yesterday','Yesterday','2d ago','2d ago','3d ago','3d ago','4d ago','5d ago','Aug 25','Aug 23','Aug 21','Aug 18'];
+    const R = this.mulberry(97);
+    this.GATE = [
+      {id:'g1', during:'#1640 Redis cache sync', risk:'MEDIUM', age:'22m ago', title:'Fix: BuildQueuePostgresClient leaks connections on retry', why:'Retry path opens a new client without disposing the failed one — after ~40 retries the pool exhausts and dev:api hangs. Out of scope for #1640, so it landed here instead of the build branch.', files:'lib/db/queue-client.ts · +18 −4', branch:'ai/fix-queue-client-retry-leak'},
+      {id:'g2', during:'#1485 Portal gateway', risk:'LOW', age:'1h ago', title:'Fix: EpicChatUrlBuilder drops the query string on relative base URLs', why:'new Uri(base, path) discards ?account= when base has no trailing slash. One-line change plus a regression test.', files:'EpicChatUrlBuilder.cs · +9 −2', branch:'ai/fix-epicchat-url-query'},
+      {id:'g3', during:'#1096 schema regen', risk:'LOW', age:'3h ago', title:'Chore: pin @types/node to 22.7 across the monorepo', why:'Root and lib/schema resolve different @types/node majors — regen builds break only on clean installs. Pinning both closes the drift.', files:'package.json ×2 · +3 −3', branch:'ai/chore-pin-types-node'}
+    ];
+    for (let i = 0; i < 123; i++) {
+      const t = T[i % T.length], dur = DUR[(i * 7) % DUR.length];
+      const rr = R(); const risk = rr < .68 ? 'LOW' : (rr < .94 ? 'MEDIUM' : 'HIGH');
+      const add = 3 + Math.floor(R() * 34), del = 1 + Math.floor(R() * 14);
+      const slug = t[1].toLowerCase().replace(/[^a-z0-9]+/g, '-').split('-').slice(0, 4).join('-');
+      this.GATE.push({
+        id:'g' + (i + 4), during: dur[0] + ' ' + dur[1], risk, age: AGES[Math.min(AGES.length - 1, Math.floor(i / 7))],
+        title: t[0] + ': ' + t[1], why: t[2],
+        files: t[3].split('/').pop() + ' · +' + add + ' −' + del,
+        branch: 'ai/' + t[0].toLowerCase() + '-' + slug, file: t[3]
+      });
+    }
+    const AQ = [
+      ['Architecture','git-fork','#a58fc9',1932,'2h ago','Template sandbox: enforce the memory quota inside the vm, or spawn short-lived workers and kill at the process level?','vm limits cap a substitution at 64MB but native leaks escape it. Worker spawn survives anything, at ~40ms per render.'],
+      ['Product','target','#79b3c8',1788,'5h ago','Chats: does a chat belong to exactly one epic, or can it span epics with a primary?','The #2013 epic_id FK assumes one epic per chat. Cross-epic needs a join table and reworks both Assign dialogs.'],
+      ['Financial','bar-chart-2','#c8a86a',1642,'Yesterday','Edge mTLS renewal: DigiCert OV at $289/yr, or free Let\u2019s Encrypt automation?','The client SLA doc promises OV certificates. LE is DV-only — change the SLA language or approve the spend.'],
+      ['Architecture','git-fork','#a58fc9',1930,'6h ago','Snapshot diff journal: append-only JSONL per day, or one SQLite journal with WAL?','JSONL is trivially greppable and survives partial writes; SQLite gives rollback queries the engine wants.'],
+      ['Product','target','#79b3c8',2019,'8h ago','Git Board: do merged branches disappear immediately or linger 24h with a “merged” chip?','Instant removal keeps the board clean; the linger answers “did my merge land?” without opening GitHub.'],
+      ['Architecture','git-fork','#a58fc9',1929,'9h ago','Env preflight: hard-fail dispatch on any missing variable, or warn and let non-critical ones pass?','MissingVariableWindow exists for hard fails. A warn tier needs a criticality tag on every variable.'],
+      ['Financial','bar-chart-2','#c8a86a',1766,'Yesterday','CI minutes: stay on hosted runners (~$140/mo at current volume) or a self-hosted box?','Matrix migration triples job count. A used mini-PC pays back in two months but adds patch duty.'],
+      ['Product','target','#79b3c8',2015,'Yesterday','Bottom panel: does audit tail live there permanently, or only while an audit filter is active?','Permanent tail eats 90px forever; on-demand means two clicks every time you chase a signal.'],
+      ['Architecture','git-fork','#a58fc9',2013,'Yesterday','epic_id FK backfill: run as one manual SQL pass, or ship a dual-write window first?','One pass is a 40s lock on chats; dual-write is a week of shim code but zero downtime.'],
+      ['Product','target','#79b3c8',1913,'2d ago','Prod gate: can a hotfix bypass the full verification sweep with a two-check fast lane?','Full sweep is 22 minutes. Fast lane = compiler + smoke only, flagged loudly in the gate log.'],
+      ['Financial','bar-chart-2','#c8a86a',1416,'2d ago','Second Claude account: upgrade secondary to the higher cap ($100/mo) or keep juggling conservation mode?','Secondary hits its cap by 2pm most build days; round-robin dispatch would stop thrashing.'],
+      ['Architecture','git-fork','#a58fc9',1371,'2d ago','Worktree isolation: junction node_modules per set (fast, shared risk) or full copy per build (slow, hermetic)?','Junctions save 90s per dispatch; the race in relink-junctions is the recurring cost.'],
+      ['Product','target','#79b3c8',2031,'3d ago','Build Queue panel: blocked builds nest under their blocker, or flat list with red edges only?','Nesting reads causality at a glance but double-indents 4-deep chains; flat keeps rows scannable.'],
+      ['Architecture','git-fork','#a58fc9',1206,'3d ago','Progress reporting: keep shaneapp:// protocol pings, or move to a file-watch on report-progress.mjs output?','Protocol pings die when the WebView recycles; file-watch survives but adds a poller per slot.'],
+      ['Financial','bar-chart-2','#c8a86a',1093,'3d ago','Marketing analytics: Clarity stays free — add GA4 360 sampling fix ($0) or Fathom ($14/mo) for the funnel?','Quiz funnel needs unsampled step data; GA4 free tier samples past 500k events.'],
+      ['Product','target','#79b3c8',971,'4d ago','Sessions tile: show 8 slots as a grid of dots, or a single fraction with a hover breakdown?','Dots show per-slot state (stale/crashed) at a glance; the fraction is calmer on the home rollup.'],
+      ['Architecture','git-fork','#a58fc9',1447,'4d ago','branch-merged check: poll GitHub every 20s, or move to a webhook receiver on the api-server?','Polling burns rate limit across 8 sessions; webhook needs a public endpoint the console can trust.'],
+      ['Product','target','#79b3c8',984,'5d ago','Manifest tree: expand to the changed node on open, or always start collapsed at root?','Auto-expand saves clicks during verify; collapsed keeps giant manifests from wall-of-texting.'],
+      ['Financial','bar-chart-2','#c8a86a',1630,'5d ago','Manual SQL runbook: keep freehand SSMS with the checklist, or budget a migration tool (Flyway teams, ~$360/yr)?','#1630 checklist works but relies on discipline; two near-misses this month argue for tooling.'],
+      ['Architecture','git-fork','#a58fc9',1799,'Aug 25','Progress phases: fixed three-phase model, or let builds declare custom phases in the prompt?','Fixed phases keep Build Watch comparable across builds; custom phases fit odd jobs like doc regen.'],
+      ['Product','target','#79b3c8',1994,'Aug 24','Encouragement service: keep the completion sounds default-on, or opt-in per install?','Half funny, half startling on client calls. Opt-in kills the joke; a mute-while-screen-sharing flag might not.'],
+      ['Financial','bar-chart-2','#c8a86a',1281,'Aug 22','v1.1 gate: book the pen-test now ($3.2k, two-week lead) or after the portal RBAC chain merges?','Booking now hits the release window; if RBAC slips, the test covers stale code and partial rerun costs extra.']
+    ];
+    this.ASK = AQ.map((a, i) => ({id:'a' + (i + 1), cat:a[0], icon:a[1], c:a[2], blocks:a[3], asked:a[4], q:a[5], ctx:a[6], ts:i}));
+  }
+
+  showToast(msg) { clearTimeout(this._tt); this.setState({toast:msg}); this._tt = setTimeout(() => this.setState({toast:null}), 3200); }
+  openGit(id) { this.setState({gitSlider:id}); }
+  closeGit() { this.setState({gitSlider:null}); }
+  componentDidMount() { this._ic(); }
+  componentDidUpdate() { this._ic(); }
+  componentWillUnmount() { clearTimeout(this._tt); }
+  _ic() { if (window.lucide) requestAnimationFrame(() => window.lucide.createIcons()); }
+
+  match(hay, ids, q) {
+    const toks = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (!toks.length) return true;
+    const h = hay.toLowerCase();
+    return toks.every(t => {
+      const bare = t.replace(/^#/, '');
+      if (/^\d+$/.test(bare)) return ids.some(n => String(n).indexOf(bare) >= 0) || h.indexOf(bare) >= 0;
+      return h.indexOf(t) >= 0;
+    });
+  }
+
+  setPage(lane, p) { this.setState(s => { const pg = Object.assign({}, s.pages); pg[lane] = p; return {pages:pg}; }); }
+
+  renderVals() {
+    this.ensureData();
+    const st = this.state, MON = this.MON;
+    const forced = this.props.lane || null;
+    const view = forced || st.view || this.props.defaultLane || 'queue';
+    const needReason = this.props.requireRejectReason == null ? true : !!this.props.requireRejectReason;
+    const pageSize = this.props.pageSize == null ? 20 : this.props.pageSize;
+    const numStyle = 'padding:2px 9px;border-radius:5px;background:#2c2308;color:#fde047;border:1px solid #5c4a12;font-size:14px;font-weight:800;font-family:' + MON + ';cursor:pointer;flex:none;letter-spacing:.01em';
+    const titleStyle = 'font-size:12.5px;font-weight:700;color:#e6edf3;line-height:1.4';
+    const openGitFor = (num) => (e) => { e.stopPropagation(); if (this.props.onOpenGit) this.props.onOpenGit(num); else this.openGit(num); };
+    const order = st.order || this.QUEUE.map(q => q.id);
+    const qAll = order.map(id => this.QUEUE.find(q => q.id === id)).filter(q => q && !st.pulled[q.id]);
+    const gOpenN = this.GATE.filter(g => !st.gate[g.id]).length;
+    const aOpenN = this.ASK.filter(a => !st.ask[a.id]).length;
+
+    let items, total;
+    if (view === 'queue') {
+      items = qAll.filter(q => this.match(q.t + ' ' + q.epic + ' ' + q.model + ' ' + q.set + ' ' + q.acct, [q.id, q.bb || ''], st.q));
+      const so = st.sorts.queue;
+      if (so === 'num') items = items.slice().sort((a, b) => b.id - a.id);
+      else if (so === 'effort') { const rk = {high:0, medium:1, low:2}; items = items.slice().sort((a, b) => rk[a.effort] - rk[b.effort]); }
+    } else if (view === 'gate') {
+      items = this.GATE.filter(g => this.match(g.title + ' ' + g.why + ' ' + g.files + ' ' + g.branch + ' ' + g.during + ' ' + g.risk + ' ' + (g.file || ''), [g.during.split(' ')[0].slice(1)], st.q));
+      const so = st.sorts.gate;
+      if (so === 'old') items = items.slice().reverse();
+      else if (so === 'risk') { const rk = {HIGH:0, MEDIUM:1, LOW:2}; items = items.slice().sort((a, b) => rk[a.risk] - rk[b.risk]); }
+      else if (so === 'open') items = items.slice().sort((a, b) => (st.gate[a.id] ? 1 : 0) - (st.gate[b.id] ? 1 : 0));
+    } else {
+      items = this.ASK.filter(a => this.match(a.q + ' ' + a.ctx + ' ' + a.cat, [a.blocks], st.q));
+      const so = st.sorts.ask;
+      if (so === 'old') items = items.slice().reverse();
+      else if (so === 'cat') items = items.slice().sort((a, b) => a.cat.localeCompare(b.cat));
+      else if (so === 'blocks') items = items.slice().sort((a, b) => b.blocks - a.blocks);
+    }
+    total = items.length;
+    const pageCount = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(st.pages[view] || 0, pageCount - 1);
+    const pageItems = items.slice(page * pageSize, page * pageSize + pageSize);
+
+    const queue = view !== 'queue' ? [] : pageItems.map((q, idx) => {
+      const i = items.indexOf(q); const first = i === 0 && st.sorts.queue === 'pos' && !st.q;
+      return {
+        num:q.id, title:q.t, epic:q.epic, epicColor:q.ec, pos:qAll.indexOf(q) + 1,
+        numStyle, titleStyle,
+        flags:'--title ' + q.id + ' --model ' + q.model + ' --effort ' + q.effort + ' --cwd C:\\wt\\bld_' + q.id + ' --buildSet ' + q.set + ' --account ' + q.acct + (q.bb ? ' --blocked-by ' + q.bb : ''),
+        blocked:q.bb || null,
+        style:'background:#161b22;border:1px solid ' + (first ? 'rgba(127,176,138,.35)' : '#262c36') + ';border-radius:10px;padding:13px 15px;display:flex;flex-direction:column;gap:9px',
+        state: first ? (q.bb ? 'up next — but blocked-by must clear first' : 'up next — picks up the moment a slot frees') : 'queued · position ' + (qAll.indexOf(q) + 1),
+        stateStyle:'font-size:8.5px;font-weight:700;padding:2px 8px;border-radius:99px;white-space:nowrap;' + (first ? 'background:rgba(127,176,138,.1);border:1px solid rgba(127,176,138,.35);color:#9fd0a9' : 'background:#12161d;border:1px solid #21262d;color:#576069'),
+        onOpenGit:openGitFor(q.id),
+        onDispatch:() => { const p = Object.assign({}, st.pulled); p[q.id] = true; this.setState({pulled:p}); this.showToast('#' + q.id + ' dispatched — engine takes it now, slot wait skipped'); },
+        onBump:() => { const o = order.filter(x => x !== q.id); o.unshift(q.id); this.setState({order:o}); this.showToast('#' + q.id + ' bumped to the top of the bucket'); },
+        onEdit:() => this.showToast('Would open EditBuildPrompt for #' + q.id),
+        onPull:() => { const p = Object.assign({}, st.pulled); p[q.id] = true; this.setState({pulled:p}); this.showToast('#' + q.id + ' pulled out — back to Backlog'); }
+      };
+    });
+
+    const gate = view !== 'gate' ? [] : pageItems.map(g => {
+      const dec = st.gate[g.id];
+      const rejecting = st.rejectingId === g.id;
+      const reason = st.reasons[g.id] || '';
+      const canConfirm = !needReason || reason.trim().length > 0;
+      const gm = /^#(\d+)\s*/.exec(g.during);
+      const gnum = gm ? gm[1] : '';
+      const duringDesc = gm ? g.during.slice(gm[0].length) : g.during;
+      return {
+        gid:g.id.toUpperCase(), num:gnum, numStyle, titleStyle, duringDesc, during:g.during, title:g.title, why:g.why, files:g.files, branch:g.branch, risk:g.risk, age:g.age,
+        onOpenGit:openGitFor(gnum),
+        riskStyle:'flex:none;font-size:8px;font-weight:800;letter-spacing:.06em;padding:2px 7px;border-radius:99px;font-family:' + MON + ';' + (g.risk === 'HIGH' ? 'background:rgba(192,138,132,.12);border:1px solid rgba(192,138,132,.45);color:#d9a49e' : g.risk === 'MEDIUM' ? 'background:rgba(179,152,95,.1);border:1px solid rgba(179,152,95,.35);color:#c9ab72' : 'background:rgba(127,176,138,.08);border:1px solid rgba(127,176,138,.3);color:#9fd0a9'),
+        isOpen:!dec && !rejecting, isRejecting:rejecting, isDecided:!!dec,
+        reason,
+        onReason:(e) => { const r = Object.assign({}, st.reasons); r[g.id] = e.target.value; this.setState({reasons:r}); },
+        onApprove:() => { const d = Object.assign({}, st.gate); d[g.id] = {st:'ok'}; this.setState({gate:d}); this.showToast('Approved — staged into Batter Up'); },
+        onRejectStart:() => this.setState({rejectingId:g.id}),
+        onRejectCancel:() => this.setState({rejectingId:null}),
+        onRejectConfirm:() => { if (!canConfirm) return; const d = Object.assign({}, st.gate); d[g.id] = {st:'no', reason:reason.trim() || '(no reason required)'}; this.setState({gate:d, rejectingId:null}); this.showToast('Rejected — reason written back to the agent'); },
+        confirmStyle:'height:26px;padding:0 12px;border-radius:7px;font-size:10.5px;font-weight:700;' + (canConfirm ? 'background:rgba(192,138,132,.16);border:1px solid rgba(192,138,132,.5);color:#d9a49e;cursor:pointer' : 'background:#12161d;border:1px solid #262c36;color:#495261;cursor:not-allowed'),
+        decidedLabel:dec ? (dec.st === 'ok' ? 'Approved — staged into Batter Up' : 'Rejected — reason sent to agent memory') : '',
+        decidedStyle:'flex:none;font-size:9px;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:99px;font-family:' + MON + ';' + (dec && dec.st === 'ok' ? 'background:rgba(127,176,138,.12);border:1px solid rgba(127,176,138,.4);color:#9fd0a9' : 'background:rgba(192,138,132,.1);border:1px solid rgba(192,138,132,.4);color:#c08a84'),
+        decidedReason:dec && dec.st === 'no' ? dec.reason : null
+      };
+    });
+
+    const ask = view !== 'ask' ? [] : pageItems.map(a => {
+      const done = st.ask[a.id];
+      const draft = st.drafts[a.id] || '';
+      const can = draft.trim().length > 0;
+      return {
+        cat:a.cat, catIcon:a.icon, blocks:a.blocks, asked:a.asked, q:a.q, ctx:a.ctx,
+        numStyle, titleStyle, onOpenGit:openGitFor(a.blocks),
+        catStyle:'flex:none;display:inline-flex;align-items:center;gap:5px;font-size:8.5px;font-weight:800;letter-spacing:.05em;padding:2.5px 8px;border-radius:99px;background:' + a.c + '14;border:1px solid ' + a.c + '45;color:' + a.c,
+        isOpen:!done, isDone:!!done,
+        draft,
+        onDraft:(e) => { const d = Object.assign({}, st.drafts); d[a.id] = e.target.value; this.setState({drafts:d}); },
+        onAnswer:() => { if (!can) return; const d = Object.assign({}, st.ask); d[a.id] = {st:'answered', text:draft.trim()}; this.setState({ask:d}); this.showToast('Answer committed — #' + a.blocks + ' unblocked, agent re-dispatching'); },
+        onPark:() => { const d = Object.assign({}, st.ask); d[a.id] = {st:'parked'}; this.setState({ask:d}); this.showToast('Parked — #' + a.blocks + ' stays blocked'); },
+        answerStyle:'height:28px;padding:0 14px;border-radius:7px;font-size:11px;font-weight:700;display:flex;align-items:center;gap:6px;' + (can ? 'background:rgba(127,176,138,.16);border:1px solid rgba(127,176,138,.5);color:#9fd0a9;cursor:pointer' : 'background:#12161d;border:1px solid #262c36;color:#495261;cursor:not-allowed'),
+        doneLabel:done ? (done.st === 'answered' ? 'Answered — block lifted, agent re-dispatching' : 'Parked — build stays blocked') : '',
+        doneStyle:'flex:none;font-size:9px;font-weight:800;letter-spacing:.04em;padding:3px 9px;border-radius:99px;font-family:' + MON + ';' + (done && done.st === 'answered' ? 'background:rgba(127,176,138,.12);border:1px solid rgba(127,176,138,.4);color:#9fd0a9' : 'background:rgba(179,152,95,.1);border:1px solid rgba(179,152,95,.4);color:#c9ab72'),
+        doneText:done && done.text ? done.text : null
+      };
+    });
+
+    const pgBtn = (act, dis) => 'min-width:26px;height:26px;padding:0 7px;border-radius:6px;font-size:10px;font-weight:700;font-family:' + MON + ';' + (act ? 'background:rgba(127,176,138,.14);border:1px solid rgba(127,176,138,.5);color:#9fd0a9;cursor:pointer' : dis ? 'background:none;border:1px solid #1c2128;color:#3f4756;cursor:default' : 'background:#12161d;border:1px solid #262c36;color:#8b949e;cursor:pointer');
+    const pageNums = [];
+    for (let p = 0; p < pageCount; p++) {
+      if (p === 0 || p === pageCount - 1 || Math.abs(p - page) <= 1) pageNums.push(p);
+      else if (pageNums[pageNums.length - 1] !== -1) pageNums.push(-1);
+    }
+    const pager = {
+      show: pageCount > 1,
+      range: (total ? (page * pageSize + 1) : 0) + '–' + Math.min(total, (page + 1) * pageSize) + ' of ' + total,
+      onPrev: () => page > 0 && this.setPage(view, page - 1),
+      onNext: () => page < pageCount - 1 && this.setPage(view, page + 1),
+      prevStyle: pgBtn(false, page === 0), nextStyle: pgBtn(false, page === pageCount - 1),
+      pages: pageNums.map(p => p === -1 ? {gap:true} : {label:String(p + 1), style:pgBtn(p === page, false), onClick:() => this.setPage(view, p)})
+    };
+
+    const sortSets = {
+      queue: [{v:'pos', label:'Queue position'}, {v:'num', label:'Issue # (high first)'}, {v:'effort', label:'Effort (high first)'}],
+      gate: [{v:'new', label:'Newest first'}, {v:'old', label:'Oldest first'}, {v:'risk', label:'Risk (high first)'}, {v:'open', label:'Undecided first'}],
+      ask: [{v:'new', label:'Newest first'}, {v:'old', label:'Oldest first'}, {v:'blocks', label:'Blocking issue #'}, {v:'cat', label:'Category'}]
+    };
+    const ltStyle = (act) => 'height:28px;padding:0 12px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;white-space:nowrap;position:relative;' + (act ? 'background:rgba(127,176,138,.1);border:1px solid rgba(127,176,138,.4);color:#9fd0a9' : 'background:none;border:1px solid transparent;color:#8b949e');
+    const ltCount = (act) => 'min-width:16px;height:15px;padding:0 5px;border-radius:99px;display:inline-flex;align-items:center;justify-content:center;font-size:8.5px;font-weight:800;font-family:' + MON + ';' + (act ? 'background:rgba(127,176,138,.18);color:#b6d9bc' : 'background:#1c2128;color:#576069');
+    const dot = (c) => 'position:absolute;top:-2px;right:-2px;width:7px;height:7px;border-radius:99px;background:' + c + ';border:2px solid #0d1117';
+    const laneName = view === 'queue' ? 'launch bucket' : view === 'gate' ? 'gate bucket' : 'question bucket';
+
+    const gsId = st.gitSlider;
+    const gsItem = gsId ? this.QUEUE.find(q => q.id === gsId) : null;
+    return {
+      gitSliderOpen: !!gsId,
+      closeGitSlider: () => this.closeGit(),
+      gitSliderData: gsItem ? {
+        num: gsItem.id, title: gsItem.t, epic: gsItem.epic, epicColor: gsItem.ec,
+        flags: '--title ' + gsItem.id + ' --model ' + gsItem.model + ' --effort ' + gsItem.effort + ' --buildSet ' + gsItem.set,
+        hasBlocked: !!gsItem.bb, blocked: gsItem.bb || ''
+      } : {num:'', title:'', epic:'', epicColor:'#6a8fb5', flags:'', hasBlocked:false, blocked:''},
+      statsTotal: qAll.length,
+      statsGated: qAll.filter(q => !!q.bb).length,
+      statsTracked: qAll.filter(q => !q.bb).length,
+      laneTabsShow: !forced,
+      laneTabs: [
+        {label:'Batter Up', icon:'bat', count:qAll.length, style:ltStyle(view === 'queue'), countStyle:ltCount(view === 'queue'), dot:null, onClick:() => this.setState({view:'queue'})},
+        {label:'AI Batter Up', icon:'bot', count:gOpenN, style:ltStyle(view === 'gate'), countStyle:ltCount(view === 'gate'), dot:gOpenN ? dot('#c9ab72') : null, onClick:() => this.setState({view:'gate'})},
+        {label:'AI For Shane', icon:'messages-square', count:aOpenN, style:ltStyle(view === 'ask'), countStyle:ltCount(view === 'ask'), dot:aOpenN ? dot('#c08a84') : null, onClick:() => this.setState({view:'ask'})}
+      ],
+      pickupLabel: (this.props.autoPickup == null ? true : this.props.autoPickup) ? 'auto-pickup ON' : 'auto-pickup PAUSED',
+      q:st.q,
+      onQ:(e) => this.setState({q:e.target.value, pages:{queue:0, gate:0, ask:0}}),
+      clearQ:() => this.setState({q:'', pages:{queue:0, gate:0, ask:0}}),
+      qPlaceholder:'Search the ' + laneName + ' — text, files, branch, or a git ID like #1640',
+      countText: st.q ? total + ' matches' : total + ' in bucket',
+      sortVal: st.sorts[view],
+      sortOpts: sortSets[view],
+      onSort:(e) => { const so = Object.assign({}, st.sorts); so[view] = e.target.value; const pg = Object.assign({}, st.pages); pg[view] = 0; this.setState({sorts:so, pages:pg}); },
+      isQueue: view === 'queue' && total > 0, isGate: view === 'gate' && total > 0, isAsk: view === 'ask' && total > 0,
+      laneEmpty: total === 0,
+      queue, gate, ask, pager,
+      footerLine: qAll.length + ' staged · ' + gOpenN + ' fixes await your gate · ' + aOpenN + ' questions blocking builds',
+      toastShow:!!st.toast, toastMsg:st.toast || ''
+    };
+  }
+}
+</script>
+</body>
+</html>
