@@ -40,6 +40,7 @@ public static class AlertWatchers
         _ = RunDeployWatcherAsync(ct);
         _ = RunGitHubBlockedWatcherAsync(ct);
         _ = RunPinnedQuestionsWatcherAsync(ct);
+        _ = RunMilestoneWatcherAsync(ct);
     }
 
     public static void Stop()
@@ -290,6 +291,41 @@ public static class AlertWatchers
             }
             catch { }
             await DelayAsync(75, ct);
+        }
+    }
+
+    // ── Git watcher — GitHub Milestones API, real closed-milestone transitions ────────────────
+    // Git #2235: tier-4 "Milestone Closed" mega-celebration. BuildConsole's own equivalent
+    // (IssueChompAnimation.PlayMilestoneClosedParty) fires off a real "Close Milestone" button
+    // click in LeftSidebar.xaml.cs; ShaneBuilder has no such in-app action, so a poll against the
+    // real GitHub Milestones API is the right trigger here — same baseline-then-diff shape as
+    // RunGitHubBlockedWatcherAsync above, which is also how "a restart doesn't refire" is
+    // satisfied without extra on-disk state: the first poll after a (re)start only captures the
+    // current closed set as the baseline, it never celebrates on it.
+    private static async Task RunMilestoneWatcherAsync(CancellationToken ct)
+    {
+        var client = GitHubReadClient.CreateFromEnvironment();
+        if (client == null) return;
+
+        HashSet<int>? known = null;
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var closed = await client.GetClosedMilestonesAsync();
+                var currentIds = closed.Select(m => m.Number).ToHashSet();
+                if (known != null)
+                {
+                    foreach (var m in closed.Where(m => !known.Contains(m.Number)))
+                    {
+                        var label = $"Milestone #{m.Number} — {m.Title}";
+                        AlertCenter.Celebrate(new Celebration($"milestone-{m.Number}", 4, Mood.Good, CelebrationShape.Party, m.Title) { Label = label });
+                    }
+                }
+                known = currentIds;
+            }
+            catch { /* a poll failing must never crash the watcher loop */ }
+            await DelayAsync(120, ct);
         }
     }
 }

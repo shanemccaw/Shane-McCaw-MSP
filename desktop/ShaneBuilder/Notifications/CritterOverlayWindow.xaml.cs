@@ -100,6 +100,17 @@ namespace ShaneBuilder
             var layer = new Canvas { Width = w, Height = h, IsHitTestVisible = false };
             RootCanvas.Children.Add(layer);
 
+            // Git #2235 — tier 4 (milestone closed) gets the ported BuildConsole
+            // IssueChompAnimation.PlayMilestoneClosedParty mega-celebration instead of the generic
+            // tier-scaled effects below: full-screen dark overlay, disco spotlights, giant trophy
+            // banner, dancing critters, confetti cannon waves, balloons, fireworks, streamers.
+            if (tier >= 4 && good && c.Shape == CelebrationShape.Party)
+            {
+                PlayMegaParty(layer, w, h, c.Label ?? c.Text);
+                _ = RemoveAfter(layer, 6600);
+                return;
+            }
+
             if (wash) AddWash(layer, w, h, tier);
             if (disco) AddDisco(layer, w, h);
             if (confetti) AddConfetti(layer, w, h, tier);
@@ -409,6 +420,355 @@ namespace ShaneBuilder
             opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(1, TimeSpan.FromMilliseconds(durMs * 0.78)));
             opAnim.KeyFrames.Add(new LinearDoubleKeyFrame(0, TimeSpan.FromMilliseconds(durMs)));
             border.BeginAnimation(UIElement.OpacityProperty, opAnim);
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════════════════
+        // Git #2235 — MILESTONE CLOSED MEGA PARTY. Ported from BuildConsole's
+        // Services/IssueChompAnimation.cs ("5. MILESTONE CLOSED PARTY" /
+        // PlayMilestoneClosedParty) — same visual sequence (full-screen dark overlay, disco
+        // spotlights, giant golden trophy banner, dancing critters, confetti cannon waves, rising
+        // balloons, firework starbursts, falling streamers), reusing ShaneBuilder's own
+        // CritterRegistry pool in place of BuildConsole's BuildMascot. Not a redesign.
+        // ══════════════════════════════════════════════════════════════════════════════════════
+        private static readonly Random MegaRng = new();
+
+        private static readonly Color[] MegaConfettiColors =
+        {
+            Color.FromRgb(0x7c, 0x8c, 0xf0), Color.FromRgb(0x00, 0xb4, 0xd8), Color.FromRgb(0xe2, 0xb0, 0x39),
+            Color.FromRgb(0xe2, 0x59, 0x3f), Color.FromRgb(0x7f, 0xb0, 0x8a), Color.FromRgb(0xa3, 0x74, 0xea),
+            Color.FromRgb(0xf0, 0xc9, 0xc2),
+        };
+
+        private static readonly string[] MegaPartyPhrases =
+        {
+            "🎉 WE DID IT!", "🏆 LEGENDARY!", "🥳 PARTY TIME!", "🎊 ABSOLUTE UNIT!",
+            "✨ HALL OF FAME!", "💎 PERFECTION!", "🔥 UNSTOPPABLE!", "👑 CROWNED!",
+        };
+
+        private void PlayMegaParty(Canvas layer, double w, double h, string milestoneTitle)
+        {
+            // ── 0. Full-screen dark overlay, fade in ──
+            var overlay = new Border
+            {
+                Width = w,
+                Height = h,
+                Background = new SolidColorBrush(Color.FromArgb(0xCC, 0x11, 0x11, 0x1B)),
+                Opacity = 0,
+                IsHitTestVisible = false,
+            };
+            layer.Children.Add(overlay);
+            overlay.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(400)));
+
+            // ── 1. Disco / party lights — rotating color washes ──
+            for (int li = 0; li < 6; li++)
+            {
+                var lightColor = MegaConfettiColors[li % MegaConfettiColors.Length];
+                var spotlight = new Ellipse
+                {
+                    Width = 350 + MegaRng.Next(200),
+                    Height = 350 + MegaRng.Next(200),
+                    Fill = new RadialGradientBrush(Color.FromArgb(0x55, lightColor.R, lightColor.G, lightColor.B), Colors.Transparent),
+                    Opacity = 0,
+                    IsHitTestVisible = false,
+                };
+                Canvas.SetLeft(spotlight, MegaRng.Next(0, Math.Max(1, (int)w - 200)));
+                Canvas.SetTop(spotlight, MegaRng.Next(0, Math.Max(1, (int)h - 200)));
+                layer.Children.Add(spotlight);
+
+                var lightPulse = new DoubleAnimation(0, 0.7, TimeSpan.FromMilliseconds(600 + MegaRng.Next(400)))
+                {
+                    AutoReverse = true,
+                    RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(7000)),
+                    BeginTime = TimeSpan.FromMilliseconds(200 + li * 180),
+                };
+                spotlight.BeginAnimation(UIElement.OpacityProperty, lightPulse);
+
+                var driftTrans = new TranslateTransform();
+                spotlight.RenderTransform = driftTrans;
+                var lightDrift = new DoubleAnimation(0, MegaRng.Next(-80, 80), TimeSpan.FromMilliseconds(3000 + MegaRng.Next(2000)))
+                {
+                    AutoReverse = true,
+                    RepeatBehavior = RepeatBehavior.Forever,
+                };
+                driftTrans.BeginAnimation(TranslateTransform.XProperty, lightDrift);
+            }
+
+            // ── 2. Giant golden trophy banner (center) ──
+            var bannerBorder = new Border
+            {
+                Background = new LinearGradientBrush(Color.FromRgb(0xF9, 0xE2, 0xAF), Color.FromRgb(0xDF, 0x8E, 0x1D), new Point(0, 0), new Point(1, 1)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xD7, 0x00)),
+                BorderThickness = new Thickness(3),
+                CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(30, 16, 30, 16),
+                Opacity = 0,
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                IsHitTestVisible = false,
+                Effect = new System.Windows.Media.Effects.DropShadowEffect { Color = Color.FromRgb(0xFF, 0xD7, 0x00), BlurRadius = 40, ShadowDepth = 0, Opacity = 0.9 },
+            };
+            var bannerScale = new ScaleTransform(0.1, 0.1);
+            bannerBorder.RenderTransform = bannerScale;
+            var bannerStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+            bannerStack.Children.Add(new TextBlock { Text = "🏆", FontSize = 42, HorizontalAlignment = HorizontalAlignment.Center });
+            bannerStack.Children.Add(new TextBlock
+            {
+                Text = "MILESTONE CLOSED!", FontSize = 22, FontWeight = FontWeights.Black,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x1B)), HorizontalAlignment = HorizontalAlignment.Center,
+            });
+            bannerStack.Children.Add(new TextBlock
+            {
+                Text = milestoneTitle.Length > 40 ? milestoneTitle.Substring(0, 37) + "…" : milestoneTitle,
+                FontSize = 16, FontWeight = FontWeights.Bold,
+                Foreground = new SolidColorBrush(Color.FromArgb(0xCC, 0x11, 0x11, 0x1B)),
+                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 4, 0, 0),
+            });
+            bannerStack.Children.Add(new TextBlock
+            {
+                Text = MegaPartyPhrases[MegaRng.Next(MegaPartyPhrases.Length)],
+                FontSize = 14, FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromArgb(0xAA, 0x11, 0x11, 0x1B)),
+                HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 6, 0, 0),
+            });
+            bannerBorder.Child = bannerStack;
+
+            bannerBorder.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double bw = bannerBorder.DesiredSize.Width;
+            Canvas.SetLeft(bannerBorder, (w - bw) / 2);
+            Canvas.SetTop(bannerBorder, h * 0.18);
+            layer.Children.Add(bannerBorder);
+
+            bannerBorder.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { BeginTime = TimeSpan.FromMilliseconds(300) });
+            var bannerPop = new DoubleAnimation(0.1, 1.1, TimeSpan.FromMilliseconds(500))
+            {
+                BeginTime = TimeSpan.FromMilliseconds(300),
+                EasingFunction = new ElasticEase { Oscillations = 2, Springiness = 4 },
+            };
+            bannerScale.BeginAnimation(ScaleTransform.ScaleXProperty, bannerPop);
+            bannerScale.BeginAnimation(ScaleTransform.ScaleYProperty, bannerPop);
+
+            // ── 3. Dancing critters on stage (real CritterRegistry pool, positive mood) ──
+            var pool = CritterRegistry.All.Where(cr => cr.Category == CritterCategory.Positive).ToList();
+            if (pool.Count > 0)
+            {
+                string[] partyEmojis = { "👑", "🎈", "🎉", "🎺", "⭐" };
+                double stageY = h * 0.52;
+                double stageStartX = (w - 5 * 100) / 2;
+
+                for (int i = 0; i < 5; i++)
+                {
+                    var info = pool[(i * 3 + MegaRng.Next(pool.Count)) % pool.Count];
+                    Canvas critter;
+                    try { critter = info.Factory(); } catch { continue; }
+
+                    var decor = new TextBlock { Text = partyEmojis[i % partyEmojis.Length], FontSize = 18, Margin = new Thickness(16, -22, 0, 0) };
+                    critter.Children.Add(decor);
+
+                    double posX = stageStartX + i * 100;
+                    double baseScale = 2.0;
+
+                    var group = new TransformGroup();
+                    var scaleT = new ScaleTransform(baseScale, baseScale);
+                    var translateT = new TranslateTransform();
+                    group.Children.Add(scaleT);
+                    group.Children.Add(translateT);
+                    critter.RenderTransform = group;
+                    critter.RenderTransformOrigin = new Point(0.5, 1.0);
+                    critter.Opacity = 0;
+                    critter.IsHitTestVisible = false;
+
+                    Canvas.SetLeft(critter, posX);
+                    Canvas.SetTop(critter, stageY);
+                    layer.Children.Add(critter);
+
+                    int delay = 400 + i * 150;
+
+                    var popIn = new DoubleAnimation(60, 0, TimeSpan.FromMilliseconds(400))
+                    {
+                        BeginTime = TimeSpan.FromMilliseconds(delay),
+                        EasingFunction = new BackEase { Amplitude = 0.8, EasingMode = EasingMode.EaseOut },
+                    };
+                    translateT.BeginAnimation(TranslateTransform.YProperty, popIn);
+                    critter.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { BeginTime = TimeSpan.FromMilliseconds(delay) });
+
+                    var danceY = new DoubleAnimation(0, -20 - MegaRng.Next(15), TimeSpan.FromMilliseconds(250 + MegaRng.Next(150)))
+                    {
+                        AutoReverse = true, RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(6500)),
+                        BeginTime = TimeSpan.FromMilliseconds(delay + 400), EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+                    };
+                    translateT.BeginAnimation(TranslateTransform.YProperty, danceY);
+
+                    var swayX = new DoubleAnimation(-12, 12, TimeSpan.FromMilliseconds(400 + MegaRng.Next(200)))
+                    {
+                        AutoReverse = true, RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(6500)), BeginTime = TimeSpan.FromMilliseconds(delay + 500),
+                    };
+                    translateT.BeginAnimation(TranslateTransform.XProperty, swayX);
+
+                    var squashX = new DoubleAnimation(baseScale, baseScale * 1.15, TimeSpan.FromMilliseconds(200 + MegaRng.Next(100)))
+                    {
+                        AutoReverse = true, RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(6500)), BeginTime = TimeSpan.FromMilliseconds(delay + 400),
+                    };
+                    var squashY = new DoubleAnimation(baseScale, baseScale * 0.85, TimeSpan.FromMilliseconds(200 + MegaRng.Next(100)))
+                    {
+                        AutoReverse = true, RepeatBehavior = new RepeatBehavior(TimeSpan.FromMilliseconds(6500)), BeginTime = TimeSpan.FromMilliseconds(delay + 400),
+                    };
+                    scaleT.BeginAnimation(ScaleTransform.ScaleXProperty, squashX);
+                    scaleT.BeginAnimation(ScaleTransform.ScaleYProperty, squashY);
+                }
+            }
+
+            // ── 4. Confetti cannon waves ──
+            for (int wave = 0; wave < 8; wave++)
+            {
+                var confettiTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500 + wave * 450) };
+                confettiTimer.Tick += (_, _) =>
+                {
+                    confettiTimer.Stop();
+                    double cx = MegaRng.Next(80, Math.Max(81, (int)(w - 80)));
+                    double cy = MegaRng.Next(60, Math.Max(61, (int)(h * 0.5)));
+                    MegaConfettiBurst(layer, new Point(cx, cy), 40);
+                };
+                confettiTimer.Start();
+            }
+
+            // ── 5. Rising balloons ──
+            for (int b = 0; b < 14; b++)
+            {
+                var balloonTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300 + b * 200) };
+                balloonTimer.Tick += (_, _) => { balloonTimer.Stop(); MegaSpawnBalloon(layer, w, h); };
+                balloonTimer.Start();
+            }
+
+            // ── 6. Firework starbursts ──
+            for (int f = 0; f < 5; f++)
+            {
+                var fwTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800 + f * 700) };
+                fwTimer.Tick += (_, _) =>
+                {
+                    fwTimer.Stop();
+                    MegaFireworkBurst(layer, new Point(MegaRng.Next(100, Math.Max(101, (int)(w - 100))), MegaRng.Next(60, Math.Max(61, (int)(h * 0.45)))));
+                };
+                fwTimer.Start();
+            }
+
+            // ── 7. Falling streamers ──
+            for (int s = 0; s < 20; s++)
+            {
+                var sTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400 + s * 130) };
+                sTimer.Tick += (_, _) => { sTimer.Stop(); MegaSpawnStreamer(layer, w, h); };
+                sTimer.Start();
+            }
+
+            // ── 8. Fade out ──
+            var fadeOutTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(6200) };
+            fadeOutTimer.Tick += (_, _) =>
+            {
+                fadeOutTimer.Stop();
+                layer.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400)));
+            };
+            fadeOutTimer.Start();
+        }
+
+        private static void MegaConfettiBurst(Canvas canvas, Point center, int particleCount)
+        {
+            for (int i = 0; i < particleCount; i++)
+            {
+                double angle = (i / (double)particleCount) * 2 * Math.PI + (MegaRng.NextDouble() * 0.4 - 0.2);
+                double speed = MegaRng.Next(60, 220);
+                double destX = center.X + Math.Cos(angle) * speed;
+                double destY = center.Y + Math.Sin(angle) * speed;
+
+                var p = new Rectangle
+                {
+                    Width = MegaRng.Next(5, 10), Height = MegaRng.Next(3, 7),
+                    Fill = new SolidColorBrush(MegaConfettiColors[MegaRng.Next(MegaConfettiColors.Length)]),
+                    RadiusX = 1, RadiusY = 1, IsHitTestVisible = false,
+                };
+                var trans = new TranslateTransform();
+                p.RenderTransform = trans;
+                Canvas.SetLeft(p, center.X);
+                Canvas.SetTop(p, center.Y);
+                canvas.Children.Add(p);
+
+                trans.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, destX - center.X, TimeSpan.FromMilliseconds(450)) { EasingFunction = new CircleEase { EasingMode = EasingMode.EaseOut } });
+                trans.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, destY - center.Y + 30, TimeSpan.FromMilliseconds(600)) { EasingFunction = new CircleEase { EasingMode = EasingMode.EaseOut } });
+                p.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(500)) { BeginTime = TimeSpan.FromMilliseconds(150) });
+            }
+        }
+
+        private static void MegaSpawnBalloon(Canvas canvas, double w, double h)
+        {
+            string[] balloonEmoji = { "🎈", "🎈", "🎈", "🎈", "🟡", "🟣", "🔵", "🟢", "🔴" };
+            var balloon = new TextBlock { Text = balloonEmoji[MegaRng.Next(balloonEmoji.Length)], FontSize = 26 + MegaRng.Next(14), Opacity = 0.85, IsHitTestVisible = false };
+            Canvas.SetLeft(balloon, MegaRng.Next(30, Math.Max(31, (int)(w - 50))));
+            Canvas.SetTop(balloon, h + 20);
+            canvas.Children.Add(balloon);
+
+            var riseT = new TranslateTransform();
+            balloon.RenderTransform = riseT;
+            riseT.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, -(h + 80), TimeSpan.FromMilliseconds(3000 + MegaRng.Next(2000))) { EasingFunction = new SineEase { EasingMode = EasingMode.EaseIn } });
+            riseT.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, MegaRng.Next(-60, 60), TimeSpan.FromMilliseconds(2500 + MegaRng.Next(1500))) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+            balloon.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.85, 0, TimeSpan.FromMilliseconds(600)) { BeginTime = TimeSpan.FromMilliseconds(2800 + MegaRng.Next(1500)) });
+        }
+
+        private static void MegaFireworkBurst(Canvas canvas, Point center)
+        {
+            int rays = 16 + MegaRng.Next(8);
+            var sparkColor = MegaConfettiColors[MegaRng.Next(MegaConfettiColors.Length)];
+
+            for (int r = 0; r < rays; r++)
+            {
+                double angle = (r / (double)rays) * 2 * Math.PI;
+                double speed = 60 + MegaRng.Next(100);
+                double destX = center.X + Math.Cos(angle) * speed;
+                double destY = center.Y + Math.Sin(angle) * speed;
+
+                var sparkle = new Ellipse { Width = 4 + MegaRng.Next(4), Height = 4 + MegaRng.Next(4), Fill = new SolidColorBrush(sparkColor), IsHitTestVisible = false };
+                Canvas.SetLeft(sparkle, center.X);
+                Canvas.SetTop(sparkle, center.Y);
+                canvas.Children.Add(sparkle);
+
+                var trans = new TranslateTransform();
+                sparkle.RenderTransform = trans;
+                trans.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, destX - center.X, TimeSpan.FromMilliseconds(500 + MegaRng.Next(300))) { EasingFunction = new CircleEase { EasingMode = EasingMode.EaseOut } });
+                trans.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, destY - center.Y + 30, TimeSpan.FromMilliseconds(600 + MegaRng.Next(300))) { EasingFunction = new CircleEase { EasingMode = EasingMode.EaseOut } });
+                sparkle.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(400)) { BeginTime = TimeSpan.FromMilliseconds(300 + MegaRng.Next(200)) });
+            }
+
+            var flash = new Ellipse { Width = 30, Height = 30, Fill = new RadialGradientBrush(Colors.White, Colors.Transparent), RenderTransformOrigin = new Point(0.5, 0.5), IsHitTestVisible = false };
+            Canvas.SetLeft(flash, center.X - 15);
+            Canvas.SetTop(flash, center.Y - 15);
+            canvas.Children.Add(flash);
+
+            var flashScale = new ScaleTransform(0.3, 0.3);
+            flash.RenderTransform = flashScale;
+            flashScale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.3, 3.0, TimeSpan.FromMilliseconds(300)));
+            flashScale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.3, 3.0, TimeSpan.FromMilliseconds(300)));
+            flash.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(300)));
+        }
+
+        private static void MegaSpawnStreamer(Canvas canvas, double w, double h)
+        {
+            var color = MegaConfettiColors[MegaRng.Next(MegaConfettiColors.Length)];
+            double streamerWidth = 4 + MegaRng.Next(5);
+            double streamerHeight = 30 + MegaRng.Next(40);
+
+            var streamer = new Border { Width = streamerWidth, Height = streamerHeight, Background = new SolidColorBrush(color), CornerRadius = new CornerRadius(streamerWidth / 2), Opacity = 0.8, IsHitTestVisible = false };
+            Canvas.SetLeft(streamer, MegaRng.Next(20, Math.Max(21, (int)(w - 20))));
+            Canvas.SetTop(streamer, -streamerHeight);
+            canvas.Children.Add(streamer);
+
+            var trans = new TransformGroup();
+            var translate = new TranslateTransform();
+            var rotate = new RotateTransform(MegaRng.Next(-30, 30));
+            trans.Children.Add(rotate);
+            trans.Children.Add(translate);
+            streamer.RenderTransform = trans;
+            streamer.RenderTransformOrigin = new Point(0.5, 0.5);
+
+            translate.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(0, h + streamerHeight + 20, TimeSpan.FromMilliseconds(2500 + MegaRng.Next(2000))) { EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn } });
+            translate.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, MegaRng.Next(-50, 50), TimeSpan.FromMilliseconds(800 + MegaRng.Next(600))) { AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever });
+            rotate.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(MegaRng.Next(-30, 30), MegaRng.Next(-180, 180), TimeSpan.FromMilliseconds(2000 + MegaRng.Next(1500))));
+            streamer.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.8, 0, TimeSpan.FromMilliseconds(500)) { BeginTime = TimeSpan.FromMilliseconds(2200 + MegaRng.Next(1500)) });
         }
     }
 }

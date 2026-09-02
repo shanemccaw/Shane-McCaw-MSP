@@ -14,6 +14,10 @@ namespace ShaneBuilder.Services;
 /// watcher's "Issue blocked" alert/whammy.</summary>
 public sealed record BlockedIssue(int Number, string Title);
 
+/// <summary>Git #2235 — one closed milestone, for the tier-4 "Milestone Closed" mega-celebration
+/// watcher.</summary>
+public sealed record ClosedMilestone(int Number, string Title);
+
 /// <summary>
 /// Git #2176 — ShaneBuilder's real, read-only GitHub API client for app-shell startup
 /// connectivity. Same real REST endpoint/auth shape as BuildConsole's
@@ -110,6 +114,16 @@ public sealed class GitHubReadClient
         public string Title { get; set; } = "";
     }
 
+    private sealed class MilestoneItem
+    {
+        [JsonPropertyName("number")]
+        public int Number { get; set; }
+        [JsonPropertyName("title")]
+        public string Title { get; set; } = "";
+        [JsonPropertyName("state")]
+        public string State { get; set; } = "";
+    }
+
     /// <summary>Real, live open-issue count for shanemccaw/Shane-McCaw-MSP via GitHub's real
     /// Search Issues API — one live network call, no cache, no fixture.</summary>
     public async Task<int> GetOpenIssueCountAsync()
@@ -129,6 +143,19 @@ public sealed class GitHubReadClient
         var list = new List<BlockedIssue>();
         if (res?.Items == null) return list;
         foreach (var item in res.Items) list.Add(new BlockedIssue(item.Number, item.Title));
+        return list;
+    }
+
+    /// <summary>Git #2235 — every closed milestone on the real repo, for the tier-4 "Milestone
+    /// Closed" mega-celebration watcher. Live REST call (not Search), no cache — same real
+    /// connection shape as the calls above.</summary>
+    public async Task<List<ClosedMilestone>> GetClosedMilestonesAsync()
+    {
+        var res = await _http.GetFromJsonAsync<List<MilestoneItem>>(
+            $"repos/{Owner}/{Repo}/milestones?state=closed&per_page=30&sort=due_on&direction=desc");
+        var list = new List<ClosedMilestone>();
+        if (res == null) return list;
+        foreach (var item in res) list.Add(new ClosedMilestone(item.Number, item.Title));
         return list;
     }
 }
