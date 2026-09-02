@@ -19,10 +19,11 @@ namespace ShaneBuilder
     /// chars pasted, notes/sections found, how many auto-matched a feature, and a per-type tally.
     /// "Sections" and "matched" read <see cref="TestPadImportCandidate.Section"/>/
     /// <see cref="TestPadImportCandidate.MatchedFeature"/> — real fields, honestly 0/empty until
-    /// the matcher (#2349) actually starts setting <c>MatchedFeature</c>. Per-row type-chip
-    /// correction (#2351) and merge-up UI (#2352-#2354) are separate open sub-issues that extend
-    /// <see cref="PreviewHost"/> in place — this issue's preview is deliberately just a checkable
-    /// list of what the splitter produced.</summary>
+    /// the matcher (#2349) actually starts setting <c>MatchedFeature</c>. Merge-up UI (#2352-#2354)
+    /// is a separate open sub-issue that extends <see cref="PreviewHost"/> in place — this issue's
+    /// preview is deliberately just a checkable list of what the splitter produced. Per-row
+    /// type-chip correction (#2351) is done: each row's chip is clickable and cycles its
+    /// candidate's <see cref="NoteType"/> in place, via <see cref="NextType"/>.</summary>
     public partial class TestPadImportWindow : Window
     {
         private List<TestPadImportCandidate> _candidates = new();
@@ -165,27 +166,46 @@ namespace ShaneBuilder
             Grid.SetColumn(text, 1);
             grid.Children.Add(text);
 
-            var marker = NoteMarkerParser.MarkerFor(candidate.Type);
             var typeChip = new Border
             {
                 CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(5, 1, 5, 1),
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Top,
+                Cursor = Cursors.Hand,
+                ToolTip = "Click to change type",
                 Background = (Brush)FindResource("Brush.Bg.Card"),
             };
-            typeChip.Child = new TextBlock
+            var typeChipText = new TextBlock
             {
-                Text = marker == null ? "note" : candidate.Type.ToString().ToLowerInvariant(),
+                Text = LabelFor(candidate.Type),
                 FontSize = 9,
                 FontWeight = FontWeights.SemiBold,
                 Foreground = (Brush)FindResource("Brush.Text.Muted"),
+            };
+            typeChip.Child = typeChipText;
+            typeChip.MouseLeftButtonDown += (_, _) =>
+            {
+                candidate.Type = NextType(candidate.Type);
+                typeChipText.Text = LabelFor(candidate.Type);
             };
             Grid.SetColumn(typeChip, 2);
             grid.Children.Add(typeChip);
 
             row.Child = grid;
             return row;
+        }
+
+        private static string LabelFor(NoteType type) => type.ToString().ToLowerInvariant();
+
+        /// <summary>Git #2351 — "click any type chip in the preview to correct it." Cycles a
+        /// candidate's type forward through every <see cref="NoteType"/> value, wrapping back to
+        /// the start, so a repeated click walks the whole set without needing a picker.</summary>
+        private static NoteType NextType(NoteType current)
+        {
+            var values = Enum.GetValues<NoteType>();
+            var index = Array.IndexOf(values, current);
+            return values[(index + 1) % values.Length];
         }
 
         private void UpdateImportButton()
