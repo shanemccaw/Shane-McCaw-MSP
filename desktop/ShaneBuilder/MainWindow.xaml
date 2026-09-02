@@ -947,6 +947,8 @@
                                 <ColumnDefinition x:Name="FileBrowserColumn" Width="0"/>
                                 <ColumnDefinition x:Name="GitMapColumn" Width="0"/>
                                 <ColumnDefinition x:Name="GdMiniColumn" Width="0"/>
+                                <ColumnDefinition x:Name="PsColumn" Width="0"/>
+                                <ColumnDefinition x:Name="TerminalColumn" Width="0"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Stat detail flyout — Shane's own addition, not in the mockup:
@@ -1632,6 +1634,93 @@
                                                        Foreground="{StaticResource Brush.Status.Running}"/>
                                             <StackPanel x:Name="GdMiniLogPanel"/>
                                         </StackPanel>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Git #2216 — §6.8 PowerShell mini panel: a REAL persistent powershell.exe
+                                 child process per chat tab (Services/TerminalSessionService.cs), not a
+                                 scripted reply table — Shane's own explicit 2026-09-02 decision on the
+                                 issue. Same flyout-column mechanism as the other tool panels above
+                                 (Step 9's generic tool belt still isn't built, Git #2200) — columns 10-11
+                                 since several sibling tool builds landed concurrently and took columns
+                                 4-9. -->
+                            <Border x:Name="PsPanel" Grid.Column="10" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="280">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="BtnTogglePs_Click"/>
+                                            <TextBlock Text="&#xE756;" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="13" Foreground="#4f8ff0"/>
+                                            <TextBlock Text="PowerShell" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <Border DockPanel.Dock="Bottom" Padding="10,8" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <TextBox x:Name="PsInputBox" Height="28" Padding="7,0"
+                                                 VerticalContentAlignment="Center"
+                                                 Background="{StaticResource Brush.Claude.Bg.Content}"
+                                                 BorderBrush="{StaticResource Brush.Claude.Border}"
+                                                 Foreground="#4f8ff0"
+                                                 CaretBrush="{StaticResource Brush.Claude.Text.Bright}"
+                                                 FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10.5}"
+                                                 PreviewKeyDown="PsInputBox_PreviewKeyDown"/>
+                                    </Border>
+
+                                    <ScrollViewer x:Name="PsOutputScroll" VerticalScrollBarVisibility="Auto" MinHeight="80">
+                                        <StackPanel x:Name="PsLinesPanel" Margin="8"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Git #2216 — §6.8 Terminal mini panel: the same real-session mechanism as
+                                 PsPanel above, backed by a real cmd.exe child process instead of
+                                 powershell.exe. Identical layout, different prompt/colour per the spec
+                                 ("$" #6ee7b7 vs "PS>" #4f8ff0). -->
+                            <Border x:Name="TerminalPanel" Grid.Column="11" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="280">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <TextBlock DockPanel.Dock="Right" Text="&#xE711;" Cursor="Hand"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                       MouseLeftButtonDown="BtnToggleTerminal_Click"/>
+                                            <TextBlock Text="&#xE756;" Margin="0,0,8,0" VerticalAlignment="Center"
+                                                       FontFamily="Segoe MDL2 Assets" FontSize="13" Foreground="#6ee7b7"/>
+                                            <TextBlock Text="Terminal" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <Border DockPanel.Dock="Bottom" Padding="10,8" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <TextBox x:Name="TerminalInputBox" Height="28" Padding="7,0"
+                                                 VerticalContentAlignment="Center"
+                                                 Background="{StaticResource Brush.Claude.Bg.Content}"
+                                                 BorderBrush="{StaticResource Brush.Claude.Border}"
+                                                 Foreground="#6ee7b7"
+                                                 CaretBrush="{StaticResource Brush.Claude.Text.Bright}"
+                                                 FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10.5}"
+                                                 PreviewKeyDown="TerminalInputBox_PreviewKeyDown"/>
+                                    </Border>
+
+                                    <ScrollViewer x:Name="TerminalOutputScroll" VerticalScrollBarVisibility="Auto" MinHeight="80">
+                                        <StackPanel x:Name="TerminalLinesPanel" Margin="8"/>
                                     </ScrollViewer>
                                 </DockPanel>
                             </Border>

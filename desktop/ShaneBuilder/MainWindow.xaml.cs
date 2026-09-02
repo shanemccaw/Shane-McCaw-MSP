@@ -218,6 +218,8 @@ public partial class MainWindow : Window
         }
         catch { /* best-effort teardown on shutdown */ }
 
+        DisposeAllTerminalSessions(); // Git #2216 — never leave a live powershell.exe/cmd.exe running after exit
+
         base.OnClosed(e);
     }
 
@@ -989,6 +991,10 @@ public partial class MainWindow : Window
         // Home is closable once something else is open, per Step 9 — only a
         // lone Home tab refuses to close.
         if (idx < 0 || (_tabs[idx].IsHome && _tabs.Count == 1)) return;
+
+        // Git #2216 — "sessions persist per chat tab while the tab lives": once the tab is
+        // actually gone, the real powershell.exe/cmd.exe backing it must go too.
+        DisposeTerminalSessionsForTab(id);
 
         _tabs.RemoveAt(idx);
 
@@ -2315,6 +2321,11 @@ public partial class MainWindow : Window
 
         if (_detectedItemsOpen)
             _ = RenderDetectedItemsAsync();
+
+        // Git #2216 — the rail column stays open across a tab switch, but its CONTENT is
+        // per-tab: repaint from (or lazily start) the newly-active tab's own session.
+        if (_psOpen) RenderPsPanel();
+        if (_terminalOpen) RenderTerminalPanel();
     }
 
     // Stat detail flyout — Shane's own addition, not in the original mockup:
@@ -3037,6 +3048,10 @@ public partial class MainWindow : Window
             () => { WrenchPopup.IsOpen = false; BtnToggleFileBrowser_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem(_gitMapOpen ? "Hide Git Map" : "Show Git Map",
             () => { WrenchPopup.IsOpen = false; BtnToggleGitMap_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_psOpen ? "Hide PowerShell" : "Show PowerShell",
+            () => { WrenchPopup.IsOpen = false; BtnTogglePs_Click(this, new RoutedEventArgs()); }));
+        WrenchMenuItems.Children.Add(WrenchItem(_terminalOpen ? "Hide Terminal" : "Show Terminal",
+            () => { WrenchPopup.IsOpen = false; BtnToggleTerminal_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Pop into Claude Floaty", () => { WrenchPopup.IsOpen = false; BtnFloaty_Click(this, new RoutedEventArgs()); }));
         WrenchMenuItems.Children.Add(WrenchItem("Start a new chat", () => { WrenchPopup.IsOpen = false; BtnStartNewChat_Click(this, new RoutedEventArgs()); }));
     }
@@ -7661,5 +7676,144 @@ public partial class MainWindow : Window
         {
             Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[git-map] couldn't open issue #{number} in browser: {ex.Message}");
         }
+    }
+
+    // ── PowerShell / Terminal mini panels — Git #2216, §6.8. Real live child processes
+    // (Shane's explicit 2026-09-02 decision on the issue — no scripted replies: running
+    // PowerShell/cmd from inside this app is no more capable than opening either from the
+    // Start menu, since he already has full local access either way). One TerminalSession
+    // per chat tab, keyed the same shape as _chatDrafts (§8) — per tab, not global — so a
+    // session's scrollback survives switching tabs away and back, and is torn down for
+    // good in CloseTab/OnClosed rather than leaking a live powershell.exe/cmd.exe.
+    private bool _psOpen;
+    private bool _terminalOpen;
+    private readonly Dictionary<string, TerminalSession> _psSessionsByTab = new();
+    private readonly Dictionary<string, TerminalSession> _terminalSessionsByTab = new();
+
+    private static readonly Brush PsPromptBrush = new SolidColorBrush(Color.FromRgb(0x4f, 0x8f, 0xf0));
+    private static readonly Brush TerminalPromptBrush = new SolidColorBrush(Color.FromRgb(0x6e, 0xe7, 0xb7));
+    private static readonly Brush TerminalOutputBrush = new SolidColorBrush(Color.FromRgb(0x9f, 0xd0, 0xa9));
+
+    private void BtnTogglePs_Click(object sender, RoutedEventArgs e)
+    {
+        _psOpen = !_psOpen;
+        PsColumn.Width = new GridLength(_psOpen ? 280 : 0);
+        if (_psOpen) RenderPsPanel();
+    }
+
+    private void BtnToggleTerminal_Click(object sender, RoutedEventArgs e)
+    {
+        _terminalOpen = !_terminalOpen;
+        TerminalColumn.Width = new GridLength(_terminalOpen ? 280 : 0);
+        if (_terminalOpen) RenderTerminalPanel();
+    }
+
+    // Looks up (or lazily starts) the session for one tab + kind, wires its Updated event to
+    // repaint the matching panel ONLY while that tab is still the one on screen — a session
+    // that finishes a command after you've switched away must not paint into someone else's
+    // rail — and repaints once immediately for the caller's own use.
+    private TerminalSession GetOrCreateSession(Dictionary<string, TerminalSession> byTab, string tabId, TerminalSessionKind kind)
+    {
+        if (byTab.TryGetValue(tabId, out var existing))
+        {
+            if (!existing.HasExited) return existing;
+            existing.Dispose();
+            byTab.Remove(tabId);
+        }
+
+        var session = new TerminalSession(kind);
+        bool isPs = kind == TerminalSessionKind.PowerShell;
+        session.Updated += () => Dispatcher.Invoke(() =>
+        {
+            if (_activeChatTab?.Id != tabId) return;
+            if (isPs) RenderTerminalSessionLines(session, PsLinesPanel, PsOutputScroll, PsInputBox, PsPromptBrush);
+            else RenderTerminalSessionLines(session, TerminalLinesPanel, TerminalOutputScroll, TerminalInputBox, TerminalPromptBrush);
+        });
+        byTab[tabId] = session;
+        return session;
+    }
+
+    private void RenderPsPanel()
+    {
+        if (!_psOpen || _activeChatTab == null) return;
+        var session = GetOrCreateSession(_psSessionsByTab, _activeChatTab.Id, TerminalSessionKind.PowerShell);
+        RenderTerminalSessionLines(session, PsLinesPanel, PsOutputScroll, PsInputBox, PsPromptBrush);
+    }
+
+    private void RenderTerminalPanel()
+    {
+        if (!_terminalOpen || _activeChatTab == null) return;
+        var session = GetOrCreateSession(_terminalSessionsByTab, _activeChatTab.Id, TerminalSessionKind.Cmd);
+        RenderTerminalSessionLines(session, TerminalLinesPanel, TerminalOutputScroll, TerminalInputBox, TerminalPromptBrush);
+    }
+
+    // Disables the input row while a command is in flight — RunAsync tracks completion via a
+    // single pending-command marker per session, so a second command sent before the first's
+    // marker comes back would clobber that wait rather than queueing behind it.
+    private void RenderTerminalSessionLines(TerminalSession session, StackPanel host, ScrollViewer scroller, TextBox input, Brush promptBrush)
+    {
+        input.IsEnabled = !session.IsRunning;
+        host.Children.Clear();
+        if (session.Lines.Count == 0)
+        {
+            host.Children.Add(new TextBlock
+            {
+                Text = "Session ready. Type a command below.",
+                FontStyle = FontStyles.Italic,
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted")
+            });
+            return;
+        }
+
+        foreach (var line in session.Lines)
+        {
+            host.Children.Add(new TextBlock
+            {
+                Text = line.Text,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 2),
+                FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 10.5,
+                FontWeight = line.IsPrompt ? FontWeights.SemiBold : FontWeights.Normal,
+                Foreground = line.IsPrompt ? promptBrush : TerminalOutputBrush
+            });
+        }
+        scroller.ScrollToEnd();
+    }
+
+    private void PsInputBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || _activeChatTab == null) return;
+        e.Handled = true;
+        var cmd = PsInputBox.Text;
+        PsInputBox.Text = "";
+        var session = GetOrCreateSession(_psSessionsByTab, _activeChatTab.Id, TerminalSessionKind.PowerShell);
+        _ = session.RunAsync(cmd);
+    }
+
+    private void TerminalInputBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || _activeChatTab == null) return;
+        e.Handled = true;
+        var cmd = TerminalInputBox.Text;
+        TerminalInputBox.Text = "";
+        var session = GetOrCreateSession(_terminalSessionsByTab, _activeChatTab.Id, TerminalSessionKind.Cmd);
+        _ = session.RunAsync(cmd);
+    }
+
+    // Real teardown so a closed chat tab doesn't leave a live powershell.exe/cmd.exe behind.
+    private void DisposeTerminalSessionsForTab(string tabId)
+    {
+        if (_psSessionsByTab.Remove(tabId, out var ps)) ps.Dispose();
+        if (_terminalSessionsByTab.Remove(tabId, out var term)) term.Dispose();
+    }
+
+    private void DisposeAllTerminalSessions()
+    {
+        foreach (var s in _psSessionsByTab.Values) s.Dispose();
+        foreach (var s in _terminalSessionsByTab.Values) s.Dispose();
+        _psSessionsByTab.Clear();
+        _terminalSessionsByTab.Clear();
     }
 }
