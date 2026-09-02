@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -10,7 +9,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using ShaneBuilder.Services;
-using IOPath = System.IO.Path;
 
 namespace ShaneBuilder;
 
@@ -64,6 +62,10 @@ public partial class MainWindow
     private int _gitFeatureDetailRequestSeq;
     private int _gitFeatureStateFilterForFeature;
     private GitBuildState? _gitFeatureStateFilter;
+
+    // ── Gate peek (#2302) — ring, verdict band, blocked critical epics, full check list ────────
+    private readonly Dictionary<int, GitGateDetail> _gitGateDetailCache = new();
+    private readonly HashSet<int> _gitGateDetailLoading = new();
 
     // ── load ─────────────────────────────────────────────────────────────────────────────────
 
@@ -310,6 +312,8 @@ public partial class MainWindow
             GitPanelStatus.Visibility = Visibility.Visible;
         }
         if (_gitTrail.Count == 0) RenderGitTree();
+        else if (_gitTrail.Count > 0 && _gitTrail[^1].Kind == GitCrumbKind.Epic && _gitTrail[^1].Number == epicNumber)
+            RenderGitPeek();
     }
 
     // ── peek open paths (#2292-#2296) ────────────────────────────────────────────────────────
@@ -325,6 +329,10 @@ public partial class MainWindow
         AddGitMilestoneCrumb(trail, epic.Milestone);
         trail.Add(new GitCrumb { Kind = GitCrumbKind.Epic, Number = epic.Number, Title = epic.Title });
         SetGitTrail(trail, fetchLastIssue: true);
+        // #2311 — the amber "no burndown" banner needs a real feature count, not just identity
+        // state; kick off the same load the tree row uses if this epic hasn't been fetched yet.
+        if (!_gitEpicFeatures.ContainsKey(epic.Number) && !_gitEpicsLoadingFeatures.Contains(epic.Number))
+            _ = LoadGitEpicFeaturesAsync(epic.Number);
     }
 
     private void OpenGitFeaturePeek(GitMapEpic epic, GitPanelIssueNode feature)
@@ -502,30 +510,360 @@ public partial class MainWindow
                 counts.Children.Add(GitCountPill($"{ms.ClosedCount} closed", "Brush.Status.Done"));
                 GitPeekHost.Children.Add(counts);
             }
+            var note = GitDimLine("Peek detail content (vitals, rings, actions) lands in later builds under Feature #2289.", indent: 6);
+            note.Margin = new Thickness(6, 10, 6, 0);
+            GitPeekHost.Children.Add(note);
         }
         else if (current.Kind == GitCrumbKind.Feature)
         {
             // Git #2309/#2310 — the real Feature detail panel: ring, state, epic, bug count,
             // last build, six real build-state chips, and the (chip-filterable) issue list.
             RenderGitFeatureDetail(current.Number);
-            return;
         }
-        else if (_gitPeekCache.TryGetValue(current.Number, out var state))
+        else if (current.Kind == GitCrumbKind.Gate)
         {
-            var pills = new WrapPanel { Margin = new Thickness(6, 0, 6, 8) };
-            pills.Children.Add(GitCountPill(state.IsClosed ? "CLOSED" : "OPEN", state.IsClosed ? "Brush.Status.Done" : "Brush.Status.Running"));
-            foreach (var label in state.Labels)
-                pills.Children.Add(GitCountPill(label, "Brush.Text.Muted"));
-            GitPeekHost.Children.Add(pills);
+            RenderGitGatePeekBody(current.Number);
         }
         else
         {
-            GitPeekHost.Children.Add(GitDimLine("Loading real state…", indent: 6));
+            if (_gitPeekCache.TryGetValue(current.Number, out var state))
+            {
+                var pills = new WrapPanel { Margin = new Thickness(6, 0, 6, 8) };
+                pills.Children.Add(GitCountPill(state.IsClosed ? "CLOSED" : "OPEN", state.IsClosed ? "Brush.Status.Done" : "Brush.Status.Running"));
+                foreach (var label in state.Labels)
+                    pills.Children.Add(GitCountPill(label, "Brush.Text.Muted"));
+                GitPeekHost.Children.Add(pills);
+            }
+            else
+            {
+                GitPeekHost.Children.Add(GitDimLine("Loading real state…", indent: 6));
+            }
+
+            // #2311 — real "no burndown" warning: an Epic whose sub-issue fetch came back with
+            // zero FEATURE children has nothing to compute a burndown ring from. Total comes
+            // straight off GitPanelService.GetFeatureTreeAsync's real TotalCount (#2290), never
+            // inferred/guessed.
+            if (current.Kind == GitCrumbKind.Epic && _gitEpicFeatureTotals.TryGetValue(current.Number, out var featureTotal) && featureTotal == 0)
+            {
+                var amber = (Color)ColorConverter.ConvertFromString("#E2984A"); // Brush.Toast.Warning hex
+                var warn = new Border
+                {
+                    Margin = new Thickness(6, 0, 6, 8),
+                    Padding = new Thickness(8, 6, 8, 6),
+                    CornerRadius = new CornerRadius(5),
+                    Background = new SolidColorBrush(Color.FromArgb(38, amber.R, amber.G, amber.B)),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = new SolidColorBrush(amber)
+                };
+                var warnText = GitText("⚠ Nothing here has a burndown — this Epic has no FEATURE sub-issues yet.", 10, "Brush.Text.Heading");
+                warnText.TextWrapping = TextWrapping.Wrap;
+                warn.Child = warnText;
+                GitPeekHost.Children.Add(warn);
+            }
+
+            var note = GitDimLine("Peek detail content (vitals, rings, actions) lands in later builds under Feature #2289.", indent: 6);
+            note.Margin = new Thickness(6, 10, 6, 0);
+            GitPeekHost.Children.Add(note);
+        }
+    }
+
+    // ── Gate peek body (#2302) ───────────────────────────────────────────────────────────────
+
+    /// <summary>Git #2302 — the real Gate detail body: a ring of green checks (closed/total of
+    /// the gate's own real sub-issues), a verdict band, the real blocked-critical-epics list
+    /// (open Epic: issues sharing the gate's milestone that carry the `blocked` label, each
+    /// resolved against its real `blocked_by` edges so a stale edge is flagged), the full check
+    /// list, and a real "Run Verification Sweep" action that re-fetches all of it.</summary>
+    private void RenderGitGatePeekBody(int gateNumber)
+    {
+        if (!_gitGateDetailCache.TryGetValue(gateNumber, out var detail))
+        {
+            GitPeekHost.Children.Add(GitDimLine(
+                _gitGateDetailLoading.Contains(gateNumber) ? "Running verification sweep — reading real GitHub state…" : "Loading real gate checks…",
+                indent: 6));
+            if (!_gitGateDetailLoading.Contains(gateNumber))
+                _ = FetchGitGateDetailAsync(gateNumber);
+            return;
         }
 
-        var note = GitDimLine("Peek detail content (vitals, rings, actions) lands in later builds under Feature #2289.", indent: 6);
-        note.Margin = new Thickness(6, 10, 6, 0);
-        GitPeekHost.Children.Add(note);
+        bool hasChecks = detail.TotalCheckCount > 0;
+        bool ready = hasChecks && detail.ClosedCheckCount == detail.TotalCheckCount && detail.BlockedCriticalEpics.Count == 0;
+        int openChecks = detail.TotalCheckCount - detail.ClosedCheckCount;
+        double fraction = hasChecks ? (double)detail.ClosedCheckCount / detail.TotalCheckCount : 0;
+
+        // Ring of green checks + summary ------------------------------------------------------
+        var ringRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(6, 2, 6, 10) };
+        ringRow.Children.Add(GitRing(84, 9, fraction,
+            (Brush)FindResource("Brush.Status.Done"), (Brush)FindResource("Brush.Border.Default"),
+            hasChecks ? $"{detail.ClosedCheckCount}/{detail.TotalCheckCount}" : "0/0", "checks"));
+
+        var ringSide = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(12, 0, 0, 0) };
+        var summaryLine = GitText(
+            !hasChecks ? "No checks on this gate yet" : ready ? "All checks green" : $"{openChecks} check{(openChecks == 1 ? "" : "s")} still open",
+            11.5, ready ? "Brush.Status.Done" : "Brush.Text.Primary");
+        summaryLine.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
+        ringSide.Children.Add(summaryLine);
+        if (detail.BlockedCriticalEpics.Count > 0)
+        {
+            var blockedLine = GitText($"{detail.BlockedCriticalEpics.Count} blocked critical epic{(detail.BlockedCriticalEpics.Count == 1 ? "" : "s")}", 10.5, "Brush.NextUp.Blocked.Fg");
+            blockedLine.Margin = new Thickness(0, 2, 0, 0);
+            ringSide.Children.Add(blockedLine);
+        }
+        var sweptLine = GitDimLine($"Last swept {FormatSweptAgo(detail.SweptAtUtc)}", indent: 0);
+        sweptLine.Margin = new Thickness(0, 2, 0, 0);
+        ringSide.Children.Add(sweptLine);
+        ringRow.Children.Add(ringSide);
+        GitPeekHost.Children.Add(ringRow);
+
+        // Verdict band --------------------------------------------------------------------------
+        var verdictAccent = (SolidColorBrush)FindResource(ready ? "Brush.Status.Done" : "Brush.NextUp.Blocked.Fg");
+        string verdictHeadline = !hasChecks ? "NO CHECKS FOUND" : ready ? "READY — every check is closed" : "NOT READY";
+        var verdictParts = new List<string>();
+        if (hasChecks && openChecks > 0) verdictParts.Add($"{openChecks} of {detail.TotalCheckCount} checks open");
+        if (detail.BlockedCriticalEpics.Count > 0) verdictParts.Add($"{detail.BlockedCriticalEpics.Count} blocked critical epic{(detail.BlockedCriticalEpics.Count == 1 ? "" : "s")}");
+        if (detail.StaleBlockerEdgeCount > 0) verdictParts.Add($"{detail.StaleBlockerEdgeCount} stale blocking edge{(detail.StaleBlockerEdgeCount == 1 ? "" : "s")} — blocker already closed");
+        string? verdictSub = verdictParts.Count > 0 ? string.Join(" · ", verdictParts) : (ready ? "No blocked critical epics." : null);
+        GitPeekHost.Children.Add(GitVerdictBand(verdictHeadline, verdictSub, verdictAccent));
+
+        // Blocked critical epics ------------------------------------------------------------------
+        var epicsHeader = GitText($"BLOCKED CRITICAL EPICS ({detail.BlockedCriticalEpics.Count})", 9, "Brush.Text.Dim");
+        epicsHeader.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        epicsHeader.Margin = new Thickness(6, 4, 6, 4);
+        GitPeekHost.Children.Add(epicsHeader);
+        if (detail.BlockedCriticalEpics.Count == 0)
+        {
+            GitPeekHost.Children.Add(GitDimLine(
+                detail.MilestoneNumber.HasValue
+                    ? "None — no open Epic: issue in this gate's milestone carries the blocked label."
+                    : "This gate has no milestone — blocked-critical-epic scan skipped.",
+                indent: 6));
+        }
+        else
+        {
+            foreach (var epic in detail.BlockedCriticalEpics)
+            {
+                var card = new Border
+                {
+                    Margin = new Thickness(4, 0, 4, 4),
+                    Padding = new Thickness(8, 6, 8, 6),
+                    CornerRadius = new CornerRadius(6),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = new SolidColorBrush(((SolidColorBrush)FindResource("Brush.NextUp.Blocked.Fg")).Color) { Opacity = 0.35 },
+                    Background = (Brush)FindResource("Brush.NextUp.Blocked.Bg"),
+                    Cursor = Cursors.Hand
+                };
+                var stack = new StackPanel();
+                var titleTb = GitText($"#{epic.Number} {StripGitPrefix(epic.Title)}", 10.5, "Brush.Text.Heading");
+                titleTb.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
+                titleTb.TextWrapping = TextWrapping.Wrap;
+                stack.Children.Add(titleTb);
+                if (epic.BlockedBy.Count == 0)
+                {
+                    var noEdge = GitDimLine("blocked label set, but no real blocked_by edge recorded", indent: 0);
+                    noEdge.Margin = new Thickness(0, 3, 0, 0);
+                    stack.Children.Add(noEdge);
+                }
+                else
+                {
+                    var wrap = new WrapPanel { Margin = new Thickness(0, 3, 0, 0) };
+                    foreach (var edge in epic.BlockedBy)
+                    {
+                        string pillText = edge.IsClosed ? $"STALE — #{edge.Number} already closed" : $"blocked by #{edge.Number}";
+                        wrap.Children.Add(GitCountPill(pillText, edge.IsClosed ? "Brush.NextUp.Blocked.Fg" : "Brush.Text.Muted"));
+                    }
+                    stack.Children.Add(wrap);
+                }
+                card.Child = stack;
+                var capturedEpicNum = epic.Number;
+                card.MouseLeftButtonDown += (_, _) => OpenGitIssuePeekDerived(capturedEpicNum);
+                GitPeekHost.Children.Add(card);
+            }
+        }
+
+        // Full check list -------------------------------------------------------------------------
+        var checksHeader = GitText($"CHECKS ({detail.ClosedCheckCount}/{detail.TotalCheckCount})", 9, "Brush.Text.Dim");
+        checksHeader.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        checksHeader.Margin = new Thickness(6, 10, 6, 4);
+        GitPeekHost.Children.Add(checksHeader);
+        if (detail.Checks.Count == 0)
+        {
+            GitPeekHost.Children.Add(GitDimLine("This gate has no sub-issues yet — nothing to check.", indent: 6));
+        }
+        else
+        {
+            foreach (var check in detail.Checks)
+            {
+                var row = GitRowShell(indent: 6);
+                row.ColumnLeft(GitDot((Brush)FindResource(check.IsClosed ? "Brush.Status.Done" : "Brush.Text.Dim")));
+                var text = GitText($"#{check.Number} {check.Title}", 10.5, check.IsClosed ? "Brush.Text.Dim" : "Brush.Text.Primary");
+                text.TextTrimming = TextTrimming.CharacterEllipsis;
+                text.Margin = new Thickness(5, 0, 4, 0);
+                row.ColumnFill(text);
+                row.ColumnRight(GitCountPill(check.IsClosed ? "CLOSED" : "OPEN", check.IsClosed ? "Brush.Status.Done" : "Brush.Status.Running"));
+                var capturedCheckNum = check.Number;
+                row.Root.MouseLeftButtonDown += (_, _) => OpenGitIssuePeekDerived(capturedCheckNum);
+                GitPeekHost.Children.Add(row.Root);
+            }
+        }
+
+        // Run Verification Sweep -------------------------------------------------------------------
+        bool sweeping = _gitGateDetailLoading.Contains(gateNumber);
+        var sweepBtn = new Button
+        {
+            Content = sweeping ? "Sweeping…" : "Run Verification Sweep",
+            Margin = new Thickness(6, 12, 6, 0),
+            Height = 30,
+            Padding = new Thickness(12, 0, 12, 0),
+            Background = (Brush)FindResource("Brush.Accent.Primary"),
+            Foreground = Brushes.Black,
+            BorderThickness = new Thickness(0),
+            FontSize = 11,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Cursor = Cursors.Hand,
+            IsEnabled = !sweeping,
+            HorizontalAlignment = HorizontalAlignment.Left
+        };
+        sweepBtn.Click += (_, _) =>
+        {
+            _gitGateDetailCache.Remove(gateNumber);
+            _ = FetchGitGateDetailAsync(gateNumber);
+            RenderGitPanel();
+        };
+        GitPeekHost.Children.Add(sweepBtn);
+    }
+
+    /// <summary>Fetches (or re-fetches, for "Run Verification Sweep") one gate's real detail
+    /// snapshot. Guarded against overlapping calls for the same gate; a stale response (user
+    /// navigated elsewhere before this landed) is dropped rather than rendered.</summary>
+    private async Task FetchGitGateDetailAsync(int gateNumber)
+    {
+        if (!_gitGateDetailLoading.Add(gateNumber)) return;
+        int seq = ++_gitPeekRequestSeq;
+        var (ok, detail, error) = await GitPanelService.GetGateDetailAsync(gateNumber);
+        _gitGateDetailLoading.Remove(gateNumber);
+        if (ok && detail != null) _gitGateDetailCache[gateNumber] = detail;
+        if (seq != _gitPeekRequestSeq) return;
+        if (!ok)
+        {
+            GitPanelStatus.Text = $"Gate #{gateNumber} verification sweep failed — {error}";
+            GitPanelStatus.Visibility = Visibility.Visible;
+        }
+        if (_gitTrail.Count > 0 && _gitTrail[^1].Number == gateNumber && _gitTrail[^1].Kind == GitCrumbKind.Gate)
+            RenderGitPanel();
+    }
+
+    private static string FormatSweptAgo(DateTime sweptAtUtc)
+    {
+        var span = DateTime.UtcNow - sweptAtUtc;
+        if (span.TotalSeconds < 30) return "just now";
+        if (span.TotalMinutes < 1) return $"{(int)span.TotalSeconds}s ago";
+        if (span.TotalHours < 1) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalDays < 1) return $"{(int)span.TotalHours}h ago";
+        return $"{(int)span.TotalDays}d ago";
+    }
+
+    /// <summary>A translucent, accent-colored band naming the gate's real verdict — same visual
+    /// language as the gate cards in the tree (translucent bg, 55%-opacity border, bold accent
+    /// caption).</summary>
+    private Border GitVerdictBand(string headline, string? sub, SolidColorBrush accent)
+    {
+        var card = new Border
+        {
+            Margin = new Thickness(6, 0, 6, 10),
+            Padding = new Thickness(10, 8, 10, 8),
+            CornerRadius = new CornerRadius(7),
+            BorderThickness = new Thickness(1.5),
+            BorderBrush = new SolidColorBrush(accent.Color) { Opacity = 0.55 },
+            Background = new SolidColorBrush(accent.Color) { Opacity = 0.10 }
+        };
+        var stack = new StackPanel();
+        var head = GitText(headline, 11.5, null);
+        head.Foreground = accent;
+        head.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        stack.Children.Add(head);
+        if (!string.IsNullOrEmpty(sub))
+        {
+            var subTb = GitText(sub, 10, "Brush.Text.Muted");
+            subTb.TextWrapping = TextWrapping.Wrap;
+            subTb.Margin = new Thickness(0, 3, 0, 0);
+            stack.Children.Add(subTb);
+        }
+        card.Child = stack;
+        return card;
+    }
+
+    /// <summary>A round progress ring drawn from real fraction-complete — no chart library, just
+    /// a background <see cref="Ellipse"/> track and a foreground <see cref="Path"/> arc (a full
+    /// <see cref="Ellipse"/> when fraction is effectively 1, since a single ArcSegment can't
+    /// describe a full 360° sweep). Center text is the real count, not a fabricated percentage.</summary>
+    private FrameworkElement GitRing(double size, double thickness, double fraction, Brush fgBrush, Brush bgBrush, string centerLine1, string? centerLine2 = null)
+    {
+        fraction = Math.Max(0, Math.Min(1, fraction));
+        double r = (size - thickness) / 2;
+        var grid = new Grid { Width = size, Height = size };
+
+        grid.Children.Add(new Ellipse
+        {
+            Width = r * 2,
+            Height = r * 2,
+            Stroke = bgBrush,
+            StrokeThickness = thickness,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+
+        if (fraction >= 0.999)
+        {
+            grid.Children.Add(new Ellipse
+            {
+                Width = r * 2,
+                Height = r * 2,
+                Stroke = fgBrush,
+                StrokeThickness = thickness,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+        }
+        else if (fraction > 0.001)
+        {
+            double center = size / 2;
+            double angleDeg = fraction * 360.0;
+            var start = new Point(center, center - r);
+            double rad = (angleDeg - 90.0) * Math.PI / 180.0;
+            var end = new Point(center + r * Math.Cos(rad), center + r * Math.Sin(rad));
+            bool isLargeArc = angleDeg > 180.0;
+
+            var figure = new PathFigure { StartPoint = start, IsClosed = false };
+            figure.Segments.Add(new ArcSegment(end, new Size(r, r), 0, isLargeArc, SweepDirection.Clockwise, true));
+            var geometry = new PathGeometry();
+            geometry.Figures.Add(figure);
+
+            grid.Children.Add(new Path
+            {
+                Data = geometry,
+                Stroke = fgBrush,
+                StrokeThickness = thickness,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round
+            });
+        }
+
+        var centerStack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        var line1 = GitText(centerLine1, size * 0.20, "Brush.Text.Heading");
+        line1.HorizontalAlignment = HorizontalAlignment.Center;
+        line1.TextAlignment = TextAlignment.Center;
+        line1.FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold");
+        centerStack.Children.Add(line1);
+        if (!string.IsNullOrEmpty(centerLine2))
+        {
+            var line2 = GitText(centerLine2, size * 0.12, "Brush.Text.Dim");
+            line2.HorizontalAlignment = HorizontalAlignment.Center;
+            line2.TextAlignment = TextAlignment.Center;
+            centerStack.Children.Add(line2);
+        }
+        grid.Children.Add(centerStack);
+
+        return grid;
     }
 
     private void GitPeekBack()
@@ -658,11 +996,11 @@ public partial class MainWindow
     {
         try
         {
-            var path = IOPath.Combine(
+            var path = System.IO.Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "BuildConsole", "settings.json");
-            if (!File.Exists(path)) return new HashSet<int>();
-            using var doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (!System.IO.File.Exists(path)) return new HashSet<int>();
+            using var doc = JsonDocument.Parse(System.IO.File.ReadAllText(path));
             if (doc.RootElement.TryGetProperty("PausedBuildIds", out var idsEl) && idsEl.ValueKind == JsonValueKind.Array)
             {
                 var set = new HashSet<int>();

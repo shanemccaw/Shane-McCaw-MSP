@@ -29,6 +29,21 @@ public sealed class PaletteBuildQueueRow
     public string? SessionId { get; init; }
     public int? BlockedByNumber { get; init; }
     public DateTimeOffset UpdatedAt { get; init; }
+
+    /// <summary>Git #2410 — the real GitHub Project "Status" for this row's <see cref="GithubNumber"/>,
+    /// as of the last reconciliation pass. Null means "not fetched yet" or "GitHub lookup failed" —
+    /// never confused with a confirmed board value, so a network hiccup can't wrongly flag a row
+    /// stale. Set (not init) so <c>QueueStatusReconciler</c> can fill it in after the row is
+    /// already constructed from the real bt_build_queue read.</summary>
+    public string? BoardStatus { get; set; }
+
+    /// <summary>Git #2410 — true when this row's local <see cref="Status"/> is one BuildConsole
+    /// considers active (queued/running/parked/verifying/limit-paused/external — see
+    /// <see cref="QueueReadClient.IsLocalActiveStatus"/>) but the real GitHub board Status,
+    /// confirmed via <see cref="BoardStatus"/>, is NOT a launch-eligible status (e.g. it was moved
+    /// back to Backlog). A stale row is real drift — the local queue's own cached status has not
+    /// caught up with GitHub — and callers should stop rendering it as active.</summary>
+    public bool IsStale { get; set; }
 }
 
 /// <summary>
@@ -194,5 +209,61 @@ public sealed class QueueReadClient
             ConsoleOutputSink.Log(LogLevel.Warn, $"[queue] GetLatestByGithubNumbersAsync failed: {ex.Message}");
         }
         return result;
+    }
+
+    /// <summary>Git #2410 — the same local-status vocabulary BuildConsole's own
+    /// <c>BuildQueuePostgresClient.IsActiveStatus</c> treats as "still going/about to go"
+    /// (queued/parked/running/verifying/limit-paused/external). A row in one of these statuses is
+    /// exactly the class the real incident (#1734) hit: locally still "active" while GitHub had
+    /// already moved it back to Backlog.</summary>
+    public static bool IsLocalActiveStatus(string? status) => status is
+        "queued" or "parked" or "running" or "verifying" or "limit-paused" or "external";
+
+    /// <summary>Git #2410 — the real GitHub Project Status values that justify a locally-active row
+    /// staying active. Anything else confirmed via <see cref="ChatGitHubFilter.GetBoardStatusesAsync"/>
+    /// (Backlog, Park, Done, Crashed, or any other real column) means the board has moved on and the
+    /// local cache is stale.</summary>
+    public static bool IsLaunchEligibleBoardStatus(string? boardStatus) => boardStatus is
+        "Batter Up" or "AI Batter Up" or "In Progress" or "Verifying";
+}
+
+/// <summary>Git #2410 — reconciles a set of real <see cref="PaletteBuildQueueRow"/>s (already read
+/// from <c>bt_build_queue</c>) against the real GitHub Project board Status, so a row whose local
+/// status thinks it's still active but whose board Status has since moved back to Backlog (or any
+/// other non-launch column) is flagged <see cref="PaletteBuildQueueRow.IsStale"/> before it's
+/// rendered. Fails open on any GitHub lookup failure — an unreachable board never causes a row to
+/// be wrongly marked stale, mirroring every other fail-closed/open convention already used across
+/// this file's sibling read services.</summary>
+public static class QueueStatusReconciler
+{
+    public static async Task ReconcileAsync(IReadOnlyList<PaletteBuildQueueRow> rows, ChatGitHubFilter github)
+    {
+        var activeNumbers = rows
+            .Where(r => QueueReadClient.IsLocalActiveStatus(r.Status) && r.GithubNumber.HasValue)
+            .Select(r => r.GithubNumber!.Value)
+            .Distinct()
+            .ToList();
+        if (activeNumbers.Count == 0) return;
+
+        Dictionary<int, string?> boardStatuses;
+        try
+        {
+            boardStatuses = await github.GetBoardStatusesAsync(activeNumbers);
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[queue] status reconciliation failed: {ex.Message}");
+            return;
+        }
+
+        foreach (var row in rows)
+        {
+            if (!row.GithubNumber.HasValue || !QueueReadClient.IsLocalActiveStatus(row.Status)) continue;
+            if (!boardStatuses.TryGetValue(row.GithubNumber.Value, out var boardStatus) || boardStatus == null)
+                continue; // unknown/unreachable — leave the row exactly as the local cache had it
+
+            row.BoardStatus = boardStatus;
+            row.IsStale = !QueueReadClient.IsLaunchEligibleBoardStatus(boardStatus);
+        }
     }
 }

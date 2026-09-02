@@ -179,6 +179,78 @@ public sealed class ChatGitHubFilter
         return null;
     }
 
+    /// <summary>Git #2410 — the real board Status for MANY issues in one <c>gh api graphql</c> call
+    /// (aliased sub-queries, `i0:`/`i1:`/…), instead of one process spawn per number. Used by the
+    /// Build Queue palette's refresh reconciliation so a queue with N locally-active rows doesn't
+    /// spawn N `gh` subprocesses on every 30s cache refresh. A missing/failed entry maps to
+    /// <c>null</c> (unknown — never treated by a caller as "confirmed Backlog"), same fail-open
+    /// convention as the single-issue <see cref="GetBoardStatusAsync"/> above.</summary>
+    public async Task<Dictionary<int, string?>> GetBoardStatusesAsync(IReadOnlyCollection<int> numbers)
+    {
+        var result = new Dictionary<int, string?>();
+        var distinct = numbers.Where(n => n > 0).Distinct().ToList();
+        if (distinct.Count == 0) return result;
+
+        var sb = new StringBuilder("query {\n  repository(owner: \"" + Owner + "\", name: \"" + RepoName + "\") {\n");
+        for (int i = 0; i < distinct.Count; i++)
+        {
+            sb.Append($@"    i{i}: issue(number: {distinct[i]}) {{
+      number
+      projectItems(first: 20) {{
+        nodes {{
+          project {{ id }}
+          fieldValueByName(name: ""Status"") {{
+            ... on ProjectV2ItemFieldSingleSelectValue {{ name }}
+          }}
+        }}
+      }}
+    }}
+");
+        }
+        sb.Append("  }\n}");
+
+        var (ok, stdout, _) = await RunAsync("gh", new[] { "api", "graphql", "-f", "query=" + sb });
+        if (!ok)
+        {
+            foreach (var n in distinct) result[n] = null;
+            return result;
+        }
+        try
+        {
+            using var doc = JsonDocument.Parse(stdout);
+            var repo = doc.RootElement.GetProperty("data").GetProperty("repository");
+            for (int i = 0; i < distinct.Count; i++)
+            {
+                int number = distinct[i];
+                result[number] = null;
+                if (!repo.TryGetProperty($"i{i}", out var issueEl) || issueEl.ValueKind != JsonValueKind.Object)
+                    continue;
+                if (!issueEl.TryGetProperty("projectItems", out var pi) || !pi.TryGetProperty("nodes", out var nodes))
+                    continue;
+                foreach (var node in nodes.EnumerateArray())
+                {
+                    if (!node.TryGetProperty("project", out var proj) ||
+                        !proj.TryGetProperty("id", out var pid) ||
+                        !string.Equals(pid.GetString(), BatterUpProjectId, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (node.TryGetProperty("fieldValueByName", out var fv) &&
+                        fv.ValueKind == JsonValueKind.Object &&
+                        fv.TryGetProperty("name", out var name))
+                    {
+                        result[number] = name.GetString();
+                        break;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[chat.dock] couldn't parse batched board-status output: {ex.Message}");
+            foreach (var n in distinct) result[n] = null;
+        }
+        return result;
+    }
+
     // ── gh process runner ────────────────────────────────────────────────────────────────────
     private static async Task<(bool Ok, string StdOut, string StdErr)> RunAsync(string fileName, string[] args, int timeoutMs = 30000)
     {
