@@ -228,12 +228,14 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                     <!-- Workspace box (Step 9, wpf-handoff/readme-phase2.md) —
                          replaces what was an empty square left of the app
-                         name. A 4-pip grid of live workspace colours plus a
-                         badge counting dismissed ("stashed") workspace sets;
-                         clicking opens a panel to fold/unfold/restore each.
-                         Hidden entirely when nothing is stashed — an empty
-                         box would just be visual noise the mockup doesn't
-                         call for.
+                         name. A 4-pip grid of live workspace colours; clicking
+                         opens a panel to fold/unfold/restore each dismissed
+                         ("stashed") workspace set, plus — Git #2471 — a
+                         DISMISSED TABS section listing individually-dismissed
+                         tabs (park alive, restore or close from here). Hidden
+                         entirely when nothing is stashed or dismissed — an
+                         empty box would just be visual noise the mockup
+                         doesn't call for.
                          A ToggleButton bound straight to the Popup's IsOpen,
                          not a Button + code-behind toggle — a StaysOpen=False
                          Popup opened from a plain Button.Click flashes open
@@ -246,7 +248,7 @@
                     <ToggleButton x:Name="BtnWorkspaceBox" Width="36" Height="32" Margin="12,0,0,0"
                                   Visibility="Collapsed" Style="{StaticResource RailToggle}"
                                   WindowChrome.IsHitTestVisibleInChrome="True"
-                                  ToolTip="Dismissed workspaces">
+                                  ToolTip="Dismissed workspaces &amp; tabs">
                         <Grid x:Name="WorkspaceBoxPipsGrid" Width="20" Height="20"/>
                     </ToggleButton>
                     <Popup x:Name="WorkspaceBoxPopup" PlacementTarget="{Binding ElementName=BtnWorkspaceBox}"

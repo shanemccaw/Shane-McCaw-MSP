@@ -14,7 +14,7 @@ namespace ShaneBuilder;
 /// Git #2325 (Feature #2318 item 9) — real content for the CHATS rail panel (was a static "No
 /// chats yet" placeholder that never rendered anything, per the real audit in
 /// <c>build-journal/2325.md</c>): one row per open chat tab with a real DOM-derived context-size
-/// badge, plus Archive/Reopen/Delete for the chat archive.
+/// badge, plus Dismiss (Git #2471) for the tab and Reopen/Delete for the chat archive.
 ///
 /// Context-size reading: <see cref="ChatContextMeterScript"/> is injected into each keep-alive
 /// tab's own WebView2 (Git #2470 replaced the single shared <c>ClaudeWebView</c> with one live view
@@ -24,14 +24,17 @@ namespace ShaneBuilder;
 /// genuinely per-tab. A tab that has never finished loading its view still shows "not read yet"
 /// rather than a stale or fabricated number.
 ///
-/// Archive: "Archive" here means: record this chat's identity and last known size into
-/// <see cref="ChatArchiveStore"/>, then reset the shared WebView to a fresh chat — the same
-/// navigation <c>BtnStartNewChat_Click</c>/<c>OpenNewChatFlow</c> already use — so nothing is
-/// silently lost and the old conversation can be found and reopened from the ARCHIVED section.
-/// Git #2323 made <c>OpenNewChatFlow</c> create a genuine new <c>TabDef</c> per chat instead of
-/// always reusing the one seed tab — Archive's own tab-strip cleanup for that multi-tab case (does
-/// archiving a secondary tab remove it, vs. reset-in-place like the seed tab always has?) is a real
-/// gap this exposed, filed separately rather than redesigned here (see build-journal/2323.md).
+/// Git #2471 replaced the old ArchiveChatTab (which conflated "record this chat's identity into
+/// <see cref="ChatArchiveStore"/>" with "reset THIS tab's own view to a fresh chat," never
+/// actually leaving the tab strip — a correct no-op only under the old one-persistent-chat-tab
+/// model) with two real, distinct actions: this row's Dismiss button parks the tab (and its live
+/// keep-alive WebView2) alive, out of the strip, restorable from the workspace box
+/// (MainWindow.DismissedTabs.cs); Close (the tab's own ×/context menu) is the real kill, and is
+/// now what records the chat's identity into ChatArchiveStore — see
+/// <c>RecordChatArchiveIfNeeded</c> — at the point its session actually ends, so the old
+/// #2323-exposed gap (an archived secondary tab left dangling in <c>_tabs</c>, #2465) can't
+/// reproduce: a dismissed tab never left <c>_tabs</c> to begin with, and a closed tab is removed
+/// for real.
 /// </summary>
 public partial class MainWindow
 {
@@ -139,7 +142,10 @@ public partial class MainWindow
 
     private void RenderChatsPanel()
     {
-        var openChats = _tabs.Where(t => t.IsChat).ToList();
+        // Git #2471 — a dismissed chat tab stays in _tabs (parked alive, not removed) but no
+        // longer counts as "open"; it shows up under DISMISSED TABS in the workspace box
+        // instead (MainWindow.DismissedTabs.cs), not here.
+        var openChats = _tabs.Where(t => t.IsChat && !_dismissedTabIds.Contains(t.Id)).ToList();
         ChatsPanelStatus.Text = openChats.Count == 0
             ? "No chats yet. Chats you open will show up here."
             : $"{openChats.Count} open chat{(openChats.Count == 1 ? "" : "s")}.";
@@ -228,9 +234,15 @@ public partial class MainWindow
         Grid.SetColumn(left, 0);
         grid.Children.Add(left);
 
-        var archiveBtn = new TextBlock
+        // Git #2471 — "Archive" used to conflate recording this chat's identity with resetting
+        // THIS tab's own view in place, never actually leaving the strip. Dismiss now does the
+        // real thing: park the tab (and its live keep-alive WebView2) alive, out of the strip,
+        // restorable from the workspace box. Close (still reachable off the tab's own ×/context
+        // menu) is what now records the ChatArchiveStore identity, at the point the session
+        // actually ends.
+        var dismissBtn = new TextBlock
         {
-            Text = "Archive",
+            Text = "Dismiss",
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(8, 0, 0, 0),
             FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
@@ -238,11 +250,11 @@ public partial class MainWindow
             Foreground = (Brush)FindResource("Brush.Text.Dim"),
             Cursor = Cursors.Hand
         };
-        archiveBtn.MouseLeftButtonDown += (s, e) => { e.Handled = true; ArchiveChatTab(tab.Id); };
-        archiveBtn.MouseEnter += (s, e) => archiveBtn.Foreground = (Brush)FindResource("Brush.Text.Heading");
-        archiveBtn.MouseLeave += (s, e) => archiveBtn.Foreground = (Brush)FindResource("Brush.Text.Dim");
-        Grid.SetColumn(archiveBtn, 1);
-        grid.Children.Add(archiveBtn);
+        dismissBtn.MouseLeftButtonDown += (s, e) => { e.Handled = true; DismissTab(tab.Id); };
+        dismissBtn.MouseEnter += (s, e) => dismissBtn.Foreground = (Brush)FindResource("Brush.Text.Heading");
+        dismissBtn.MouseLeave += (s, e) => dismissBtn.Foreground = (Brush)FindResource("Brush.Text.Dim");
+        Grid.SetColumn(dismissBtn, 1);
+        grid.Children.Add(dismissBtn);
 
         row.Child = grid;
         row.MouseLeftButtonDown += (s, e) => SelectTab(tab.Id);
@@ -321,28 +333,11 @@ public partial class MainWindow
     }
 
     // ── Actions ──────────────────────────────────────────────────────────────────────────────
-
-    /// <summary>Records this tab's chat into the archive (identity + last-known size), then resets
-    /// the shared WebView to a fresh chat — same navigation as <c>OpenNewChatFlow</c>. Doesn't
-    /// remove the tab: with exactly one persistent chat tab in the app today, "closing" it would
-    /// reset the whole app to Home (per <c>CloseTab</c>'s empty-tabs branch), which is not what
-    /// archiving a chat should do.</summary>
-    private void ArchiveChatTab(string tabId)
-    {
-        var tab = _tabs.Find(t => t.Id == tabId && t.IsChat);
-        if (tab == null) return;
-
-        _chatContextByTabId.TryGetValue(tabId, out var stat);
-        ChatArchiveStore.Add(tab.Title, tab.EpicNumber, _currentConversationUrl, stat?.EstCharCount, stat?.TurnCount);
-        _chatContextByTabId.Remove(tabId);
-
-        // Git #2470 — reset THIS tab's own live keep-alive view to a fresh chat.
-        NavigateActiveChat("https://claude.ai/new");
-
-        ToastEngine.Show("Chat archived", $"\"{tab.Title}\" moved to Archived. Started a fresh chat.", ToastKind.Info);
-        if (tab.Id == _activeChatTab?.Id) UpdateContextGauge();
-        if (_leftPanelSource == "Chat") RenderChatsPanel();
-    }
+    //
+    // Git #2471 — Dismiss and Close (the real, distinct replacements for the old ArchiveChatTab)
+    // live in MainWindow.DismissedTabs.cs / MainWindow.xaml.cs's CloseTab, since both are generic
+    // tab-lifecycle actions, not chat-specific ones. What's left here is chat-specific: browsing
+    // and reopening what CloseTab has recorded into ChatArchiveStore.
 
     private void ReopenArchivedChat(ArchivedChat chat)
     {

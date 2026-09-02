@@ -928,7 +928,9 @@ public partial class MainWindow : Window
         foreach (var ws in AllWorkspaces)
         {
             if (_stashedWorkspaces.Contains(ws.Id)) continue;
-            var members = _tabs.Where(t => !t.IsHome && t.WorkspaceId == ws.Id).ToList();
+            // Git #2471 — a dismissed tab is filtered out of the strip the same way a stashed
+            // workspace's whole member list is; it stays in _tabs (parked, not removed).
+            var members = _tabs.Where(t => !t.IsHome && t.WorkspaceId == ws.Id && !_dismissedTabIds.Contains(t.Id)).ToList();
             if (members.Count == 0) continue;
             TabStripPanel.Children.Add(BuildWorkspaceGroup(ws, members));
         }
@@ -936,7 +938,7 @@ public partial class MainWindow : Window
         // A tab with no workspace mapping (shouldn't normally happen once
         // every real tab kind carries a Kind) still renders rather than
         // silently vanishing from the strip.
-        foreach (var t in _tabs.Where(t => !t.IsHome && t.WorkspaceId == null))
+        foreach (var t in _tabs.Where(t => !t.IsHome && t.WorkspaceId == null && !_dismissedTabIds.Contains(t.Id)))
             TabStripPanel.Children.Add(BuildTabPill(t));
 
         RenderWorkspaceBox();
@@ -1066,7 +1068,10 @@ public partial class MainWindow : Window
 
     private void RenderWorkspaceBox()
     {
-        BtnWorkspaceBox.Visibility = _stashedWorkspaces.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Git #2471 — the box now also surfaces individually-dismissed tabs, not just whole
+        // dismissed workspaces, so it stays visible for either.
+        BtnWorkspaceBox.Visibility = _stashedWorkspaces.Count > 0 || _dismissedTabIds.Count > 0
+            ? Visibility.Visible : Visibility.Collapsed;
 
         WorkspaceBoxPipsGrid.Children.Clear();
         WorkspaceBoxPipsGrid.ColumnDefinitions.Clear();
@@ -1087,7 +1092,7 @@ public partial class MainWindow : Window
         }
 
         WorkspaceBoxPanelList.Children.Clear();
-        if (_stashedWorkspaces.Count == 0) return;
+        if (_stashedWorkspaces.Count == 0 && _dismissedTabIds.Count == 0) return;
 
         foreach (var wsId in _stashedWorkspaces.ToList())
         {
@@ -1126,6 +1131,9 @@ public partial class MainWindow : Window
             row.Children.Add(grid);
             WorkspaceBoxPanelList.Children.Add(row);
         }
+
+        // Git #2471 — individually-dismissed tabs, in the same popout (MainWindow.DismissedTabs.cs).
+        AppendDismissedTabRows(WorkspaceBoxPanelList);
     }
 
     private Border BuildTabPill(TabDef t)
@@ -1231,16 +1239,15 @@ public partial class MainWindow : Window
 
         if (closable)
         {
-            // Git #2325 -- Archive only makes sense for a real chat tab (it saves the
-            // conversation's identity before resetting it); non-chat tabs keep the plain menu.
-            border.ContextMenu = t.IsChat
-                ? BuildContextMenu(
-                    ("", "Archive chat", () => ArchiveChatTab(t.Id), true, false),
-                    ("", "Close", () => CloseTab(t.Id), true, true),
-                    ("", "Close Others", () => CloseOtherTabs(t.Id), _tabs.Count(x => !x.IsHome) > 1, false))
-                : BuildContextMenu(
-                    ("", "Close", () => CloseTab(t.Id), true, true),
-                    ("", "Close Others", () => CloseOtherTabs(t.Id), _tabs.Count(x => !x.IsHome) > 1, false));
+            // Git #2471 — Dismiss (park alive, never Home) vs Close (real kill) replaces the
+            // old chat-only "Archive chat" item: every closable tab now gets the same two real,
+            // distinct actions, chat or not.
+            var menuItems = new List<(string? Icon, string? Label, Action? OnClick, bool Enabled, bool Destructive)>();
+            if (!t.IsHome)
+                menuItems.Add(("", "Dismiss", () => DismissTab(t.Id), true, false));
+            menuItems.Add(("", "Close", () => CloseTab(t.Id), true, true));
+            menuItems.Add(("", "Close Others", () => CloseOtherTabs(t.Id), _tabs.Count(x => !x.IsHome) > 1, false));
+            border.ContextMenu = BuildContextMenu(menuItems.ToArray());
         }
 
         return border;
@@ -1442,6 +1449,14 @@ public partial class MainWindow : Window
         // lone Home tab refuses to close.
         if (idx < 0 || (_tabs[idx].IsHome && _tabs.Count == 1)) return;
 
+        // Git #2471 — Close is the real kill; Dismiss (MainWindow.DismissedTabs.cs) is the
+        // park-alive action. This tab may be leaving for good, so a chat tab's identity gets
+        // recorded into ChatArchiveStore now (keyed to ITS OWN tracked URL, not whichever tab
+        // happens to be active), and its dismissed-id entry (if it was sitting dismissed) is
+        // cleared so state can't drift.
+        RecordChatArchiveIfNeeded(_tabs[idx]);
+        _dismissedTabIds.Remove(id);
+
         // Git #2216 — "sessions persist per chat tab while the tab lives": once the tab is
         // actually gone, the real powershell.exe/cmd.exe backing it must go too.
         DisposeTerminalSessionsForTab(id);
@@ -1451,6 +1466,7 @@ public partial class MainWindow : Window
         DisposeKeepAliveView(id);
 
         _tabs.RemoveAt(idx);
+        RenderWorkspaceBox(); // dismissed-tabs section may have just lost a row
 
         if (_tabs.Count == 0)
         {
@@ -1459,6 +1475,7 @@ public partial class MainWindow : Window
             // and stash state.
             _collapsedWorkspaces.Clear();
             _stashedWorkspaces.Clear();
+            _dismissedTabIds.Clear();
             _tabs.Add(new TabDef("home", "Home", isHome: true));
             SelectTab("home");
             return;
@@ -1466,7 +1483,13 @@ public partial class MainWindow : Window
 
         if (_activeTabId == id)
         {
-            var fallback = idx - 1 >= 0 && idx - 1 < _tabs.Count ? _tabs[idx - 1] : _tabs[0];
+            // Git #2471 — a dismissed tab stays in _tabs but is filtered out of the strip, so
+            // it's never a valid fallback here (it would set _activeTabId to a tab that renders
+            // nowhere). Prefer the nearest VISIBLE tab; Home always qualifies as a last resort.
+            var visible = _tabs.Where(t => !_dismissedTabIds.Contains(t.Id)).ToList();
+            var fallback = idx - 1 >= 0 && idx - 1 < _tabs.Count && !_dismissedTabIds.Contains(_tabs[idx - 1].Id)
+                ? _tabs[idx - 1]
+                : visible.FirstOrDefault() ?? _tabs.First(t => t.IsHome);
             SelectTab(fallback.Id);
         }
         else
