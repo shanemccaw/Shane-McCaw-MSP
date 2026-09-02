@@ -35,6 +35,14 @@ public sealed class GitMapFeature
     public bool IsInFlight { get; init; }
     public bool IsBlocked { get; init; }
     public bool IsComplete { get; init; }
+    /// <summary>Git #2308 — real overlay applied AFTER fetch (never fetched inline here, to keep
+    /// this class's own real cost bounded): the real GitHub Project Status field reads "Park", or
+    /// this feature's real row in <c>shanebuilder_feature_flags</c> has <c>paused = true</c>. Set
+    /// by whichever caller resolved it (Epic panel's own load, Git Map's own load) — mutable
+    /// (not <c>init</c>) so the same already-fetched list can be overlaid in place rather than
+    /// re-fetched, single-sourced per this file's own header.</summary>
+    public bool IsParked { get; set; }
+    public bool IsPaused { get; set; }
 }
 
 /// <summary>The real, currently in-flight feature under one epic — "Focus Build" per §6.5's mini

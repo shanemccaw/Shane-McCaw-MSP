@@ -168,7 +168,9 @@ public sealed class QueueReadClient
     /// the Git Panel Feature detail's six real build-state chips and "last build" line. One row
     /// per number (its own most recently updated) — a number with no queue history simply isn't
     /// in the result, never backfilled with a fabricated status. Fails closed to an empty list on
-    /// a connection/query error, same convention as <see cref="GetRecentBuildsAsync"/>.</summary>
+    /// a connection/query error, same convention as <see cref="GetRecentBuildsAsync"/>. Reused by
+    /// the Epic panel's own per-feature stats (#2305) — the SQL already reduces to latest-per-
+    /// number, so no second "all history" read is needed there.</summary>
     public async Task<List<PaletteBuildQueueRow>> GetLatestByGithubNumbersAsync(IEnumerable<int> githubNumbers)
     {
         var numbers = (githubNumbers ?? Array.Empty<int>()).Distinct().ToArray();

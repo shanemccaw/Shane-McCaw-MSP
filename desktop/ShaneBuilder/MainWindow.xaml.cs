@@ -4005,6 +4005,11 @@ public partial class MainWindow : Window
     {
         int seq = ++_paletteEpicFeaturesLoadSeq;
         var (ok, features, _) = await Services.GitMapService.GetFeaturesForEpicAsync(epicNumber);
+        if (ok)
+        {
+            try { await Services.GitEpicPanelService.OverlayParkPauseAsync(features, Services.ChatReadClient.ResolveConnectionStringForSqlRunner()); }
+            catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[palette] park/pause overlay failed for epic #{epicNumber}: {ex.Message}"); }
+        }
         _paletteEpicFeatures[epicNumber] = ok ? features : new List<Services.GitMapFeature>();
         if (seq != _paletteEpicFeaturesLoadSeq) return; // a newer load superseded this one
 
@@ -8655,7 +8660,15 @@ public partial class MainWindow : Window
     private async Task LoadGitMapEpicFeaturesAsync(int epicNumber)
     {
         var (ok, features, error) = await Services.GitMapService.GetFeaturesForEpicAsync(epicNumber);
-        if (ok) _gitMapFeatureCache[epicNumber] = features;
+        if (ok)
+        {
+            _gitMapFeatureCache[epicNumber] = features;
+            // Git #2308 — Park/Pause propagation: this ONE builder feeds both the mini rail and
+            // the full Git Map doc tab (this file's own header), so overlaying here is single-
+            // sourced for both real surfaces at once.
+            try { await Services.GitEpicPanelService.OverlayParkPauseAsync(features, Services.ChatReadClient.ResolveConnectionStringForSqlRunner()); }
+            catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[git-map] park/pause overlay failed for epic #{epicNumber}: {ex.Message}"); }
+        }
         else Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[git-map] feature load failed for epic #{epicNumber}: {error}");
         _ = RenderGitMapAsync();
         _ = RenderGitMapDocAsync();
@@ -8674,6 +8687,9 @@ public partial class MainWindow : Window
         if (f.IsInFlight) chipRow.Children.Add(GitMapChip("IN FLIGHT", (Brush)FindResource("Brush.Alert.Success")));
         if (f.IsBlocked) chipRow.Children.Add(GitMapChip("BLOCKED", (Brush)FindResource("Brush.Status.Blocked")));
         if (f.IsComplete) chipRow.Children.Add(GitMapChip("COMPLETE", (Brush)FindResource("Brush.Status.Done")));
+        // Git #2308 — real propagation from the Epic panel's own Park/Pause actions (#2307).
+        if (f.IsParked) chipRow.Children.Add(GitMapChip("PARKED", (Brush)FindResource("Brush.Status.Parked")));
+        if (f.IsPaused) chipRow.Children.Add(GitMapChip("PAUSED", (Brush)FindResource("Brush.Status.Paused")));
         if (chipRow.Children.Count > 0) stack.Children.Add(chipRow);
 
         stack.Children.Add(new TextBlock

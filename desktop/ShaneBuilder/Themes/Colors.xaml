@@ -57,6 +57,9 @@
     <SolidColorBrush x:Key="Brush.Status.Queued" Color="#8B949E"/>
     <SolidColorBrush x:Key="Brush.Status.Crashed" Color="#B87D76"/>
     <SolidColorBrush x:Key="Brush.Status.Parked" Color="#A394B0"/>
+    <!-- Git #2307 — new real state (no native bt_build_queue status value; see
+         GitEpicPanelService's header for why Pause lives in its own small table). -->
+    <SolidColorBrush x:Key="Brush.Status.Paused" Color="#C4A15A"/>
     <SolidColorBrush x:Key="Brush.Status.Capped" Color="#B09A4A"/>
     <SolidColorBrush x:Key="Brush.Status.External" Color="#7DA7CD"/>
     <SolidColorBrush x:Key="Brush.Status.Done" Color="#5F9E6D"/>
