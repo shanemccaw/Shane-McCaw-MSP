@@ -163,7 +163,7 @@ none.
 
 When your build is verified, **your issue is closed** — that is how BuildConsole moves the card
 from Verifying to Done. Anything recorded only on your issue disappears from the working set at
-that moment. File findings as NEW issues, parented to the correct area epic.
+that moment. File findings as NEW issues, parented per the Feature-first rule below.
 
 ### What counts as a finding
 
@@ -176,10 +176,18 @@ that moment. File findings as NEW issues, parented to the correct area epic.
 
 Not a finding: a preference, a refactor you would have liked, or a gap you fixed in this build.
 
-### Where it goes — area epic routing
+### Where it goes — Feature-first, area epic as fallback
 
-Parent every new issue to the right area epic. Milestone 5 (v1.1). Pick by what the work touches,
-not by which file you happened to be in:
+**Check for a Feature-tier parent first, before falling back to the area-epic table below.**
+If the issue you're building is itself a sub-issue of a Feature-tier issue (one titled
+`Feature: <name>`), parent your new finding there — as a direct sibling sub-issue of that
+Feature, not the Epic above it. Real miss this fixes: a build under #2200 (`Feature: Log
+Viewer`) filed #2207 and #2208 against #2198 (the Epic) instead of #2200 (the Feature it was
+actually building under), even though it had #2200's number the whole session. Check
+`gh issue view <your-issue-number>` for a Feature-titled parent before reaching for the table.
+
+Only when your own issue has **no** Feature-tier parent, fall back to the area epic. Milestone 5
+(v1.1). Pick by what the work touches, not by which file you happened to be in:
 
 | The work is... | Parent |
 |---|---|
@@ -198,14 +206,27 @@ not the default.
 **Manual SQL migrations are the exception** — they append a line to #1630, not a new issue. See
 the `Shane To-Do` section.
 
+### Labels and title guidance
+
+- **Label every filed finding `bug`** (repo label already exists).
+- **Add `security` too** if the finding is security-relevant — a separate, repo-wide-filterable
+  label distinct from `bug`, because security needs a flat cross-repo query regardless of which
+  Feature or Epic it's parented under.
+- **Only prefix the title `URGENT:`** if it genuinely can't wait (real precedent: #2130). This is
+  a title signal for transient urgency, not a label — don't add a new label for it.
+
 ### How
 
 ```
-# create, with milestone 5 (v1.1)
-gh issue create --title "<what is actually wrong>" --milestone 5 --body "<evidence, file:line>"
+# create, with milestone 5 (v1.1) — parent to a Feature (primary case) or an area epic (fallback)
+gh issue create --title "<what is actually wrong>" --milestone 5 --label bug --body "<evidence, file:line>"
+# add --label security too if security-relevant
+# prefix the title with "URGENT: " only if it genuinely can't wait (see above)
 
 # parent it — integer id, NOT node_id
 gh api repos/shanemccaw/Shane-McCaw-MSP/issues/<new> --jq .id
+# <parent> is the Feature-tier issue your own issue is a sub-issue of, if one exists;
+# otherwise the area epic from the fallback table above
 gh api -X POST repos/shanemccaw/Shane-McCaw-MSP/issues/<parent>/sub_issues -f sub_issue_id=<that id>
 ```
 
