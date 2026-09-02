@@ -2684,6 +2684,9 @@ public partial class MainWindow : Window
 
     // §6 — dismissed detections (by stable Detection.Id) survive a re-render, per chat tab.
     private readonly Dictionary<string, HashSet<string>> _dismissedDetections = new();
+    // Git #2380 — which detection groups (keyed by DetectionGroup.Key, e.g. "Verifying", "questions")
+    // are collapsed, per active chat tab. Absent = expanded (the prior, ungrouped-collapse behavior).
+    private readonly Dictionary<string, HashSet<string>> _collapsedDetectionGroups = new();
 
     // §7 — live cross-epic questions in this session (real user-authored records, not fixture).
     private readonly List<CrossEpicQuestion> _crossEpicQuestions = new();
@@ -2886,6 +2889,17 @@ public partial class MainWindow : Window
         return set;
     }
 
+    private HashSet<string> CollapsedGroupsForActiveChat()
+    {
+        var key = _activeChatTab?.Id ?? "";
+        if (!_collapsedDetectionGroups.TryGetValue(key, out var set))
+        {
+            set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            _collapsedDetectionGroups[key] = set;
+        }
+        return set;
+    }
+
     private async Task RenderDetectedItemsAsync()
     {
         int seq = ++_detectedRenderSeq;
@@ -2926,14 +2940,21 @@ public partial class MainWindow : Window
                 "GitHub was unreachable this pass — items are shown fail-closed (kept as still-relevant) rather than dropped."));
 
         var dismissed = DismissedForActiveChat();
+        var collapsedGroups = CollapsedGroupsForActiveChat();
         int shown = 0;
 
+        // Git #2380 — grouped detections (Verifying, Claude asks, …) render above loose ones, each
+        // group collapsible via its own header. Collapsing a group hides its cards but the items still
+        // count toward `shown` — they were found, just tucked away, not "nothing caught".
         foreach (var group in snap.Groups)
         {
             var visible = group.Items.Where(d => !dismissed.Contains(d.Id)).ToList();
             if (visible.Count == 0) continue;
-            DetectedItemsResults.Children.Add(DetectedGroupHeader($"{group.Label} ({visible.Count})"));
-            foreach (var d in visible) { DetectedItemsResults.Children.Add(DetectionCard(d)); shown++; }
+            bool isCollapsed = collapsedGroups.Contains(group.Key);
+            DetectedItemsResults.Children.Add(DetectedCollapsibleGroupHeader(group.Key, group.Label, visible.Count, isCollapsed));
+            if (!isCollapsed)
+                foreach (var d in visible) DetectedItemsResults.Children.Add(DetectionCard(d));
+            shown += visible.Count;
         }
 
         var looseVisible = snap.Loose.Where(d => !dismissed.Contains(d.Id)).ToList();
@@ -3091,6 +3112,48 @@ public partial class MainWindow : Window
             Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
         },
     };
+
+    /// <summary>Git #2380 — the collapsible header for a real <see cref="Services.DetectionGroup"/>
+    /// (Verifying, Claude asks, …). Click anywhere on the row to toggle; state is kept per active chat
+    /// tab so switching tabs doesn't leak one chat's collapse choices into another's.</summary>
+    private Border DetectedCollapsibleGroupHeader(string groupKey, string label, int count, bool collapsed)
+    {
+        var chevron = new TextBlock
+        {
+            Text = collapsed ? "▶" : "▼", // ▶ / ▼
+            Width = 12,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = 8,
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        };
+        var labelBlock = new TextBlock
+        {
+            Text = $"{label.ToUpperInvariant()} ({count})",
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = 9.5,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+        };
+        var row = new StackPanel { Orientation = Orientation.Horizontal };
+        row.Children.Add(chevron);
+        row.Children.Add(labelBlock);
+
+        var header = new Border
+        {
+            Margin = new Thickness(0, 4, 0, 6),
+            Padding = new Thickness(0, 2, 0, 2),
+            Background = Brushes.Transparent, // makes the whole row (not just the text glyphs) hit-testable
+            Cursor = Cursors.Hand,
+            Child = row,
+        };
+        header.MouseLeftButtonDown += (s, e) =>
+        {
+            var set = CollapsedGroupsForActiveChat();
+            if (!set.Add(groupKey)) set.Remove(groupKey);
+            _ = RenderDetectedItemsAsync();
+        };
+        return header;
+    }
 
     private TextBlock DetectedNote(string text) => new()
     {
