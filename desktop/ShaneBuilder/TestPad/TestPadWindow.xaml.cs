@@ -12,11 +12,12 @@ namespace ShaneBuilder
 {
     /// <summary>
     /// Git #2327 — the pad the pill expands to. Reads live off <see cref="TestPadService"/> so it
-    /// never goes stale relative to the badge. Composer/select/delete/edit behavior is built out
-    /// across #2328-#2354; this shell renders a plain read-only line per note so an already-filed
-    /// note is at least visible, and an honest "No notes yet." otherwise. Git #2334 adds the "By
-    /// feature" toggle that regroups this list under a header per <see cref="TestPadNote.Feature"/>
-    /// stamp instead of the flat newest-first order.
+    /// never goes stale relative to the badge. Composer/edit/import behavior is built out across
+    /// #2328, #2330-#2332, #2335-#2354. Git #2334 adds the "By feature" toggle that regroups this
+    /// list under a header per <see cref="TestPadNote.Feature"/> stamp instead of the flat
+    /// newest-first order. Git #2333 adds the real per-note row: a select checkbox, a delete
+    /// button wired to <see cref="TestPadService.RemoveNote"/>, and a "SENT" badge that locks the
+    /// row's visual treatment once the note has gone out — an honest "No notes yet." otherwise.
     /// </summary>
     public partial class TestPadWindow : Window
     {
@@ -107,28 +108,111 @@ namespace ShaneBuilder
                     NotesHost.Children.Add(header);
 
                     foreach (var note in groupNotes)
-                        NotesHost.Children.Add(BuildNoteRow(note));
+                        NotesHost.Children.Add(BuildRow(note));
                 }
             }
             else
             {
                 foreach (var note in notes)
-                    NotesHost.Children.Add(BuildNoteRow(note));
+                    NotesHost.Children.Add(BuildRow(note));
             }
 
             Reposition();
         }
 
-        private TextBlock BuildNoteRow(TestPadNote note) => new()
+        /// <summary>Git #2333 — one note row: select checkbox, text, a "SENT" badge once the note
+        /// has gone out, and a delete button that removes the note straight from the shared store
+        /// so the pill's unsent-count badge (#2327) and any other subscriber stay in sync.</summary>
+        private UIElement BuildRow(TestPadNote note)
         {
-            Text = (note.IsSent ? "[SENT] " : "") + note.Text,
-            FontSize = 11,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = note.IsSent
-                ? (Brush)FindResource("Brush.Text.Dim")
-                : (Brush)FindResource("Brush.Text.Primary"),
-            Margin = new Thickness(6, 4, 6, 4),
-        };
+            var root = new Border
+            {
+                CornerRadius = new CornerRadius(6),
+                Margin = new Thickness(0, 0, 0, 2),
+                Padding = new Thickness(4, 2, 4, 2),
+                Background = Brushes.Transparent,
+            };
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var select = new CheckBox
+            {
+                IsChecked = note.IsSelected,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0),
+            };
+            select.Checked += (_, _) => { note.IsSelected = true; TestPadService.NotifyMutated(); };
+            select.Unchecked += (_, _) => { note.IsSelected = false; TestPadService.NotifyMutated(); };
+            Grid.SetColumn(select, 0);
+            grid.Children.Add(select);
+
+            var text = new TextBlock
+            {
+                Text = note.Text,
+                FontSize = 11,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = note.IsSent
+                    ? (Brush)FindResource("Brush.Text.Dim")
+                    : (Brush)FindResource("Brush.Text.Primary"),
+                Margin = new Thickness(0, 4, 6, 4),
+            };
+            Grid.SetColumn(text, 1);
+            grid.Children.Add(text);
+
+            if (note.IsSent)
+            {
+                var badge = new Border
+                {
+                    CornerRadius = new CornerRadius(4),
+                    Background = (Brush)FindResource("Brush.Bg.Chip"),
+                    Padding = new Thickness(5, 1, 5, 1),
+                    Margin = new Thickness(0, 0, 6, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                badge.Child = new TextBlock
+                {
+                    Text = "SENT",
+                    FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = (Brush)FindResource("Brush.Alert.Success"),
+                };
+                Grid.SetColumn(badge, 2);
+                grid.Children.Add(badge);
+            }
+
+            var delete = new Border
+            {
+                Width = 18,
+                Height = 18,
+                CornerRadius = new CornerRadius(4),
+                Background = Brushes.Transparent,
+                Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                ToolTip = "Delete note",
+            };
+            delete.Child = new TextBlock
+            {
+                Text = "\uE74D",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 9,
+                Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            delete.MouseEnter += (_, _) => delete.Background = (Brush)FindResource("Brush.Bg.Chip");
+            delete.MouseLeave += (_, _) => delete.Background = Brushes.Transparent;
+            delete.MouseLeftButtonUp += (_, _) => TestPadService.RemoveNote(note.Id);
+            Grid.SetColumn(delete, 3);
+            grid.Children.Add(delete);
+
+            root.Child = grid;
+            return root;
+        }
 
         private void Reposition()
         {
