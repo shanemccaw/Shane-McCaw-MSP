@@ -808,6 +808,165 @@
                             </Border>
                         </Grid>
                     </Grid>
+
+                    <!-- Git Doctor — Step 13 (wpf-handoff/readme-phase2.md). Real
+                         findings from Services/GitDoctorService.cs against the
+                         actual repo; no seeded/fabricated data. Header + 3-pane
+                         body (findings list | detail | run log & Claude bridge)
+                         are built here as a layout skeleton; each ItemsControl-
+                         style panel is populated in code-behind (RenderGitDoctor*),
+                         same convention as RenderQueue/RenderBuildDetail. -->
+                    <Grid x:Name="GitDoctorDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,12" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <DockPanel LastChildFill="True">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Button x:Name="BtnGitDoctorRecheck" Content="Re-run checks" Margin="8,0,0,0"
+                                            Style="{StaticResource PanelCollapseButton}" Width="Auto" Height="32" Padding="12,0"
+                                            Click="BtnGitDoctorRecheck_Click"
+                                            Foreground="{StaticResource Brush.Text.Primary}"
+                                            FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11.5}"/>
+                                    <StackPanel Margin="10,0,0,0" HorizontalAlignment="Right">
+                                        <Button x:Name="BtnGitDoctorNightmare" Click="BtnGitDoctorNightmare_Click"
+                                                Style="{StaticResource PanelCollapseButton}" Width="Auto" Height="38" Padding="16,0"
+                                                Background="{StaticResource Brush.Epic.Gate}"
+                                                FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.13}"
+                                                FontWeight="{StaticResource FontWeight.ExtraBold}">
+                                            <TextBlock x:Name="GitDoctorNightmareLabel" Text="End this git nightmare" Foreground="Black"/>
+                                        </Button>
+                                        <TextBlock x:Name="GitDoctorNightmareSub" HorizontalAlignment="Right" Margin="0,3,0,0"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9}"
+                                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                                <Border DockPanel.Dock="Right" Width="220" Margin="14,0" VerticalAlignment="Center">
+                                    <TextBox x:Name="GitDoctorQueryBox" Height="32" Padding="8,0"
+                                             VerticalContentAlignment="Center"
+                                             Background="{StaticResource Brush.Bg.Card}"
+                                             BorderBrush="{StaticResource Brush.Border.Card}"
+                                             Foreground="{StaticResource Brush.Text.Heading}"
+                                             FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.11.5}"
+                                             Tag="Paste a commit hash…"
+                                             TextChanged="GitDoctorQueryBox_TextChanged"/>
+                                </Border>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.Git}"
+                                          Stroke="{StaticResource Brush.Epic.Gate}" Width="18" Height="18" Margin="0,0,12,0"/>
+                                    <StackPanel>
+                                        <TextBlock x:Name="GitDoctorHeadline"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                                   FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                   Foreground="{StaticResource Brush.Text.Heading}"/>
+                                        <TextBlock x:Name="GitDoctorSubline" Margin="0,3,0,0"
+                                                   FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10}"
+                                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DockPanel>
+                        </Border>
+
+                        <Grid Grid.Row="1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="266"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="290"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Findings list -->
+                            <Border Grid.Column="0" Background="{StaticResource Brush.Bg.Panel}"
+                                    BorderThickness="0,0,1,0" BorderBrush="{StaticResource Brush.Border.Strong}">
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Top" Padding="11,9" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Border.Card}">
+                                        <DockPanel>
+                                            <TextBlock x:Name="GitDoctorOpenCount" DockPanel.Dock="Right"
+                                                       FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.9}"
+                                                       Foreground="{StaticResource Brush.Text.Dim}"/>
+                                            <TextBlock Text="WHAT GIT IS COMPLAINING ABOUT"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9}"
+                                                       FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                       Foreground="{StaticResource Brush.Text.Dim}"/>
+                                        </DockPanel>
+                                    </Border>
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="GitDoctorFindingsPanel" Margin="6"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Detail -->
+                            <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto">
+                                <StackPanel x:Name="GitDoctorDetailPanel" Margin="16,14"/>
+                            </ScrollViewer>
+
+                            <!-- Run log + Claude bridge -->
+                            <Border Grid.Column="2" Background="{StaticResource Brush.Bg.Panel}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Border.Strong}">
+                                <DockPanel>
+                                    <Border DockPanel.Dock="Top" Padding="11,9" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Border.Card}">
+                                        <DockPanel>
+                                            <TextBlock x:Name="GitDoctorRunningLabel" DockPanel.Dock="Right" Text="RUNNING…"
+                                                       Visibility="Collapsed"
+                                                       FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.9}"
+                                                       FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                       Foreground="{StaticResource Brush.Epic.AppCore}"/>
+                                            <TextBlock Text="RUN LOG"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9}"
+                                                       FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                       Foreground="{StaticResource Brush.Text.Dim}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <Border DockPanel.Dock="Bottom" Padding="11,9" BorderThickness="0,1,0,0"
+                                            BorderBrush="{StaticResource Brush.Border.Card}">
+                                        <StackPanel>
+                                            <DockPanel Margin="0,0,0,7">
+                                                <TextBlock DockPanel.Dock="Left" Text="CLAUDE BRIDGE" VerticalAlignment="Center"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9}"
+                                                           FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                           Foreground="{StaticResource Brush.Text.Dim}"/>
+                                                <TextBlock x:Name="GitDoctorSendAll" Text="send all findings"
+                                                           HorizontalAlignment="Right" Cursor="Hand"
+                                                           MouseLeftButtonDown="GitDoctorSendAll_Click"
+                                                           Foreground="{StaticResource Brush.Claude.Accent}"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                                           FontWeight="{StaticResource FontWeight.Bold}"/>
+                                            </DockPanel>
+                                            <TextBox x:Name="GitDoctorInboundBox" Height="60" TextWrapping="Wrap" AcceptsReturn="True"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     Background="{StaticResource Brush.Bg.Window}"
+                                                     BorderBrush="{StaticResource Brush.Border.Card}"
+                                                     Foreground="{StaticResource Brush.Text.Heading}"
+                                                     FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10.5}"/>
+                                            <Button x:Name="BtnGitDoctorExtract" Content="Extract commands" Margin="0,7,0,0" Height="26"
+                                                    Click="BtnGitDoctorExtract_Click"
+                                                    Style="{StaticResource PanelCollapseButton}"
+                                                    Foreground="{StaticResource Brush.Text.Primary}"
+                                                    FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"/>
+                                            <StackPanel x:Name="GitDoctorPlanPanel" Margin="0,7,0,0"/>
+                                            <Button x:Name="BtnGitDoctorRunPlan" Margin="0,7,0,0" Height="28"
+                                                    Visibility="Collapsed" Click="BtnGitDoctorRunPlan_Click"
+                                                    Background="{StaticResource Brush.Claude.Accent}"
+                                                    FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11}"
+                                                    FontWeight="{StaticResource FontWeight.Bold}">
+                                                <TextBlock x:Name="GitDoctorRunPlanLabel" Foreground="Black"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="GitDoctorLogPanel" Margin="11,8"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+                        </Grid>
+                    </Grid>
                 </Grid>
             </DockPanel>
 
