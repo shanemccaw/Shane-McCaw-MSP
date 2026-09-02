@@ -89,8 +89,11 @@ describe("the step→check mapping has not drifted from remediationLiveGuide.ts"
   it("is exactly STEP_CHECK_KEYS, key for key and value for value", () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const guidePath = path.resolve(
+      // #1956 — corrected from a stale "../../../msp-portal/..." path (that
+      // directory was retired in favor of artifacts/portal/, and this drift
+      // guard had been silently ENOENT-ing rather than actually comparing).
       here,
-      "../../../msp-portal/src/components/copilot-journey/remediationLiveGuide.ts",
+      "../../../portal/src/components/copilot-journey/remediationLiveGuide.ts",
     );
     const source = readFileSync(guidePath, "utf8");
     const objMatch = source.match(

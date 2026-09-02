@@ -21,8 +21,11 @@ describe("the export catalogue has not drifted from previewRemediationGuide.ts",
   it("matches id, label, pillar and title for all 28 steps, in order", () => {
     const here = path.dirname(fileURLToPath(import.meta.url));
     const guidePath = path.resolve(
+      // #1956 — corrected from a stale "../../../msp-portal/..." path (that
+      // directory was retired in favor of artifacts/portal/, and this drift
+      // guard had been silently ENOENT-ing rather than actually comparing).
       here,
-      "../../../msp-portal/src/components/copilot-journey/previewRemediationGuide.ts",
+      "../../../portal/src/components/copilot-journey/previewRemediationGuide.ts",
     );
     const source = readFileSync(guidePath, "utf8");
 
