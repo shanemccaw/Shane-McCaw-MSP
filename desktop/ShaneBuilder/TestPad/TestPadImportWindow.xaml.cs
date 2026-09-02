@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Threading.Tasks;
 using ShaneBuilder.Services;
 using ShaneBuilder.Services.TestPad;
 
@@ -18,8 +19,13 @@ namespace ShaneBuilder
     /// Git #2350 — <see cref="PreviewHeaderText"/> reports real stats off the parsed candidates:
     /// chars pasted, notes/sections found, how many auto-matched a feature, and a per-type tally.
     /// "Sections" and "matched" read <see cref="TestPadImportCandidate.Section"/>/
-    /// <see cref="TestPadImportCandidate.MatchedFeature"/> — real fields, honestly 0/empty until
-    /// the matcher (#2349) actually starts setting <c>MatchedFeature</c>. Merge-up UI (#2352-#2354)
+    /// <see cref="TestPadImportCandidate.MatchedFeature"/>. Git #2349 — <see cref="TestPadFeatureMatcher"/>
+    /// is what actually sets <c>MatchedFeature</c> now: each candidate's <c>Section</c> (when the
+    /// paste had one) and body text are matched against the real, live "Feature:" issues
+    /// <see cref="GitIssuesService.GetActiveFeaturesAsync"/> returns. Every preview row also gets a
+    /// feature dropdown — pre-selected to whatever auto-matched, always including every real active
+    /// feature plus "— No feature —" — which is both the fallback for a row that came back
+    /// unmatched and the correction path for a wrong auto-match. Merge-up UI (#2352-#2354)
     /// is a separate open sub-issue that extends <see cref="PreviewHost"/> in place — this issue's
     /// preview is deliberately just a checkable list of what the splitter produced. Per-row
     /// type-chip correction (#2351) is done: each row's chip is clickable and cycles its
@@ -28,6 +34,12 @@ namespace ShaneBuilder
     {
         private List<TestPadImportCandidate> _candidates = new();
         private int _lastParsedCharCount;
+
+        // Git #2349 — the real active-feature list, fetched once (lazily) and reused across
+        // however many times the user hits Parse in one Import session, rather than re-hitting
+        // `gh` per keystroke/click.
+        private Task<List<GitIssueRow>>? _featuresTask;
+        private List<GitIssueRow> _activeFeatures = new();
 
         private TestPadImportWindow()
         {
@@ -40,18 +52,44 @@ namespace ShaneBuilder
             WindowChromeHelper.Setup(this);
         }
 
-        /// <summary>Shows the dialog modally. Owner-scoped like NewChatAnchorDialog/AppDialog.</summary>
+        /// <summary>Shows the dialog modally. Owner-scoped like NewChatAnchorDialog/AppDialog.
+        /// Kicks off the real active-features fetch immediately (same prewarm pattern
+        /// NewChatAnchorDialog uses) so it's usually already resolved by the time the user has
+        /// pasted text and hit Parse.</summary>
         public static void ShowFor(Window? owner)
         {
             var dlg = new TestPadImportWindow { Owner = owner };
             if (owner != null) dlg.ShowInTaskbar = false;
+            dlg._featuresTask = LoadFeaturesAsync();
             dlg.ShowDialog();
         }
 
-        private void BtnParse_Click(object sender, RoutedEventArgs e)
+        private static async Task<List<GitIssueRow>> LoadFeaturesAsync()
+        {
+            var (ok, features, error) = await GitIssuesService.GetActiveFeaturesAsync();
+            if (!ok)
+            {
+                ConsoleOutputSink.Log(LogLevel.Warn, $"[testpad-import] couldn't load active features for auto-match: {error}");
+                return new List<GitIssueRow>();
+            }
+            return features;
+        }
+
+        private async void BtnParse_Click(object sender, RoutedEventArgs e)
         {
             _lastParsedCharCount = (PasteBox.Text ?? string.Empty).Length;
             _candidates = TestPadImportParser.Parse(PasteBox.Text).ToList();
+
+            // Git #2349 — auto-match each candidate (Section, then body text) against the real
+            // active-feature list before rendering, so the preview's dropdown opens pre-selected
+            // wherever a real match was found rather than making the user pick every row by hand.
+            _activeFeatures = await (_featuresTask ??= LoadFeaturesAsync());
+            foreach (var candidate in _candidates)
+            {
+                var match = TestPadFeatureMatcher.Match(candidate.Text, candidate.Section, _activeFeatures);
+                candidate.MatchedFeature = match == null ? null : GitIssuesService.StripFeatureTitlePrefix(match.Title);
+            }
+
             RenderPreview();
         }
 
@@ -145,6 +183,8 @@ namespace ShaneBuilder
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
             var check = new CheckBox
             {
@@ -154,6 +194,7 @@ namespace ShaneBuilder
             };
             check.Checked += (_, _) => { candidate.Include = true; UpdateImportButton(); };
             check.Unchecked += (_, _) => { candidate.Include = false; UpdateImportButton(); };
+            Grid.SetRow(check, 0);
             Grid.SetColumn(check, 0);
             grid.Children.Add(check);
 
@@ -164,6 +205,7 @@ namespace ShaneBuilder
                 FontSize = 11,
                 Foreground = (Brush)FindResource("Brush.Text.Primary"),
             };
+            Grid.SetRow(text, 0);
             Grid.SetColumn(text, 1);
             grid.Children.Add(text);
 
@@ -213,12 +255,61 @@ namespace ShaneBuilder
                     FontWeight = FontWeights.SemiBold,
                     Foreground = (Brush)FindResource("Brush.Text.Muted"),
                 };
+                Grid.SetRow(shotChip, 0);
                 Grid.SetColumn(shotChip, 3);
                 grid.Children.Add(shotChip);
             }
 
+            var featureCombo = BuildFeatureCombo(candidate);
+            Grid.SetRow(featureCombo, 1);
+            Grid.SetColumn(featureCombo, 1);
+            Grid.SetColumnSpan(featureCombo, 3);
+            grid.Children.Add(featureCombo);
+
             row.Child = grid;
             return row;
+        }
+
+        /// <summary>Git #2349 — one row's feature picker: pre-selects whatever
+        /// <see cref="TestPadFeatureMatcher"/> auto-matched (<see cref="TestPadImportCandidate.MatchedFeature"/>
+        /// already carries the stripped title string), and always includes a real "— No feature —"
+        /// option plus every real active Feature so the dropdown genuinely is a usable fallback for
+        /// a row that came back unmatched, not just a read-only display of the guess.</summary>
+        private ComboBox BuildFeatureCombo(TestPadImportCandidate candidate)
+        {
+            var options = new List<FeatureOption> { new() { Label = "— No feature —", StrippedTitle = null } };
+            options.AddRange(_activeFeatures
+                .OrderBy(f => f.Title, StringComparer.OrdinalIgnoreCase)
+                .Select(f =>
+                {
+                    var stripped = GitIssuesService.StripFeatureTitlePrefix(f.Title);
+                    return new FeatureOption { Label = $"#{f.Number} {stripped}", StrippedTitle = stripped };
+                }));
+
+            var combo = new ComboBox
+            {
+                ItemsSource = options,
+                Margin = new Thickness(0, 6, 0, 0),
+                FontSize = 10.5,
+                Background = (Brush)FindResource("Brush.Bg.Card"),
+                Foreground = (Brush)FindResource("Brush.Text.Primary"),
+                BorderBrush = (Brush)FindResource("Brush.Border.Default"),
+                BorderThickness = new Thickness(1),
+            };
+            combo.SelectedItem = options.FirstOrDefault(o =>
+                string.Equals(o.StrippedTitle, candidate.MatchedFeature, StringComparison.OrdinalIgnoreCase)) ?? options[0];
+            combo.SelectionChanged += (_, _) => candidate.MatchedFeature = (combo.SelectedItem as FeatureOption)?.StrippedTitle;
+            return combo;
+        }
+
+        /// <summary>Local wrapper so the feature dropdown can carry the real stripped feature title
+        /// alongside a display label — ComboBox renders an item via <see cref="object.ToString"/>
+        /// when no DisplayMemberPath is set, so <see cref="Label"/> doubles as that.</summary>
+        private sealed class FeatureOption
+        {
+            public string Label { get; init; } = "";
+            public string? StrippedTitle { get; init; }
+            public override string ToString() => Label;
         }
 
         private static string LabelFor(NoteType type) => type.ToString().ToLowerInvariant();
@@ -249,11 +340,14 @@ namespace ShaneBuilder
             {
                 // Git #2348 — a candidate flagged "<need screen shots>" files with the same
                 // droppable-thumbnail slot the manual "Attach shot" composer chip arms (#2340).
+                // Git #2349 — stamp whatever feature auto-match (or the row's dropdown override)
+                // landed on; a genuinely-unset row stays null rather than guessing.
                 TestPadService.AddNote(new TestPadNote
                 {
                     Text = candidate.Text,
                     Type = candidate.Type,
                     HasShotSlot = candidate.NeedsShot,
+                    Feature = candidate.MatchedFeature,
                 });
             }
 
