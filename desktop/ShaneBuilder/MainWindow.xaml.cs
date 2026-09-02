@@ -4485,6 +4485,13 @@ public partial class MainWindow : Window
     private string _gdLookupQueryShown = "";
     private List<(string Cmd, bool Approved)> _gdPlan = new();
 
+    // Git #2218 — Git Doctor mini rail panel (README-ClaudeChat.md §6.2, posted on #2194). A 7th
+    // ClaudeChatDock flyout column sharing every field above with the full GitDoctorDock document —
+    // no second copy of findings/plan/log state, only a second, compact rendering path plus an
+    // AppendToComposer-based bridge (the mini panel sits next to the real app-owned composer; the
+    // full document does not, hence its clipboard-based bridge).
+    private bool _gdMiniOpen;
+
     // ══════════════════════════════════════════════════════════════════════
     // Repo Health — Git #2214 §6.6. Every finding comes from RepoHealthService's
     // real `gh api graphql` scan of this repo's own open issues (Depth/Naming
@@ -4561,6 +4568,34 @@ public partial class MainWindow : Window
         RenderGitDoctorFindingsList();
         RenderGitDoctorDetail();
         RenderGitDoctorLog();
+        RenderGitDoctorMini();
+    }
+
+    // Git #2218 §6.2 — mini rail panel's own Summary section: headline, branch/ahead-behind
+    // subline, and the big red "Fix My Git Nightmare" button. Reads the same _gdFindings/
+    // _gdRepoStatus state RenderGitDoctor() above already computed for the full document.
+    private void RenderGitDoctorMini()
+    {
+        var open = _gdFindings.Where(f => !f.Fixed).ToList();
+        var repo = _gdRepoStatus;
+
+        GdMiniHeadline.Text = open.Count > 0
+            ? $"{open.Count} thing{(open.Count == 1 ? " is" : "s are")} blocking git right now"
+            : (_gdLoaded ? "Everything git was complaining about is fixed" : "Checking git…");
+        GdMiniSubline.Text = repo != null
+            ? $"{repo.Repo} · {repo.Branch} · {repo.Ahead} ahead · {repo.Behind} behind · {repo.Worktrees} worktrees"
+            : "";
+
+        GdMiniNightmareLabel.Text = open.Count > 0 ? "Fix My Git Nightmare" : "Nothing left to fix";
+        GdMiniNightmareBtn.IsEnabled = open.Count > 0;
+        GdMiniNightmareBtn.Background = open.Count > 0
+            ? (Brush)FindResource("Brush.Epic.Gate")
+            : (Brush)FindResource("Brush.Bg.Card");
+        GdMiniNightmareLabel.Foreground = open.Count > 0 ? Brushes.Black : (Brush)FindResource("Brush.Text.Dim");
+
+        RenderGitDoctorMiniFindingsList();
+        RenderGitDoctorMiniLog();
+        RenderGitDoctorMiniPlan();
     }
 
     private GitDoctorRemedy? RemedyFor(GitDoctorFinding f)
@@ -4587,13 +4622,20 @@ public partial class MainWindow : Window
         _ => (Brush)FindResource("Brush.Epic.Gate")
     };
 
-    private void RenderGitDoctorFindingsList()
+    private void RenderGitDoctorFindingsList() => RenderGitDoctorFindingsList(GitDoctorFindingsPanel);
+
+    private void RenderGitDoctorMiniFindingsList() => RenderGitDoctorFindingsList(GdMiniFindingsPanel);
+
+    // Git #2218 §6.2 — shared between the full document's findings list and the mini rail panel's
+    // own (severity dot + title + chip, clickable), same underlying _gdFindings/_gdSelectedFindingId
+    // state, only the target StackPanel differs.
+    private void RenderGitDoctorFindingsList(StackPanel target)
     {
-        GitDoctorFindingsPanel.Children.Clear();
+        target.Children.Clear();
 
         if (!_gdLoaded)
         {
-            GitDoctorFindingsPanel.Children.Add(new TextBlock
+            target.Children.Add(new TextBlock
             {
                 Text = "Running checks…", Margin = new Thickness(8),
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
@@ -4604,7 +4646,7 @@ public partial class MainWindow : Window
 
         if (_gdFindings.Count == 0)
         {
-            GitDoctorFindingsPanel.Children.Add(new TextBlock
+            target.Children.Add(new TextBlock
             {
                 Text = "No findings. Git is clean.", Margin = new Thickness(8), TextWrapping = TextWrapping.Wrap,
                 FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
@@ -4674,7 +4716,7 @@ public partial class MainWindow : Window
             row.Child = grid;
             var capturedId = f.CheckId;
             row.MouseLeftButtonDown += (s, e) => SelectGitDoctorFinding(capturedId);
-            GitDoctorFindingsPanel.Children.Add(row);
+            target.Children.Add(row);
         }
     }
 
@@ -4685,6 +4727,7 @@ public partial class MainWindow : Window
         _gdLookupNotFound = false;
         GitDoctorQueryBox.Text = "";
         RenderGitDoctorFindingsList();
+        RenderGitDoctorMiniFindingsList();
         RenderGitDoctorDetail();
     }
 
@@ -5139,26 +5182,42 @@ public partial class MainWindow : Window
         _gdLog.Clear();
         _gdLog.Add((label, null, true));
         RenderGitDoctorLog();
+        RenderGitDoctorMiniLog();
 
         await foreach (var result in _gitDoctorService.RunStepsAsync(steps))
         {
             _gdLog.Add((result.Success ? result.Cmd : $"{result.Cmd}  (failed)", result.Why, false));
             RenderGitDoctorLog();
+            RenderGitDoctorMiniLog();
         }
 
         _gdRunning = false;
         _gdLog.Add(($"Finished — {steps.Count} command{(steps.Count == 1 ? "" : "s")}.", null, false));
         RenderGitDoctorLog();
+        RenderGitDoctorMiniLog();
         onDone?.Invoke();
     }
 
     private void RenderGitDoctorLog()
     {
         GitDoctorRunningLabel.Visibility = _gdRunning ? Visibility.Visible : Visibility.Collapsed;
-        GitDoctorLogPanel.Children.Clear();
+        RenderGitDoctorLog(GitDoctorLogPanel);
+    }
+
+    private void RenderGitDoctorMiniLog()
+    {
+        GdMiniRunningLabel.Visibility = _gdRunning ? Visibility.Visible : Visibility.Collapsed;
+        RenderGitDoctorLog(GdMiniLogPanel);
+    }
+
+    // Git #2218 §6.2 — the mini panel's own Run log (mono scroller), same _gdLog state the full
+    // document's log already streams RunGitDoctorStepsAsync into.
+    private void RenderGitDoctorLog(StackPanel target)
+    {
+        target.Children.Clear();
         if (_gdLog.Count == 0)
         {
-            GitDoctorLogPanel.Children.Add(new TextBlock
+            target.Children.Add(new TextBlock
             {
                 Text = "Every command the doctor runs shows up here with the reason it ran, so you can paste the whole session into a chat if something still goes wrong.",
                 TextWrapping = TextWrapping.Wrap, FontStyle = FontStyles.Italic,
@@ -5177,7 +5236,7 @@ public partial class MainWindow : Window
             });
             if (why != null)
                 row.Children.Add(new TextBlock { Text = why, FontSize = 9, Foreground = (Brush)FindResource("Brush.Text.Dim") });
-            GitDoctorLogPanel.Children.Add(row);
+            target.Children.Add(row);
         }
     }
 
@@ -5209,9 +5268,12 @@ public partial class MainWindow : Window
         ToastEngine.Show("Git Doctor", "All open findings copied — paste into the chat.", ToastKind.Info);
     }
 
-    private void BtnGitDoctorExtract_Click(object sender, RoutedEventArgs e)
+    private void BtnGitDoctorExtract_Click(object sender, RoutedEventArgs e) => ExtractGitDoctorPlanFrom(GitDoctorInboundBox.Text ?? "");
+
+    private void GdMiniExtract_Click(object sender, RoutedEventArgs e) => ExtractGitDoctorPlanFrom(GdMiniInboundBox.Text ?? "");
+
+    private void ExtractGitDoctorPlanFrom(string raw)
     {
-        var raw = GitDoctorInboundBox.Text ?? "";
         var lines = raw.Split('\n')
             .Select(l => System.Text.RegularExpressions.Regex.Replace(l, @"^\s*[$>#]\s*", "").Trim())
             .Where(l => l.Length > 0 && !l.StartsWith("```") && System.Text.RegularExpressions.Regex.IsMatch(l, @"^(git|del|cmdkey|ssh|rm)\b"))
@@ -5225,12 +5287,28 @@ public partial class MainWindow : Window
 
         _gdPlan = lines.Select(l => (l, true)).ToList();
         RenderGitDoctorPlan();
+        RenderGitDoctorMiniPlan();
     }
 
     private void RenderGitDoctorPlan()
     {
-        GitDoctorPlanPanel.Children.Clear();
         BtnGitDoctorRunPlan.Visibility = _gdPlan.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RenderGitDoctorPlan(GitDoctorPlanPanel);
+        GitDoctorRunPlanLabel.Text = $"Run {_gdPlan.Count(p => p.Approved)} approved";
+    }
+
+    private void RenderGitDoctorMiniPlan()
+    {
+        GdMiniRunPlan.Visibility = _gdPlan.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        RenderGitDoctorPlan(GdMiniPlanPanel);
+        GdMiniRunPlanLabel.Text = $"Run {_gdPlan.Count(p => p.Approved)} approved";
+    }
+
+    // Git #2218 §6.2 — the mini panel's own Plan (checkbox rows of parsed commands), same _gdPlan
+    // state the full document's own plan panel already tracks.
+    private void RenderGitDoctorPlan(StackPanel target)
+    {
+        target.Children.Clear();
         if (_gdPlan.Count == 0) return;
 
         var box = new Border
@@ -5261,15 +5339,19 @@ public partial class MainWindow : Window
                 var (c, a) = _gdPlan[capturedIndex];
                 _gdPlan[capturedIndex] = (c, !a);
                 RenderGitDoctorPlan();
+                RenderGitDoctorMiniPlan();
             };
             stack.Children.Add(row);
         }
         box.Child = stack;
-        GitDoctorPlanPanel.Children.Add(box);
-        GitDoctorRunPlanLabel.Text = $"Run {_gdPlan.Count(p => p.Approved)} approved";
+        target.Children.Add(box);
     }
 
-    private void BtnGitDoctorRunPlan_Click(object sender, RoutedEventArgs e)
+    private void BtnGitDoctorRunPlan_Click(object sender, RoutedEventArgs e) => RunGitDoctorApprovedPlan();
+
+    private void GdMiniRunPlan_Click(object sender, RoutedEventArgs e) => RunGitDoctorApprovedPlan();
+
+    private void RunGitDoctorApprovedPlan()
     {
         var approved = _gdPlan.Where(p => p.Approved).Select(p => new GitDoctorStep(p.Cmd, "from Claude")).ToList();
         if (approved.Count == 0)
@@ -5278,6 +5360,61 @@ public partial class MainWindow : Window
             return;
         }
         _ = RunGitDoctorStepsAsync(approved, $"Running Claude's plan — {approved.Count} commands", null);
+    }
+
+    // ── Git Doctor — mini rail panel (Git #2218, README-ClaudeChat.md §6.2) ─
+    // 7th ClaudeChatDock flyout column. Toggle/maximize follow the exact same
+    // mechanism as RepoHealth/SqlRunner above; the bridge actions below are the
+    // one real behavioral difference from the full document (AppendToComposer
+    // instead of Clipboard, since this panel sits next to the real composer).
+    private void BtnToggleGitDoctorMini_Click(object sender, RoutedEventArgs e)
+    {
+        _gdMiniOpen = !_gdMiniOpen;
+        GdMiniColumn.Width = new GridLength(_gdMiniOpen ? 300 : 0);
+        if (_gdMiniOpen) _ = EnsureGitDoctorMiniLoadedAsync();
+    }
+
+    private void GdMiniMaximize_Click(object sender, MouseButtonEventArgs e)
+    {
+        _gdMiniOpen = false;
+        GdMiniColumn.Width = new GridLength(0);
+        OpenGitDoctor();
+    }
+
+    private void GdMiniRecheck_Click(object sender, MouseButtonEventArgs e) => _ = LoadGitDoctorChecksAsync();
+
+    private void GdMiniNightmareBtn_Click(object sender, RoutedEventArgs e) => _ = RunGitDoctorNightmareAsync();
+
+    private async Task EnsureGitDoctorMiniLoadedAsync()
+    {
+        if (_gdLoaded || _gdLoading) { RenderGitDoctorMini(); return; }
+        await LoadGitDoctorChecksAsync();
+    }
+
+    // Claude bridge "send findings" — writes the currently-selected finding (or every open
+    // finding if none is selected) into the real app-owned composer as a markdown block, same
+    // §5 tool-writes-to-composer invariant RepoHealth's "Send N to this chat" already follows.
+    // Never auto-sends.
+    private void GdMiniSendFindings_Click(object sender, RoutedEventArgs e)
+    {
+        var open = _gdFindings.Where(f => !f.Fixed).ToList();
+        if (open.Count == 0) { ToastEngine.Show("Git Doctor", "No open findings to send.", ToastKind.Info); return; }
+
+        var selected = open.FirstOrDefault(f => f.CheckId == _gdSelectedFindingId);
+        string md;
+        if (selected != null)
+        {
+            var r = RemedyFor(selected);
+            md = $"**Git Doctor — {selected.Title}** ({selected.Where})\n\n```\n{selected.RawGitOutput}\n```\n\nProposed remedy: {r?.Label} ({r?.Risk})\n```bash\n{string.Join("\n", r?.Steps.Select(s => s.Cmd) ?? Array.Empty<string>())}\n```\nIs this the right call, or is there something safer?";
+        }
+        else
+        {
+            var repoName = _gdRepoStatus?.Repo ?? "";
+            md = $"**Git Doctor — {open.Count} open finding{(open.Count == 1 ? "" : "s")} on {repoName}**\n\n" +
+                string.Join("\n", open.Select(f => $"- {f.Title} ({f.Severity}, {f.Where})\n```\n{f.RawGitOutput}\n```"));
+        }
+        AppendToComposer(md);
+        ToastEngine.Show("Git Doctor", "Written into the composer — review, then Send.", ToastKind.Info);
     }
 
     // ══════════════════════════════════════════════════════════════════════

@@ -1,4 +1,4 @@
-﻿<Window x:Class="ShaneBuilder.MainWindow"
+<Window x:Class="ShaneBuilder.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -816,6 +816,15 @@
                                                 Click="BtnToggleGitMap_Click">
                                             <TextBlock Text="&#xE774;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
                                         </Button>
+                                        <!-- Git #2218 §6.2 — Git Doctor mini rail panel toggle, same mechanism
+                                             as BtnToggleRepoHealth/BtnToggleSqlRunner above. Reuses the real
+                                             landed GitDoctorService/GitDoctorDock state — no reimplementation. -->
+                                        <Button x:Name="BtnToggleGitDoctorMini" Style="{StaticResource PanelCollapseButton}"
+                                                Margin="8,0,0,0"
+                                                ToolTip="Git Doctor — real git-health findings + guided fix"
+                                                Click="BtnToggleGitDoctorMini_Click">
+                                            <TextBlock Text="&#xE9CE;" FontFamily="Segoe MDL2 Assets" FontSize="11"/>
+                                        </Button>
                                         <!-- Git #2209 §10 — the Claude Floaty (⧉) button. Full floaty spec
                                              lives with the #2035/#2059/#2065 chain; what belongs HERE is only
                                              the button + that the floaty and this tab show the SAME conversation
@@ -927,6 +936,7 @@
                                 <ColumnDefinition x:Name="JsonViewerColumn" Width="0"/>
                                 <ColumnDefinition x:Name="FileBrowserColumn" Width="0"/>
                                 <ColumnDefinition x:Name="GitMapColumn" Width="0"/>
+                                <ColumnDefinition x:Name="GdMiniColumn" Width="0"/>
                             </Grid.ColumnDefinitions>
 
                             <!-- Stat detail flyout — Shane's own addition, not in the mockup:
@@ -1482,6 +1492,136 @@
                                     </Border>
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                                         <StackPanel x:Name="GitMapResults" Margin="10,10,10,14"/>
+                                    </ScrollViewer>
+                                </DockPanel>
+                            </Border>
+
+                            <!-- Git Doctor mini rail panel — Git #2218, README-ClaudeChat.md §6.2 (posted
+                                 as a comment on #2194). Summary (headline, branch/ahead-behind, big red
+                                 "Fix My Git Nightmare" button) → Findings list (severity dot + title + chip,
+                                 clickable) → Claude bridge (send findings, paste-reply textarea, Extract
+                                 commands) → Plan (checkbox rows of parsed commands, Run N approved) → Run
+                                 log (mono scroller). Reuses the real landed GitDoctorService and every piece
+                                 of GitDoctorDock's own state (_gdFindings/_gdPlan/_gdLog/_gdRunning etc.) —
+                                 no reimplementation, just a compact rendering path over the same data, same
+                                 flyout mechanism as LogPeekPanel/SqlRunnerPanel/RepoHealthPanel above. The
+                                 one real behavioral difference from the full document's clipboard-based
+                                 bridge: this panel sits inside ClaudeChatDock next to the real app-owned
+                                 composer, so "send findings" / "Ask Claude" write into AppendToComposer
+                                 instead of the clipboard (§5's tool-writes-to-composer invariant). Column 9 —
+                                 #2217's JSON Viewer/File Browser and #2213's Git Map landed concurrently and
+                                 took columns 6-8. -->
+                            <Border x:Name="GdMiniPanel" Grid.Column="9" ClipToBounds="True"
+                                    Background="{StaticResource Brush.Claude.Bg.Chrome}"
+                                    BorderThickness="1,0,0,0" BorderBrush="{StaticResource Brush.Claude.Border}">
+                                <DockPanel Width="300">
+                                    <Border DockPanel.Dock="Top" Height="36" Padding="12,0" BorderThickness="0,0,0,1"
+                                            BorderBrush="{StaticResource Brush.Claude.Border}">
+                                        <DockPanel VerticalAlignment="Center">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                <TextBlock Text="&#xE740;" Margin="0,0,10,0" Cursor="Hand"
+                                                           ToolTip="Maximize to the full Git Doctor document"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="GdMiniMaximize_Click"/>
+                                                <TextBlock Text="&#xE711;" Cursor="Hand"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="BtnToggleGitDoctorMini_Click"/>
+                                            </StackPanel>
+                                            <TextBlock Text="Git Doctor" VerticalAlignment="Center"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.12}"
+                                                       FontWeight="{StaticResource FontWeight.Bold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                        </DockPanel>
+                                    </Border>
+
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel Margin="10,10,10,14">
+                                            <!-- Summary -->
+                                            <DockPanel Margin="0,0,0,6">
+                                                <TextBlock Text="&#xE72C;" Cursor="Hand" DockPanel.Dock="Right"
+                                                           ToolTip="Re-check" HorizontalAlignment="Right"
+                                                           FontFamily="Segoe MDL2 Assets" FontSize="11"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"
+                                                           MouseLeftButtonDown="GdMiniRecheck_Click"/>
+                                                <TextBlock x:Name="GdMiniHeadline" Text="Checking git…" TextWrapping="Wrap"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="12"
+                                                           FontWeight="{StaticResource FontWeight.Bold}"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Bright}"/>
+                                            </DockPanel>
+                                            <TextBlock x:Name="GdMiniSubline" Text="" Margin="0,0,0,8" TextWrapping="Wrap"
+                                                       FontFamily="{StaticResource FontFamily.Monospace}" FontSize="9.5"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                            <Button x:Name="GdMiniNightmareBtn" Width="Auto" Height="30" HorizontalAlignment="Stretch"
+                                                    Margin="0,0,0,10" Background="{StaticResource Brush.Epic.Gate}"
+                                                    BorderThickness="0" Click="GdMiniNightmareBtn_Click">
+                                                <TextBlock x:Name="GdMiniNightmareLabel" Text="Fix My Git Nightmare"
+                                                           HorizontalAlignment="Center"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="10.5"
+                                                           FontWeight="{StaticResource FontWeight.Bold}" Foreground="Black"/>
+                                            </Button>
+
+                                            <!-- Findings -->
+                                            <TextBlock Text="FINDINGS" Margin="0,0,0,5"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="9"
+                                                       FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                            <StackPanel x:Name="GdMiniFindingsPanel" Margin="0,0,0,10"/>
+
+                                            <!-- Claude bridge -->
+                                            <TextBlock Text="CLAUDE BRIDGE" Margin="0,0,0,5"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="9"
+                                                       FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                            <Button x:Name="GdMiniSendFindings" Width="Auto" Height="26" HorizontalAlignment="Stretch"
+                                                    Margin="0,0,0,6" Style="{StaticResource PanelCollapseButton}"
+                                                    ToolTip="Write the open findings (or the selected one) into the composer"
+                                                    Click="GdMiniSendFindings_Click">
+                                                <TextBlock Text="Send findings to this chat" FontFamily="{StaticResource FontFamily.Sans}" FontSize="10"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                            </Button>
+                                            <TextBox x:Name="GdMiniInboundBox" Height="54" Margin="0,0,0,6"
+                                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                                     VerticalScrollBarVisibility="Auto"
+                                                     Background="{StaticResource Brush.Claude.Bg.Content}"
+                                                     BorderBrush="{StaticResource Brush.Claude.Border}"
+                                                     Foreground="{StaticResource Brush.Claude.Text.Bright}"
+                                                     FontFamily="{StaticResource FontFamily.Monospace}" FontSize="9.5"
+                                                     Tag="Paste Claude's reply here…"/>
+                                            <Button x:Name="GdMiniExtract" Width="Auto" Height="24" HorizontalAlignment="Stretch"
+                                                    Margin="0,0,0,10" Style="{StaticResource PanelCollapseButton}"
+                                                    Click="GdMiniExtract_Click">
+                                                <TextBlock Text="Extract commands" FontFamily="{StaticResource FontFamily.Sans}" FontSize="10"
+                                                           Foreground="{StaticResource Brush.Claude.Accent}"/>
+                                            </Button>
+
+                                            <!-- Plan -->
+                                            <StackPanel x:Name="GdMiniPlanBlock" Margin="0,0,0,10">
+                                                <TextBlock Text="PLAN" Margin="0,0,0,5"
+                                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="9"
+                                                           FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                           Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                                <StackPanel x:Name="GdMiniPlanPanel" Margin="0,0,0,6"/>
+                                                <Button x:Name="GdMiniRunPlan" Width="Auto" Height="26" HorizontalAlignment="Stretch"
+                                                        Visibility="Collapsed" Style="{StaticResource PanelCollapseButton}"
+                                                        Click="GdMiniRunPlan_Click">
+                                                    <TextBlock x:Name="GdMiniRunPlanLabel" Text="Run 0 approved"
+                                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="10"
+                                                               Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                                </Button>
+                                            </StackPanel>
+
+                                            <!-- Run log -->
+                                            <TextBlock Text="RUN LOG" Margin="0,0,0,5"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="9"
+                                                       FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                                       Foreground="{StaticResource Brush.Claude.Text.Muted}"/>
+                                            <TextBlock x:Name="GdMiniRunningLabel" Text="Running…" Visibility="Collapsed" Margin="0,0,0,4"
+                                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5" FontStyle="Italic"
+                                                       Foreground="{StaticResource Brush.Status.Running}"/>
+                                            <StackPanel x:Name="GdMiniLogPanel"/>
+                                        </StackPanel>
                                     </ScrollViewer>
                                 </DockPanel>
                             </Border>
