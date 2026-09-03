@@ -70,6 +70,18 @@ namespace ShaneBuilder;
 /// build-prompt-and-queue-push flow as a real, named hook point (<see cref="BatterUpDispatchClicked"/>)
 /// for #2366 to extend.
 ///
+/// Git #2366 (Feature #2355 item 11) — enforces the real flow #2355's own body states in words: a
+/// Batter Up item requires a build prompt written by Claude in chat after approval, then a Git
+/// issue push, then an app-side Git refresh; nothing may write to the queue directly. Audited
+/// #2360's own Dispatch implementation first — it already only opens the browser + copies a
+/// clipboard prompt, no direct write of any kind — so this issue's real work is turning that
+/// already-correct behavior into a runtime-enforced boundary instead of a boundary that only
+/// exists as a doc comment: <see cref="Services.BatterUpDispatchGuard"/> marks Dispatch's call
+/// scope, and the app's two real write choke points — <see cref="Services.QueueWriteClient"/>'s
+/// direct `bt_build_queue` mutations (added for Build Matrix's #2288 slot actions) and
+/// <see cref="Services.GitMapService"/>'s `gh` CLI runner (the only path to a `gh issue comment`)
+/// — both throw immediately if reached from inside that scope.
+///
 /// Git #2361 (Feature #2355 item 6) — a real "Ask Shane" lane item renders as a question: a real
 /// NEEDS YOU badge, an amber row tint (the same <c>Brush.Toast.Warning</c> token #2364's
 /// "No Feature" bucket and #2311's amber banner already use), and the real reason it's blocking —
@@ -464,10 +476,20 @@ public partial class MainWindow
     /// requires a build prompt written by Claude in chat after approval, then a Git issue push,
     /// then an app-side Git refresh — nothing here may write <c>bt_build_queue</c> or push a build
     /// prompt directly, and this never claims a "Dispatched!" success state for something that
-    /// didn't actually happen. #2366 (blocked by this issue, the governing spec for the real
-    /// dispatch flow) is the named hook to extend this into the real end-to-end action.</summary>
+    /// didn't actually happen.
+    ///
+    /// Git #2366 — that boundary is now a real runtime guard, not just this doc comment:
+    /// <see cref="BatterUpDispatchGuard.Enter"/> marks this call's whole scope (including any
+    /// future awaited work added inside it) as "inside the no-write zone", and the two real write
+    /// choke points this app has — <see cref="QueueWriteClient"/>'s direct `bt_build_queue`
+    /// mutations, and <see cref="GitMapService"/>'s `gh` CLI runner (the only path to a `gh issue
+    /// comment`) — both throw immediately if reached while that scope is active. A future edit
+    /// that starts writing the queue or posting a comment from in here fails loudly the first time
+    /// it actually runs, not silently in review.</summary>
     private void BatterUpDispatchClicked(BatterUpItemRef item)
     {
+        using var _dispatchGuard = BatterUpDispatchGuard.Enter();
+
         try
         {
             Process.Start(new ProcessStartInfo($"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{item.Number}") { UseShellExecute = true });
@@ -516,11 +538,17 @@ public partial class MainWindow
 
     /// <summary>Git #2358 — "Dispatch all" is button-and-affordance-only in this build (per the
     /// issue's own scope). Real dispatch semantics — what "Dispatch" is and isn't allowed to
-    /// write — land in #2366, downstream of #2360's per-item actions. This stub does nothing
-    /// destructive: it just reports an honest "not wired yet" status line rather than silently
-    /// swallowing the click or faking success.</summary>
+    /// write — are governed by #2366: nothing here may write <c>bt_build_queue</c> or post a
+    /// synthetic <c>BUILD:</c> comment, same as the per-item <see cref="BatterUpDispatchClicked"/>.
+    /// This stub does nothing destructive: it just reports an honest "not wired yet" status line
+    /// rather than silently swallowing the click or faking success. Still enters the real
+    /// <see cref="BatterUpDispatchGuard"/> scope for the duration of the click — a future edit
+    /// that wires this stub into an actual write path trips the same runtime guard the per-item
+    /// action does, not just a doc comment.</summary>
     private void BatterUpDispatchAllClicked(int featureNumber, string featureTitle, int itemCount)
     {
+        using var _dispatchGuard = BatterUpDispatchGuard.Enter();
+
         BatterUpPanelStatus.Text = $"Dispatch all — #{featureNumber} {featureTitle} ({itemCount} item(s)): " +
             "not wired yet — real dispatch semantics land in #2366.";
         BatterUpPanelStatus.Visibility = Visibility.Visible;
