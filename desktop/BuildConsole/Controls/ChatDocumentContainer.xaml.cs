@@ -494,12 +494,33 @@ namespace BuildConsole.Controls
                 ComposerReturnText.Text = returnAddress;
                 ComposerReturnBar.Visibility = Visibility.Visible;
             }
+
+            UpdateComposerBandVisibility();
+        }
+
+        /// <summary>Git #2678 — the whole band (pill + disclaimer row) has nothing to do, and stays
+        /// collapsed, until either a real draft exists or a cross-epic return address is pending.
+        /// claude.ai's own composer on the live page above already handles ordinary typing/sending;
+        /// this band's only real job is staging a tool's "send to chat" write (§8/§5) or a cross-epic
+        /// answer, so it only needs to appear on demand for those, not sit as permanent chrome.</summary>
+        private void UpdateComposerBandVisibility()
+        {
+            bool hasDraft = !string.IsNullOrEmpty(ChatComposer.Text);
+            bool hasReturnAddress = ComposerReturnBar.Visibility == Visibility.Visible;
+            ComposerBand.Visibility = (hasDraft || hasReturnAddress) ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void ComposerReturnClear_Click(object sender, MouseButtonEventArgs e)
-            => ComposerReturnBar.Visibility = Visibility.Collapsed;
+        {
+            ComposerReturnBar.Visibility = Visibility.Collapsed;
+            UpdateComposerBandVisibility();
+        }
 
-        private void ChatComposer_TextChanged(object sender, TextChangedEventArgs e) => UpdateGauge();
+        private void ChatComposer_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            UpdateGauge();
+            UpdateComposerBandVisibility();
+        }
 
         private void ChatComposer_PreviewKeyDown(object sender, KeyEventArgs e)
         {
@@ -549,6 +570,7 @@ namespace BuildConsole.Controls
                 ChatComposer.Text = "";
                 ComposerReturnBar.Visibility = Visibility.Collapsed;
                 UpdateGauge();
+                UpdateComposerBandVisibility();
             }
             catch (Exception ex)
             {
@@ -740,6 +762,10 @@ namespace BuildConsole.Controls
         public void ShowInspectorBlocking()
         {
             InspectorWarningNotice.Visibility = Visibility.Collapsed;
+            // Git #2678 — InspectorBlockingOverlay lives inside ComposerBand (Grid.Row="4") so it
+            // paints over that band specifically (§9); ComposerBand must be forced visible here or
+            // the overlay would be hidden along with it whenever the band was otherwise collapsed.
+            ComposerBand.Visibility = Visibility.Visible;
             InspectorBlockingOverlay.Visibility = Visibility.Visible;
         }
 
@@ -747,6 +773,7 @@ namespace BuildConsole.Controls
         {
             InspectorWarningNotice.Visibility = Visibility.Collapsed;
             InspectorBlockingOverlay.Visibility = Visibility.Collapsed;
+            UpdateComposerBandVisibility();
         }
     }
 }

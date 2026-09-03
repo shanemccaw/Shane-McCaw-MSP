@@ -321,8 +321,12 @@
 
         <!-- ══ Band 5 — app-owned Composer (WARM). The one surface tools write into; never
              auto-sends (§5). Per-tab draft: this composer IS this tab's draft (one container per
-             tab). Send injects into the live claude.ai composer via the DOM bridge (§8). -->
-        <Grid Grid.Row="4">
+             tab). Send injects into the live claude.ai composer via the DOM bridge (§8).
+             Git #2678 — collapsed by default: claude.ai's own composer (in the live page above)
+             already handles normal typing/sending, so this band has no job until a tool writes a
+             draft into it or a cross-epic return address lands here. UpdateComposerBandVisibility
+             in the code-behind is the single place that flips this. -->
+        <Grid Grid.Row="4" x:Name="ComposerBand" Visibility="Collapsed">
             <Border Background="{StaticResource Warm.Chrome}" BorderThickness="0,1,0,0"
                     BorderBrush="{StaticResource Warm.Border}" Padding="14,10">
                 <Grid HorizontalAlignment="Center" MinWidth="400" MaxWidth="700">
@@ -379,21 +383,16 @@
                                          TextChanged="ChatComposer_TextChanged"/>
                             </DockPanel>
                         </Border>
-                        <Grid Margin="4,6,0,0">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0"
-                                       Text="Claude is AI and can make mistakes. Please double-check responses."
-                                       FontSize="11" Foreground="{StaticResource Warm.TextDim}"/>
-                            <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                <TextBlock Text="Sonnet 5" FontSize="11" FontWeight="SemiBold"
-                                           Foreground="{StaticResource Warm.TextBright}"/>
-                                <TextBlock Text="Medium" Margin="8,0,0,0" FontSize="11"
-                                           Foreground="{StaticResource Warm.TextDim}"/>
-                            </StackPanel>
-                        </Grid>
+                        <!-- Git #2678 — the "Sonnet 5" / "Medium" model/effort labels that used to sit
+                             here were static literal XAML text, not bound to any real state: bt_chats
+                             (BoardChat, this tab's real backing row) carries no model/effort column, and
+                             a chat tab isn't 1:1 with a queued build's model/effort selection, so
+                             there is no live per-tab value to bind to. Dropped rather than left fake —
+                             the real live model/effort picker already lives in claude.ai's own composer
+                             on the page above. -->
+                        <TextBlock Margin="4,6,0,0"
+                                   Text="Claude is AI and can make mistakes. Please double-check responses."
+                                   FontSize="11" Foreground="{StaticResource Warm.TextDim}"/>
                     </StackPanel>
                 </Grid>
             </Border>
