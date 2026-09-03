@@ -44,6 +44,18 @@ namespace ShaneBuilder;
 /// line (that comment's stated scope, or the issue body). Resolved by
 /// <see cref="ChatGitHubFilter.EnrichBatterUpItemDetailsAsync"/> — a second, batched GraphQL call
 /// scoped to just the real items already sorted into a lane, not the whole board walk.
+///
+/// Git #2358 (Feature #2355 item 3) — each real feature group's header row now also carries a
+/// real state pill for the group's parent Feature (same CLOSED/BLOCKED/IN FLIGHT/COMPLETE/OPEN
+/// vocabulary <see cref="GitNodeState"/> already established for Feature rows in the Git Panel
+/// tree — reused, not reinvented) and a "Dispatch all" action link. State/labels come off the
+/// same real <c>parent</c> GraphQL edge #2357 already fetches, extended in the same query (see
+/// <see cref="ChatGitHubFilter.BatterUpItemRef.FeatureIsClosed"/>/<c>FeatureLabels</c>) — no
+/// second round trip. "Dispatch all" is button-and-affordance-only here, per this issue's own
+/// scope: the click handler is a stub reporting an honest "not wired yet" status line, since the
+/// real dispatch semantics land downstream in #2366 (built on top of #2360's per-item actions).
+/// The "No Feature" bucket gets neither — there's no real parent Feature to show state for or
+/// dispatch against.
 /// </summary>
 /// <summary>Git #2365 — a frozen snapshot of the Batter Up panel's real state (selected lane +
 /// the four live counts) at the moment "Send to tab" was clicked. Carried on <c>TabDef</c>, read
@@ -216,7 +228,27 @@ public partial class MainWindow
             headerText.Margin = new Thickness(4, 0, 4, 0);
             if (isNoHome) headerText.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
             header.ColumnFill(headerText);
+
+            // Git #2358 — real state pill for the group's parent Feature (same left-to-right
+            // convention the Git Panel tree's fRow already uses: state closest to the title, then
+            // the count, then the "Dispatch all" action rightmost), then the real count pill, then
+            // "Dispatch all" (stub — button/affordance only, see class doc). Neither the state
+            // pill nor the button render for the "No Feature" bucket — there's no real parent
+            // Feature to show state for or dispatch against.
+            if (!isNoHome)
+            {
+                var (stateLabel, stateBrushKey) = BatterUpFeatureState(group.First());
+                header.ColumnRight(GitCountPill(stateLabel, stateBrushKey));
+            }
             header.ColumnRight(GitCountPill(group.Count().ToString(), isNoHome ? "Brush.Toast.Warning" : "Brush.Text.Muted"));
+            if (!isNoHome)
+            {
+                var groupItems = group.ToList();
+                var dispatchLink = GitEpicActionLink("Dispatch all", disabled: false,
+                    () => BatterUpDispatchAllClicked(featureNumber, group.First().FeatureTitle ?? $"#{featureNumber}", groupItems.Count));
+                dispatchLink.Margin = new Thickness(8, 0, 0, 0);
+                header.ColumnRight(dispatchLink);
+            }
             header.Root.MouseLeftButtonDown += (_, _) => ToggleBatterUpGroup(featureNumber);
             if (isNoHome)
             {
@@ -289,6 +321,33 @@ public partial class MainWindow
         if (!_batterUpCollapsedGroups.Remove(featureNumber))
             _batterUpCollapsedGroups.Add(featureNumber);
         RenderBatterUpLaneBody();
+    }
+
+    /// <summary>Git #2358 — the group header's real state pill for its parent Feature: the exact
+    /// same CLOSED/BLOCKED/IN FLIGHT/COMPLETE/OPEN vocabulary and brush keys
+    /// <see cref="GitNodeState"/> already established for Feature rows in the Git Panel tree,
+    /// applied to <see cref="BatterUpItemRef.FeatureIsClosed"/>/<c>FeatureLabels</c> — same real
+    /// labels, fetched off the same GraphQL <c>parent</c> edge, no new vocabulary invented for
+    /// this panel.</summary>
+    private static (string Label, string BrushKey) BatterUpFeatureState(BatterUpItemRef item)
+    {
+        if (item.FeatureIsClosed) return ("CLOSED", "Brush.Status.Done");
+        if (item.FeatureLabels.Contains("blocked", StringComparer.OrdinalIgnoreCase)) return ("BLOCKED", "Brush.NextUp.Blocked.Fg");
+        if (item.FeatureLabels.Contains("in-flight", StringComparer.OrdinalIgnoreCase)) return ("IN FLIGHT", "Brush.Status.Running");
+        if (item.FeatureLabels.Contains("complete", StringComparer.OrdinalIgnoreCase)) return ("COMPLETE", "Brush.Status.Verifying");
+        return ("OPEN", "Brush.Text.Muted");
+    }
+
+    /// <summary>Git #2358 — "Dispatch all" is button-and-affordance-only in this build (per the
+    /// issue's own scope). Real dispatch semantics — what "Dispatch" is and isn't allowed to
+    /// write — land in #2366, downstream of #2360's per-item actions. This stub does nothing
+    /// destructive: it just reports an honest "not wired yet" status line rather than silently
+    /// swallowing the click or faking success.</summary>
+    private void BatterUpDispatchAllClicked(int featureNumber, string featureTitle, int itemCount)
+    {
+        BatterUpPanelStatus.Text = $"Dispatch all — #{featureNumber} {featureTitle} ({itemCount} item(s)): " +
+            "not wired yet — real dispatch semantics land in #2366.";
+        BatterUpPanelStatus.Visibility = Visibility.Visible;
     }
 
     // ── Panel-level chrome (#2365) ───────────────────────────────────────────────────────────

@@ -38,6 +38,12 @@ public sealed class BatterUpItemRef
     public string Title { get; init; } = "";
     public int? FeatureNumber { get; init; }
     public string? FeatureTitle { get; init; }
+    /// <summary>Git #2358 — the real parent Feature's own <c>state</c>/labels, fetched inline off
+    /// the same <c>parent</c> edge as <c>FeatureNumber</c>/<c>FeatureTitle</c> (no second round
+    /// trip). Null/empty when <see cref="FeatureNumber"/> is null (no real parent to have a
+    /// state).</summary>
+    public bool FeatureIsClosed { get; init; }
+    public List<string> FeatureLabels { get; init; } = new();
 
     // ── Git #2359 — item-card detail: real badge, effort, "why it is here". Resolved by a
     // second, batched GraphQL call scoped to just the items already sorted into one of the 3
@@ -379,7 +385,7 @@ public sealed class ChatGitHubFilter
               title
               state
               repository {{ nameWithOwner }}
-              parent {{ number title }}
+              parent {{ number title state labels(first: 20) {{ nodes {{ name }} }} }}
             }}
           }}
         }}
@@ -420,6 +426,9 @@ public sealed class ChatGitHubFilter
                     Title = issue.Title ?? $"#{issue.Number}",
                     FeatureNumber = issue.Parent?.Number,
                     FeatureTitle = issue.Parent?.Title,
+                    FeatureIsClosed = string.Equals(issue.Parent?.State, "CLOSED", StringComparison.OrdinalIgnoreCase),
+                    FeatureLabels = issue.Parent?.Labels?.Nodes?.Select(l => l.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList()
+                        ?? new List<string>(),
                 };
 
                 switch (n.FieldValueByName?.OptionId)
@@ -751,10 +760,15 @@ public sealed class ChatGitHubFilter
     }
     private sealed class LaneRepository { [JsonPropertyName("nameWithOwner")] public string? NameWithOwner { get; set; } }
     /// <summary>Git #2357 — the item's real immediate parent (Feature, usually), null when the
-    /// issue genuinely has none.</summary>
+    /// issue genuinely has none. Git #2358 — <c>State</c>/<c>Labels</c> added, fetched inline off
+    /// this same edge, for the group header's real state pill.</summary>
     private sealed class LaneParentRef
     {
         [JsonPropertyName("number")] public int Number { get; set; }
         [JsonPropertyName("title")] public string? Title { get; set; }
+        [JsonPropertyName("state")] public string? State { get; set; }
+        [JsonPropertyName("labels")] public LaneLabelConnection? Labels { get; set; }
     }
+    private sealed class LaneLabelConnection { [JsonPropertyName("nodes")] public List<LaneLabelNode>? Nodes { get; set; } }
+    private sealed class LaneLabelNode { [JsonPropertyName("name")] public string Name { get; set; } = ""; }
 }
