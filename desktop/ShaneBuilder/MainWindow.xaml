@@ -353,6 +353,65 @@
                         <StackPanel x:Name="QuickAccessToolbar" Orientation="Horizontal"/>
                     </Border>
 
+                    <!-- Git #2383 (Feature #2382 "I have a thought", item 1) — topbar quick
+                         capture: a one-line thought filed without leaving whatever tab/chat is
+                         active. ToggleButton bound to the Popup's own IsOpen via IsChecked (same
+                         WPF-quirk workaround as BtnWorkspaceBox above — a StaysOpen=False Popup
+                         opened from a plain Button.Click self-dismisses on the same mouse-up). -->
+                    <ToggleButton x:Name="BtnQuickThought" Style="{StaticResource RailToggle}"
+                                  Width="36" Height="32" Margin="0,0,4,0"
+                                  ToolTip="I have a thought — quick capture"
+                                  WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Path Style="{StaticResource RailIconPath}" Width="14" Height="14"
+                              Data="{StaticResource Icon.Lightbulb}"
+                              Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ToggleButton}}"/>
+                    </ToggleButton>
+                    <Popup x:Name="QuickThoughtPopup" PlacementTarget="{Binding ElementName=BtnQuickThought}"
+                           IsOpen="{Binding IsChecked, ElementName=BtnQuickThought, Mode=TwoWay}"
+                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                           Opened="QuickThoughtPopup_Opened">
+                        <Border Background="{StaticResource Brush.Bg.Panel}" BorderBrush="{StaticResource Brush.Border.Popover}"
+                                BorderThickness="1" CornerRadius="8" Padding="10" Width="300"
+                                Margin="0,4,0,0">
+                            <Border.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="18" ShadowDepth="6" Opacity="0.5"/>
+                            </Border.Effect>
+                            <StackPanel>
+                                <TextBlock Text="I have a thought" FontFamily="{StaticResource FontFamily.Sans}"
+                                           FontSize="11" FontWeight="{StaticResource FontWeight.Bold}"
+                                           Foreground="{StaticResource Brush.Text.Heading}" Margin="2,0,0,6"/>
+                                <Border Background="{StaticResource Brush.Bg.Window}" BorderBrush="{StaticResource Brush.Border.Default}"
+                                        BorderThickness="1" CornerRadius="6" Padding="8,6">
+                                    <Grid>
+                                        <TextBox x:Name="QuickThoughtInput" Background="Transparent" BorderThickness="0"
+                                                 Foreground="{StaticResource Brush.Text.Heading}"
+                                                 FontFamily="{StaticResource FontFamily.Sans}" FontSize="12"
+                                                 CaretBrush="{StaticResource Brush.Text.Heading}"
+                                                 TextWrapping="Wrap" AcceptsReturn="False"
+                                                 PreviewKeyDown="QuickThoughtInput_PreviewKeyDown"
+                                                 TextChanged="QuickThoughtInput_TextChanged"/>
+                                        <TextBlock x:Name="QuickThoughtPlaceholder" IsHitTestVisible="False"
+                                                   Text="Type it, hit Enter — saved, box stays open"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="12"
+                                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                                    </Grid>
+                                </Border>
+                                <TextBlock x:Name="QuickThoughtSavedFlag" Text="Saved" Visibility="Collapsed"
+                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="9.5"
+                                           FontWeight="{StaticResource FontWeight.Bold}"
+                                           Foreground="{StaticResource Brush.Accent.Active}" Margin="2,6,0,0"/>
+                                <TextBlock Text="RECENT" Margin="2,10,0,4"
+                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="9"
+                                           FontWeight="{StaticResource FontWeight.Bold}"
+                                           Foreground="{StaticResource Brush.Text.Dim}"/>
+                                <StackPanel x:Name="QuickThoughtRecentList" MaxHeight="180"/>
+                                <TextBlock x:Name="QuickThoughtEmptyLabel" Text="Nothing captured yet"
+                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="10.5"
+                                           Foreground="{StaticResource Brush.Text.Dim}" Margin="2,0,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </Popup>
+
                     <!-- Git #2210 — desktop screen-clipping tool, ported from BuildConsole (Git #1866).
                          Draw a region anywhere on the desktop; the clip goes to the clipboard AND to
                          disk. Also fires on PrintScreen (BtnScreenClip.ToolTip is updated from
