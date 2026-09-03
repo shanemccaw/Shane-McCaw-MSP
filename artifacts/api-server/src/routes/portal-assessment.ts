@@ -1094,6 +1094,15 @@ router.get(
               checksLicenseGap: latestRun.checksLicenseGap ?? 0,
               startedAt: latestRun.startedAt ?? latestRun.createdAt,
               completedAt: latestRun.completedAt ?? null,
+              // `status` here already carries "failed" (diagnostics-runner.ts's
+              // outer catch persists it) — but a run that died mid-flight has no
+              // reliable check counts, and until now the client had no way to
+              // show WHY it died on a cold page load (only a live SSE watcher of
+              // that exact run ever saw the diagnostics_error message; a page
+              // opened afterwards got nothing). errorMessage is the same
+              // truncated-to-1000-chars column the runner already writes on
+              // failure — real gap, additive field, no migration needed.
+              errorMessage: latestRun.status === "failed" ? (latestRun.errorMessage ?? null) : null,
             }
           : null,
         // The customer's most recent Assessment document-generation workflow

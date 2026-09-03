@@ -509,6 +509,18 @@
     }
   }
 
+  /* Tenant Status card indeterminate sweep (Git #1824) — README "Progress
+     block": the bar swaps from determinate fill to this sweep when the live
+     SSE stream has dropped but the poll hasn't confirmed the run is over. */
+  @keyframes scanSlide {
+    0% {
+      transform: translateX(-110%);
+    }
+    100% {
+      transform: translateX(360%);
+    }
+  }
+
   @keyframes radar-sweep {
     0% {
       transform: rotate(0deg);
