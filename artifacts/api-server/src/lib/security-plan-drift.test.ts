@@ -14,7 +14,7 @@ import { computeSecurityPlanDrift } from "./security-plan-drift.ts";
 import type { SecurityPlanAssembledItem, SecurityPlanAssembledModule, SecurityPlanContent, SecurityPlanProse } from "@workspace/db";
 
 function item(id: string, over: Partial<SecurityPlanAssembledItem> = {}): SecurityPlanAssembledItem {
-  return { id, title: id, state: "open", detail: null, pillar: null, framework: null, ...over };
+  return { id, title: id, state: "open", detail: null, pillar: null, framework: null, businessUnit: null, ...over };
 }
 
 function moduleOf(key: string, items: SecurityPlanAssembledItem[]): SecurityPlanAssembledModule {

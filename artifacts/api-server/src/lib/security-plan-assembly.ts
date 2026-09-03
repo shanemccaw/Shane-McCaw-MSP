@@ -18,15 +18,16 @@
  * returned zero rows), never a fixture fallback.
  *
  * SCOPE (#1563). A caller may narrow which parts of the estate the plan covers, but
- * scope operates ONLY on DIMENSIONS (control family = `pillar`, `framework`), NEVER
- * on OUTCOME (severity, accepted/open, pass/fail). This module deliberately exposes
- * no outcome filter. A row is excluded by a scoped dimension ONLY when it CARRIES a
- * value for that dimension that is not in the allowed set — a row that cannot be
- * classified by the dimension is RETAINED, never silently dropped, because dropping
- * by absence is exactly the hiding #1563 forbids. `pillar` and `framework` are the
- * only two dimensions with real, consistent backing columns today (on
- * policy_decisions / msp_risk_decisions); #1563's third example, `business_unit`,
- * has no source column and is intentionally not offered rather than faked.
+ * scope operates ONLY on DIMENSIONS (control family = `pillar`, `framework`,
+ * `businessUnit`), NEVER on OUTCOME (severity, accepted/open, pass/fail). This module
+ * deliberately exposes no outcome filter. A row is excluded by a scoped dimension ONLY
+ * when it CARRIES a value for that dimension that is not in the allowed set — a row
+ * that cannot be classified by the dimension is RETAINED, never silently dropped,
+ * because dropping by absence is exactly the hiding #1563 forbids. `pillar` and
+ * `framework` vary per row (real columns on policy_decisions / msp_risk_decisions).
+ * `businessUnit` (#2085) is backed by `tenants.business_unit` instead — a single value
+ * per tenant, so every item in one assembled plan carries the same value; scoping on
+ * it is all-or-nothing within a plan, but it is real, tenant-set data, not fabricated.
  *
  * FOOTPRINT (#1565). The assembly always computes a filter footprint — which filters
  * were applied, what was excluded, and a per-module count — and returns it as part of
@@ -109,7 +110,7 @@ export function isExcludedByScope(item: RawItem, scope: SecurityPlanScope): bool
   for (const dim of Object.keys(dims) as SecurityPlanScopeDimension[]) {
     const allowed = dims[dim];
     if (!allowed || allowed.length === 0) continue; // no constraint on this dimension
-    const value = item[dim]; // "pillar" | "framework" both exist on SecurityPlanAssembledItem
+    const value = item[dim]; // "pillar" | "framework" | "businessUnit" all exist on SecurityPlanAssembledItem
     if (value === null) continue; // unclassifiable by this dimension → retained
     if (!allowed.includes(value)) return true;
   }
@@ -142,6 +143,7 @@ async function readPolicyDecisions(scope: TenantScope): Promise<RawModule> {
       detail: str(r.reviewState) ? `Review: ${r.reviewState}` : str(r.obligation),
       pillar: str(r.pillar),
       framework: null,
+      businessUnit: str(scope.businessUnit),
     })),
   };
 }
@@ -171,6 +173,7 @@ async function readRiskRegister(scope: TenantScope): Promise<RawModule> {
       detail: `Raw ${str(r.rawRiskLevel) ?? "?"} → residual ${str(r.residualRiskLevel) ?? "?"}`,
       pillar: str(r.pillar),
       framework: str(r.framework),
+      businessUnit: str(scope.businessUnit),
     })),
   };
 }
@@ -198,6 +201,7 @@ async function readOwnership(scope: TenantScope): Promise<RawModule> {
       detail: str(r.sub),
       pillar: null,
       framework: null,
+      businessUnit: str(scope.businessUnit),
     })),
   };
 }
@@ -230,6 +234,7 @@ async function readSops(scope: TenantScope): Promise<RawModule> {
       detail: [str(r.category), str(r.automationType)].filter(Boolean).join(" · ") || null,
       pillar: null,
       framework: null,
+      businessUnit: str(scope.businessUnit),
     })),
   };
 }
@@ -256,6 +261,7 @@ async function readRemediation(scope: TenantScope): Promise<RawModule> {
       detail: str(r.verificationState) ? `Verification: ${r.verificationState}` : null,
       pillar: null,
       framework: null,
+      businessUnit: str(scope.businessUnit),
     })),
   };
 }
@@ -284,6 +290,7 @@ async function readChangeControl(scope: TenantScope): Promise<RawModule> {
       detail: [str(r.changeClass), str(r.riskLevel), str(r.category)].filter(Boolean).join(" · ") || null,
       pillar: null,
       framework: null,
+      businessUnit: str(scope.businessUnit),
     })),
   };
 }
@@ -311,6 +318,7 @@ async function readMicrosoftChanges(scope: TenantScope): Promise<RawModule> {
       detail: [str(r.changeClass), str(r.controllable) ? `controllable: ${r.controllable}` : null].filter(Boolean).join(" · ") || null,
       pillar: null,
       framework: null,
+      businessUnit: str(scope.businessUnit),
     })),
   };
 }

@@ -48,6 +48,8 @@ export interface TenantScope {
   readonly tenantId: string;
   readonly tenantName: string;
   readonly primaryDomain: string;
+  /** `tenants.business_unit` (#2085) — nullable, freeform. */
+  readonly businessUnit: string | null;
 }
 
 /**
@@ -62,6 +64,7 @@ export async function resolveTenantScope(customerId: number): Promise<TenantScop
       tenantId: tenantsTable.tenantId,
       customerName: tenantsTable.customerName,
       domain: tenantsTable.domain,
+      businessUnit: tenantsTable.businessUnit,
     })
     .from(tenantsTable)
     .where(eq(tenantsTable.id, customerId))
@@ -79,6 +82,7 @@ export async function resolveTenantScope(customerId: number): Promise<TenantScop
     tenantId,
     tenantName: (tenant.customerName ?? "").trim() || "Your organisation",
     primaryDomain: (tenant.domain ?? "").trim(),
+    businessUnit: tenant.businessUnit?.trim() || null,
   };
 }
 

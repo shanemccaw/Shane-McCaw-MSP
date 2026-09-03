@@ -438,6 +438,7 @@ const CUSTOMER_PROFILE: CustomerProfileRow = {
   name: "Contoso Ltd",
   domain: "contoso.com",
   industry: "Manufacturing",
+  businessUnit: null,
   tenantId: "tenant-contoso",
   tenantUrl: "https://contoso.sharepoint.com",
   status: "active",

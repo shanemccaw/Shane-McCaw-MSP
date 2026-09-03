@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Users } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { ACCENT_TEXT } from "../../../theme";
+import { ACCENT_TEXT, LINE, SURFACE, TEXT } from "../../../theme";
 import { useShell } from "../../../shell/ShellContext";
 import { ContextMenu, useContextMenu } from "../../../shell/ContextMenu";
 import {
@@ -23,6 +23,7 @@ import {
   revokeAdTenantConsent,
   runAdCustomerDiagnostics,
   startAdCustomerWriteConsent,
+  updateAdCustomerBusinessUnit,
   type ConsentKey,
 } from "../adApi";
 import { setAdCachedRecord } from "../adNameCache";
@@ -83,12 +84,18 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
   const [deleted, setDeleted] = useState(false);
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
+  // Business Unit (#2085) — the one editable field on this pane. Backs the Security
+  // Plan assembly's `businessUnit` scope dimension the same way pillar/framework do.
+  const [businessUnitDraft, setBusinessUnitDraft] = useState("");
+  const [businessUnitSaving, setBusinessUnitSaving] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const data = await fetchAdCustomer(fetchWithAuth, customerId);
       setDetail(data);
+      setBusinessUnitDraft(data.customer.businessUnit ?? "");
       setAdCachedRecord("customer", String(customerId), {
         title: data.customer.name,
         sub: data.customer.domain ?? data.owningMsp?.name,
@@ -122,6 +129,21 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
       setScanning(false);
     }
   }, [fetchWithAuth, customerId]);
+
+  const saveBusinessUnit = useCallback(async () => {
+    setBusinessUnitSaving(true);
+    setOutcome(null);
+    try {
+      const res = await updateAdCustomerBusinessUnit(fetchWithAuth, customerId, businessUnitDraft.trim() || null);
+      setBusinessUnitDraft(res.businessUnit ?? "");
+      setDetail((prev) => (prev ? { ...prev, customer: { ...prev.customer, businessUnit: res.businessUnit } } : prev));
+      setOutcome({ tone: "ok", message: "Business unit saved." });
+    } catch (err) {
+      setOutcome({ tone: "error", message: err instanceof Error ? err.message : "Failed to save the business unit." });
+    } finally {
+      setBusinessUnitSaving(false);
+    }
+  }, [fetchWithAuth, customerId, businessUnitDraft]);
 
   const loadWriteConsent = useCallback(async () => {
     setWriteConsentLoading(true);
@@ -257,6 +279,50 @@ export function AdCustomerCanvas({ customerId }: { customerId: number }) {
             <AdTile label="Tenant GUID" value={customer.tenantId ? `${customer.tenantId.slice(0, 8)}…` : "none"} accent={customer.tenantId ? undefined : ACCENT_TEXT.danger} hint={customer.tenantUrl ?? undefined} copyValue={customer.tenantId ?? undefined} />
             <AdTile label="Industry" value={customer.industry ?? "—"} />
             <AdTile label="Status" value={customer.status} />
+            <div
+              style={{
+                minWidth: 0,
+                padding: "10px 12px",
+                borderRadius: 7,
+                border: `1px solid ${LINE.base}`,
+                background: SURFACE.card,
+                display: "flex",
+                flexDirection: "column",
+                gap: 3,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 10.5,
+                  letterSpacing: ".05em",
+                  textTransform: "uppercase",
+                  color: TEXT.label,
+                }}
+              >
+                Business Unit
+              </span>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  value={businessUnitDraft}
+                  onChange={(e) => setBusinessUnitDraft(e.target.value)}
+                  placeholder="—"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    background: "transparent",
+                    border: "none",
+                    outline: "none",
+                    fontSize: 16,
+                    fontWeight: 700,
+                    letterSpacing: "-.01em",
+                    color: TEXT.primary,
+                  }}
+                />
+                {businessUnitDraft.trim() !== (customer.businessUnit ?? "").trim() && (
+                  <AdButton label={businessUnitSaving ? "Saving…" : "Save"} tone="primary" onClick={() => void saveBusinessUnit()} disabled={businessUnitSaving} />
+                )}
+              </div>
+            </div>
             <AdTile
               label="Owning MSP"
               value={owningMsp?.name ?? "—"}
