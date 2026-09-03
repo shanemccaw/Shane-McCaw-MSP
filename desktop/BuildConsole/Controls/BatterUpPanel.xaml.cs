@@ -30,6 +30,13 @@ namespace BuildConsole.Controls
         private Services.BuildQueuePostgresClient? _db;
         private bool _refreshing;
 
+        // Git #2555 — the real fetched rows from the last RefreshAsync, in the order the board
+        // refresh returned them. TxtFilter/BtnSortByState only narrow/reorder what's RENDERED
+        // from this list (RenderFilteredRows); they never touch what's fetched or the queue
+        // mutations, which always operate on the row object already in hand.
+        private List<Services.BatterUpRow> _allRows = new();
+        private bool _sortByState;
+
         // Shane, 2026-08-30 — the right-column IssueDetailView tracks whichever row was
         // last clicked (SelectCard). _selectedNumber survives a RefreshAsync rebuild (cards
         // are rebuilt fresh every call) so the same issue re-highlights instead of silently
@@ -61,6 +68,12 @@ namespace BuildConsole.Controls
         public BatterUpPanel()
         {
             InitializeComponent();
+            // Git #2555 — replace DetailPane's default SQL/test-manifest actions sidebar
+            // with the linked-chat column (see IssueDetailView.RenderChatColumnAsync), same
+            // as AiBatterUpPanel's sibling document tab already does. This panel's own
+            // DetailPane never had this set, so it was showing the near-always-empty SQL
+            // Migrations/test-manifest panel instead of chat.
+            DetailPane.ShowChatInsteadOfActions = true;
         }
 
         /// <summary>
@@ -91,6 +104,94 @@ namespace BuildConsole.Controls
                     ? "Free flow toggled ON — approved board items will auto-queue on each refresh."
                     : "Free flow toggled OFF — gated; board items are listed only and queued by hand.");
             await RefreshAsync();
+        }
+
+        // Git #2555 — same "only show the filter box when there's something to filter" rule
+        // AiBatterUpPanel's #1863 filter box uses: hidden on the no-PAT/error/zero-rows states.
+        private void UpdateFilterBoxVisibility()
+        {
+            FilterBoxHost.Visibility = _allRows.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        // Git #2555 — display-only: narrows/reorders what RenderFilteredRows draws from the
+        // already-fetched _allRows. Never refetches, never touches BatterUpQueueService.
+        private void TxtFilter_TextChanged(object sender, TextChangedEventArgs e) => RenderFilteredRows();
+
+        /// <summary>
+        /// Git #2555 — groups rows into the real, meaningful order the issue calls for: Ready to
+        /// launch (has a BUILD: comment, not blocked, no dead tracked row) → Blocked → Failed/
+        /// Canceled (a dead tracked row) → No BUILD: comment yet. Reuses the exact signals already
+        /// on <see cref="Services.BatterUpRow"/> — no new backend query.
+        /// </summary>
+        private static int StatePriority(Services.BatterUpRow r)
+        {
+            if (r.HasBuildComment && !r.IsBlocked && r.TrackedTerminalStatus == null) return 0; // ready to launch
+            if (r.IsBlocked) return 1; // blocked
+            if (r.TrackedTerminalStatus != null) return 2; // failed/canceled
+            return 3; // no build comment yet
+        }
+
+        private void BtnSortByState_Click(object sender, RoutedEventArgs e)
+        {
+            _sortByState = BtnSortByState.IsChecked == true;
+            RenderFilteredRows();
+        }
+
+        /// <summary>
+        /// Renders <see cref="_allRows"/> filtered by TxtFilter's current text (issue number or
+        /// title substring, case-insensitive) and, when <see cref="_sortByState"/> is on, grouped
+        /// by <see cref="StatePriority"/> — otherwise left in the board's own fetch order. Shared
+        /// by RefreshAsync (first render), TxtFilter_TextChanged, and BtnSortByState_Click.
+        /// </summary>
+        private void RenderFilteredRows()
+        {
+            RowsList.Children.Clear();
+            // Cards are rebuilt fresh below — the old Border instance _selectedCard points at is
+            // gone, so drop the reference (its highlight goes with it); _selectedNumber is what
+            // actually survives the rebuild, re-applied to whichever new card matches.
+            _selectedCard = null;
+            _selectedCardOriginalBrush = null;
+
+            string term = TxtFilter.Text?.Trim() ?? "";
+            IEnumerable<Services.BatterUpRow> visible = _allRows;
+            if (term.Length > 0)
+            {
+                visible = _allRows.Where(r =>
+                    r.Number.ToString().Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    (r.Title?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            if (_sortByState)
+                visible = visible.OrderBy(StatePriority); // stable sort — keeps board order within each group
+
+            var visibleList = visible.ToList();
+            if (visibleList.Count == 0 && _allRows.Count > 0)
+            {
+                // Git #2555 — a filter that hides everything must say so, not just present an
+                // empty panel that reads as though the board itself drained.
+                RowsList.Children.Add(new TextBlock
+                {
+                    Text = $"no match for \"{term}\"",
+                    FontSize = 11,
+                    FontStyle = FontStyles.Italic,
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    Margin = new Thickness(6, 4, 6, 4)
+                });
+                return;
+            }
+
+            Border? toSelect = null;
+            int toSelectNumber = 0;
+            foreach (var row in visibleList)
+            {
+                var card = BuildBatterUpCard(row);
+                RowsList.Children.Add(card);
+                if (row.Number == _selectedNumber || (toSelect == null && _selectedNumber == null))
+                {
+                    toSelect = card;
+                    toSelectNumber = row.Number;
+                }
+            }
+            if (toSelect != null) SelectCard(toSelect, toSelectNumber);
         }
 
         /// <summary>Git #1870 — the toggle's label/colour must make the gate state unmistakable on
@@ -174,6 +275,8 @@ namespace BuildConsole.Controls
                 {
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
+                    _allRows = new List<Services.BatterUpRow>();
+                    UpdateFilterBoxVisibility();
                     TxtEmpty.Text = "No GitHub PAT configured — set one in Settings.";
                     TxtEmpty.Visibility = Visibility.Visible;
                     SetCount(0);
@@ -212,31 +315,20 @@ namespace BuildConsole.Controls
                     Services.ActivityLog.Log("batter-up", $"Refresh failed: {ex.Message}");
                     TxtCount.Text = "";
                     RowsList.Children.Clear();
+                    _allRows = new List<Services.BatterUpRow>();
+                    UpdateFilterBoxVisibility();
                     TxtEmpty.Text = $"Couldn't read Batter Up: {ex.Message}";
                     TxtEmpty.Visibility = Visibility.Visible;
                     SetCount(0);
                     return;
                 }
 
-                RowsList.Children.Clear();
-                // Cards are rebuilt fresh below — the old Border instance _selectedCard
-                // points at is gone; _selectedNumber is what survives, re-applied to
-                // whichever new card matches (or the top row, if nothing was selected yet).
-                _selectedCard = null;
-                _selectedCardOriginalBrush = null;
-                Border? toSelect = null;
-                int toSelectNumber = 0;
-                foreach (var row in rows)
-                {
-                    var card = BuildBatterUpCard(row);
-                    RowsList.Children.Add(card);
-                    if (row.Number == _selectedNumber || (toSelect == null && _selectedNumber == null))
-                    {
-                        toSelect = card;
-                        toSelectNumber = row.Number;
-                    }
-                }
-                if (toSelect != null) SelectCard(toSelect, toSelectNumber);
+                // Git #2555 — store the fetched rows and render through the shared
+                // filter/sort path (RenderFilteredRows) instead of building cards directly
+                // here, so TxtFilter/BtnSortByState apply on this first render too.
+                _allRows = rows;
+                UpdateFilterBoxVisibility();
+                RenderFilteredRows();
 
                 // Git #1816 — the "zero rows" empty state reads inline in the header's
                 // TxtCount instead of the separate TxtEmpty block, so an empty panel's

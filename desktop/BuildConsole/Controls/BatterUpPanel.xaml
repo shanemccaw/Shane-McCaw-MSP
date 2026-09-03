@@ -85,10 +85,18 @@
                      flow" suffix and the toggle itself flips label/colour (see UpdateFreeFlowVisual).
                      This is a separate gate from the global Build Queue pause (QueueWatcherService) —
                      it stops board rows ENTERING the queue, not launching out of it. -->
+                <!-- Git #2555 — FilterBoxHost (search by #/title, same overlay-placeholder trick
+                     AiBatterUpPanel's #1863 filter box uses) and BtnSortByState (group into
+                     Ready/Blocked/Failed-Canceled/No-build-comment — see StatePriority) sit
+                     between TxtCount and the Free-flow toggle, per the real audit. Both are
+                     display-only over the already-fetched _allRows; neither refetches or
+                     touches BatterUpQueueService. -->
                 <Grid DockPanel.Dock="Top" Margin="10,8,10,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
@@ -101,7 +109,45 @@
                                Foreground="{StaticResource Subtext0Brush}" FontSize="11"
                                VerticalAlignment="Center" Text=""/>
 
-                    <ToggleButton x:Name="BtnFreeFlow" Grid.Column="2"
+                    <Grid x:Name="FilterBoxHost" Grid.Column="2" Margin="8,0,6,0"
+                          HorizontalAlignment="Left" Visibility="Collapsed">
+                        <TextBox x:Name="TxtFilter"
+                                 Style="{StaticResource SearchTextBox}"
+                                 Width="90" Height="18"
+                                 Padding="4,0,18,0" FontSize="10.5"
+                                 VerticalContentAlignment="Center"
+                                 Background="{StaticResource Surface0Brush}"
+                                 TextChanged="TxtFilter_TextChanged"/>
+                        <TextBlock IsHitTestVisible="False"
+                                   Text="Search #/title"
+                                   FontSize="10.5"
+                                   Margin="5,0,0,0"
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Left"
+                                   Foreground="{StaticResource Subtext1Brush}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Text, ElementName=TxtFilter}" Value="">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+
+                    <ToggleButton x:Name="BtnSortByState" Grid.Column="3"
+                                  Style="{StaticResource QuietTile}"
+                                  Margin="0,0,6,0" Padding="7,1,7,1"
+                                  FontSize="10.5" FontWeight="SemiBold"
+                                  VerticalAlignment="Center"
+                                  Content="↕ By state"
+                                  ToolTip="Group rows: Ready to launch → Blocked → Failed/Canceled → No BUILD: comment yet."
+                                  Click="BtnSortByState_Click"/>
+
+                    <ToggleButton x:Name="BtnFreeFlow" Grid.Column="4"
                                   Style="{StaticResource QuietTile}"
                                   Margin="6,0,0,0" Padding="7,1,7,1"
                                   FontSize="10.5" FontWeight="SemiBold"
