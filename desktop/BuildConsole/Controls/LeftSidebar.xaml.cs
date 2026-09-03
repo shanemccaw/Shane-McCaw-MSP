@@ -116,6 +116,12 @@ namespace BuildConsole.Controls
         public string FileName => System.IO.Path.GetFileName(FilePath);
         public string StatusLetter { get; set; } = "M";
         public bool IsStaged { get; set; }
+        // Git #2575 — checkbox state for the unstaged ("CHANGES") rows only; staged
+        // rows don't get a checkbox (existing right-click "Unstage" already covers
+        // the reverse case). Persisted across a status refresh in
+        // _selectedUnstagedPaths by RelativePath so a checkmark survives the
+        // automatic FileSystemWatcher-triggered RefreshGitStatus tick (#859).
+        public bool IsSelected { get; set; }
         public Brush StatusBrush => StatusLetter switch
         {
             "M" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FAB387")),
@@ -7171,6 +7177,18 @@ namespace BuildConsole.Controls
         // Clear()+rebuild of the staged/unstaged TreeViewItem visual tree.
         private string? _lastGitStatusRawOutput;
 
+        // Git #2575 — repo-relative paths of currently CHECKED unstaged rows. Kept
+        // separately from the GitItem instances themselves (which get rebuilt from
+        // scratch on every non-no-op refresh) so a checkmark survives the next
+        // RefreshGitStatus tick for the same still-present file instead of silently
+        // dropping every time the FileSystemWatcher-triggered refresh fires (#859).
+        private readonly HashSet<string> _selectedUnstagedPaths = new();
+
+        // Git #2575 — the unstaged GitItem list from the most recent refresh, kept so
+        // BtnGitStageSelected_Click / BtnGitCommitAndPush_Click can read "what's
+        // checked right now" without walking the TreeView's visual tree.
+        private List<GitItem> _lastUnstagedItems = new();
+
         // Git #2535 — thin fire-and-forget wrapper kept for the many void call sites
         // (BtnGitRefresh_Click, the FileSystemWatcher debounce, MainWindow, etc.).
         // The real body is now awaitable so RunGitCommand can await it and then set a
@@ -7295,6 +7313,18 @@ namespace BuildConsole.Controls
                 return;
             }
 
+            // Git #2575 — restore checkbox state onto the freshly-built unstaged
+            // GitItems for any file still present, and drop bookkeeping for files
+            // that are no longer in the unstaged list (now staged, discarded, or
+            // reverted) so it can't silently re-apply to an unrelated future file
+            // that happens to reuse the same path.
+            foreach (var item in unstagedItems)
+            {
+                item.IsSelected = _selectedUnstagedPaths.Contains(item.RelativePath);
+            }
+            _selectedUnstagedPaths.IntersectWith(unstagedItems.Select(i => i.RelativePath));
+            _lastUnstagedItems = unstagedItems;
+
             // Git #1968 — genuine no-op: an unchanged porcelain status means the
             // Changes tree we already have on screen is still byte-for-byte
             // correct, so skip tearing it down and rebuilding it from scratch.
@@ -7333,6 +7363,12 @@ namespace BuildConsole.Controls
                 GitChangesTree.Items.Add(stagedTreeItem);
                 GitChangesTree.Items.Add(unstagedTreeItem);
             }
+
+            // Git #2575 — Stage Selected's enabled state reflects the real checked
+            // count regardless of whether the tree was just rebuilt or the
+            // #1968 no-op path was taken (the checked set itself never changes on
+            // that path, but the button state should still be kept in sync).
+            UpdateGitSelectionButtons();
 
             // Git #860 (Git panel Phase 2) — the rendered commit graph lives in
             // the same scrollable panel below Changes; refresh it from the same
@@ -7516,7 +7552,33 @@ namespace BuildConsole.Controls
         private TreeViewItem CreateGitFileTreeItem(GitItem item)
         {
             var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 1, 0, 1) };
-            
+
+            // Git #2575 — multi-select checkbox, unstaged ("CHANGES") rows only.
+            // Staged rows don't get one; the existing right-click "Unstage" already
+            // covers moving a file back the other way.
+            if (!item.IsStaged)
+            {
+                var chk = new CheckBox
+                {
+                    IsChecked = item.IsSelected,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 6, 0)
+                };
+                chk.Checked += (s, e) =>
+                {
+                    item.IsSelected = true;
+                    _selectedUnstagedPaths.Add(item.RelativePath);
+                    UpdateGitSelectionButtons();
+                };
+                chk.Unchecked += (s, e) =>
+                {
+                    item.IsSelected = false;
+                    _selectedUnstagedPaths.Remove(item.RelativePath);
+                    UpdateGitSelectionButtons();
+                };
+                p.Children.Add(chk);
+            }
+
             var badge = new Border
             {
                 Background = (Brush)FindResource("Surface0Brush"),
@@ -7755,6 +7817,33 @@ namespace BuildConsole.Controls
         private async void BtnGitStageAll_Click(object sender, RoutedEventArgs e)
         {
             await RunGitCommand("add -A");
+        }
+
+        /// <summary>
+        /// Git #2575 — enables/disables Stage Selected against the real checked count.
+        /// Called on every refresh (in case a checked file left the unstaged list —
+        /// staged elsewhere, discarded, reverted) and on every checkbox toggle.
+        /// </summary>
+        private void UpdateGitSelectionButtons()
+        {
+            if (BtnGitStageSelected != null)
+                BtnGitStageSelected.IsEnabled = _selectedUnstagedPaths.Count > 0;
+        }
+
+        /// <summary>
+        /// Git #2575 — stages only the checked subset of unstaged rows: one `git add
+        /// "&lt;path&gt;"` per checked file via the same RunGitCommand pipeline
+        /// BtnGitStageAll_Click already uses, rather than the blanket `add -A`.
+        /// </summary>
+        private async void BtnGitStageSelected_Click(object sender, RoutedEventArgs e)
+        {
+            var paths = _lastUnstagedItems.Where(i => i.IsSelected).Select(i => i.RelativePath).ToList();
+            if (paths.Count == 0) return;
+
+            foreach (var path in paths)
+            {
+                await RunGitCommand($"add \"{path}\"");
+            }
         }
         private void BtnGitPush_Click(object sender, RoutedEventArgs e) => _ = RunGitCommand("push");
         private void BtnGitPull_Click(object sender, RoutedEventArgs e) => _ = RunGitCommand("pull");
@@ -8180,21 +8269,52 @@ namespace BuildConsole.Controls
             GitGraphHost.Children.Add(grid);
         }
 
-        private async void BtnGitCommit_Click(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// Git #2535 (real commit body) / Git #2575 (extracted so BtnGitCommitAndPush_Click
+        /// can chain it) — only clears the message box on a genuine zero-exit commit. A
+        /// failed commit (nothing staged, hook rejection, ...) shows git's real error AND
+        /// keeps the typed message so the user can fix the cause and retry without retyping it.
+        /// </summary>
+        private async System.Threading.Tasks.Task<bool> DoGitCommitAsync()
         {
             string msg = GitCommitMsgBox.Text.Trim();
             if (string.IsNullOrEmpty(msg))
             {
                 GitStatusSummaryText.Text = "Please enter a commit message";
-                return;
+                return false;
             }
 
-            // Git #2535 — only clear the box on a genuine zero-exit commit. A failed commit
-            // (nothing staged, hook rejection, ...) now shows git's real error AND keeps the
-            // typed message so the user can fix the cause and retry without retyping it.
             bool ok = await RunGitCommand($"commit -m \"{msg.Replace("\"", "\\\"")}\"");
             if (ok)
                 GitCommitMsgBox.Text = string.Empty;
+            return ok;
+        }
+
+        private async void BtnGitCommit_Click(object sender, RoutedEventArgs e)
+        {
+            await DoGitCommitAsync();
+        }
+
+        /// <summary>
+        /// Git #2575 — one-click "Stage Selected (if any) → Commit → Push". Chains the
+        /// same three real command paths already in use elsewhere on this panel: a
+        /// per-file `git add` for whatever's checked (BtnGitStageSelected_Click's own
+        /// pipeline), the real commit body (DoGitCommitAsync, shared with
+        /// BtnGitCommit_Click), then `git push` (BtnGitPush_Click's own command) —
+        /// no new git-command mechanism.
+        /// </summary>
+        private async void BtnGitCommitAndPush_Click(object sender, RoutedEventArgs e)
+        {
+            var paths = _lastUnstagedItems.Where(i => i.IsSelected).Select(i => i.RelativePath).ToList();
+            foreach (var path in paths)
+            {
+                await RunGitCommand($"add \"{path}\"");
+            }
+
+            bool committed = await DoGitCommitAsync();
+            if (!committed) return;
+
+            await RunGitCommand("push");
         }
 
         private void GitCommitMsgBox_KeyDown(object sender, KeyEventArgs e)

@@ -401,7 +401,17 @@
                                      VerticalContentAlignment="Top" KeyDown="GitCommitMsgBox_KeyDown"/>
                         </Border>
 
-                        <Button x:Name="BtnGitCommit" Content="✓ Commit" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,0,0,8" Click="BtnGitCommit_Click"/>
+                        <!-- Git #2575 — "Commit & Push": stage whatever's currently checked (if
+                             anything), commit with the message box's contents, then push, in one
+                             click. Chains the existing real command paths (BtnGitCommitAndPush_Click). -->
+                        <Grid Margin="0,0,0,8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="BtnGitCommit" Grid.Column="0" Content="✓ Commit" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="0,0,4,0" Click="BtnGitCommit_Click"/>
+                            <Button x:Name="BtnGitCommitAndPush" Grid.Column="1" Content="✓⬆ Commit &amp; Push" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Stretch" Margin="4,0,0,0" ToolTip="Stage checked files (if any), commit, then push" Click="BtnGitCommitAndPush_Click"/>
+                        </Grid>
 
                         <Border Background="{StaticResource Surface0Brush}" CornerRadius="4" Padding="6,4" Margin="0,0,0,6">
                             <TextBlock x:Name="GitStatusSummaryText" Text="SOURCE CONTROL" FontSize="11" Foreground="{StaticResource Subtext1Brush}" HorizontalAlignment="Center"/>
@@ -424,6 +434,13 @@
                                 <Button x:Name="BtnGitStageAll" DockPanel.Dock="Right" Content="＋ Stage All"
                                         Style="{StaticResource IconButton}" FontSize="10" Padding="6,2"
                                         ToolTip="Stage all changes (git add -A)" Click="BtnGitStageAll_Click"/>
+                                <!-- Git #2575 — stages only the checked subset (checkboxes added per
+                                     unstaged row in CreateGitFileTreeItem); disabled until at least
+                                     one row is checked. -->
+                                <Button x:Name="BtnGitStageSelected" DockPanel.Dock="Right" Content="Stage Selected"
+                                        Style="{StaticResource IconButton}" FontSize="10" Padding="6,2" Margin="0,0,6,0"
+                                        IsEnabled="False"
+                                        ToolTip="Stage only the checked files (git add per file)" Click="BtnGitStageSelected_Click"/>
                             </DockPanel>
                             <TreeView x:Name="GitChangesTree"
                                       BorderThickness="0"
