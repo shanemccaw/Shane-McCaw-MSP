@@ -28,6 +28,7 @@ export default defineConfig({
       "src/lib/portal-sops.test.ts",
       "src/lib/portal-runbook-cycles.test.ts",
       "src/lib/sse-channels.test.ts",
+      "src/lib/portal-deep-links.test.ts",
       "src/lib/sse-hub-firehose.test.ts",
       "src/routes/admin-live-stream.test.ts",
       "src/routes/admin-signal-rules-import.test.ts",

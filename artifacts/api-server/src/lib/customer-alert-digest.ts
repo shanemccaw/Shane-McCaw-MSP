@@ -19,6 +19,7 @@ import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
 import { randomUUID } from "crypto";
+import { resolvePortalDeepLink } from "./portal-deep-links";
 
 const log = logger.child({ channel: "notification" });
 
@@ -65,11 +66,17 @@ function buildDigestEmailHtml(opts: { items: QueueRow[]; portalBaseUrl: string; 
   const sevColor = (s: string) => (s === "critical" ? "#DC2626" : s === "warning" ? "#D97706" : "#0284C7");
   const rows = opts.items
     .map(
-      (i) => `<div style="padding:12px 0;border-bottom:1px solid #e2e8f0">
+      (i) => {
+        // #1827: resolve through the map — never emit a raw /portal-v2/*
+        // link, it 404s (portal-v2 was deleted under #1673).
+        const resolved = resolvePortalDeepLink(i.deep_link_path);
+        const linkText = resolved.available ? "View in your portal" : `${resolved.label} is coming to your portal`;
+        return `<div style="padding:12px 0;border-bottom:1px solid #e2e8f0">
         <span style="background:${sevColor(i.severity)};color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:9999px;letter-spacing:.05em;margin-right:8px">${i.severity.toUpperCase()}</span>
         <span style="color:#4a5568;font-size:13.5px">${i.summary}</span>
-        ${i.deep_link_path ? `<div style="margin-top:4px"><a href="${opts.portalBaseUrl}${i.deep_link_path}" style="color:#0078D4;font-size:12px;text-decoration:none">View in your portal &rarr;</a></div>` : ""}
-      </div>`,
+        <div style="margin-top:4px"><a href="${opts.portalBaseUrl}${resolved.href}" style="color:#0078D4;font-size:12px;text-decoration:none">${linkText} &rarr;</a></div>
+      </div>`;
+      },
     )
     .join("");
   return `<!DOCTYPE html><html><body style="font-family:Inter,sans-serif;background:#f7f9fc;margin:0;padding:24px">
