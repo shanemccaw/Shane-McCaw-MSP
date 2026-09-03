@@ -206,6 +206,11 @@
                                FontSize="13" Foreground="{StaticResource Warm.TextMuted}"/>
                     <TextBlock Text="/" Margin="7,0" VerticalAlignment="Center"
                                FontSize="13" Foreground="{StaticResource Warm.TextFaint}"/>
+                    <TextBlock x:Name="CrumbEpic" Text="" VerticalAlignment="Center"
+                               FontSize="13" FontWeight="Bold" Foreground="{StaticResource Warm.TextBright}"
+                               Visibility="Collapsed"/>
+                    <TextBlock x:Name="CrumbEpicSep" Text="/" Margin="7,0" VerticalAlignment="Center"
+                               FontSize="13" Foreground="{StaticResource Warm.TextFaint}" Visibility="Collapsed"/>
                     <TextBlock x:Name="CrumbChat" Text="Chat" VerticalAlignment="Center"
                                Cursor="Hand" MouseLeftButtonDown="CtxEpic_Click"
                                FontSize="13" FontWeight="Medium" Foreground="{StaticResource Warm.TextBright}"

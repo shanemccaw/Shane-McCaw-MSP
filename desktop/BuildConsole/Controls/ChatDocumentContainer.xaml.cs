@@ -150,6 +150,20 @@ namespace BuildConsole.Controls
                 EpicNumber = epic?.GithubNumber;
                 CtxEpicNum.Text = EpicNumber.HasValue ? $"#{EpicNumber.Value}" : "#—";
 
+                if (epic?.GithubNumber != null && !string.IsNullOrWhiteSpace(epic.Title))
+                {
+                    CrumbEpic.Text = $"#{epic.GithubNumber.Value} — {epic.Title}";
+                    CrumbEpic.Visibility = Visibility.Visible;
+                    CrumbEpicSep.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    // No real epic resolved for this chat — honest empty state, don't fabricate one.
+                    CrumbEpic.Text = "";
+                    CrumbEpic.Visibility = Visibility.Collapsed;
+                    CrumbEpicSep.Visibility = Visibility.Collapsed;
+                }
+
                 ComputeAndRenderCounts(epic);
             }
             catch (Exception ex)
