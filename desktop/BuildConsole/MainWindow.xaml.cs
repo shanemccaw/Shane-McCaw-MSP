@@ -104,6 +104,9 @@ namespace BuildConsole
             public Controls.SqlDocumentView? InlineSqlRunner;
             public GridSplitter? SqlSplitter;
             public ColumnDefinition? SqlColumn;
+            /// <summary>Git #2548 — the Chat Document Container chrome wrapping this tab's chat body
+            /// (the WebView2 split grid lives inside it). Null for a tab opened before this landed.</summary>
+            public Controls.ChatDocumentContainer? Container;
         }
         private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
 
@@ -2136,6 +2139,10 @@ namespace BuildConsole
                 // viewer) clears the section.
                 if (EditorTabs.SelectedItem is TabItem selectedTab && selectedTab.Tag is BuildConsole.Services.BoardChat chat)
                 {
+                    // Git #2548 — refresh this tab's Chat Document Container context bar (epic +
+                    // epic-scoped counts + gauge) so it reflects the tab you're actually on.
+                    RefreshChatContainerFor(selectedTab);
+
                     // Git #910 — the real GitHub epic number goes along with the
                     // internal epicId/title so BuildQueuePanel can fetch real sub-issues.
                     // Git #1363 — resolve the chat's epic through the SAME canonical
@@ -3353,7 +3360,14 @@ namespace BuildConsole
             splitGrid.Children.Add(buildPaneSplitter);
             splitGrid.Children.Add(buildPane);
 
-            var newTab = new TabItem { Tag = chat, Header = headerPanel, Content = splitGrid };
+            // Git #2548 — wrap the live chat body (WebView2 split grid) in the Chat Document
+            // Container: the 5-band native chrome (context bar / breadcrumb / tool rail / composer /
+            // Inspector states). The split grid stays intact inside it, so build-pane polling, the
+            // context meter and the inline SQL runner all keep working against state.SplitGrid.
+            var container = new Controls.ChatDocumentContainer(chat, this, wv);
+            container.SetBody(splitGrid);
+
+            var newTab = new TabItem { Tag = chat, Header = headerPanel, Content = container };
             var state = new ChatTabState
             {
                 GithubNumber = githubNumber,
@@ -3361,7 +3375,8 @@ namespace BuildConsole
                 BuildColumn = buildCol,
                 BuildOutputBox = buildOutputBox,
                 BuildStatusText = buildStatusText,
-                WebView = wv // Git #942 — target for live chat-button status pushes
+                WebView = wv, // Git #942 — target for live chat-button status pushes
+                Container = container
             };
             _chatTabs[newTab] = state;
 
