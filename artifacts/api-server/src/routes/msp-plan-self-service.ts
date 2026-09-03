@@ -23,10 +23,11 @@ import {
   mspAuditLogsTable,
   type MspBillingInterval,
 } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { requireRole } from "../middlewares/requireAuth.ts";
 import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { countActiveTenants } from "../lib/msp-entitlement.ts";
+import { isGenuinePlatformTier, platformTierWhere } from "../lib/platform-tier.ts";
 import {
   getOrCreatePlanPrice,
   monthlyPriceCentsOf,
@@ -198,13 +199,10 @@ router.get("/msp/plan/available", requireRole("MSPAdmin"), async (_req: Request,
         typeAttributes: servicesTable.typeAttributes,
       })
       .from(servicesTable)
-      .where(and(
-        eq(servicesTable.fulfillmentType, "msp_monthly_subscription"),
-        eq(servicesTable.isPublic, true),
-      ))
+      .where(platformTierWhere(eq(servicesTable.isPublic, true)))
       .orderBy(servicesTable.price);
 
-    res.json(tiers.map((t) => ({
+    res.json(tiers.filter((t) => isGenuinePlatformTier(t.typeAttributes)).map((t) => ({
       id: t.id,
       name: t.name,
       slug: t.slug,
@@ -281,13 +279,14 @@ router.post("/msp/plan/change", requireRole("MSPAdmin"), async (req: Request, re
         typeAttributes: servicesTable.typeAttributes,
       })
       .from(servicesTable)
-      .where(and(
-        eq(servicesTable.id, targetServiceId),
-        eq(servicesTable.fulfillmentType, "msp_monthly_subscription"),
-      ))
+      .where(platformTierWhere(eq(servicesTable.id, targetServiceId)))
       .limit(1);
 
-    if (!target || (!target.isPublic && target.id !== sub.serviceId)) {
+    if (
+      !target ||
+      !isGenuinePlatformTier(target.typeAttributes) ||
+      (!target.isPublic && target.id !== sub.serviceId)
+    ) {
       apiError(res, 404, "Target tier not found");
       return;
     }

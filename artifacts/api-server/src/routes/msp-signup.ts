@@ -20,23 +20,11 @@ import { db, servicesTable, mspSubscriptionsTable, mspsTable, platformAgreements
 import { eq, or } from "drizzle-orm";
 import { getStripeKey } from "../lib/stripe.ts";
 import { resolveEffectiveChargeCents } from "../lib/catalog-pricing.ts";
+import { isGenuinePlatformTier } from "../lib/platform-tier.ts";
 import { logger } from "../lib/logger.ts";
 const log = logger.child({ channel: "tenant.msp-admin" });
 
 const router: IRouter = Router();
-
-// A genuine platform tier's fulfillmentType/fulfillmentTypeKey lifecycle value is
-// "msp_monthly_subscription" — but that value alone isn't sufficient (Git #2509):
-// an add-on row (e.g. launch-control-plus-addon) can carry it too, either directly
-// on the legacy fulfillmentType column or by future miscategorization. Add-on rows
-// are distinguished by typeAttributes carrying addOnType / grantsCapabilityKey —
-// a real platform tier never has either. Excluding on that shape, rather than on
-// `tier IS NOT NULL`, is deliberate: the three real seeded tiers (msp-platform-free/
-// -growth/-pro) also have a NULL `tier` column, so gating on it would 400 them too.
-function isGenuinePlatformTier(typeAttributes: unknown): boolean {
-  const attrs = (typeAttributes ?? {}) as Record<string, unknown>;
-  return attrs["addOnType"] == null && attrs["grantsCapabilityKey"] == null;
-}
 
 // ── GET /api/msp/signup/tiers ──────────────────────────────────────────────────
 // Returns all products where fulfillmentType = "msp_monthly_subscription".

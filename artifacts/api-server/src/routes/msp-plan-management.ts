@@ -23,6 +23,7 @@ import { randomUUID } from "crypto";
 import { getStripeKey } from "../lib/stripe.ts";
 import { logger } from "../lib/logger.ts";
 import { getRequestContext } from "../lib/request-context.ts";
+import { isGenuinePlatformTier, platformTierWhere } from "../lib/platform-tier.ts";
 
 const log = logger.child({ channel: "billing" });
 
@@ -71,8 +72,10 @@ router.get("/admin/plan-management/tiers", requireAdmin, async (_req: Request, r
       isPublic: servicesTable.isPublic,
     })
     .from(servicesTable)
-    .where(eq(servicesTable.fulfillmentType, "msp_monthly_subscription"))
+    .where(platformTierWhere())
     .orderBy(servicesTable.price);
+
+  const genuineTiers = tiers.filter((t) => isGenuinePlatformTier(t.typeAttributes));
 
   // Attach subscriber counts
   const subscriberCounts = await db
@@ -86,7 +89,7 @@ router.get("/admin/plan-management/tiers", requireAdmin, async (_req: Request, r
 
   const countMap = new Map(subscriberCounts.map((r) => [r.serviceId, Number(r.n)]));
 
-  res.json(tiers.map((t) => ({ ...t, subscriberCount: countMap.get(t.id) ?? 0 })));
+  res.json(genuineTiers.map((t) => ({ ...t, subscriberCount: countMap.get(t.id) ?? 0 })));
 });
 
 // ── Create new Stripe Price for a tier (no retroactive changes) ────────────────
@@ -111,12 +114,20 @@ router.post(
     }
 
     const [service] = await db
-      .select({ id: servicesTable.id, name: servicesTable.name, slug: servicesTable.slug })
+      .select({
+        id: servicesTable.id,
+        name: servicesTable.name,
+        slug: servicesTable.slug,
+        typeAttributes: servicesTable.typeAttributes,
+      })
       .from(servicesTable)
-      .where(and(eq(servicesTable.id, serviceId), eq(servicesTable.fulfillmentType, "msp_monthly_subscription")))
+      .where(platformTierWhere(eq(servicesTable.id, serviceId)))
       .limit(1);
 
-    if (!service) { apiError(res, 404, "Tier product not found"); return; }
+    if (!service || !isGenuinePlatformTier(service.typeAttributes)) {
+      apiError(res, 404, "Tier product not found");
+      return;
+    }
 
     let stripeKey: string;
     try {
