@@ -295,14 +295,26 @@
 
                     <!-- Body: exactly one of these two is visible at a time. -->
                     <Grid>
-                        <!-- Detected-in-this-chat: hosts the real ChatDockPanel (ChatDockService data). -->
-                        <ScrollViewer x:Name="DetectedScroller" VerticalScrollBarVisibility="Auto" Visibility="Collapsed">
-                            <StackPanel>
-                                <!-- Pending cross-epic questions ride above the dock (§7). -->
+                        <!-- Detected-in-this-chat: hosts the real ChatDockPanel (ChatDockService data).
+                             Git #2683: DetectedDockHost must NOT sit inside an outer ScrollViewer here —
+                             ChatDockPanel already owns its own internal ScrollViewer (load-bearing for
+                             FloatingChatWindow, which hosts it with no outer scroller of its own), and
+                             nesting a second ScrollViewer around it made mouse-wheel scrolling fight
+                             between the two. CrossEpicCards keeps a small fixed-top region (with its
+                             own dedicated scroller only if it genuinely overflows); DetectedDockHost
+                             fills the remaining space directly as a Grid "*" row. -->
+                        <Grid x:Name="DetectedScroller" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <!-- Pending cross-epic questions ride above the dock (§7). Own small scroller
+                                 so a long run of cards can't push the dock off-screen. -->
+                            <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" MaxHeight="220">
                                 <StackPanel x:Name="CrossEpicCards" Margin="10,10,10,0"/>
-                                <ContentControl x:Name="DetectedDockHost"/>
-                            </StackPanel>
-                        </ScrollViewer>
+                            </ScrollViewer>
+                            <ContentControl x:Name="DetectedDockHost" Grid.Row="1"/>
+                        </Grid>
                         <!-- Tool stub: honest empty body — each tool internal is a sibling Feature under #1202. -->
                         <StackPanel x:Name="ToolStubBody" Visibility="Collapsed" Margin="16" VerticalAlignment="Center">
                             <TextBlock x:Name="ToolStubTitle" Text="Tool" HorizontalAlignment="Center"
