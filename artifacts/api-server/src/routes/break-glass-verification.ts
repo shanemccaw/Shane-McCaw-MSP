@@ -160,14 +160,14 @@ function escapeHtml(s: string): string {
 // mspsTable lookup pattern (same shape used elsewhere for MSP branding, e.g.
 // msp-onboarding.ts) with one more join so callers get white-label branding for
 // free alongside tenant/domain context, without a second round-trip.
-interface PendingContext {
+export interface PendingContext {
   secret: typeof breakGlassPendingSecretsTable.$inferSelect;
   mspId: number;
   tenantId: string | null;
   domain: string | null;
   branding: PageBranding;
 }
-async function resolvePendingContext(pendingSecretId: number): Promise<PendingContext | null> {
+export async function resolvePendingContext(pendingSecretId: number): Promise<PendingContext | null> {
   const [row] = await db
     .select({
       secret: breakGlassPendingSecretsTable,
@@ -771,6 +771,140 @@ router.post("/public/break-glass/:pendingSecretId/acknowledge", publicLimiter, a
   }
 });
 
+/**
+ * Result of {@link performBreakGlassAdminOverride} — a plain discriminated union
+ * rather than a thrown error for every EXPECTED refusal (still-live links, no
+ * tenant, missing account id, etc.), so both the portal route and the MSP
+ * console route (msp-break-glass.ts, #2675) can map the same set of outcomes to
+ * their own response shape without re-implementing the reset itself. The
+ * `WriteBack*` gate errors are the one exception — they still propagate as
+ * thrown errors, unchanged, so both callers can keep catching them the same way
+ * they already do for every other write-back-gated route in this repo.
+ */
+export type AdminOverrideResult =
+  | { ok: true; newPendingSecretId: number; reissued: number; sent: number }
+  | { ok: false; status: 409 | 502 | 503; error: string; detail?: string };
+
+/**
+ * Shared "force reset + reissue" admin-override — the ONE implementation of a
+ * security-sensitive credential reset, called from both
+ * `POST /portal/break-glass/:pendingSecretId/admin-override` (below) and the
+ * MSP console's own operator route (`msp-break-glass.ts`, #2675). Callers are
+ * responsible for their own auth/role/ownership checks and for validating
+ * `reason`/`emails` before calling this — it assumes both are already correct.
+ */
+export async function performBreakGlassAdminOverride(
+  ctx: PendingContext,
+  pendingSecretId: number,
+  actorUserId: number,
+  reason: string,
+  emailsOverride: string[] | undefined,
+): Promise<AdminOverrideResult> {
+  if (ctx.secret.status !== "pending_delivery") {
+    return { ok: false, status: 409, error: "This secret is not awaiting delivery" };
+  }
+  if (!ctx.tenantId) {
+    return { ok: false, status: 409, error: "Customer tenant is not configured" };
+  }
+
+  // Every attempt for this pending secret must be terminal (expired/superseded).
+  const attempts = await db.select({ linkStatus: breakGlassVerificationAttemptsTable.linkStatus, invitedEmail: breakGlassVerificationAttemptsTable.invitedEmail })
+    .from(breakGlassVerificationAttemptsTable)
+    .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, pendingSecretId));
+  const anyLive = attempts.some((a) => a.linkStatus !== "expired" && a.linkStatus !== "superseded");
+  if (anyLive) {
+    return { ok: false, status: 409, error: "There are still live verification links for this secret" };
+  }
+
+  // The break-glass account identity travels on the (non-secret) run payload
+  // under the canonical `breakGlassAccountId` key, which the gate node stamps
+  // from its configurable accountIdField at pause time.
+  const [run] = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, ctx.secret.runId)).limit(1);
+  const runPayload = (run?.payload as Record<string, unknown>) ?? {};
+  const accountId = runPayload.breakGlassAccountId as string | undefined;
+  if (!accountId) {
+    return { ok: false, status: 409, error: "Run payload does not carry the break-glass account identity (breakGlassAccountId)" };
+  }
+
+  // 1. Reset the credential on the tenant (same write helper as creation).
+  const newPassword = generateStrongPassword();
+  const write = await graphWriteForTenant(
+    ctx.tenantId,
+    ctx.secret.customerId,
+    `/users/${encodeURIComponent(accountId)}`,
+    "PATCH",
+    { passwordProfile: { password: newPassword, forceChangePasswordNextSignIn: false } },
+  );
+  if (!write.success) {
+    log.error({ pendingSecretId, status: write.status, errorType: write.errorType }, "break-glass: admin-override tenant reset failed");
+    return { ok: false, status: 502, error: "Failed to reset the tenant credential", detail: write.errorType };
+  }
+
+  // 1b. #1911 — the replacement is a generated credential on the write path
+  // exactly like the original, so it goes to Key Vault and the new row carries
+  // a reference. This runs AFTER the tenant reset succeeded, so a failed reset
+  // cannot leave a secret in the vault for a password the tenant never got.
+  // Fail-closed: if the store cannot take it, the override is refused rather
+  // than falling back to holding the credential only in the database.
+  const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("../lib/generated-secret-store");
+  let newSecretRef: GeneratedSecretRef | null = null;
+  if (generatedSecretStoreConfigured()) {
+    newSecretRef = await storeGeneratedSecret({
+      value: newPassword,
+      purpose: "break-glass",
+      customerId: ctx.secret.customerId,
+      runId: ctx.secret.runId,
+    });
+  } else {
+    log.error({ pendingSecretId }, "break-glass: admin-override cannot store the replacement credential — generated-secret store is not configured");
+    return { ok: false, status: 503, error: "The generated-credential store is not configured — the replacement was not issued" };
+  }
+
+  // 2–4. Supersede old, insert new pending secret, write audit — in one tx.
+  const oldPendingSecretId = pendingSecretId;
+  let newPendingSecretId = 0;
+  await db.transaction(async (tx) => {
+    await tx.update(breakGlassPendingSecretsTable)
+      .set({ status: "superseded_by_reset" })
+      .where(eq(breakGlassPendingSecretsTable.id, oldPendingSecretId));
+
+    const [created] = await tx.insert(breakGlassPendingSecretsTable).values({
+      runId: ctx.secret.runId,
+      customerId: ctx.secret.customerId,
+      encryptedValue: encryptSecret(newPassword),
+      secretRef: newSecretRef,
+      gateNodeId: ctx.secret.gateNodeId,
+      status: "pending_delivery",
+    }).returning({ id: breakGlassPendingSecretsTable.id });
+    newPendingSecretId = created.id;
+
+    await tx.insert(breakGlassOverrideAuditTable).values({
+      customerId: ctx.secret.customerId,
+      adminUserId: actorUserId,
+      reason,
+      oldPendingSecretId,
+      newPendingSecretId,
+    });
+  });
+
+  // 4b. #1911 — the superseded credential was never delivered and never will
+  // be, so its vault copy is an orphan the moment the new row exists. Purge it
+  // here rather than leaving it for the sweep: the run is still live (paused on
+  // the new secret), so the terminal-state purge will never see it.
+  await purgePendingSecretFromVault(ctx.secret, "superseded by admin-override reset");
+
+  // 5. Repeated-override alert (only ever fires from here).
+  await maybeFireOverrideAlert(ctx.secret.customerId, ctx.domain);
+
+  // 6. Re-issue links — caller-supplied recipients when given, else the prior set.
+  const priorEmails = Array.from(new Set(attempts.map((a) => a.invitedEmail)));
+  const emails = emailsOverride && emailsOverride.length > 0 ? emailsOverride : priorEmails;
+  const sent = emails.length > 0 ? await sendBreakGlassInvites(newPendingSecretId, emails, actorUserId, ctx.mspId) : 0;
+
+  // 7. Do NOT resume — the run stays paused until the new secret is acknowledged.
+  return { ok: true, newPendingSecretId, reissued: emails.length, sent };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /portal/break-glass/:pendingSecretId/admin-override  — force reset + reissue
 // ─────────────────────────────────────────────────────────────────────────────
@@ -795,109 +929,11 @@ router.post("/portal/break-glass/:pendingSecretId/admin-override", requireAuth, 
       return res.status(404).json({ error: "Not found" });
     }
 
-    if (ctx.secret.status !== "pending_delivery") {
-      return res.status(409).json({ error: "This secret is not awaiting delivery" });
+    const result = await performBreakGlassAdminOverride(ctx, pendingSecretId, req.user!.id, body.data.reason, body.data.emails);
+    if (!result.ok) {
+      return res.status(result.status).json({ error: result.error, ...(result.detail ? { detail: result.detail } : {}) });
     }
-    if (!ctx.tenantId) {
-      return res.status(409).json({ error: "Customer tenant is not configured" });
-    }
-
-    // Every attempt for this pending secret must be terminal (expired/superseded).
-    const attempts = await db.select({ linkStatus: breakGlassVerificationAttemptsTable.linkStatus, invitedEmail: breakGlassVerificationAttemptsTable.invitedEmail })
-      .from(breakGlassVerificationAttemptsTable)
-      .where(eq(breakGlassVerificationAttemptsTable.pendingSecretId, pendingSecretId));
-    const anyLive = attempts.some((a) => a.linkStatus !== "expired" && a.linkStatus !== "superseded");
-    if (anyLive) {
-      return res.status(409).json({ error: "There are still live verification links for this secret" });
-    }
-
-    // The break-glass account identity travels on the (non-secret) run payload
-    // under the canonical `breakGlassAccountId` key, which the gate node stamps
-    // from its configurable accountIdField at pause time.
-    const [run] = await db.select().from(wfRunsTable).where(eq(wfRunsTable.id, ctx.secret.runId)).limit(1);
-    const runPayload = (run?.payload as Record<string, unknown>) ?? {};
-    const accountId = runPayload.breakGlassAccountId as string | undefined;
-    if (!accountId) {
-      return res.status(409).json({ error: "Run payload does not carry the break-glass account identity (breakGlassAccountId)" });
-    }
-
-    // 1. Reset the credential on the tenant (same write helper as creation).
-    const newPassword = generateStrongPassword();
-    const write = await graphWriteForTenant(
-      ctx.tenantId,
-      ctx.secret.customerId,
-      `/users/${encodeURIComponent(accountId)}`,
-      "PATCH",
-      { passwordProfile: { password: newPassword, forceChangePasswordNextSignIn: false } },
-    );
-    if (!write.success) {
-      req.log.error({ pendingSecretId, status: write.status, errorType: write.errorType }, "break-glass: admin-override tenant reset failed");
-      return res.status(502).json({ error: "Failed to reset the tenant credential", detail: write.errorType });
-    }
-
-    // 1b. #1911 — the replacement is a generated credential on the write path
-    // exactly like the original, so it goes to Key Vault and the new row carries
-    // a reference. This runs AFTER the tenant reset succeeded, so a failed reset
-    // cannot leave a secret in the vault for a password the tenant never got.
-    // Fail-closed: if the store cannot take it, the override is refused rather
-    // than falling back to holding the credential only in the database.
-    const { generatedSecretStoreConfigured, storeGeneratedSecret } = await import("../lib/generated-secret-store");
-    let newSecretRef: GeneratedSecretRef | null = null;
-    if (generatedSecretStoreConfigured()) {
-      newSecretRef = await storeGeneratedSecret({
-        value: newPassword,
-        purpose: "break-glass",
-        customerId: ctx.secret.customerId,
-        runId: ctx.secret.runId,
-      });
-    } else {
-      req.log.error({ pendingSecretId }, "break-glass: admin-override cannot store the replacement credential — generated-secret store is not configured");
-      return res.status(503).json({ error: "The generated-credential store is not configured — the replacement was not issued" });
-    }
-
-    // 2–4. Supersede old, insert new pending secret, write audit — in one tx.
-    const oldPendingSecretId = pendingSecretId;
-    let newPendingSecretId = 0;
-    await db.transaction(async (tx) => {
-      await tx.update(breakGlassPendingSecretsTable)
-        .set({ status: "superseded_by_reset" })
-        .where(eq(breakGlassPendingSecretsTable.id, oldPendingSecretId));
-
-      const [created] = await tx.insert(breakGlassPendingSecretsTable).values({
-        runId: ctx.secret.runId,
-        customerId: ctx.secret.customerId,
-        encryptedValue: encryptSecret(newPassword),
-        secretRef: newSecretRef,
-        gateNodeId: ctx.secret.gateNodeId,
-        status: "pending_delivery",
-      }).returning({ id: breakGlassPendingSecretsTable.id });
-      newPendingSecretId = created.id;
-
-      await tx.insert(breakGlassOverrideAuditTable).values({
-        customerId: ctx.secret.customerId,
-        adminUserId: req.user!.id,
-        reason: body.data.reason,
-        oldPendingSecretId,
-        newPendingSecretId,
-      });
-    });
-
-    // 4b. #1911 — the superseded credential was never delivered and never will
-    // be, so its vault copy is an orphan the moment the new row exists. Purge it
-    // here rather than leaving it for the sweep: the run is still live (paused on
-    // the new secret), so the terminal-state purge will never see it.
-    await purgePendingSecretFromVault(ctx.secret, "superseded by admin-override reset");
-
-    // 5. Repeated-override alert (only ever fires from here).
-    await maybeFireOverrideAlert(ctx.secret.customerId, ctx.domain);
-
-    // 6. Re-issue links — admin-supplied recipients when given, else the prior set.
-    const priorEmails = Array.from(new Set(attempts.map((a) => a.invitedEmail)));
-    const emails = body.data.emails && body.data.emails.length > 0 ? body.data.emails : priorEmails;
-    const sent = emails.length > 0 ? await sendBreakGlassInvites(newPendingSecretId, emails, req.user!.id, ctx.mspId) : 0;
-
-    // 7. Do NOT resume — the run stays paused until the new secret is acknowledged.
-    return res.json({ ok: true, newPendingSecretId, reissued: emails.length, sent });
+    return res.json(result);
   } catch (err) {
     // Write-back gate refusals are expected, actionable states — surface which
     // gate blocked instead of a generic 500.
