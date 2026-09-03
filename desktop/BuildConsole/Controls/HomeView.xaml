@@ -375,6 +375,36 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- 📉 Real Burndown Chart (Git #2712) — real open-issue count trend for the
+                             active Milestone, hand-drawn on a Canvas per this codebase's convention
+                             (Build Queue graph, #839) rather than a new charting dependency. Fails
+                             closed to BurndownEmptyText's honest reason when #2711's series doesn't
+                             have enough real history — never a fabricated curve. -->
+                        <Border x:Name="BurndownCard" Style="{StaticResource HomeCard}">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,4">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="📉" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="BURNDOWN" Style="{StaticResource HomeCardHeader}"/>
+                                    </StackPanel>
+                                    <Button x:Name="BtnRefreshBurndown" Content="⟳" Style="{StaticResource SecondaryButton}"
+                                            Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
+                                            HorizontalAlignment="Right" ToolTip="Re-fetch the real open-issue history now"
+                                            Click="BtnRefreshBurndown_Click"/>
+                                </Grid>
+                                <TextBlock x:Name="BurndownScopeText" Text="Active milestone" FontSize="10.5"
+                                           Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8" TextTrimming="CharacterEllipsis"/>
+                                <Canvas x:Name="BurndownCanvas" Height="120" Background="Transparent"
+                                        SizeChanged="BurndownCanvas_SizeChanged"/>
+                                <TextBlock x:Name="BurndownSummaryText" Text="" FontSize="10.5"
+                                           Foreground="{StaticResource Subtext1Brush}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                           Visibility="Collapsed"/>
+                                <TextBlock x:Name="BurndownEmptyText" Text="Loading real open-issue history…"
+                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
+                                           Margin="2,4,0,0" Visibility="Visible"/>
+                            </StackPanel>
+                        </Border>
+
                         <!-- What's New Collapsible Tile -->
                         <StackPanel x:Name="WhatsNewSection" Margin="0,0,0,16" Visibility="Collapsed">
                             <ToggleButton x:Name="WhatsNewTile" Style="{StaticResource QuietTile}" Click="WhatsNewTile_Click">

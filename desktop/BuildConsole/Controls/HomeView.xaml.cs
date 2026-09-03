@@ -194,6 +194,11 @@ namespace BuildConsole.Controls
             // stale after a migration is executed.
             RefreshPendingMigrations();
 
+            // Git #2712 — same cadence: the underlying #2711 series is cache-backed (5-min
+            // TTL) so this passive call is cheap; it just re-renders from cache except on
+            // the rare tick the TTL actually expires.
+            RefreshBurndown();
+
             if (issues == null) return;
 
             // Update stats
@@ -951,6 +956,139 @@ namespace BuildConsole.Controls
         private void BtnCloseDiagnostics_Click(object sender, RoutedEventArgs e)
         {
             HealthDiagnosticsBox.Visibility = Visibility.Collapsed;
+        }
+
+        #endregion
+
+        #region Burndown Chart (Git #2712)
+
+        // Prevents overlapping fetches the same way the migrations scan does — the 10s
+        // home rollup tick can land mid-fetch of the (cached) #2711 time series.
+        private bool _burndownFetchInFlight;
+        private IssueTimeSeries? _lastBurndownSeries;
+
+        private void BtnRefreshBurndown_Click(object sender, RoutedEventArgs e) => RefreshBurndown(forceRefresh: true);
+
+        private void BurndownCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            // A resize (column reflow, window resize) needs a full redraw — the polyline's
+            // points are computed against the canvas's actual pixel size.
+            if (_lastBurndownSeries is { HasEnoughData: true } series) DrawBurndownCanvas(series);
+        }
+
+        /// <summary>
+        /// Real burndown data for the Home dashboard (Git #2712) — the active Milestone's
+        /// real daily open-issue count from <see cref="GitHubIssueTimeSeriesService"/> (#2711).
+        /// <paramref name="forceRefresh"/> bypasses that service's 5-minute cache (the manual
+        /// ⟳ button); the passive 10s rollup tick always reads the cache.
+        /// </summary>
+        public async void RefreshBurndown(bool forceRefresh = false)
+        {
+            if (_burndownFetchInFlight) return;
+            _burndownFetchInFlight = true;
+            try
+            {
+                var series = await GitHubIssueTimeSeriesService.GetActiveMilestoneSeriesAsync(forceRefresh);
+                _lastBurndownSeries = series;
+                RenderBurndown(series);
+            }
+            catch (Exception ex)
+            {
+                _lastBurndownSeries = null;
+                ShowBurndownMessage($"Burndown chart failed to load: {ex.Message}");
+            }
+            finally
+            {
+                _burndownFetchInFlight = false;
+            }
+        }
+
+        private void RenderBurndown(IssueTimeSeries series)
+        {
+            BurndownScopeText.Text = series.ScopeLabel;
+
+            // Fail-closed (#2711's HasEnoughData contract): an honest "not enough history"
+            // state, never a fabricated/interpolated curve.
+            if (!series.HasEnoughData)
+            {
+                ShowBurndownMessage(series.Reason ?? "Not enough real history yet to chart a trend.");
+                return;
+            }
+
+            BurndownEmptyText.Visibility = Visibility.Collapsed;
+            BurndownCanvas.Visibility = Visibility.Visible;
+            BurndownSummaryText.Visibility = Visibility.Visible;
+
+            DrawBurndownCanvas(series);
+
+            var first = series.Points[0];
+            var last = series.Points[series.Points.Count - 1];
+            BurndownSummaryText.Text =
+                $"{first.OpenCount} open on {series.FirstDate:MMM d} → {last.OpenCount} open today  ·  " +
+                $"{series.CurrentClosed}/{series.TotalIssues} closed";
+        }
+
+        private void ShowBurndownMessage(string message)
+        {
+            BurndownCanvas.Children.Clear();
+            BurndownCanvas.Visibility = Visibility.Collapsed;
+            BurndownSummaryText.Visibility = Visibility.Collapsed;
+            BurndownEmptyText.Text = message;
+            BurndownEmptyText.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Hand-drawn line+area chart on <c>BurndownCanvas</c> — this codebase's own convention
+        /// for custom visuals (Build Queue's graph, #839) rather than a new charting dependency
+        /// (see #2710's technical-judgement note). Plots the real running <see cref="IssueTimeSeriesPoint.OpenCount"/>
+        /// per day, oldest to newest, scaled to the canvas's actual real estate.
+        /// </summary>
+        private void DrawBurndownCanvas(IssueTimeSeries series)
+        {
+            BurndownCanvas.Children.Clear();
+
+            double width = BurndownCanvas.ActualWidth;
+            double height = BurndownCanvas.ActualHeight;
+            var points = series.Points;
+            if (points.Count < 2 || width <= 1 || height <= 1) return;
+
+            int maxOpen = Math.Max(1, points.Max(p => p.OpenCount));
+            const double topPad = 6, bottomPad = 2;
+            double plotHeight = Math.Max(1, height - topPad - bottomPad);
+
+            double StepX(int i) => width * i / (points.Count - 1);
+            double StepY(int openCount) => topPad + plotHeight - (plotHeight * openCount / maxOpen);
+
+            var lineBrush = (Brush)FindResource("PeachBrush");
+            var fillColor = ((SolidColorBrush)lineBrush).Color;
+            var fillBrush = new SolidColorBrush(fillColor) { Opacity = 0.14 };
+
+            // Filled area under the curve, then the real line on top.
+            var polyPoints = new PointCollection(points.Count);
+            for (int i = 0; i < points.Count; i++)
+                polyPoints.Add(new Point(StepX(i), StepY(points[i].OpenCount)));
+
+            var areaFigure = new PathFigure { StartPoint = new Point(0, height), IsClosed = true };
+            foreach (var pt in polyPoints) areaFigure.Segments.Add(new LineSegment(pt, true));
+            areaFigure.Segments.Add(new LineSegment(new Point(width, height), true));
+            var areaGeo = new PathGeometry();
+            areaGeo.Figures.Add(areaFigure);
+            BurndownCanvas.Children.Add(new System.Windows.Shapes.Path { Data = areaGeo, Fill = fillBrush });
+
+            BurndownCanvas.Children.Add(new System.Windows.Shapes.Polyline
+            {
+                Points = polyPoints,
+                Stroke = lineBrush,
+                StrokeThickness = 2,
+                StrokeLineJoin = PenLineJoin.Round,
+            });
+
+            // Highlight the real current value at the last point.
+            var lastPt = polyPoints[polyPoints.Count - 1];
+            var dot = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = lineBrush };
+            Canvas.SetLeft(dot, lastPt.X - 3.5);
+            Canvas.SetTop(dot, lastPt.Y - 3.5);
+            BurndownCanvas.Children.Add(dot);
         }
 
         #endregion
