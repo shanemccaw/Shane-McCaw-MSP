@@ -3458,19 +3458,21 @@ namespace BuildConsole.Controls
                 || (it.GithubNumber.HasValue && issueNums.Contains(it.GithubNumber.Value))).ToList();
         }
 
-        /// <summary>Epic progress from its real sub-issues: (done, total). Total is the epic issue's
-        /// GraphQL SubIssueCount; done = total minus the sub-issues still OPEN in the board (the board
-        /// is OPEN-only). Falls back to counting cached children by ParentNumber. (0,0) hides the bar.</summary>
+        /// <summary>Epic progress from its real sub-issues: (done, total). Git #2743 — total/done now
+        /// come from the same shared <see cref="ResolveRollup"/> #2739 built for the tree pills: the
+        /// full transitive Epic→Feature→Issue leaf rollup (real work only, no Epic/Feature placeholder
+        /// counted as "1") when the ALL-states set is available, not GitHub's native one-level
+        /// SubIssueCount this previously read directly. Falls back to counting cached children by
+        /// ParentNumber only when the epic isn't found on the board at all. (0,0) hides the bar.</summary>
         private (int done, int total) EpicProgress(int? epicGithubNumber)
         {
             if (!epicGithubNumber.HasValue) return (0, 0);
             int epicNum = epicGithubNumber.Value;
             var epicIssue = _lastBoardIssues.FirstOrDefault(i => i.Number == epicNum);
-            int total = epicIssue?.SubIssueCount ?? 0;
-            if (total > 0)
+            if (epicIssue != null)
             {
-                int openKids = _lastBoardIssues.Count(i => i.ParentNumber == epicNum && !i.IsClosed);
-                return (Math.Max(0, total - openKids), total);
+                var (total, completed, _) = ResolveRollup(epicIssue);
+                if (total > 0) return (completed, total);
             }
             var kids = _lastBoardIssues.Where(i => i.ParentNumber == epicNum).ToList();
             if (kids.Count == 0) return (0, 0);
@@ -5395,12 +5397,16 @@ namespace BuildConsole.Controls
             foreach (var gate in gates)
             {
                 // Real completion fraction: sub-issue rollup first, checklist fallback, else none.
+                // Git #2743 — the rollup now comes from the same shared ResolveRollup #2739 built
+                // for the tree pills (the full transitive leaf rollup, real work only), not GitHub's
+                // native one-level SubIssueCount/SubIssueCompleted this previously read directly.
                 string? fraction = null;
                 string? fractionTip = null;
-                if (gate.SubIssueCount > 0)
+                var (gateTotal, gateCompleted, _) = ResolveRollup(gate);
+                if (gateTotal > 0)
                 {
-                    fraction = $"{gate.SubIssueCompleted}/{gate.SubIssueCount}";
-                    fractionTip = $"{gate.SubIssueCompleted} of {gate.SubIssueCount} sub-issue(s) complete";
+                    fraction = $"{gateCompleted}/{gateTotal}";
+                    fractionTip = $"{gateCompleted} of {gateTotal} sub-issue(s) complete";
                 }
                 else
                 {
