@@ -323,6 +323,7 @@ namespace BuildConsole.TestPad
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var select = new CheckBox
             {
@@ -376,6 +377,37 @@ namespace BuildConsole.TestPad
             Grid.SetColumn(textLine, 1);
             grid.Children.Add(textLine);
 
+            // #2698 — "expand" opens the full note text in a real pop-out (TestPadNoteDetailWindow)
+            // for the cases the list row's single ellipsized line can't show usefully — a wide
+            // markdown table, a long paste. Always present; not gated on note length, since there's
+            // no reliable line-count-free way to tell in advance whether a given note will actually
+            // get cut off by the row's ellipsis.
+            var expand = new Border
+            {
+                Width = 18,
+                Height = 18,
+                CornerRadius = new CornerRadius(4),
+                Background = Brushes.Transparent,
+                Cursor = Cursors.Hand,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 2, 0),
+                ToolTip = "Expand note",
+            };
+            expand.Child = new TextBlock
+            {
+                Text = "",
+                FontFamily = new FontFamily("Segoe MDL2 Assets"),
+                FontSize = 10,
+                Foreground = (Brush)FindResource("TextSecondaryBrush"),
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            expand.MouseEnter += (_, _) => expand.Background = (Brush)FindResource("Surface0Brush");
+            expand.MouseLeave += (_, _) => expand.Background = Brushes.Transparent;
+            expand.MouseLeftButtonUp += (_, _) => TestPadNoteDetailWindow.ShowFor(this, note);
+            Grid.SetColumn(expand, 2);
+            grid.Children.Add(expand);
+
             if (note.IsSent)
             {
                 var badge = new Border
@@ -393,7 +425,7 @@ namespace BuildConsole.TestPad
                     FontWeight = FontWeights.SemiBold,
                     Foreground = (Brush)FindResource("GreenBrush"),
                 };
-                Grid.SetColumn(badge, 2);
+                Grid.SetColumn(badge, 3);
                 grid.Children.Add(badge);
             }
 
@@ -419,7 +451,7 @@ namespace BuildConsole.TestPad
             delete.MouseEnter += (_, _) => delete.Background = (Brush)FindResource("Surface0Brush");
             delete.MouseLeave += (_, _) => delete.Background = Brushes.Transparent;
             delete.MouseLeftButtonUp += (_, _) => TestPadService.RemoveNote(note.Id);
-            Grid.SetColumn(delete, 3);
+            Grid.SetColumn(delete, 4);
             grid.Children.Add(delete);
 
             root.Child = grid;

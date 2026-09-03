@@ -1,0 +1,104 @@
+<Window x:Class="BuildConsole.TestPad.TestPadNoteDetailWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
+        Title="Note"
+        Width="720" Height="520"
+        MinWidth="420" MinHeight="280"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        ResizeMode="CanResize"
+        WindowStyle="None"
+        Background="{StaticResource BaseBrush}"
+        Foreground="{StaticResource TextBrush}"
+        KeyDown="Window_KeyDown">
+
+    <!-- #2698 — Test Pad: pop-out/expand view for a single note. The list view's per-row text is a
+         single ellipsis-trimmed line (TestPadWindow.BuildRow), which can't show a large note's full
+         content (e.g. a wide markdown table) usefully. This is a real, view-only pop-out for one
+         TestPadNote's full Text, reusing the exact same custom-chrome window pattern
+         TestPadImportWindow (#2533) already established — Services.WindowChromeHelper.Setup(this)
+         from OnSourceInitialized, same DialogCaptionCloseButton chrome. TextWrapping="NoWrap" +
+         horizontal scroll (not word-wrap) so a wide markdown table's column alignment stays intact
+         instead of getting mangled by wrapping. -->
+    <WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="36"
+                             ResizeBorderThickness="6"
+                             GlassFrameThickness="-1"
+                             CornerRadius="0"
+                             UseAeroCaptionButtons="False"/>
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <Style x:Key="DialogCaptionCloseButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="Width" Value="44"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{StaticResource RedBrush}"/>
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1">
+        <DockPanel LastChildFill="True" Background="{StaticResource BaseBrush}">
+            <Border DockPanel.Dock="Top"
+                    Background="{StaticResource CrustBrush}"
+                    BorderBrush="{StaticResource BorderDividerBrush}"
+                    BorderThickness="0,0,0,1"
+                    Height="36">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="TitleText" Text="Note" FontSize="13" FontWeight="SemiBold"
+                                   Foreground="{StaticResource TextPrimaryBrush}"/>
+                        <TextBlock x:Name="MetaText" FontSize="11" Margin="10,0,0,0"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextSecondaryBrush}"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                        <Button x:Name="BtnCloseWindow" Style="{StaticResource DialogCaptionCloseButton}" ToolTip="Close" Click="BtnCloseWindow_Click">
+                            <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Margin="16" CornerRadius="6"
+                    Background="{StaticResource Surface0Brush}"
+                    BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <TextBox x:Name="BodyText"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="NoWrap"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Foreground="{StaticResource TextPrimaryBrush}"
+                             CaretBrush="{StaticResource TextPrimaryBrush}"
+                             FontFamily="Consolas"
+                             FontSize="13"
+                             Padding="12,10"/>
+                </ScrollViewer>
+            </Border>
+        </DockPanel>
+    </Border>
+</Window>
