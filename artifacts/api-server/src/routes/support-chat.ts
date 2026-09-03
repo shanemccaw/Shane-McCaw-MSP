@@ -266,16 +266,30 @@ PLATFORM ACTION RULES (follow exactly):
   // tenant), since card data is resolved the same real-per-customer way actions
   // are. The marker never carries data itself; it only tells the client which
   // pre-resolved card (if any) to render alongside the reply.
+  //
+  // #1624: specific-card-first ordering. Per the contract pack §4.4/§9 DECIDED
+  // row, `data-answer` is the fallback of last resort, not a peer choice — it
+  // must only be requested when none of the three specific cards fit. Listing
+  // it last and naming it explicitly as last-resort (rather than "for any other
+  // structured platform-data question", which gave it the broadest mandate) is
+  // the fix; the model still makes the live per-turn judgment, this only biases
+  // it (verified by asking real questions per #1616 DECIDED, not a unit test).
   const cardsBlock = !actionsEnabled
     ? ""
     : `
 
 === DATA CARDS AVAILABLE ===
-When the user asks about their invoices or billing history, subscription/plan status, Copilot readiness score, or another question you can answer from the platform data above, you may show it as an interactive card instead of only describing it in prose. Append a marker on its own line, alone, after your written answer: [SHOW_CARD:invoice] for invoices/billing, [SHOW_CARD:subscription] for plan/subscription status, [SHOW_CARD:score] for their Copilot readiness score, or [SHOW_CARD:data-answer] for any other structured platform-data question.
+When your answer is about one of these, prefer the specific card for it over any generic one:
+- Invoices or billing history → [SHOW_CARD:invoice]
+- Subscription or plan status → [SHOW_CARD:subscription]
+- Copilot readiness score → [SHOW_CARD:score]
+Only if none of those three fit, and the question is still a structured platform-data question you can answer from the data above, you may fall back to [SHOW_CARD:data-answer]. Treat data-answer as the fallback of last resort, not a first choice.
+Append the marker on its own line, alone, after your written answer.
 === END DATA CARDS ===
 
 DATA CARD RULES (follow exactly):
 - Only request a card type that is actually relevant to what the user just asked.
+- Prefer the specific card (invoice, subscription, score) whenever it applies. Only request data-answer when none of those three do.
 - Still answer briefly in your own words too — the card supplements your reply, it never replaces it.
 - Request at most one card per reply.
 - If there is no real data available for that card type, none will be shown — do not claim one is showing.`;
