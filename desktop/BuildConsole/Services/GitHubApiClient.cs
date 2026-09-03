@@ -943,6 +943,40 @@ namespace BuildConsole.Services
                 }
             }
 
+            // 4. Transitive milestone inheritance (Git #2543). Step 3 above inherits a
+            // milestone only ONE level, and only if the parent's milestone was ALREADY
+            // resolved when this issue happened to be visited — but `result` is
+            // CREATED_AT-DESC, so a Feature is visited AFTER its own (higher-numbered)
+            // children. A Feature whose milestone is itself inherited from its Epic
+            // therefore never propagates down to its children: they were visited first,
+            // saw the Feature still milestone-less, and stayed in the synthetic "No
+            // Milestone" group while the Feature landed in the real milestone group.
+            // Under Focus Mode (which hard-hides every milestone but the focused one)
+            // those children fall out of the board's `allKnownIssues` entirely, so the
+            // Feature renders its real rollup pill (e.g. 1/19) yet nests ZERO children —
+            // the exact #2543 report, confirmed live for #2263 (milestone null, parent
+            // #1202 which is v1.1) whose 18 open children all sat at milestone null.
+            // Fix: resolve each still-milestone-less issue's effective milestone by
+            // climbing its real ParentNumber chain to the nearest ancestor that has one,
+            // regardless of visitation order — so a Feature's children share the
+            // Feature's (inherited) milestone and stay in the same group under Focus.
+            foreach (var issue in result)
+            {
+                if (!string.IsNullOrEmpty(issue.MilestoneTitle)) continue;
+                var seen = new HashSet<int> { issue.Number };
+                var cursor = issue.ParentNumber;
+                while (cursor.HasValue && seen.Add(cursor.Value) && issueByNum.TryGetValue(cursor.Value, out var ancestor))
+                {
+                    if (!string.IsNullOrEmpty(ancestor.MilestoneTitle))
+                    {
+                        issue.MilestoneTitle = ancestor.MilestoneTitle;
+                        issue.MilestoneNumber = ancestor.MilestoneNumber;
+                        break;
+                    }
+                    cursor = ancestor.ParentNumber;
+                }
+            }
+
             return result;
         }
 
