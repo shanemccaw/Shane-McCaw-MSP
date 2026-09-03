@@ -561,7 +561,14 @@
                                 <Button Content="🔥 Priority" Style="{StaticResource SecondaryButton}" Padding="8,2" Margin="0,0,4,0" Click="IssueFilter_Click" Tag="Priority"/>
                                 <Button Content="🎯 Milestones" Style="{StaticResource SecondaryButton}" Padding="8,2" Margin="0,0,4,0" Click="IssueFilter_Click" Tag="Milestones"/>
                                 <Button Content="⚡ Epics" Style="{StaticResource SecondaryButton}" Padding="8,2" Margin="0,0,4,0" Click="IssueFilter_Click" Tag="Epics"/>
-                                <Button Content="🟢 Done" Style="{StaticResource SecondaryButton}" Padding="8,2" Click="IssueFilter_Click" Tag="Done"/>
+                                <Button Content="🟢 Done" Style="{StaticResource SecondaryButton}" Padding="8,2" Margin="0,0,10,0" Click="IssueFilter_Click" Tag="Done"/>
+                                <!-- Git #2771 — independent ON/OFF toggle (composes with whichever
+                                     chip above is active), not a sixth exclusive filter mode. Hides
+                                     a top-level Epic + its whole subtree once its real transitive
+                                     leaf-issue rollup (#2739) is 100% closed. Checked visual state
+                                     (background swap) is applied in code-behind by
+                                     ApplyHideCompletedEpicsToggleVisual(). -->
+                                <Button x:Name="BtnHideCompletedEpics" Content="✅ Hide Completed" Style="{StaticResource SecondaryButton}" Padding="8,2" Click="HideCompletedEpicsToggle_Click"/>
                             </StackPanel>
                         </ScrollViewer>
 

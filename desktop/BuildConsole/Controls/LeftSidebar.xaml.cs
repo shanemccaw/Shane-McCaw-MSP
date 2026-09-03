@@ -704,6 +704,15 @@ namespace BuildConsole.Controls
             LoadWorkspaceExplorer(RootWorkspacePath);
             SetupGitWatcher();
 
+            // Git #2771 — restore the "Hide Completed" toggle's persisted state and reflect it
+            // on the pill immediately (before any board render has happened).
+            try
+            {
+                _hideCompletedEpics = BuildConsole.Services.BuildConsoleSettings.Load().HideCompletedEpics;
+                ApplyHideCompletedEpicsToggleVisual();
+            }
+            catch { }
+
             ShaneAppStreamService.Instance.StatusChanged += OnShaneAppStatusChanged;
 
             // Git #2540 — nothing told the Chats panel to re-render when Focus gets
@@ -1777,6 +1786,14 @@ namespace BuildConsole.Controls
         // content guard reuses the existing _lastInProgressSignature below.
         private string _currentFilter = "All";
         private bool _boardShowsClosed;
+
+        /// <summary>Git #2771 — "Hide Completed" toggle: an independent ON/OFF flag that composes
+        /// with whatever <see cref="_currentFilter"/> chip is active (NOT a sixth exclusive mode).
+        /// When on, a top-level Epic whose real transitive leaf rollup is 100% closed (per
+        /// <see cref="GitBoardIssueFilters.ComputeTransitiveLeafRollup"/>, #2739) is skipped from the
+        /// tree along with its whole subtree. Loaded from and persisted to
+        /// <see cref="BuildConsole.Services.BuildConsoleSettings.HideCompletedEpics"/>.</summary>
+        private bool _hideCompletedEpics;
 
         // Git #821 — Shane: "can you stop all the flashing... every refresh
         // the left panel clears and rebuilds... so it flashes and sucks."
@@ -5216,6 +5233,18 @@ namespace BuildConsole.Controls
                                 if (filter == "Done" && epicIssue.Status != "CLOSED") continue;
                                 if (filter == "Priority" && epicIssue.Priority != "HIGH") continue;
 
+                                // Git #2771 — "Hide Completed" toggle: independent of `filter` above.
+                                // SubIssueCount/SubIssueCompleted already carry the real transitive
+                                // leaf rollup for a placeholder node (computed once per board fetch by
+                                // ResolveRollup → GitBoardIssueFilters.ComputeTransitiveLeafRollup,
+                                // #2739) — reuse it rather than recomputing per render. Total == 0
+                                // (nothing real to roll up yet) is NOT treated as "complete."
+                                if (_hideCompletedEpics && epicIssue.SubIssueCount > 0
+                                    && epicIssue.SubIssueCompleted >= epicIssue.SubIssueCount)
+                                {
+                                    continue;
+                                }
+
                                 if (!await YieldIssuesTreeChunkAsync(pacing)) return;
                                 var epicNode = CreateIssueHeader(epicIssue, depth: 2);
                                 if (!await PopulateIssueTreeHierarchyAsync(epicNode.Items, allKnownIssues, epicIssue.IssueNumber, filter, 3, pacing)) return;
@@ -7001,6 +7030,46 @@ namespace BuildConsole.Controls
             }
 
             RenderIssuesTree(filter);
+        }
+
+        /// <summary>Git #2771 — the "Hide Completed" pill: an independent ON/OFF toggle, not a chip
+        /// in the mutually-exclusive <see cref="_currentFilter"/> set. Persists to
+        /// <see cref="BuildConsole.Services.BuildConsoleSettings.HideCompletedEpics"/> and re-renders
+        /// against whichever filter chip is currently active.</summary>
+        private void HideCompletedEpicsToggle_Click(object sender, RoutedEventArgs e)
+        {
+            _hideCompletedEpics = !_hideCompletedEpics;
+            ApplyHideCompletedEpicsToggleVisual();
+
+            try
+            {
+                var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+                settings.HideCompletedEpics = _hideCompletedEpics;
+                settings.Save();
+            }
+            catch { }
+
+            RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter);
+        }
+
+        /// <summary>Checked/unchecked visual state for BtnHideCompletedEpics — green
+        /// border+foreground when on, the default SecondaryButton look when off (same
+        /// convention CreateEpicHeader etc. already use GreenBrush for "done" signal).</summary>
+        private void ApplyHideCompletedEpicsToggleVisual()
+        {
+            if (BtnHideCompletedEpics == null) return;
+            if (_hideCompletedEpics)
+            {
+                BtnHideCompletedEpics.BorderBrush = (System.Windows.Media.Brush)FindResource("GreenBrush");
+                BtnHideCompletedEpics.Foreground = (System.Windows.Media.Brush)FindResource("GreenBrush");
+                BtnHideCompletedEpics.BorderThickness = new Thickness(1.5);
+            }
+            else
+            {
+                BtnHideCompletedEpics.ClearValue(Button.BorderBrushProperty);
+                BtnHideCompletedEpics.ClearValue(Button.ForegroundProperty);
+                BtnHideCompletedEpics.ClearValue(Button.BorderThicknessProperty);
+            }
         }
 
         // ── SEARCH VIEW (Full-Text File Content Search) ──────────────────────
