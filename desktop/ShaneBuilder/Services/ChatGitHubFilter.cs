@@ -27,6 +27,19 @@ public sealed class LiveOpenIssuesResult
     public static LiveOpenIssuesResult Failure(string error) => new() { Success = false, Error = error };
 }
 
+/// <summary>Git #2357 — one Batter Up rail item's own identity plus its real immediate parent
+/// (the GraphQL <c>parent</c> edge — same one-level field #2300's
+/// <see cref="GitPanelService.GetAncestryAsync"/> uses), fetched inline off the same board-walk
+/// query rather than a per-item round trip. <c>FeatureNumber</c> is null when the issue genuinely
+/// has no parent — that's a real "No Feature" bucket, never an invented grouping key.</summary>
+public sealed class BatterUpItemRef
+{
+    public int Number { get; init; }
+    public string Title { get; init; } = "";
+    public int? FeatureNumber { get; init; }
+    public string? FeatureTitle { get; init; }
+}
+
 /// <summary>Git #2356 (Feature #2355 item 1) — real per-lane item counts for the Batter Up rail
 /// panel's four tabs. <c>Success=false</c> means the walk got NOTHING (gh unreachable on the very
 /// first page) — same fail-closed convention as <see cref="LiveOpenIssuesResult"/>. <c>Complete</c>
@@ -34,19 +47,26 @@ public sealed class LiveOpenIssuesResult
 /// later page mid-walk (counts are a real partial in that case, not silently treated as final).
 /// <c>All</c> is the sum of the three actionable lanes — Status is a single-select field, so an
 /// item can only ever be counted in one of them, and Backlog/Done/Park/etc. items are deliberately
-/// excluded (they aren't staging-area items).</summary>
+/// excluded (they aren't staging-area items).
+///
+/// Git #2357 — <c>BatterUpItems</c>/<c>AiBatterUpItems</c>/<c>AskShaneItems</c> carry each lane's
+/// real items (see <see cref="BatterUpItemRef"/>) so the panel can group by real parent Feature;
+/// counts are the list lengths, not a separately-tracked tally.</summary>
 public sealed class BatterUpLaneCounts
 {
     public bool Success { get; init; }
-    public int BatterUp { get; init; }
-    public int AiBatterUp { get; init; }
-    public int AskShane { get; init; }
+    public List<BatterUpItemRef> BatterUpItems { get; init; } = new();
+    public List<BatterUpItemRef> AiBatterUpItems { get; init; } = new();
+    public List<BatterUpItemRef> AskShaneItems { get; init; } = new();
+    public int BatterUp => BatterUpItems.Count;
+    public int AiBatterUp => AiBatterUpItems.Count;
+    public int AskShane => AskShaneItems.Count;
     public int All => BatterUp + AiBatterUp + AskShane;
     public bool Complete { get; init; } = true;
     public string? Error { get; init; }
 
-    public static BatterUpLaneCounts Ok(int batterUp, int aiBatterUp, int askShane, bool complete) =>
-        new() { Success = true, BatterUp = batterUp, AiBatterUp = aiBatterUp, AskShane = askShane, Complete = complete };
+    public static BatterUpLaneCounts Ok(List<BatterUpItemRef> batterUp, List<BatterUpItemRef> aiBatterUp, List<BatterUpItemRef> askShane, bool complete) =>
+        new() { Success = true, BatterUpItems = batterUp, AiBatterUpItems = aiBatterUp, AskShaneItems = askShane, Complete = complete };
     public static BatterUpLaneCounts Failure(string error) => new() { Success = false, Error = error };
 }
 
@@ -296,10 +316,16 @@ public sealed class ChatGitHubFilter
     /// can silently miss a long-lived issue only just promoted into one of these lanes today.
     /// Real GraphQL field is <c>ProjectV2.items</c> (not <c>issue.projectItems</c>, which is the
     /// per-issue direction <see cref="GetBoardStatusAsync"/> already uses) — ported through
-    /// <c>gh api graphql</c> per this file's established no-PAT CLI convention.</summary>
+    /// <c>gh api graphql</c> per this file's established no-PAT CLI convention.
+    ///
+    /// Git #2357 — the query also carries each item's own <c>number</c>/<c>title</c> and its real
+    /// immediate <c>parent</c> (number/title), fetched inline off this same page rather than a
+    /// second per-item round trip, so the panel can group by real parent Feature.</summary>
     public async Task<BatterUpLaneCounts> GetBatterUpLaneCountsAsync()
     {
-        int batterUp = 0, aiBatterUp = 0, askShane = 0;
+        var batterUp = new List<BatterUpItemRef>();
+        var aiBatterUp = new List<BatterUpItemRef>();
+        var askShane = new List<BatterUpItemRef>();
         string? before = null;
         int pagesWalked = 0;
 
@@ -318,8 +344,11 @@ public sealed class ChatGitHubFilter
           }}
           content {{
             ... on Issue {{
+              number
+              title
               state
               repository {{ nameWithOwner }}
+              parent {{ number title }}
             }}
           }}
         }}
@@ -354,11 +383,19 @@ public sealed class ChatGitHubFilter
                 if (!string.Equals(issue.Repository?.NameWithOwner, Repo, StringComparison.OrdinalIgnoreCase)) continue;
                 if (!string.Equals(issue.State, "OPEN", StringComparison.OrdinalIgnoreCase)) continue;
 
+                var itemRef = new BatterUpItemRef
+                {
+                    Number = issue.Number,
+                    Title = issue.Title ?? $"#{issue.Number}",
+                    FeatureNumber = issue.Parent?.Number,
+                    FeatureTitle = issue.Parent?.Title,
+                };
+
                 switch (n.FieldValueByName?.OptionId)
                 {
-                    case BatterUpOptionId: batterUp++; break;
-                    case AiBatterUpOptionId: aiBatterUp++; break;
-                    case AskShaneOptionId: askShane++; break;
+                    case BatterUpOptionId: batterUp.Add(itemRef); break;
+                    case AiBatterUpOptionId: aiBatterUp.Add(itemRef); break;
+                    case AskShaneOptionId: askShane.Add(itemRef); break;
                     // any other Status (Backlog/Done/Park/etc.) — not one of the 4 lanes, skip
                 }
             }
@@ -368,7 +405,7 @@ public sealed class ChatGitHubFilter
             {
                 ConsoleOutputSink.Log(LogLevel.Info,
                     $"[batterup.lanes] full walk reached the start of the board after {pagesWalked} page(s) — " +
-                    $"Batter Up={batterUp} AI Batter Up={aiBatterUp} Ask Shane={askShane}.");
+                    $"Batter Up={batterUp.Count} AI Batter Up={aiBatterUp.Count} Ask Shane={askShane.Count}.");
                 return BatterUpLaneCounts.Ok(batterUp, aiBatterUp, askShane, complete: true);
             }
             before = conn.PageInfo!.StartCursor;
@@ -458,8 +495,18 @@ public sealed class ChatGitHubFilter
     private sealed class LaneFieldValue { [JsonPropertyName("optionId")] public string? OptionId { get; set; } }
     private sealed class LaneIssueContent
     {
+        [JsonPropertyName("number")] public int Number { get; set; }
+        [JsonPropertyName("title")] public string? Title { get; set; }
         [JsonPropertyName("state")] public string? State { get; set; }
         [JsonPropertyName("repository")] public LaneRepository? Repository { get; set; }
+        [JsonPropertyName("parent")] public LaneParentRef? Parent { get; set; }
     }
     private sealed class LaneRepository { [JsonPropertyName("nameWithOwner")] public string? NameWithOwner { get; set; } }
+    /// <summary>Git #2357 — the item's real immediate parent (Feature, usually), null when the
+    /// issue genuinely has none.</summary>
+    private sealed class LaneParentRef
+    {
+        [JsonPropertyName("number")] public int Number { get; set; }
+        [JsonPropertyName("title")] public string? Title { get; set; }
+    }
 }

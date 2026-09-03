@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -19,10 +21,14 @@ namespace ShaneBuilder;
 /// walk of the whole AI/Batter-Up project board's Status field (same pagination shape as
 /// BuildConsole's own <c>GitHubApiClient.ScanProjectItemsForStatusAsync</c>).
 ///
-/// Scope, per #2356's own final dispatch comment: shell + lanes + counts ONLY. Grouping by
-/// feature, group headers, item rendering/actions, and everything else are separate builds on
-/// #2357 onward — <see cref="BatterUpLaneBody"/> deliberately stays a plain status line naming
-/// the selected lane's count rather than rendering invented rows.
+/// Git #2357 (Feature #2355 item 2) — group each lane's real items by their real immediate parent
+/// Feature (the GraphQL <c>parent</c> edge fetched inline by the same board walk — see
+/// <see cref="ChatGitHubFilter.BatterUpItemRef"/>), and keep which groups exist and their
+/// expand/collapse state stable across lane switches via <see cref="_batterUpCollapsedGroups"/>,
+/// an instance field never reset by <see cref="RenderBatterUpPanel"/>/<see cref="SelectBatterUpLane"/>.
+/// An issue with no real parent gets an honest "No Feature" bucket — never an invented grouping
+/// key. Group header content (badges/actions) is out of scope here — #2358/#2359/#2360 land the
+/// richer header/item content on top of this grouping+persistence structure.
 /// </summary>
 /// <summary>Git #2365 — a frozen snapshot of the Batter Up panel's real state (selected lane +
 /// the four live counts) at the moment "Send to tab" was clicked. Carried on <c>TabDef</c>, read
@@ -43,6 +49,12 @@ public partial class MainWindow
     // tab (BatterUpItemDock). Same split, same widths, as Git #2312 built for the Git Panel peek —
     // reused rather than reinvented for this panel.
     private bool _batterUpExpanded;
+
+    /// <summary>Git #2357 — real parent-Feature numbers the user has collapsed. Keyed by feature
+    /// number (0 = the "No Feature" bucket). Deliberately an instance field, not lane-scoped and
+    /// never cleared by a lane switch, so a group's expand/collapse choice survives switching
+    /// lanes and back — the whole point of this build.</summary>
+    private readonly HashSet<int> _batterUpCollapsedGroups = new();
 
     /// <summary>Fires the real lane-count walk the first time the BATTER UP rail panel opens.
     /// A failed walk reports its real error in the status line; nothing falls back to a fixture
@@ -118,26 +130,83 @@ public partial class MainWindow
         _ => "All",
     };
 
-    /// <summary>Item rendering/grouping is out of scope for this build (#2357 onward) — an honest
-    /// count-only line for whichever lane is selected, not invented rows.</summary>
+    private static List<BatterUpItemRef> BatterUpLaneItems(BatterUpLaneCounts counts, BatterUpLane lane) => lane switch
+    {
+        BatterUpLane.BatterUp => counts.BatterUpItems,
+        BatterUpLane.AiBatterUp => counts.AiBatterUpItems,
+        BatterUpLane.AskShane => counts.AskShaneItems,
+        _ => counts.BatterUpItems.Concat(counts.AiBatterUpItems).Concat(counts.AskShaneItems).ToList(),
+    };
+
+    /// <summary>Git #2357 — real items for the selected lane, grouped by real parent Feature.
+    /// Group header content beyond number/title/count and item content beyond number/title are
+    /// deliberately out of scope (#2358/#2359/#2360 land those on top of this structure); this
+    /// build is the grouping + persisted expand/collapse state only.</summary>
     private void RenderBatterUpLaneBody()
     {
         BatterUpLaneBody.Children.Clear();
         var counts = _batterUpCounts;
         if (counts == null) return;
 
-        int laneCount = BatterUpLaneCount(counts, _batterUpSelectedLane);
+        var items = BatterUpLaneItems(counts, _batterUpSelectedLane);
         string laneLabel = BatterUpLaneLabel(_batterUpSelectedLane);
 
-        BatterUpLaneBody.Children.Add(new TextBlock
+        if (items.Count == 0)
         {
-            Margin = new Thickness(6, 0, 6, 0),
-            TextWrapping = TextWrapping.Wrap,
-            Text = $"{laneCount} item(s) in {laneLabel}. Grouping and item rendering land in a later build (#2357 onward).",
-            Foreground = (Brush)FindResource("Brush.Text.Dim"),
-            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
-            FontSize = (double)FindResource("FontSize.11"),
-        });
+            BatterUpLaneBody.Children.Add(GitDimLine($"No items in {laneLabel}.", indent: 6));
+            return;
+        }
+
+        // Group by real parent Feature (Git #2357). No parent = an honest "No Feature" bucket
+        // (key 0), never an invented grouping key. Sorting by real feature number (not insertion
+        // order) is what keeps a given feature's group in the same visual slot across re-renders —
+        // part of what "stable across lane switches" means here; the "No Feature" bucket sorts last.
+        var groups = items
+            .GroupBy(i => i.FeatureNumber ?? 0)
+            .OrderBy(g => g.Key == 0 ? int.MaxValue : g.Key)
+            .ToList();
+
+        foreach (var group in groups)
+        {
+            int featureNumber = group.Key;
+            string headerLabel = featureNumber == 0
+                ? "No Feature"
+                : $"#{featureNumber} {group.First().FeatureTitle}";
+            // Never reset by a lane switch — this is the persistence #2357 asks for.
+            bool expanded = !_batterUpCollapsedGroups.Contains(featureNumber);
+
+            var header = GitRowShell(indent: 6);
+            header.ColumnLeft(GitChevron(expanded));
+            var headerText = GitText(headerLabel, 10.5, "Brush.Text.Primary");
+            headerText.TextTrimming = TextTrimming.CharacterEllipsis;
+            headerText.Margin = new Thickness(4, 0, 4, 0);
+            header.ColumnFill(headerText);
+            header.ColumnRight(GitCountPill(group.Count().ToString(), "Brush.Text.Muted"));
+            header.Root.MouseLeftButtonDown += (_, _) => ToggleBatterUpGroup(featureNumber);
+            BatterUpLaneBody.Children.Add(header.Root);
+
+            if (!expanded) continue;
+
+            foreach (var item in group)
+            {
+                var row = GitRowShell(indent: 24);
+                row.ColumnLeft(GitMono($"#{item.Number}", 10, "Brush.Accent.IssueNum"));
+                var itemText = GitText(item.Title, 10.5, "Brush.Text.Muted");
+                itemText.TextTrimming = TextTrimming.CharacterEllipsis;
+                itemText.Margin = new Thickness(5, 0, 0, 0);
+                row.ColumnFill(itemText);
+                BatterUpLaneBody.Children.Add(row.Root);
+            }
+        }
+    }
+
+    /// <summary>Toggles one group's expand/collapse state and re-renders. The state lives in
+    /// <see cref="_batterUpCollapsedGroups"/>, so it survives the next lane switch untouched.</summary>
+    private void ToggleBatterUpGroup(int featureNumber)
+    {
+        if (!_batterUpCollapsedGroups.Remove(featureNumber))
+            _batterUpCollapsedGroups.Add(featureNumber);
+        RenderBatterUpLaneBody();
     }
 
     // ── Panel-level chrome (#2365) ───────────────────────────────────────────────────────────
@@ -190,7 +259,10 @@ public partial class MainWindow
     /// <summary>Renders a "Send to tab" document (#2365) into the shared BatterUpItemDock — the
     /// same lane chips + status line the rail panel shows, off the frozen snapshot rather than the
     /// live <c>_batterUpCounts</c> (a re-open of the rail panel after this tab was sent may have
-    /// moved the real counts; the doc stays honest about what it was sent, not silently live).</summary>
+    /// moved the real counts; the doc stays honest about what it was sent, not silently live).
+    /// The snapshot only carries counts, not the real items/parents #2357 groups by, so this
+    /// frozen doc deliberately stays count-only rather than faking a grouped item list it never
+    /// captured.</summary>
     private void RenderBatterUpDoc(TabDef tab)
     {
         BatterUpItemDocHost.Children.Clear();
@@ -224,7 +296,7 @@ public partial class MainWindow
         {
             Margin = new Thickness(6, 0, 6, 0),
             TextWrapping = TextWrapping.Wrap,
-            Text = $"{snap.LaneCount} item(s) in {snap.LaneLabel}. Grouping and item rendering land in a later build (#2357 onward).",
+            Text = $"{snap.LaneCount} item(s) in {snap.LaneLabel}. This sent copy is count-only — grouped items are a live-panel-only view.",
             Foreground = (Brush)FindResource("Brush.Text.Dim"),
             FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
             FontSize = (double)FindResource("FontSize.11"),
