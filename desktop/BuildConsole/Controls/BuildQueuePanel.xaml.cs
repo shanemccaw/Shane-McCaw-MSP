@@ -25,6 +25,11 @@ namespace BuildConsole.Controls
         public string Status { get; set; } = string.Empty;
         public string StatusDetails { get; set; } = string.Empty;
         public int? ExitCode { get; set; }
+
+        /// <summary>Git #2689 — true when the selection should also force the bottom log panel
+        /// open (explicit right-click "Open Build Log"). False for a plain card click, which
+        /// should only select/highlight without popping the panel open.</summary>
+        public bool OpenLogPanel { get; set; } = false;
     }
 
     /// <summary>Git #1636 — every item of a Priority build set has just reached a terminal state
@@ -3594,12 +3599,12 @@ namespace BuildConsole.Controls
             }
 
             // Context Menu
-            card.ContextMenu = BuildCardContextMenu(item);
+            card.ContextMenu = BuildCardContextMenu(item, node);
 
             return card;
         }
 
-        private void SelectNode(QueueGraphNode node)
+        private void SelectNode(QueueGraphNode node, bool openLogPanel = false)
         {
             if (node.Item == null) return;
             _selectedQueueItemId = node.Item.Id;
@@ -3625,6 +3630,7 @@ namespace BuildConsole.Controls
                 StatusDetails = LiveBlockedBy(node).Count > 0
                     ? CapitalizeFirst(BuildWaitingOnText(node, node.Item))
                     : "",
+                OpenLogPanel = openLogPanel,
             });
         }
 
@@ -4010,7 +4016,7 @@ namespace BuildConsole.Controls
 
         #endregion
 
-        private ContextMenu BuildCardContextMenu(QueueItem item)
+        private ContextMenu BuildCardContextMenu(QueueItem item, QueueGraphNode node)
         {
             var cm = new ContextMenu();
 
@@ -4020,6 +4026,12 @@ namespace BuildConsole.Controls
                 QueueItemChatRequested?.Invoke(this, item);
             };
             cm.Items.Add(miOpenChat);
+
+            // Git #2689 — plain click only selects/highlights now; this is the explicit
+            // way to force the bottom Build Log panel open for a given card.
+            var miOpenBuildLog = new MenuItem { Header = "📋 Open Build Log" };
+            miOpenBuildLog.Click += (_, _) => SelectNode(node, openLogPanel: true);
+            cm.Items.Add(miOpenBuildLog);
 
             var miMarkComplete = new MenuItem { Header = "✓ Mark Complete (Hide)" };
             miMarkComplete.Click += async (_, _) =>

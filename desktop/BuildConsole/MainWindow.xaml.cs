@@ -5845,8 +5845,12 @@ namespace BuildConsole
 
         private void BuildQueuePanel_TaskSelected(object? sender, Controls.TaskSelectedEventArgs e)
         {
+            // Git #2689 — keep the panel's content in sync on every selection (even a plain
+            // click), but only force the panel open when explicitly requested (right-click →
+            // "Open Build Log"). A plain click should just select/highlight the card.
             BuildLogView.LoadQueueItem(e.QueueItemId, e.Epic, e.Task, e.Status, e.ExitCode);
-            SetBottomPanel(true, tabIndex: 0);
+            if (e.OpenLogPanel)
+                SetBottomPanel(true, tabIndex: 0);
         }
 
         /// <summary>QueueWatcherService.BuildFinished — the genuine "a queue-managed
