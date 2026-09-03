@@ -28,6 +28,7 @@ import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import { sendMailViaGraph, graphCredentialsPresent } from "./graph";
 import { enqueueCustomerAlertDigest } from "./customer-alert-digest";
+import { resolvePortalDeepLink } from "./portal-deep-links";
 
 const log = logger.child({ channel: "notification" });
 
@@ -179,9 +180,13 @@ export async function resolveCustomerAlertPreferences(
 
 function buildCustomerEmailHtml(opts: { summary: string; severity: string; deepLinkPath: string | null; portalBaseUrl: string }): string {
   const color = opts.severity === "critical" ? "#DC2626" : opts.severity === "warning" ? "#D97706" : "#0284C7";
-  const link = opts.deepLinkPath
-    ? `<p style="margin-top:16px"><a href="${opts.portalBaseUrl}${opts.deepLinkPath}" style="background:#0078D4;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px">View in your portal &rarr;</a></p>`
-    : "";
+  // #1827: never emit a raw /portal-v2/* link — it 404s (portal-v2 was
+  // deleted under #1673). Resolve through the map so the button always
+  // lands somewhere real: the live page once shipped, an honest
+  // "not built yet" page until then.
+  const resolved = resolvePortalDeepLink(opts.deepLinkPath);
+  const linkText = resolved.available ? "View in your portal" : `${resolved.label} is coming to your portal`;
+  const link = `<p style="margin-top:16px"><a href="${opts.portalBaseUrl}${resolved.href}" style="background:#0078D4;color:#fff;padding:8px 16px;border-radius:4px;text-decoration:none;font-size:14px">${linkText} &rarr;</a></p>`;
   return `<!DOCTYPE html><html><body style="font-family:Inter,sans-serif;background:#f7f9fc;margin:0;padding:24px">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:8px;border:1px solid #e2e8f0;padding:24px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
