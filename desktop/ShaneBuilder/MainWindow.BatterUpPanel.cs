@@ -29,6 +29,12 @@ namespace ShaneBuilder;
 /// An issue with no real parent gets an honest "No Feature" bucket — never an invented grouping
 /// key. Group header content (badges/actions) is out of scope here — #2358/#2359/#2360 land the
 /// richer header/item content on top of this grouping+persistence structure.
+///
+/// Git #2364 (Feature #2355 item 9) — that no-parent bucket is now flagged, not just another
+/// group: distinct warning-tinted styling, an honest "needs a home before it can be built" label,
+/// and it sorts last (the existing #2357 <c>OrderBy</c> already puts key 0 at the end) so items
+/// with nothing to build against visibly collect at the bottom of the panel instead of blending
+/// into the real Feature groups above them.
 /// </summary>
 /// <summary>Git #2365 — a frozen snapshot of the Batter Up panel's real state (selected lane +
 /// the four live counts) at the moment "Send to tab" was clicked. Carried on <c>TabDef</c>, read
@@ -169,20 +175,33 @@ public partial class MainWindow
         foreach (var group in groups)
         {
             int featureNumber = group.Key;
-            string headerLabel = featureNumber == 0
-                ? "No Feature"
+            // Git #2364 — the no-parent bucket isn't just another group: it's flagged, distinctly
+            // styled, and sorts last (already true via the OrderBy above) so items with nothing to
+            // build against collect at the bottom rather than blending into the real Feature groups.
+            bool isNoHome = featureNumber == 0;
+            string headerLabel = isNoHome
+                ? "No Feature — needs a home before it can be built"
                 : $"#{featureNumber} {group.First().FeatureTitle}";
+            string headerBrushKey = isNoHome ? "Brush.Toast.Warning" : "Brush.Text.Primary";
             // Never reset by a lane switch — this is the persistence #2357 asks for.
             bool expanded = !_batterUpCollapsedGroups.Contains(featureNumber);
 
             var header = GitRowShell(indent: 6);
             header.ColumnLeft(GitChevron(expanded));
-            var headerText = GitText(headerLabel, 10.5, "Brush.Text.Primary");
+            var headerText = GitText(headerLabel, 10.5, headerBrushKey);
             headerText.TextTrimming = TextTrimming.CharacterEllipsis;
             headerText.Margin = new Thickness(4, 0, 4, 0);
+            if (isNoHome) headerText.FontWeight = (FontWeight)FindResource("FontWeight.Bold");
             header.ColumnFill(headerText);
-            header.ColumnRight(GitCountPill(group.Count().ToString(), "Brush.Text.Muted"));
+            header.ColumnRight(GitCountPill(group.Count().ToString(), isNoHome ? "Brush.Toast.Warning" : "Brush.Text.Muted"));
             header.Root.MouseLeftButtonDown += (_, _) => ToggleBatterUpGroup(featureNumber);
+            if (isNoHome)
+            {
+                var warn = (SolidColorBrush)FindResource("Brush.Toast.Warning");
+                header.Root.Background = new SolidColorBrush(warn.Color) { Opacity = 0.08 };
+                header.Root.BorderBrush = new SolidColorBrush(warn.Color) { Opacity = 0.35 };
+                header.Root.BorderThickness = new Thickness(0, 1, 0, 1);
+            }
             BatterUpLaneBody.Children.Add(header.Root);
 
             if (!expanded) continue;
