@@ -5689,6 +5689,22 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
    * free-text `controlViolated`/`framework`/`title` fields above.
    */
   checkKey: text("check_key"),
+  /**
+   * Every check key BEYOND `checkKey` above that this same accepted risk should
+   * also suppress alert re-firing for (Git #1957, part of #1489). Several
+   * `remediation_tracker_steps` map to more than one check
+   * (`REMEDIATION_TRACKER_STEP_CHECK_KEYS` in `remediation-tracker-verification.ts`,
+   * e.g. s8 -> `identity:ca-policy-count` + `identity:ca-mfa-coverage`) — a
+   * customer declining one such step and accepting the whole step's risk must
+   * suppress re-firing on ALL of its mapped checks, not just the first. `checkKey`
+   * itself is left untouched (existing single-key rows, and `msp-rbd.ts` /
+   * `m365-change-router.ts`'s #1514 path, which never populate this column,
+   * keep working exactly as before) — this is purely additive. NULL/empty is
+   * the common case. The alert engine's `NOT_ACCEPTED_AS_RISK` suppression
+   * (customer-tenant-alert-engine.ts, #1279) matches a finding's check key
+   * against `checkKey` OR any element of this array.
+   */
+  additionalCheckKeys: jsonb("additional_check_keys").$type<string[]>(),
   rawRiskLevel: text("raw_risk_level").notNull(),
   residualRiskLevel: text("residual_risk_level").notNull(),
   rawRiskScore: integer("raw_risk_score").notNull(),
