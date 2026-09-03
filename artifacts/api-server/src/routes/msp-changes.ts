@@ -9,6 +9,8 @@ import { logger } from "../lib/logger.ts";
 import { logRetainerWorkFromTracker, pillarHintForCategory } from "../lib/retainer-work-logger.ts";
 import { CHANGE_REQUEST_CATEGORIES, workloadForCategory } from "../lib/portal-change-control.ts";
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
+import { maintenanceCoverageForBookedSpan } from "../lib/portal-change-maintenance-store.ts";
+import { collidingChangeRequestForSubmit } from "../lib/portal-change-collision-store.ts";
 import { loadApprovalPolicy, materializeApprovalsForChange } from "../lib/portal-change-approvals-store.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import {
@@ -153,15 +155,20 @@ router.post(
         .from(tenantsTable)
         .where(and(eq(tenantsTable.mspId, mspId), eq(tenantsTable.tenantId, parsedBody.data.tenantId)))
         .limit(1);
-      let policyRow: { enabled: boolean; enforceFreezeCalendar: boolean } | undefined;
+      let policyRow: { enabled: boolean; enforceFreezeCalendar: boolean; enforceMaintenanceWindows: boolean } | undefined;
       if (tenantForPolicy) {
         [policyRow] = await db
-          .select({ enabled: portalChangeControlPolicyTable.enabled, enforceFreezeCalendar: portalChangeControlPolicyTable.enforceFreezeCalendar })
+          .select({
+            enabled: portalChangeControlPolicyTable.enabled,
+            enforceFreezeCalendar: portalChangeControlPolicyTable.enforceFreezeCalendar,
+            enforceMaintenanceWindows: portalChangeControlPolicyTable.enforceMaintenanceWindows,
+          })
           .from(portalChangeControlPolicyTable)
           .where(eq(portalChangeControlPolicyTable.customerId, tenantForPolicy.id))
           .limit(1);
       }
       const freezeEnforced = policyRow?.enabled === true && policyRow?.enforceFreezeCalendar === true;
+      const maintenanceEnforced = policyRow?.enabled === true && policyRow?.enforceMaintenanceWindows === true;
       const workload = workloadForCategory(parsedBody.data.category);
       const freezeCtx = { mspId, tenantId: parsedBody.data.tenantId, workload };
       const submitFreeze = freezeEnforced ? await activeFreezeForSubmit(freezeCtx, new Date()) : null;
@@ -189,6 +196,36 @@ router.post(
             : `The booked window overlaps the "${blockingFreeze.name}" change freeze. Scheduling into it requires a written exception.`,
         );
         return;
+      }
+
+      // #1504 — maintenance-window enforcement, same door, same policy pair.
+      if (maintenanceEnforced && parsedBody.data.scheduledStart) {
+        const covered = await maintenanceCoverageForBookedSpan(
+          freezeCtx,
+          new Date(parsedBody.data.scheduledStart),
+          parsedBody.data.scheduledEnd ? new Date(parsedBody.data.scheduledEnd) : null,
+        );
+        if (!covered) {
+          apiError(res, 409, ApiErrorCode.CONFLICT, "The booked window falls outside every approved maintenance window.");
+          return;
+        }
+      }
+
+      // #1504 — collision detection on `targetResource`. Unconditional (not
+      // policy-gated) — see `portal-change-control-raise.ts` for why. Only
+      // evaluated against a real booked span.
+      if (parsedBody.data.scheduledStart) {
+        const colliding = await collidingChangeRequestForSubmit(
+          mspId,
+          parsedBody.data.tenantId,
+          parsedBody.data.targetResource,
+          new Date(parsedBody.data.scheduledStart),
+          parsedBody.data.scheduledEnd ? new Date(parsedBody.data.scheduledEnd) : null,
+        );
+        if (colliding) {
+          apiError(res, 409, ApiErrorCode.CONFLICT, `This target is already booked by ${colliding.code} in an overlapping window.`);
+          return;
+        }
       }
 
       const [inserted] = await db

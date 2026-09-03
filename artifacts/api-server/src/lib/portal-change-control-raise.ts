@@ -28,6 +28,8 @@ import { resolveTenantScope } from "./portal-customer-scope";
 import { personIdForUser } from "./portal-ownership";
 import { dischargeRisksForNewChangeRequest } from "./change-request-risk-discharge";
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "./portal-change-freeze-store";
+import { maintenanceCoverageForBookedSpan } from "./portal-change-maintenance-store";
+import { collidingChangeRequestForSubmit } from "./portal-change-collision-store";
 import { loadApprovalPolicy, materializeApprovalsForChange } from "./portal-change-approvals-store";
 import { recordCrEvent } from "./portal-change-timeline-store";
 import { logger } from "./logger";
@@ -129,11 +131,16 @@ export async function raiseChangeRequest(
   const requestedAt = new Date().toISOString();
 
   const [policyRow] = await db
-    .select({ enabled: portalChangeControlPolicyTable.enabled, enforceFreezeCalendar: portalChangeControlPolicyTable.enforceFreezeCalendar })
+    .select({
+      enabled: portalChangeControlPolicyTable.enabled,
+      enforceFreezeCalendar: portalChangeControlPolicyTable.enforceFreezeCalendar,
+      enforceMaintenanceWindows: portalChangeControlPolicyTable.enforceMaintenanceWindows,
+    })
     .from(portalChangeControlPolicyTable)
     .where(eq(portalChangeControlPolicyTable.customerId, scope.customerId))
     .limit(1);
   const freezeEnforced = policyRow?.enabled === true && policyRow?.enforceFreezeCalendar === true;
+  const maintenanceEnforced = policyRow?.enabled === true && policyRow?.enforceMaintenanceWindows === true;
   const freezeCtx = { mspId: scope.mspId, tenantId: scope.tenantId, workload };
   const submitFreeze = freezeEnforced ? await activeFreezeForSubmit(freezeCtx, new Date()) : null;
 
@@ -155,6 +162,42 @@ export async function raiseChangeRequest(
       freeze: { id: blockingFreeze.id, name: blockingFreeze.name, scope: blockingFreeze.scope },
       bookedWindowEvaluated,
     });
+  }
+
+  // #1504 — maintenance-window enforcement: only meaningful against a real
+  // booked span, same gate as the freeze booked-window check above.
+  if (maintenanceEnforced && input.scheduledStart) {
+    const covered = await maintenanceCoverageForBookedSpan(
+      freezeCtx,
+      new Date(input.scheduledStart),
+      input.scheduledEnd ? new Date(input.scheduledEnd) : null,
+    );
+    if (!covered) {
+      throw new RaiseChangeRequestError(409, "The booked window falls outside every approved maintenance window.", {
+        maintenanceWindowRequired: true,
+      });
+    }
+  }
+
+  // #1504 — collision detection on `targetResource`: two changes hitting the
+  // same object. Unconditional (not policy-gated) — this is a scheduling
+  // conflict, not a curated calendar rule an MSP opts into. Only evaluated
+  // against a real booked span; a change with no real instant cannot collide.
+  if (input.scheduledStart) {
+    const colliding = await collidingChangeRequestForSubmit(
+      scope.mspId,
+      scope.tenantId,
+      input.target,
+      new Date(input.scheduledStart),
+      input.scheduledEnd ? new Date(input.scheduledEnd) : null,
+    );
+    if (colliding) {
+      throw new RaiseChangeRequestError(
+        409,
+        `This target is already booked by ${colliding.code} in an overlapping window.`,
+        { collidesWith: colliding.code },
+      );
+    }
   }
 
   // #1761 — a Standard change is pre-approved at creation. See the wizard

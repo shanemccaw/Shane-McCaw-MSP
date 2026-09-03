@@ -4538,6 +4538,97 @@ export const insertChangeFreezeWindowSchema = createInsertSchema(changeFreezeWin
 export type ChangeFreezeWindow = typeof changeFreezeWindowsTable.$inferSelect;
 export type InsertChangeFreezeWindow = typeof changeFreezeWindowsTable.$inferInsert;
 
+// ── Change maintenance windows (#1504) ───────────────────────────────────────
+//
+// The OPPOSITE of `change_freeze_windows` above, not a variant of it: a freeze
+// window is when change is FORBIDDEN; a maintenance window is when change is
+// EXPECTED. Deliberately its own table, same shape (scope/recurrence engine) as
+// the freeze table because both are "a standing calendar rule an MSP curates",
+// but never merged into one table — the two rows types answer different
+// questions and a single boolean "isFreeze" column would make every existing
+// freeze query (`matchesFreezeScope`, `findActiveFreeze`, …) have to filter on
+// it forever. Enforcement (`portal-change-maintenance.ts`) walks the same
+// anchored-cadence math as the freeze module, kept as its own copy rather than
+// a shared import — see that module's header for why.
+export const CHANGE_MAINTENANCE_SCOPES = ["global", "tenant", "workload"] as const;
+export type ChangeMaintenanceScope = (typeof CHANGE_MAINTENANCE_SCOPES)[number];
+
+export const CHANGE_MAINTENANCE_RECURRENCES = ["none", "weekly", "monthly", "quarterly", "annually"] as const;
+export type ChangeMaintenanceRecurrence = (typeof CHANGE_MAINTENANCE_RECURRENCES)[number];
+
+export const changeMaintenanceWindowsTable = pgTable("change_maintenance_windows", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  scope: text("scope", { enum: CHANGE_MAINTENANCE_SCOPES }).notNull(),
+  /** Required when scope = 'tenant': the free-text M365 tenant identifier. NULL otherwise. */
+  tenantId: text("tenant_id"),
+  /** Required when scope = 'workload': one of `CHANGE_REQUEST_WORKLOADS`. NULL otherwise. */
+  workload: text("workload"),
+  name: text("name").notNull(),
+  reason: text("reason"),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  recurrence: text("recurrence", { enum: CHANGE_MAINTENANCE_RECURRENCES }).notNull().default("none"),
+  /** Only meaningful when recurrence <> 'none'. NULL = repeats indefinitely. */
+  recurrenceUntil: timestamp("recurrence_until", { withTimezone: true }),
+  active: boolean("active").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("change_maintenance_windows_msp_id_idx").on(t.mspId),
+  index("change_maintenance_windows_scope_idx").on(t.mspId, t.scope),
+  index("change_maintenance_windows_active_idx").on(t.active),
+]);
+
+export const insertChangeMaintenanceWindowSchema = createInsertSchema(changeMaintenanceWindowsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type ChangeMaintenanceWindow = typeof changeMaintenanceWindowsTable.$inferSelect;
+export type InsertChangeMaintenanceWindow = typeof changeMaintenanceWindowsTable.$inferInsert;
+
+// ── CR dependencies — `blocked_by` between change requests (#1504) ──────────
+//
+// One row = one directed edge: `changeRequestId` is BLOCKED BY
+// `blocksChangeRequestId` — the blocking CR must reach `completed` before the
+// blocked CR may be claimed to authorize a write. Deliberately narrower than
+// "any terminal status": `rejected`/`rolled_back` mean the blocking change
+// never actually landed, so the dependency it promised is still unmet — the
+// edge stays blocking rather than silently releasing, and clearing it is then
+// a deliberate MSP action (delete the edge), not an automatic side effect of
+// the blocker's own status. Enforced in exactly one place —
+// `change-control-write-gate.ts`'s `claimChangeRequestForWrite`, the same
+// single choke point `cr_approvals` is folded into — never a second gate
+// bolted onto a status PATCH route, which a caller could route around.
+//
+// Both columns are real FKs, `onDelete: cascade`: a dependency edge naming a CR
+// that no longer exists is not a real constraint, unlike `rollback_of_change_
+// request_id`'s `set null` (that column preserves a historical fact about a CR
+// that still exists in its own right). A CHECK forbids a CR from blocking
+// itself; there is no cycle-detection constraint at the DB level (Postgres
+// cannot express "no cycle in this self-referencing edge set" declaratively) —
+// the route layer is expected to reject an edge that would create one, but a
+// hand-run migration or a future direct write is not blocked by this table
+// alone from producing a cycle. Documented rather than silently assumed.
+export const changeRequestDependenciesTable = pgTable("change_request_dependencies", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The BLOCKED change — cannot be claimed for a write while this edge exists and the blocker is non-terminal. */
+  changeRequestId: integer("change_request_id").notNull().references((): AnyPgColumn => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  /** The BLOCKING change — must reach a terminal `completed` state to clear this edge. */
+  blocksChangeRequestId: integer("blocks_change_request_id").notNull().references((): AnyPgColumn => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  note: text("note"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("change_request_dependencies_msp_id_idx").on(t.mspId),
+  index("change_request_dependencies_change_request_id_idx").on(t.changeRequestId),
+  index("change_request_dependencies_blocks_change_request_id_idx").on(t.blocksChangeRequestId),
+  unique("change_request_dependencies_edge_uidx").on(t.changeRequestId, t.blocksChangeRequestId),
+]);
+
+export const insertChangeRequestDependencySchema = createInsertSchema(changeRequestDependenciesTable).omit({ id: true, createdAt: true });
+export type ChangeRequestDependency = typeof changeRequestDependenciesTable.$inferSelect;
+export type InsertChangeRequestDependency = typeof changeRequestDependenciesTable.$inferInsert;
+
 // ── Change Control approval ledger (#1496) ───────────────────────────────────
 //
 // `msp_change_requests.approvedBy` is a single free-text string: it can record
@@ -7508,6 +7599,19 @@ export const portalChangeControlPolicyTable = pgTable("portal_change_control_pol
   requireSeparateApprover: boolean("require_separate_approver").notNull().default(true),
   /** "Nothing may be scheduled inside a freeze without a written exception." */
   enforceFreezeCalendar: boolean("enforce_freeze_calendar").notNull().default(false),
+  /**
+   * #1504 — the maintenance-window counterpart to `enforceFreezeCalendar` above.
+   * A freeze window is when change is FORBIDDEN; a maintenance window is when
+   * change is EXPECTED — opposite meaning, same shape of switch. When true, a
+   * change's booked window (`scheduled_start`/`scheduled_end`) must fall inside
+   * an active `change_maintenance_windows` row matching its scope, or submission
+   * is blocked — evaluated server-side at submit exactly like the freeze check,
+   * through the same `raiseChangeRequest`/MSP-console entry points, never a
+   * second enforcement path. Off by default: an MSP that has not curated any
+   * maintenance windows must not have every change blocked the moment it flips
+   * this on by accident.
+   */
+  enforceMaintenanceWindows: boolean("enforce_maintenance_windows").notNull().default(false),
   /** "Run first, approve retrospectively within 24 hours." */
   allowEmergencyPath: boolean("allow_emergency_path").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

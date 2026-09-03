@@ -42,6 +42,7 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { requiredStages, summarizeApprovals } from "./portal-change-approvals";
 import { formatChangeRequestCode, type StoredChangeClass, type StoredRiskLevel } from "./portal-change-control";
+import { unresolvedBlockersFor } from "./portal-change-dependencies-store";
 import { logger } from "./logger";
 
 const log = logger.child({ channel: "workflow.change-control" });
@@ -81,6 +82,15 @@ export interface ChangeRequestAuthorizationFacts {
    * tenant, exactly as before #1773.
    */
   readonly requestedTargetKey?: string | null;
+  /**
+   * #1504 — the human-readable codes of every OPEN `blocked_by` dependency
+   * still standing against this CR (`change_request_dependencies`, cleared
+   * only once the blocking CR reaches `completed`). Undefined/empty means
+   * unblocked — optional so every pre-existing caller/test fixture that never
+   * heard of dependencies still reads as "no blockers", same discipline
+   * `authorizedTargetKey` above follows.
+   */
+  readonly unresolvedBlockerCodes?: readonly string[];
 }
 
 /**
@@ -108,6 +118,16 @@ export function evaluateChangeRequestAuthorization(
   }
   if (!facts.approvalComplete) {
     return { authorized: false, reason: "change request approval is not complete" };
+  }
+  // #1504 — a CR with an open `blocked_by` dependency cannot authorize a write
+  // until every blocker reaches `completed`. Checked after approval so an
+  // already-blocked CR still reports the clearer "approval not complete"
+  // reason first when both are true.
+  if (facts.unresolvedBlockerCodes && facts.unresolvedBlockerCodes.length > 0) {
+    return {
+      authorized: false,
+      reason: `change request is blocked by ${facts.unresolvedBlockerCodes.join(", ")}`,
+    };
   }
   // #1773 — a CR scoped to a specific target at raise time may ONLY authorize
   // that target. Fail-closed on a mismatch even though every other branch above
@@ -196,10 +216,13 @@ export async function claimChangeRequestForWrite(opts: {
     return { ok: false, reason: verdict.authorized ? "" : verdict.reason };
   }
 
-  const approvals = await db
-    .select({ stage: crApprovalsTable.stage, decision: crApprovalsTable.decision, dueAt: crApprovalsTable.dueAt })
-    .from(crApprovalsTable)
-    .where(eq(crApprovalsTable.changeRequestId, cr.id));
+  const [approvals, unresolvedBlockers] = await Promise.all([
+    db
+      .select({ stage: crApprovalsTable.stage, decision: crApprovalsTable.decision, dueAt: crApprovalsTable.dueAt })
+      .from(crApprovalsTable)
+      .where(eq(crApprovalsTable.changeRequestId, cr.id)),
+    unresolvedBlockersFor(cr.id, opts.mspId),
+  ]);
 
   const verdict = evaluateChangeRequestAuthorization({
     found: true,
@@ -208,6 +231,7 @@ export async function claimChangeRequestForWrite(opts: {
     approvalComplete: isApprovalComplete(approvals, cr.changeClass, cr.riskLevel, now),
     authorizedTargetKey: cr.authorizedTargetKey,
     requestedTargetKey: opts.targetKey ?? null,
+    unresolvedBlockerCodes: unresolvedBlockers.map((b) => b.otherChangeRequestCode),
   });
   if (!verdict.authorized) {
     return { ok: false, reason: verdict.reason };
