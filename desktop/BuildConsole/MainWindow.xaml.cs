@@ -781,6 +781,11 @@ namespace BuildConsole
                     logChannel: "build-queue.rollup-send-to-chat",
                     whatSingular: "landed list");
             BuildQueuePanel.EpicSubIssueClicked += async (s, githubNumber) => await OpenGitDetailByNumberAsync(githubNumber, sideBySide: true);
+            // Git #2691 — point 3: live queue-state changes (queued → running → verifying) recolor
+            // on-screen #NNN mentions even with no chat text mutation, by reusing this same real
+            // ~15s poll tick that already updates BuildQueuePanel.CurrentQueueItems — no new
+            // polling loop.
+            BuildQueuePanel.QueueRefreshed += async (s, e) => await PushLiveMentionColorsAsync();
             // Git #1994 — Build Queue card's "Open Git #N" context-menu item.
             BuildQueuePanel.OpenGitIssueRequested += async (s, req) => await OpenGitDetailByNumberAsync(req.Number, req.SideBySide);
             // Git #1836 — this used to call LeftSidebar.PopulateGitTrackerBoard(forceFresh:
@@ -4169,6 +4174,32 @@ namespace BuildConsole
 
         /// <summary>Git #942 — a JS string literal safe to interpolate into ExecuteScriptAsync; JSON string encoding covers quotes/backslashes/newlines.</summary>
         private static string JsLiteral(string s) => System.Text.Json.JsonSerializer.Serialize(s);
+
+        /// <summary>
+        /// Git #2691 point 3 — re-resolves and re-pushes mention-span colors for every #NNN
+        /// <see cref="Services.LiveMentionNumberRegistry"/> has ever seen on screen, on every
+        /// <see cref="Controls.BuildQueuePanel.QueueRefreshed"/> tick (the panel's own real ~15s
+        /// poll, no new polling loop here). Broadcasts to ClaudeWebView + every embedded chat tab
+        /// via the existing #942 broadcast helper, plus the floating chat window's own tabs — a
+        /// number a given page doesn't currently have a live span for is simply a no-op
+        /// (__btSetMentionColors only touches spans that exist), so over-broadcasting is safe.
+        /// </summary>
+        private async System.Threading.Tasks.Task PushLiveMentionColorsAsync()
+        {
+            var numbers = BuildConsole.Services.LiveMentionNumberRegistry.Snapshot();
+            if (numbers.Count == 0) return;
+
+            string? js;
+            try
+            {
+                js = BuildConsole.Services.ChatMentionPopupHelper.BuildSetMentionColorsScript(numbers, LeftSidebar);
+            }
+            catch { return; }
+            if (js == null) return;
+
+            await RunScriptInAllChatWebViewsAsync(js);
+            if (_floatingChatWindow != null) await _floatingChatWindow.RefreshAllMentionColorsAsync(js);
+        }
 
         /// <summary>
         /// Git #1421 — every 3s (same interval as PollChatTabBuildStateAsync above),
@@ -7946,6 +7977,11 @@ namespace BuildConsole
                             numbers.Add(n);
                     }
                     if (numbers.Count == 0) return;
+
+                    // Git #2691 — remember every number this scan has ever surfaced (not just this
+                    // delta) so the QueueRefreshed-driven re-push (PushLiveMentionColorsAsync) knows
+                    // which numbers are actually on screen somewhere and worth recoloring later.
+                    BuildConsole.Services.LiveMentionNumberRegistry.Track(numbers);
 
                     // Git #2134 — eager color-by-type/status for these newly-on-screen mentions,
                     // straight off the same cache BT_HOVER_ISSUE already resolves from (no live

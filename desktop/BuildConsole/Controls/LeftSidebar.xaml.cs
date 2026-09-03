@@ -6621,7 +6621,11 @@ namespace BuildConsole.Controls
                     ProgressPercent = state.ProgressPercent,
                     ProgressLabel = state.ProgressLabel,
                     Stale = state.IsStale,
-                    StaleText = state.StalenessText
+                    StaleText = state.StalenessText,
+                    // Git #2691 — same live-state classification the eager mention-color batch
+                    // push uses, so the hover round-trip's recolor (window.__btShowIssueTip)
+                    // agrees with __btSetMentionColors instead of a second resolution.
+                    LiveStatus = IssueQuickActionResolver.ClassifyLiveStatus(build)
                 }
             };
         }

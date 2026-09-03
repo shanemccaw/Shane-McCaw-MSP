@@ -395,12 +395,35 @@ namespace BuildConsole
             }
             if (numbers.Count == 0) return;
 
+            // Git #2691 — same accumulated registry MainWindow's own BT_ISSUE_MENTIONS_SCAN handler
+            // feeds, so a number only ever mentioned in a floating tab still gets picked up by
+            // MainWindow's QueueRefreshed-driven re-push (PushLiveMentionColorsAsync).
+            BuildConsole.Services.LiveMentionNumberRegistry.Track(numbers);
+
             try
             {
                 string? js = BuildConsole.Services.ChatMentionPopupHelper.BuildSetMentionColorsScript(numbers, _owner?.LeftSidebar);
                 if (js != null) await tab.Wv.CoreWebView2.ExecuteScriptAsync(js);
             }
             catch { }
+        }
+
+        /// <summary>
+        /// Git #2691 point 3 — MainWindow's QueueRefreshed-driven re-push
+        /// (<see cref="MainWindow.PushLiveMentionColorsAsync"/>) calls this to apply the same
+        /// already-built __btSetMentionColors script to every tab this window currently has open,
+        /// so a live queue-state change recolors a mention here too, not just in MainWindow's own
+        /// chat tabs. Each tab is guarded independently — one mid-navigation/teardown can't stop
+        /// the rest.
+        /// </summary>
+        internal async System.Threading.Tasks.Task RefreshAllMentionColorsAsync(string js)
+        {
+            foreach (var tab in _tabs)
+            {
+                if (tab.Wv?.CoreWebView2 == null) continue;
+                try { await tab.Wv.CoreWebView2.ExecuteScriptAsync(js); }
+                catch { }
+            }
         }
 
         /// <summary>

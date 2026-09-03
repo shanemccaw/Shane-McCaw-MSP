@@ -27,6 +27,23 @@ namespace BuildConsole.Services
 
     public static class IssueQuickActionResolver
     {
+        /// <summary>Git #2691 — the real, already-live subset of <see cref="QueueItem.Status"/>
+        /// values the mention-color feature cares about: actively executing right now
+        /// ("running"/"verifying" — <see cref="BuildQueuePostgresClient.VerifyingStatus"/>) vs
+        /// sitting tracked-but-not-dispatched ("queued", i.e. Batter Up). Anything else (done,
+        /// failed, parked, capped, external, canceled…) returns null — no live-state color, falls
+        /// through to the epic/closed/default coloring. One classification, reused by both
+        /// <see cref="ChatMentionPopupHelper.BuildSetMentionColorsScript"/> (eager batch push) and
+        /// <see cref="Controls.LeftSidebar.BuildChatMentionActionPayload"/> (hover round-trip), so
+        /// the eager span color and the hover-refreshed color never disagree.</summary>
+        public static string? ClassifyLiveStatus(QueueItem build) => build.Status switch
+        {
+            "running" => "running",
+            var s when s == BuildQueuePostgresClient.VerifyingStatus => "verifying",
+            "queued" => "queued",
+            _ => null
+        };
+
         /// <summary>Same six-bucket classification #2061 established: queued -> Dispatch,
         /// running -> Cancel/Stop (+ progress + inline reply, #2036's question-detection still
         /// deferred so a running build always offers reply), done -> Open Build, failed -> Retry,
@@ -123,5 +140,10 @@ namespace BuildConsole.Services
         public string? ProgressLabel { get; set; }
         public bool Stale { get; set; }
         public string? StaleText { get; set; }
+        /// <summary>Git #2691 — "running"/"verifying"/"queued", or null. Same
+        /// <see cref="ClassifyLiveStatus"/> classification the eager <c>__btSetMentionColors</c>
+        /// batch push uses, carried through the hover round-trip so <c>window.__btShowIssueTip</c>
+        /// recolors the span with the identical live-state color, not a second resolution.</summary>
+        public string? LiveStatus { get; set; }
     }
 }

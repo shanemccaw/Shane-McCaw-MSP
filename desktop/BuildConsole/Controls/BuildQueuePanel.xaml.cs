@@ -103,6 +103,13 @@ namespace BuildConsole.Controls
         /// this to the shared SendTextToActiveClaudeChatAsync path (#937), same pattern as
         /// WireSqlRunnerSendToChat (#940).</summary>
         public event EventHandler<SendBuildSetVerifyingEventArgs>? SendBuildSetVerifyingRequested;
+        /// <summary>Git #2691 — fires at the end of every successful <see cref="RefreshAsync"/>
+        /// (the real, already-existing ~15s _pollTimer tick that updates <see cref="CurrentQueueItems"/>
+        /// — no new polling loop). MainWindow/FloatingChatWindow subscribe to re-push mention-span
+        /// colors for every currently-tracked #NNN so live queue-state changes (queued → running →
+        /// verifying) recolor on-screen mentions even with no chat text mutation to trigger the
+        /// DOM-mutation scan.</summary>
+        public event EventHandler? QueueRefreshed;
         private bool _isPinned = true;
 
         private int _refreshGeneration;
@@ -788,6 +795,7 @@ namespace BuildConsole.Controls
                     ? $"Build Queue: showing cached data from {_queueCachedAtUtc?.ToLocalTime():g} — dev server unreachable"
                     : null);
                 TriggerBackgroundIssueTitleQueries();
+                QueueRefreshed?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {

@@ -85,7 +85,14 @@ namespace BuildConsole.Services
         /// cache (no live GitHub fetch — this can be a whole screen's worth of mentions at once) and
         /// returns the JS call that colors those mention spans by type/status. A number not yet cached
         /// is simply omitted; its span keeps the default color until a later hover resolves it. Returns
-        /// null if nothing in <paramref name="numbers"/> is cached yet.</summary>
+        /// null if nothing in <paramref name="numbers"/> is cached yet.
+        ///
+        /// Git #2691 — also resolves each number's real live build-queue state via
+        /// <see cref="LeftSidebar.FindAssociatedBuild"/> (the exact same in-memory lookup the hover
+        /// tooltip's <see cref="BuildShowTipScriptAsync"/> and <see cref="LeftSidebar.BuildChatMentionActionPayload"/>
+        /// already use — reused here, not a second lookup) and includes it as <c>liveStatus</c> so a
+        /// number that's actively running/verifying, or sitting queued (Batter Up), colors
+        /// distinctly even with no GitHub board cache entry at all.</summary>
         public static string? BuildSetMentionColorsScript(IEnumerable<int> numbers, LeftSidebar? leftSidebar)
         {
             if (leftSidebar == null) return null;
@@ -94,12 +101,15 @@ namespace BuildConsole.Services
             foreach (var n in numbers.Distinct())
             {
                 var cached = leftSidebar.BuildDetailIssue(n);
-                if (cached == null) continue;
+                var build = leftSidebar.FindAssociatedBuild(n);
+                string? liveStatus = build != null ? IssueQuickActionResolver.ClassifyLiveStatus(build) : null;
+                if (cached == null && liveStatus == null) continue;
                 map[n.ToString()] = new
                 {
-                    isEpic = cached.IsEpic,
-                    closed = string.Equals(cached.Status, "CLOSED", StringComparison.OrdinalIgnoreCase),
-                    blocked = cached.IsBlocked
+                    isEpic = cached?.IsEpic ?? false,
+                    closed = cached != null && string.Equals(cached.Status, "CLOSED", StringComparison.OrdinalIgnoreCase),
+                    blocked = cached?.IsBlocked ?? false,
+                    liveStatus
                 };
             }
             if (map.Count == 0) return null;

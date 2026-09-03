@@ -62,6 +62,15 @@ namespace BuildConsole.Services
     /// div, not a TEXTAREA, so the fixed SKIP_TAGS list never excluded it: typing a
     /// bare number or "#NNN" into the composer got that live text node replaced by
     /// the debounced scan, stealing the cursor position.
+    ///
+    /// Git #2691 — the eager span color from #2134 now also reflects real LIVE build-queue
+    /// state, not just epic/closed/blocked: green for actively running/verifying, amber for
+    /// sitting queued in Batter Up waiting to be dispatched. Sourced from
+    /// BuildQueuePanel.CurrentQueueItems (the same in-memory lookup #2080's hover tip already
+    /// resolves through, ChatMentionPopupHelper.BuildSetMentionColorsScript /
+    /// LeftSidebar.BuildChatMentionActionPayload), and re-pushed on BuildQueuePanel's own
+    /// existing QueueRefreshed event (its real ~15s poll tick — no new polling loop) so a
+    /// number's color tracks live queue-state changes even with no chat text mutation at all.
     /// </summary>
     public static class IssueMentionInjector
     {
@@ -208,7 +217,11 @@ namespace BuildConsole.Services
       var hoverColor = colorForMentionInfo({
         isEpic: !!isEpic,
         closed: status === 'CLOSED',
-        blocked: !!(actions && actions.blocked)
+        blocked: !!(actions && actions.blocked),
+        /* Git #2691 — same liveStatus field the eager batch push resolves, carried through
+           the hover round-trip via ChatMentionBuild.LiveStatus so this recolor agrees with
+           __btSetMentionColors instead of a second resolution. */
+        liveStatus: (actions && actions.build && actions.build.liveStatus) || null
       });
       for (var hi = 0; hi < hoverSpans.length; hi++) {
         applyMentionColor(hoverSpans[hi], hoverColor);
@@ -266,17 +279,30 @@ namespace BuildConsole.Services
      hovering. Pushed eagerly by the host off the same IsEpic/status/blocked cache
      BT_HOVER_ISSUE already resolves from (see window.__btSetMentionColors below) —
      this is the fallback/default the span shows until that resolution lands. */
-  var MENTION_DEFAULT_COLOR = '#89B4FA';
-  var MENTION_EPIC_COLOR    = '#F9E2AF';
-  var MENTION_CLOSED_COLOR  = '#6C7086';
-  var MENTION_BLOCKED_COLOR = '#F38BA8';
+  var MENTION_DEFAULT_COLOR   = '#89B4FA';
+  var MENTION_EPIC_COLOR      = '#F9E2AF';
+  var MENTION_CLOSED_COLOR    = '#6C7086';
+  var MENTION_BLOCKED_COLOR   = '#F38BA8';
+  /* Git #2691 — Shane: color live build state too, not just epic/closed/blocked, so an
+     actively-executing mention reads at a glance without hovering every number. Green for
+     genuinely in-flight (running/verifying — as operationally urgent as blocked, it's
+     happening right now); a distinct amber/gold for sitting queued in Batter Up, waiting
+     to be dispatched (informational, not urgent). */
+  var MENTION_INFLIGHT_COLOR  = '#A6E3A1';
+  var MENTION_BATTERUP_COLOR  = '#FAB387';
   var _mentionSpans = {}; /* num -> [span, ...], all live spans currently rendered for that number */
 
   function colorForMentionInfo(info) {
-    /* Blocked is the most operationally urgent signal (needs action now), so it
-       wins even on an epic; epic beats closed since "which one is the epic" is
-       the primary case this was built for; closed (any type) reads muted/done. */
+    /* Blocked is the most operationally urgent signal (needs action now), so it still wins
+       overall. An in-flight build (running/verifying) is right behind it — genuinely urgent,
+       happening right now — so it outranks epic/closed too. Batter-Up-waiting is informational
+       (nothing is happening yet), so it sits below in-flight but still ahead of epic/closed —
+       worth surfacing at a glance, but not as loudly as something actually executing. Epic beats
+       closed since "which one is the epic" is the primary case #2134 was built for; closed (any
+       type) reads muted/done. */
     if (info.blocked) return MENTION_BLOCKED_COLOR;
+    if (info.liveStatus === 'running' || info.liveStatus === 'verifying') return MENTION_INFLIGHT_COLOR;
+    if (info.liveStatus === 'queued') return MENTION_BATTERUP_COLOR;
     if (info.isEpic) return MENTION_EPIC_COLOR;
     if (info.closed) return MENTION_CLOSED_COLOR;
     return MENTION_DEFAULT_COLOR;
