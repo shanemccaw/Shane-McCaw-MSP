@@ -31,6 +31,16 @@
                 <TextBlock Text="Test Pad" FontSize="13" FontWeight="SemiBold"
                            Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Import: paste a whole Notepad file (#2533), opens the real
+                         TestPadImportWindow modal dialog. -->
+                    <Border x:Name="BtnImport" Height="20" CornerRadius="4" Cursor="Hand"
+                            Padding="6,0" Margin="0,0,6,0" Background="Transparent"
+                            MouseLeftButtonUp="BtnImport_Click"
+                            ToolTip="Import notes from a pasted Notepad file">
+                        <TextBlock Text="Import" FontSize="10"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </Border>
                     <!-- "Copy as markdown" for the checked selection, distinct from "Send to
                          Claude" which falls back to every unsent note when nothing is checked.
                          This one only ever acts on TestPadNote.IsSelected, so it's hidden entirely
