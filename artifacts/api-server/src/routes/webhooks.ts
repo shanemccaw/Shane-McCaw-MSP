@@ -24,7 +24,7 @@ const router = Router();
 
 // ── Canonical event types exposed for subscription selection ──────────────────
 
-const SUBSCRIBABLE_EVENT_TYPES = [
+export const SUBSCRIBABLE_EVENT_TYPES = [
   ...Object.values(EVENT_TYPES),
   // Additional platform-specific event types
   "signal.fired",
@@ -282,7 +282,16 @@ router.patch("/portal/webhooks/:webhookId", requireAuth, async (req: Request, re
   if (parsed.data.label !== undefined) updates.label = parsed.data.label;
   if (parsed.data.url !== undefined) updates.url = parsed.data.url;
   if (parsed.data.eventTypes !== undefined) updates.eventTypes = parsed.data.eventTypes;
-  if (parsed.data.isActive !== undefined) updates.isActive = parsed.data.isActive;
+  if (parsed.data.isActive !== undefined) {
+    updates.isActive = parsed.data.isActive;
+    // The owner (customer or MSP) touching isActive directly always clears any
+    // MSP-console disable tracking (#2704) — whichever way they set it, the
+    // current disabled state (if any) is the owner's own now, not the MSP
+    // operator's prior action.
+    updates.disabledByMspUserId = null;
+    updates.disabledAt = null;
+    updates.disabledReason = null;
+  }
 
   const [updated] = await db
     .update(outboundWebhooksTable)

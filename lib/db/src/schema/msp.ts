@@ -1088,6 +1088,17 @@ export const outboundWebhooksTable = pgTable("outbound_webhooks", {
   secretPrefix: text("secret_prefix").notNull(),
   eventTypes: jsonb("event_types").$type<string[]>().notNull().default([]),
   isActive: boolean("is_active").notNull().default(true),
+  // Set when an MSP operator (not the owner) disables this endpoint from the
+  // MSP console (#2704, part of #1693) — distinguishes an operator-initiated
+  // disable from the owner's own toggle. Cleared any time isActive is set via
+  // the owner-facing portal route (webhooks.ts PATCH) or re-enabled from the
+  // MSP console, so the three columns are only ever populated while
+  // isActive === false AND the disable was MSP-initiated. Whether the owner
+  // is shown this in their own webhook view is #1693's own open question —
+  // not decided, not built here; this only makes the fact recordable.
+  disabledByMspUserId: integer("disabled_by_msp_user_id").references(() => usersTable.id, { onDelete: "set null" }),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
+  disabledReason: text("disabled_reason"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
