@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -32,6 +33,25 @@ namespace BuildConsole.Controls
         /// DispatchAsync/ForceDispatchAsync attempt so a stale click can never fire against the
         /// wrong issue.</summary>
         private int? _pendingForceIssueNumber;
+
+        /// <summary>Git #2716 — one entry per issue currently waiting on its own BUILD: comment.
+        /// Added when DispatchAsync hits NoBuildComment and asks the active chat to write one;
+        /// removed once <see cref="RecheckPendingBuildCommentsAsync"/> either dispatches it for
+        /// real or gives up. Session-scoped, in-memory — doesn't need cross-restart persistence.</summary>
+        private sealed class PendingBuildCommentRetry
+        {
+            public string IssueTitle = "";
+            public DateTime FirstAskedUtc;
+            public int RecheckAttempts;
+        }
+
+        private readonly Dictionary<int, PendingBuildCommentRetry> _pendingBuildCommentRetries = new();
+
+        /// <summary>Give-up point (Git #2716) — a real, stated bound so a comment that never
+        /// actually shows up doesn't retry forever silently: whichever of "too many board
+        /// refreshes" or "too much wall-clock time" comes first.</summary>
+        private const int MaxBuildCommentRecheckAttempts = 30;
+        private static readonly TimeSpan MaxBuildCommentPendingAge = TimeSpan.FromHours(12);
 
         /// <summary>Fired after a successful direct dispatch so MainWindow can tell the
         /// sibling BuildQueuePanel to repaint — same "best-effort visual refresh" pattern
@@ -166,6 +186,10 @@ namespace BuildConsole.Controls
                 return;
             }
 
+            // Git #2716 — a manual click supersedes any auto-retry already pending for this
+            // issue; NoBuildComment below re-adds it if it's still missing.
+            _pendingBuildCommentRetries.Remove(issueNumber);
+
             _dispatching = true;
             BtnDispatch.IsEnabled = false;
             ShowStatus($"Fetching #{issueNumber}…", (Brush)Application.Current.FindResource("Subtext0Brush"));
@@ -194,6 +218,20 @@ namespace BuildConsole.Controls
                         var (message, isError) = Services.ActiveChatBuildRequestHelper.DescribeStatus(askStatus, issueNumber);
                         ShowStatus(message, (Brush)Application.Current.FindResource(isError ? "RedBrush" : "BlueBrush"));
                         Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — ask-active-chat status: {askStatus}");
+
+                        // Git #2716 — don't just dead-end here: remember this issue so the next
+                        // board refresh (LeftSidebar.BoardRefreshCompleted, wired in MainWindow)
+                        // rechecks for the comment automatically instead of Shane having to
+                        // remember to hit Dispatch again once the chat actually posts it.
+                        if (!_pendingBuildCommentRetries.ContainsKey(issueNumber))
+                        {
+                            _pendingBuildCommentRetries[issueNumber] = new PendingBuildCommentRetry
+                            {
+                                IssueTitle = result.IssueTitle ?? $"#{issueNumber}",
+                                FirstAskedUtc = DateTime.UtcNow,
+                            };
+                            Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — queued for auto-retry on the next board refresh once a BUILD: comment appears.");
+                        }
                         return;
 
                     case Services.DispatchOutcome.AlreadyTracked:
@@ -230,6 +268,77 @@ namespace BuildConsole.Controls
             {
                 _dispatching = false;
                 BtnDispatch.IsEnabled = true;
+            }
+        }
+
+        /// <summary>
+        /// Git #2716 — rides the same manual board-refresh cascade #1813/#2557/#2688/#2711 already
+        /// use (<see cref="Controls.LeftSidebar.BoardRefreshCompleted"/>, wired in MainWindow):
+        /// for every issue DispatchAsync asked the active chat about but couldn't find a BUILD:
+        /// comment for yet, re-run the SAME real dispatch path (<see cref="Services.IssueDispatchService.DispatchAsync"/>,
+        /// which itself re-calls <see cref="Services.BatterUpQueueService.FindBuildCommentAsync"/>)
+        /// so a comment that landed since the last check auto-dispatches with no second manual
+        /// click. Fail-soft per entry — one issue's recheck failing never blocks the others, and
+        /// never breaks the cascade for the sibling hooks on the same event.
+        /// </summary>
+        public async System.Threading.Tasks.Task RecheckPendingBuildCommentsAsync()
+        {
+            if (_pendingBuildCommentRetries.Count == 0) return;
+
+            // Snapshot the keys — the loop body mutates the dictionary.
+            foreach (var issueNumber in _pendingBuildCommentRetries.Keys.ToList())
+            {
+                if (!_pendingBuildCommentRetries.TryGetValue(issueNumber, out var entry)) continue;
+                entry.RecheckAttempts++;
+
+                try
+                {
+                    var result = await Services.IssueDispatchService.DispatchAsync(_db, issueNumber);
+
+                    switch (result.Outcome)
+                    {
+                        case Services.DispatchOutcome.NoBuildComment:
+                            // Still not there. Give up only past the real, stated bound — don't
+                            // retry forever silently.
+                            bool timedOut = DateTime.UtcNow - entry.FirstAskedUtc > MaxBuildCommentPendingAge;
+                            bool tooManyAttempts = entry.RecheckAttempts >= MaxBuildCommentRecheckAttempts;
+                            if (timedOut || tooManyAttempts)
+                            {
+                                _pendingBuildCommentRetries.Remove(issueNumber);
+                                var why = timedOut ? $"no comment after {MaxBuildCommentPendingAge.TotalHours:0}h" : $"no comment after {entry.RecheckAttempts} board refreshes";
+                                Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — gave up auto-retrying ({why}); dispatch manually once the BUILD: comment is posted.");
+                                ToastEngine.Warning("Auto-Dispatch Gave Up", $"#{issueNumber} \"{entry.IssueTitle}\" — still no BUILD: comment ({why}). Dispatch manually when it's ready.");
+                            }
+                            break;
+
+                        case Services.DispatchOutcome.Queued:
+                        case Services.DispatchOutcome.QueuedButBlocked:
+                            // The comment showed up — the rest of the real dispatch flow (dedup +
+                            // QueueBuildAsync) already ran inside IssueDispatchService.DispatchAsync.
+                            _pendingBuildCommentRetries.Remove(issueNumber);
+                            Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — auto-dispatched on board refresh after its BUILD: comment appeared ({result.Outcome}).");
+                            ToastEngine.Success("Auto-Dispatched", result.Message);
+                            try { Dispatched?.Invoke(issueNumber); }
+                            catch { /* best-effort visual refresh of the sibling queue panel */ }
+                            break;
+
+                        default:
+                            // AlreadyTracked / NoPat / GitHubUnreachable / IssueNotFound / NoDb / Failed —
+                            // none of these resolve themselves by the comment appearing later, so stop
+                            // retrying and say plainly why rather than looping on something that can
+                            // never succeed.
+                            _pendingBuildCommentRetries.Remove(issueNumber);
+                            Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — auto-retry stopped ({result.Outcome}): {result.Message}");
+                            ToastEngine.Warning("Auto-Dispatch Stopped", $"#{issueNumber} \"{entry.IssueTitle}\" — {result.Message}");
+                            break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Leave the entry pending — a transient failure (network blip, etc.) shouldn't
+                    // drop it; it'll try again on the next board refresh.
+                    Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — auto-retry recheck FAILED (will retry next board refresh): {ex.Message}");
+                }
             }
         }
 

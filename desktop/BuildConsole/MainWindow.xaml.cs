@@ -882,6 +882,13 @@ namespace BuildConsole
             LeftSidebar.BoardRefreshCompleted += async (s, e) => await _batterUpPanel.RefreshAsync();
             LeftSidebar.BoardRefreshCompleted += async (s, e) => await _aiBatterUpPanel.RefreshAsync();
 
+            // Git #2716 — same cascade, fourth consumer: DispatchPanel's "Dispatch" asked the
+            // active chat to write a BUILD: comment for an issue that didn't have one yet, then
+            // dead-ended rather than auto-completing. Ride this same manual refresh to recheck
+            // every issue still waiting — if the comment has landed since, this auto-completes
+            // the dispatch with no second manual click.
+            LeftSidebar.BoardRefreshCompleted += async (s, e) => await DispatchPanel.RecheckPendingBuildCommentsAsync();
+
             // Git #2685 — same event-piggyback pattern as the hooks above. A self-blocked session
             // that wrote a real 🛑 BLOCKED bookend and exited cleanly gets marked 'done' by the
             // watcher (its only completion signal), then dedup-locks that issue forever because
