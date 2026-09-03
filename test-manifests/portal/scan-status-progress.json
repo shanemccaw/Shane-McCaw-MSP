@@ -1,0 +1,60 @@
+{
+  "feature": "Portal Shell (Git #1824): the Tenant Status card / scan status and progress. Three real backends combined per docs/scan-progress-sse-contract-pack.md (#2520) -- GET /api/portal/scan-status (poll), GET /api/portal/scan-plan (the run's check-key plan), and the run-scoped SSE stream GET /api/msp/customers/:customerId/diagnostics/runs/:runId/sse -- feeding artifacts/portal/src/components/shell/useScanState.ts, rendered by TenantStatusCard.tsx (sidebar footer) and ScanLogPanel.tsx (the right-slide scan log, README 'Right-slide detail panel').",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING_COMMIT",
+  "notes": [
+    "THE LOGIN BLOCK IS NOT OPTIONAL for the uiSteps below -- the new artifacts/portal shell sits behind the same real auth as every other portal page.",
+    "apiTests ARE THE VERIFIED PORTION THIS SESSION. artifacts/portal's own vite build (and therefore tsc --noEmit for the whole app) is currently blocked by a pre-existing, already-filed, unrelated dependency gap -- Git #2546 (shared main-checkout node_modules/.pnpm/class-variance-authority@0.7.1 store entry is empty, confirmed still reproducing at the time this manifest was written: `ls` on that path shows an empty dir, no package.json/dist). That blocks BOTH the local worktree build AND the deployed dev-server build of this specific app (the empty store entry lives in the shared main checkout, not a worktree junction), so shaneapp://runTest cannot currently reach a working artifacts/portal build to drive the uiSteps below against. This is the Git #2160 'genuinely unreachable, after a real check' case, not an assumed default limitation -- the apiTests portion (hits api-server directly, unaffected by #2546) WAS run this session; see this manifest's own lastVerifiedAgainstCommit / the build's bookend for the real pass/fail result. The uiSteps are written now for real future coverage once #2546 clears, not left un-thought-through.",
+    "THE CARD ITSELF: sits in SidebarNav's footerSlot (reserved by #1819), gated by isTestbed for the CTA -- 'Real customers never get a self-serve scan trigger' (portal-assessment.ts's own comment on POST /portal/diagnostics/debug-trigger-scan, which 403s server-side for any non-testbed tenant regardless of what the button does client-side).",
+    "SCAN-STATUS-ERRORMESSAGE IS THIS SESSION'S OWN BACKEND ADDITION (Git #1824) -- lastRunSummary.errorMessage (populated only when status === 'failed') did not exist before this build; a cold page load after a failed run previously had no way to show why. Additive field, no migration (the column already existed on msp_diagnostic_runs).",
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD."
+  ],
+  "apiTests": [
+    {
+      "name": "SETUP -- log in as the testbed account; extract the bearer.",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "SS1 -- GET /portal/scan-status is real and reachable for this tenant, and reports the shape useScanState.ts reads (everScanned, active|null, lastRunSummary|null, isTestbed).",
+      "method": "GET",
+      "path": "/api/portal/scan-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.everScanned", "exists": true }
+    },
+    {
+      "name": "SS2 -- isTestbed is present and boolean -- this is the real server-side gate the Tenant Status card's CTA visibility mirrors (client-side hiding is cosmetic; POST /portal/diagnostics/debug-trigger-scan itself 403s for a non-testbed tenant).",
+      "method": "GET",
+      "path": "/api/portal/scan-status",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.isTestbed", "exists": true }
+    },
+    {
+      "name": "SS3 -- GET /portal/scan-plan is real and reachable, and returns the honest 'never scanned' shape (runId: null, checkKeys: []) or a real plan -- never a 404/500 for an authenticated customer with no run yet.",
+      "method": "GET",
+      "path": "/api/portal/scan-plan",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.checkKeys", "exists": true }
+    }
+  ],
+  "uiSteps": [
+    { "name": "goto the real login URL.", "action": "goto", "target": "/portal/login" },
+    { "name": "WAIT for the login form to hydrate.", "action": "expect", "selector": "#email", "state": "visible" },
+    { "action": "input", "selector": "#email", "value": "{{TEST_PORTAL_EMAIL}}" },
+    { "action": "input", "selector": "#password", "value": "{{TEST_PORTAL_PASSWORD}}" },
+    { "name": "Primary login.", "action": "click", "selector": "[data-testid='login-submit']", "critical": true },
+
+    { "name": "goto the real portal shell -- the Tenant Status card renders in the sidebar footer on every page.", "action": "goto", "target": "/portal/" },
+    { "name": "TS1 -- the Tenant Status header row rendered (real data, not the design's canned fixture).", "action": "expect", "selector": "[data-testid='tenant-status-header']", "state": "visible", "critical": true },
+    { "name": "TS2 -- the score reads either a real number or the honest never-scanned em dash -- never a fabricated placeholder.", "action": "expect", "selector": "[data-testid='tenant-status-score']", "state": "visible", "critical": true },
+
+    { "name": "TS3 -- open the scan log panel from the header row.", "action": "click", "selector": "[data-testid='tenant-status-header']", "critical": true },
+    { "name": "TS4 -- the panel opened.", "action": "expect", "selector": "[data-testid='scan-log-panel']", "state": "visible", "critical": true },
+    { "name": "TS5 -- the panel names Scan progress.", "action": "expect", "selector": "[data-testid='scan-log-panel']", "textContains": "Scan progress" },
+    { "name": "TS6 -- close it.", "action": "click", "selector": "[data-testid='scan-log-close']" }
+  ]
+}
