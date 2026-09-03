@@ -192,7 +192,7 @@ same route-supplied `customerId` and applies it straight to `scope_creep_detecti
 / `scope_creep_violations.customer_id` with no user-table bridge at all
 (`scope-creep-engine.ts:341-345`).
 
-Filed as **#2512**, sibling of this issue's own Feature parent #1661, labeled `bug`.
+Filed as **#2513**, sibling of this issue's own Feature parent #1661, labeled `bug`.
 
 ---
 
