@@ -11,6 +11,9 @@ module — **#1534** (routing), **#1536** (date quality) and **#1537** (cloud in
 numbers no longer match the current route. Do not consult the old version; it documented intent for
 everything after #1533.
 
+**Updated by #2598** to add surface F — `GET /api/msp/message-center`, the MSP-operator counterpart
+of surface A, extracted per the same #1642 pattern. F is new ground, not a re-extraction of A–E.
+
 **This is the first contract pack on the project generated from a module whose backend is actually
 finished.** The whole interpret → resolve → route pipeline exists on `main`. The one caveat, stated
 up front because it changes how Design should read every "measured"/"routed" field below, is a
@@ -26,7 +29,7 @@ up front because it changes how Design should read every "measured"/"routed" fie
 
 ---
 
-## 0. The five surfaces of this module
+## 0. The six surfaces of this module
 
 | # | Surface | File | Audience | Writes? |
 |---|---|---|---|---|
@@ -35,11 +38,15 @@ up front because it changes how Design should read every "measured"/"routed" fie
 | C | `POST /api/portal/change-control/:code/decline` | `artifacts/api-server/src/routes/portal-change-control.ts:539` | Customer (the decline action) | yes (CR + risk) |
 | D | The routing engine (no HTTP surface) | `artifacts/api-server/src/lib/m365-change-router.ts` | Workflow node | yes (CRs, routings, risks) |
 | E | The sync writers (no HTTP surface) | `message-center-sync.ts`, `m365-roadmap-sync.ts`, `m365-change-resolver.ts` | Workflow nodes | yes (the source tables) |
+| F | `GET /api/msp/message-center` | `artifacts/api-server/src/routes/msp-message-center.ts` | MSP operator (the future console list, #1688) | no |
 
 The **customer-facing Microsoft Changes page is surface A only.** B/D are the MSP-side machinery
 that decides what a post *means* and what it *becomes*; C is the one write the page itself triggers,
 and it posts to a *different* route (Change Control), not back to A. Design draws A, and must
-understand B–E to render A's fields honestly.
+understand B–E to render A's fields honestly. **F is added by #2598** — it is the MSP-operator
+counterpart of A (same source table, no per-tenant interpretation shaping), and it is currently
+**orphaned**: registered and live on `main`, but no `artifacts/msp-console` UI calls it yet (the
+console itself is blocked on #1680; see §1g).
 
 ---
 
@@ -266,6 +273,53 @@ Not routes — visible Workflow Engine nodes; the **sole writers** of this modul
   `tagsContainer.cloudInstances[].tagName`, v2 `availabilities.cloudInstance`, `:276`, `:344-357`).
 - `runM365ResolutionSweep` (`lib/m365-change-resolver.ts`) → `m365_change_resolutions`, from
   **stored data only** (`allowLive: false`).
+
+### 1g. `GET /api/msp/message-center` — the MSP-operator surface (F)
+
+Source: `artifacts/api-server/src/routes/msp-message-center.ts:24-55`, 57 lines total, one route.
+Own header (`:1-11`) states it plainly: **read-only** view of the same rows surface A/E write,
+for the operator side, not the customer side. `requireRole("MSPOperator")` (`:24`) — the tiered
+guard (`requireAuth.ts:205-223`), so `MSPOperator`/`MSPAdmin`/`PlatformAdmin`(legacy `role:
+"admin"`) all pass; scope is the caller's own `mspId` via `resolveMspIdStrict(req)` (`:26`,
+`resolve-msp-id.ts:75-77`, `req.user?.mspId ?? null`) — **403 `{ error: "MSP context required" }`**
+(`:27-30`) if the caller has no `mspId` claim (e.g. a legacy PlatformAdmin with none set).
+
+**Query parameters** (`:32-36`), all optional:
+
+| Param | Type | Behavior | Line |
+|---|---|---|---|
+| `category` | string | exact match against `category` (§3 enum) | `32`, `39` |
+| `customerId` | number | exact match against `customerId`; a non-numeric value is silently dropped (checked with `!isNaN`, not surfaced as a 400) | `33-34`, `40` |
+| `limit` | number | `Math.min(Number(query.limit ?? 50), 200)` — default 50, hard cap 200 | `35` |
+| `offset` | number | `Math.max(Number(query.offset ?? 0), 0)` — default 0, floor 0 | `36` |
+
+**Response shape** (`:50`): `{ items, limit, offset }`. `items` is the **raw Drizzle row set** —
+every `mspMessageCenterItemsTable` column (`lib/db/src/schema/msp.ts:2634-2678`), unfiltered and
+unshaped. Unlike surface A's `toWirePost` (§1a), **F has no wire-shaping function** — there is no
+narrower `WireMspMessageCenterItem` type, no `analysis`, no `provenance`, no bucket/density/stat
+computation. This is a real, current design gap, not a citation gap: today F serves exactly what
+the sync writer (E) wrote, nothing derived. `limit`/`offset` are echoed back verbatim, not the
+actual row count returned or a total-matching count — a caller cannot tell from the response alone
+whether more rows exist past the page (no `hasMore`/`total`).
+
+Ordered `desc(lastModifiedDateTime)` (`:46`) — newest-first, matching A's own axis.
+
+**Live data** (queried this session against local `DATABASE_URL`, 2026-09-03): **1157** rows, one
+`mspId` (the only MSP in local dev), `customerId` **never** null on any row, `severity` is the
+single literal `"normal"` on every row (Graph has not sent a differing value locally), `category`
+distribution `stayInformed` 715 / `planForChange` 403 / `preventOrFixIssue` 39 — the same three-value
+enum as surface A (§3).
+
+**Orphaned today.** No route in `artifacts/msp-console` (or anywhere else) calls
+`GET /api/msp/message-center` — `artifacts/msp-console` does not exist yet; #1688 (the Feature this
+route exists for) is explicitly blocked on the console scaffold, #1680. This pack documents F as a
+live, correctly-scoped, working endpoint with **zero UI consumers**, not as dead code to remove.
+
+**Known defect (filed #2696, sub-issue of #1688):** `limit`/`offset` (`:35-36`) are not NaN-guarded
+the way `customerId` two lines above already is — a non-numeric value reaches Postgres as
+`LIMIT NaN`, which Postgres rejects (`ERROR: bigint out of range`, confirmed this session against
+the real local `DATABASE_URL`), so a bad query param surfaces as the route's generic 500 rather
+than a 400. Small, contained; not blocking on the console build.
 
 ---
 
@@ -504,3 +558,9 @@ The backend is finished; these are the choices code cannot settle and Design own
   and buildable but **draw the empty states as the primary/first-run experience** — that is what a
   live tenant sees today, and it must read as honest ("not yet read against this notice"), never as
   a broken or blank page.
+- **Surface F's wire shape (§1g).** #1688's own architecture pass — settled against a real contract
+  pack, per that Feature's own "do not build from it in this state" instruction — decides whether
+  the future console list needs its own `WireMspMessageCenterItem` (narrower than the raw row set
+  F serves today, and matching A's `analysis`/`workload`/`kind` shaping) or genuinely wants the raw
+  columns. This pack does not pre-empt that; it names F's current raw shape as a fact, not a
+  recommendation.
