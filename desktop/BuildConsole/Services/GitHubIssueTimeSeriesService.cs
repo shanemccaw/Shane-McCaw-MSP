@@ -21,11 +21,20 @@ namespace BuildConsole.Services
         /// <summary>Issues in scope that were CLOSED on this day (real <c>closed_at</c> date).</summary>
         public int Closed { get; init; }
         /// <summary>Running number of issues in scope that are still open at the END of this day
-        /// (cumulative opened − cumulative closed). This is the real burndown value (#2712).</summary>
+        /// (cumulative opened − cumulative closed). Kept for callers that still want a raw
+        /// open-count (e.g. a "N open now" readout), but this is NOT a real burndown value —
+        /// with growing scope it trends up, not down (Git #2721).</summary>
         public int OpenCount { get; init; }
         /// <summary>Running total of issues in scope closed up to and including this day. The real
-        /// cumulative-closed series a pace/ETA projection (#2714) fits its slope against.</summary>
+        /// cumulative-closed series a pace/ETA projection (#2714) fits its slope against, and the
+        /// real "Completed" line of the #2721 burn-up chart.</summary>
         public int ClosedCumulative { get; init; }
+        /// <summary>Running total of issues in scope opened up to and including this day — the real
+        /// cumulative scope size at the end of this day. This is the real "Total Scope" line of the
+        /// #2721 burn-up chart (a true burndown assumes ~fixed scope; this milestone's scope keeps
+        /// growing via real ongoing issue filing, so the honest chart is scope-vs-completed, not a
+        /// single open-count line trending toward zero).</summary>
+        public int CumulativeOpened { get; init; }
     }
 
     /// <summary>
@@ -271,6 +280,7 @@ namespace BuildConsole.Services
                     Closed = closed,
                     OpenCount = cumulativeOpened - cumulativeClosed,
                     ClosedCumulative = cumulativeClosed,
+                    CumulativeOpened = cumulativeOpened,
                 });
             }
 

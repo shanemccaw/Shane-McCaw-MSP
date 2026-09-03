@@ -467,25 +467,38 @@
                             </StackPanel>
                         </Border>
 
-                        <!-- 📉 Real Burndown Chart (Git #2712) — real open-issue count trend for the
-                             active Milestone, hand-drawn on a Canvas per this codebase's convention
-                             (Build Queue graph, #839) rather than a new charting dependency. Fails
-                             closed to BurndownEmptyText's honest reason when #2711's series doesn't
-                             have enough real history — never a fabricated curve. -->
+                        <!-- 📈 Real Scope &amp; Completion Chart (Git #2721, replacing the #2712
+                             single-line "BURNDOWN") — this milestone's scope keeps growing via real,
+                             ongoing issue filing, so a single open-count line can only ever trend UP
+                             regardless of real close progress; that's a burn-up, not a burndown. This
+                             card now draws the real textbook-correct two-line burn-up: Total Scope
+                             (real cumulative opened) vs. Completed (real cumulative closed), both from
+                             #2711's daily series — same hand-drawn Canvas/Polyline convention as
+                             #2712/#2713 rather than a new charting approach. Fails closed to
+                             BurndownEmptyText's honest reason when #2711's series doesn't have enough
+                             real history — never a fabricated curve. -->
                         <Border x:Name="BurndownCard" Style="{StaticResource HomeCard}">
                             <StackPanel>
                                 <Grid Margin="0,0,0,4">
                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <TextBlock Text="📉" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                        <TextBlock Text="BURNDOWN" Style="{StaticResource HomeCardHeader}"/>
+                                        <TextBlock Text="📈" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="SCOPE &amp; COMPLETION" Style="{StaticResource HomeCardHeader}"/>
                                     </StackPanel>
                                     <Button x:Name="BtnRefreshBurndown" Content="⟳" Style="{StaticResource SecondaryButton}"
                                             Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
                                             HorizontalAlignment="Right" ToolTip="Re-fetch the real open-issue history now"
                                             Click="BtnRefreshBurndown_Click"/>
                                 </Grid>
-                                <TextBlock x:Name="BurndownScopeText" Text="Active milestone" FontSize="10.5"
-                                           Foreground="{StaticResource Subtext0Brush}" Margin="0,0,0,8" TextTrimming="CharacterEllipsis"/>
+                                <Grid Margin="0,0,0,8">
+                                    <TextBlock x:Name="BurndownScopeText" Text="Active milestone" FontSize="10.5"
+                                               Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource LavenderBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Total Scope" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Completed" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
                                 <Canvas x:Name="BurndownCanvas" Height="120" Background="Transparent"
                                         SizeChanged="BurndownCanvas_SizeChanged"/>
                                 <TextBlock x:Name="BurndownSummaryText" Text="" FontSize="10.5"
