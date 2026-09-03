@@ -1899,10 +1899,10 @@ namespace BuildConsole.Controls
                         VerifyingIssuesPromoted?.Invoke(this, EventArgs.Empty);
                     }
 
-                    // Git #2136 — also reconcile Verifying rows whose real board Status column
-                    // moved off Verifying (Park/Crashed/Done), not only the issue-closed case.
-                    // Git is the database; this is the #1867 recurrence fix.
-                    int reconciled = await BuildConsole.Services.BoardStatusSync.ReconcileVerifyingAgainstBoardAsync(_db, "Git Board refresh");
+                    // Git #2136 / #2486 — also reconcile pre-dispatch rows (Verifying AND still-
+                    // queued) whose real board Status column moved: Verifying→Park/Crashed/Done,
+                    // and a queued row moved to Backlog/Park/Crashed/Done. Git is the database.
+                    int reconciled = await BuildConsole.Services.BoardStatusSync.ReconcileQueueAgainstBoardAsync(_db, "Git Board refresh");
                     if (reconciled > 0)
                         VerifyingIssuesPromoted?.Invoke(this, EventArgs.Empty);
                 }

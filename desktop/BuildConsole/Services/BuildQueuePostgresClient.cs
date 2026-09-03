@@ -991,90 +991,136 @@ namespace BuildConsole.Services
             return promoted;
         }
 
-        // ── ReconcileVerifyingAgainstBoardAsync (Git #2136) ──────────────────────
+        // ── ReconcileQueueAgainstBoardAsync (Git #2136, generalized by Git #2486) ─────
         /// <summary>
-        /// Git #2136 — the real #1867 fix. <see cref="PromoteVerifyingToDoneAsync"/> only
-        /// clears a Verifying row when its issue actually CLOSES; it never noticed Shane
-        /// moving the issue elsewhere (a milestone deferral in #1867's case), so the stale
-        /// local 'verifying' row re-surfaced across six dispatch cycles. Under this issue's
-        /// "Git IS the database, Kanban columns not labels" model, the real board Status
-        /// column is now authoritative for the durable Verifying decision, and this method
-        /// reconciles each local Verifying row against it:
+        /// Git #2136 — the real #1867 fix; Git #2486 generalizes it from Verifying-only to the
+        /// whole PRE-DISPATCH surface (Verifying AND still-'queued' rows), so a Build Chain Map
+        /// board move actually reaches live dispatch instead of only moving the GitHub label.
         ///
-        ///   board "Park"    → local 'parked'   (Shane deferred/blocked it — mirror the board)
-        ///   board "Crashed" → local 'failed'
-        ///   board "Done"    → local 'done'
-        ///   board "Verifying" / any active / null / not-on-board / GitHub error
-        ///                   → leave 'verifying' untouched (FAIL CLOSED, same #1600 discipline)
+        /// <see cref="PromoteVerifyingToDoneAsync"/> only clears a Verifying row when its issue
+        /// actually CLOSES; it never noticed Shane moving the issue elsewhere (a milestone
+        /// deferral in #1867's case), so the stale local 'verifying' row re-surfaced across six
+        /// dispatch cycles. And nothing at all noticed a Map <b>Batter Up → Backlog</b> move
+        /// on a row that is merely 'queued' (never claimed): <see cref="GetNextAsync"/>'s claim
+        /// gate checks blockers-closed + own-issue-open but NEVER the board Status column, so a
+        /// Backlogged item kept dispatching (the #2486 concrete failure). Under the "Git IS the
+        /// database, Kanban columns not labels" model the real board Status column is
+        /// authoritative for the durable pre-dispatch decision, and this method reconciles each
+        /// local pre-dispatch row against it:
         ///
-        /// So the moment Shane parks/defers a stuck Verifying issue on the board (his intended
-        /// go-forward workflow), the local row stops disagreeing on the very next manual
-        /// refresh — no separate local-DB cleanup action, ever. Fail-closed per row: an
-        /// unreachable board read or an issue not on the project leaves that row exactly as it
-        /// was, so a transient GitHub hiccup can never wrongly clear a genuinely-verifying row.
-        /// Runs on the same manual-refresh moment as PromoteVerifyingToDoneAsync (no new
-        /// polling), and the Verifying set is tiny, so the per-row board reads are cheap.
-        /// Returns every row it actually reconciled, for honest logging.
+        ///   VERIFYING row (a build already ran — unchanged from #2136):
+        ///     board Park    → local 'parked'    board Crashed → local 'failed'
+        ///     board Done    → local 'done'      board Backlog / Batter Up / AI Batter Up /
+        ///                                       Verifying / Ask Shane / null / off-board → leave
+        ///   QUEUED row (never claimed — the #2486 addition):
+        ///     board Backlog → local 'canceled'  (Shane pulled it OUT of the launch queue — the
+        ///                                        core fix; reversible: re-promoting to Batter Up
+        ///                                        re-queues it via the #1870 free-flow pipeline)
+        ///     board Park    → local 'parked'    board Crashed → local 'failed'
+        ///     board Done    → local 'canceled'  (issue resolved without this build ever running)
+        ///     board Batter Up / AI Batter Up / Verifying / Ask Shane / null / off-board → leave
+        ///
+        /// Under "Git IS the database" a queued row whose board is Backlog is by definition NOT
+        /// dispatch-eligible regardless of how it got queued, so canceling it is the intended
+        /// invariant, not a side effect. --notGit LOCAL rows (negative sentinel github_number,
+        /// Git #1645) have no real board item and are excluded. Match is by the board Status
+        /// OptionId against <see cref="GitHubApiClient"/>'s known option-id constants (robust to
+        /// display-name drift). Fail-closed per row: an unreachable board read or an off-board
+        /// issue leaves that row exactly as it was, so a transient GitHub hiccup can never
+        /// wrongly clear a live row. Each write is CAS-guarded on the exact status we read for
+        /// that row, so a concurrent claim (queued → running) between the read and the write is
+        /// never clobbered. Runs on the same manual-refresh moments as PromoteVerifyingToDoneAsync
+        /// (no new polling). The Verifying set is tiny, so its per-row board reads are cheap and
+        /// always scanned; the still-'queued' set can be large (Shane stacks 10-20+ builds), so it
+        /// is scanned ONLY for the specific issue numbers a caller passes in
+        /// <paramref name="onlyQueuedGithubNumbers"/> — the Build Chain Map passes exactly the
+        /// issues its edit just moved on the board (a handful), so a Map Backlog move cancels that
+        /// row's dispatch without a blanket 60-issue board read on every unrelated refresh, and
+        /// without ever second-guessing a row queued by hand for an issue this edit didn't touch.
+        /// The blanket refresh sites (Home tab, Build Watch, Git Board) pass null → Verifying-only,
+        /// exactly the original #2136 cost and behavior. Returns every row it actually reconciled.
         /// </summary>
         public async Task<List<(int Id, int GithubNumber, string NewStatus, string BoardStatus)>>
-            ReconcileVerifyingAgainstBoardAsync(GitHubApiClient gh)
+            ReconcileQueueAgainstBoardAsync(GitHubApiClient gh, IReadOnlyCollection<int>? onlyQueuedGithubNumbers = null)
         {
             var reconciled = new List<(int, int, string, string)>();
             await using var conn = await OpenAsync();
 
-            var candidates = new List<(int Id, int GithubNumber)>();
+            // Pre-dispatch candidates: always the (tiny) Verifying set; the (potentially large)
+            // still-'queued' set only for the explicitly-scoped issue numbers a Map edit moved.
+            // Real GitHub issues only (github_number > 0 excludes the --notGit negative sentinel).
+            var scopedQueued = onlyQueuedGithubNumbers != null && onlyQueuedGithubNumbers.Count > 0
+                ? onlyQueuedGithubNumbers.Where(n => n > 0).Distinct().ToArray()
+                : Array.Empty<int>();
+            var candidates = new List<(int Id, int GithubNumber, string Status)>();
             await using (var fetchCmd = new NpgsqlCommand(@"
-                SELECT id, github_number FROM bt_build_queue
-                WHERE status = @verifyingStatus AND github_number IS NOT NULL", conn))
+                SELECT id, github_number, status FROM bt_build_queue
+                WHERE github_number IS NOT NULL AND github_number > 0
+                  AND ( status = @verifyingStatus
+                        OR (status = 'queued' AND github_number = ANY(@scopedQueued)) )", conn))
             {
                 fetchCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+                fetchCmd.Parameters.AddWithValue("@scopedQueued", scopedQueued);
                 await using var reader = await fetchCmd.ExecuteReaderAsync();
                 while (await reader.ReadAsync())
-                    candidates.Add((reader.GetInt32(0), reader.GetInt32(1)));
+                    candidates.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2)));
             }
 
-            foreach (var (id, num) in candidates)
+            foreach (var (id, num, oldStatus) in candidates)
             {
-                string? boardStatus;
+                GitHubApiClient.IssueBoardStatus? board;
                 try
                 {
-                    var board = await gh.GetIssueBoardStatusAsync(num);
-                    boardStatus = board?.StatusName;
+                    board = await gh.GetIssueBoardStatusAsync(num);
                 }
                 catch (Exception ex)
                 {
-                    // Fail closed — a board read error must never clear a verifying row.
-                    ActivityLog.Log("board-sync", $"Reconcile: couldn't read GH #{num}'s board status ({ex.Message}) — leaving queue #{id} Verifying.");
+                    // Fail closed — a board read error must never clear a live pre-dispatch row.
+                    ActivityLog.Log("board-sync", $"Reconcile: couldn't read GH #{num}'s board status ({ex.Message}) — leaving queue #{id} '{oldStatus}'.");
                     continue;
                 }
 
-                // Map the authoritative board column to the local terminal status it implies.
-                // Only these three explicit "moved out of the verifying pipeline" columns act;
-                // Verifying / Batter Up / AI Batter Up / Backlog / null / off-board all leave it.
-                string? newStatus = boardStatus switch
-                {
-                    "Park" => "parked",
-                    "Crashed" => "failed",
-                    "Done" => "done",
-                    _ => null,
-                };
+                string? newStatus = MapBoardToPreDispatchStatus(oldStatus, board?.OptionId);
                 if (newStatus == null) continue;
 
                 await using var updateCmd = new NpgsqlCommand(@"
                     UPDATE bt_build_queue
                        SET status = @newStatus, updated_at = NOW()
-                     WHERE id = @id AND status = @verifyingStatus", conn);
+                     WHERE id = @id AND status = @oldStatus", conn);
                 updateCmd.Parameters.AddWithValue("@newStatus", newStatus);
                 updateCmd.Parameters.AddWithValue("@id", id);
-                updateCmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
+                updateCmd.Parameters.AddWithValue("@oldStatus", oldStatus);
                 if (await updateCmd.ExecuteNonQueryAsync() > 0)
                 {
-                    reconciled.Add((id, num, newStatus, boardStatus!));
+                    reconciled.Add((id, num, newStatus, board?.StatusName ?? "(off-board)"));
                     ActivityLog.Log("board-sync",
-                        $"Queue #{id}: GH #{num} board Status is '{boardStatus}' (not Verifying) → local row reconciled Verifying → '{newStatus}'. Git is the database.");
+                        $"Queue #{id}: GH #{num} board Status is '{board?.StatusName ?? "(off-board)"}' → local row reconciled '{oldStatus}' → '{newStatus}'. Git is the database.");
                 }
             }
             return reconciled;
+        }
+
+        /// <summary>
+        /// Git #2486 — maps a live board Status OptionId to the local terminal status a
+        /// pre-dispatch row (<paramref name="oldStatus"/> = 'verifying' or 'queued') should take,
+        /// or null to leave the row untouched. Matched by OptionId against the known board
+        /// option-id constants so a Status display-name rename never silently breaks the mapping.
+        /// See <see cref="ReconcileQueueAgainstBoardAsync"/> for the full table and rationale.
+        /// </summary>
+        private static string? MapBoardToPreDispatchStatus(string oldStatus, string? boardOptionId)
+        {
+            if (string.IsNullOrEmpty(boardOptionId)) return null; // off-board / no Status → leave
+            bool isQueued = string.Equals(oldStatus, "queued", StringComparison.OrdinalIgnoreCase);
+            bool Is(string id) => string.Equals(boardOptionId, id, StringComparison.OrdinalIgnoreCase);
+
+            if (Is(GitHubApiClient.ParkOptionId)) return "parked";
+            if (Is(GitHubApiClient.CrashedOptionId)) return "failed";
+            if (Is(GitHubApiClient.DoneOptionId)) return isQueued ? "canceled" : "done";
+            // Backlog cancels a never-claimed queued row (the #2486 core fix); a Verifying row
+            // (a build already ran) is left alone on Backlog, exactly as #2136 did.
+            if (Is(GitHubApiClient.BacklogOptionId)) return isQueued ? "canceled" : null;
+            // Batter Up / AI Batter Up / Verifying / Ask Shane / anything else → still eligible.
+            return null;
         }
 
         // ── Stale-state cleanup / migration window (Git #2136) ───────────────────

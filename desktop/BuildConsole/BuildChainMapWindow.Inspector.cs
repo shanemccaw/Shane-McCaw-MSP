@@ -788,6 +788,11 @@ namespace BuildConsole
             finally { _persistLock.Release(); }
 
             ApplyPersistResult(confirmText, result);
+
+            // Git #2486 — the board move(s) this persist just verified on GitHub are the sole
+            // durable truth; now bring the LOCAL dispatch queue into line with them so the edit
+            // reaches live dispatch, not just the label. No-op when the diff had no board moves.
+            await SyncQueueAfterBoardMovesAsync(result);
         }
 
         /// <summary>The canvas "Add blocker…" link mode resolves inside <c>ChainCanvasControl</c> and
@@ -835,6 +840,83 @@ namespace BuildConsole
                 ActivityLog.Log(Channel, line);
 
             ShowConfirmation($"{confirmText}  · {result.ShortSummary()}");
+        }
+
+        /// <summary>
+        /// Git #2486 — after a Map mutation's board-status move(s) are written+audited to GitHub
+        /// (#2481), reconcile the local <c>bt_build_queue</c> operational cache so the edit reaches
+        /// live dispatch instead of only moving the GitHub label. Per this repo's "Git IS the
+        /// database" precedent (#2136), GitHub Status stays the sole durable source of truth — this
+        /// writes NO ordering/eligibility of its own, it only pulls the cache into line with the
+        /// board via the shared, generalized reconcile:
+        ///
+        ///   • REMOVE/UPDATE — <see cref="Services.BoardStatusSync.ReconcileQueueAgainstBoardAsync"/>
+        ///     (the exact same generalized entry point Home / Build Watch / Git Board refresh call)
+        ///     cancels a still-'queued' row whose issue we moved to Backlog (the concrete #2486
+        ///     failure: <see cref="Services.BuildQueuePostgresClient.GetNextAsync"/> never checks the
+        ///     board, so a Backlogged item kept dispatching), and mirrors Park/Crashed/Done too.
+        ///   • CREATE — an issue we moved TO Batter Up flows into the queue through the ONE real
+        ///     #1870 pipeline (<see cref="Services.BatterUpQueueService"/>), free-flow gated exactly
+        ///     like the Batter Up panel, and scoped to the issues THIS edit promoted — never a
+        ///     blanket whole-board auto-queue. Free-flow OFF leaves them for a manual Queue click,
+        ///     unchanged.
+        ///
+        /// No-op when the diff moved no board columns (an edge-only mutation can't change dispatch
+        /// eligibility) or when no queue DB is resolvable. Fail-soft: a queue-sync error is logged,
+        /// never surfaced as a persist failure — the GitHub write already succeeded and the existing
+        /// refresh sites will reconcile on the next pass regardless.
+        /// </summary>
+        private async System.Threading.Tasks.Task SyncQueueAfterBoardMovesAsync(ChainPersistResult result)
+        {
+            // Only board-status moves change dispatch eligibility; a pure edge diff never does.
+            var boardMoves = result.StatusChanges;
+            if (boardMoves.Count == 0) return;
+
+            if (_queueDb == null)
+            {
+                ActivityLog.Log(Channel, $"Epic #{_epicNumber}: {boardMoves.Count} board move(s) landed on GitHub but no queue DB is resolvable — " +
+                    "bt_build_queue not reconciled here; Home/Build Watch refresh will reconcile on its next pass.");
+                return;
+            }
+
+            // Scope the (potentially large) queued-row reconcile to exactly the issues THIS edit
+            // moved — so a Map Backlog move cancels that row's dispatch without a blanket board read
+            // over every unrelated queued build, and never touches a row queued by hand elsewhere.
+            var movedNumbers = boardMoves.Select(m => m.Num).Distinct().ToArray();
+
+            try
+            {
+                // (1) REMOVE/UPDATE side — the shared generalized reconcile against the board #2481
+                //     just wrote. Cancels a queued row pulled to Backlog; mirrors Park/Crashed/Done.
+                int reconciled = await Services.BoardStatusSync.ReconcileQueueAgainstBoardAsync(
+                    _queueDb, $"Build Chain Map (Epic #{_epicNumber})", movedNumbers);
+
+                // (2) CREATE side — issues THIS edit promoted to Batter Up, queued through the real
+                //     #1870 pipeline, free-flow gated, scoped to those numbers (never whole-board).
+                int queued = 0;
+                var promoted = boardMoves
+                    .Where(m => m.Status == ChainStatus.Batter)
+                    .Select(m => m.Num)
+                    .ToHashSet();
+                if (promoted.Count > 0 && _client != null && BuildConsoleSettings.Load().BatterUpFreeFlow)
+                {
+                    var (rows, _) = await Services.BatterUpQueueService.RefreshAsync(
+                        _client, _queueDb, msg => ActivityLog.Log(Channel, msg));
+                    foreach (var row in rows.Where(r => promoted.Contains(r.Number) && r.HasBuildComment))
+                    {
+                        if (await Services.BatterUpQueueService.QueueRowAsync(_queueDb, row, msg => ActivityLog.Log(Channel, msg)))
+                            queued++;
+                    }
+                }
+
+                if (reconciled > 0 || queued > 0)
+                    ActivityLog.Log(Channel, $"Epic #{_epicNumber}: bt_build_queue synced to board — " +
+                        $"{reconciled} pre-dispatch row(s) reconciled, {queued} promoted row(s) auto-queued (free-flow).");
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"Epic #{_epicNumber}: bt_build_queue sync after board move failed (non-fatal — GitHub write already landed): {ex.Message}");
+            }
         }
 
         /// <summary>§5.3 manual gate toggle — ported 1:1 from the reference's <c>toggleGate</c>.</summary>

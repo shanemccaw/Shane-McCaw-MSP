@@ -63,19 +63,22 @@ namespace BuildConsole.Services
 
         /// <summary>
         /// Git #2136 — the read side of the same "Git IS the database" principle, and the real
-        /// #1867 fix: reconcile every local Verifying row against its issue's REAL board Status
-        /// column (see <see cref="BuildQueuePostgresClient.ReconcileVerifyingAgainstBoardAsync"/>
-        /// for the exact mapping and its fail-closed guarantees). This is the single shared entry
-        /// point the manual-refresh sites (Home tab, Build Watch, Git Board refresh) all call
-        /// right after PromoteVerifyingToDoneAsync, so the PAT gate / client construction / logging
-        /// lives in one place instead of three. Awaitable (unlike <see cref="Mirror"/>) because the
-        /// caller is already on an async refresh path and wants the reconcile to finish before it
-        /// re-reads the queue. No-op (returns 0) when there's no direct DB, no PAT, or nothing to
-        /// reconcile; any failure is swallowed and logged (fail-closed — never throws into a
-        /// refresh handler).
+        /// #1867 fix; Git #2486 generalizes it from Verifying-only to the whole pre-dispatch
+        /// surface: reconcile every local Verifying AND still-'queued' row against its issue's
+        /// REAL board Status column (see
+        /// <see cref="BuildQueuePostgresClient.ReconcileQueueAgainstBoardAsync"/> for the exact
+        /// mapping and its fail-closed / CAS guarantees). This is the single shared entry point
+        /// the manual-refresh sites (Home tab, Build Watch, Git Board refresh) AND the Build Chain
+        /// Map's own save/refresh cycle (Git #2486) all call, so the PAT gate / client
+        /// construction / logging lives in one place instead of many. Awaitable (unlike
+        /// <see cref="Mirror"/>) because the caller is already on an async refresh path and wants
+        /// the reconcile to finish before it re-reads the queue. No-op (returns 0) when there's no
+        /// direct DB, no PAT, or nothing to reconcile; any failure is swallowed and logged
+        /// (fail-closed — never throws into a refresh handler).
         /// </summary>
-        public static async Task<int> ReconcileVerifyingAgainstBoardAsync(
-            BuildQueuePostgresClient? db, string source)
+        public static async Task<int> ReconcileQueueAgainstBoardAsync(
+            BuildQueuePostgresClient? db, string source,
+            System.Collections.Generic.IReadOnlyCollection<int>? onlyQueuedGithubNumbers = null)
         {
             if (db == null) return 0;
             var settings = BuildConsoleSettings.Load();
@@ -84,16 +87,16 @@ namespace BuildConsole.Services
             try
             {
                 var gh = new GitHubApiClient(settings.GitHubPat);
-                var reconciled = await db.ReconcileVerifyingAgainstBoardAsync(gh);
+                var reconciled = await db.ReconcileQueueAgainstBoardAsync(gh, onlyQueuedGithubNumbers);
                 if (reconciled.Count > 0)
                     ActivityLog.Log("board-sync",
-                        $"Verifying board reconcile ({source}): {reconciled.Count} row(s) — " +
+                        $"Queue board reconcile ({source}): {reconciled.Count} row(s) — " +
                         string.Join(", ", reconciled.Select(r => $"#{r.Id} (GH #{r.GithubNumber}) → {r.NewStatus} [board '{r.BoardStatus}']")));
                 return reconciled.Count;
             }
             catch (Exception ex)
             {
-                ActivityLog.Log("board-sync", $"Verifying board reconcile ({source}) failed (non-fatal): {ex.Message}");
+                ActivityLog.Log("board-sync", $"Queue board reconcile ({source}) failed (non-fatal): {ex.Message}");
                 return 0;
             }
         }

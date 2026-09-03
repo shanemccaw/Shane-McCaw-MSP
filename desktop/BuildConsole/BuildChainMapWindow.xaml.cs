@@ -46,6 +46,13 @@ namespace BuildConsole
         /// mutation can persist its diff without re-reading settings/rebuilding a client per click.</summary>
         private GitHubApiClient? _client;
 
+        /// <summary>Git #2486 — the local dispatch queue (bt_build_queue). After a Map board-status
+        /// move lands on GitHub (#2481), this lets the Map reconcile the operational cache to match:
+        /// cancel a queued row we pulled to Backlog so live dispatch actually stops picking it up,
+        /// and free-flow-queue a row we promoted to Batter Up — through the one real #1870 pipeline,
+        /// never a second dispatch path. Null (logged) when no DATABASE_URL is resolvable this run.</summary>
+        private BuildQueuePostgresClient? _queueDb;
+
         /// <summary>Git #2481 — serializes real GitHub persistence so overlapping mutations apply
         /// their writes in order (each still diffs its own before/after snapshot captured on the UI
         /// thread, so serialization only orders the network writes, never the snapshots).</summary>
@@ -162,6 +169,26 @@ namespace BuildConsole
 
                 var client = new GitHubApiClient(settings.GitHubPat);
                 _client = client;
+
+                // Git #2486 — resolve the local dispatch queue once, so a Map board move can
+                // reconcile bt_build_queue (see PersistThenConfirm → SyncQueueAfterBoardMovesAsync)
+                // instead of only moving the GitHub label. A missing DATABASE_URL is non-fatal: the
+                // Map still works and the existing Home/Build Watch refreshes reconcile eventually.
+                if (_queueDb == null)
+                {
+                    try
+                    {
+                        _queueDb = BuildQueuePostgresClient.TryCreate(
+                            BuildTrackerConfig.Load(),
+                            BuildTrackerConfig.FindRepoRoot(),
+                            msg => ActivityLog.Log(Channel, msg));
+                    }
+                    catch (Exception dbEx)
+                    {
+                        ActivityLog.Log(Channel, $"Epic #{_epicNumber}: queue DB unavailable — Map board moves won't reconcile bt_build_queue this run ({dbEx.Message}).");
+                    }
+                }
+
                 _doc = await BuildChainMapService.BuildAsync(client, _epicNumber);
 
                 _derived = ChainRules.Derive(_doc);
