@@ -33,6 +33,14 @@ namespace BuildConsole.Controls
         /// MainWindow unmarks this chip's chat and marks whatever chat tab is currently active,
         /// in one action (kills the old open-old-tab → unmark → find-new-tab → mark round trip).</summary>
         public event Action<PersistedInProgressChat>? InProgressChatReplaceRequested;
+        /// <summary>Git #2708 — the "Open Last Tabs" chip was clicked: MainWindow owns the real
+        /// remembered-tab list (_chatTabsAtLaunch) and the reopen logic, so this bar only raises intent.</summary>
+        public event Action? OpenLastTabsRequested;
+
+        /// <summary>Git #2708 — how many remembered tabs from last session are still unrestored.
+        /// Pushed in by MainWindow (see <see cref="SetUnrestoredTabCount"/>); &gt; 0 swaps the
+        /// "Open Last Tabs" chip in for PointsChip/AchvChip in <see cref="Refresh"/>.</summary>
+        private int _unrestoredTabCount;
 
         public FocusModeBar()
         {
@@ -54,6 +62,18 @@ namespace BuildConsole.Controls
 
         private void OnStateChanged() => Dispatcher.Invoke(Refresh);
         private void OnInProgressChatsChanged() => Dispatcher.Invoke(RefreshInProgressChats);
+
+        /// <summary>Git #2708 — MainWindow calls this whenever the real unrestored-last-session-tab
+        /// count changes (loaded at launch, cleared once reopened or once the user opens any chat
+        /// tab manually). No-ops on an unchanged count so it's safe to call freely.</summary>
+        public void SetUnrestoredTabCount(int count)
+        {
+            if (_unrestoredTabCount == count) return;
+            _unrestoredTabCount = count;
+            Refresh();
+        }
+
+        private void OpenLastTabsChip_Click(object sender, MouseButtonEventArgs e) => OpenLastTabsRequested?.Invoke();
 
         // ----------------------------------------------------------------
         // Main strip
@@ -96,11 +116,17 @@ namespace BuildConsole.Controls
                     EtaText.Text = ""; // withheld; tooltip carries the reason
                 EtaText.ToolTip = p.HasEta ? "Estimated at the current close rate" : p.EtaReason;
 
-                PointsChip.Visibility = svc.Points > 0 ? Visibility.Visible : Visibility.Collapsed;
+                // Git #2708 — "Open Last Tabs" SWAPS in for Points/Achievement (not stacked
+                // alongside them) whenever there's a real unrestored last-session tab set.
+                bool showOpenLastTabs = _unrestoredTabCount > 0;
+                OpenLastTabsChip.Visibility = showOpenLastTabs ? Visibility.Visible : Visibility.Collapsed;
+                OpenLastTabsText.Text = $"↩ Open Last Tabs ({_unrestoredTabCount})";
+
+                PointsChip.Visibility = !showOpenLastTabs && svc.Points > 0 ? Visibility.Visible : Visibility.Collapsed;
                 PointsText.Text = $"⭐ {svc.Points} pts";
 
                 var latest = svc.Achievements.OrderByDescending(a => a.UnlockedAt).FirstOrDefault();
-                if (latest != null)
+                if (!showOpenLastTabs && latest != null)
                 {
                     AchvChip.Visibility = Visibility.Visible;
                     AchvText.Text = $"{latest.Emoji} {latest.Title}" + (svc.Achievements.Count > 1 ? $"  (+{svc.Achievements.Count - 1})" : "");

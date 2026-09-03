@@ -3281,6 +3281,13 @@ namespace BuildConsole
         /// pre-existing caller keeps today's always-select behavior unchanged.</param>
         public void OpenChatTab(BuildConsole.Services.BoardChat chat, int? githubNumber, bool selectTab = true)
         {
+            // Git #2708 — the real "give up" point for the Focus bar's "Open Last Tabs" chip:
+            // the moment ANY chat tab opens (a manual open, a click on a remembered row, the
+            // background #1887 reopen preload, or Open Last Tabs itself), the unrestored count
+            // is real work having started, so swap Points/Achievement back in. No-ops once
+            // already cleared (SetUnrestoredTabCount's own equality check).
+            _focusBar?.SetUnrestoredTabCount(0);
+
             // Dedupe on the chat's own id, not the URL - a chat's ClaudeUrl
             // doesn't change, so this is equivalent, but keeps the intent clear.
             foreach (var kvp in _chatTabs)

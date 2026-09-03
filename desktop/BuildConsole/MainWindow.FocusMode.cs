@@ -40,7 +40,16 @@ namespace BuildConsole
                     OpenChatTab(boardChat, boardChat.IssueGithubNumber);
                 };
                 _focusBar.InProgressChatReplaceRequested += ReplaceInProgressChatWithActiveTab;
+                // Git #2708 — "Open Last Tabs" reuses the SAME real reopen-all logic #2707 built
+                // (Home_ReopenAllRequested → Home_ResumeChatRequested per tab → OpenChatTab), fed
+                // the same _chatTabsAtLaunch list #2707's Home "Reopen All" button consumes.
+                _focusBar.OpenLastTabsRequested += OnFocusOpenLastTabsRequested;
                 InsertFocusBar(_focusBar);
+
+                // Seed the bar with the real unrestored-tab count from launch (only entries with
+                // a real ClaudeUrl actually get reopened — same skip rule Home_ResumeChatRequested
+                // already applies, so the displayed count matches what a click will actually do).
+                _focusBar.SetUnrestoredTabCount(_chatTabsAtLaunch.Count(t => !string.IsNullOrWhiteSpace(t.ClaudeUrl)));
 
                 // Subscribe BEFORE Start(): a restored-active milestone fires FilterChanged from
                 // inside Start(), and we want that first fan-out to reach the panels.
@@ -170,6 +179,19 @@ namespace BuildConsole
         {
             var m = LeftSidebar.CurrentMilestones.FirstOrDefault(x => x.GithubNumber == milestoneNumber);
             if (m != null) OpenMilestoneDetailTab(m);
+        }
+
+        /// <summary>Git #2708 — "Open Last Tabs" chip clicked: reopens every remembered tab via
+        /// the SAME real logic #2707 built for Home's "Reopen All" (loops Home_ResumeChatRequested,
+        /// same OpenChatTab path, same honest skip/toast for an entry with no ClaudeUrl). The bar's
+        /// own count is cleared as soon as ANY chat tab opens (see OpenChatTab), so this call alone
+        /// already swaps Points/Achievement back in via the loop's own OpenChatTab calls — the
+        /// explicit clear here just covers the edge case of every entry being skipped for a missing
+        /// ClaudeUrl (no OpenChatTab call would otherwise fire).</summary>
+        private void OnFocusOpenLastTabsRequested()
+        {
+            Home_ReopenAllRequested(this, _chatTabsAtLaunch);
+            _focusBar?.SetUnrestoredTabCount(0);
         }
 
         private void OnFocusAchievementsRequested()
