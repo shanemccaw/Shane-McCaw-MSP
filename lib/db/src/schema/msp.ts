@@ -6651,12 +6651,28 @@ export const riskInstancesTable = pgTable("risk_instances", {
   /** Free text on how/why it left, e.g. "Fixed via Conditional Access policy
    * CA-114" or "Mailbox decommissioned 2026-08-30". NULL while active. */
   resolutionNote: text("resolution_note"),
+  /**
+   * The `drift_events.id` this line item was raised from, when it was — the
+   * Shadow IT accumulation path (#1545, part of #1489). A line item added by
+   * hand via `msp-rbd-instances.ts` (any risk other than the standing Shadow
+   * IT container) leaves this NULL; it exists purely so the automated path can
+   * tell "have I already logged this specific unauthorized change" without
+   * re-deriving it from `label`/`objectId` text. No uniqueness constraint on
+   * purpose — the SAME setting can drift, get resolved, and reopen again
+   * later (drift_events' own reopen lifecycle, #1290), and each reopening is a
+   * genuinely new instance of exposure with its own `foundAt`, exactly like
+   * any other line item (#1509's "each with its own found date"). `set null`
+   * on delete: losing the drift-event row (there is no such deletion path
+   * today) must never cascade into losing the governance record of it.
+   */
+  driftEventId: integer("drift_event_id").references(() => driftEventsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("risk_instances_msp_id_risk_decision_id_idx").on(t.mspId, t.riskDecisionId),
   index("risk_instances_rbd_id_status_idx").on(t.rbdId, t.status),
   index("risk_instances_risk_decision_id_idx").on(t.riskDecisionId),
+  index("risk_instances_drift_event_id_idx").on(t.driftEventId),
 ]);
 
 export const insertRiskInstanceSchema = createInsertSchema(riskInstancesTable).omit({ id: true, createdAt: true, updatedAt: true });
