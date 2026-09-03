@@ -24,6 +24,12 @@ namespace ShaneBuilder.Services;
 /// only kill on a match — a mismatch (or the pid already being gone) means the process is left
 /// alone and the row is still transitioned honestly (it may have already finished/crashed by the
 /// time Shane clicked the button).
+///
+/// Git #2366 — every write method here starts with <see cref="BatterUpDispatchGuard.ForbidIfActive"/>:
+/// a real runtime guard, not a comment, that throws if this class is ever reached from inside a
+/// Batter Up Dispatch click. Dispatch is only allowed to open the issue in the browser and copy a
+/// prompt to the clipboard (see <c>MainWindow.BatterUpDispatchClicked</c>) — it must never reach
+/// this class to mutate `bt_build_queue` directly.
 /// </summary>
 public sealed record SlotActionResult(bool Success, bool ProcessKilled, string Message);
 
@@ -52,6 +58,7 @@ public sealed class QueueWriteClient
     /// to reach it — the caller finds out honestly whether the kill actually landed.</summary>
     public async Task<SlotActionResult> CancelRunningAsync(int id)
     {
+        BatterUpDispatchGuard.ForbidIfActive("a direct bt_build_queue write (CancelRunningAsync)");
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync();
 
@@ -84,6 +91,7 @@ public sealed class QueueWriteClient
     /// back up with its original title/prompt/model intact.</summary>
     public async Task<SlotActionResult> RequeueAsync(int id)
     {
+        BatterUpDispatchGuard.ForbidIfActive("a direct bt_build_queue write (RequeueAsync)");
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync();
 
@@ -117,6 +125,7 @@ public sealed class QueueWriteClient
         if (string.IsNullOrWhiteSpace(newModel))
             return new SlotActionResult(false, false, "No model chosen — nothing to reassign to.");
 
+        BatterUpDispatchGuard.ForbidIfActive("a direct bt_build_queue write (ReassignAsync)");
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync();
 

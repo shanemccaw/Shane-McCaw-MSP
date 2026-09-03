@@ -678,8 +678,17 @@ public static class GitMapService
 
     // ── gh / git process runner (mirrors ChatGitHubFilter's proven RunAsync — kept local rather
     // than shared so this feature can't regress #2209's already-shipped chat dock). ──────────────
+    //
+    // Git #2366 — this is the only path through which this class can reach `gh issue comment` /
+    // `gh api ... /comments`, i.e. the only way this class could ever post a synthetic BUILD:
+    // comment. BatterUpDispatchGuard.ForbidIfActive throws — a real runtime guard, not a comment —
+    // if this is ever called from inside a Batter Up Dispatch click's scope; Dispatch is only
+    // allowed to open the issue in the browser and copy a prompt to the clipboard.
     private static Task<(bool Ok, string StdOut, string StdErr)> RunGhAsync(string[] args, int timeoutMs = 30000)
-        => RunProcessAsync("gh", args, workingDirectory: null, timeoutMs);
+    {
+        BatterUpDispatchGuard.ForbidIfActive($"a `gh` CLI call ({string.Join(' ', args)})");
+        return RunProcessAsync("gh", args, workingDirectory: null, timeoutMs);
+    }
 
     private static async Task<(bool Ok, string StdOut, string StdErr)> RunProcessAsync(string fileName, string[] args, string? workingDirectory, int timeoutMs = 15000)
     {
