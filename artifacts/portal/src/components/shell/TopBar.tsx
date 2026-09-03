@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { Bell, ChevronDown, ChevronRight, Eye, ListChecks, User } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { SopTray } from "./SopTray";
+import { useSopRunsShell } from "./useSopRuns";
 
 export interface Breadcrumb {
   readonly parent?: string;
@@ -43,17 +46,22 @@ function ImpersonationBanner() {
 /**
  * The top bar (README "Layout" §2). The right-cluster three triggers are
  * real, focusable, `data-testid`-tagged mount points — their popovers are
- * #1820 (account), #1821 (alerts) and #1822 (SOP runs), which is why none of
- * them carries an unread/run-count badge yet: that count is real data those
- * builds own, and a badge with no real number behind it would be exactly the
- * fabricated-data case CLAUDE.md forbids.
+ * #1820 (account), #1821 (alerts) and #1822 (SOP runs). The account and
+ * alerts triggers still carry no badge (that count is real data those builds
+ * own, and a badge with no real number behind it would be exactly the
+ * fabricated-data case CLAUDE.md forbids) — the SOP trigger's badge below is
+ * real: `useSopRunsShell`'s own live queue count.
  */
 export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
+  const [sopOpen, setSopOpen] = useState(false);
+  const { queue, loading } = useSopRunsShell();
+  const sopCount = queue.length;
+
   return (
     <>
       <ImpersonationBanner />
       <div
-        className="flex flex-none items-center gap-[14px] border-b"
+        className="relative flex flex-none items-center gap-[14px] border-b"
         style={{ height: 56, padding: "0 16px 0 20px", borderColor: HAIRLINE }}
       >
         <div className="flex items-center gap-[10px]">
@@ -85,9 +93,20 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
             type="button"
             data-testid="topbar-sop-trigger"
             aria-label="SOP runs"
-            className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
+            onClick={() => setSopOpen((v) => !v)}
+            className="relative flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
+            style={{ background: sopOpen ? "rgba(255,255,255,.06)" : "transparent" }}
           >
             <ListChecks size={17} strokeWidth={1.75} color="#94a3b8" />
+            {sopCount > 0 ? (
+              <span
+                data-testid="sop-tray-badge"
+                className="absolute flex min-w-[15px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
+                style={{ top: -3, right: -3, height: 15, background: "#00B4D8", color: "#020617" }}
+              >
+                {sopCount}
+              </span>
+            ) : null}
           </button>
           <button
             type="button"
@@ -113,6 +132,19 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
             <ChevronDown size={13} color="#64748b" />
           </button>
         </div>
+        {/* README: popover top offset is 64px, 100px when the impersonation
+            banner shows. `ImpersonationBanner` is a flex sibling ABOVE this
+            header (not overlaid on it), so this header's own top edge is
+            already pushed down 36px when it renders — the popover's offset
+            relative to this (now `relative`) header stays a constant 64px in
+            both cases; the extra 36px comes from the header itself moving. */}
+        <SopTray
+          open={sopOpen}
+          onClose={() => setSopOpen(false)}
+          popTop={64}
+          queue={queue}
+          loading={loading}
+        />
       </div>
     </>
   );
