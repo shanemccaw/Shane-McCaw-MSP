@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Text.RegularExpressions;
 
@@ -51,32 +50,14 @@ namespace BuildConsole.Services
         {
             var repoRoot = FindRepoRoot();
             if (repoRoot == null) return null;
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    // Same pathspec used at build time (see BuildConsole.csproj's
-                    // GenerateBuildInfo target) — relative to the repo root we run in.
-                    Arguments = "rev-list --count HEAD -- desktop/BuildConsole",
-                    WorkingDirectory = repoRoot,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                using var proc = Process.Start(psi);
-                if (proc == null) return null;
-                // --count writes a single integer line to stdout; nothing to stderr
-                // on success, so redirecting stdout only avoids the unread-pipe
-                // deadlock class entirely.
-                string stdout = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(5000);
-                return int.TryParse(stdout.Trim(), out int n) ? n : (int?)null;
-            }
-            catch
-            {
-                return null;
-            }
+            // Git #2539 — through SubprocessRunner so an aborted/crashed git (the real ancient-git
+            // crash class this issue traced) is retried with backoff rather than silently yielding
+            // an empty stdout that parses to null. On a genuine failure this still returns null.
+            // Same pathspec used at build time (see BuildConsole.csproj's GenerateBuildInfo target).
+            var res = SubprocessRunner.Run("git", "rev-list --count HEAD -- desktop/BuildConsole",
+                repoRoot, TimeSpan.FromSeconds(5), "version");
+            if (!res.Ok) return null;
+            return int.TryParse(res.StdOut.Trim(), out int n) ? n : (int?)null;
         }
 
         /// <summary>
@@ -119,31 +100,17 @@ namespace BuildConsole.Services
             int skip = liveBuild - current;
             if (skip < 0) skip = 0;
 
-            try
+            // Git #2539 — via SubprocessRunner (crash-retry + honest exit check). %s = subject
+            // (first line only). Same pathspec as the build number. On any non-success, return an
+            // empty list so the caller treats "no titles" and "couldn't tell" identically.
+            var res = SubprocessRunner.Run("git",
+                $"log --skip={skip} --max-count={take} --format=%s HEAD -- desktop/BuildConsole",
+                repoRoot, TimeSpan.FromSeconds(5), "version");
+            if (!res.Ok) return new List<string>();
+            foreach (var line in res.StdOut.Split('\n'))
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    // %s = subject (first line only). Same pathspec as the build number.
-                    Arguments = $"log --skip={skip} --max-count={take} --format=%s HEAD -- desktop/BuildConsole",
-                    WorkingDirectory = repoRoot,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                using var proc = Process.Start(psi);
-                if (proc == null) return result;
-                string stdout = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(5000);
-                foreach (var line in stdout.Split('\n'))
-                {
-                    var t = line.Trim();
-                    if (t.Length > 0 && !IsBookendCommitTitle(t)) result.Add(t);
-                }
-            }
-            catch
-            {
-                return new List<string>();
+                var t = line.Trim();
+                if (t.Length > 0 && !IsBookendCommitTitle(t)) result.Add(t);
             }
             return result;
         }
@@ -158,30 +125,15 @@ namespace BuildConsole.Services
             var repoRoot = FindRepoRoot();
             if (repoRoot == null) return result;
 
-            try
+            // Git #2539 — via SubprocessRunner (crash-retry + honest exit check).
+            var res = SubprocessRunner.Run("git",
+                $"log --skip={skip} --max-count={take} --format=%s HEAD -- desktop/BuildConsole",
+                repoRoot, TimeSpan.FromSeconds(5), "version");
+            if (!res.Ok) return new List<string>();
+            foreach (var line in res.StdOut.Split('\n'))
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    Arguments = $"log --skip={skip} --max-count={take} --format=%s HEAD -- desktop/BuildConsole",
-                    WorkingDirectory = repoRoot,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                using var proc = Process.Start(psi);
-                if (proc == null) return result;
-                string stdout = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(5000);
-                foreach (var line in stdout.Split('\n'))
-                {
-                    var t = line.Trim();
-                    if (t.Length > 0 && !IsBookendCommitTitle(t)) result.Add(t);
-                }
-            }
-            catch
-            {
-                return new List<string>();
+                var t = line.Trim();
+                if (t.Length > 0 && !IsBookendCommitTitle(t)) result.Add(t);
             }
             return result;
         }

@@ -211,26 +211,25 @@ namespace BuildConsole.Services
                     string? repoRoot = BuildTrackerConfig.FindRepoRoot();
                     if (repoRoot != null && System.IO.Directory.Exists(System.IO.Path.Combine(repoRoot, ".git")))
                     {
-                        var psi = new ProcessStartInfo
-                        {
-                            FileName = "git",
-                            Arguments = "status --porcelain -b",
-                            WorkingDirectory = repoRoot,
-                            RedirectStandardOutput = true,
-                            RedirectStandardError = true,
-                            UseShellExecute = false,
-                            CreateNoWindow = true
-                        };
-                        using var proc = Process.Start(psi);
-                        if (proc != null)
-                        {
-                            string outText = proc.StandardOutput.ReadToEnd();
-                            proc.WaitForExit(3000);
-                            sw.Stop();
+                        // Git #2539 — was a raw spawn that read stdout only and NEVER checked the
+                        // exit code: a git.exe that crashed/aborted (empty stdout, an NTSTATUS exit
+                        // code — the real ancient-git crash class this issue traced) fell straight
+                        // into the parse loop and reported "main (clean)", a silent false success.
+                        // SubprocessRunner retries a crash with backoff and, when it genuinely
+                        // fails, we now surface an honest Degraded row instead of a fake-clean one.
+                        var res = SubprocessRunner.Run("git", "status --porcelain -b", repoRoot,
+                            TimeSpan.FromSeconds(3), Channel);
+                        sw.Stop();
 
+                        if (!res.Ok)
+                        {
+                            Transition(KeyGit, StartupConnectionState.Degraded, $"git status failed — {res.ShortError()}", sw.Elapsed);
+                        }
+                        else
+                        {
                             string branch = "main";
                             int changed = 0;
-                            var lines = outText.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                            var lines = res.StdOut.Split('\n', StringSplitOptions.RemoveEmptyEntries);
                             foreach (var line in lines)
                             {
                                 if (line.StartsWith("##"))
@@ -246,11 +245,6 @@ namespace BuildConsole.Services
                             }
                             string detail = changed == 0 ? $"{branch} (clean)" : $"{branch} ({changed} uncommitted)";
                             Transition(KeyGit, StartupConnectionState.Success, detail, sw.Elapsed);
-                        }
-                        else
-                        {
-                            sw.Stop();
-                            Transition(KeyGit, StartupConnectionState.Degraded, "git failed", sw.Elapsed);
                         }
                     }
                     else

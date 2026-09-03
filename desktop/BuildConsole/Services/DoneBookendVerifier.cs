@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -182,43 +181,38 @@ namespace BuildConsole.Services
                 _lastFetchUtc = DateTime.UtcNow; // reserve the window before the await, so ticks don't stack fetches
             }
 
-            var fetch = await RunGitAsync(repoRoot, "fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main");
+            // Git #2225's own single-ref fetch on a possibly-metered connection — give it a longer
+            // timeout than the local object checks below.
+            var fetch = await RunGitAsync(repoRoot, TimeSpan.FromSeconds(60), "fetch", "--no-tags", "origin", "+refs/heads/main:refs/remotes/origin/main");
             if (fetch.ExitCode != 0)
                 ActivityLog.Log("watcher", $"Git #2225: origin/main refresh failed ({fetch.StdErr.Trim()}) — verifying against the last-known ref (safe: only risks holding a build longer, never releasing one early).");
         }
 
         private readonly record struct GitResult(int ExitCode, string StdOut, string StdErr);
 
-        private static async Task<GitResult> RunGitAsync(string repoRoot, params string[] args)
+        private static Task<GitResult> RunGitAsync(string repoRoot, params string[] args)
+            => RunGitAsync(repoRoot, TimeSpan.FromSeconds(30), args);
+
+        /// <summary>
+        /// Git #2539 — was an ad-hoc <see cref="Process"/> spawn. Now routed through
+        /// <see cref="SubprocessRunner"/>, which retries a crash-class exit (the real ancient-git
+        /// <c>0x40000015</c> crash class this dependency-gate shells into 2-3× per blocked queue
+        /// item on every startup evaluation) with backoff before giving up, and staggers the burst
+        /// through the shared concurrency gate. The mapping preserves this class's fail-closed
+        /// contract exactly: a launch failure OR a crash that exhausted its retries both come back
+        /// as a non-zero <see cref="GitResult.ExitCode"/>, which every caller treats as "not
+        /// satisfied" — so a transient crash now gets three real tries instead of instantly
+        /// holding a dependent build.
+        /// </summary>
+        private static async Task<GitResult> RunGitAsync(string repoRoot, TimeSpan timeout, params string[] args)
         {
-            var psi = new ProcessStartInfo
+            var res = await SubprocessRunner.RunAsync("git", args, repoRoot, timeout, "watcher").ConfigureAwait(false);
+            if (!res.Started)
             {
-                FileName = "git",
-                WorkingDirectory = repoRoot,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            foreach (var a in args) psi.ArgumentList.Add(a);
-
-            using var proc = new Process { StartInfo = psi };
-            try
-            {
-                proc.Start();
+                ActivityLog.Log("watcher", $"Git #2225: couldn't run git ({res.LaunchError}) — treating check as unsatisfied (fail closed).");
+                return new GitResult(-1, res.StdOut, res.LaunchError ?? res.StdErr);
             }
-            catch (Exception ex)
-            {
-                ActivityLog.Log("watcher", $"Git #2225: couldn't start git ({ex.Message}) — treating check as unsatisfied (fail closed).");
-                return new GitResult(-1, "", ex.Message);
-            }
-
-            var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-            var stderrTask = proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
-            return new GitResult(proc.ExitCode, stdout, stderr);
+            return new GitResult(res.ExitCode, res.StdOut, res.StdErr);
         }
     }
 }

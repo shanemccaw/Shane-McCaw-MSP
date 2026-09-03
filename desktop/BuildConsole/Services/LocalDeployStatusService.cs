@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 
@@ -87,28 +86,15 @@ namespace BuildConsole.Services
 
         private static string? RunGit(string worktree, string arguments)
         {
-            try
-            {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "git",
-                    Arguments = arguments,
-                    WorkingDirectory = worktree,
-                    RedirectStandardOutput = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                };
-                using var proc = Process.Start(psi);
-                if (proc == null) return null;
-                string stdout = proc.StandardOutput.ReadToEnd();
-                proc.WaitForExit(5000);
-                var result = stdout.Trim();
-                return string.IsNullOrEmpty(result) ? null : result;
-            }
-            catch
-            {
-                return null;
-            }
+            // Git #2539 — was an ad-hoc spawn that read stdout only, never checked the exit code,
+            // and swallowed everything in a bare catch: a crashed/aborted git (empty stdout, an
+            // NTSTATUS exit code) looked identical to "no output". Route through SubprocessRunner
+            // so a crash is retried with backoff and a genuine failure returns null honestly (this
+            // class's contract: never fabricate a value) instead of masquerading as absent data.
+            var res = SubprocessRunner.Run("git", arguments, worktree, TimeSpan.FromSeconds(5), "deploy");
+            if (!res.Ok) return null;
+            var result = res.StdOut.Trim();
+            return string.IsNullOrEmpty(result) ? null : result;
         }
 
         /// <summary>The direct local read replacing #805's HTTP call. Returns the same
