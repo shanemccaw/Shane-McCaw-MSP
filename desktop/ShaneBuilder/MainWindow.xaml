@@ -545,6 +545,26 @@
                                                FontSize="9.5" Foreground="{StaticResource Brush.Accent.IssueNum}"/>
                                 </StackPanel>
                             </Button>
+                            <!-- Git #2365 (Feature #2355 item 10) — Batter Up panel-level chrome:
+                                 "Expand full page here" (widen the rail in place, no tab) and
+                                 "Send to tab" (open the same real lane/count state as a document
+                                 tab). Reuses the exact mechanism Git #2312 built for the Git Panel
+                                 peek — same glyphs, same widen-in-place/open-doc-tab split — rather
+                                 than inventing a second one for this panel. Only shown while the
+                                 Batter Up panel is the visible left-panel source (visibility set in
+                                 OpenLeftPanel). -->
+                            <TextBlock x:Name="BtnBatterUpSendToTab" DockPanel.Dock="Right" Text="&#x2197;"
+                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="12"
+                                       Foreground="{StaticResource Brush.Text.Dim}" Cursor="Hand"
+                                       Margin="0,0,10,0" VerticalAlignment="Center"
+                                       ToolTip="Send to tab" Visibility="Collapsed"
+                                       MouseLeftButtonDown="BtnBatterUpSendToTab_Click"/>
+                            <TextBlock x:Name="BtnBatterUpExpand" DockPanel.Dock="Right" Text="&#x26F6;"
+                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="12"
+                                       Foreground="{StaticResource Brush.Text.Dim}" Cursor="Hand"
+                                       Margin="0,0,10,0" VerticalAlignment="Center"
+                                       ToolTip="Expand full page here" Visibility="Collapsed"
+                                       MouseLeftButtonDown="BtnBatterUpExpand_Click"/>
                             <TextBlock x:Name="LeftPanelTitle" Text="CHATS" Margin="14,0,0,0"
                                        VerticalAlignment="Center"
                                        Foreground="{StaticResource Brush.Text.Muted}"
@@ -2511,6 +2531,39 @@
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="GitItemDocHost" Margin="24,16" MaxWidth="640" HorizontalAlignment="Left"/>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- Git #2365 (Feature #2355 item 10) — "Send to tab" document surface for the
+                         Batter Up rail panel, same real "one data source, two hosts" precedent
+                         GitItemDock set for the Git Panel peek. A frozen snapshot of the selected
+                         lane + live counts at the moment it was sent, not a live drill surface. -->
+                    <Grid x:Name="BatterUpItemDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,10" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.BatterUp}"
+                                      Width="16" Height="16" Margin="0,0,10,0"
+                                      Fill="{StaticResource Brush.Accent.Primary}"/>
+                                <StackPanel>
+                                    <TextBlock x:Name="BatterUpItemDocTitleText" Text="Batter Up" FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                               FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                               Foreground="{StaticResource Brush.Text.Heading}"/>
+                                    <TextBlock Text="Sent from the Batter Up panel — same real board counts, frozen at send time."
+                                               Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="620"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                               Foreground="{StaticResource Brush.Text.Dim}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="BatterUpItemDocHost" Margin="24,16" MaxWidth="640" HorizontalAlignment="Left"/>
                         </ScrollViewer>
                     </Grid>
 

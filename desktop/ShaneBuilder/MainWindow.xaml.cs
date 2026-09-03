@@ -655,6 +655,11 @@ public partial class MainWindow : Window
         GitPanelBody.Visibility = source == "Git" ? Visibility.Visible : Visibility.Collapsed;
         NextUpPanelBody.Visibility = source == "NextUp" ? Visibility.Visible : Visibility.Collapsed;
         BatterUpPanelBody.Visibility = source == "BatterUp" ? Visibility.Visible : Visibility.Collapsed;
+        // Git #2365 — panel-level chrome, only shown while Batter Up is the visible source.
+        BtnBatterUpExpand.Visibility = source == "BatterUp" ? Visibility.Visible : Visibility.Collapsed;
+        BtnBatterUpSendToTab.Visibility = source == "BatterUp" ? Visibility.Visible : Visibility.Collapsed;
+        if (source != "BatterUp" && _batterUpExpanded)
+            SetBatterUpExpanded(false); // leaving the panel always returns the rail to its normal width
         if (source == "Git")
             _ = EnsureGitPanelLoadedAsync(); // Git #2290 — first open fires the real GitHub reads
         if (source == "BatterUp")
@@ -829,6 +834,11 @@ public partial class MainWindow : Window
         // RenderGitIdentityBlock the rail peek uses. Null for every other tab kind.
         public List<GitCrumb>? GitItemTrail { get; }
         public bool IsGitItemDoc => GitItemTrail != null;
+        // Git #2365 — set for a Batter Up panel sent to a tab via "Send to tab"; the real
+        // selected-lane + live-count snapshot BatterUpItemDock's RenderBatterUpDoc renders through
+        // the same lane-chip/status builders the rail panel uses. Null for every other tab kind.
+        public BatterUpDocSnapshot? BatterUpSnapshot { get; }
+        public bool IsBatterUpDoc => BatterUpSnapshot != null;
         private readonly string? _workspaceIdOverride;
 
         public string? WorkspaceId => _workspaceIdOverride ?? (Kind.HasValue ? KindWorkspaceDefault[Kind.Value] : null);
@@ -855,7 +865,8 @@ public partial class MainWindow : Window
             string? mdFilePath = null, Brush? dot = null, string? buildSet = null, int? epicNumber = null,
             bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false,
             List<GitCrumb>? gitItemTrail = null, int? featureNumber = null, string? subtitle = null,
-            TabKeepAliveClass? keepAliveClass = null, BrowserTabCategory? browserCategory = null)
+            TabKeepAliveClass? keepAliveClass = null, BrowserTabCategory? browserCategory = null,
+            BatterUpDocSnapshot? batterUpSnapshot = null)
         {
             _keepAliveClassOverride = keepAliveClass;
             BrowserCategory = browserCategory;
@@ -878,6 +889,7 @@ public partial class MainWindow : Window
             GitItemTrail = gitItemTrail;
             FeatureNumber = featureNumber;
             Subtitle = subtitle;
+            BatterUpSnapshot = batterUpSnapshot;
         }
     }
 
@@ -1346,8 +1358,9 @@ public partial class MainWindow : Window
         GitMapDock.Visibility = tab.IsGitMap ? Visibility.Visible : Visibility.Collapsed;
         SettingsDock.Visibility = tab.IsSettings ? Visibility.Visible : Visibility.Collapsed;
         GitItemDock.Visibility = tab.IsGitItemDoc ? Visibility.Visible : Visibility.Collapsed;
+        BatterUpItemDock.Visibility = tab.IsBatterUpDoc ? Visibility.Visible : Visibility.Collapsed;
         if (tab.IsSettings) RenderSettings();
-        bool isStub = !tab.IsHome && !tab.IsChat && !isGenericBrowserTab && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc;
+        bool isStub = !tab.IsHome && !tab.IsChat && !isGenericBrowserTab && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc && !tab.IsBatterUpDoc;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -1372,6 +1385,11 @@ public partial class MainWindow : Window
         {
             GitItemDocTitleText.Text = tab.Title;
             RenderGitItemDoc(tab);
+        }
+        if (tab.IsBatterUpDoc)
+        {
+            BatterUpItemDocTitleText.Text = tab.Title;
+            RenderBatterUpDoc(tab);
         }
     }
 
