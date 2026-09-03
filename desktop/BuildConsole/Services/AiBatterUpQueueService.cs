@@ -45,6 +45,13 @@ namespace BuildConsole.Services
         /// </summary>
         public static async Task<List<AiBatterUpRow>> RefreshAsync(GitHubApiClient gh)
         {
+            // Git #2557 — auto-sweep: a closed issue sitting in "AI Batter Up" status is
+            // structurally invisible to the OPEN-only board read below (GetAiBatterUpIssuesAsync),
+            // so nothing ever demotes it on its own. Runs BEFORE the open-only row list is built
+            // so a just-closed item can never flash into the visible list on the same refresh
+            // it's being swept off of.
+            await SweepClosedIssuesAsync(gh);
+
             var boardItems = await gh.GetAiBatterUpIssuesAsync();
             var rows = new List<AiBatterUpRow>();
 
@@ -66,6 +73,41 @@ namespace BuildConsole.Services
             }
 
             return rows;
+        }
+
+        /// <summary>
+        /// Git #2557 — sweeps every real CLOSED issue still sitting in "AI Batter Up" status to
+        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>), via the new closed-issue read
+        /// path (<see cref="GitHubApiClient.GetClosedAiBatterUpIssuesAsync"/>) and the existing
+        /// real <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/> mutation. Each sweep is
+        /// logged individually to the "ai-batter-up" channel (traceable, not silent) whether it
+        /// succeeds or fails; a single failed move doesn't stop the rest of the sweep.
+        /// </summary>
+        private static async Task SweepClosedIssuesAsync(GitHubApiClient gh)
+        {
+            List<(int Number, string Title)> stale;
+            try
+            {
+                stale = await gh.GetClosedAiBatterUpIssuesAsync();
+            }
+            catch (System.Exception ex)
+            {
+                ActivityLog.Log("ai-batter-up", $"Auto-sweep: closed-issue scan failed: {ex.Message}");
+                return;
+            }
+
+            foreach (var (number, title) in stale)
+            {
+                try
+                {
+                    await gh.SetIssueStatusByNumberAsync(number, GitHubApiClient.DoneOptionId);
+                    ActivityLog.Log("ai-batter-up", $"AI Batter Up #{number} \"{title}\" — closed but still in AI Batter Up status; auto-swept to Done.");
+                }
+                catch (System.Exception ex)
+                {
+                    ActivityLog.Log("ai-batter-up", $"AI Batter Up #{number} \"{title}\" — auto-sweep to Done FAILED: {ex.Message}");
+                }
+            }
         }
 
         /// <summary>Yes — promotes the item's Status to real "Batter Up". Does NOT queue or launch anything; #1709's panel picks it up on its own next refresh.</summary>

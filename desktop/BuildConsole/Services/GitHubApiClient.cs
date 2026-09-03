@@ -1132,7 +1132,17 @@ namespace BuildConsole.Services
         /// loud warning if it is ever actually hit, rather than truncating silently. Individual
         /// pages retry with backoff so one slow page can't kill the walk.
         /// </summary>
-        private async Task<List<ProjectItemNodeData>> ScanProjectItemsForStatusAsync(string targetOptionId, bool includeItemId, string label)
+        private Task<List<ProjectItemNodeData>> ScanProjectItemsForStatusAsync(string targetOptionId, bool includeItemId, string label) =>
+            ScanProjectItemsForStatusAsync(targetOptionId, includeItemId, label, "OPEN");
+
+        /// <summary>
+        /// Git #2557 — same shared backward-paginated walk as the OPEN-only overload above, but
+        /// parameterized on issue state so a second, additive read path can ask for CLOSED items
+        /// instead. The OPEN-only overload (and its two existing callers, <see cref="GetBatterUpIssuesAsync"/>
+        /// / <see cref="GetAiBatterUpIssuesAsync"/>) is unchanged — its behaviour and callers must stay
+        /// exactly as they were; this overload is additive only, used by <see cref="GetClosedIssuesInStatusAsync"/>.
+        /// </summary>
+        private async Task<List<ProjectItemNodeData>> ScanProjectItemsForStatusAsync(string targetOptionId, bool includeItemId, string label, string state)
         {
             var matches = new List<ProjectItemNodeData>();
             string? before = null;
@@ -1174,7 +1184,7 @@ namespace BuildConsole.Services
                         var issue = n.Content;
                         if (issue == null) continue;
                         if (!string.Equals(issue.Repository?.NameWithOwner, $"{Owner}/{Repo}", StringComparison.OrdinalIgnoreCase)) continue;
-                        if (!string.Equals(issue.State, "OPEN", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (!string.Equals(issue.State, state, StringComparison.OrdinalIgnoreCase)) continue;
                         if (!string.Equals(n.FieldValueByName?.OptionId, targetOptionId, StringComparison.OrdinalIgnoreCase)) continue;
 
                         matches.Add(n);
@@ -1204,6 +1214,31 @@ namespace BuildConsole.Services
                 $"WARNING: {label} project scan hit the {MaxPages}-page ({MaxPages * PageSize}-item) cap with more items remaining after {pagesWalked} pages — results may be incomplete; raise MaxPages.");
             return matches;
         }
+
+        /// <summary>
+        /// Git #2557 — every real CLOSED issue still sitting in <paramref name="targetOptionId"/>
+        /// (Batter Up / AI Batter Up). The existing OPEN-only <see cref="ScanProjectItemsForStatusAsync"/>
+        /// walk (unchanged, still correct, still used by <see cref="GetBatterUpIssuesAsync"/> /
+        /// <see cref="GetAiBatterUpIssuesAsync"/>) structurally never sees a closed issue, so a project
+        /// item whose issue closed while still sitting in one of these statuses is otherwise invisible
+        /// to any refresh forever. This is the real new read path the manual-refresh auto-sweep uses to
+        /// find and move those items to <see cref="DoneOptionId"/> — see
+        /// <see cref="Controls.BatterUpPanel"/> / <see cref="Controls.AiBatterUpPanel"/>'s refresh, via
+        /// <c>BatterUpQueueService.RefreshAsync</c> / <c>AiBatterUpQueueService.RefreshAsync</c>.
+        /// </summary>
+        public async Task<List<(int Number, string Title)>> GetClosedIssuesInStatusAsync(string targetOptionId, string label)
+        {
+            var nodes = await ScanProjectItemsForStatusAsync(targetOptionId, includeItemId: false, label, "CLOSED");
+            return nodes.Select(n => (n.Content!.Number, n.Content.Title ?? "")).ToList();
+        }
+
+        /// <summary>Git #2557 — convenience wrapper: closed issues still sitting in "Batter Up" status.</summary>
+        public Task<List<(int Number, string Title)>> GetClosedBatterUpIssuesAsync() =>
+            GetClosedIssuesInStatusAsync(BatterUpOptionId, "Batter Up (closed sweep)");
+
+        /// <summary>Git #2557 — convenience wrapper: closed issues still sitting in "AI Batter Up" status.</summary>
+        public Task<List<(int Number, string Title)>> GetClosedAiBatterUpIssuesAsync() =>
+            GetClosedIssuesInStatusAsync(AiBatterUpOptionId, "AI Batter Up (closed sweep)");
 
         /// <summary>
         /// Git #1784 — one project-items page fetch with retry-and-backoff, so a single slow or

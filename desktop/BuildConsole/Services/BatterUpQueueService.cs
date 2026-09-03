@@ -171,6 +171,13 @@ namespace BuildConsole.Services
         public static async Task<(List<BatterUpRow> Rows, int SuppressedCount)> RefreshAsync(
             GitHubApiClient gh, BuildQueuePostgresClient? queueDb, Action<string> log)
         {
+            // Git #2557 — auto-sweep: a closed issue sitting in "Batter Up" status is
+            // structurally invisible to the OPEN-only board read below (GetBatterUpIssuesAsync),
+            // so nothing ever demotes it on its own. Runs BEFORE the open-only row list is built
+            // so a just-closed item can never flash into the visible list on the same refresh
+            // it's being swept off of.
+            await SweepClosedIssuesAsync(gh, log);
+
             var boardItems = await gh.GetBatterUpIssuesAsync();
             var rows = new List<BatterUpRow>();
             // Git #1997 — count of items genuinely hidden this pass because they hold a LIVE (or
@@ -268,6 +275,41 @@ namespace BuildConsole.Services
             }
 
             return (rows, suppressedCount);
+        }
+
+        /// <summary>
+        /// Git #2557 — sweeps every real CLOSED issue still sitting in "Batter Up" status to
+        /// "Done" (<see cref="GitHubApiClient.DoneOptionId"/>), via the new closed-issue read
+        /// path (<see cref="GitHubApiClient.GetClosedBatterUpIssuesAsync"/>) and the existing
+        /// real <see cref="GitHubApiClient.SetIssueStatusByNumberAsync"/> mutation. Each sweep
+        /// is logged individually (traceable, not silent) whether it succeeds or fails; a single
+        /// failed move doesn't stop the rest of the sweep.
+        /// </summary>
+        private static async Task SweepClosedIssuesAsync(GitHubApiClient gh, Action<string> log)
+        {
+            List<(int Number, string Title)> stale;
+            try
+            {
+                stale = await gh.GetClosedBatterUpIssuesAsync();
+            }
+            catch (Exception ex)
+            {
+                log($"Batter Up auto-sweep: closed-issue scan failed: {ex.Message}");
+                return;
+            }
+
+            foreach (var (number, title) in stale)
+            {
+                try
+                {
+                    await gh.SetIssueStatusByNumberAsync(number, GitHubApiClient.DoneOptionId);
+                    log($"Batter Up #{number} \"{title}\" — closed but still in Batter Up status; auto-swept to Done.");
+                }
+                catch (Exception ex)
+                {
+                    log($"Batter Up #{number} \"{title}\" — auto-sweep to Done FAILED: {ex.Message}");
+                }
+            }
         }
 
         /// <summary>
