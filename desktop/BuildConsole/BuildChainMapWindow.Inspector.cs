@@ -31,9 +31,9 @@ namespace BuildConsole
     /// <see cref="ChainSnapshot"/> at entry, runs the in-memory <see cref="ChainDoc"/> edit, then hands
     /// both snapshots to <see cref="PersistThenConfirm"/> → <see cref="ChainPersistence"/>, which
     /// diffs and applies the real blocked_by/board writes and re-reads each to audit it. The
-    /// status-strip confirmation shows the real verified result. The one gap left is persisting the
-    /// sub-issue priority ORDER itself (no primitive in the three named write types — the gate edges a
-    /// reorder produces DO persist); see #2481's filed findings.
+    /// status-strip confirmation shows the real verified result. A reorder additionally persists the
+    /// sub-issue priority ORDER itself via <see cref="PersistReorderThenConfirm"/> → GitHub's real
+    /// reprioritize (Git #2498), closing the last local-only-state gap #2481 could not cover.
     /// </summary>
     public partial class BuildChainMapWindow
     {
@@ -795,6 +795,65 @@ namespace BuildConsole
             await SyncQueueAfterBoardMovesAsync(result);
         }
 
+        /// <summary>
+        /// Git #2498 — the reorder-specific persistence path. A Feature reorder has TWO real GitHub
+        /// consequences: the gate <c>blocked_by</c> edges #2481's snapshot diff already handles, AND the
+        /// sub-issue priority ORDER itself, which needs GitHub's real reprioritize write
+        /// (<see cref="ChainPersistence.PersistReorderAsync"/>). This runs both under the one
+        /// <see cref="_persistLock"/> and merges their audited results into a single status-strip
+        /// confirmation + ActivityLog block, so a reorder is either fully saved-and-verified or honestly
+        /// reports which half didn't land — never an optimistic claim. Mirrors
+        /// <see cref="PersistThenConfirm"/> in every other respect (capture-after-sync, fail-soft, queue
+        /// reconcile of any board moves).
+        /// </summary>
+        private async void PersistReorderThenConfirm(ChainSnapshot before, int movedFeatureNum, IReadOnlyList<int> newOrderNums, string confirmText)
+        {
+            var after = _doc != null ? ChainSnapshot.Capture(_doc) : null; // sync, on UI thread
+            if (after == null || _client == null)
+            {
+                ShowConfirmation(confirmText + (_client == null ? "  (not saved — no GitHub client loaded)" : ""));
+                return;
+            }
+
+            ShowConfirmation(confirmText + "  · saving to GitHub…");
+
+            ChainPersistResult edgeResult;
+            ChainReorderResult orderResult;
+            await _persistLock.WaitAsync();
+            try
+            {
+                edgeResult = await ChainPersistence.PersistAndAuditAsync(_client, before, after);
+                orderResult = await ChainPersistence.PersistReorderAsync(_client, _epicNumber, movedFeatureNum, newOrderNums);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"Epic #{_epicNumber}: reorder persist failed — {ex.Message}");
+                ShowConfirmation(confirmText + $"  · ⚠ save failed: {ex.Message}");
+                return;
+            }
+            finally { _persistLock.Release(); }
+
+            if (edgeResult.NothingToDo && !orderResult.Intended)
+            {
+                ShowConfirmation(confirmText);
+            }
+            else
+            {
+                ActivityLog.Log(Channel, $"Epic #{_epicNumber}: {confirmText}");
+                foreach (var line in edgeResult.LogLines()) ActivityLog.Log(Channel, line);
+                foreach (var line in orderResult.LogLines()) ActivityLog.Log(Channel, line);
+
+                var parts = new List<string>();
+                if (!edgeResult.NothingToDo) parts.Add(edgeResult.ShortSummary());
+                parts.Add(orderResult.ShortSummary());
+                ShowConfirmation($"{confirmText}  · {string.Join("; ", parts)}");
+            }
+
+            // Parity with PersistThenConfirm — a reorder normally moves no board columns, but a
+            // status-to/from-Ask edge case could; reconcile the local queue against any that landed.
+            await SyncQueueAfterBoardMovesAsync(edgeResult);
+        }
+
         /// <summary>The canvas "Add blocker…" link mode resolves inside <c>ChainCanvasControl</c> and
         /// hands us the exact new <c>(from,to)</c> — persist just that one real edge and audit it,
         /// no snapshot diff needed.</summary>
@@ -987,11 +1046,25 @@ namespace BuildConsole
             _doc.Order.RemoveAt(fi);
             _doc.Order.Insert(ti, fromId);
             ChainRules.RechainGates(_doc);
+
+            // Git #2498 — capture the moved Feature + the new priority order as real sub-issue NUMBERS
+            // now, synchronously on the UI thread, so the async reorder write diffs a frozen point a
+            // later click can't race (same discipline as the ChainSnapshot capture above).
+            int movedNum = ChainRules.FindFeature(_doc, fromId)?.Num ?? 0;
+            var newOrderNums = _doc.Order
+                .Select(id => ChainRules.FindFeature(_doc, id))
+                .Where(f => f != null)
+                .Select(f => f!.Num)
+                .ToList();
+
             AfterDocMutation();
             Canvas.SelectFeature(fromId);
-            // The gate blocked_by edges persist; the sub-issue priority ORDER itself has no write
-            // primitive in the three named write types (see #2481 findings) — flagged in the note.
-            PersistThenConfirm(before, "Priority changed. Cross-feature gates re-wired per §5.2 (blocked_by edges persist; the column order itself is local until GitHub sub-issue reordering lands).");
+            // Git #2498 — both halves of a reorder now persist for real: the gate blocked_by edges via
+            // the #2481 diff, AND the sub-issue priority ORDER itself via GitHub's real reprioritize, so
+            // the column order no longer reverts on the next refresh and the gate edges don't re-classify
+            // as manual against the old adjacency.
+            PersistReorderThenConfirm(before, movedNum, newOrderNums,
+                "Priority changed. Cross-feature gates re-wired per §5.2; sub-issue order saved to GitHub.");
         }
 
         /// <summary>Reorder by one step — README "Inspector ← / →". Ported 1:1 from the reference's

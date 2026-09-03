@@ -741,6 +741,62 @@ namespace BuildConsole.Services
             res.EnsureSuccessStatusCode();
         }
 
+        /// <summary>
+        /// Git #2498 — reprioritizes ONE sub-issue within its parent's real GitHub sub-issue list via
+        /// `PATCH /repos/{o}/{r}/issues/{parent}/sub_issues/priority`. This is the write the Build Chain
+        /// Map's Feature reorder (canvas drag / inspector ←→ arrows) needs and that #2481 could not make:
+        /// it changes the literal order GitHub returns a parent's sub-issues in — the same order
+        /// <see cref="GetSubIssuesAsync"/> reads back as <c>ChainDoc.Order</c>, the chain's priority order.
+        /// Without it a reorder's gate <c>blocked_by</c> edges persisted (via #2481) but the ordering
+        /// metadata reverted on the next refresh, and <c>ClassifyEdgeKind</c> re-labelled those gate edges
+        /// as <c>manual</c> against the old adjacency (false chain-integrity gaps).
+        ///
+        /// GitHub anchors the move to a sibling: pass EITHER <paramref name="afterNumber"/> (place it
+        /// immediately after that sibling) OR <paramref name="beforeNumber"/> (immediately before it) —
+        /// never both. All three issue NUMBERS are resolved to the database ids GitHub's endpoint requires
+        /// (`sub_issue_id`/`after_id`/`before_id`), the same GET-then-id two-step
+        /// <see cref="SetBlockedByAsync"/> uses. Throws on any non-success response, same contract as the
+        /// other Build Chain Map writes, so the caller's re-read audit can trust a return as "applied".
+        /// Endpoint + payload confirmed live 2026-09-03 (net-zero reorder+restore round-trip on #2473).
+        /// </summary>
+        public async Task ReprioritizeSubIssueAsync(int parentNumber, int subIssueNumber, int? afterNumber, int? beforeNumber)
+        {
+            if (afterNumber.HasValue && beforeNumber.HasValue)
+                throw new ArgumentException("ReprioritizeSubIssueAsync takes an after OR a before anchor, not both.");
+
+            var payload = new Dictionary<string, object>
+            {
+                ["sub_issue_id"] = await ResolveIssueDatabaseIdAsync(subIssueNumber),
+            };
+            if (afterNumber.HasValue) payload["after_id"] = await ResolveIssueDatabaseIdAsync(afterNumber.Value);
+            if (beforeNumber.HasValue) payload["before_id"] = await ResolveIssueDatabaseIdAsync(beforeNumber.Value);
+
+            using var req = new HttpRequestMessage(HttpMethod.Patch,
+                $"repos/{Owner}/{Repo}/issues/{parentNumber}/sub_issues/priority")
+            {
+                Content = JsonContent.Create(payload),
+            };
+            var res = await _http.SendAsync(req);
+            if (!res.IsSuccessStatusCode)
+            {
+                var body = await res.Content.ReadAsStringAsync();
+                throw new Exception($"GitHub rejected sub-issue reprioritize ({(int)res.StatusCode}): {body}");
+            }
+        }
+
+        /// <summary>Resolves a plain GitHub issue number to its numeric database id (the `sub_issue_id`
+        /// / `blocked_by` id the dependency + sub-issue endpoints want, NOT the issue number) — the same
+        /// `GET /issues/{n}` → `.id` step <see cref="SetBlockedByAsync"/> already inlines, factored out
+        /// here because <see cref="ReprioritizeSubIssueAsync"/> needs up to three of them per call.</summary>
+        private async Task<long> ResolveIssueDatabaseIdAsync(int issueNumber)
+        {
+            var issue = await _http.GetFromJsonAsync<GitHubIssueIdResult>(
+                $"repos/{Owner}/{Repo}/issues/{issueNumber}", JsonOpts);
+            if (issue == null)
+                throw new Exception($"Issue #{issueNumber} not found on GitHub.");
+            return issue.Id;
+        }
+
         // ── Git #839: real Git Board data via GraphQL ───────────────────────
         private const int PageSize = 100;
         // Git #1784 — was 10 (1,000 items). The real project is already 1,781 items / 18 pages

@@ -29,11 +29,12 @@ namespace BuildConsole.Services.BuildMap
     ///   • <b>board-column move</b> (the real <c>updateProjectV2ItemFieldValue</c> mutation) — covers
     ///     the four board-status buttons and the manual-gate toggle's Batter Up↔Backlog moves.
     ///
-    /// Not covered here (no primitive exists in the three named write types, and the dispatch does not
-    /// name it): persisting a Feature's sub-issue <b>priority order</b> itself. A drag-reorder's real
-    /// blocked_by (gate) consequences DO persist through the edge diff — the functional chain is
-    /// correct on GitHub — but the raw sub-issue ordering is a separate GitHub write with no method on
-    /// <see cref="GitHubApiClient"/>; see #2481's own findings for the filed gap.
+    /// The one write NOT expressible as an edge/board diff — persisting a Feature's sub-issue
+    /// <b>priority order</b> itself — is Git #2498, now covered by <see cref="PersistReorderAsync"/>
+    /// (GitHub's real `sub_issues/priority` reprioritize via
+    /// <see cref="GitHubApiClient.ReprioritizeSubIssueAsync"/>), audited by re-reading the Epic's
+    /// sub-issue order back. A reorder therefore persists both halves: its gate <c>blocked_by</c> edges
+    /// through the diff above, and the raw ordering through that dedicated write.
     /// </summary>
     public sealed class ChainSnapshot
     {
@@ -104,6 +105,39 @@ namespace BuildConsole.Services.BuildMap
             foreach (var v in Verified) yield return "  ✓ " + v;
             foreach (var m in AuditMismatches) yield return "  ✗ UNVERIFIED " + m;
             foreach (var f in Failures) yield return "  ✗ FAILED " + f;
+        }
+    }
+
+    /// <summary>Git #2498 — the real, audited outcome of persisting one Feature priority reorder as a
+    /// GitHub sub-issue reprioritize. Separate from <see cref="ChainPersistResult"/> because a reorder's
+    /// real GitHub consequence is a sub-issue ORDER change, not the blocked_by/board diff that class
+    /// covers — the two run together for a single reorder action and their summaries are merged.</summary>
+    public sealed class ChainReorderResult
+    {
+        /// <summary>False when the move had no anchor to write (e.g. a single-Feature Epic) — a true
+        /// no-op, not a failure.</summary>
+        public bool Intended { get; init; }
+        /// <summary>The write was applied AND the re-read confirmed the new adjacency landed.</summary>
+        public bool Verified { get; init; }
+        /// <summary>Human-readable success line (audit-confirmed) for the ActivityLog, when verified.</summary>
+        public string? VerifiedLine { get; init; }
+        /// <summary>Human-readable failure/mismatch reason, when not verified.</summary>
+        public string? Failure { get; init; }
+
+        public static ChainReorderResult NoOp() => new() { Intended = false, Verified = true };
+
+        /// <summary>Compact clause folded into the reorder action's status-strip confirmation.</summary>
+        public string ShortSummary()
+        {
+            if (!Intended) return "order unchanged";
+            return Verified ? "order saved to GitHub ✓ re-read verified" : $"order NOT saved ⚠ {Failure}";
+        }
+
+        public IEnumerable<string> LogLines()
+        {
+            if (!Intended) yield break;
+            if (Verified && VerifiedLine != null) yield return "  ✓ " + VerifiedLine;
+            else if (!Verified) yield return "  ✗ UNVERIFIED " + Failure;
         }
     }
 
@@ -239,6 +273,78 @@ namespace BuildConsole.Services.BuildMap
             catch (Exception ex) { result.AuditMismatches.Add($"re-read of #{to}'s blockers failed: {ex.Message}"); }
 
             return result;
+        }
+
+        /// <summary>
+        /// Git #2498 — persists a single Feature priority reorder as a real GitHub sub-issue
+        /// reprioritize, then audits it by re-reading the Epic's sub-issue order back. This is the one
+        /// piece #2481's edge/board diff could not cover: a drag/arrow reorder splices
+        /// <c>ChainDoc.Order</c> in memory and #2481 persists the gate <c>blocked_by</c> edges it
+        /// regenerates, but the underlying sub-issue ORDER — what <see cref="BuildChainMapService"/>
+        /// reads back as <c>doc.Order</c> — had no write primitive, so GitHub's old order won on the next
+        /// refresh and <c>ClassifyEdgeKind</c> re-labelled the just-written gate edges as <c>manual</c>.
+        ///
+        /// <paramref name="newOrder"/> is the Feature ISSUE NUMBERS in their post-splice order (i.e. the
+        /// order the Epic's sub-issues should now be in). The moved Feature is anchored to a genuine
+        /// adjacent sibling — after its new predecessor, or (only when it lands at the very top) before its
+        /// new successor — so the write never relies on GitHub's implicit "no anchor = top" semantics. The
+        /// audit re-reads the Epic's live sub-issue numbers and confirms the moved Feature sits in exactly
+        /// that relative position, the same re-read discipline every other write here uses.
+        /// </summary>
+        public static async Task<ChainReorderResult> PersistReorderAsync(
+            GitHubApiClient client, int epicNumber, int movedFeatureNumber, IReadOnlyList<int> newOrder)
+        {
+            int idx = -1;
+            for (int i = 0; i < newOrder.Count; i++)
+                if (newOrder[i] == movedFeatureNumber) { idx = i; break; }
+
+            // No anchor available (single-Feature Epic, or the moved Feature isn't in the order for some
+            // reason): nothing real to write. A true no-op, reported as such rather than as a failure.
+            if (idx < 0 || newOrder.Count < 2) return ChainReorderResult.NoOp();
+
+            int? afterNumber = idx > 0 ? newOrder[idx - 1] : (int?)null;
+            int? beforeNumber = idx == 0 ? newOrder[idx + 1] : (int?)null;
+
+            try
+            {
+                await client.ReprioritizeSubIssueAsync(epicNumber, movedFeatureNumber, afterNumber, beforeNumber);
+            }
+            catch (Exception ex)
+            {
+                return new ChainReorderResult { Intended = true, Verified = false, Failure = $"reprioritize #{movedFeatureNumber} in Epic #{epicNumber}: {ex.Message}" };
+            }
+
+            // Audit: re-read the Epic's live sub-issue order (cache-bypassing) and confirm the moved
+            // Feature now sits immediately after its intended predecessor / before its intended successor.
+            List<int> liveNums;
+            try
+            {
+                var live = await client.GetSubIssuesAsync(epicNumber, bypassCache: true);
+                liveNums = live.Select(s => s.Number).ToList();
+            }
+            catch (Exception ex)
+            {
+                return new ChainReorderResult { Intended = true, Verified = false, Failure = $"re-read of Epic #{epicNumber}'s sub-issue order failed: {ex.Message}" };
+            }
+
+            int liveIdx = liveNums.IndexOf(movedFeatureNumber);
+            if (liveIdx < 0)
+                return new ChainReorderResult { Intended = true, Verified = false, Failure = $"#{movedFeatureNumber} not found in Epic #{epicNumber}'s sub-issues on re-read" };
+
+            if (afterNumber.HasValue)
+            {
+                int anchor = liveNums.IndexOf(afterNumber.Value);
+                if (anchor < 0 || liveIdx != anchor + 1)
+                    return new ChainReorderResult { Intended = true, Verified = false, Failure = $"re-read shows #{movedFeatureNumber} is not immediately after #{afterNumber.Value}" };
+                return new ChainReorderResult { Intended = true, Verified = true, VerifiedLine = $"#{movedFeatureNumber} reprioritized after #{afterNumber.Value} in Epic #{epicNumber}" };
+            }
+            else // beforeNumber has a value (idx == 0)
+            {
+                int anchor = liveNums.IndexOf(beforeNumber!.Value);
+                if (anchor < 0 || liveIdx != anchor - 1)
+                    return new ChainReorderResult { Intended = true, Verified = false, Failure = $"re-read shows #{movedFeatureNumber} is not immediately before #{beforeNumber.Value}" };
+                return new ChainReorderResult { Intended = true, Verified = true, VerifiedLine = $"#{movedFeatureNumber} reprioritized to the top, before #{beforeNumber.Value}, in Epic #{epicNumber}" };
+            }
         }
     }
 }
