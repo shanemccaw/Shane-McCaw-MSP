@@ -27,7 +27,7 @@
 // worktree of the same path reuses it instead of failing.
 
 import path from "node:path";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, rmSync, readdirSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { loadConfig, isWindows } from "./config.mjs";
 import { git, resolveCommit, shortSha, listWorktrees } from "./git.mjs";
@@ -152,10 +152,31 @@ export function provisionWorktree({ name, path: wantPath, base: wantBase, link =
         storeHealth,
       };
     }
-    return {
-      ok: false,
-      error: `${wtPath} exists but is not a registered git worktree. Remove it or pass a different --path.`,
-    };
+    // Git #2720 (the confirmed real cause of #2118's "empty unprovisioned worktree"
+    // mystery) — a target path that exists, isn't a registered worktree, and is
+    // genuinely EMPTY is not real work to protect; it's debris from an earlier
+    // provision attempt that created the directory (or `git worktree add` itself did)
+    // and then never completed (a crashed `git` process, Git #2539's real
+    // 0x40000015 abort pattern, is the leading suspect). Confirmed live 2026-09-03:
+    // `C:\wt\2715-q1457` and over a dozen sibling dirs across `C:\wt\` were exactly
+    // this shape — 0 bytes, no `.git`, absent from `git worktree list` — and this
+    // hard-fail (with no self-heal) was the actual mechanism behind #2720's "Batter
+    // Up item never launches, no error shown": every retry (including manual "Start
+    // Now" force-dispatch) hit the SAME empty leftover path and refused, logging only
+    // to ActivityLog, never surfacing anywhere Shane would see it. `git worktree add`
+    // itself tolerates a pre-existing EMPTY directory at its target (verified live) —
+    // so falling through to the normal create path below, instead of hard-failing, is
+    // a safe, real self-heal. Only a genuinely non-empty stray directory (real files
+    // that might be someone's unrecovered work) still hard-fails exactly as before.
+    if (readdirSync(wtPath).length === 0) {
+      // fall through to the normal "create the worktree" path below, targeting the
+      // same (now confirmed-empty) wtPath.
+    } else {
+      return {
+        ok: false,
+        error: `${wtPath} exists but is not a registered git worktree. Remove it or pass a different --path.`,
+      };
+    }
   }
 
   // --- Create the worktree. ---
