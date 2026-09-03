@@ -4064,26 +4064,26 @@ public partial class MainWindow : Window
         if (dlg.SelectedFeatureNumber == null && !dlg.DecideLater)
             return; // cancelled — no decision made, don't navigate, no new tab
 
-        string title;
-        string? subtitle;
-        int? epicNumber = null;
-        int? featureNumber = null;
-
         if (dlg.SelectedFeatureNumber == null)
         {
-            title = "New chat";
-            subtitle = "Unanchored — decide later";
-        }
-        else
-        {
-            epicNumber = dlg.SelectedEpicNumber;
-            featureNumber = dlg.SelectedFeatureNumber;
-            title = "New chat";
-            subtitle = dlg.SelectedEpicNumber.HasValue
-                ? $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\" (Epic #{dlg.SelectedEpicNumber})"
-                : $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\"";
+            OpenNewChatTab("New chat", "Unanchored — decide later", epicNumber: null, featureNumber: null, toastTitle: "New chat");
+            return;
         }
 
+        var subtitle = dlg.SelectedEpicNumber.HasValue
+            ? $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\" (Epic #{dlg.SelectedEpicNumber})"
+            : $"Feature #{dlg.SelectedFeatureNumber} \"{dlg.SelectedFeatureTitle}\"";
+        OpenNewChatTab("New chat", subtitle, dlg.SelectedEpicNumber, dlg.SelectedFeatureNumber, toastTitle: "New chat");
+    }
+
+    /// <summary>Git #2321/#2323's real chat-tab-creation primitive, factored out so a caller that
+    /// already knows its anchor (e.g. #2362's Batter Up "Answer in chat" — no anchor dialog needed,
+    /// the Ask Shane item's own parent Feature IS the anchor) reuses the exact same mechanism
+    /// <see cref="OpenNewChatFlow"/> uses after its dialog resolves, instead of a second, parallel
+    /// tab-creation path. Same real primitives: a genuinely new <see cref="TabDef"/>, its own fresh
+    /// keep-alive WebView2 on claude.ai/new, and the Chats rail re-render — nothing invented here.</summary>
+    private void OpenNewChatTab(string title, string? subtitle, int? epicNumber, int? featureNumber, string toastTitle)
+    {
         try
         {
             var tab = new TabDef(
@@ -4104,10 +4104,21 @@ public partial class MainWindow : Window
 
             if (subtitle != null)
                 Services.ConsoleOutputSink.Log(Services.LogLevel.Info, $"[chat] new chat tab {tab.Id} — {subtitle}");
-            ToastEngine.Show("New chat", subtitle != null ? $"Anchored to {subtitle}." : "Started unanchored — pick a Feature for it later.", ToastKind.Info);
+            ToastEngine.Show(toastTitle, subtitle != null ? $"Anchored to {subtitle}." : "Started unanchored — pick a Feature for it later.", ToastKind.Info);
             if (_leftPanelSource == "Chat") RenderChatsPanel();
         }
         catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[chat] new-chat failed: {ex.Message}"); }
+    }
+
+    /// <summary>Git #2362 (Feature #2355 item 7) — a real "Ask Shane" Batter Up item's action:
+    /// opens a brand-new chat tab already anchored to that item's parent Feature, reusing
+    /// <see cref="OpenNewChatTab"/> (the same primitive #2321's anchor-disclosure flow uses) —
+    /// no second anchoring mechanism, and no anchor dialog either, since the Feature is already
+    /// known (the group this item renders under in the Batter Up panel).</summary>
+    private void BatterUpAnswerInChatClicked(int featureNumber, string featureTitle)
+    {
+        string subtitle = $"Feature #{featureNumber} \"{featureTitle}\"";
+        OpenNewChatTab("New chat", subtitle, epicNumber: null, featureNumber: featureNumber, toastTitle: "Answer in chat");
     }
 
     private void BtnWrench_Click(object sender, RoutedEventArgs e)

@@ -348,8 +348,10 @@ public partial class MainWindow
                 BatterUpLaneBody.Children.Add(BatterUpWhyHereLine(
                     isAskShane ? BatterUpBlockingReasonLabel(item) : BatterUpWhyHereLabel(item),
                     indent: 44));
-                // Git #2360 — real per-item actions: Dispatch, and Hold/Release.
-                BatterUpLaneBody.Children.Add(BatterUpActionRow(item, held));
+                // Git #2360 — real per-item actions: Dispatch, and Hold/Release. Git #2362 — an Ask
+                // Shane item additionally gets "Answer in chat" instead of Dispatch (there's nothing
+                // to dispatch — it's a question, not buildable work).
+                BatterUpLaneBody.Children.Add(BatterUpActionRow(item, held, isAskShane, featureNumber));
             }
         }
     }
@@ -399,8 +401,12 @@ public partial class MainWindow
 
     /// <summary>The real action row under a Batter Up item: Hold/Release (toggles on <paramref
     /// name="held"/>) and Dispatch, reusing the same <see cref="GitEpicActionLink"/> link-style
-    /// action the Git Panel's Epic peek already established for Queue all/Park/Pause.</summary>
-    private StackPanel BatterUpActionRow(BatterUpItemRef item, bool held)
+    /// action the Git Panel's Epic peek already established for Queue all/Park/Pause. Git #2362 —
+    /// a genuine Ask Shane item (<paramref name="isAskShane"/>) gets "Answer in chat" in place of
+    /// Dispatch: it's a question blocking on Shane, not buildable work, and #2366's runtime guard
+    /// already treats Dispatch as build-prompt-only, so a real question item never gets a Dispatch
+    /// action to begin with.</summary>
+    private StackPanel BatterUpActionRow(BatterUpItemRef item, bool held, bool isAskShane, int featureNumber)
     {
         bool busy = _batterUpActionBusy.Contains(item.Number);
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(44, 0, 6, 6) };
@@ -408,7 +414,11 @@ public partial class MainWindow
             busy ? "…" : (held ? "Release" : "Hold"),
             busy,
             () => { if (held) BatterUpReleaseClicked(item); else BatterUpHoldClicked(item); }));
-        row.Children.Add(GitEpicActionLink(busy ? "…" : "Dispatch", busy, () => BatterUpDispatchClicked(item)));
+        if (isAskShane)
+            row.Children.Add(GitEpicActionLink("Answer in chat", false,
+                () => BatterUpAnswerInChatClicked(featureNumber, item.FeatureTitle ?? $"#{featureNumber}")));
+        else
+            row.Children.Add(GitEpicActionLink(busy ? "…" : "Dispatch", busy, () => BatterUpDispatchClicked(item)));
         return row;
     }
 
