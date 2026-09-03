@@ -4388,6 +4388,22 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
    * window, and pinning this to any single one of those would make the other two
    * unrepresentable. NULL means "raised directly", which is a real state — the
    * wizard raises exactly those.
+   *
+   * #1505 — this column stays exactly as described above (never dropped, this
+   * prose stays the display copy), but it has exactly THREE real writers today,
+   * live-verified, and each now has a real FK sitting beside it rather than only
+   * this string:
+   *   1. `m365-change-router.ts` ("Microsoft 365 Message Center · <title>") — real
+   *      pointer: `sourceInterpretationId` (+ `sourceResolutionId`) above.
+   *   2. `raiseHoldChangeRequest` in portal-runbooks.ts ("<Pillar> · <hold title>")
+   *      — real pointer: `linkedHoldWindowId` above.
+   *   3. `msp-change-execution-store.ts`'s rollback path ("Rollback of CR-...")
+   *      — real pointer: `rollbackOfChangeRequestId` below.
+   * `remediationCheckKey` is the fourth, narrower case (a remediation item, not
+   * this free-text field) and was already real before this. No hard FK was added
+   * to `linkedFinding` itself — a finding is still not one row in one table, so a
+   * single FK column could never cover all four sources; the per-source pointers
+   * above are the real edges instead.
    */
   linkedFinding: text("linked_finding"),
   /**
@@ -4424,12 +4440,41 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   intake: text("intake", { enum: ["informed", "approval", "advisory"] }),
   implementer: text("implementer", { enum: ["microsoft", "customer", "msp"] }),
   sourceKind: text("source_kind", { enum: ["microsoft_change"] }),
-  /** The Message Center announcement (graph_message_id) this CR was routed from — the tenant-facing notice. */
+  /** The Message Center announcement (graph_message_id) this CR was routed from — the tenant-facing notice.
+   * No FK: msp_message_center_items.graph_message_id carries no unique constraint to hang one on. */
   sourceGraphMessageId: text("source_graph_message_id"),
-  /** The m365_change_interpretations row that authored the reading behind this CR. */
-  sourceInterpretationId: integer("source_interpretation_id"),
-  /** The m365_change_resolutions row (the count) that tripped the routing trigger. */
-  sourceResolutionId: integer("source_resolution_id"),
+  /**
+   * #1505 — the m365_change_interpretations row that authored the reading behind
+   * this CR, now a REAL FK. This is one of `linkedFinding`'s three actual writers
+   * (see that column's own comment): `m365-change-router.ts` sets both this and
+   * the free-text `linkedFinding` ("Microsoft 365 Message Center · <title>") in the
+   * same insert, so the free text and this pointer have always agreed — this just
+   * makes the agreement DB-enforced. `set null` (not cascade): an interpretation
+   * being edited/reclassified must never delete the CRs it already routed.
+   */
+  sourceInterpretationId: integer("source_interpretation_id")
+    .references(() => m365ChangeInterpretationsTable.id, { onDelete: "set null" }),
+  /**
+   * #1505 — the m365_change_resolutions row (the count) that tripped the routing
+   * trigger, now a REAL FK for the same reason as `sourceInterpretationId` above.
+   */
+  sourceResolutionId: integer("source_resolution_id")
+    .references(() => m365ChangeResolutionsTable.id, { onDelete: "set null" }),
+  /**
+   * #1505 — the `portal_hold_windows.id` this CR was raised from, when it was:
+   * the SECOND of `linkedFinding`'s three real writers. `raiseHoldChangeRequest`
+   * (portal-runbooks.ts) sets both this and the free-text `linkedFinding`
+   * ("<Pillar> · <hold window title>") together. Forward reference (`portal_hold_windows`
+   * is declared later in this file) via `AnyPgColumn`, the same pattern
+   * `rollbackOfChangeRequestId` below already uses for its own forward/self
+   * reference. `set null`: a hold window is a runbook-cycle artifact that can be
+   * pruned well after the CR it raised is a permanent part of the change register,
+   * so the CR must survive it, matching `catalogItemId`'s identical reasoning.
+   * NULL for every CR not raised from a hold-window decision — the overwhelming
+   * majority, including every pre-#1505 row.
+   */
+  linkedHoldWindowId: integer("linked_hold_window_id")
+    .references((): AnyPgColumn => portalHoldWindowsTable.id, { onDelete: "set null" }),
 
   /**
    * #1498 — set only when this CR was raised by executing a pre-approved
@@ -4453,6 +4498,10 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
    * the inverse CR is a real historical change in its own right and must not
    * vanish if the original it reversed is ever pruned. See
    * `lib/db/migrations/manual/2026-08-29-cr-executions-rollback-writeback-1499.sql`.
+   *
+   * #1505 — this is also the real FK backing the THIRD of `linkedFinding`'s three
+   * writers (`msp-change-execution-store.ts`'s "Rollback of CR-..." text); see
+   * that column's own comment.
    */
   rollbackOfChangeRequestId: integer("rollback_of_change_request_id").references(
     (): AnyPgColumn => mspChangeRequestsTable.id,
@@ -4476,6 +4525,16 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
   // same Microsoft change on the same tenant. Partial — only routed rows carry
   // these — and declared in the manual migration (Drizzle cannot express the
   // WHERE clause here).
+  // #1505 — the three new real edges, each indexed the same way the pre-existing
+  // ones above already are.
+  index("msp_change_requests_source_interpretation_id_idx").on(t.sourceInterpretationId),
+  index("msp_change_requests_source_resolution_id_idx").on(t.sourceResolutionId),
+  index("msp_change_requests_linked_hold_window_id_idx").on(t.linkedHoldWindowId),
+  // #1505 edge 5 — msp_sop_runs.psa_ticket_id <-> this column, a shared free-text
+  // PSA ticket key (no canonical psa_tickets table exists locally to hard-FK to;
+  // the ticket lives in the external PSA system). Indexed on both sides so the
+  // join is real and performant, not just theoretically possible.
+  index("msp_change_requests_psa_ticket_id_idx").on(t.psaTicketId),
 ]);
 
 export const insertMspChangeRequestSchema = createInsertSchema(mspChangeRequestsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -4537,6 +4596,97 @@ export const changeFreezeWindowsTable = pgTable("change_freeze_windows", {
 export const insertChangeFreezeWindowSchema = createInsertSchema(changeFreezeWindowsTable).omit({ id: true, createdAt: true, updatedAt: true });
 export type ChangeFreezeWindow = typeof changeFreezeWindowsTable.$inferSelect;
 export type InsertChangeFreezeWindow = typeof changeFreezeWindowsTable.$inferInsert;
+
+// ── Change maintenance windows (#1504) ───────────────────────────────────────
+//
+// The OPPOSITE of `change_freeze_windows` above, not a variant of it: a freeze
+// window is when change is FORBIDDEN; a maintenance window is when change is
+// EXPECTED. Deliberately its own table, same shape (scope/recurrence engine) as
+// the freeze table because both are "a standing calendar rule an MSP curates",
+// but never merged into one table — the two rows types answer different
+// questions and a single boolean "isFreeze" column would make every existing
+// freeze query (`matchesFreezeScope`, `findActiveFreeze`, …) have to filter on
+// it forever. Enforcement (`portal-change-maintenance.ts`) walks the same
+// anchored-cadence math as the freeze module, kept as its own copy rather than
+// a shared import — see that module's header for why.
+export const CHANGE_MAINTENANCE_SCOPES = ["global", "tenant", "workload"] as const;
+export type ChangeMaintenanceScope = (typeof CHANGE_MAINTENANCE_SCOPES)[number];
+
+export const CHANGE_MAINTENANCE_RECURRENCES = ["none", "weekly", "monthly", "quarterly", "annually"] as const;
+export type ChangeMaintenanceRecurrence = (typeof CHANGE_MAINTENANCE_RECURRENCES)[number];
+
+export const changeMaintenanceWindowsTable = pgTable("change_maintenance_windows", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  scope: text("scope", { enum: CHANGE_MAINTENANCE_SCOPES }).notNull(),
+  /** Required when scope = 'tenant': the free-text M365 tenant identifier. NULL otherwise. */
+  tenantId: text("tenant_id"),
+  /** Required when scope = 'workload': one of `CHANGE_REQUEST_WORKLOADS`. NULL otherwise. */
+  workload: text("workload"),
+  name: text("name").notNull(),
+  reason: text("reason"),
+  startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
+  endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
+  recurrence: text("recurrence", { enum: CHANGE_MAINTENANCE_RECURRENCES }).notNull().default("none"),
+  /** Only meaningful when recurrence <> 'none'. NULL = repeats indefinitely. */
+  recurrenceUntil: timestamp("recurrence_until", { withTimezone: true }),
+  active: boolean("active").notNull().default(true),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("change_maintenance_windows_msp_id_idx").on(t.mspId),
+  index("change_maintenance_windows_scope_idx").on(t.mspId, t.scope),
+  index("change_maintenance_windows_active_idx").on(t.active),
+]);
+
+export const insertChangeMaintenanceWindowSchema = createInsertSchema(changeMaintenanceWindowsTable).omit({ id: true, createdAt: true, updatedAt: true });
+export type ChangeMaintenanceWindow = typeof changeMaintenanceWindowsTable.$inferSelect;
+export type InsertChangeMaintenanceWindow = typeof changeMaintenanceWindowsTable.$inferInsert;
+
+// ── CR dependencies — `blocked_by` between change requests (#1504) ──────────
+//
+// One row = one directed edge: `changeRequestId` is BLOCKED BY
+// `blocksChangeRequestId` — the blocking CR must reach `completed` before the
+// blocked CR may be claimed to authorize a write. Deliberately narrower than
+// "any terminal status": `rejected`/`rolled_back` mean the blocking change
+// never actually landed, so the dependency it promised is still unmet — the
+// edge stays blocking rather than silently releasing, and clearing it is then
+// a deliberate MSP action (delete the edge), not an automatic side effect of
+// the blocker's own status. Enforced in exactly one place —
+// `change-control-write-gate.ts`'s `claimChangeRequestForWrite`, the same
+// single choke point `cr_approvals` is folded into — never a second gate
+// bolted onto a status PATCH route, which a caller could route around.
+//
+// Both columns are real FKs, `onDelete: cascade`: a dependency edge naming a CR
+// that no longer exists is not a real constraint, unlike `rollback_of_change_
+// request_id`'s `set null` (that column preserves a historical fact about a CR
+// that still exists in its own right). A CHECK forbids a CR from blocking
+// itself; there is no cycle-detection constraint at the DB level (Postgres
+// cannot express "no cycle in this self-referencing edge set" declaratively) —
+// the route layer is expected to reject an edge that would create one, but a
+// hand-run migration or a future direct write is not blocked by this table
+// alone from producing a cycle. Documented rather than silently assumed.
+export const changeRequestDependenciesTable = pgTable("change_request_dependencies", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  /** The BLOCKED change — cannot be claimed for a write while this edge exists and the blocker is non-terminal. */
+  changeRequestId: integer("change_request_id").notNull().references((): AnyPgColumn => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  /** The BLOCKING change — must reach a terminal `completed` state to clear this edge. */
+  blocksChangeRequestId: integer("blocks_change_request_id").notNull().references((): AnyPgColumn => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  note: text("note"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("change_request_dependencies_msp_id_idx").on(t.mspId),
+  index("change_request_dependencies_change_request_id_idx").on(t.changeRequestId),
+  index("change_request_dependencies_blocks_change_request_id_idx").on(t.blocksChangeRequestId),
+  unique("change_request_dependencies_edge_uidx").on(t.changeRequestId, t.blocksChangeRequestId),
+]);
+
+export const insertChangeRequestDependencySchema = createInsertSchema(changeRequestDependenciesTable).omit({ id: true, createdAt: true });
+export type ChangeRequestDependency = typeof changeRequestDependenciesTable.$inferSelect;
+export type InsertChangeRequestDependency = typeof changeRequestDependenciesTable.$inferInsert;
 
 // ── Change Control approval ledger (#1496) ───────────────────────────────────
 //
@@ -5482,6 +5632,15 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
   currentStepIndex: integer("current_step_index").notNull().default(0),
   totalSteps: integer("total_steps").notNull().default(0),
   passedStepsCount: integer("passed_steps_count").notNull().default(0),
+  /**
+   * #1505 edge 5 — a free-text PSA ticket reference, the same shape
+   * `msp_change_requests.psaTicketId` carries. No canonical `psa_tickets` table
+   * exists locally to hard-FK either side to (the ticket lives in the external
+   * PSA system, e.g. ConnectWise/Autotask) — the real, buildable edge here is
+   * indexing BOTH sides so "every SOP run and CR sharing one PSA ticket" is an
+   * actual indexed equality join, not just two unindexed strings that happen to
+   * sometimes match. See `msp_change_requests_psa_ticket_id_idx`.
+   */
   psaTicketId: text("psa_ticket_id").notNull(),
   logs: jsonb("logs").notNull().default([]),
   /**
@@ -5508,6 +5667,8 @@ export const mspSopRunsTable = pgTable("msp_sop_runs", {
   index("msp_sop_runs_wf_run_id_idx").on(t.wfRunId),
   index("msp_sop_runs_standing_policy_id_idx").on(t.standingPolicyId),
   unique("msp_sop_runs_msp_id_run_id_uidx").on(t.mspId, t.runId),
+  // #1505
+  index("msp_sop_runs_psa_ticket_id_idx").on(t.psaTicketId),
 ]);
 
 /** One materialized automated step, as snapshotted onto `msp_sop_runs.automated_step_map`. */
@@ -5687,6 +5848,18 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
    * suppresses re-firing for a finding when this is populated and the
    * decision is `status = 'active'`; it never guesses a match from the
    * free-text `controlViolated`/`framework`/`title` fields above.
+   *
+   * #1505 — deliberately NO hard FK, same reasoning `remediationCheckKey` above
+   * (on `msp_change_requests`) already documents and NOT an oversight: this
+   * column's own `authorizingWorkloadId` comment below states real values
+   * outside `monitor_checks` reach it too ("a cross-cutting check category —
+   * cost:*, appgov:*, governance:* etc"), so a hard FK to `monitor_checks.key`
+   * would reject real, in-use values. This is real, exact-match structured data
+   * already (not free text) and is already indexed
+   * (`msp_risk_decisions_tenant_check_status_idx`) and already joined on by
+   * `change-request-risk-discharge.ts` — the union-of-sources constraint is what
+   * keeps it unFK'd, not missing work. The real, buildable edges for this row are
+   * `spawnedByChangeRequestId` / `dischargedByChangeRequestId` below.
    */
   checkKey: text("check_key"),
   /**
@@ -5775,7 +5948,21 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   evidence: text("evidence"),
   /** What is being done about it. */
   plan: text("plan"),
-  /** The register entry number an acceptance was recorded under, e.g. RR-2026-014. */
+  /**
+   * The register entry number an acceptance was recorded under, e.g. RR-2026-014.
+   *
+   * #1505 investigation — live-checked: this column has NO writer anywhere in
+   * the codebase (grep for `registerRef\s*[:=]` in artifacts/api-server turns up
+   * nothing but the read side, `portal-risk-register.ts`'s `register: row.registerRef
+   * ?? null`) and the local DB's one `msp_risk_decisions` row carries it NULL. It
+   * does not point at another table — it reads as this row's OWN generated
+   * display code, the Risk Register's counterpart to `rbdId` ("RBD-2026-575",
+   * populated) and `formatChangeRequestCode` ("CR-2026-101") — not a
+   * cross-table edge, so it is out of scope for this issue's FK work (there is
+   * nothing to FK it to) and left exactly as found. Filed as its own finding
+   * rather than guessed at here: which numbering scheme to generate it under is
+   * a product decision, not a missing column.
+   */
   registerRef: text("register_ref"),
   /** Why the decision was taken — the reasoning, shown on both pages. */
   rationale: text("rationale"),
@@ -5872,8 +6059,15 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   //     rejected CR is immutable and never resurrected; the risk persists until a
   //     new CR discharges it (#1514's lifecycle). NULL while the risk stands.
   // Both NULL for every risk decision authored by msp-rbd.ts's own path.
-  spawnedByChangeRequestId: integer("spawned_by_change_request_id"),
-  dischargedByChangeRequestId: integer("discharged_by_change_request_id"),
+  //
+  // #1505 — both now real FKs (were bare ints). `set null` rather than cascade:
+  // the risk decision is the permanent liability/acceptance record and must
+  // outlive either CR being pruned — a signed acceptance does not un-happen
+  // because the CR that triggered or resolved it was later removed.
+  spawnedByChangeRequestId: integer("spawned_by_change_request_id")
+    .references(() => mspChangeRequestsTable.id, { onDelete: "set null" }),
+  dischargedByChangeRequestId: integer("discharged_by_change_request_id")
+    .references(() => mspChangeRequestsTable.id, { onDelete: "set null" }),
 
   // ── Remediation ⟷ Risk pointer (#1542, part of #1489) ──────────────────────
   //
@@ -5901,6 +6095,9 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
   index("msp_risk_decisions_tenant_check_status_idx").on(t.tenantId, t.checkKey, t.status),
   index("msp_risk_decisions_spawned_by_remediation_step_idx").on(t.spawnedByRemediationStepId),
   index("msp_risk_decisions_obligation_id_idx").on(t.obligationId),
+  // #1505
+  index("msp_risk_decisions_spawned_by_change_request_idx").on(t.spawnedByChangeRequestId),
+  index("msp_risk_decisions_discharged_by_change_request_idx").on(t.dischargedByChangeRequestId),
 ]);
 
 export const insertMspRiskDecisionSchema = createInsertSchema(mspRiskDecisionsTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -6454,12 +6651,28 @@ export const riskInstancesTable = pgTable("risk_instances", {
   /** Free text on how/why it left, e.g. "Fixed via Conditional Access policy
    * CA-114" or "Mailbox decommissioned 2026-08-30". NULL while active. */
   resolutionNote: text("resolution_note"),
+  /**
+   * The `drift_events.id` this line item was raised from, when it was — the
+   * Shadow IT accumulation path (#1545, part of #1489). A line item added by
+   * hand via `msp-rbd-instances.ts` (any risk other than the standing Shadow
+   * IT container) leaves this NULL; it exists purely so the automated path can
+   * tell "have I already logged this specific unauthorized change" without
+   * re-deriving it from `label`/`objectId` text. No uniqueness constraint on
+   * purpose — the SAME setting can drift, get resolved, and reopen again
+   * later (drift_events' own reopen lifecycle, #1290), and each reopening is a
+   * genuinely new instance of exposure with its own `foundAt`, exactly like
+   * any other line item (#1509's "each with its own found date"). `set null`
+   * on delete: losing the drift-event row (there is no such deletion path
+   * today) must never cascade into losing the governance record of it.
+   */
+  driftEventId: integer("drift_event_id").references(() => driftEventsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("risk_instances_msp_id_risk_decision_id_idx").on(t.mspId, t.riskDecisionId),
   index("risk_instances_rbd_id_status_idx").on(t.rbdId, t.status),
   index("risk_instances_risk_decision_id_idx").on(t.riskDecisionId),
+  index("risk_instances_drift_event_id_idx").on(t.driftEventId),
 ]);
 
 export const insertRiskInstanceSchema = createInsertSchema(riskInstancesTable).omit({ id: true, createdAt: true, updatedAt: true });
@@ -7088,14 +7301,20 @@ export const portalHoldWindowEventsTable = pgTable("portal_hold_window_events", 
   actorUserId: integer("actor_user_id"),
   /**
    * msp_change_requests.id of the change request this decision raised, when it
-   * raised one. No FK, matching the cross-table convention above. This is the
-   * link that makes "every early close routes through a CR" checkable rather
-   * than merely asserted.
+   * raised one. This is the link that makes "every early close routes through a
+   * CR" checkable rather than merely asserted.
+   *
+   * #1505 — now a real FK (was a bare int, "No FK, matching the cross-table
+   * convention above"). `set null` rather than cascade: a hold-window event is
+   * the audit trail entry itself and must survive even if the CR it raised were
+   * ever pruned — the fact that a decision was made stays on record either way.
    */
-  changeRequestId: integer("change_request_id"),
+  changeRequestId: integer("change_request_id")
+    .references(() => mspChangeRequestsTable.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [
   index("portal_hold_window_events_hold_window_id_idx").on(t.holdWindowId),
+  index("portal_hold_window_events_change_request_id_idx").on(t.changeRequestId),
 ]);
 
 export type PortalHoldWindowEvent = typeof portalHoldWindowEventsTable.$inferSelect;
@@ -7290,6 +7509,19 @@ export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignm
   setBy: text("set_by").notNull().default(""),
   setAt: text("set_at").notNull().default(""),
   setWhy: text("set_why").notNull().default(""),
+  /**
+   * The assigner's own wire person id (#1519), same "u{id}" scheme as
+   * `ownerPersonId` — not a duplicate of `setBy`. `setBy` is display-name/
+   * email text for showing a human "who set this"; it is not reliably
+   * resolvable back to a real recipient (two people can share a display
+   * name). A customer-side decline needs a stable identity to escalate the
+   * notification to (see `notifyOwnershipDeclined`), so the assigner's real
+   * user id is captured here at assign time, the same way `ownerPersonId`
+   * captures the holder's. "" for any row assigned before this column
+   * existed — those simply do not get an escalation notification, exactly
+   * like every other best-effort notification path in this module.
+   */
+  setByPersonId: text("set_by_person_id").notNull().default(""),
   /**
    * Provenance the RESPOND flow records (#1518) — who actually accepted or
    * declined this cell, and when. Deliberately separate from `setBy`/`setAt`:
@@ -7495,6 +7727,19 @@ export const portalChangeControlPolicyTable = pgTable("portal_change_control_pol
   requireSeparateApprover: boolean("require_separate_approver").notNull().default(true),
   /** "Nothing may be scheduled inside a freeze without a written exception." */
   enforceFreezeCalendar: boolean("enforce_freeze_calendar").notNull().default(false),
+  /**
+   * #1504 — the maintenance-window counterpart to `enforceFreezeCalendar` above.
+   * A freeze window is when change is FORBIDDEN; a maintenance window is when
+   * change is EXPECTED — opposite meaning, same shape of switch. When true, a
+   * change's booked window (`scheduled_start`/`scheduled_end`) must fall inside
+   * an active `change_maintenance_windows` row matching its scope, or submission
+   * is blocked — evaluated server-side at submit exactly like the freeze check,
+   * through the same `raiseChangeRequest`/MSP-console entry points, never a
+   * second enforcement path. Off by default: an MSP that has not curated any
+   * maintenance windows must not have every change blocked the moment it flips
+   * this on by accident.
+   */
+  enforceMaintenanceWindows: boolean("enforce_maintenance_windows").notNull().default(false),
   /** "Run first, approve retrospectively within 24 hours." */
   allowEmergencyPath: boolean("allow_emergency_path").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -7766,10 +8011,25 @@ export const driftEventsTable = pgTable("drift_events", {
   /** Attribution actor (from the tenant audit log), when known. NULL = unattributed. */
   changedBy: text("changed_by"),
   verdict: text("verdict", { enum: DRIFT_EVENT_VERDICTS }).notNull().default("unattributed"),
-  /** Linked change-request reference covering this change, when one exists. */
+  /**
+   * Linked change-request reference covering this change, when one exists —
+   * display text in `formatChangeRequestCode` form ("CR-2026-101"). Kept as-is;
+   * `changeRequestId` below is the real FK the display string never was.
+   */
   crRef: text("cr_ref"),
+  /**
+   * #1505 — the real numeric `msp_change_requests.id` behind `crRef` above, when
+   * attribution found a covering CR (`buildCaChangeRequestAttribution` in
+   * monitor-executor.ts is the one live writer today). `crRef` stays the display
+   * string; this is what makes "drift raising a change" (the issue's own words)
+   * an actual FK instead of a string a caller would have to re-parse. `set null`:
+   * drift history is real audit trail and must survive a pruned CR.
+   */
+  changeRequestId: integer("change_request_id")
+    .references(() => mspChangeRequestsTable.id, { onDelete: "set null" }),
   /** The baseline snapshot this change was diffed against. */
-  baselineSnapshotId: integer("baseline_snapshot_id"),
+  baselineSnapshotId: integer("baseline_snapshot_id")
+    .references(() => driftBaselineSnapshotsTable.id, { onDelete: "set null" }),
   /**
    * Lifecycle status (#1290). 'open' the moment drift is first detected; the
    * collector flips it to 'resolved' when a later scan finds the setting back at
@@ -7789,6 +8049,9 @@ export const driftEventsTable = pgTable("drift_events", {
   index("drift_events_tenant_domain_idx").on(t.tenantId, t.domainKey),
   index("drift_events_tenant_detected_idx").on(t.tenantId, t.detectedAt),
   index("drift_events_tenant_status_reopened_idx").on(t.tenantId, t.status, t.reopenedAt),
+  // #1505
+  index("drift_events_change_request_id_idx").on(t.changeRequestId),
+  index("drift_events_baseline_snapshot_id_idx").on(t.baselineSnapshotId),
 ]);
 
 export type DriftEvent = typeof driftEventsTable.$inferSelect;

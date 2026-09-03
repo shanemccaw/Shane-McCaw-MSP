@@ -111,7 +111,7 @@
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, changeFreezeWindowsTable, crApprovalsTable, mspChangeRequestsTable, usersTable, type CrApproval } from "@workspace/db";
+import { db, changeFreezeWindowsTable, changeMaintenanceWindowsTable, crApprovalsTable, mspChangeRequestsTable, usersTable, type CrApproval } from "@workspace/db";
 import { and, asc, desc, eq, or } from "drizzle-orm";
 import { z } from "zod";
 
@@ -130,6 +130,7 @@ import {
 import { loadApprovalPolicy, recordApproval } from "../lib/portal-change-approvals-store";
 import { recordRejection } from "../lib/portal-change-rejection";
 import { raiseChangeRequest, RaiseChangeRequestError } from "../lib/portal-change-control-raise";
+import { dependencyEdgesForMany, type DependencyEdges } from "../lib/portal-change-dependencies-store";
 import {
   addAttachment,
   addComment,
@@ -228,6 +229,15 @@ interface WireChangeRequest {
   readonly intake: string | null;
   readonly implementer: string | null;
   readonly sourceGraphMessageId: string | null;
+  /**
+   * #1505 — the real FKs now sitting beside `linkedFinding` / `sourceGraphMessageId`
+   * above: the `m365_change_interpretations` / `m365_change_resolutions` rows
+   * behind an auto-routed Microsoft change, and the `portal_hold_windows` row
+   * behind a hold-window-raised CR. NULL on every CR not raised that way.
+   */
+  readonly sourceInterpretationId: number | null;
+  readonly sourceResolutionId: number | null;
+  readonly linkedHoldWindowId: number | null;
   readonly createdAt: string;
   /**
    * #1497 — the wf_run executing this change, when an approved CR authorized a
@@ -253,6 +263,27 @@ interface WireChangeRequest {
    * Approve/Reject affordance only when true.
    */
   readonly canApproveNow: boolean;
+  /**
+   * #1504 — `blocked_by` dependencies on this change, in both directions.
+   * `blockedBy` is what this CR is still waiting on (non-empty means it
+   * cannot yet authorize a write — see `change-control-write-gate.ts`);
+   * `blocks` is what is waiting on THIS CR. Both empty on the overwhelming
+   * majority of CRs, which have no dependency edges at all.
+   */
+  readonly blockedBy: readonly WireDependencyRef[];
+  readonly blocks: readonly WireDependencyRef[];
+}
+
+/**
+ * One `change_request_dependencies` edge, from the OTHER CR's point of view.
+ * `status` is the raw STORED status (`pending_approval`, `completed`, …), not
+ * the display-formatted one `toWire` derives elsewhere — the dependency store
+ * does not load `approvedBy` for the other side, so it cannot derive the
+ * display label without a second round trip this reference isn't worth.
+ */
+interface WireDependencyRef {
+  readonly code: string;
+  readonly status: string;
 }
 
 interface ChangeRequestRow {
@@ -280,6 +311,9 @@ interface ChangeRequestRow {
   intake: string | null;
   implementer: string | null;
   sourceGraphMessageId: string | null;
+  sourceInterpretationId: number | null;
+  sourceResolutionId: number | null;
+  linkedHoldWindowId: number | null;
   executorRunId: number | null;
   createdAt: Date;
 }
@@ -302,6 +336,7 @@ function toWire(
   row: ChangeRequestRow,
   approvals: readonly CrApproval[],
   ctx: ApprovalViewerContext,
+  dependencies: DependencyEdges = { blockedBy: [], blocks: [] },
 ): WireChangeRequest {
   const changeClass = displayChangeClass(row.changeClass);
   const status = displayStatus(row.status, row.approvedBy);
@@ -344,11 +379,16 @@ function toWire(
     intake: displayIntake(row.intake),
     implementer: displayImplementer(row.implementer),
     sourceGraphMessageId: row.sourceGraphMessageId,
+    sourceInterpretationId: row.sourceInterpretationId,
+    sourceResolutionId: row.sourceResolutionId,
+    linkedHoldWindowId: row.linkedHoldWindowId,
     executorRunId: row.executorRunId,
     createdAt: row.createdAt.toISOString(),
     approvalRecords,
     approvalState,
     canApproveNow,
+    blockedBy: dependencies.blockedBy.map((e) => ({ code: e.otherChangeRequestCode, status: e.otherStatus })),
+    blocks: dependencies.blocks.map((e) => ({ code: e.otherChangeRequestCode, status: e.otherStatus })),
   };
 }
 
@@ -512,6 +552,9 @@ router.get(
           intake: mspChangeRequestsTable.intake,
           implementer: mspChangeRequestsTable.implementer,
           sourceGraphMessageId: mspChangeRequestsTable.sourceGraphMessageId,
+          sourceInterpretationId: mspChangeRequestsTable.sourceInterpretationId,
+          sourceResolutionId: mspChangeRequestsTable.sourceResolutionId,
+          linkedHoldWindowId: mspChangeRequestsTable.linkedHoldWindowId,
           executorRunId: mspChangeRequestsTable.executorRunId,
           createdAt: mspChangeRequestsTable.createdAt,
         })
@@ -548,9 +591,11 @@ router.get(
       // signatures a change needs and decides whether the requester may sign; the
       // register read reflects both so the affordance matches what the store will
       // actually enforce.
-      const [callerCanApprove, policy] = await Promise.all([
+      const [callerCanApprove, policy, dependenciesByCr] = await Promise.all([
         callerCanApproveChanges(req),
         loadApprovalPolicy(customerId),
+        // #1504 — one bulk pair of queries for the whole page's blocked_by edges.
+        dependencyEdgesForMany(crIds, scope.mspId),
       ]);
       const ctx: ApprovalViewerContext = {
         now,
@@ -560,7 +605,9 @@ router.get(
         requireSeparateApprover: policy.requireSeparateApprover,
       };
 
-      const requests = rows.map((row) => toWire(row, approvalsByCr.get(row.id) ?? [], ctx));
+      const requests = rows.map((row) =>
+        toWire(row, approvalsByCr.get(row.id) ?? [], ctx, dependenciesByCr.get(row.id)),
+      );
       res.json({ requests, stats: buildStats(requests, now), scoped: true });
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/change-control failed");
@@ -754,6 +801,86 @@ router.get(
     } catch (err) {
       log.error({ err, customerId }, "GET /portal/change-control/freeze-windows failed");
       res.status(500).json({ error: "Failed to load the freeze calendar" });
+    }
+  },
+);
+
+// ── Maintenance calendar, read-only (#1504) ──────────────────────────────────
+//
+// The maintenance-window counterpart to the freeze-windows read above — same
+// shape, same scoping, OPPOSITE meaning: these are the windows change is
+// EXPECTED in, not forbidden from. Gated identically to the freeze read.
+interface WireMaintenanceWindow {
+  readonly id: number;
+  readonly scope: string;
+  readonly workload: string | null;
+  readonly name: string;
+  readonly reason: string | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly recurrence: string;
+  readonly recurrenceUntil: string | null;
+}
+
+function toWireMaintenanceWindow(row: {
+  id: number;
+  scope: string;
+  workload: string | null;
+  name: string;
+  reason: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  recurrence: string;
+  recurrenceUntil: Date | null;
+}): WireMaintenanceWindow {
+  return {
+    id: row.id,
+    scope: row.scope,
+    workload: row.workload,
+    name: row.name,
+    reason: row.reason,
+    startsAt: row.startsAt.toISOString(),
+    endsAt: row.endsAt.toISOString(),
+    recurrence: row.recurrence,
+    recurrenceUntil: row.recurrenceUntil ? row.recurrenceUntil.toISOString() : null,
+  };
+}
+
+router.get(
+  "/portal/change-control/maintenance-windows",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    try {
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.json({ windows: [] });
+        return;
+      }
+      const rows = await db
+        .select()
+        .from(changeMaintenanceWindowsTable)
+        .where(
+          and(
+            eq(changeMaintenanceWindowsTable.mspId, scope.mspId),
+            eq(changeMaintenanceWindowsTable.active, true),
+            or(
+              eq(changeMaintenanceWindowsTable.scope, "global"),
+              and(eq(changeMaintenanceWindowsTable.scope, "tenant"), eq(changeMaintenanceWindowsTable.tenantId, scope.tenantId)),
+              eq(changeMaintenanceWindowsTable.scope, "workload"),
+            ),
+          ),
+        )
+        .orderBy(asc(changeMaintenanceWindowsTable.startsAt));
+      res.json({ windows: rows.map(toWireMaintenanceWindow) });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/change-control/maintenance-windows failed");
+      res.status(500).json({ error: "Failed to load the maintenance calendar" });
     }
   },
 );

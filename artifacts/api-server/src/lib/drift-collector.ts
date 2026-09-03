@@ -34,6 +34,7 @@ import type { DriftEventStatus, DriftEventVerdict, InsertDriftEvent, DriftCollec
 import { and, eq, isNull, desc, inArray, sql } from "drizzle-orm";
 import { detectDrift, type PccDiff } from "./pcc/drift-detector.ts";
 import { driftSpecForCheck, type DriftScanContext } from "./drift-check-specs.ts";
+import { recordShadowItDrift, isUnauthorizedVerdict, type ShadowItDriftOccurrence } from "./shadow-it-governance.ts";
 import { logger } from "./logger.ts";
 
 const log = logger.child({ channel: "engine.dashboard" });
@@ -66,6 +67,12 @@ export function driftDomainKeyFromSourceKey(sourceKey: string): string {
 export interface DriftAttribution {
   changedBy?: string | null;
   crRef?: string | null;
+  /**
+   * #1505 — the real `msp_change_requests.id` behind `crRef` above, when the
+   * caller has it. `crRef` stays the display string; this is the FK
+   * `drift_events.change_request_id` is written from.
+   */
+  changeRequestId?: number | null;
 }
 
 /**
@@ -99,6 +106,8 @@ export interface PlannedDriftEvent {
   changedBy: string | null;
   verdict: DriftEventVerdict;
   crRef: string | null;
+  /** #1505 — the real FK behind `crRef`, see `DriftAttribution.changeRequestId`. */
+  changeRequestId: number | null;
 }
 
 /**
@@ -123,6 +132,7 @@ export function planDriftEvents(
       changedBy: attr?.changedBy ?? null,
       verdict: deriveVerdict(attr),
       crRef: attr?.crRef ?? null,
+      changeRequestId: attr?.changeRequestId ?? null,
     };
   });
 }
@@ -311,6 +321,10 @@ export async function collectDrift(
 
   // 2. Insert brand-new drift events (status defaults to 'open').
   let inserted: PlannedDriftEvent[] = [];
+  // #1545 — (idempotencyKey -> id) for the freshly-inserted rows, so the
+  // Shadow IT accumulation hook below can log each occurrence against its
+  // real drift_events.id rather than re-deriving one.
+  const insertedIdByKey = new Map<string, number>();
   if (plan.toInsert.length > 0) {
     const rows: InsertDriftEvent[] = plan.toInsert.map((p) => ({
       tenantId,
@@ -323,6 +337,7 @@ export async function collectDrift(
       changedBy: p.changedBy,
       verdict: p.verdict,
       crRef: p.crRef,
+      changeRequestId: p.changeRequestId,
       baselineSnapshotId: baseline.id,
     }));
     // ON CONFLICT DO NOTHING guards a concurrent inserter racing the same key.
@@ -330,13 +345,14 @@ export async function collectDrift(
       .insert(driftEventsTable)
       .values(rows)
       .onConflictDoNothing({ target: driftEventsTable.idempotencyKey })
-      .returning({ idempotencyKey: driftEventsTable.idempotencyKey });
-    const insertedKeys = new Set(returned.map((r) => r.idempotencyKey));
-    inserted = plan.toInsert.filter((p) => insertedKeys.has(keyFor(p)));
+      .returning({ id: driftEventsTable.id, idempotencyKey: driftEventsTable.idempotencyKey });
+    for (const r of returned) insertedIdByKey.set(r.idempotencyKey, r.id);
+    inserted = plan.toInsert.filter((p) => insertedIdByKey.has(keyFor(p)));
   }
 
   // 3. Reopen previously-resolved events whose setting drifted from baseline again.
   const reopened: PlannedDriftEvent[] = [];
+  const reopenedIdByKey = new Map<string, number>();
   for (const p of plan.toReopen) {
     const returned = await db
       .update(driftEventsTable)
@@ -352,6 +368,7 @@ export async function collectDrift(
         changedBy: p.changedBy,
         verdict: p.verdict,
         crRef: p.crRef,
+        changeRequestId: p.changeRequestId,
       })
       .where(
         and(
@@ -359,8 +376,44 @@ export async function collectDrift(
           eq(driftEventsTable.status, "resolved"),
         ),
       )
-      .returning({ idempotencyKey: driftEventsTable.idempotencyKey });
-    if (returned.length > 0) reopened.push(p);
+      .returning({ id: driftEventsTable.id, idempotencyKey: driftEventsTable.idempotencyKey });
+    if (returned.length > 0) {
+      reopened.push(p);
+      reopenedIdByKey.set(returned[0].idempotencyKey, returned[0].id);
+    }
+  }
+
+  // #1545 — roll every newly-inserted or freshly-reopened UNAUTHORIZED
+  // occurrence into the tenant's standing Shadow IT governance risk. Wrapped
+  // in its own try/catch: bookkeeping here must never fail the scan that
+  // triggered it, matching this file's existing non-fatal contract for drift
+  // bookkeeping (`maybeCollectDriftForCheck`).
+  const shadowItOccurrences: ShadowItDriftOccurrence[] = [
+    ...inserted
+      .filter((p) => isUnauthorizedVerdict(p.verdict))
+      .map((p) => ({
+        driftEventId: insertedIdByKey.get(keyFor(p))!,
+        setting: p.setting,
+        changedBy: p.changedBy,
+        verdict: p.verdict,
+        detectedAt: now,
+      })),
+    ...reopened
+      .filter((p) => isUnauthorizedVerdict(p.verdict))
+      .map((p) => ({
+        driftEventId: reopenedIdByKey.get(keyFor(p))!,
+        setting: p.setting,
+        changedBy: p.changedBy,
+        verdict: p.verdict,
+        detectedAt: now,
+      })),
+  ];
+  if (shadowItOccurrences.length > 0) {
+    try {
+      await recordShadowItDrift(tenantId, DRIFT_DOMAINS[domainKey as DriftDomainKey]?.label ?? domainKey, shadowItOccurrences);
+    } catch (err) {
+      log.warn({ err, tenantId, domainKey }, "shadow-it-governance: accumulation failed (non-fatal)");
+    }
   }
 
   if (inserted.length > 0 || reopened.length > 0 || plan.toResolveKeys.length > 0) {

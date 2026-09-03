@@ -64,6 +64,7 @@ import {
 import { normalizeSiteSharing, SHAREPOINT_SITE_SHARING_NORMALIZER } from "./sharepoint-sharing";
 import { normalizeDriveSharing, ONEDRIVE_DRIVE_SHARING_NORMALIZER } from "./onedrive-sharing";
 import { syncTenantServicePlans } from "./tenant-workloads.ts";
+import { formatChangeRequestCode } from "./portal-change-control";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.monitor" });
 
@@ -155,9 +156,15 @@ async function buildCaChangeRequestAttribution(
 
   if (!cr) return undefined;
 
+  // #1505 — was a hand-rolled `CR-${cr.id}` that never matched
+  // `parseChangeRequestCode`'s `CR-2026-\d+` format (portal-change-control.ts),
+  // so a drift event attributed here could never actually be resolved back to
+  // its CR by anything that parses the code. Every other writer in this
+  // codebase uses `formatChangeRequestCode`; this now does too.
   const attribution: DriftAttribution = {
     changedBy: cr.approvedBy ?? cr.requestedBy,
-    crRef: `CR-${cr.id}`,
+    crRef: formatChangeRequestCode(cr.id),
+    changeRequestId: cr.id,
   };
   return () => attribution;
 }

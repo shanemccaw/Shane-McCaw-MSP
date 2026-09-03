@@ -386,6 +386,11 @@ export default defineConfig({
       // diff, including the mixed addition+subtraction case that must still
       // require a signature.
       "src/lib/rbd-scope-diff.test.ts",
+      // #1545 — Shadow IT as an accumulating governance risk: which drift
+      // verdicts count as "unauthorized" for accumulation into the standing
+      // Shadow IT RBD (attributed_unapproved / unattributed, never approved
+      // or informational).
+      "src/lib/shadow-it-governance.test.ts",
       // #776 (Phase 1 of epic #647): real GET endpoint for
       // tenant_check_item_details — tenantId resolution stays scoped to the
       // caller's own customerId, a requested checkKey with no collection is

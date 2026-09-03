@@ -426,44 +426,32 @@ The provisioner registers the worktree so the cleanup sweep (`cleanup-worktree.m
 --sweep`, also the BuildConsole Home "🧹 Clean" button) never removes a live one while
 its owning process is alive. See `scripts/dev-server/README.md` for the full mechanism.
 
-## BuildConsole freeze policy — live app is bug fixes only (Git #2178)
+## BuildConsole freeze — LIFTED 2026-09-03 (was Git #2178, now reversed)
 
-**Live `desktop/BuildConsole` accepts genuine bug fixes and stability work only.
-New features default to the new isolated project, `desktop/ShaneBuilder`, unless
-Shane explicitly overrides that for the specific session he's in.** This has existed
-as real practice since #2138, but until now it lived only in issue comments and chat
-memory — never in the one document a live session actually reads. #2175 was scoped
-for ShaneBuilder, got real-time redirected into live BuildConsole mid-session, and
-the agent complied — correctly following the standing rule that a real-time
-instruction overrides an issue's original scope, but with zero awareness the target
-it was redirected onto is frozen for exactly this kind of work. 24 real
-`MessageBox.Show` call sites across 15 live files got rewired before anyone caught
-it.
+**Live `desktop/BuildConsole` is unfrozen. New feature work lands there again,
+normally, no special guard needed.**
 
-This freeze is about **where new feature work lands**, not about touching live
-BuildConsole at all — a real bug fix, a stability fix, or confirmed emergency work
-(e.g. #2141's single-instance guard, which correctly targeted live BuildConsole
-because it genuinely needed to run there) still goes there normally, no extra
-confirmation required.
+Context for why: `desktop/ShaneBuilder` was a from-scratch WPF rebuild, and after
+real hands-on use its UI proved clunky, unthreaded, and genuinely unusable —
+functionally broad but not something Shane can work in. Real conclusion, stated
+directly: a WPF agent build is best iterated one real piece at a time against an
+app that already works, not asked to get an entire redesign right from a cold
+start. BuildConsole already works, mostly — real bugs and real UI rough edges,
+but a much smaller gap to close than rebuilding from zero.
 
-### The guard: a real-time redirect onto frozen ground still needs a real yes
+**Current plan, in order:**
+1. Selectively port specific ShaneBuilder features Shane wants to keep, one at a
+   time, into live BuildConsole — starting with Test Pad. Each port is scoped and
+   dispatched like any other real Feature, not a wholesale code dump.
+2. Once Test Pad lands, Shane uses it directly against BuildConsole to log real
+   bugs and real UI complaints as he hits them — that becomes the real backlog
+   driving BuildConsole's next real iteration pass.
+3. ShaneBuilder itself is paused, not deleted — real code worth revisiting for
+   future ports as they're identified.
 
-A real-time instruction from Shane still overrides an issue's stated scope — that
-capability is genuine and stays. But when a real-time redirect would move **new
-feature work** (not a small, obviously-safe bug fix, not confirmed emergency work)
-off its stated target and onto live BuildConsole, silently complying is wrong. The
-agent must instead:
-
-1. Name the conflict explicitly, in plain terms — e.g. *"this issue was scoped for
-   ShaneBuilder; live BuildConsole is currently frozen for new features — confirming
-   you want this built there instead?"*
-2. Get a real, explicit yes from Shane before proceeding.
-
-Only after that explicit confirmation does the redirect proceed. This does not slow
-down a legitimate quick fix or genuine emergency work against live BuildConsole —
-those were never in scope for this guard, and asking permission for them would just
-be noise. It exists solely for the case where a redirect would quietly widen scope
-onto ground that's supposed to be closed to exactly that kind of change.
+The former guard requiring explicit confirmation before redirecting new-feature
+work onto BuildConsole no longer applies — that was specific to the freeze this
+entry replaces.
 
 ## ShaneBuilder UI screenshots — check before building any UI (real reference, 2026-09-03)
 

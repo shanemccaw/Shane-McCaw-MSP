@@ -136,6 +136,7 @@ describe("drift-collector — planDriftLifecycle (resolve/reopen, #1290)", () =>
     changedBy: null,
     verdict: "unattributed",
     crRef: null,
+    changeRequestId: null,
   });
   const keyFor = (p: PlannedDriftEvent) => `${p.op}|${p.setting}`;
 

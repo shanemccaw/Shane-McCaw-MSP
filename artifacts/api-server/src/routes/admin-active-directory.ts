@@ -1231,7 +1231,12 @@ router.delete("/admin/active-directory/ou/:id", requireAdmin, async (req: Reques
 // assign time (never trusted from client input alone) — this is what makes the
 // row real rather than an invented membership claim.
 
-async function resolveAssignmentCustomer(customerId: unknown): Promise<
+// Exported (Git #2148) so msp-active-directory.ts's MSP-staff-gated mirror of
+// this same CRUD can reuse the identical tenant-resolution and Graph
+// verification logic rather than duplicating it — the routes differ only in
+// their auth gate and staff-scoping, never in how a customer or object is
+// resolved and verified.
+export async function resolveAssignmentCustomer(customerId: unknown): Promise<
   | { ok: true; customerId: number; mspId: number; graphTenantId: string }
   | { ok: false; error: string }
 > {
@@ -1247,7 +1252,7 @@ async function resolveAssignmentCustomer(customerId: unknown): Promise<
 }
 
 /** Real Graph user lookup by UPN — the verification step that keeps an assignment real. */
-async function resolveGraphUserByUpn(graphTenantId: string, upn: string): Promise<
+export async function resolveGraphUserByUpn(graphTenantId: string, upn: string): Promise<
   | { ok: true; id: string; userPrincipalName: string; displayName: string | null }
   | { ok: false; error: string }
 > {

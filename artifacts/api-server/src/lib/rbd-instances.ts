@@ -31,6 +31,9 @@ export interface AddRiskInstanceInput {
   label: string;
   objectId?: string | null;
   foundAt: Date;
+  /** #1545 — the `drift_events.id` this line item was raised from, when it was
+   * (the Shadow IT accumulation path). NULL for a hand-added line item. */
+  driftEventId?: number | null;
 }
 
 /** Adds a new line item to a container. Returns null if the container row
@@ -53,9 +56,26 @@ export async function addRiskInstance(input: AddRiskInstanceInput): Promise<Risk
       objectId: input.objectId ?? null,
       foundAt: input.foundAt,
       status: "active",
+      driftEventId: input.driftEventId ?? null,
     })
     .returning();
   return inserted;
+}
+
+/** #1545 — every ACTIVE line item still open against a given drift event, for
+ * the Shadow IT accumulation path's own idempotency check (never re-log the
+ * same open occurrence twice within one run). */
+export async function listActiveRiskInstancesByDriftEventId(mspId: number, driftEventId: number): Promise<RiskInstance[]> {
+  return db
+    .select()
+    .from(riskInstancesTable)
+    .where(
+      and(
+        eq(riskInstancesTable.mspId, mspId),
+        eq(riskInstancesTable.driftEventId, driftEventId),
+        eq(riskInstancesTable.status, "active"),
+      ),
+    );
 }
 
 /** Every line item for a container, newest-found first. */
