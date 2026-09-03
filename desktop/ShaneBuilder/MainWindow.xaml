@@ -625,16 +625,17 @@
                         <!-- Git #2372 (Feature #2367 item 5) — Shot Vault rail panel: a real,
                              newest-first list of the shots DesktopScreenClipService already
                              saves to disk, each with a working per-shot Copy action. Search
-                             (#2368), tag chips (#2369), run grouping (#2370), and DIFF badges
-                             (#2371) are separate sibling sub-issues layered on this same body.
-                             Built in code-behind (MainWindow.ShotVaultPanel.cs). -->
+                             (#2368) and tag chips (#2369), run grouping (#2370) are separate
+                             sibling sub-issues layered on this same body. Git #2371 turned the
+                             row list into a wrapped thumbnail grid with real, computed DIFF
+                             badges. Built in code-behind (MainWindow.ShotVaultPanel.cs). -->
                         <StackPanel x:Name="ShotVaultPanelBody" Margin="8,8,8,12" Visibility="Collapsed">
                             <TextBlock x:Name="ShotVaultPanelStatus" Margin="6,4,6,10"
                                        TextWrapping="Wrap"
                                        Foreground="{StaticResource Brush.Text.Dim}"
                                        FontFamily="{StaticResource FontFamily.Sans}"
                                        FontSize="{StaticResource FontSize.10.5}"/>
-                            <StackPanel x:Name="ShotVaultRows" Margin="6,0,6,0"/>
+                            <WrapPanel x:Name="ShotVaultRows" Margin="2,0,2,0" Orientation="Horizontal"/>
                         </StackPanel>
 
                         <!-- Git #2356 (Feature #2355 item 1) — Batter Up rail panel shell: the
