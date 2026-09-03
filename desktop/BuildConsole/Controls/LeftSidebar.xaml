@@ -544,6 +544,15 @@
                             </DockPanel>
                         </Border>
 
+                        <!-- Git #2538 — GATE card(s). A release-gating issue (title starts
+                             "GATE:") in the currently-shown milestone(s) is surfaced here as a
+                             prominent purple-bordered card with its real completion fraction
+                             (sub-issue rollup, or a "- [ ]"/"- [x]" checklist parse of its body),
+                             so a release blocker is never buried mid-tree. Populated by
+                             RenderGateCards(); collapsed entirely when there are no open GATE
+                             issues in view. Clicking a card opens that issue's detail tab. -->
+                        <StackPanel x:Name="GateCardHost" Margin="0,0,0,8" Visibility="Collapsed"/>
+
                         <!-- Filter Chips -->
                         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,8">
                             <StackPanel Orientation="Horizontal">

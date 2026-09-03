@@ -148,6 +148,15 @@ namespace BuildConsole.Services
         public int? ParentMilestoneNumber { get; set; }
         /// <summary>subIssuesSummary.total straight from GraphQL — the real number of sub-issues.</summary>
         public int SubIssueCount { get; set; }
+        /// <summary>Git #2538 — subIssuesSummary.completed straight from GraphQL: the real number of this
+        /// issue's direct sub-issues that are closed. Drives the per-Epic / per-Feature completion rollup
+        /// pill on the Git Board tree (e.g. "89% (8/9)"). GitHub counts a sub-issue as completed iff it is
+        /// CLOSED, so this is accurate even though the OPEN-only board fetch never loads the closed children
+        /// themselves.</summary>
+        public int SubIssueCompleted { get; set; }
+        /// <summary>Git #2538 — subIssuesSummary.percentCompleted straight from GraphQL (0–100), GitHub's own
+        /// computed completion percent for this issue's direct sub-issues.</summary>
+        public int SubIssuePercent { get; set; }
         /// <summary>Numbers of sub-issues explicitly attached to this epic from GitHub GraphQL or sub_issues endpoint.</summary>
         public List<int> ChildIssueNumbers { get; set; } = new();
         /// <summary>GraphQL databaseId — the numeric REST id GitHub's sub_issues endpoint wants as `sub_issue_id` (NOT the issue Number). Populated by ListBoardIssuesAsync for Git #844.</summary>
@@ -842,7 +851,7 @@ namespace BuildConsole.Services
         labels(first: 20) {{ nodes {{ name }} }}
         milestone {{ title number }}
         parent {{ number milestone {{ number }} }}
-        subIssuesSummary {{ total }}
+        subIssuesSummary {{ total completed percentCompleted }}
         subIssues(first: 50) {{ nodes {{ number }} }}
       }}
     }}
@@ -868,6 +877,8 @@ namespace BuildConsole.Services
                             ParentNumber = n.Parent?.Number,
                             ParentMilestoneNumber = n.Parent?.Milestone?.Number,
                             SubIssueCount = Math.Max(n.SubIssuesSummary?.Total ?? 0, childNums.Count),
+                            SubIssueCompleted = n.SubIssuesSummary?.Completed ?? 0,
+                            SubIssuePercent = n.SubIssuesSummary?.PercentCompleted ?? 0,
                             ChildIssueNumbers = childNums,
                             DatabaseId = n.DatabaseId,
                         });
@@ -1449,7 +1460,7 @@ namespace BuildConsole.Services
         private class MilestoneData { public string? Title { get; set; } public int? Number { get; set; } }
         /// <summary>The GraphQL <c>parent</c> node — the epic this issue is a sub-issue of, plus that epic's own milestone (so the child's effective milestone resolves without the epic needing to be in the same fetch).</summary>
         private class ParentData { public int? Number { get; set; } public MilestoneData? Milestone { get; set; } }
-        private class SubIssuesSummaryData { public int Total { get; set; } }
+        private class SubIssuesSummaryData { public int Total { get; set; } public int Completed { get; set; } public int PercentCompleted { get; set; } }
         private class SubIssuesConnection { public List<SubIssueNode> Nodes { get; set; } = new(); }
         private class SubIssueNode { public int Number { get; set; } }
     }

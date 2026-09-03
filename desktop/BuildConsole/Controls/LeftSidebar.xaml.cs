@@ -91,6 +91,15 @@ namespace BuildConsole.Controls
         public bool HasParentEpic { get; set; }
         public int? ParentNumber { get; set; }
         public int SubIssueCount { get; set; }
+        /// <summary>Git #2538 — real closed-sub-issue count (GitHub subIssuesSummary.completed), carried
+        /// through from <see cref="GitBoardIssue.SubIssueCompleted"/> so an Epic/Feature row can show its
+        /// true completion rollup regardless of whether the closed children are in the OPEN-only board fetch.</summary>
+        public int SubIssueCompleted { get; set; }
+        /// <summary>Git #2538 — GitHub's own subIssuesSummary.percentCompleted (0–100).</summary>
+        public int SubIssuePercent { get; set; }
+        /// <summary>Git #2538 — the per-Epic / per-Feature completion rollup pill text, e.g. "89% (8/9)".
+        /// Empty when this issue has no sub-issues (nothing to roll up).</summary>
+        public string SubIssueProgressStr => SubIssueCount == 0 ? "" : $"{SubIssuePercent}% ({SubIssueCompleted}/{SubIssueCount})";
         public bool IsComplete { get; set; }
         public string PriorityBadge => Priority switch
         {
@@ -2495,6 +2504,8 @@ namespace BuildConsole.Controls
                 HasParentEpic = it.ParentNumber != null,
                 ParentNumber = it.ParentNumber,
                 SubIssueCount = it.SubIssueCount,
+                SubIssueCompleted = it.SubIssueCompleted,
+                SubIssuePercent = it.SubIssuePercent,
                 IsBlocked = issueInTree?.IsBlocked ?? it.IsBlocked,
                 IsInFlight = it.HasInFlightLabel,
                 BlockedByNumber = issueInTree?.BlockedByNumber,
@@ -2550,6 +2561,8 @@ namespace BuildConsole.Controls
                         HasParentEpic = it.ParentNumber != null,
                         ParentNumber = it.ParentNumber,
                         SubIssueCount = it.SubIssueCount,
+                        SubIssueCompleted = it.SubIssueCompleted,
+                        SubIssuePercent = it.SubIssuePercent,
                     });
                 }
                 return epic;
@@ -4483,6 +4496,13 @@ namespace BuildConsole.Controls
         /// </summary>
         private readonly HashSet<string> _expandedNodeKeys = new();
 
+        /// <summary>Git #2538 — issue numbers of every ancestor of the active working epic
+        /// (<see cref="_activeEpicGithubNumber"/>), walked up the real ParentNumber chain each
+        /// render. Any parent-issue node in this set is force-expanded so the whole path down to
+        /// the item being worked is open on load — Shane no longer has to hand-expand each
+        /// intervening Feature to find what's in flight underneath it.</summary>
+        private HashSet<int> _activeEpicAncestorNumbers = new();
+
         /// <summary>
         /// Shane: "when I am in Focus Mode on a Milestone with a lot of
         /// Epics, I need the Epic I'm working to be more visually ahead...
@@ -4616,6 +4636,8 @@ namespace BuildConsole.Controls
         private const double IssuePriorityBadgeWidth = 22; // priority glyph + trailing space
         private const double IssueNumberBadgeWidth = 48;   // "#NNN" bordered pill + its 6px right margin
         private const double IssueNoParentBadgeWidth = 78; // "NO EPIC" bordered pill + its 6px right margin — unaffected by #1785 (text badge, kept as-is)
+        private const double IssueSubProgressBadgeWidth = 66; // Git #2538 — "NN% (n/n)" Epic/Feature completion rollup pill + its 6px left margin
+        private const double FocusBadgeWidth = 52; // Git #2538 — "FOCUS" pill on the active-focus milestone + its 8px left margin
 
         // Git #1785 — Working / In Flight / In Flight ↓ / Blocked shrank from full
         // text pills (e.g. the old 88px "🟠 In Flight" IssueInFlightBadgeWidth) down
@@ -4792,6 +4814,24 @@ namespace BuildConsole.Controls
                 m.HasInFlightDescendant = m.Epics.Any(ebkt => ebkt.HasInFlightDescendant);
             }
 
+            // Git #2538 — walk the active working epic's real ParentNumber chain up to the
+            // top so every Feature/Epic between it and the milestone auto-expands (see
+            // _activeEpicAncestorNumbers). Rebuilt each render off the live parent map.
+            _activeEpicAncestorNumbers = new HashSet<int>();
+            if (_activeEpicGithubNumber.HasValue)
+            {
+                var parentByNumber = allKnownIssues
+                    .GroupBy(i => i.IssueNumber)
+                    .ToDictionary(g => g.Key, g => g.First().ParentNumber);
+                int? cursor = parentByNumber.TryGetValue(_activeEpicGithubNumber.Value, out var p0) ? p0 : null;
+                var guard = new HashSet<int>();
+                while (cursor.HasValue && guard.Add(cursor.Value))
+                {
+                    _activeEpicAncestorNumbers.Add(cursor.Value);
+                    cursor = parentByNumber.TryGetValue(cursor.Value, out var pn) ? pn : null;
+                }
+            }
+
             if (_activeEpicGithubNumber.HasValue)
             {
                 var activeIssue = allKnownIssues.FirstOrDefault(i => i.IssueNumber == _activeEpicGithubNumber.Value);
@@ -4802,6 +4842,9 @@ namespace BuildConsole.Controls
             {
                 ActiveWorkingEpicBar.Visibility = Visibility.Collapsed;
             }
+
+            // Git #2538 — surface any release-gating issue in the shown milestone(s).
+            RenderGateCards(shownMilestones);
 
             foreach (var m in shownMilestones)
             {
@@ -5188,6 +5231,147 @@ namespace BuildConsole.Controls
             return _fallbackBrushes.TryGetValue(key, out var fallback) ? fallback : Brushes.Gray;
         }
 
+        // Git #2538 — case-sensitive "GATE:" title prefix is the real, confirmed
+        // convention (live-verified: #1281, #1269, #1918 all title-lead "GATE:").
+        private static bool IsGateTitle(string? title) =>
+            !string.IsNullOrEmpty(title) && title.TrimStart().StartsWith("GATE:", StringComparison.Ordinal);
+
+        /// <summary>Git #2538 — parses a GitHub task-list ("- [ ]" / "- [x]") out of an issue
+        /// body, returning (checked, total). Used as the GATE card's completion source only when
+        /// the gate issue has no real sub-issues to roll up instead. Returns (0,0) when the body
+        /// carries no checklist at all.</summary>
+        private static (int Done, int Total) ParseChecklist(string? body)
+        {
+            if (string.IsNullOrEmpty(body)) return (0, 0);
+            int done = 0, total = 0;
+            foreach (System.Text.RegularExpressions.Match mt in System.Text.RegularExpressions.Regex.Matches(
+                         body, @"(?m)^[ \t]*[-*] \[([ xX])\]"))
+            {
+                total++;
+                if (!string.Equals(mt.Groups[1].Value, " ", StringComparison.Ordinal)) done++;
+            }
+            return (done, total);
+        }
+
+        /// <summary>Git #2538 — renders the GATE card(s): every OPEN release-gating issue
+        /// (<see cref="IsGateTitle"/>) whose milestone is currently shown on the board. Real data
+        /// only — the fraction is GitHub's own sub-issue completion (subIssuesSummary) when the gate
+        /// has sub-issues, else a checklist parse of its body, else no fraction (honest: nothing to
+        /// count). Clicking a card opens that issue's detail tab. Host is collapsed when there are
+        /// no gates in view so a gate-free milestone stays clean.</summary>
+        private void RenderGateCards(List<GitMilestone> shownMilestones)
+        {
+            GateCardHost.Children.Clear();
+
+            // Which milestone numbers are actually on screen right now (Focus Mode may
+            // have hard-filtered to one). Gate issues are milestoned directly, so match
+            // on the issue's own MilestoneNumber against this set.
+            var shownMilestoneNumbers = shownMilestones
+                .Where(m => m.GithubNumber.HasValue)
+                .Select(m => m.GithubNumber!.Value)
+                .ToHashSet();
+
+            var gates = _lastBoardIssues
+                .Where(i => !i.IsClosed && IsGateTitle(i.Title)
+                            && i.MilestoneNumber.HasValue && shownMilestoneNumbers.Contains(i.MilestoneNumber.Value))
+                .OrderBy(i => i.Number)
+                .ToList();
+
+            if (gates.Count == 0)
+            {
+                GateCardHost.Visibility = Visibility.Collapsed;
+                return;
+            }
+
+            foreach (var gate in gates)
+            {
+                // Real completion fraction: sub-issue rollup first, checklist fallback, else none.
+                string? fraction = null;
+                string? fractionTip = null;
+                if (gate.SubIssueCount > 0)
+                {
+                    fraction = $"{gate.SubIssueCompleted}/{gate.SubIssueCount}";
+                    fractionTip = $"{gate.SubIssueCompleted} of {gate.SubIssueCount} sub-issue(s) complete";
+                }
+                else
+                {
+                    var (done, total) = ParseChecklist(gate.Body);
+                    if (total > 0)
+                    {
+                        fraction = $"{done}/{total}";
+                        fractionTip = $"{done} of {total} checklist item(s) done";
+                    }
+                }
+
+                // Strip the "GATE:" prefix for the card's own title line (the eyebrow already says GATE).
+                string displayTitle = gate.Title.TrimStart();
+                if (displayTitle.StartsWith("GATE:", StringComparison.Ordinal))
+                    displayTitle = displayTitle.Substring("GATE:".Length).TrimStart();
+
+                var card = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1F1A2E")),
+                    BorderBrush = GetBrush("MauveBrush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(10, 7, 10, 7),
+                    Margin = new Thickness(0, 0, 0, 6),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = $"#{gate.Number} — {gate.Title}\nClick to open this gate's detail tab"
+                };
+
+                var dock = new DockPanel { LastChildFill = true };
+
+                if (fraction != null)
+                {
+                    var fracBlock = new TextBlock
+                    {
+                        Text = fraction,
+                        FontSize = 12,
+                        FontWeight = FontWeights.Bold,
+                        Foreground = GetBrush("MauveBrush"),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(8, 0, 0, 0),
+                        ToolTip = fractionTip
+                    };
+                    DockPanel.SetDock(fracBlock, Dock.Right);
+                    dock.Children.Add(fracBlock);
+                }
+
+                var textCol = new StackPanel();
+                textCol.Children.Add(new TextBlock
+                {
+                    Text = "GATE · BLOCKS RELEASE",
+                    FontSize = 9,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = GetBrush("MauveBrush")
+                });
+                textCol.Children.Add(new TextBlock
+                {
+                    Text = displayTitle,
+                    FontSize = 11.5,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = GetBrush("TextBrush"),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Margin = new Thickness(0, 1, 0, 0)
+                });
+                dock.Children.Add(textCol);
+
+                card.Child = dock;
+
+                int gateNumber = gate.Number;
+                card.MouseLeftButtonUp += (s, e) =>
+                {
+                    var detail = BuildDetailIssue(gateNumber);
+                    if (detail != null) GitDetailTabRequested?.Invoke(this, detail);
+                };
+
+                GateCardHost.Children.Add(card);
+            }
+
+            GateCardHost.Visibility = Visibility.Visible;
+        }
+
         private UIElement CreateMilestoneHeader(GitMilestone m)
         {
             var p = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 3, 0, 3) };
@@ -5235,6 +5419,37 @@ namespace BuildConsole.Controls
                 p.Children.Add(badge);
             }
 
+            // Git #2538 — FOCUS badge. Surfaces the real, already-existing Focus Mode
+            // state (FocusModeService.IsActive + ActiveMilestoneNumber) directly on the
+            // milestone that is currently focused, so "which milestone am I zoomed into"
+            // is visible on the board itself, not only in the Focus bar. No new data
+            // model, no selection UI — just a read of the existing service (per Shane's
+            // final #2538 scope correction: FOCUS renders on the Milestone, as-is).
+            var focus = BuildConsole.Services.FocusModeService.Instance;
+            bool isFocusedMilestone = focus.IsActive && m.GithubNumber.HasValue
+                && focus.ActiveMilestoneNumber == m.GithubNumber.Value;
+            if (isFocusedMilestone)
+            {
+                var focusBadge = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#33CBA6F7")),
+                    BorderBrush = GetBrush("MauveBrush"),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(5, 0, 5, 0),
+                    Margin = new Thickness(8, 0, 0, 0),
+                    ToolTip = "Focus Mode is zoomed into this milestone right now"
+                };
+                focusBadge.Child = new TextBlock
+                {
+                    Text = "FOCUS",
+                    FontSize = 9,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = GetBrush("MauveBrush")
+                };
+                p.Children.Add(focusBadge);
+            }
+
             // Git #938 — milestone rows sit at depth 0: one expander column of
             // indentation + the 🎯 emoji, plus the progress pill (only when a real
             // milestone has counts). Register the title for the shared MaxWidth pass.
@@ -5242,7 +5457,8 @@ namespace BuildConsole.Controls
                 IssueTreeIndentPerLevel * 1 + IssueTreeChrome + MilestoneEmojiWidth
                 + (m.HasRealCounts ? MilestoneBadgeWidth : 0)
                 + (containsActiveEpic ? IssueStatusDotReserve : 0)
-                + (m.HasInFlightDescendant ? IssueStatusDotReserve : 0)));
+                + (m.HasInFlightDescendant ? IssueStatusDotReserve : 0)
+                + (isFocusedMilestone ? FocusBadgeWidth : 0)));
             return p;
         }
 
@@ -5426,6 +5642,39 @@ namespace BuildConsole.Controls
 
             p.Children.Add(titleBlock);
 
+            // Git #2538 — per-Epic / per-Feature completion rollup pill (e.g. "89% (8/9)"),
+            // straight from GitHub's own subIssuesSummary (completed/total/percentCompleted).
+            // Rendered on ANY issue that has real sub-issues — that's exactly what a "Feature"
+            // is in this repo's convention (a parent issue with children), so this is the fix
+            // for "I can't tell a Feature has real content under it": the pill both proves
+            // there's a subtree AND shows how far along it is, without expanding the node.
+            // Not shown for leaf issues (SubIssueCount == 0) — there's nothing to roll up.
+            bool showsSubProgress = issue.SubIssueCount > 0;
+            if (showsSubProgress)
+            {
+                var progBadge = new Border
+                {
+                    Background = GetBrush("Surface0Brush"),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(6, 1, 6, 1),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    ToolTip = $"{issue.SubIssueCompleted} of {issue.SubIssueCount} sub-issue(s) complete"
+                };
+                progBadge.Child = new TextBlock
+                {
+                    Text = issue.SubIssueProgressStr,
+                    FontSize = 10,
+                    FontWeight = FontWeights.Bold,
+                    // Completion-aware color: green when fully done, peach mid-flight, blue at the start —
+                    // a glanceable "how close is this Feature/Epic" cue matching the tree's other real dots.
+                    Foreground = issue.SubIssuePercent >= 100 ? GetBrush("GreenBrush")
+                               : issue.SubIssuePercent > 0 ? GetBrush("PeachBrush")
+                               : GetBrush("Subtext0Brush")
+                };
+                p.Children.Add(progBadge);
+            }
+
             // Git #938 — issue rows sit at depth. Git #1785: every status dot
             // (working/in-flight/in-flight-descendant/blocked) now reserves the
             // same small IssueStatusDotReserve instead of its own wide text-pill
@@ -5436,7 +5685,8 @@ namespace BuildConsole.Controls
                 IssueTreeIndentPerLevel * (depth + 1) + IssueTreeChrome + IssuePriorityBadgeWidth + IssueNumberBadgeWidth
                 + (isActiveEpic ? IssueStatusDotReserve : 0)
                 + (showsBlocked ? IssueStatusDotReserve : 0) + (showsInFlight ? IssueStatusDotReserve : 0) + (showsNoParent ? IssueNoParentBadgeWidth : 0)
-                + (showsInFlightDescendant ? IssueStatusDotReserve : 0)));
+                + (showsInFlightDescendant ? IssueStatusDotReserve : 0)
+                + (showsSubProgress ? IssueSubProgressBadgeWidth : 0)));
 
             // Left accent bar + subtle background tint so the active epic
             // reads ahead of every sibling epic even before you read its
@@ -5469,7 +5719,9 @@ namespace BuildConsole.Controls
             {
                 Header = header,
                 Tag = issue,
-                IsExpanded = isActiveEpic || _expandedNodeKeys.Contains(nodeKey)
+                // Git #2538 — also auto-expand if this node is an ancestor of the active
+                // working epic, so the full path down to the in-flight item is open.
+                IsExpanded = isActiveEpic || _activeEpicAncestorNumbers.Contains(issue.IssueNumber) || _expandedNodeKeys.Contains(nodeKey)
             };
             tvi.Collapsed += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Remove(nodeKey); };
             tvi.Expanded += (s, e) => { if (ReferenceEquals(e.OriginalSource, tvi)) _expandedNodeKeys.Add(nodeKey); };
