@@ -939,46 +939,57 @@ namespace BuildConsole.Services
             return await cmd.ExecuteNonQueryAsync();
         }
 
-        // ── False-done reconciliation (Git #2685) ─────────────────────────────────
+        // ── False-done reconciliation (Git #2685 / #2775) ─────────────────────────
         /// <summary>
-        /// Git #2685 — every issue-linked queue row currently sitting in a terminal <c>done</c>
-        /// status, returned so the manual-refresh reconciliation pass
-        /// (<see cref="Services.FalseDoneReconciler"/>) can check each one's real origin/main
-        /// bookend. A self-blocked session that wrote a real 🛑 BLOCKED bookend and exited cleanly
-        /// (process exit 0, nothing crashed) is marked <c>done</c> by the watcher's only completion
-        /// signal (<see cref="MarkCompleteAsync"/>) — this is the set that must be reconciled against
-        /// the authoritative bookend, since <c>done</c> is invisible to every dedup dead-check.
+        /// Git #2685, widened by #2775 — every issue-linked queue row currently sitting in a
+        /// terminal <c>done</c> status OR in <see cref="VerifyingStatus"/>, returned so the
+        /// manual-refresh reconciliation pass (<see cref="Services.FalseDoneReconciler"/>) can check
+        /// each one's real origin/main bookend. A self-blocked session that wrote a real 🛑 BLOCKED
+        /// bookend and exited cleanly (process exit 0, nothing crashed) is marked <c>done</c> by
+        /// <see cref="MarkCompleteAsync"/> when the row has no <c>github_number</c> — but per Git
+        /// #1469, a row that DOES carry a real <c>github_number</c> lands on <c>verifying</c>
+        /// instead (held there until the issue actually closes). #1676's real repro was exactly this:
+        /// a genuine self-block landed on <c>verifying</c>, not <c>done</c>, and the original
+        /// <c>WHERE status = 'done'</c> query left it structurally invisible to reconciliation. Both
+        /// statuses are the same false-positive shape via the same completion signal, so both are
+        /// returned here — <c>verifying</c> is NOT in <see cref="IsTerminalStatus"/>, so a false
+        /// <c>verifying</c> row blocks every dedup dead-check even more silently than a false
+        /// <c>done</c> row did.
         /// </summary>
-        public async Task<List<(int Id, int GithubNumber)>> GetDoneGithubRowsAsync()
+        public async Task<List<(int Id, int GithubNumber, string Status)>> GetDoneOrVerifyingGithubRowsAsync()
         {
-            var rows = new List<(int, int)>();
+            var rows = new List<(int, int, string)>();
             await using var conn = await OpenAsync();
             await using var cmd = new NpgsqlCommand(@"
-                SELECT id, github_number
+                SELECT id, github_number, status
                   FROM bt_build_queue
-                 WHERE status = 'done'
+                 WHERE status IN ('done', @verifyingStatus)
                    AND github_number IS NOT NULL", conn);
+            cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
             await using var reader = await cmd.ExecuteReaderAsync();
             while (await reader.ReadAsync())
-                rows.Add((reader.GetInt32(0), reader.GetInt32(1)));
+                rows.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2)));
             return rows;
         }
 
         /// <summary>
-        /// Git #2685 — the deliberate, narrow exception to
-        /// <see cref="MarkSupersededByReplyAsync"/>'s "never rewrite a terminal <c>done</c> row"
-        /// guard: a NEW, dedicated method (the Reply-supersede guard exists for good reason and is
-        /// NOT weakened here) that resets a confirmed false-<c>done</c> row — its origin/main bookend
-        /// proves it is actually BLOCKED, not done — to <c>canceled</c>.
+        /// Git #2685, widened by #2775 — the deliberate, narrow exception to
+        /// <see cref="MarkSupersededByReplyAsync"/>'s "never rewrite a terminal row" guard: a NEW,
+        /// dedicated method (the Reply-supersede guard exists for good reason and is NOT weakened
+        /// here) that resets a confirmed false-<c>done</c>/false-<c>verifying</c> row — its origin/main
+        /// bookend proves it is actually BLOCKED, not done and not genuinely awaiting verification —
+        /// to <c>canceled</c>.
         ///
         /// <c>canceled</c> is chosen over <c>superseded</c> deliberately, and after live verification
         /// (see the issue): <c>canceled</c> is a real non-blocking terminal state
         /// (<see cref="IsTerminalStatus"/>) that already flows through EVERY dedup dead-check —
         /// <see cref="Services.BatterUpQueueService"/>.RefreshAsync (failed/canceled ⇒ reappear) and
         /// QueueRowAsync (IsTerminalStatus &amp;&amp; !done ⇒ re-queue via reuseRowId) — so the issue
-        /// becomes re-dispatchable with zero changes to any gate and zero risk to the Reply flow. A
-        /// <c>superseded</c> row, by contrast, is invisible to all three dead-checks and would stay
-        /// dedup-locked. The <c>status = 'done'</c> guard makes this idempotent and race-safe: a row
+        /// becomes re-dispatchable with zero changes to any gate and zero risk to the Reply flow. This
+        /// holds identically starting from <c>verifying</c>: the target state and every dead-check only
+        /// look at the row's CURRENT status, never at what it transitioned from. A <c>superseded</c>
+        /// row, by contrast, is invisible to all three dead-checks and would stay dedup-locked. The
+        /// <c>status IN ('done', 'verifying')</c> guard makes this idempotent and race-safe: a row
         /// already moved on (by a concurrent watcher/refresh) is left untouched and returns 0.
         /// Returns the number of rows changed (0 or 1).
         /// </summary>
@@ -990,8 +1001,9 @@ namespace BuildConsole.Services
                    SET status     = 'canceled',
                        updated_at = NOW()
                  WHERE id = @id
-                   AND status = 'done'
+                   AND status IN ('done', @verifyingStatus)
                    AND github_number IS NOT NULL", conn);
+            cmd.Parameters.AddWithValue("@verifyingStatus", VerifyingStatus);
             cmd.Parameters.AddWithValue("@id", id);
             return await cmd.ExecuteNonQueryAsync();
         }
