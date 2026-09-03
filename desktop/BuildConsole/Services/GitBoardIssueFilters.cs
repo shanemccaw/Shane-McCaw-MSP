@@ -51,17 +51,26 @@ namespace BuildConsole.Services
         /// <paramref name="byNumber"/> is the full known-issue lookup (every issue the caller has in
         /// hand, ideally ALL states) so the climb can resolve an ancestor even when it isn't in the
         /// caller's own scoped subset. A cyclic mis-link can't loop forever (visited-set guard).
+        /// <paramref name="selfRootEpicNumber"/> — Git #2773. When the caller is computing a
+        /// self-rollup (root of the walk IS an internal-tooling Epic — e.g. #1202's own Git Board
+        /// tree pill, "how much of Build Console itself is done"), pass that Epic's own number here.
+        /// An internal-tooling ancestor equal to <paramref name="selfRootEpicNumber"/> is then NOT
+        /// treated as exclusion — #1202's own descendants stop being excluded from #1202's own
+        /// count. A DIFFERENT internal-tooling ancestor (there is currently no such nested case, but
+        /// the check is exact-match, not "any") still excludes normally. Null (every existing
+        /// cross-epic caller — milestone bar, Home dashboard) preserves the original behavior
+        /// unchanged: #1202/#1095 and everything under them stay excluded from those aggregates.
         /// </summary>
-        public static bool IsUnderInternalToolingEpic(GitBoardIssue issue, IReadOnlyDictionary<int, GitBoardIssue> byNumber)
+        public static bool IsUnderInternalToolingEpic(GitBoardIssue issue, IReadOnlyDictionary<int, GitBoardIssue> byNumber, int? selfRootEpicNumber = null)
         {
             if (issue == null) return false;
-            if (InternalToolingEpicNumbers.Contains(issue.Number)) return true;
+            if (InternalToolingEpicNumbers.Contains(issue.Number)) return issue.Number != selfRootEpicNumber;
 
             var seen = new HashSet<int> { issue.Number };
             var cursor = issue.ParentNumber;
             while (cursor.HasValue && seen.Add(cursor.Value))
             {
-                if (InternalToolingEpicNumbers.Contains(cursor.Value)) return true;
+                if (InternalToolingEpicNumbers.Contains(cursor.Value)) return cursor.Value != selfRootEpicNumber;
                 if (!byNumber.TryGetValue(cursor.Value, out var parent)) break;
                 cursor = parent.ParentNumber;
             }
@@ -72,10 +81,12 @@ namespace BuildConsole.Services
         /// The one shared "counts as real work" test — NOT a placeholder AND NOT owned by an
         /// internal-tooling Epic. This is what every real progress/report count in Git #2739
         /// (milestone bar, Home dashboard, Git Board tree rollups) filters its issue set down to
-        /// before counting.
+        /// before counting. <paramref name="selfRootEpicNumber"/> — see
+        /// <see cref="IsUnderInternalToolingEpic"/> — is the Git #2773 self-rollup escape hatch;
+        /// null (default) is the original cross-epic-aggregation behavior, unchanged.
         /// </summary>
-        public static bool CountsAsRealWork(GitBoardIssue issue, IReadOnlyDictionary<int, GitBoardIssue> byNumber)
-            => !IsPlaceholder(issue) && !IsUnderInternalToolingEpic(issue, byNumber);
+        public static bool CountsAsRealWork(GitBoardIssue issue, IReadOnlyDictionary<int, GitBoardIssue> byNumber, int? selfRootEpicNumber = null)
+            => !IsPlaceholder(issue) && !IsUnderInternalToolingEpic(issue, byNumber, selfRootEpicNumber);
 
         /// <summary>Convenience overload for a caller that already has its full issue set as a flat
         /// list — builds the by-number lookup once and applies <see cref="CountsAsRealWork(GitBoardIssue, IReadOnlyDictionary{int, GitBoardIssue})"/>.</summary>
@@ -159,13 +170,54 @@ namespace BuildConsole.Services
         /// exact "53 sub, really just the Feature count" bug this issue reports.
         /// <paramref name="allIssues"/> should be the real ALL-states issue set (open + closed) so a
         /// completed Feature's already-closed child Issues are still counted.
+        /// <paramref name="selfRootEpicNumber"/> — Git #2773 self-rollup escape hatch (see
+        /// <see cref="IsUnderInternalToolingEpic"/>). Pass the internal-tooling Epic number the walk
+        /// is rooted under (its own number when <paramref name="root"/> IS that Epic, e.g. #1202
+        /// rolling up itself; or that same ancestor number when <paramref name="root"/> is one of
+        /// ITS OWN Features, so a per-Feature rollup nested under #1202 doesn't also get wrongly
+        /// excluded) so its own descendants count normally. Null (default, every existing
+        /// milestone-bar/Home-dashboard cross-epic aggregation call site) is the original
+        /// behavior — #1202/#1095 and their descendants stay excluded — unchanged.
         /// </summary>
-        public static (int Total, int Closed) ComputeTransitiveLeafRollup(GitBoardIssue root, IReadOnlyList<GitBoardIssue> allIssues)
+        public static (int Total, int Closed) ComputeTransitiveLeafRollup(GitBoardIssue root, IReadOnlyList<GitBoardIssue> allIssues, int? selfRootEpicNumber = null)
         {
             var byNumber = BuildByNumberLookup(allIssues);
             var descendants = CollectDescendants(allIssues, root.Number);
-            var realLeaves = descendants.Where(i => CountsAsRealWork(i, byNumber)).ToList();
+            var realLeaves = descendants.Where(i => CountsAsRealWork(i, byNumber, selfRootEpicNumber)).ToList();
             return (realLeaves.Count, realLeaves.Count(i => i.IsClosed));
+        }
+
+        /// <summary>
+        /// Git #2773 — Shane's real scope-clarification redefinition of the Git Board tree's Epic
+        /// pill NUMBER (the "(N sub)" shown next to an Epic node), specifically for the self-rollup
+        /// case. NOT a raw leaf-issue count (that's still what <see cref="ComputeTransitiveLeafRollup"/>
+        /// computes, and stays what backs the Epic's progress-bar % — EpicProgress, the GATE
+        /// fraction). Instead: count of <paramref name="epicRoot"/>'s DIRECT real Feature-titled
+        /// children (<see cref="IsPlaceholder"/> + "Feature:" prefix) whose OWN transitive leaf
+        /// rollup is NOT 100% complete (0 real leaves counts as "not complete", not "done"). A
+        /// Feature nested under an internal-tooling Epic (#1202/#1095) has its own descendants
+        /// rolled up with the same #2773 self-rollup escape hatch — <paramref name="epicRoot"/>'s own
+        /// number threaded through as the internal-tooling ancestor to NOT exclude — so a Feature
+        /// under #1202 gets its real completion, not zero.
+        /// Real, documented judgement call (#2773's own scope-clarification comment): an Epic's
+        /// DIRECT non-Feature leaf issues (e.g. 35 of #1202's 68 real children aren't under any
+        /// Feature at all) are NOT counted by this pill number — the pill is Feature-centric only.
+        /// </summary>
+        public static int ComputeOpenFeatureCount(GitBoardIssue epicRoot, IReadOnlyList<GitBoardIssue> allIssues)
+        {
+            var directFeatures = allIssues
+                .Where(i => i.ParentNumber == epicRoot.Number && IsPlaceholder(i)
+                    && (i.Title ?? "").TrimStart().StartsWith("Feature:", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            int openCount = 0;
+            foreach (var feature in directFeatures)
+            {
+                var (total, closed) = ComputeTransitiveLeafRollup(feature, allIssues, selfRootEpicNumber: epicRoot.Number);
+                bool fullyComplete = total > 0 && closed == total;
+                if (!fullyComplete) openCount++;
+            }
+            return openCount;
         }
     }
 }
