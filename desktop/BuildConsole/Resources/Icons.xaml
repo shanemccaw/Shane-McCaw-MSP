@@ -33,4 +33,26 @@
     <!-- Clock face as two half-circle arcs (a single arc with start==end is degenerate in WPF) plus the hand ticks. -->
     <PathGeometry x:Key="Icon.Clock" Figures="M12 2 A10 10 0 0 1 12 22 A10 10 0 0 1 12 2 M12 6 L12 12 L16 14"/>
 
+    <!-- Git #2482 (Build Chain Map top bar + status strip) — Lucide icons the top bar spec
+         names (BuildMap/README.md "Assets"): git-fork, check, alert-triangle, minus, plus,
+         rotate-ccw. GeometryGroup so the three circles of git-fork combine with its connecting
+         path into one stroked Path.Data, same technique as Icon.Loader2's standalone
+         EllipseGeometry above. -->
+    <GeometryGroup x:Key="Icon.GitFork">
+        <EllipseGeometry Center="12,18" RadiusX="3" RadiusY="3"/>
+        <EllipseGeometry Center="6,6" RadiusX="3" RadiusY="3"/>
+        <EllipseGeometry Center="18,6" RadiusX="3" RadiusY="3"/>
+        <PathGeometry Figures="M18 9 L18 10 A2 2 0 0 1 16 12 L8 12 A2 2 0 0 1 6 10 L6 9 M12 12 L12 15"/>
+    </GeometryGroup>
+
+    <PathGeometry x:Key="Icon.Check" Figures="M20 6 L9 17 L4 12"/>
+
+    <PathGeometry x:Key="Icon.AlertTriangle" Figures="M12 3 L22 20 L2 20 Z M12 9 L12 13"/>
+
+    <PathGeometry x:Key="Icon.Minus" Figures="M5 12 L19 12"/>
+
+    <PathGeometry x:Key="Icon.Plus" Figures="M12 5 L12 19 M5 12 L19 12"/>
+
+    <PathGeometry x:Key="Icon.RotateCcw" Figures="M3 12 A9 9 0 1 0 5.26 5.74 M3 3 L3 8 L8 8"/>
+
 </ResourceDictionary>

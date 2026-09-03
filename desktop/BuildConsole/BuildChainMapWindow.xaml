@@ -1,0 +1,215 @@
+<Window x:Class="BuildConsole.BuildChainMapWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Build Chain Map"
+        Icon="app.ico"
+        Width="1440" Height="900"
+        MinWidth="960" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        ShowInTaskbar="True"
+        FontFamily="Segoe UI"
+        Background="#0a0d12">
+
+    <!-- ── Git #2482 — Build Chain Map: top bar + status strip ──
+         Design source: desktop/BuildConsole/BuildMap/README.md ("Top bar contents" and
+         "Status strip" sections, lines 39-64 and 203-207) + the real reference screenshots
+         under BuildMap/screenshots/ (01-overview-collapsed.png is the exact target for this
+         issue's scope). Colors/type sizes below are the literal design tokens from that doc,
+         not this app's existing Catppuccin chrome brushes — this screen is high-fidelity to a
+         separate, already-finished design pass, so its palette is deliberately its own.
+
+         Scope is top bar + status strip ONLY (#2482's own structured-index item #8). The
+         canvas/graph (#2477), edge rendering (#2478), inspector panel (#2479), interactions
+         (#2480) and real-write persistence (#2481) are separate, still-open sub-issues of
+         #2473 — the two body regions below are honest placeholders naming those issues, not
+         fixture content standing in for them.
+
+         Font note: the spec calls for Inter; Inter isn't bundled in this WPF app, so this
+         window uses Segoe UI (the platform default) for UI text and Consolas for every
+         mono/number/tag value, matching the spec's own "Consolas / ui-monospace / Menlo"
+         fallback list. WPF's TextBlock has no letter-spacing/tracking property (that's a
+         WinUI-only API), so the spec's eyebrow tracking (.09–.13em) is approximated with
+         uppercase text alone. -->
+
+    <Window.Resources>
+        <!-- README.md line 63: "height:24px; padding:0 9px; background:#0f1319;
+             border:1px solid #21262d; radius 5; color:#c9d1d9; 10.5px/700; hover
+             background:#161c25". -->
+        <Style x:Key="ChainMapTopBarButton" TargetType="Button">
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="9,0"/>
+            <Setter Property="Margin" Value="0,0,0,0"/>
+            <Setter Property="Background" Value="#0f1319"/>
+            <Setter Property="BorderBrush" Value="#21262d"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Foreground" Value="#c9d1d9"/>
+            <Setter Property="FontSize" Value="10.5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#161c25"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel LastChildFill="True">
+
+        <!-- ── Top bar ── -->
+        <Border DockPanel.Dock="Top"
+                MinHeight="56"
+                Padding="14,10"
+                Background="#0d1117"
+                BorderBrush="#21262d"
+                BorderThickness="0,0,0,1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- Title block -->
+                    <ColumnDefinition Width="*" MinWidth="260"/>
+                    <!-- Stats strip: flex:1 1 380px -->
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- Chain pill -->
+                    <ColumnDefinition Width="Auto"/>
+                    <!-- Controls -->
+                </Grid.ColumnDefinitions>
+
+                <!-- Title block -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Border Width="28" Height="28" CornerRadius="7" Background="#1d3450" VerticalAlignment="Center">
+                        <Path Data="{StaticResource Icon.GitFork}" Stretch="Uniform"
+                              Width="14" Height="14" Stroke="#6a8fb5" StrokeThickness="2"
+                              StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"/>
+                    </Border>
+                    <StackPanel Margin="9,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="BUILD CHAIN · §5 FEATURE CHAINING"
+                                   FontSize="8.5" FontWeight="ExtraBold"
+                                   Foreground="#6a8fb5"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                            <TextBlock x:Name="EpicNameText" Text="" FontSize="13.5" FontWeight="ExtraBold" Foreground="#e6edf3"/>
+                            <TextBlock x:Name="EpicNumText" Text="" FontFamily="Consolas" FontSize="10" Foreground="#576069"
+                                       Margin="6,0,0,0" VerticalAlignment="Bottom"/>
+                            <TextBlock Text="Epic → Feature → Issue → blocked_by" FontSize="10.5" Foreground="#8b949e"
+                                       Margin="8,0,0,0" VerticalAlignment="Bottom"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Stats strip: 7 chips -->
+                <Border Grid.Column="1" Margin="14,0,0,0" Padding="14,0,0,0"
+                        BorderBrush="#21262d" BorderThickness="1,0,0,0">
+                    <StackPanel x:Name="StatsStripPanel" Orientation="Horizontal" VerticalAlignment="Center"/>
+                </Border>
+
+                <!-- Chain-integrity pill -->
+                <Border x:Name="ChainPillBorder" Grid.Column="2" Margin="14,0,0,0"
+                        Height="26" Padding="10,0" CornerRadius="99" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Path x:Name="ChainPillIcon" Width="11" Height="11" Stretch="Uniform"
+                              StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                              VerticalAlignment="Center"/>
+                        <TextBlock x:Name="ChainPillText" Text="" FontSize="10" FontWeight="Bold"
+                                   Margin="6,0,0,0" VerticalAlignment="Center"/>
+                        <Button x:Name="RewireButton" Content="Re-wire §5.2"
+                                Margin="8,0,0,0" Height="18" Padding="8,0"
+                                Background="#3a2a1c" BorderBrush="#5a3f2a" Foreground="#f0c9a6"
+                                FontSize="9" FontWeight="ExtraBold"
+                                Visibility="Collapsed" Click="RewireButton_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Controls -->
+                <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="14,0,0,0" VerticalAlignment="Center">
+                    <Button x:Name="ExpandAllButton" Content="Expand all" Style="{StaticResource ChainMapTopBarButton}" Click="ExpandAllButton_Click"/>
+                    <Button x:Name="CollapseAllButton" Content="Collapse all" Margin="6,0,0,0" Style="{StaticResource ChainMapTopBarButton}" Click="CollapseAllButton_Click"/>
+
+                    <StackPanel Orientation="Horizontal" Margin="6,0,0,0">
+                        <Button x:Name="ZoomOutButton" Style="{StaticResource ChainMapTopBarButton}" Click="ZoomOutButton_Click">
+                            <Path Data="{StaticResource Icon.Minus}" Width="10" Height="10" Stretch="Uniform"
+                                  Stroke="#c9d1d9" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Button>
+                        <TextBlock x:Name="ZoomPercentText" Text="100%" FontFamily="Consolas" FontSize="10.5"
+                                   Foreground="#c9d1d9" Width="34" TextAlignment="Center" VerticalAlignment="Center"/>
+                        <Button x:Name="ZoomInButton" Style="{StaticResource ChainMapTopBarButton}" Click="ZoomInButton_Click">
+                            <Path Data="{StaticResource Icon.Plus}" Width="10" Height="10" Stretch="Uniform"
+                                  Stroke="#c9d1d9" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                        </Button>
+                        <Button x:Name="FitButton" Content="Fit" Style="{StaticResource ChainMapTopBarButton}" Click="FitButton_Click"/>
+                    </StackPanel>
+
+                    <Button x:Name="ResetButton" Style="{StaticResource ChainMapTopBarButton}" Margin="6,0,0,0"
+                            ToolTip="Discard local edits, reload from GitHub" Click="ResetButton_Click">
+                        <Path Data="{StaticResource Icon.RotateCcw}" Width="11" Height="11" Stretch="Uniform"
+                              Stroke="#c9d1d9" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ── Status strip ── -->
+        <Border DockPanel.Dock="Bottom"
+                Height="26" Padding="14,0"
+                Background="#0d1117"
+                BorderBrush="#21262d"
+                BorderThickness="0,1,0,0">
+            <DockPanel LastChildFill="True">
+                <TextBlock x:Name="StatusHintText" DockPanel.Dock="Left"
+                           Text="Loading…" FontSize="10" Foreground="#8b949e"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="StatusCountsText" DockPanel.Dock="Right"
+                           Text="" FontFamily="Consolas" FontSize="10" Foreground="#576069"
+                           VerticalAlignment="Center" HorizontalAlignment="Right"/>
+            </DockPanel>
+        </Border>
+
+        <!-- ── Body (placeholders — owned by #2477/#2478/#2479) ── -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="312"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#0a0d12">
+                <Border.Resources>
+                    <DrawingBrush x:Key="DotGrid" TileMode="Tile" Viewport="0,0,22,22" ViewportUnits="Absolute" Stretch="None">
+                        <DrawingBrush.Drawing>
+                            <GeometryDrawing Brush="#141a22">
+                                <GeometryDrawing.Geometry>
+                                    <EllipseGeometry Center="1,1" RadiusX="1" RadiusY="1"/>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                        </DrawingBrush.Drawing>
+                    </DrawingBrush>
+                </Border.Resources>
+                <Grid Background="{StaticResource DotGrid}">
+                    <TextBlock x:Name="CanvasPlaceholderText"
+                               Text="Loading the chain from GitHub…"
+                               FontSize="12" Foreground="#576069"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"/>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" Background="#0d1117" BorderBrush="#21262d" BorderThickness="1,0,0,0"
+                    Padding="15,14,15,18">
+                <TextBlock Text="Nothing selected. The full inspector (node/edge legend, §5.2 in numbers, four selection views) lands in #2479."
+                           FontSize="11" Foreground="#576069" TextWrapping="Wrap"/>
+            </Border>
+        </Grid>
+
+    </DockPanel>
+</Window>
