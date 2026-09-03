@@ -154,7 +154,7 @@ Arrowheads: 6×6 marker at the target end, filled in the edge color. Transitions
 Selection emphasis (tweak `dimUnrelated`, default on):
 - Issue selected: edges **into** it `#e0a879` / 1.8 / 1.0 (its blockers); edges **out of** it `#9fc0dd` / 1.6 / .95; everything else opacity .1.
 - Feature selected: edges touching any of its issues keep their style; others opacity .1.
-- Edge selected: `#e6edf3` / 2 / 1.0; others opacity .18.
+- Edge selected: `#e6edf3` / 2 / 1.0; others opacity .1 (matches the other two dimming cases above — corrected from .18 per #2488).
 - Hover: opacity 1, width ≥ 1.8. Hit area is an invisible 10px-wide twin path.
 
 ### Inspector (right panel) — four views

@@ -332,10 +332,9 @@ namespace BuildConsole.Controls.BuildMap
             {
                 bool selected = group.Edges.Any(e => selectedPairs.Contains((e.From, e.To)));
                 if (selected) { stroke = EdgeSelectedWhite; opacity = 1; width = 2; markerKey = "white"; }
-                // README's Edges table documents .18 here (not the reference .dc.html's uniform .1
-                // for every dimmed case) — followed per README as the "exact...table" this issue
-                // cites; filed as a finding, see build-journal/2478.md.
-                else if (_dimUnrelated) opacity = .18;
+                // Matches the .dc.html reference's actual uniform dim value (.1), same as
+                // issue/Feature-selected dimming — see #2488 (README's table said .18, corrected).
+                else if (_dimUnrelated) opacity = .1;
             }
 
             if (_hoverEdgeKey == key)
