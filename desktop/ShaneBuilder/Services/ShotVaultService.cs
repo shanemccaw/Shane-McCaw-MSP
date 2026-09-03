@@ -40,8 +40,12 @@ namespace ShaneBuilder.Services
 
     /// <summary>Git #2371 (Feature #2367 item 4) — a real shot plus whether it visually differs from
     /// the shot immediately before it in time. "Before it" means chronologically previous on disk —
-    /// the only real ordering that exists, independent of which run (#2370) it happens to fall in.</summary>
-    public sealed record ShotVaultTile(ShotVaultItem Shot, bool HasDiffFromPrevious);
+    /// the only real ordering that exists, independent of which run (#2370) it happens to fall in.
+    /// Git #2374 (Feature #2367 item 7) adds <see cref="HasDiffFromBaseline"/>: null when no baseline
+    /// shot is currently pinned (the panel's original chronological-only behavior, unchanged), or the
+    /// real computed diff against that one pinned shot when it is. The pinned baseline shot itself
+    /// always compares as <c>false</c> — it cannot differ from itself.</summary>
+    public sealed record ShotVaultTile(ShotVaultItem Shot, bool HasDiffFromPrevious, bool? HasDiffFromBaseline = null);
 
     /// <summary>Git #2369 (Feature #2367 item 2) — the real, derived tag set for one shot. There is
     /// still no manual tag store (real audit — see <see cref="ShotVaultItem"/>'s own doc-comment), so
@@ -145,9 +149,17 @@ namespace ShaneBuilder.Services
         /// name="shotsNewestFirst"/>)? Computed from a small downsampled MD5 of each image's actual
         /// pixels, never a fixture or a guess. The oldest shot has no older neighbor to diff against
         /// and always comes back with <see cref="ShotVaultTile.HasDiffFromPrevious"/> false. A shot
-        /// that fails to decode is treated as "not different" rather than badged on a guess.</summary>
-        public static IReadOnlyList<ShotVaultTile> BuildTiles(IReadOnlyList<ShotVaultItem> shotsNewestFirst)
+        /// that fails to decode is treated as "not different" rather than badged on a guess.
+        /// Git #2374 — when <paramref name="baselineFilePath"/> is supplied (a real shot the panel
+        /// pinned via "Set as baseline"), also computes <see cref="ShotVaultTile.HasDiffFromBaseline"/>
+        /// for every shot against that one pinned image's own real hash, reusing the same per-shot hash
+        /// already being computed for the chronological chain rather than a second decode pass. Left
+        /// null (not false) when no baseline is pinned, or when either image fails to decode — an
+        /// honest "unknown", never a guessed "same".</summary>
+        public static IReadOnlyList<ShotVaultTile> BuildTiles(IReadOnlyList<ShotVaultItem> shotsNewestFirst, string? baselineFilePath = null)
         {
+            string? baselineHash = baselineFilePath is not null ? TryComputeVisualHash(baselineFilePath) : null;
+
             var tiles = new List<ShotVaultTile>(shotsNewestFirst.Count);
             string? previousHash = null; // hash of the next-newer shot already visited, i.e. this shot's "after"
 
@@ -158,12 +170,43 @@ namespace ShaneBuilder.Services
                 var shot = shotsNewestFirst[i];
                 string? hash = TryComputeVisualHash(shot.FilePath);
                 bool diffs = previousHash is not null && hash is not null && hash != previousHash;
-                tiles.Add(new ShotVaultTile(shot, diffs));
+                bool? diffsFromBaseline = baselineFilePath is null
+                    ? null
+                    : hash is not null && baselineHash is not null ? hash != baselineHash : null;
+                tiles.Add(new ShotVaultTile(shot, diffs, diffsFromBaseline));
                 previousHash = hash ?? previousHash; // an undecodable shot doesn't reset the chain
             }
 
             tiles.Reverse(); // back to newest-first, matching the input order
             return tiles;
+        }
+
+        /// <summary>Git #2374 (Feature #2367 item 7) — the real retention purge: permanently deletes
+        /// shot files older than <paramref name="maxAgeDays"/>, by the same real file timestamp <see
+        /// cref="ListShots"/> already reads. There is no separate metadata/soft-delete row to mark —
+        /// the file on disk IS the vault entry (see <see cref="ShotVaultItem"/>'s own doc-comment), so
+        /// "retention" can only mean actually removing the file. <paramref name="maxAgeDays"/> &lt;= 0
+        /// means "keep forever" (the historical, pre-#2374 behavior) and is a real no-op. A shot that
+        /// fails to delete (locked/in-use) is skipped rather than throwing — the next purge picks it up.
+        /// Returns the real shots actually deleted, so a caller can report an honest count rather than
+        /// a guessed one.</summary>
+        public static IReadOnlyList<ShotVaultItem> ApplyRetention(IReadOnlyList<ShotVaultItem> shotsNewestFirst, int maxAgeDays)
+        {
+            if (maxAgeDays <= 0) return Array.Empty<ShotVaultItem>();
+
+            var cutoffUtc = DateTime.UtcNow - TimeSpan.FromDays(maxAgeDays);
+            var deleted = new List<ShotVaultItem>();
+            foreach (var shot in shotsNewestFirst)
+            {
+                if (shot.CreatedAtUtc >= cutoffUtc) continue;
+                try
+                {
+                    File.Delete(shot.FilePath);
+                    deleted.Add(shot);
+                }
+                catch { /* locked/in-use file right now — leave it, next purge picks it up */ }
+            }
+            return deleted;
         }
 
         /// <summary>Git #2369 — the real, derived tag set for one shot: its real capture <see

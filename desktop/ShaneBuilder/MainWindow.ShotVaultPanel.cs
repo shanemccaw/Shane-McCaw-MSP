@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -90,6 +91,24 @@ public partial class MainWindow
     /// has a matching tag at all (see <see cref="RenderShotVaultPanel"/>).</summary>
     private readonly HashSet<string> _shotVaultActiveTagFilters = new(StringComparer.Ordinal);
 
+    /// <summary>Git #2374 — the real, persisted retention window (in days) shots are purged beyond.
+    /// Backed by <see cref="SettingsStore"/> like every other real ShaneBuilder setting — 0 (the
+    /// default) means "keep forever", the original pre-#2374 behavior, until Shane picks a window.</summary>
+    private const string ShotVaultRetentionDaysKey = "shotvault:retentionDays";
+
+    /// <summary>Guards <see cref="ShotVaultRetentionCombo_SelectionChanged"/> while <see
+    /// cref="SyncShotVaultRetentionCombo"/> programmatically sets the combo's selection to match the
+    /// persisted setting, so loading the saved value doesn't itself re-trigger a save + purge.</summary>
+    private bool _shotVaultSyncingRetentionCombo;
+
+    /// <summary>Git #2374 — the real, currently-pinned "compare to baseline" shot (its file path), or
+    /// null when no baseline is active — the panel's original chronological-only DIFF behavior is
+    /// unchanged in that case. Set via a tile's "Set as baseline" link; not persisted across an app
+    /// restart — a baseline is a live working-session pin, not a saved vault property. Auto-cleared in
+    /// <see cref="RenderShotVaultPanel"/> if the pinned shot ages off the current list (purged, or the
+    /// file was otherwise removed).</summary>
+    private string? _shotVaultBaselinePath;
+
     /// <summary>Fires the real folder read the first time the SHOT VAULT rail panel opens. A missing
     /// folder (nothing captured yet) renders an honest empty state, not a fixture row.</summary>
     private void EnsureShotVaultPanelLoaded()
@@ -101,6 +120,84 @@ public partial class MainWindow
         }
 
         _shotVaultPanelLoaded = true;
+        SyncShotVaultRetentionCombo();
+        ApplyShotVaultRetentionIfNeeded();
+        RenderShotVaultPanel();
+    }
+
+    /// <summary>Git #2374 — sets the retention ComboBox's selection to match the real persisted
+    /// setting (defaulting to "Keep forever" the first time it's ever opened), without firing the
+    /// SelectionChanged save/purge handler for this programmatic sync.</summary>
+    private void SyncShotVaultRetentionCombo()
+    {
+        int days = SettingsStore.Get(ShotVaultRetentionDaysKey, 0);
+        _shotVaultSyncingRetentionCombo = true;
+        try
+        {
+            foreach (ComboBoxItem item in ShotVaultRetentionCombo.Items)
+            {
+                if (item.Tag is string tag && int.TryParse(tag, out int itemDays) && itemDays == days)
+                {
+                    ShotVaultRetentionCombo.SelectedItem = item;
+                    return;
+                }
+            }
+            ShotVaultRetentionCombo.SelectedIndex = 0; // unrecognized/stale value — fall back to "Keep forever"
+        }
+        finally
+        {
+            _shotVaultSyncingRetentionCombo = false;
+        }
+    }
+
+    /// <summary>Git #2374 — the real retention purge, run against the real current shot list. A
+    /// policy of "Keep forever" (days &lt;= 0) is a real no-op — <see
+    /// cref="ShotVaultService.ApplyRetention"/> itself returns nothing to delete. Reports the real
+    /// deleted count via toast rather than staying silent, since this can run automatically on panel
+    /// open, not only from the explicit "Purge now" link.</summary>
+    private void ApplyShotVaultRetentionIfNeeded()
+    {
+        int days = SettingsStore.Get(ShotVaultRetentionDaysKey, 0);
+        if (days <= 0) return;
+
+        try
+        {
+            var deleted = ShotVaultService.ApplyRetention(ShotVaultService.ListShots(), days);
+            if (deleted.Count > 0)
+                ToastEngine.Show("Shot Vault",
+                    $"Retention: removed {deleted.Count} shot{(deleted.Count == 1 ? "" : "s")} older than {days} days.",
+                    ToastKind.Info);
+        }
+        catch (Exception ex)
+        {
+            ToastEngine.Error("Shot Vault retention", ex.Message);
+        }
+    }
+
+    private void ShotVaultRetentionCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_shotVaultSyncingRetentionCombo) return;
+        if (ShotVaultRetentionCombo.SelectedItem is not ComboBoxItem item) return;
+        if (item.Tag is not string tag || !int.TryParse(tag, out int days)) return;
+
+        SettingsStore.Set(ShotVaultRetentionDaysKey, days);
+        ApplyShotVaultRetentionIfNeeded();
+        RenderShotVaultPanel();
+    }
+
+    /// <summary>The explicit "Purge now" action — re-applies the currently-selected retention policy
+    /// immediately, rather than waiting for the next panel open. An honest toast either way: a real
+    /// deleted count, or (via <see cref="ApplyShotVaultRetentionIfNeeded"/>'s own no-op) nothing at
+    /// all when the policy is "Keep forever" or nothing is old enough yet.</summary>
+    private void ShotVaultPurgeNow_Click(object sender, MouseButtonEventArgs e)
+    {
+        int days = SettingsStore.Get(ShotVaultRetentionDaysKey, 0);
+        if (days <= 0)
+        {
+            ToastEngine.Show("Shot Vault", "Retention is set to \"Keep forever\" — nothing to purge.", ToastKind.Warning);
+            return;
+        }
+        ApplyShotVaultRetentionIfNeeded();
         RenderShotVaultPanel();
     }
 
@@ -126,11 +223,19 @@ public partial class MainWindow
 
         _shotVaultLastShots = runs.SelectMany(r => r.Shots).ToList(); // real flat list, read by "Send to tab" (#2373)
 
+        // Git #2374 — a pinned baseline that has aged off the real list (purged, or removed by hand)
+        // is an honest reset, not a stale pin that would otherwise silently compare against a file
+        // that no longer exists.
+        if (_shotVaultBaselinePath != null && !_shotVaultLastShots.Any(s => s.FilePath == _shotVaultBaselinePath))
+            _shotVaultBaselinePath = null;
+
         if (runs.Count == 0)
         {
             ShotVaultPanelStatus.Text = $"No shots yet — captures land in {ShotVaultService.ShotsDirectory}.";
             ShotVaultPanelStatus.Visibility = Visibility.Visible;
             _shotVaultActiveTagFilters.Clear(); // nothing left to filter against
+            _shotVaultBaselinePath = null;
+            RenderShotVaultBaselineRow();
             return;
         }
 
@@ -139,9 +244,14 @@ public partial class MainWindow
         // actually change"), then each tile is placed back under its own run's header/grid below. This
         // stays computed over the FULL, unfiltered list even while searching (#2368) — a search only
         // decides what's shown, it never changes what "changed from the shot before it" means.
-        var tilesByPath = ShotVaultService.BuildTiles(_shotVaultLastShots!)
+        // Git #2374: the same pass also carries the real HasDiffFromBaseline flag when a baseline is
+        // pinned — no second read of disk.
+        var tilesByPath = ShotVaultService.BuildTiles(_shotVaultLastShots!, _shotVaultBaselinePath)
             .ToDictionary(t => t.Shot.FilePath, t => t);
         int diffCount = tilesByPath.Values.Count(t => t.HasDiffFromPrevious);
+        int baselineDiffCount = tilesByPath.Values.Count(t => t.HasDiffFromBaseline == true);
+
+        RenderShotVaultBaselineRow();
 
         // Git #2369: real tags per shot, derived off tilesByPath — never a second real read of disk.
         var tagsByPath = tilesByPath.ToDictionary(kv => kv.Key, kv => ShotVaultService.GetTags(kv.Value));
@@ -171,11 +281,17 @@ public partial class MainWindow
             ? ShotVaultService.ListRuns(_shotVaultLastShots!.Where(MatchesFilter).ToList())
             : runs;
 
+        // Git #2374 — the baseline compare-count reads on top of the existing chronological-DIFF
+        // sentence rather than replacing it; both are real, independent comparisons over the same tiles.
+        string baselineSuffix = _shotVaultBaselinePath != null
+            ? $" {baselineDiffCount} differ{(baselineDiffCount == 1 ? "s" : "")} from the pinned baseline."
+            : "";
+
         if (!anyFilterActive)
         {
             ShotVaultPanelStatus.Text = diffCount == 0
-                ? $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first."
-                : $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first, {diffCount} DIFF from the shot before it.";
+                ? $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first.{baselineSuffix}"
+                : $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first, {diffCount} DIFF from the shot before it.{baselineSuffix}";
         }
         else
         {
@@ -357,6 +473,28 @@ public partial class MainWindow
             thumbHost.Children.Add(diffBadge);
         }
 
+        // Git #2374 — the real "compare to baseline" badges, independent of the chronological DIFF
+        // badge above: the pinned shot itself always reads BASE (it can't differ from itself), and
+        // any other shot whose own real pixel hash differs from that one pinned shot's reads ≠ BASE.
+        // Both are left off entirely when no baseline is pinned (HasDiffFromBaseline is null then).
+        bool isBaseline = _shotVaultBaselinePath == shot.FilePath;
+        if (isBaseline)
+        {
+            var baseBadge = GitCountPill("BASE", "Brush.Accent.Primary");
+            baseBadge.HorizontalAlignment = HorizontalAlignment.Left;
+            baseBadge.VerticalAlignment = VerticalAlignment.Top;
+            baseBadge.Margin = new Thickness(4, 4, 0, 0);
+            thumbHost.Children.Add(baseBadge);
+        }
+        else if (tile.HasDiffFromBaseline == true)
+        {
+            var baseDiffBadge = GitCountPill("≠ BASE", "Brush.Accent.Active");
+            baseDiffBadge.HorizontalAlignment = HorizontalAlignment.Left;
+            baseDiffBadge.VerticalAlignment = VerticalAlignment.Top;
+            baseDiffBadge.Margin = new Thickness(4, 4, 0, 0);
+            thumbHost.Children.Add(baseDiffBadge);
+        }
+
         var name = new TextBlock
         {
             Text = shot.FileName,
@@ -382,14 +520,29 @@ public partial class MainWindow
         copyLink.HorizontalAlignment = HorizontalAlignment.Left;
         copyLink.Margin = new Thickness(0, 4, 0, 0);
 
+        // Git #2374 — the real "compare to baseline" pin/unpin action, same action-link style as
+        // Copy above. The pinned shot itself offers "Clear baseline" in place of "Set as baseline"
+        // rather than showing both actions on every tile.
+        var baselineLink = isBaseline
+            ? GitEpicActionLink("Clear baseline", disabled: false, ShotVaultClearBaselineClicked)
+            : GitEpicActionLink("Set as baseline", disabled: false, () => ShotVaultSetBaselineClicked(shot));
+        baselineLink.HorizontalAlignment = HorizontalAlignment.Left;
+        baselineLink.Margin = new Thickness(0, 2, 0, 0);
+
         var footer = new StackPanel();
         footer.Children.Add(name);
         footer.Children.Add(when);
         footer.Children.Add(copyLink);
+        footer.Children.Add(baselineLink);
 
         var cell = new StackPanel();
         cell.Children.Add(thumbHost);
         cell.Children.Add(footer);
+
+        string tooltip = $"{shot.FileName}\n{shot.CreatedAtUtc.ToLocalTime():MMM d, yyyy h:mm:ss tt}" +
+                          (tile.HasDiffFromPrevious ? "\nDIFF — changed from the shot before it" : "") +
+                          (isBaseline ? "\nPinned as the comparison baseline" :
+                           tile.HasDiffFromBaseline == true ? "\n≠ BASE — differs from the pinned baseline" : "");
 
         return new Border
         {
@@ -398,8 +551,9 @@ public partial class MainWindow
             Padding = new Thickness(6),
             CornerRadius = new CornerRadius(4),
             Background = (Brush)FindResource("Brush.Bg.Card"),
-            ToolTip = $"{shot.FileName}\n{shot.CreatedAtUtc.ToLocalTime():MMM d, yyyy h:mm:ss tt}" +
-                      (tile.HasDiffFromPrevious ? "\nDIFF — changed from the shot before it" : ""),
+            BorderThickness = new Thickness(isBaseline ? 1.5 : 0),
+            BorderBrush = isBaseline ? (Brush)FindResource("Brush.Accent.Primary") : Brushes.Transparent,
+            ToolTip = tooltip,
             Child = cell
         };
     }
@@ -415,6 +569,52 @@ public partial class MainWindow
         {
             ToastEngine.Error("Copy failed", ex.Message);
         }
+    }
+
+    /// <summary>Git #2374 — pins the real "compare to baseline" shot: every tile's real pixel hash
+    /// is compared against this one shot's hash on the next render (see <see
+    /// cref="ShotVaultService.BuildTiles"/>).</summary>
+    private void ShotVaultSetBaselineClicked(ShotVaultItem shot)
+    {
+        _shotVaultBaselinePath = shot.FilePath;
+        RenderShotVaultPanel();
+        ToastEngine.Show("Shot Vault", $"Comparing every shot to {shot.FileName}.", ToastKind.Info);
+    }
+
+    private void ShotVaultClearBaselineClicked()
+    {
+        _shotVaultBaselinePath = null;
+        RenderShotVaultPanel();
+    }
+
+    /// <summary>Git #2374 — the real baseline indicator row above the shot grid: hidden entirely
+    /// when no baseline is pinned (the row's original, pre-#2374 collapsed state), or the pinned
+    /// shot's own real filename plus a Clear action when one is.</summary>
+    private void RenderShotVaultBaselineRow()
+    {
+        ShotVaultBaselineRow.Children.Clear();
+
+        if (_shotVaultBaselinePath == null)
+        {
+            ShotVaultBaselineRow.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        ShotVaultBaselineRow.Visibility = Visibility.Visible;
+        ShotVaultBaselineRow.Children.Add(new TextBlock
+        {
+            Text = $"Comparing to: {Path.GetFileName(_shotVaultBaselinePath)}",
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = (Brush)FindResource("Brush.Text.Dim"),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = (double)FindResource("FontSize.9.5"),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            MaxWidth = 220
+        });
+
+        var clearLink = GitEpicActionLink("Clear", disabled: false, ShotVaultClearBaselineClicked);
+        clearLink.Margin = new Thickness(8, 0, 0, 0);
+        ShotVaultBaselineRow.Children.Add(clearLink);
     }
 
     // ── Panel-level chrome (#2373) ───────────────────────────────────────────────────────────

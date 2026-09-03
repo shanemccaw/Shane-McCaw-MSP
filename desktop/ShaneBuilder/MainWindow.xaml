@@ -663,6 +663,36 @@
                                      FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10}"
                                      Tag="Search by shot name or screen…"
                                      TextChanged="ShotVaultSearchBox_TextChanged"/>
+                            <!-- Git #2374 (Feature #2367 item 7) — real retention policy: a real
+                                 selected keep-window persisted to SettingsStore, and a real "Purge
+                                 now" action that deletes shots older than it off the actual vault
+                                 folder (ShotVaultService.ApplyRetention). Combo items/selection and
+                                 the baseline row below are built/synced in code-behind
+                                 (MainWindow.ShotVaultPanel.cs). -->
+                            <DockPanel Margin="0,0,0,6" LastChildFill="False">
+                                <TextBlock Text="Retention:" DockPanel.Dock="Left" VerticalAlignment="Center"
+                                           Foreground="{StaticResource Brush.Text.Dim}"
+                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                           Margin="0,0,6,0"/>
+                                <ComboBox x:Name="ShotVaultRetentionCombo" DockPanel.Dock="Left" Width="118" Height="22"
+                                          FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                          SelectionChanged="ShotVaultRetentionCombo_SelectionChanged">
+                                    <ComboBoxItem Content="Keep forever" Tag="0"/>
+                                    <ComboBoxItem Content="Keep 7 days" Tag="7"/>
+                                    <ComboBoxItem Content="Keep 30 days" Tag="30"/>
+                                    <ComboBoxItem Content="Keep 90 days" Tag="90"/>
+                                </ComboBox>
+                                <TextBlock x:Name="ShotVaultPurgeNowLink" DockPanel.Dock="Left" Text="Purge now"
+                                           Margin="10,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                                           Foreground="{StaticResource Brush.Accent.Primary}"
+                                           FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                           MouseLeftButtonDown="ShotVaultPurgeNow_Click"/>
+                            </DockPanel>
+                            <!-- Git #2374 — real "compare to baseline": one pinned shot (via each
+                                 tile's "Set as baseline" link), cleared here or auto-cleared if that
+                                 shot ages off/gets purged. Contents built in
+                                 RenderShotVaultBaselineRow (MainWindow.ShotVaultPanel.cs). -->
+                            <StackPanel x:Name="ShotVaultBaselineRow" Orientation="Horizontal" Margin="0,0,0,6" Visibility="Collapsed"/>
                             <TextBlock x:Name="ShotVaultPanelStatus" Margin="6,4,6,10"
                                        TextWrapping="Wrap"
                                        Foreground="{StaticResource Brush.Text.Dim}"
