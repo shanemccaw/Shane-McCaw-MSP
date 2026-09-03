@@ -163,6 +163,8 @@ router.get("/admin/drift/events", requireAdmin, async (req: Request, res: Respon
         changedBy: r.changedBy ?? null,
         verdict: r.verdict,
         crRef: r.crRef ?? null,
+        // #1505 — the real FK behind crRef above.
+        changeRequestId: r.changeRequestId ?? null,
         status: r.status,
         reopenCount: r.reopenCount,
         baselineSnapshotId: r.baselineSnapshotId ?? null,

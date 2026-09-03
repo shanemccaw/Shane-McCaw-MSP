@@ -66,6 +66,12 @@ export function driftDomainKeyFromSourceKey(sourceKey: string): string {
 export interface DriftAttribution {
   changedBy?: string | null;
   crRef?: string | null;
+  /**
+   * #1505 — the real `msp_change_requests.id` behind `crRef` above, when the
+   * caller has it. `crRef` stays the display string; this is the FK
+   * `drift_events.change_request_id` is written from.
+   */
+  changeRequestId?: number | null;
 }
 
 /**
@@ -99,6 +105,8 @@ export interface PlannedDriftEvent {
   changedBy: string | null;
   verdict: DriftEventVerdict;
   crRef: string | null;
+  /** #1505 — the real FK behind `crRef`, see `DriftAttribution.changeRequestId`. */
+  changeRequestId: number | null;
 }
 
 /**
@@ -123,6 +131,7 @@ export function planDriftEvents(
       changedBy: attr?.changedBy ?? null,
       verdict: deriveVerdict(attr),
       crRef: attr?.crRef ?? null,
+      changeRequestId: attr?.changeRequestId ?? null,
     };
   });
 }
@@ -323,6 +332,7 @@ export async function collectDrift(
       changedBy: p.changedBy,
       verdict: p.verdict,
       crRef: p.crRef,
+      changeRequestId: p.changeRequestId,
       baselineSnapshotId: baseline.id,
     }));
     // ON CONFLICT DO NOTHING guards a concurrent inserter racing the same key.
@@ -352,6 +362,7 @@ export async function collectDrift(
         changedBy: p.changedBy,
         verdict: p.verdict,
         crRef: p.crRef,
+        changeRequestId: p.changeRequestId,
       })
       .where(
         and(
