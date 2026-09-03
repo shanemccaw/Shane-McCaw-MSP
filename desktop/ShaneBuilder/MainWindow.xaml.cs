@@ -44,6 +44,7 @@ public partial class MainWindow : Window
         SelectTab("home");
         _ = ResolveChatFeatureNumbersAsync(); // Git #2319 — real FeatureNumber per chat tab, lands async below
 
+        _slotMaxConcurrent = AgentSlotConfig.LoadMaxConcurrent(_logService.MainRepoRoot);
         RenderQueue(); // _queueItems starts empty — real rows land async below (Git #2413)
         RenderBuildDetail(); // starts closed (BuildDetailColumn.Width = 0) — no item selected yet
         _ = LoadQueueFromDatabaseAsync();
@@ -358,7 +359,8 @@ public partial class MainWindow : Window
                 branch: null, // bt_build_queue has no branch column — never fabricated
                 buildId: string.IsNullOrWhiteSpace(row.SessionId) ? null : row.SessionId,
                 blocks: blocks,
-                blockedBy: blockedBy));
+                blockedBy: blockedBy,
+                rawStatus: row.Status));
             // checklist intentionally omitted — real rows carry no checklist data
         }
 
@@ -756,7 +758,7 @@ public partial class MainWindow : Window
     // gives it a real spec to build against.
     private void BtnLensChip_Click(object sender, MouseButtonEventArgs e) => OpenFilterStudio();
 
-    // ── Build Matrix drawer — Git #2281/#2286. 8 fixed agent slots, per the
+    // ── Build Matrix drawer — Git #2281/#2286. Agent slots, per the
     // design doc ("Feature: Build Matrix"). No slot column exists anywhere —
     // BuildConsole's own BuildWatchWindow (desktop/BuildConsole) proves the
     // same real pattern this borrows: a slot is just an admission index over
@@ -764,7 +766,16 @@ public partial class MainWindow : Window
     // state. _matrixSlotAssignments keeps that admission STABLE across
     // re-renders (a running build keeps its slot number until it stops
     // running) so slots don't visually reshuffle every RenderQueue().
-    private const int MatrixSlotCount = 8;
+    //
+    // Git #2285 — slot COUNT is the real configured concurrency cap
+    // (scripts/build-queue-watcher.config.json's maxConcurrent, default 8 —
+    // see AgentSlotConfig), not a hardcoded "8" baked into this drawer. Loaded
+    // once at startup into _slotMaxConcurrent; MatrixSlotCount below just reads it,
+    // so a Settings change there is reflected here on the next app start rather
+    // than silently drifting from the real cap BuildConsole's own
+    // QueueWatcherService enforces.
+    private int _slotMaxConcurrent = AgentSlotConfig.DefaultMaxConcurrent;
+    private int MatrixSlotCount => _slotMaxConcurrent;
     private bool _matrixDrawerOpen;
     private readonly Dictionary<string, int> _matrixSlotAssignments = new(); // QueueItem.Id -> slot index (0-based)
     private readonly Dictionary<string, Border> _queueCardsByItemId = new(); // QueueItem.Id -> its rendered card, for focus-scroll
@@ -1754,6 +1765,13 @@ public partial class MainWindow : Window
         public string Title { get; }
         public string BuildSet { get; }
         public string Status { get; }
+        // Git #2285 — the real, un-coarsened bt_build_queue status string (Status above is the
+        // display-mapped value MapQueueStatus produces, which deliberately folds "limit-paused"
+        // into "Queued" for display). Kept for anything that needs the raw distinction between
+        // "running" (an actual launched process) and "limit-paused" (no process running right
+        // now, but QueueWatcherService reserves its slot for the pending auto-resume). Null for
+        // a row with no DB status at all.
+        public string? RawStatus { get; }
         public int? GithubNumber { get; }
         public string? Model { get; }
         public string? Effort { get; }
@@ -1774,12 +1792,14 @@ public partial class MainWindow : Window
             string? branch = null, string? buildId = null,
             IReadOnlyList<int>? blocks = null,
             IReadOnlyList<(int, string, string?)>? blockedBy = null,
-            IReadOnlyList<(string, bool)>? checklist = null)
+            IReadOnlyList<(string, bool)>? checklist = null,
+            string? rawStatus = null)
         {
             Id = id;
             Title = title;
             BuildSet = buildSet;
             Status = status;
+            RawStatus = rawStatus;
             GithubNumber = githubNumber;
             Model = model;
             Effort = effort;
