@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspSopsTable, mspSopRunsTable, standingPoliciesTable, MSP_SOP_RUN_ORIGIN } from "@workspace/db";
+import { db, mspSopsTable, mspSopRunsTable, MSP_SOP_RUN_ORIGIN } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
@@ -59,6 +59,23 @@ const runSopSchema = z.object({
   standingPolicyId: z.number().int().positive().optional(),
 });
 
+// #1938 — this route is a raw, MSPOperator-scoped INSERT with no Change Request
+// and no Workflow Engine run behind it (the CR-gated execution hook is
+// `runSopForCustomer`/`POST /msp/sops/:sopId/run`, #1559). It must stay
+// genuinely manual-only or it becomes a way to fabricate a
+// `status: "Completed"` run that the portal's audit view renders identically
+// to a real, CR-authorized one:
+//   - `origin` is not client-settable here — every row this route creates is
+//     forced to "manual" server-side, regardless of what the caller sends.
+//     A "policy"-origin run only ever comes from `runSopForCustomer`
+//     (`#1548`/`policy-enactment.ts`), never from this hand-entry path, so
+//     `standingPolicyId` is not accepted here either.
+//   - `status` at creation must be `"In Progress"` — a run cannot be born
+//     already "Completed"/"Blocked"/"Failed"; those are reached the same way
+//     a real run reaches them, via `PATCH /msp/sop-runs/:runId`.
+//   - `wf_run_id`/`automated_step_map` were already absent from this schema
+//     (never client-settable) — those are exclusively `runSopForCustomer`'s
+//     to write.
 const createSopRunSchema = z.object({
   runId: z.string(),
   sopId: z.string(),
@@ -67,14 +84,8 @@ const createSopRunSchema = z.object({
   tenantName: z.string(),
   targetEntity: z.string(),
   operator: z.string(),
-  // What invoked this run (#1556). Optional so existing callers keep working; a
-  // run without a stated origin is a hand-started one.
-  origin: z.enum(MSP_SOP_RUN_ORIGIN).default("manual"),
-  // #1548 — traces this hand-entered run back to the standing policy that
-  // caused it, when it was one. Validated against this MSP below.
-  standingPolicyId: z.number().int().positive().optional(),
   startedAt: z.string(),
-  status: z.enum(["In Progress", "Completed", "Blocked", "Failed"]),
+  status: z.literal("In Progress"),
   currentStepIndex: z.number().int().nonnegative(),
   totalSteps: z.number().int().nonnegative(),
   passedStepsCount: z.number().int().nonnegative(),
@@ -314,26 +325,6 @@ router.post(
         return;
       }
 
-      // #1548 — a run claiming standingPolicyId must be this MSP's own policy,
-      // and its origin must actually read "policy" — this is a hand-entered
-      // write path (no runSopForCustomer verification below it), so the same
-      // coherence check has to happen here.
-      if (parsedBody.data.standingPolicyId !== undefined) {
-        if (parsedBody.data.origin !== "policy") {
-          apiError(res, 400, ApiErrorCode.VALIDATION, `A run naming a standingPolicyId must have origin "policy" (got "${parsedBody.data.origin}")`);
-          return;
-        }
-        const [policy] = await db
-          .select({ id: standingPoliciesTable.id })
-          .from(standingPoliciesTable)
-          .where(and(eq(standingPoliciesTable.id, parsedBody.data.standingPolicyId), eq(standingPoliciesTable.mspId, mspId)))
-          .limit(1);
-        if (!policy) {
-          apiError(res, 400, ApiErrorCode.VALIDATION, `Standing policy ${parsedBody.data.standingPolicyId} does not exist for this MSP`);
-          return;
-        }
-      }
-
       // #1558 — the version this run actually followed, captured from the base
       // definition NOW rather than trusted from the caller: the base SOP keeps
       // moving forward under `version` as it is republished, so this has to be
@@ -357,8 +348,10 @@ router.post(
           tenantName: parsedBody.data.tenantName,
           targetEntity: parsedBody.data.targetEntity,
           operator: parsedBody.data.operator,
-          origin: parsedBody.data.origin,
-          standingPolicyId: parsedBody.data.standingPolicyId ?? null,
+          // #1938 — forced, never client-settable: this route is a hand-entry
+          // path with no Change Request and no Workflow Engine run behind it,
+          // so every row it creates is a manual run, full stop.
+          origin: "manual",
           sopVersion: sop?.version ?? "",
           startedAt: parsedBody.data.startedAt,
           status: parsedBody.data.status,
