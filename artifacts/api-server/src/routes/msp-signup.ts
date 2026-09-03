@@ -25,6 +25,19 @@ const log = logger.child({ channel: "tenant.msp-admin" });
 
 const router: IRouter = Router();
 
+// A genuine platform tier's fulfillmentType/fulfillmentTypeKey lifecycle value is
+// "msp_monthly_subscription" — but that value alone isn't sufficient (Git #2509):
+// an add-on row (e.g. launch-control-plus-addon) can carry it too, either directly
+// on the legacy fulfillmentType column or by future miscategorization. Add-on rows
+// are distinguished by typeAttributes carrying addOnType / grantsCapabilityKey —
+// a real platform tier never has either. Excluding on that shape, rather than on
+// `tier IS NOT NULL`, is deliberate: the three real seeded tiers (msp-platform-free/
+// -growth/-pro) also have a NULL `tier` column, so gating on it would 400 them too.
+function isGenuinePlatformTier(typeAttributes: unknown): boolean {
+  const attrs = (typeAttributes ?? {}) as Record<string, unknown>;
+  return attrs["addOnType"] == null && attrs["grantsCapabilityKey"] == null;
+}
+
 // ── GET /api/msp/signup/tiers ──────────────────────────────────────────────────
 // Returns all products where fulfillmentType = "msp_monthly_subscription".
 // These are the platform subscription tiers an MSP can choose from.
@@ -34,10 +47,14 @@ const router: IRouter = Router();
 // fulfillmentType ?? "standard") — the lifecycle key "msp_monthly_subscription"
 // is only ever assigned to platform tiers (PRODUCT_TYPE_DEFAULT_FULFILLMENT_KEYS
 // + the seed-portal backfills), so widening on it can't pull in non-tier rows.
+//
+// isGenuinePlatformTier() is a second, defensive filter (Git #2509) on top of that:
+// even a row whose fulfillmentType/fulfillmentTypeKey is correctly set can still be
+// an add-on grant, not a tier, if its typeAttributes shape says so.
 
 router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
   try {
-    const rawTiers = await db
+    const rawTiersUnfiltered = await db
       .select({
         id: servicesTable.id,
         slug: servicesTable.slug,
@@ -68,6 +85,8 @@ router.get("/msp/signup/tiers", async (_req: Request, res: Response) => {
         eq(servicesTable.fulfillmentTypeKey, "msp_monthly_subscription"),
       ))
       .orderBy(servicesTable.sortOrder);
+
+    const rawTiers = rawTiersUnfiltered.filter(t => isGenuinePlatformTier(t.typeAttributes));
 
     // Flatten typeAttributes into the response for backward compat with the signup UI
     const tiers = rawTiers.map(t => {
@@ -215,7 +234,8 @@ router.post("/msp/signup/start", async (req: Request, res: Response) => {
     if (
       !service ||
       (service.fulfillmentType !== "msp_monthly_subscription" &&
-        service.fulfillmentTypeKey !== "msp_monthly_subscription")
+        service.fulfillmentTypeKey !== "msp_monthly_subscription") ||
+      !isGenuinePlatformTier(service.typeAttributes)
     ) {
       res.status(400).json({ error: "Invalid or non-MSP-subscription service tier" });
       return;
