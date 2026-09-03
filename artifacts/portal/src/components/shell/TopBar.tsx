@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Bell, ChevronDown, ChevronRight, Eye, ListChecks, User } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { UserMenu } from "./UserMenu";
 
 export interface Breadcrumb {
   readonly parent?: string;
@@ -49,9 +51,22 @@ function ImpersonationBanner() {
  * fabricated-data case CLAUDE.md forbids.
  */
 export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
+  // README "State" §`openPopover`: `null | "user" | "alerts" | "sop"`, mutually
+  // exclusive. Alerts and SOP triggers stay inert (their popovers are #1821 /
+  // #1822's own scope) — only "user" is wired here.
+  const [openPopover, setOpenPopover] = useState<null | "user">(null);
+  const { user, logout } = useAuth();
+
   return (
     <>
       <ImpersonationBanner />
+      {openPopover ? (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setOpenPopover(null)}
+          aria-hidden="true"
+        />
+      ) : null}
       <div
         className="flex flex-none items-center gap-[14px] border-b"
         style={{ height: 56, padding: "0 16px 0 20px", borderColor: HAIRLINE }}
@@ -98,20 +113,36 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
             <Bell size={17} strokeWidth={1.75} color="#94a3b8" />
           </button>
           <div className="mx-[6px] h-5 w-px" style={{ background: HAIRLINE }} />
-          <button
-            type="button"
-            data-testid="topbar-user-trigger"
-            aria-label="Account menu"
-            className="flex items-center gap-[6px] rounded-full py-[3px] pl-[3px] pr-[6px] transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
-          >
-            <div
-              className="flex size-7 items-center justify-center rounded-full"
-              style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)" }}
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="topbar-user-trigger"
+              aria-label="Account menu"
+              aria-haspopup="menu"
+              aria-expanded={openPopover === "user"}
+              onClick={() => setOpenPopover((p) => (p === "user" ? null : "user"))}
+              className="relative z-50 flex items-center gap-[6px] rounded-full py-[3px] pl-[3px] pr-[6px] transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
+              style={{ background: openPopover === "user" ? "rgba(255,255,255,.06)" : undefined }}
             >
-              <User size={14} strokeWidth={1.75} color="#cbd5e1" />
-            </div>
-            <ChevronDown size={13} color="#64748b" />
-          </button>
+              <div
+                className="flex size-7 items-center justify-center rounded-full"
+                style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)" }}
+              >
+                <User size={14} strokeWidth={1.75} color="#cbd5e1" />
+              </div>
+              <ChevronDown size={13} color="#64748b" />
+            </button>
+            {openPopover === "user" && user ? (
+              <UserMenu
+                user={user}
+                onClose={() => setOpenPopover(null)}
+                onSignOut={() => {
+                  setOpenPopover(null);
+                  void logout();
+                }}
+              />
+            ) : null}
+          </div>
         </div>
       </div>
     </>
