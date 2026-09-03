@@ -67,103 +67,97 @@ function SopRow({ item }: { item: SopQueueItemWire }) {
  * `useSopRunsShell` — an empty queue here is the module's real current
  * state (#1493's backend children are all closed; nothing invented to fill
  * a gap), never a fabricated row.
+ *
+ * Positioned the same way #1820's `UserMenu` anchors itself: `absolute
+ * right-0` off a `relative` wrapper around just the trigger button, rather
+ * than the design's raw viewport-offset pixels — self-contained regardless
+ * of the impersonation banner or sibling trigger widths. The mutually
+ * exclusive open/close state and the shared full-viewport click-catching
+ * overlay both live in `TopBar`, same as the user menu.
  */
 export function SopTray({
-  open,
   onClose,
-  popTop,
   queue,
   loading,
 }: {
-  open: boolean;
   onClose: () => void;
-  popTop: number;
   queue: readonly SopQueueItemWire[];
   loading: boolean;
 }) {
-  if (!open) return null;
-
   const isEmpty = queue.length === 0;
 
   return (
-    <>
-      {/* Full-viewport click-catching overlay — README "Popovers": "Only one
-          is open at a time... A full-viewport click-catching overlay closes
-          them." */}
-      <div className="fixed inset-0 z-40" onClick={onClose} />
-      <div
-        data-testid="sop-tray-popover"
-        className="absolute z-50 w-[380px] overflow-hidden rounded-[14px] border"
-        style={{
-          top: popTop,
-          right: 104,
-          background: "rgba(11,17,32,.98)",
-          borderColor: "rgba(255,255,255,.10)",
-          boxShadow: "0 18px 48px rgba(0,0,0,.55)",
-        }}
-      >
-        {isEmpty ? (
-          <>
+    <div
+      data-testid="sop-tray-popover"
+      className="absolute right-0 z-50 w-[380px] overflow-hidden rounded-[14px] border"
+      style={{
+        top: "calc(100% + 8px)",
+        background: "rgba(11,17,32,.98)",
+        borderColor: "rgba(255,255,255,.10)",
+        boxShadow: "0 18px 48px rgba(0,0,0,.55)",
+      }}
+    >
+      {isEmpty ? (
+        <>
+          <div
+            className="flex items-center gap-2 border-b"
+            style={{ borderColor: HAIRLINE, padding: "13px 14px 11px" }}
+          >
+            <span className="text-[13.5px] font-semibold text-[#f8fafc]">SOP activity</span>
+            <span className="ml-auto text-[11px] text-[#64748b]">{loading ? "Loading…" : "Idle"}</span>
+          </div>
+          <div
+            className="flex flex-col items-center gap-[10px] text-center"
+            style={{ padding: "30px 24px 26px" }}
+          >
             <div
-              className="flex items-center gap-2 border-b"
-              style={{ borderColor: HAIRLINE, padding: "13px 14px 11px" }}
+              className="flex size-10 items-center justify-center rounded-[11px] border"
+              style={{ background: "rgba(255,255,255,.04)", borderColor: "rgba(255,255,255,.08)" }}
             >
-              <span className="text-[13.5px] font-semibold text-[#f8fafc]">SOP activity</span>
-              <span className="ml-auto text-[11px] text-[#64748b]">{loading ? "Loading…" : "Idle"}</span>
+              <ListChecks size={18} strokeWidth={1.75} color="#475569" />
             </div>
-            <div
-              className="flex flex-col items-center gap-[10px] text-center"
-              style={{ padding: "30px 24px 26px" }}
+            <span className="text-[13px] font-semibold text-[#cbd5e1]">Nothing running right now</span>
+            <span className="max-w-[250px] text-xs leading-[1.5] text-[#64748b]">
+              When your MSP executes a procedure against your tenant, its live progress appears here.
+            </span>
+            <Link
+              href={comingSoonHref("SOPs", "module")}
+              data-testid="sop-tray-view-library"
+              className="text-xs font-semibold text-[#60a5fa]"
+              onClick={onClose}
             >
-              <div
-                className="flex size-10 items-center justify-center rounded-[11px] border"
-                style={{ background: "rgba(255,255,255,.04)", borderColor: "rgba(255,255,255,.08)" }}
-              >
-                <ListChecks size={18} strokeWidth={1.75} color="#475569" />
-              </div>
-              <span className="text-[13px] font-semibold text-[#cbd5e1]">Nothing running right now</span>
-              <span className="max-w-[250px] text-xs leading-[1.5] text-[#64748b]">
-                When your MSP executes a procedure against your tenant, its live progress appears here.
-              </span>
-              <Link
-                href={comingSoonHref("SOPs", "module")}
-                data-testid="sop-tray-view-library"
-                className="text-xs font-semibold text-[#60a5fa]"
-                onClick={onClose}
-              >
-                View SOP library
-              </Link>
-            </div>
-          </>
-        ) : (
-          <>
-            <div
-              className="flex items-center gap-2 border-b"
-              style={{ borderColor: HAIRLINE, padding: "13px 14px 11px" }}
+              View SOP library
+            </Link>
+          </div>
+        </>
+      ) : (
+        <>
+          <div
+            className="flex items-center gap-2 border-b"
+            style={{ borderColor: HAIRLINE, padding: "13px 14px 11px" }}
+          >
+            <span className="size-[7px] flex-none rounded-full" style={{ background: "#00B4D8" }} />
+            <span className="text-[13.5px] font-semibold text-[#f8fafc]">SOP activity</span>
+            <span className="ml-auto text-[11px] text-[#64748b]">{queue.length} in queue</span>
+          </div>
+          <div className="flex flex-col gap-[10px]" style={{ padding: "12px 12px 4px" }}>
+            {queue.map((item) => (
+              <SopRow key={item.code} item={item} />
+            ))}
+          </div>
+          <div className="flex items-center" style={{ padding: "9px 14px 12px" }}>
+            <span className="text-[11px] text-[#64748b]">Steps continue even if you close this</span>
+            <Link
+              href={comingSoonHref("Runbooks", "module")}
+              data-testid="sop-tray-open-runbooks"
+              className="ml-auto text-xs font-semibold text-[#60a5fa]"
+              onClick={onClose}
             >
-              <span className="size-[7px] flex-none rounded-full" style={{ background: "#00B4D8" }} />
-              <span className="text-[13.5px] font-semibold text-[#f8fafc]">SOP activity</span>
-              <span className="ml-auto text-[11px] text-[#64748b]">{queue.length} in queue</span>
-            </div>
-            <div className="flex flex-col gap-[10px]" style={{ padding: "12px 12px 4px" }}>
-              {queue.map((item) => (
-                <SopRow key={item.code} item={item} />
-              ))}
-            </div>
-            <div className="flex items-center" style={{ padding: "9px 14px 12px" }}>
-              <span className="text-[11px] text-[#64748b]">Steps continue even if you close this</span>
-              <Link
-                href={comingSoonHref("Runbooks", "module")}
-                data-testid="sop-tray-open-runbooks"
-                className="ml-auto text-xs font-semibold text-[#60a5fa]"
-                onClick={onClose}
-              >
-                Open Runbooks
-              </Link>
-            </div>
-          </>
-        )}
-      </div>
-    </>
+              Open Runbooks
+            </Link>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

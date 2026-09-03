@@ -1955,7 +1955,7 @@ router.post("/admin/insights/consulting/payload-preview", requireAdmin, async (r
       };
       try {
         const [signalRulesRes, signalGroupsRes, disabledSignalKeys] = await Promise.all([
-          db.execute(sql`SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType", source_key AS "sourceKey", compare_value AS "compareValue", sort_order AS "sortOrder" FROM signal_derivation_rules ORDER BY signal_key, sort_order, id`),
+          db.execute(sql`SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType", source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey", sort_order AS "sortOrder" FROM signal_derivation_rules ORDER BY signal_key, sort_order, id`),
           db.execute(sql`SELECT id, signal_key AS "signalKey", logic, label, sort_order AS "sortOrder", created_at AS "createdAt" FROM signal_rule_groups ORDER BY signal_key, sort_order, id`),
           getDisabledSignalKeys(),
         ]);
