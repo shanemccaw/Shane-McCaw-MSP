@@ -26,11 +26,15 @@ namespace BuildConsole.TestPad
     /// "No notes yet." otherwise.
     ///
     /// "Send to Claude" formats the selected (or, with nothing checked, every unsent) note via
-    /// <see cref="TestPadSendFormatter"/> and puts it on the clipboard — ShaneBuilder's original
-    /// dropped the block straight into the open chat's composer via a live
-    /// AlertActions.AppendToComposer bridge, but that bridge (and the ClaudeActivityService busy/
-    /// free status it also read) was never ported into BuildConsole, so this is the honest real
-    /// action available with what's actually here rather than a fabricated direct-injection.
+    /// <see cref="TestPadSendFormatter"/> and injects it directly into the active claude.ai chat's
+    /// real composer via <see cref="MainWindow.SendTextToActiveClaudeChatAsync"/> (Git #2690) — the
+    /// same real DOM-injection path the Build Queue panel's build-set "send landed list" button
+    /// already uses. ShaneBuilder's original dropped the block into the open chat's composer via a
+    /// live AlertActions.AppendToComposer bridge that was never ported into BuildConsole; when this
+    /// window first landed (#2532) that bridge didn't exist yet, so the honest fallback at the time
+    /// was a clipboard copy. It exists now, so notes are only marked SENT once the real injection
+    /// actually confirms — a failed injection leaves the note unsent, same as a failed clipboard
+    /// write used to.
     /// "Copy as markdown" acts only on whatever is checked (any mix of sent/unsent) and is hidden
     /// entirely when nothing is checked, unlike "Send to Claude" which falls back to every unsent
     /// note. "Import" (#2533) opens the real <see cref="TestPadImportWindow"/> modal — paste a whole
@@ -163,11 +167,14 @@ namespace BuildConsole.TestPad
 
         /// <summary>"Send to Claude" — formats the checked-selected unsent notes if any are
         /// checked, otherwise every unsent note, so the button always has an obvious "send
-        /// everything waiting" default, and copies the block to the clipboard (see the class doc
-        /// for why this is clipboard rather than a direct composer-append). Sent notes flip to
-        /// <see cref="TestPadNote.IsSent"/> (the SENT badge/lock renders) and clear their
-        /// selection.</summary>
-        private void BtnSendToClaude_Click(object sender, MouseButtonEventArgs e)
+        /// everything waiting" default, and injects the block directly into the active claude.ai
+        /// chat's real composer via <see cref="MainWindow.SendTextToActiveClaudeChatAsync"/> (Git
+        /// #2690) — reached through the same <c>Application.Current.MainWindow as MainWindow</c>
+        /// owner cast already used elsewhere for this exact situation (#2663). Notes only flip to
+        /// <see cref="TestPadNote.IsSent"/> (the SENT badge/lock renders, selection clears) inside
+        /// the callback's real success branch — a failed injection leaves them unsent, mirroring
+        /// the Build Queue panel's own landed-list send handler.</summary>
+        private async void BtnSendToClaude_Click(object sender, MouseButtonEventArgs e)
         {
             var all = TestPadService.Notes;
             var selectedUnsent = all.Where(n => n.IsSelected && !n.IsSent).ToList();
@@ -179,21 +186,32 @@ namespace BuildConsole.TestPad
                 return;
             }
 
-            var block = TestPadSendFormatter.Format(target);
-            try
+            var mainWindow = Application.Current.MainWindow as MainWindow;
+            if (mainWindow == null)
             {
-                Clipboard.SetText(block);
-            }
-            catch
-            {
-                ToastEngine.Warning("Test Pad", "Couldn't reach the clipboard — try again.");
+                ToastEngine.Warning("Test Pad", "Couldn't reach the main window to send — try again.");
                 return;
             }
 
-            TestPadService.MarkSent(target.Select(n => n.Id));
-
+            var block = TestPadSendFormatter.Format(target);
             var count = target.Count;
-            ToastEngine.Success("Test Pad", $"Copied {count} {(count == 1 ? "note" : "notes")} — paste into Claude's composer.");
+
+            await mainWindow.SendTextToActiveClaudeChatAsync(
+                block,
+                showMessage: (msg, isError) =>
+                {
+                    if (isError)
+                    {
+                        ToastEngine.Warning("Test Pad", msg);
+                        return;
+                    }
+
+                    TestPadService.MarkSent(target.Select(n => n.Id));
+                    ToastEngine.Success("Test Pad", $"Sent {count} {(count == 1 ? "note" : "notes")} — {msg}");
+                },
+                onInserted: null,
+                logChannel: "testpad.send-to-claude",
+                whatSingular: "note");
         }
 
         /// <summary>"Copy as markdown" for the selection, distinct from "Send to Claude": it never
