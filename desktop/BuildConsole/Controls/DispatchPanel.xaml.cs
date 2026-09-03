@@ -35,8 +35,11 @@ namespace BuildConsole.Controls
 
         /// <summary>Fired after a successful direct dispatch so MainWindow can tell the
         /// sibling BuildQueuePanel to repaint — same "best-effort visual refresh" pattern
-        /// BatterUpPanel.RowsAutoQueued already follows.</summary>
-        public event EventHandler? Dispatched;
+        /// BatterUpPanel.RowsAutoQueued already follows. Git #2680 — carries the dispatched
+        /// issue number (captured before TxtIssueNumber.Text is cleared) so MainWindow can
+        /// also auto-search the Queue panel down to that same row. Audited before this change:
+        /// MainWindow.xaml.cs ~line 636 is the only subscriber in the codebase.</summary>
+        public event Action<int>? Dispatched;
 
         public DispatchPanel()
         {
@@ -273,7 +276,7 @@ namespace BuildConsole.Controls
                 }
 
                 TxtIssueNumber.Text = "";
-                try { Dispatched?.Invoke(this, EventArgs.Empty); }
+                try { Dispatched?.Invoke(issueNumber); }
                 catch { /* best-effort visual refresh of the sibling queue panel */ }
             }
             catch (Exception ex)
@@ -441,7 +444,7 @@ namespace BuildConsole.Controls
                 }
 
                 TxtIssueNumber.Text = "";
-                try { Dispatched?.Invoke(this, EventArgs.Empty); }
+                try { Dispatched?.Invoke(issueNumber); }
                 catch { /* best-effort visual refresh of the sibling queue panel */ }
             }
             catch (Exception ex)
