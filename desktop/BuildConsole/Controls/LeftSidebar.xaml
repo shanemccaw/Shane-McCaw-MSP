@@ -184,7 +184,7 @@
             <!-- ══════════════════════════════════
                  EXPLORER VIEW (Dynamic File Explorer for C:\Source\ShaneMcCawConsulting\Shane-McCaw-MSP)
                  ══════════════════════════════════ -->
-            <Grid x:Name="ExplorerView" Visibility="Collapsed">
+            <Grid x:Name="ExplorerView" DockPanel.Dock="Top" Visibility="Collapsed">
                 <DockPanel>
                     <!-- Workspace path header strip -->
                     <Border DockPanel.Dock="Top"
@@ -225,7 +225,7 @@
             <!-- ══════════════════════════════════
                  SEARCH VIEW (Full-Text File Content Search)
                  ══════════════════════════════════ -->
-            <Grid x:Name="SearchView" Visibility="Collapsed">
+            <Grid x:Name="SearchView" DockPanel.Dock="Top" Visibility="Collapsed">
                 <DockPanel Margin="10,8">
                     <StackPanel DockPanel.Dock="Top">
 
@@ -361,7 +361,7 @@
             <!-- ══════════════════════════════════
                  GIT SOURCE CONTROL & GRAPH VIEW
                  ══════════════════════════════════ -->
-            <Grid x:Name="GitView" Visibility="Collapsed">
+            <Grid x:Name="GitView" DockPanel.Dock="Top" Visibility="Collapsed">
                 <DockPanel Margin="8,6">
                     <StackPanel DockPanel.Dock="Top">
                         <!-- Active Branch Badge & Sync Status -->
@@ -460,7 +460,7 @@
             <!-- ══════════════════════════════════
                  GIT MILESTONES, EPICS & ISSUES (ADHD TRACKER)
                  ══════════════════════════════════ -->
-            <Grid x:Name="IssuesView" Visibility="Collapsed">
+            <Grid x:Name="IssuesView" DockPanel.Dock="Top" Visibility="Collapsed">
                 <DockPanel Margin="8,6">
                     <StackPanel DockPanel.Dock="Top">
                         <!-- ADHD Visual Stats Chips -->
@@ -681,7 +681,7 @@
                  clicking a category here opens (or focuses) that tab and scrolls to
                  the matching section via MainWindow.OpenSettingsTab. No settings
                  content lives in the sidebar anymore — one source of truth, the tab. -->
-            <Grid x:Name="SettingsView" Visibility="Collapsed">
+            <Grid x:Name="SettingsView" DockPanel.Dock="Top" Visibility="Collapsed">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="8,10">
                     <TextBlock Text="Settings" FontSize="14" FontWeight="SemiBold" Margin="4,0,0,4"/>
@@ -760,7 +760,7 @@
             <!-- ══════════════════════════════════
                  UI AUTOMATION VIEW
                  ══════════════════════════════════ -->
-            <Grid x:Name="AutomationView" Visibility="Collapsed">
+            <Grid x:Name="AutomationView" DockPanel.Dock="Top" Visibility="Collapsed">
                 <DockPanel Margin="10,8">
                     <!-- Git #952 — fixed top region: Play, Available Tests header, and the API/Graph
                          badges (now moved ABOVE the list).
@@ -937,7 +937,7 @@
             <!-- ══════════════════════════════════
                  MICROSOFT GRAPH API VIEW
                  ══════════════════════════════════ -->
-            <Grid x:Name="GraphApiView" Visibility="Collapsed">
+            <Grid x:Name="GraphApiView" DockPanel.Dock="Top" Visibility="Collapsed">
                 <DockPanel Margin="10,8">
                     <!-- Search box -->
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
