@@ -41,6 +41,11 @@ namespace BuildConsole.Services
         public string HtmlUrl { get; set; } = "";
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
+        /// <summary>Git #2711 — the REST single-issue read's real `closed_at` (null while open),
+        /// the mirror of the GraphQL board fetch's <see cref="GitBoardIssue.ClosedAt"/>. Added so the
+        /// detail path carries the same real close timestamp the time-series foundation exposes.</summary>
+        [JsonPropertyName("closed_at")]
+        public DateTimeOffset? ClosedAt { get; set; }
         public GitHubUser? User { get; set; }
         public List<GitHubLabel> Labels { get; set; } = new();
     }
@@ -132,6 +137,23 @@ namespace BuildConsole.Services
         [JsonPropertyName("html_url")]
         public string HtmlUrl { get; set; } = "";
         public string Body { get; set; } = "";
+        /// <summary>
+        /// Git #2711 (Home dashboard foundation) — the issue's real GitHub creation
+        /// timestamp (GraphQL <c>createdAt</c>, always present). This is the "opened
+        /// that day" date the daily open/close time series (<see cref="GitHubIssueTimeSeriesService"/>)
+        /// is built from. Historically the board fetch pulled no timestamps at all; every
+        /// burndown / open-vs-close-rate / ETA chart under #2710 needs this.
+        /// </summary>
+        public DateTimeOffset? CreatedAt { get; set; }
+        /// <summary>
+        /// Git #2711 (Home dashboard foundation) — the issue's real GitHub close
+        /// timestamp (GraphQL <c>closedAt</c>), or null when the issue is still open.
+        /// This is the field that was fetched NOWHERE in the codebase before #2711
+        /// (repo-wide grep, zero hits) — the one real shared foundational gap every
+        /// child chart/projection under #2710 depends on. Pairs with <see cref="CreatedAt"/>
+        /// to reconstruct the real per-day opened/closed history.
+        /// </summary>
+        public DateTimeOffset? ClosedAt { get; set; }
         /// <summary>The issue's real GitHub Milestone title, or null when it belongs to no milestone.</summary>
         public string? MilestoneTitle { get; set; }
         public int? MilestoneNumber { get; set; }
@@ -852,7 +874,7 @@ namespace BuildConsole.Services
     issues(first: {PageSize}, after: {afterArg}, states: {statesLiteral}, orderBy: {{field: CREATED_AT, direction: DESC}}) {{
       pageInfo {{ hasNextPage endCursor }}
       nodes {{
-        number title state url body databaseId
+        number title state url body databaseId createdAt closedAt
         labels(first: 20) {{ nodes {{ name }} }}
         milestone {{ title number }}
         parent {{ number milestone {{ number }} }}
@@ -876,6 +898,8 @@ namespace BuildConsole.Services
                             State = n.State ?? "OPEN",
                             HtmlUrl = n.Url ?? "",
                             Body = n.Body ?? "",
+                            CreatedAt = n.CreatedAt,
+                            ClosedAt = n.ClosedAt,
                             Labels = n.Labels?.Nodes?.Select(l => new GitHubLabel { Name = l.Name }).ToList() ?? new List<GitHubLabel>(),
                             MilestoneTitle = n.Milestone?.Title,
                             MilestoneNumber = n.Milestone?.Number,
@@ -1523,6 +1547,11 @@ namespace BuildConsole.Services
             public string? Url { get; set; }
             public string? Body { get; set; }
             public long DatabaseId { get; set; }
+            // Git #2711 — real GitHub open/close timestamps. createdAt is always present;
+            // closedAt is null while the issue is open. System.Text.Json parses GitHub's
+            // ISO 8601 "Z" strings straight into DateTimeOffset.
+            public DateTimeOffset? CreatedAt { get; set; }
+            public DateTimeOffset? ClosedAt { get; set; }
             public LabelConnection? Labels { get; set; }
             public MilestoneData? Milestone { get; set; }
             public ParentData? Parent { get; set; }
