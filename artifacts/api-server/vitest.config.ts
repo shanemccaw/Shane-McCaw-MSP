@@ -91,6 +91,9 @@ export default defineConfig({
       // attestation / rollback-eligibility rules, plus real-DB store lifecycle.
       "src/lib/msp-change-execution.test.ts",
       "src/lib/msp-change-execution-store.test.ts",
+      // #1502 — Post-Implementation Review: close codes, verification
+      // evidence, and the drift re-scan, against the real local database.
+      "src/lib/msp-change-pir-store.test.ts",
       "src/lib/portal-hold-windows.test.ts",
       "src/lib/workflow-node-output-samples.test.ts",
       "src/routes/consent.test.ts",

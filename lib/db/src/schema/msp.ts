@@ -4923,6 +4923,98 @@ export const insertCrExecutionSchema = createInsertSchema(crExecutionsTable).omi
 export type CrExecution = typeof crExecutionsTable.$inferSelect;
 export type InsertCrExecution = typeof crExecutionsTable.$inferInsert;
 
+// ── Post-Implementation Review (#1502) ───────────────────────────────────────
+//
+// Before this, a closed CR carried a `status` and nothing else — no review of
+// whether the authorized change actually landed as intended, no close code, no
+// evidence. `cr_pirs` is that review: one row per `cr_executions` row, closing
+// the loop the way #1499's `cr_executions` closed the "who executed it" loop.
+//
+// A PIR ATTACHES to the execution it reviews — it does not edit the CR or the
+// execution, both of which stay exactly as immutable as before. Real FK + a
+// UNIQUE constraint on `execution_id`: an execution with no `cr_executions` row
+// has nothing to review (there is nothing to attach to), and a second PIR
+// against the same execution is a correction that gets a NEW execution record
+// to review, not a rewrite of this one — matching `cr_events`'s own
+// append-only discipline, which this table follows for the same reason.
+//
+// The drift re-scan (`driftRescan*` below) is what makes the close code more
+// than a human-typed status field: after the reviewer records their close code,
+// this record ALSO captures whether the same drift-detection engine that flags
+// unauthorized change re-scanned the tenant and found the change reflected in
+// its own baseline diff. `monitor-executor.ts`'s `buildCaChangeRequestAttribution`
+// only attributes drift to a CR for Conditional Access, from a completed CR
+// within a 30-day window (#1497's deliberate boundary) — this does NOT widen
+// that; `driftRescanApplicable` is false and `driftRescanStatus` stays
+// `not_applicable` for every other category, honestly, rather than pretending a
+// re-scan ran where the engine has no attribution path to run one.
+export const CR_PIR_CLOSE_CODES = ["successful", "successful_with_issues", "failed", "rolled_back"] as const;
+export type CrPirCloseCode = (typeof CR_PIR_CLOSE_CODES)[number];
+
+/**
+ * Outcome of the drift re-scan attempted when a PIR is recorded:
+ *   - not_applicable — this CR's category has no drift-attribution path
+ *     (`monitor-executor.ts` only attributes Conditional Access today); no scan
+ *     was attempted, honestly, rather than a fabricated "clean" result.
+ *   - ran             — a fresh scan ran and the counts below reflect it.
+ *   - error           — a scan was attempted (category qualified) but failed;
+ *     `driftRescanNote` carries the real error, never a silently-clean fallback.
+ */
+export const CR_PIR_DRIFT_RESCAN_STATUSES = ["not_applicable", "ran", "error"] as const;
+export type CrPirDriftRescanStatus = (typeof CR_PIR_DRIFT_RESCAN_STATUSES)[number];
+
+export const crPirsTable = pgTable("cr_pirs", {
+  id: serial("id").primaryKey(),
+  /** The execution this PIR reviews. Real FK, UNIQUE — one PIR per execution. */
+  executionId: integer("execution_id")
+    .notNull()
+    .unique()
+    .references(() => crExecutionsTable.id, { onDelete: "cascade" }),
+  /** Denormalised from the execution so this table can be queried/scoped without a join, matching cr_executions' own denormalisation off the CR. */
+  changeRequestId: integer("change_request_id")
+    .notNull()
+    .references(() => mspChangeRequestsTable.id, { onDelete: "cascade" }),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  tenantId: text("tenant_id").notNull(),
+
+  closeCode: text("close_code", { enum: CR_PIR_CLOSE_CODES }).notNull(),
+  /** The reviewer's narrative — what was verified, and how. Required: a close code with no evidence behind it is a status field, not a review. */
+  summary: text("summary").notNull(),
+  /** Detail behind a non-clean close code. NULL when nothing was noted (expected for `successful`). */
+  issuesNoted: text("issues_noted"),
+
+  reviewedBy: text("reviewed_by").notNull(),
+  reviewedByPersonId: text("reviewed_by_person_id"),
+  reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),
+
+  // ── Drift re-scan (#1502) ────────────────────────────────────────────────
+  /** True only when this CR's category has a drift-attribution path (Conditional Access today). */
+  driftRescanApplicable: boolean("drift_rescan_applicable").notNull().default(false),
+  /** The drift domain re-scanned (e.g. "ca-policy"). NULL when not applicable. */
+  driftRescanDomainKey: text("drift_rescan_domain_key"),
+  /** The monitor_checks.key actually executed for the re-scan. NULL when not applicable. */
+  driftRescanCheckKey: text("drift_rescan_check_key"),
+  driftRescanStatus: text("drift_rescan_status", { enum: CR_PIR_DRIFT_RESCAN_STATUSES }).notNull().default("not_applicable"),
+  /** Drift events (inserted + reopened) this re-scan run persisted, of any verdict. NULL until a scan actually runs. */
+  driftRescanEventsInsertedCount: integer("drift_rescan_events_inserted_count"),
+  /** Of this tenant/domain's currently open/reopened drift events, how many carry THIS CR's id as their attributing change (verdict `approved`). NULL until a scan actually runs. */
+  driftRescanAttributedCount: integer("drift_rescan_attributed_count"),
+  /** Of this tenant/domain's currently open/reopened drift events, how many are NOT attributed to this CR (pre-existing or unrelated drift the re-scan surfaced/confirmed, not proof this change caused or fixed them). NULL until a scan actually runs. */
+  driftRescanOtherOpenDriftCount: integer("drift_rescan_other_open_drift_count"),
+  /** Plain-language statement of what the re-scan can and cannot confirm — written even on `not_applicable`/`error`, never left to be inferred from the counts alone. */
+  driftRescanNote: text("drift_rescan_note"),
+  driftRescanRanAt: timestamp("drift_rescan_ran_at", { withTimezone: true }),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("cr_pirs_change_request_id_idx").on(t.changeRequestId),
+  index("cr_pirs_msp_tenant_idx").on(t.mspId, t.tenantId),
+]);
+
+export const insertCrPirSchema = createInsertSchema(crPirsTable).omit({ id: true, createdAt: true });
+export type CrPir = typeof crPirsTable.$inferSelect;
+export type InsertCrPir = typeof crPirsTable.$inferInsert;
+
 // ── Standard Change Catalog (#1498) ──────────────────────────────────────────
 //
 // Pre-approved templates that skip CAB. A catalog item points at a `packKey` —
@@ -5420,6 +5512,16 @@ export const CR_EVENT_TYPES = [
    * against an approved CR, rather than "nobody knows".
    */
   "script_revealed",
+  /**
+   * #1502 — a Post-Implementation Review (`cr_pirs`) was recorded against one
+   * of this change's executions. `toValue` carries the PIR's close code
+   * (`successful` / `successful_with_issues` / `failed` / `rolled_back`);
+   * `reason` carries the reviewer's summary. Fired once per PIR — `cr_pirs`
+   * itself is append-only (one row per execution, enforced by a unique
+   * constraint), so this event and that row are recorded together and never
+   * diverge.
+   */
+  "pir_recorded",
 ] as const;
 export type CrEventType = (typeof CR_EVENT_TYPES)[number];
 

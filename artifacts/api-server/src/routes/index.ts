@@ -260,6 +260,7 @@ import mspChangeMaintenanceWindowsRouter from "./msp-change-maintenance-windows"
 import mspChangeDependenciesRouter from "./msp-change-dependencies";
 import mspChangeControlCabRouter from "./msp-change-control-cab";
 import mspChangeExecutionsRouter from "./msp-change-executions";
+import mspChangePirRouter from "./msp-change-pir";
 import mspSopsRouter from "./msp-sops";
 import mspDlqRouter from "./msp-dlq";
 import mspRbdRouter from "./msp-rbd";
@@ -528,6 +529,7 @@ router.use(mspChangeMaintenanceWindowsRouter);
 router.use(mspChangeDependenciesRouter);
 router.use(mspChangeControlCabRouter);
 router.use(mspChangeExecutionsRouter);
+router.use(mspChangePirRouter);
 router.use(mspSopsRouter);
 router.use(mspDlqRouter);
 router.use(mspRbdRouter);
