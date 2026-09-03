@@ -2824,7 +2824,70 @@ namespace BuildConsole.Controls
             };
             cm.Items.Add(miExpand);
 
+            cm.Items.Add(new Separator());
+
+            var miRemoveSet = new MenuItem { Header = "🗑 Remove Entire Set (→ Backlog)" };
+            miRemoveSet.Click += async (_, _) => await RemoveBuildSetAsync(buildSetKey, members);
+            cm.Items.Add(miRemoveSet);
+
             return cm;
+        }
+
+        /// <summary>Right-click "Remove Entire Set" on a BUILD SETS rollup row — cancels every
+        /// member still eligible (queued / limit-paused / parked / capped, same states
+        /// <see cref="Services.BuildQueuePostgresClient.CancelAsync"/> already guards on) so the
+        /// whole set drops out of the queue at once, then mirrors each canceled member's linked
+        /// GitHub issue back to the real board's Backlog column via the same fire-and-forget
+        /// <see cref="Services.BoardStatusSync.Mirror"/> primitive Park/Un-park already use — "Git
+        /// IS the database" applies here too. A member already running or verifying can't be
+        /// safely killed from here (same guard CancelAsync itself enforces) and is deliberately
+        /// left alone, not force-canceled and not moved to Backlog out from under an active
+        /// build.</summary>
+        private async System.Threading.Tasks.Task RemoveBuildSetAsync(string buildSetKey, List<QueueItem> members)
+        {
+            if (_db == null)
+            {
+                ToastEngine.Warning("Remove Set", "No direct DB connection — can't remove.");
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                $"Remove all of build set \"{buildSetKey}\" from the queue?\n\n" +
+                $"{members.Count} item(s) will be canceled (anything already running/verifying is left alone), " +
+                "and their linked GitHub issues moved back to Backlog.",
+                "Remove Entire Set", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.Yes) return;
+
+            int canceled = 0, skipped = 0;
+            foreach (var m in members)
+            {
+                try
+                {
+                    if (await _db.CancelAsync(m.Id))
+                    {
+                        canceled++;
+                        Services.BoardStatusSync.Mirror(m.GithubNumber, GitHubApiClient.BacklogOptionId,
+                            "Removed from queue (build set)", "build-queue");
+                    }
+                    else
+                    {
+                        skipped++; // already running/verifying/terminal — left alone
+                    }
+                }
+                catch (Exception ex)
+                {
+                    skipped++;
+                    ActivityLog.Log("build-queue", $"Remove set \"{buildSetKey}\": couldn't cancel #{m.Id} ({m.Title}): {ex.Message}");
+                }
+            }
+
+            ActivityLog.Log("build-queue", $"Removed build set \"{buildSetKey}\": {canceled} canceled → Backlog, {skipped} left alone (running/verifying/already terminal).");
+            if (canceled > 0)
+                ToastEngine.Success("Set Removed", $"\"{buildSetKey}\": {canceled} canceled" + (skipped > 0 ? $", {skipped} left running" : ""));
+            else
+                ToastEngine.Warning("Remove Set", $"\"{buildSetKey}\": nothing to cancel — all {skipped} item(s) already running/verifying/terminal.");
+
+            await RefreshAsync();
         }
 
         /// <summary>Git #1834 addendum — click a rollup row to filter the queue graph below
