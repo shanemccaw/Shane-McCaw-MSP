@@ -33,9 +33,11 @@ namespace BuildConsole.TestPad
     /// action available with what's actually here rather than a fabricated direct-injection.
     /// "Copy as markdown" acts only on whatever is checked (any mix of sent/unsent) and is hidden
     /// entirely when nothing is checked, unlike "Send to Claude" which falls back to every unsent
-    /// note. Import and "Attach shot"/Paste Tray from the ShaneBuilder source are intentionally not
-    /// carried over here — Import is a separate sibling issue (#2533, not yet built) and Paste Tray
-    /// was never ported — so neither button exists in this pad.
+    /// note. "Import" (#2533) opens the real <see cref="TestPadImportWindow"/> modal — paste a whole
+    /// Notepad file, Parse, correct/merge the preview, Import files every checked candidate as a
+    /// real note. "Attach shot"/Paste Tray from the ShaneBuilder source is intentionally not carried
+    /// over here — no PasteTrayWindow port exists — so that button alone is still absent from this
+    /// pad.
     /// </summary>
     public partial class TestPadWindow : Window
     {
@@ -86,6 +88,16 @@ namespace BuildConsole.TestPad
         {
             _groupByFeature = !_groupByFeature;
             Render();
+        }
+
+        /// <summary>"Import" (#2533) — opens the real <see cref="TestPadImportWindow"/> modal,
+        /// owner-scoped to this pad. The dialog files its own notes straight into
+        /// <see cref="TestPadService"/> on Import, so the pad's list/pill badge pick them up via
+        /// the existing <see cref="TestPadService.NotesChanged"/> subscription with no extra
+        /// wiring needed here.</summary>
+        private void BtnImport_Click(object sender, MouseButtonEventArgs e)
+        {
+            TestPadImportWindow.ShowFor(this);
         }
 
         private void ComposerBox_PreviewKeyDown(object sender, KeyEventArgs e)
