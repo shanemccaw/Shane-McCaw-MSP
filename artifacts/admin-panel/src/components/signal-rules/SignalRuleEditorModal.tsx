@@ -254,6 +254,20 @@ export function SignalRuleEditorModal({
               />
             </div>
           )}
+          {currentRuleTypeMeta?.denominator && (
+            <div>
+              <label className="block text-[11px] font-medium text-muted-foreground mb-1">
+                {currentRuleTypeMeta.denominator.label}
+                <span className="ml-1 text-muted-foreground/60">({currentRuleTypeMeta.denominator.hint})</span>
+              </label>
+              <input
+                className={inputCls}
+                value={form.denominatorKey}
+                onChange={e => onFormChange(f => ({ ...f, denominatorKey: e.target.value }))}
+                placeholder="e.g. totalUserCount"
+              />
+            </div>
+          )}
           <div>
             <label className="block text-[11px] font-medium text-muted-foreground mb-1">Sort order</label>
             <input

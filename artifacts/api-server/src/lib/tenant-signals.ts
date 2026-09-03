@@ -1363,6 +1363,8 @@ export interface SignalDerivationRule extends SignalIntelligenceFields {
   ruleType: string;
   sourceKey: string;
   compareValue: string | null;
+  /** Denominator profile key for `ruleType: "profile_key_ratio"` only (#2514). Null otherwise. */
+  denominatorKey: string | null;
   description: string | null;
   sortOrder: number;
   createdAt: Date;
@@ -1453,6 +1455,44 @@ export function evaluateRule(
       const keyword = (sourceKey ?? "").toLowerCase();
       const result = parsedFindings.some(f => f.toLowerCase().includes(keyword));
       return { result, reason: `requires findings to contain keyword "${sourceKey}" to fire; findings ${result ? "contain" : "do not contain"} it` };
+    }
+    case "profile_key_ratio": {
+      // Cross-check ratio (#2514): sourceKey is the numerator profile key,
+      // denominatorKey is the denominator — the two numbers can (and for the
+      // real motivating case, `license-vs-total-users`, DO) come from two
+      // DIFFERENT monitor checks that only ever meet here, on the merged
+      // cross-check tenant profile.
+      //
+      // This is NOT the "derived check reading another check's stored output"
+      // #553 rejected for staleness/ordering reasons. #553's objection was
+      // about a check reading a SEPARATE, potentially-stale cached row
+      // written by a different check's own run. mergedProfile here is built
+      // fresh, once, for THIS evaluation call — every other single-key
+      // ruleType above already reads its one value off this same live
+      // snapshot; profile_key_ratio just reads two keys off it instead of
+      // one, in the same call, against the same snapshot. No cache, no
+      // ordering dependency, no new staleness risk.
+      const denominatorKey = rule.denominatorKey ?? "";
+      const numerator = Number(mergedProfile[sourceKey]);
+      const denominator = Number(mergedProfile[denominatorKey]);
+      if (!denominatorKey || isNaN(numerator) || isNaN(denominator) || denominator === 0) {
+        return {
+          result: false,
+          reason: `requires (profile[${sourceKey}] / profile[${denominatorKey || "<no denominatorKey configured>"}]) to be computable to fire; numerator = ${JSON.stringify(mergedProfile[sourceKey])}, denominator = ${JSON.stringify(mergedProfile[denominatorKey])}`,
+        };
+      }
+      const percent = (numerator / denominator) * 100;
+      const threshold = Number(compareValue ?? 0);
+      // Fixed "<" direction — mirrors the existing single-fixed-direction
+      // "threshold" ruleType above (always ">"): this ruleType serves the
+      // one real, live case that needs it (coverage below threshold = a
+      // stalled/pilot rollout). A "_gt" sibling is a two-line addition if a
+      // real ratio-fires-when-high case ever shows up; not added speculatively.
+      const result = percent < threshold;
+      return {
+        result,
+        reason: `requires (profile[${sourceKey}] / profile[${denominatorKey}]) * 100 < ${threshold} to fire; actual ratio = ${percent.toFixed(2)}% (${numerator} / ${denominator})`,
+      };
     }
     default:
       return { result: false, reason: `unknown ruleType: ${ruleType}` };

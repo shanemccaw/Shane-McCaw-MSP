@@ -29,6 +29,7 @@ function makeRule(overrides: Partial<SignalRule> = {}): SignalRule {
     ruleType: "threshold",
     sourceKey: "mfa_gap_check",
     compareValue: "0",
+    denominatorKey: null,
     description: "MFA gap",
     sortOrder: 0,
     ...overrides,

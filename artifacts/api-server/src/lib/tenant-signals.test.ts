@@ -106,6 +106,7 @@ function makeRule(
     id: Math.floor(Math.random() * 9000) + 1000,
     groupId: null,
     compareValue: null,
+    denominatorKey: null,
     description: null,
     sortOrder: 0,
     createdAt: BASE_DATE,
@@ -253,6 +254,44 @@ describe("computeTenantSignals — profile_key_gt", () => {
   });
 });
 
+// #2514 — cross-check ratio rule type. sourceKey (numerator) and
+// denominatorKey (denominator) read two DIFFERENT profile keys off the same
+// mergedProfile — the real motivating case is copilotLicenseCount (from the
+// copilot:license-vs-total-users check) against totalUserCount (from a
+// DIFFERENT check, identity:department-directory).
+describe("computeTenantSignals — profile_key_ratio (#2514)", () => {
+  const rules = [makeRule({
+    signalKey: "lowCopilotCoverage", ruleType: "profile_key_ratio",
+    sourceKey: "copilotLicenseCount", denominatorKey: "totalUserCount", compareValue: "50",
+  })];
+
+  it("fires when the numerator/denominator ratio is below the threshold percentage", () => {
+    const { firedSignals } = computeTenantSignals({ copilotLicenseCount: 10, totalUserCount: 100 }, [], rules, []);
+    expect(firedSignals.has("lowCopilotCoverage")).toBe(true);
+  });
+
+  it("does NOT fire when the ratio is at or above the threshold percentage", () => {
+    const { firedSignals } = computeTenantSignals({ copilotLicenseCount: 50, totalUserCount: 100 }, [], rules, []);
+    expect(firedSignals.has("lowCopilotCoverage")).toBe(false);
+  });
+
+  it("does NOT fire when the denominator is zero (guards against division by zero)", () => {
+    const { firedSignals } = computeTenantSignals({ copilotLicenseCount: 0, totalUserCount: 0 }, [], rules, []);
+    expect(firedSignals.has("lowCopilotCoverage")).toBe(false);
+  });
+
+  it("does NOT fire when denominatorKey is not configured on the rule", () => {
+    const noDenomRules = [makeRule({ signalKey: "lowCopilotCoverage", ruleType: "profile_key_ratio", sourceKey: "copilotLicenseCount", compareValue: "50" })];
+    const { firedSignals } = computeTenantSignals({ copilotLicenseCount: 10, totalUserCount: 100 }, [], noDenomRules, []);
+    expect(firedSignals.has("lowCopilotCoverage")).toBe(false);
+  });
+
+  it("does NOT fire when either profile key is missing from the merged profile", () => {
+    const { firedSignals } = computeTenantSignals({ copilotLicenseCount: 10 }, [], rules, []);
+    expect(firedSignals.has("lowCopilotCoverage")).toBe(false);
+  });
+});
+
 describe("computeTenantSignals — profile_key_lt", () => {
   it("fires when value is less than threshold", () => {
     const rules = [makeRule({ signalKey: "hasSecurityGaps", ruleType: "profile_key_lt", sourceKey: "securityScore", compareValue: "60" })];
@@ -341,6 +380,25 @@ describe("evaluateRule — display text states the real fire condition, not its 
 
     const notFiring = evaluateRule(rule, { securityScore: 85 }, []);
     expect(notFiring.reason).toBe("requires profile[securityScore] < 60 to fire; actual value = 85");
+  });
+
+  it("profile_key_ratio: states 'requires (num / denom) * 100 < N%' whether or not it fires", () => {
+    const rule = makeRule({
+      signalKey: "s", ruleType: "profile_key_ratio",
+      sourceKey: "copilotLicenseCount", denominatorKey: "totalUserCount", compareValue: "50",
+    });
+
+    const firing = evaluateRule(rule, { copilotLicenseCount: 10, totalUserCount: 100 }, []);
+    expect(firing.result).toBe(true);
+    expect(firing.reason).toBe(
+      "requires (profile[copilotLicenseCount] / profile[totalUserCount]) * 100 < 50 to fire; actual ratio = 10.00% (10 / 100)",
+    );
+
+    const notFiring = evaluateRule(rule, { copilotLicenseCount: 60, totalUserCount: 100 }, []);
+    expect(notFiring.result).toBe(false);
+    expect(notFiring.reason).toBe(
+      "requires (profile[copilotLicenseCount] / profile[totalUserCount]) * 100 < 50 to fire; actual ratio = 60.00% (60 / 100)",
+    );
   });
 
   it("profile_key_eq: states 'requires ... == X' whether or not it fires", () => {

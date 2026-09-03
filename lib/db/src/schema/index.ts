@@ -1155,6 +1155,13 @@ export const signalDerivationRulesTable = pgTable("signal_derivation_rules", {
   ruleType: text("rule_type").notNull(),
   sourceKey: text("source_key").notNull(),
   compareValue: text("compare_value"),
+  /**
+   * Denominator profile key for `ruleType: "profile_key_ratio"` only (#2514) —
+   * `sourceKey` is the numerator, this is the denominator; `evaluateRule()`
+   * reads both off the same merged cross-check tenant profile and computes a
+   * real percentage. Null for every other ruleType.
+   */
+  denominatorKey: text("denominator_key"),
   description: text("description"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
