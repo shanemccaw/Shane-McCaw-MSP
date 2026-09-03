@@ -18,7 +18,7 @@
          BuildConsole's own Notifications/ToastHostWindow.xaml.cs, whose Reposition/ForceTopmost
          mechanism this window's code-behind reuses verbatim (bottom-right anchor instead of
          mid-top-center), so it never steals focus or shifts layout. -->
-    <Border x:Name="Pill" Margin="14" Cursor="Hand" CornerRadius="99" Padding="12,8"
+    <Border x:Name="Pill" Margin="14" Cursor="Hand" CornerRadius="8" Padding="12,8"
             Background="{StaticResource CardBackgroundBrush}"
             BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1"
             MouseLeftButtonUp="Pill_Click">
