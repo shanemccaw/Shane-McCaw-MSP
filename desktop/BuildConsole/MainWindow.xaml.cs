@@ -234,6 +234,15 @@ namespace BuildConsole
         // (a new one is only created if none exists yet or Shane closed the last one).
         private TestRunnerWindow? _testRunnerWindow;
 
+        // ── Git #2532 (Feature: Test Pad #2530): always-visible bottom-right pill +
+        // the pad it expands to, ported from ShaneBuilder. Created once at startup (real,
+        // interactive sessions only — never in --agent/quiet-courier mode) and kept alive for the
+        // app's lifetime; MainWindow_Closing below explicitly closes both before the process
+        // shuts down (the #2487 lesson — a second top-level window must never keep the process
+        // alive past MainWindow closing).
+        private BuildConsole.TestPad.TestPadPillWindow? _testPadPill;
+        private BuildConsole.TestPad.TestPadWindow? _testPadPad;
+
         /// <param name="background">True for a single run (Play Test, double-click, shaneapp://runTest,
         /// #898 remote) — the window is parked off-screen (hidden, renderable, no focus steal) and
         /// RunManifestAsync then auto-closes it (clean) or toasts (attention). False for a regression
@@ -286,6 +295,60 @@ namespace BuildConsole
             _testHistoryWindow.Activate();
             _testHistoryWindow.Refresh(issueFilter);
             return _testHistoryWindow;
+        }
+
+        // ── Git #2532 (Feature: Test Pad #2530) — pill + pad, ported from ShaneBuilder ──────────
+        /// <summary>Creates the always-visible bottom-right Test Pad pill (idempotent — a no-op if
+        /// it already exists) and shows it. The pill's own click toggles <see cref="_testPadPad"/>
+        /// open/closed via <see cref="ToggleTestPadPad"/>.</summary>
+        private void EnsureTestPadPill()
+        {
+            if (_testPadPill != null)
+            {
+                return;
+            }
+
+            _testPadPill = new BuildConsole.TestPad.TestPadPillWindow { OnTogglePad = ToggleTestPadPad };
+            _testPadPill.Closed += (_, _) => _testPadPill = null;
+            _testPadPill.Show();
+        }
+
+        private void ToggleTestPadPad()
+        {
+            if (_testPadPad != null && _testPadPad.IsVisible)
+            {
+                _testPadPad.Hide();
+                return;
+            }
+
+            if (_testPadPad == null)
+            {
+                _testPadPad = new BuildConsole.TestPad.TestPadWindow { OnPadClosed = () => { } };
+                _testPadPad.Closed += (_, _) => _testPadPad = null;
+            }
+
+            _testPadPad.Show();
+            _testPadPad.Activate();
+        }
+
+        /// <summary>Git #2532 / the #2487 lesson — the Test Pad pill (and pad) are a second
+        /// top-level window, so with <see cref="System.Windows.ShutdownMode.OnExplicitShutdown"/>
+        /// (App.xaml) nothing auto-exits the process once MainWindow closes; this explicit
+        /// Shutdown() is what actually ends it, closing every other open window (the pill, the pad,
+        /// and any of the floaties above still open) along the way.</summary>
+        private bool _shuttingDown;
+
+        private void MainWindow_Closing(object? sender, System.ComponentModel.CancelEventArgs e)
+        {
+            // Guard against re-entrancy: Application.Shutdown() itself closes every open window
+            // (including this one) as part of its own shutdown sequence, which would otherwise
+            // fire this handler a second time.
+            if (_shuttingDown)
+            {
+                return;
+            }
+            _shuttingDown = true;
+            System.Windows.Application.Current.Shutdown();
         }
 
         private void OpenTestHistory_Click(object sender, RoutedEventArgs e)
@@ -599,6 +662,15 @@ namespace BuildConsole
                     }
                     BuildConsole.Services.ActivityLog.Log(BuildConsole.Services.ShaneAppProtocol.LogChannel,
                         $"Agent mode — NOT opening the shaneapp:// pipe listener; dropping pending cold-start URI: {pendingUri}");
+                }
+
+                // Git #2532 — the Test Pad pill is an always-visible bottom-right floaty, same
+                // "never in agent/quiet-courier mode" gate as the shaneapp:// pipe listener above:
+                // a --agent/--dev cold start (screenshot verification, or a one-shot protocol
+                // courier) must never pop a second on-screen window Shane didn't ask for.
+                if (!BuildConsole.Services.AppMode.IsAgent && !App.QuietProtocolCourierLaunch)
+                {
+                    EnsureTestPadPill();
                 }
 
                 // Yield before heavy sidebar & view initialization

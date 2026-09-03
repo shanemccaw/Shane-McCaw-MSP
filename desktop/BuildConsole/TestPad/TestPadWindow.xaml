@@ -1,0 +1,134 @@
+<Window x:Class="BuildConsole.TestPad.TestPadWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:BuildConsole.TestPad"
+        Title="Test Pad"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        SizeToContent="Height"
+        Width="320"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Ported from ShaneBuilder (Git #2531/#2532, Feature: Test Pad #2530; originally Git #2327
+         and its follow-ons, ShaneBuilder Feature: Test Pad #2326) — "expands to the pad." What the
+         pill opens. Composer, type chips, status band, notes list (grouping/edit/lock), Send to
+         Claude and Copy as markdown all carry over from the ShaneBuilder source. Two sub-features
+         are intentionally NOT carried over in this port because their own backing services were
+         never ported to BuildConsole: Import (a separate, not-yet-built sibling issue, #2533) and
+         "Attach shot"/Paste Tray (no PasteTrayWindow port exists here). Their buttons are simply
+         absent rather than wired to something that doesn't exist. -->
+    <Border CornerRadius="10" Background="{StaticResource PanelBackgroundBrush}"
+            BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1" Margin="14">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="24" ShadowDepth="4" Opacity="0.4" Color="Black"/>
+        </Border.Effect>
+        <StackPanel>
+            <Grid Margin="14,12,10,10">
+                <TextBlock Text="Test Pad" FontSize="13" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}" VerticalAlignment="Center"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- "Copy as markdown" for the checked selection, distinct from "Send to
+                         Claude" which falls back to every unsent note when nothing is checked.
+                         This one only ever acts on TestPadNote.IsSelected, so it's hidden entirely
+                         until at least one note is checked. -->
+                    <Border x:Name="BtnCopyMarkdown" Height="20" CornerRadius="4" Cursor="Hand"
+                            Padding="6,0" Margin="0,0,6,0" Background="Transparent"
+                            MouseLeftButtonUp="BtnCopyMarkdown_Click"
+                            Visibility="Collapsed"
+                            ToolTip="Copy the selected notes as a markdown block">
+                        <TextBlock x:Name="CopyMarkdownLabel" Text="Copy as markdown" FontSize="10"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <!-- "By feature" regroups the list. Toggles the notes list below between flat
+                         (newest-first) and grouped-by-Feature. -->
+                    <Border x:Name="BtnGroupByFeature" Height="20" CornerRadius="4" Cursor="Hand"
+                            Padding="6,0" Margin="0,0,6,0" Background="Transparent"
+                            MouseLeftButtonUp="BtnGroupByFeature_Click"
+                            ToolTip="Group notes by feature">
+                        <TextBlock x:Name="GroupByFeatureLabel" Text="By feature" FontSize="10"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+                    <Border x:Name="BtnClose" Width="22" Height="22" CornerRadius="4" Cursor="Hand"
+                            Background="Transparent"
+                            MouseLeftButtonUp="BtnClose_Click">
+                        <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                </StackPanel>
+            </Grid>
+            <Border Height="1" Background="{StaticResource BorderDividerBrush}"/>
+            <!-- Status band. "N waiting" while the queue has unsent notes, "Nothing waiting" once
+                 it's empty. (ShaneBuilder's original also split "Claude is working" vs "Claude is
+                 free" off a live ClaudeActivityService — that service wasn't ported to
+                 BuildConsole, so this band reports the honest count only rather than fabricating a
+                 busy/free state BuildConsole can't actually observe.) -->
+            <Border x:Name="StatusBand" Padding="14,7,14,7" Background="{StaticResource CardBackgroundBrush}">
+                <TextBlock x:Name="StatusBandText" FontSize="10.5" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextSecondaryBrush}"/>
+            </Border>
+
+            <!-- Composer — Enter files a new note and clears; clicking a note body below loads it
+                 back in here for editing instead — Enter then saves the edit in place (stamping
+                 IsEdited so the list shows an EDITED tag) and Esc cancels back to an empty box
+                 without touching the note. -->
+            <StackPanel Margin="14,10,14,8">
+                <Border x:Name="EditingBanner" Background="{StaticResource Surface0Brush}" CornerRadius="6"
+                        Padding="8,4" Margin="0,0,0,6" Visibility="Collapsed">
+                    <TextBlock Text="Editing note — Enter saves, Esc cancels" FontSize="10.5"
+                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                </Border>
+                <Border Background="{StaticResource Surface0Brush}" BorderBrush="{StaticResource BorderDividerBrush}"
+                        BorderThickness="1" CornerRadius="6">
+                    <TextBox x:Name="ComposerBox" AcceptsReturn="False" TextWrapping="Wrap" MinHeight="30"
+                             MaxHeight="90" VerticalScrollBarVisibility="Auto" BorderThickness="0"
+                             Padding="8,6" Background="Transparent"
+                             Foreground="{StaticResource TextPrimaryBrush}"
+                             CaretBrush="{StaticResource TextPrimaryBrush}"
+                             FontSize="11.5"
+                             PreviewKeyDown="ComposerBox_PreviewKeyDown"/>
+                </Border>
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <local:TypeChipsControl x:Name="TypeChips"/>
+                </StackPanel>
+            </StackPanel>
+            <Border Height="1" Background="{StaticResource BorderDividerBrush}"/>
+
+            <Grid x:Name="EmptyState" Margin="16,28,16,28">
+                <TextBlock Text="No notes yet." FontSize="11.5"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center"/>
+            </Grid>
+            <StackPanel x:Name="NotesHost" Margin="10,4,10,10"/>
+            <Border Height="1" Background="{StaticResource BorderDividerBrush}"/>
+            <!-- "Send to Claude" formats the selected (or, with nothing checked, every unsent)
+                 note via TestPadSendFormatter and copies it to the clipboard, ready to paste into
+                 an open chat's composer — no live composer-append bridge (ShaneBuilder's
+                 AlertActions.AppendToComposer) was ported into BuildConsole, so this is the honest
+                 real action available here rather than a fabricated direct-injection. -->
+            <Border x:Name="BtnSendToClaude" Margin="10,8,10,0" Height="28" CornerRadius="6"
+                    Cursor="Hand" Background="{StaticResource Surface0Brush}"
+                    MouseLeftButtonUp="BtnSendToClaude_Click"
+                    ToolTip="Copy the selected (or every unsent) note as a formatted block, ready to paste into Claude's composer">
+                <TextBlock x:Name="SendToClaudeLabel" Text="Send to Claude" FontSize="11"
+                           FontWeight="SemiBold" Foreground="{StaticResource BlueBrush}"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <!-- Pipeline caption, captioning the "Send to Claude" button directly above it: making
+                 the destination explicit — filing a note here is the start of a real pipeline, not
+                 a fire-and-forget message. -->
+            <Border x:Name="PipelineCaption" Padding="14,7,14,8">
+                <TextBlock TextWrapping="Wrap" FontSize="9.5" FontStyle="Italic" TextAlignment="Center"
+                           Foreground="{StaticResource TextDisabledBrush}">
+                    <Run Text="Note"/><Run Text=" → "/><Run Text="Claude architects"/><Run Text=" → "/><Run Text="you approve"/><Run Text=" → "/><Run Text="prompt + git issue"/><Run Text=" → "/><Run Text="Batter Up"/>
+                </TextBlock>
+            </Border>
+        </StackPanel>
+    </Border>
+</Window>

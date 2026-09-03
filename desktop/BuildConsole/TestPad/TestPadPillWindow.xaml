@@ -1,0 +1,44 @@
+<Window x:Class="BuildConsole.TestPad.TestPadPillWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Test Pad"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        ShowActivated="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        Focusable="False"
+        AllowsTransparency="True"
+        Background="Transparent">
+
+    <!-- Ported from ShaneBuilder (Git #2531/#2532, Feature: Test Pad #2530; originally Git #2327,
+         ShaneBuilder Feature: Test Pad #2326) — "Pill bottom-right with unsent-count badge;
+         expands to the pad." Same always-on-top, non-activating, sized-to-content host shape as
+         BuildConsole's own Notifications/ToastHostWindow.xaml.cs, whose Reposition/ForceTopmost
+         mechanism this window's code-behind reuses verbatim (bottom-right anchor instead of
+         mid-top-center), so it never steals focus or shifts layout. -->
+    <Border x:Name="Pill" Margin="14" Cursor="Hand" CornerRadius="99" Padding="12,8"
+            Background="{StaticResource CardBackgroundBrush}"
+            BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1"
+            MouseLeftButtonUp="Pill_Click">
+        <Grid>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE70B;" FontFamily="Segoe MDL2 Assets" FontSize="12"
+                           Foreground="{StaticResource BlueBrush}"
+                           VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <TextBlock Text="Test Pad" FontSize="11.5" FontWeight="SemiBold"
+                           Foreground="{StaticResource TextPrimaryBrush}"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+            <Border x:Name="CountBadge" Visibility="Collapsed"
+                    Width="16" Height="16" CornerRadius="8" MinWidth="16"
+                    Background="{StaticResource RedBrush}"
+                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-10,-10,0">
+                <TextBlock x:Name="CountBadgeText" FontSize="9" FontWeight="Bold"
+                           Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Margin="3,0"/>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

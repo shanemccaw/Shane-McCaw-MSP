@@ -18,7 +18,8 @@
         ResizeMode="CanResize"
         PreviewKeyDown="Window_PreviewKeyDown"
         PreviewKeyUp="Window_PreviewKeyUp"
-        StateChanged="Window_StateChanged">
+        StateChanged="Window_StateChanged"
+        Closing="MainWindow_Closing">
 
     <!-- Git #894 - Shane: "change the title bar from the default Windows
          title bar to one like in VS Code." The custom "Antigravity" bar
