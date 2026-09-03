@@ -9336,6 +9336,11 @@ public partial class MainWindow : Window
             // sourced for both real surfaces at once.
             try { await Services.GitEpicPanelService.OverlayParkPauseAsync(features, Services.ChatReadClient.ResolveConnectionStringForSqlRunner()); }
             catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[git-map] park/pause overlay failed for epic #{epicNumber}: {ex.Message}"); }
+
+            // Git #2317 — same single-sourced overlay convention for real per-issue "why is this
+            // stuck" reasoning, feeding both the mini rail and the full Git Map doc tab.
+            try { await Services.GitMapService.OverlayStuckReasonsAsync(features); }
+            catch (Exception ex) { Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[git-map] stuck-reason overlay failed for epic #{epicNumber}: {ex.Message}"); }
         }
         else Services.ConsoleOutputSink.Log(Services.LogLevel.Warn, $"[git-map] feature load failed for epic #{epicNumber}: {error}");
         _ = RenderGitMapAsync();
@@ -9372,6 +9377,17 @@ public partial class MainWindow : Window
         // not a fabricated 0%/100% bar.
         if (f.BurndownFraction.HasValue)
             stack.Children.Add(GitMapBurndownBar(f.ClosedCount, f.TotalCount, f.BurndownFraction.Value));
+
+        // Git #2317 — real per-issue "why is this stuck" line. Null (not stuck) renders nothing —
+        // an honest absence, not a fabricated "on track" caption.
+        if (!string.IsNullOrEmpty(f.StuckReason))
+            stack.Children.Add(new TextBlock
+            {
+                Text = f.StuckReason, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4, 0, 0),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9,
+                FontStyle = FontStyles.Italic,
+                Foreground = (Brush)FindResource("Brush.Status.Blocked"),
+            });
 
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 5, 0, 0) };
         actions.Children.Add(DetectionActionLink("Focus", (Brush)FindResource("Brush.Claude.Accent"), () => OpenIssueInBrowser(f.Number)));

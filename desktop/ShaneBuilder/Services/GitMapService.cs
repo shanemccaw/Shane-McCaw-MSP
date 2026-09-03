@@ -58,6 +58,21 @@ public sealed class GitMapFeature
     /// when the feature has no sub-issues of its own — an honest "no burndown here", never a
     /// fabricated 0% or 100%.</summary>
     public double? BurndownFraction => TotalCount > 0 ? (double)ClosedCount / TotalCount : (double?)null;
+    /// <summary>Git #2317 — real GraphQL <c>createdAt</c>/<c>updatedAt</c> off this same fetch, used
+    /// only to compute <see cref="StuckReason"/>'s staleness leg. Never rendered directly.</summary>
+    public DateTimeOffset? CreatedAt { get; init; }
+    public DateTimeOffset? UpdatedAt { get; init; }
+    /// <summary>Git #2317 — real "why is this stuck" reasoning for one open issue, off real signals
+    /// only: an actual open <c>blocked_by</c> dependency edge (when this feature carries the real
+    /// `blocked` label — see <see cref="Services.GitEpicPanelService.GetBlockedByAsync"/>), or real
+    /// GraphQL staleness (<see cref="CreatedAt"/>/<see cref="UpdatedAt"/> against
+    /// <see cref="Services.GitPanelService.StallThresholdDays"/>, the same threshold the Milestone
+    /// panel's own stalled-feature detector already uses) when it isn't blocked. Null is a genuine
+    /// "not stuck" — recently touched, unblocked — never a fabricated placeholder. Set by
+    /// <see cref="GitMapService.OverlayStuckReasonsAsync"/> AFTER fetch (same overlay convention as
+    /// <see cref="IsParked"/>/<see cref="IsPaused"/> above), so this same already-fetched list can be
+    /// annotated in place rather than re-fetched.</summary>
+    public string? StuckReason { get; set; }
 }
 
 /// <summary>Git #2315 — one real mirrored feature pair between Customer Portal (EPIC #1485) and
@@ -227,7 +242,7 @@ public static class GitMapService
         string query =
             "query { repository(owner: \"" + Owner + "\", name: \"" + RepoName + "\") { " +
             "issue(number: " + epicNumber + ") { subIssues(first: 100) { nodes { " +
-            "number title state labels(first: 20) { nodes { name } } " +
+            "number title state createdAt updatedAt labels(first: 20) { nodes { name } } " +
             "subIssues(first: 100) { totalCount nodes { state } } " +
             "} } } } }";
 
@@ -263,6 +278,11 @@ public static class GitMapService
                                 c.TryGetProperty("state", out var cs) && string.Equals(cs.GetString(), "CLOSED", StringComparison.OrdinalIgnoreCase));
                     }
 
+                    DateTimeOffset? createdAt = f.TryGetProperty("createdAt", out var caEl) && caEl.ValueKind == JsonValueKind.String
+                        && DateTimeOffset.TryParse(caEl.GetString(), out var ca) ? ca : (DateTimeOffset?)null;
+                    DateTimeOffset? updatedAt = f.TryGetProperty("updatedAt", out var uaEl) && uaEl.ValueKind == JsonValueKind.String
+                        && DateTimeOffset.TryParse(uaEl.GetString(), out var ua) ? ua : (DateTimeOffset?)null;
+
                     features.Add(new GitMapFeature
                     {
                         Number = number,
@@ -273,6 +293,8 @@ public static class GitMapService
                         IsComplete = labels.Contains("complete", StringComparer.OrdinalIgnoreCase),
                         ClosedCount = closedCount,
                         TotalCount = totalCount,
+                        CreatedAt = createdAt,
+                        UpdatedAt = updatedAt,
                     });
                 }
             }
@@ -375,6 +397,72 @@ public static class GitMapService
 
         var (pairs, unmatchedPortal, unmatchedAdmin) = ComputeMirroredPairs(portalFeatures, adminFeatures);
         return (true, pairs, unmatchedPortal, unmatchedAdmin, null);
+    }
+
+    /// <summary>Git #2317 — real per-issue "why is this stuck" overlay, applied AFTER fetch (same
+    /// convention as <see cref="OverlayParkPauseAsync"/> in <see cref="GitEpicPanelService"/>): the
+    /// same already-fetched feature list is annotated in place, no re-fetch. Only OPEN features are
+    /// considered — a closed one is done, not stuck. Two real signals, checked in order:
+    ///  1. Blocked label set → real `blocked_by` dependency lookup (one REST call per blocked
+    ///     feature — bounded, since `blocked` is a real, sparse label, not every open feature).
+    ///     An open blocker names it. A `blocked` label with no real open blocked_by edge is flagged
+    ///     as a stale label (mirrors the exact wording <c>MainWindow.GitPanel.cs</c>'s gate-check
+    ///     already uses for the same real gap).
+    ///  2. Not blocked → real GraphQL staleness: <see cref="GitMapFeature.CreatedAt"/> old enough
+    ///     and <see cref="GitMapFeature.UpdatedAt"/> stale past <see cref="GitPanelService.StallThresholdDays"/>
+    ///     (the same 21-day threshold the Milestone panel's own stalled-feature detector already
+    ///     uses — one real threshold, not a second invented one).
+    /// Anything else (recently touched, unblocked) gets a null reason — a genuine "not stuck",
+    /// never a fabricated placeholder.</summary>
+    public static async Task OverlayStuckReasonsAsync(List<GitMapFeature> features)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var stallCutoff = now.AddDays(-GitPanelService.StallThresholdDays);
+
+        foreach (var f in features)
+        {
+            if (f.IsClosed) continue;
+
+            if (f.IsBlocked)
+            {
+                try
+                {
+                    var (ok, blockers, error) = await GitEpicPanelService.GetBlockedByAsync(f.Number);
+                    if (!ok)
+                    {
+                        f.StuckReason = $"blocked label set — blocked_by lookup failed ({error})";
+                        continue;
+                    }
+                    var openBlockers = blockers.Where(b => !b.IsClosed).ToList();
+                    if (openBlockers.Count == 0)
+                    {
+                        f.StuckReason = "blocked label set, but no real open blocked_by edge — stale label?";
+                    }
+                    else if (openBlockers.Count == 1)
+                    {
+                        f.StuckReason = $"blocked by #{openBlockers[0].Number} — {openBlockers[0].Title}";
+                    }
+                    else
+                    {
+                        f.StuckReason = $"blocked by #{openBlockers[0].Number} — {openBlockers[0].Title} (+{openBlockers.Count - 1} more)";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] stuck-reason blocked_by lookup failed for #{f.Number}: {ex.Message}");
+                    f.StuckReason = "blocked label set — blocked_by lookup failed";
+                }
+                continue;
+            }
+
+            bool oldEnough = f.CreatedAt.HasValue && f.CreatedAt.Value <= stallCutoff;
+            bool stale = !f.UpdatedAt.HasValue || f.UpdatedAt.Value <= stallCutoff;
+            if (oldEnough && stale)
+            {
+                int daysSince = f.UpdatedAt.HasValue ? (int)(now - f.UpdatedAt.Value).TotalDays : GitPanelService.StallThresholdDays;
+                f.StuckReason = $"no activity in {daysSince}d";
+            }
+        }
     }
 
     /// <summary>The active chat epic's real Focus Build: the one sub-issue (if any) currently
