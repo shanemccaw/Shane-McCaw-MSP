@@ -83,6 +83,10 @@ namespace BuildConsole
             /// anything until a real new assistant turn appears.</summary>
             public bool AwaitingReply;
 
+            /// <summary>Git #2682 — session-only dismissed set for this tab's own dock, same
+            /// convention as <c>ChatDocumentContainer._dismissed</c>.</summary>
+            public readonly HashSet<string> Dismissed = new();
+
             // ── Git #2105 active pinned-question detection state ─────────────────────
             /// <summary>True while a probe ("are you waiting on anything from Shane?") has been
             /// sent and we're waiting for / parsing its settled answer. Blocks a second probe and,
@@ -499,10 +503,11 @@ namespace BuildConsole
 
             ChatDock.Render(
                 data,
+                tab.Dismissed,
                 onOpenIssue: n =>
                 {
-                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Services.GitHubIssuesService.IssueUrl(n)) { UseShellExecute = true }); }
-                    catch { }
+                    // Git #2682 — real in-app Git detail tab, not a browser.
+                    _ = OpenIssueInAppAsync(n);
                 },
                 onResolvePin: async (pq, text) =>
                 {
@@ -513,7 +518,34 @@ namespace BuildConsole
                     ActivityLog.Log(LogChannel, $"pin #{pq.Id} resolved via dock reply (floating chat, {tab.Chat.ConversationId})");
                     _ = RefreshDockAsync(tab);
                     return true;
+                },
+                onDispatch: async item =>
+                {
+                    var result = await Services.IssueDispatchService.DispatchAsync(_owner?.QueueDb, item.Number);
+                    return result.Message;
+                },
+                onDismiss: item =>
+                {
+                    // Session-only dismissed set (matches ChatDocumentContainer._dismissed's
+                    // convention) — re-fetching via RefreshDockAsync is simplest here since this
+                    // dock refresh is already cheap and idempotent; the item drops out of view on
+                    // the next render pass either way.
+                    tab.Dismissed.Add(item.Number.ToString());
+                    _ = RefreshDockAsync(tab);
+                },
+                onSendToDiscuss: item =>
+                {
+                    _ = SendToActiveTabAsync($"Let's discuss #{item.Number} — {item.Title}");
                 });
+        }
+
+        private async System.Threading.Tasks.Task OpenIssueInAppAsync(int number)
+        {
+            try
+            {
+                if (_owner != null) await _owner.OpenGitDetailByNumberAsync(number);
+            }
+            catch (Exception ex) { ActivityLog.Log(LogChannel, $"open issue #{number} failed: {ex.Message}"); }
         }
 
         private async System.Threading.Tasks.Task ResolveAndShowIssueTipAsync(FloatingChatTab tab, int n)

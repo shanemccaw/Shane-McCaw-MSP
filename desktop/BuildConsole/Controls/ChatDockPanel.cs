@@ -37,16 +37,38 @@ namespace BuildConsole.Controls
         }
 
         /// <param name="data">The merged/filtered/chain-walked snapshot from <see cref="ChatDockService"/>.</param>
-        /// <param name="onOpenIssue">Real "jump to" action — opens the issue on GitHub (Process.Start,
-        /// same pattern as the Git Board hover popup's own quick actions).</param>
+        /// <param name="dismissed">Git #2682 — the container's session-only dismissed set (raw
+        /// <see cref="ChatDockItem.Number"/> strings). Filtered out here rather than upstream so a
+        /// Dismiss click can re-render instantly against the same already-fetched <paramref name="data"/>,
+        /// no new GitHub round-trip.</param>
+        /// <param name="onOpenIssue">Real in-app "jump to" action — opens/focuses a real Git detail
+        /// tab via <c>MainWindow.OpenGitDetailByNumberAsync</c> (Git #2682 — previously shelled out to
+        /// a browser via Process.Start).</param>
         /// <param name="onResolvePin">Sends <c>text</c> into THIS chat (the one the dock is attached
         /// to) and, on a confirmed send, resolves the pin — reuses the exact #2059/#2072 insert+submit
         /// bridge already proven for the pin card in <c>LeftSidebar.BuildPinnedQuestionCard</c>, just
         /// targeting the active tab directly instead of resolving a chat by conversation id first.</param>
-        public void Render(ChatDockData data, Action<int> onOpenIssue, Func<PinnedQuestion, string, Task<bool>> onResolvePin)
+        /// <param name="onDispatch">Git #2682 — re-dispatches this item through the same real
+        /// <c>IssueDispatchService</c> path <c>DispatchPanel</c> uses (extracted from it, not a second
+        /// invented mechanism). Returns the human status string to show inline on the card.</param>
+        /// <param name="onDismiss">Git #2682 — adds this item to the container's <c>_dismissed</c> set
+        /// and re-renders; the item drops out of view immediately.</param>
+        /// <param name="onSendToDiscuss">Git #2682 — drafts a real, useful message referencing this
+        /// item into the chat's own composer via <c>MainWindow.SendToChatAsync</c> (never auto-sent,
+        /// same draft convention every other tool here follows).</param>
+        public void Render(
+            ChatDockData data,
+            ISet<string> dismissed,
+            Action<int> onOpenIssue,
+            Func<PinnedQuestion, string, Task<bool>> onResolvePin,
+            Func<ChatDockItem, Task<string>> onDispatch,
+            Action<ChatDockItem> onDismiss,
+            Action<ChatDockItem> onSendToDiscuss)
         {
             _root.Children.Clear();
             data ??= ChatDockData.Empty;
+            dismissed ??= new HashSet<string>();
+            var visibleItems = data.Items.Where(i => !dismissed.Contains(i.Number.ToString())).ToList();
 
             _root.Children.Add(new TextBlock
             {
@@ -83,7 +105,7 @@ namespace BuildConsole.Controls
             }
 
             _root.Children.Add(SectionHeader("🔗 Mentioned issues, still actionable"));
-            if (data.Items.Count == 0)
+            if (visibleItems.Count == 0)
             {
                 _root.Children.Add(new TextBlock
                 {
@@ -99,8 +121,8 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            foreach (var item in data.Items)
-                _root.Children.Add(BuildItemCard(item, onOpenIssue));
+            foreach (var item in visibleItems)
+                _root.Children.Add(BuildItemCard(item, onOpenIssue, onDispatch, onDismiss, onSendToDiscuss));
         }
 
         private TextBlock SectionHeader(string text) => new TextBlock
@@ -112,7 +134,12 @@ namespace BuildConsole.Controls
             Margin = new Thickness(2, 6, 0, 4),
         };
 
-        private Border BuildItemCard(ChatDockItem item, Action<int> onOpenIssue)
+        private Border BuildItemCard(
+            ChatDockItem item,
+            Action<int> onOpenIssue,
+            Func<ChatDockItem, Task<string>> onDispatch,
+            Action<ChatDockItem> onDismiss,
+            Action<ChatDockItem> onSendToDiscuss)
         {
             var card = new Border
             {
@@ -185,9 +212,68 @@ namespace BuildConsole.Controls
                 content.Children.Add(chainPanel);
             }
 
+            var actionStatus = new TextBlock
+            {
+                FontSize = 9.5,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 4, 0, 0),
+                Visibility = Visibility.Collapsed,
+            };
+
+            var actionRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 0) };
+
+            var dispatchBtn = SmallActionButton("Dispatch", "Re-dispatch this issue through the real build queue (same path as the Dispatch panel)");
+            dispatchBtn.Click += async (s, e) =>
+            {
+                dispatchBtn.IsEnabled = false;
+                actionStatus.Text = "Dispatching…";
+                actionStatus.Foreground = GetBrush("Subtext0Brush");
+                actionStatus.Visibility = Visibility.Visible;
+                try
+                {
+                    var status = await onDispatch(item);
+                    actionStatus.Text = status;
+                    actionStatus.Foreground = GetBrush(status.StartsWith("Dispatch failed", StringComparison.OrdinalIgnoreCase) ? "RedBrush" : "GreenBrush");
+                }
+                catch (Exception ex)
+                {
+                    actionStatus.Text = $"Dispatch failed: {ex.Message}";
+                    actionStatus.Foreground = GetBrush("RedBrush");
+                }
+                finally
+                {
+                    dispatchBtn.IsEnabled = true;
+                }
+            };
+            actionRow.Children.Add(dispatchBtn);
+
+            var dismissBtn = SmallActionButton("Dismiss", "Hide this card for the rest of the session");
+            dismissBtn.Click += (s, e) => onDismiss(item);
+            actionRow.Children.Add(dismissBtn);
+
+            var discussBtn = SmallActionButton("Send to discuss", "Draft a message referencing this issue into this chat's composer");
+            discussBtn.Click += (s, e) => onSendToDiscuss(item);
+            actionRow.Children.Add(discussBtn);
+
+            content.Children.Add(actionRow);
+            content.Children.Add(actionStatus);
+
             card.Child = content;
             return card;
         }
+
+        private Button SmallActionButton(string label, string toolTip) => new Button
+        {
+            Content = label,
+            FontSize = 10,
+            Padding = new Thickness(6, 2, 6, 2),
+            Margin = new Thickness(0, 0, 4, 0),
+            Background = GetBrush("Surface1Brush"),
+            Foreground = GetBrush("Subtext1Brush"),
+            BorderThickness = new Thickness(0),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            ToolTip = toolTip,
+        };
 
         /// <summary>Renders one direction's chain as a real depth-indented map, not a flat list — each
         /// hop indents further from the root and carries its own connector bar, so a multi-hop chain

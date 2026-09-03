@@ -62,6 +62,10 @@ namespace BuildConsole.Controls
         private ChatDockPanel? _dockPanel;
         private bool _detectedLoadedOnce;
         private bool _hasUndismissed;
+        /// <summary>Git #2682 — the last fetched dock snapshot, kept so a Dismiss click can
+        /// re-render instantly against the same data (filtered by <see cref="_dismissed"/>)
+        /// instead of forcing a fresh GitHub round-trip.</summary>
+        private ChatDockData? _lastDockData;
 
         // README §5 — tool identity table (id, label, Segoe MDL2 glyph, colour). Internals are each a
         // sibling Feature under #1202; here they open an honest stub panel body.
@@ -436,19 +440,8 @@ namespace BuildConsole.Controls
                     ? _chat.ClaudeUrl
                     : (string.IsNullOrWhiteSpace(_chat.ConversationId) ? "" : $"https://claude.ai/chat/{_chat.ConversationId}");
                 var data = await ChatDockService.BuildAsync(db, chatUrl, _chat.Id);
-
-                _dockPanel.Render(
-                    data,
-                    onOpenIssue: n =>
-                    {
-                        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo { FileName = $"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{n}", UseShellExecute = true }); }
-                        catch (Exception ex) { ActivityLog.Log("chat.container", $"open issue #{n} failed: {ex.Message}"); }
-                    },
-                    onResolvePin: async (pin, reply) =>
-                    {
-                        var status = await _owner.SendToChatAsync(_chat, reply);
-                        return status == "sent" || status == "inserted-no-send";
-                    });
+                _lastDockData = data;
+                RenderDock();
 
                 _hasUndismissed = data.Items.Any(i => !_dismissed.Contains(i.Number.ToString()))
                                   || data.PinnedQuestions.Count > 0
@@ -459,6 +452,54 @@ namespace BuildConsole.Controls
             {
                 ActivityLog.Log("chat.container", $"RefreshDetected failed for {_chat.ConversationId}: {ex.Message}");
             }
+        }
+
+        /// <summary>Git #2682 — re-renders the dock against <see cref="_lastDockData"/> with the
+        /// real per-item actions wired: in-app open, Dispatch (real queue path), Dismiss (the
+        /// existing-but-previously-unwired <see cref="_dismissed"/> set), and Send-to-discuss.</summary>
+        private void RenderDock()
+        {
+            if (_dockPanel == null || _lastDockData == null) return;
+
+            _dockPanel.Render(
+                _lastDockData,
+                _dismissed,
+                onOpenIssue: n =>
+                {
+                    // Git #2682 — real in-app Git detail tab, not a browser (was Process.Start
+                    // against a hardcoded github.com URL). Same object _owner.SendToChatAsync
+                    // already comes from in this file.
+                    _ = OpenIssueInAppAsync(n);
+                },
+                onResolvePin: async (pin, reply) =>
+                {
+                    var status = await _owner.SendToChatAsync(_chat, reply);
+                    return status == "sent" || status == "inserted-no-send";
+                },
+                onDispatch: async item =>
+                {
+                    var result = await IssueDispatchService.DispatchAsync(_owner.QueueDb, item.Number);
+                    return result.Message;
+                },
+                onDismiss: item =>
+                {
+                    _dismissed.Add(item.Number.ToString());
+                    RenderDock();
+                    _hasUndismissed = _lastDockData.Items.Any(i => !_dismissed.Contains(i.Number.ToString()))
+                                      || _lastDockData.PinnedQuestions.Count > 0
+                                      || _questions.Count > 0;
+                    UpdateDetectedGlyph();
+                },
+                onSendToDiscuss: item =>
+                {
+                    _ = _owner.SendToChatAsync(_chat, $"Let's discuss #{item.Number} — {item.Title}");
+                });
+        }
+
+        private async Task OpenIssueInAppAsync(int number)
+        {
+            try { await _owner.OpenGitDetailByNumberAsync(number); }
+            catch (Exception ex) { ActivityLog.Log("chat.container", $"open issue #{number} failed: {ex.Message}"); }
         }
 
         private void UpdateDetectedGlyph()

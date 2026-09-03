@@ -166,113 +166,55 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            var settings = Services.BuildConsoleSettings.Load();
-            if (!settings.HasGitHubPat)
-            {
-                ShowStatus("No GitHub PAT configured — set one in Settings.", (Brush)Application.Current.FindResource("RedBrush"));
-                return;
-            }
-
             _dispatching = true;
             BtnDispatch.IsEnabled = false;
             ShowStatus($"Fetching #{issueNumber}…", (Brush)Application.Current.FindResource("Subtext0Brush"));
             try
             {
-                var gh = new Services.GitHubApiClient(settings.GitHubPat);
+                // Git #2682 — the real fetch/build-comment/dedup/queue mechanics now live in
+                // IssueDispatchService, shared with the Detected panel's per-item Dispatch button.
+                var result = await Services.IssueDispatchService.DispatchAsync(_db, issueNumber);
 
-                // Fetched directly by number, deliberately bypassing GetBatterUpIssuesAsync's
-                // board-status filter — this entry point exists precisely to skip that gate.
-                Services.GitHubIssueDetail? issue;
-                try
+                switch (result.Outcome)
                 {
-                    issue = await gh.GetIssueAsync(issueNumber);
-                }
-                catch (Exception ex)
-                {
-                    ShowStatus($"Couldn't reach GitHub: {ex.Message}", (Brush)Application.Current.FindResource("RedBrush"));
-                    return;
-                }
+                    case Services.DispatchOutcome.NoBuildComment:
+                        // Git #2063 — rather than dead-ending here, ask whatever chat is CURRENTLY
+                        // ACTIVE (not necessarily the epic-linked chat — Shane just decided "this is
+                        // ready" in some active chat right before hitting Dispatch) to write and post
+                        // the BUILD: comment itself, via the same #2059 send+submit bridge.
+                        ShowStatus($"No build prompt found on #{issueNumber} yet — asking the active chat…",
+                            (Brush)Application.Current.FindResource("Subtext0Brush"));
+                        Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} \"{result.IssueTitle}\" — no BUILD: comment found, asking active chat.");
 
-                if (issue == null)
-                {
-                    ShowStatus($"#{issueNumber} not found.", (Brush)Application.Current.FindResource("RedBrush"));
-                    return;
-                }
+                        var mainWindow = Application.Current.MainWindow as MainWindow;
+                        string askStatus = mainWindow != null
+                            ? await mainWindow.SendToActiveChatAsync(Services.ActiveChatBuildRequestHelper.BuildAskMessage(issueNumber, result.IssueTitle ?? $"#{issueNumber}"))
+                            : "no-active-chat";
 
-                // Reuse #1709's own parser — not a second one.
-                var (rawComment, parsed) = await Services.BatterUpQueueService.FindBuildCommentAsync(gh, issueNumber);
-                if (rawComment == null || parsed == null)
-                {
-                    // Git #2063 — rather than dead-ending here, ask whatever chat is CURRENTLY
-                    // ACTIVE (not necessarily the epic-linked chat — Shane just decided "this is
-                    // ready" in some active chat right before hitting Dispatch) to write and post
-                    // the BUILD: comment itself, via the same #2059 send+submit bridge.
-                    ShowStatus($"No build prompt found on #{issueNumber} yet — asking the active chat…",
-                        (Brush)Application.Current.FindResource("Subtext0Brush"));
-                    Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} \"{issue.Title}\" — no BUILD: comment found, asking active chat.");
+                        var (message, isError) = Services.ActiveChatBuildRequestHelper.DescribeStatus(askStatus, issueNumber);
+                        ShowStatus(message, (Brush)Application.Current.FindResource(isError ? "RedBrush" : "BlueBrush"));
+                        Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — ask-active-chat status: {askStatus}");
+                        return;
 
-                    var mainWindow = Application.Current.MainWindow as MainWindow;
-                    string askStatus = mainWindow != null
-                        ? await mainWindow.SendToActiveChatAsync(Services.ActiveChatBuildRequestHelper.BuildAskMessage(issueNumber, issue.Title))
-                        : "no-active-chat";
+                    case Services.DispatchOutcome.AlreadyTracked:
+                        // Git #1966 — no longer a dead end: the existing message stays verbatim, and
+                        // an inline "Dispatch anyway" affordance appears alongside it. The dedup guard
+                        // assumes an existing row means an active, healthy build; it does not — this
+                        // is the operator override for when it's stuck instead.
+                        ShowStatus(result.Message, (Brush)Application.Current.FindResource("BlueBrush"));
+                        _pendingForceIssueNumber = issueNumber;
+                        BtnForceDispatch.Visibility = Visibility.Visible;
+                        return;
 
-                    var (message, isError) = Services.ActiveChatBuildRequestHelper.DescribeStatus(askStatus, issueNumber);
-                    ShowStatus(message, (Brush)Application.Current.FindResource(isError ? "RedBrush" : "BlueBrush"));
-                    Services.ActivityLog.Log("dispatch", $"Dispatch #{issueNumber} — ask-active-chat status: {askStatus}");
-                    return;
-                }
+                    case Services.DispatchOutcome.Queued:
+                        ShowStatus(result.Message, (Brush)Application.Current.FindResource("GreenBrush"));
+                        break;
 
-                var (model, effort, buildSet, _, prompt) = parsed.Value;
-
-                var blockers = await gh.GetBlockedByAsync(issueNumber);
-                var blockedByNumbers = blockers.Select(b => b.Number).ToList();
-                var openBlockedByNumbers = blockers.Where(b => !b.IsClosed).Select(b => b.Number).ToList();
-
-                if (_db == null)
-                {
-                    ShowStatus("Not connected to the build queue database.", (Brush)Application.Current.FindResource("RedBrush"));
-                    return;
-                }
-
-                // Same dedup convention BatterUpQueueService follows — an already-tracked row
-                // for this issue is reported rather than silently duplicated.
-                var existing = await _db.FindDedupCandidateAsync(issueNumber, prompt);
-                if (existing != null)
-                {
-                    // Git #1966 — no longer a dead end: the existing message stays verbatim, and
-                    // an inline "Dispatch anyway" affordance appears alongside it. The dedup guard
-                    // assumes an existing row means an active, healthy build; it does not — this
-                    // is the operator override for when it's stuck instead.
-                    ShowStatus($"#{issueNumber} is already tracked (status: {existing.Status}).", (Brush)Application.Current.FindResource("BlueBrush"));
-                    _pendingForceIssueNumber = issueNumber;
-                    BtnForceDispatch.Visibility = Visibility.Visible;
-                    return;
-                }
-
-                await _db.QueueBuildAsync(
-                    title: issue.Title,
-                    prompt: prompt,
-                    model: model,
-                    effort: effort,
-                    cwd: null,
-                    githubNumber: issueNumber,
-                    blockedByNumbers: blockedByNumbers,
-                    buildSet: buildSet);
-
-                Services.ActivityLog.Log("dispatch",
-                    $"Dispatch #{issueNumber} \"{issue.Title}\" — queued (model={model ?? "default"}, effort={effort ?? "default"}, buildSet={buildSet ?? "none"}" +
-                    (blockedByNumbers.Count > 0 ? $", blocked-by={string.Join(",", blockedByNumbers)}" : "") + ").");
-
-                // Fail-closed (#1600) governs launch, same as every other path — an open real
-                // blocker holds it after queueing rather than refusing to queue it at all.
-                if (openBlockedByNumbers.Count > 0)
-                {
-                    ShowStatus($"#{issueNumber} queued, but held — blocked by #{string.Join(", #", openBlockedByNumbers)}.",
-                        (Brush)Application.Current.FindResource("RedBrush"));
-                }
-                else
-                {
-                    ShowStatus($"#{issueNumber} \"{issue.Title}\" queued.", (Brush)Application.Current.FindResource("GreenBrush"));
+                    default:
+                        // NoPat / GitHubUnreachable / IssueNotFound / NoDb / QueuedButBlocked / Failed
+                        ShowStatus(result.Message, (Brush)Application.Current.FindResource("RedBrush"));
+                        if (result.Outcome != Services.DispatchOutcome.QueuedButBlocked) return;
+                        break;
                 }
 
                 TxtIssueNumber.Text = "";
