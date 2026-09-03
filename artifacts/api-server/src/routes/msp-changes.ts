@@ -140,8 +140,6 @@ router.post(
 
       const userEmail = req.user?.email || "unknown@mspplatform.com";
       const nowUtc = new Date().toISOString().replace("T", " ").substring(0, 16) + " UTC";
-      // Generate a mock SHA256 backup hash
-      const randomHash = "SHA256:" + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 
       // #1500 — enforcement at submit, server-side, same gate the customer
       // wizard's create route enforces (`portal-change-control.ts`) — an MSP
@@ -251,8 +249,11 @@ router.post(
           scheduledEnd: parsedBody.data.scheduledEnd ? new Date(parsedBody.data.scheduledEnd) : null,
           impactedUsersCount: parsedBody.data.impactedUsersCount,
           status: "pending_approval",
-          backupVerified: true,
-          backupHash: randomHash,
+          // #2665 — no real backup mechanism exists yet, so don't claim one.
+          // Matches the customer-side create route's already-fixed pattern
+          // (`portal-change-control.ts`): write false + empty hash on create.
+          backupVerified: false,
+          backupHash: "",
           preChangeSnapshot: parsedBody.data.preChangeSnapshot,
           proposedPayload: parsedBody.data.proposedPayload,
           rollbackScriptSnippet: parsedBody.data.rollbackScriptSnippet,
