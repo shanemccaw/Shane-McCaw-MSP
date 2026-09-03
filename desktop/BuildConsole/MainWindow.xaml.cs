@@ -7022,12 +7022,21 @@ namespace BuildConsole
             catch { /* a failed capture must never surface as an app error */ }
         }
 
+        /// <summary>
+        /// Git #2727 — System A (this "meterState" banner/progress-bar) is retired: Band 1
+        /// (<see cref="Controls.ChatDocumentContainer"/>'s CtxBarFill/CtxGauge/BtnStartNewChat) is now
+        /// the ONE real chat-context indicator, so this method no longer attaches the banner or
+        /// progress bar to any visible tree — it still builds them (headless, parentless) purely so
+        /// <see cref="ChatContextMeterState"/> and <see cref="UpdateContextMeter"/> below keep working
+        /// unchanged and keep writing into <see cref="Services.ChatContextMeterStore"/>, which is the
+        /// real data Band 1 reads. <c>wv</c> itself is returned directly as the wrapper now.
+        /// </summary>
         private FrameworkElement CreateChatContextWrapper(Microsoft.Web.WebView2.Wpf.WebView2 wv)
         {
             if (wv == ClaudeWebView) return wv;
-            if (_contextMeters.TryGetValue(wv, out var existing)) return existing.ProgressBar.Parent as FrameworkElement ?? wv;
+            if (_contextMeters.TryGetValue(wv, out var existing)) return wv;
 
-            // Create Banner
+            // Headless — built but never inserted into the visual tree (Git #2727).
             // Git #1705 — dark, panel-matching base (MantleBrush) with a low-opacity tier-hue
             // wash + left accent stripe layered on top, never a flat bright fill. See
             // BuildTierWashBrush/BuildTierAccentBrush below for the per-tier values.
@@ -7104,18 +7113,10 @@ namespace BuildConsole
                 Visibility = Visibility.Collapsed
             };
 
-            var chatContextGrid = new Grid();
-            chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            chatContextGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-            Grid.SetRow(banner, 0);
-            Grid.SetRow(progressBar, 1);
-            Grid.SetRow(wv, 2);
-
-            chatContextGrid.Children.Add(banner);
-            chatContextGrid.Children.Add(progressBar);
-            chatContextGrid.Children.Add(wv);
+            // Git #2727 — banner/progressBar are deliberately NOT attached to wv or any visual
+            // tree here anymore (no wrapping grid). They stay live, headless objects so the
+            // ChatContextMeterState/UpdateContextMeter/TriggerHandoffAsync machinery below keeps
+            // working unchanged and keeps writing into ChatContextMeterStore for Band 1 to read.
 
             var meterState = new ChatContextMeterState
             {
@@ -7146,7 +7147,7 @@ namespace BuildConsole
             };
 
             _contextMeters[wv] = meterState;
-            return chatContextGrid;
+            return wv;
         }
 
         /// <summary>

@@ -247,7 +247,14 @@ namespace BuildConsole.Controls
 
         /// <summary>README §2 context maths. used = 40k overhead + conversation estimate + draft; the
         /// conversation estimate uses the real meter store when it has one, else the 0.28/char shape.
-        /// Colour + Start-New-Chat thresholds cross together (60/75/80).</summary>
+        /// The gauge fill + "≈Xk / 300k" text stay on this overhead-inclusive scale (Shane confirmed
+        /// this half is correct as-is — Git #2727).
+        ///
+        /// Git #2727 — colour + Start-New-Chat now use the RAW conversation token count against the
+        /// retired `meterState` banner's own real absolute-token tiers (60k/85k/100k/130k), ported
+        /// here rather than dropped, per #2727's "don't silently lose real functionality" call. This
+        /// is now the ONE real chat-context indicator — the old separate banner in MainWindow is
+        /// retired.</summary>
         private void UpdateGauge()
         {
             double conversationTokens;
@@ -263,13 +270,28 @@ namespace BuildConsole.Controls
 
             CtxGauge.Text = $"{FormatK(used)} / 300k ctx";
 
+            // Ported tiers (were meterState's 60k/85k/100k/130k, MainWindow.xaml.cs — Git #2727).
+            // Hex values match the app's own GreenBrush/YellowBrush/PeachBrush/RedBrush
+            // (Themes/DarkTheme.xaml) so this reads as the same real palette, not a new one.
             Color c;
-            if (pct >= 0.80) c = (Color)ColorConverter.ConvertFromString("#e8746f");
-            else if (pct >= 0.60) c = (Color)ColorConverter.ConvertFromString("#e2b039");
-            else c = (Color)ColorConverter.ConvertFromString("#6a8fb5");
+            string tierLabel;
+            if (conversationTokens >= 100_000) { c = (Color)ColorConverter.ConvertFromString("#F38BA8"); tierLabel = "Critical"; }
+            else if (conversationTokens >= 85_000) { c = (Color)ColorConverter.ConvertFromString("#FAB387"); tierLabel = "Very long"; }
+            else if (conversationTokens >= 60_000) { c = (Color)ColorConverter.ConvertFromString("#F9E2AF"); tierLabel = "Getting long"; }
+            else { c = (Color)ColorConverter.ConvertFromString("#A6E3A1"); tierLabel = "Normal"; }
             CtxGauge.Foreground = new SolidColorBrush(c);
 
-            BtnStartNewChat.Visibility = pct >= 0.75 ? Visibility.Visible : Visibility.Collapsed;
+            // Start New Chat now fires at the same 60k tier the retired banner first offered
+            // "Start handoff chat" at (Git #1885), not System B's old flat 75%-of-300k cutoff.
+            BtnStartNewChat.Visibility = conversationTokens >= 60_000 ? Visibility.Visible : Visibility.Collapsed;
+
+            double cost = conversationTokens * (3.00 / 1_000_000.0);
+            double remainingToCritical = Math.Max(0, 100_000.0 - conversationTokens);
+            BtnStartNewChat.ToolTip = conversationTokens > 0
+                ? $"{tierLabel} — {conversationTokens:N0} conversation tokens (~${cost:F3} est. cost)\n" +
+                  $"Remaining to critical (100k): {remainingToCritical:N0} tokens\n" +
+                  "Context is getting full — start a fresh chat on this epic"
+                : "Context is getting full — start a fresh chat on this epic";
 
             if (CtxBarBorder.ActualWidth > 0)
                 CtxBarFill.Width = pct * CtxBarBorder.ActualWidth;
