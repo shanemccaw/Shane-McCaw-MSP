@@ -96,7 +96,12 @@ public sealed class GitMapMirroredPair
 
 /// <summary>The real, currently in-flight feature under one epic — "Focus Build" per §6.5's mini
 /// panel description. Null when no feature in that epic currently carries the real `in-flight`
-/// GitHub label (an honest empty state, never a fabricated placeholder build).</summary>
+/// GitHub label AND no feature is currently Parked either (an honest empty state, never a
+/// fabricated placeholder build). Git #2316: when nothing is in-flight but a feature in the epic
+/// IS Parked (real Project Status="Park" overlay, same one <see cref="GitEpicPanelService"/>'s
+/// Park/Pause actions write), that parked feature rides the same card instead of the epic simply
+/// going blank — with <see cref="ParkReason"/> pulled from its own real latest "Parked: …" issue
+/// comment, never invented.</summary>
 public sealed class GitMapFocusBuild
 {
     public int Number { get; init; }
@@ -111,6 +116,15 @@ public sealed class GitMapFocusBuild
     /// only (verified — no Postgres/file persistence), so this reports real coarse queue status
     /// instead of guessing a percentage.</summary>
     public string? BuildQueueStatus { get; init; }
+    /// <summary>Git #2316 — true when this card represents a Parked feature rather than a real
+    /// in-flight one (real GitHub Project Status="Park", same state <see cref="GitMapFeature.IsParked"/>
+    /// carries elsewhere). False for the ordinary in-flight case.</summary>
+    public bool IsParked { get; init; }
+    /// <summary>Git #2316 — the real reason text, pulled from this feature issue's own most recent
+    /// comment starting with "Parked:" (written by <see cref="GitEpicPanelService.PostParkReasonCommentAsync"/>
+    /// when Shane parks a feature and gives a reason). Null when the feature is parked but no such
+    /// comment exists — an honest "no reason recorded", never a fabricated one.</summary>
+    public string? ParkReason { get; init; }
 }
 
 /// <summary>One real abandoned-in-place item: a `build-journal/&lt;n&gt;.md` bookend whose own last
@@ -469,12 +483,32 @@ public static class GitMapService
     /// carrying the `in-flight` label. Real open-child ("gap") count comes from that feature's OWN
     /// sub_issues; real queue status comes from ShaneBuilder's read-only <c>bt_build_queue</c> lookup
     /// (most recent row for that issue number). Multiple in-flight siblings — real, has happened — are
-    /// reported as a count rather than silently picking one.</summary>
+    /// reported as a count rather than silently picking one.
+    ///
+    /// Git #2316: when nothing is in-flight, falls back to the epic's real Parked feature (if any —
+    /// real GitHub Project Status="Park" overlay, <see cref="GitEpicPanelService.OverlayParkPauseAsync"/>,
+    /// the same call Git Map's own epic rows already make) so its real parking reason still rides this
+    /// same card instead of the section just reading "nothing in flight".</summary>
     private static async Task<GitMapFocusBuild?> ResolveFocusBuildAsync(int epicNumber, List<GitMapFeature> epicFeatures, ChatReadClient? db)
     {
         var inFlight = epicFeatures.Where(f => f.IsInFlight).ToList();
-        if (inFlight.Count == 0) return null;
-        var f = inFlight[0]; // real tie-break: first by GitHub's own sub_issues ordering, not invented ranking
+        GitMapFeature f;
+        bool parked;
+        if (inFlight.Count > 0)
+        {
+            f = inFlight[0]; // real tie-break: first by GitHub's own sub_issues ordering, not invented ranking
+            parked = false;
+        }
+        else
+        {
+            try { await GitEpicPanelService.OverlayParkPauseAsync(epicFeatures, null); }
+            catch (Exception ex) { ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] park overlay failed for epic #{epicNumber}: {ex.Message}"); }
+
+            var parkedFeatures = epicFeatures.Where(x => x.IsParked && !x.IsClosed).ToList();
+            if (parkedFeatures.Count == 0) return null;
+            f = parkedFeatures[0]; // real tie-break: first by GitHub's own sub_issues ordering, not invented ranking
+            parked = true;
+        }
 
         int gapCount = 0;
         try
@@ -491,6 +525,13 @@ public static class GitMapService
             catch (Exception ex) { ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] build_queue status lookup failed for #{f.Number}: {ex.Message}"); }
         }
 
+        string? parkReason = null;
+        if (parked)
+        {
+            try { parkReason = await GetLatestParkReasonAsync(f.Number); }
+            catch (Exception ex) { ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] park reason lookup failed for #{f.Number}: {ex.Message}"); }
+        }
+
         return new GitMapFocusBuild
         {
             Number = f.Number,
@@ -498,7 +539,34 @@ public static class GitMapService
             EpicNumber = epicNumber,
             OpenGapCount = gapCount,
             BuildQueueStatus = queueStatus,
+            IsParked = parked,
+            ParkReason = parkReason,
         };
+    }
+
+    /// <summary>Git #2316 — the real reason text behind a feature's Park, sourced from that issue's
+    /// own most recent comment starting with "Parked:" (written by
+    /// <see cref="GitEpicPanelService.PostParkReasonCommentAsync"/> when Park is invoked with a
+    /// reason). Returns null on no such comment or a lookup failure — an honest empty, never a
+    /// fabricated placeholder reason.</summary>
+    private static async Task<string?> GetLatestParkReasonAsync(int issueNumber)
+    {
+        var (ok, stdout, stderr) = await RunGhAsync(new[]
+        {
+            "api", $"repos/{Owner}/{RepoName}/issues/{issueNumber}/comments",
+            "--jq", "[.[] | select(.body | test(\"^Parked:\"; \"i\")) | .body][-1]",
+        });
+        if (!ok)
+        {
+            ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] park reason comment lookup failed for #{issueNumber}: {stderr.Trim()}");
+            return null;
+        }
+
+        var text = stdout.Trim();
+        if (string.IsNullOrEmpty(text) || text == "null") return null;
+
+        var idx = text.IndexOf(':');
+        return (idx >= 0 && idx < text.Length - 1 ? text[(idx + 1)..] : text).Trim();
     }
 
     /// <summary>Real "Started-and-Dropped" scan: every `build-journal/&lt;n&gt;.md` whose own last

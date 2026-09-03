@@ -471,12 +471,25 @@ public partial class MainWindow
             RenderGitEpicPeekIfCurrent(epicNumber);
             return;
         }
+        bool currentlyParked = string.Equals(feature.ProjectStatus, "Park", StringComparison.OrdinalIgnoreCase);
+
+        // Git #2316 — capture the real "why" before writing the status, so a cancelled prompt
+        // doesn't still leave the feature Parked with no reason. Only asked when actually parking
+        // (not on Unpark); a blank/cancelled answer still parks, just without a reason comment —
+        // never blocks the action itself.
+        string? reason = null;
+        if (!currentlyParked)
+            reason = AppDialog.Input(this, $"Why is feature #{feature.Number} being parked?", "Park feature", "");
+
         if (!_gitEpicActionBusy.Add(feature.Number)) return;
         RenderGitEpicPeekIfCurrent(epicNumber);
 
-        bool currentlyParked = string.Equals(feature.ProjectStatus, "Park", StringComparison.OrdinalIgnoreCase);
         string target = currentlyParked ? GitEpicPanelService.StatusOption_Backlog : GitEpicPanelService.StatusOption_Park;
         var (ok, error) = await GitEpicPanelService.SetProjectStatusAsync(feature.ProjectItemId!, target);
+
+        if (ok && !currentlyParked && !string.IsNullOrWhiteSpace(reason))
+            await GitEpicPanelService.PostParkReasonCommentAsync(feature.Number, reason.Trim());
+
         _gitEpicActionBusy.Remove(feature.Number);
 
         _gitEpicLastActionNote = ok

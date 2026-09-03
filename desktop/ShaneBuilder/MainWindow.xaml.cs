@@ -9043,7 +9043,7 @@ public partial class MainWindow : Window
 
         children.Add(GitMapSectionHeader("Focus Build"));
         children.Add(data.FocusBuild != null ? GitMapFocusBuildCard(data.FocusBuild) : GitMapNote(
-            epic > 0 ? "No feature in this epic currently carries the real in-flight label." : "This chat has no epic assigned."));
+            epic > 0 ? "No feature in this epic currently carries the real in-flight label, and none is Parked." : "This chat has no epic assigned."));
 
         children.Add(GitMapSectionHeader("Started-and-Dropped"));
         if (data.Dropped.Count == 0)
@@ -9182,18 +9182,22 @@ public partial class MainWindow : Window
 
     private Border GitMapFocusBuildCard(Services.GitMapFocusBuild f)
     {
-        var green = (Brush)FindResource("Brush.Alert.Success");
+        // Git #2316 — a Parked focus build rides this same card (real Project Status="Park"
+        // overlay), tinted with the same Parked palette Git Map's own feature chips already use,
+        // instead of a second card design.
+        var accent = f.IsParked ? (Brush)FindResource("Brush.Status.Parked") : (Brush)FindResource("Brush.Alert.Success");
         var outer = new Border
         {
             Margin = new Thickness(0, 0, 0, 8), CornerRadius = new CornerRadius(8),
-            Background = Tint(green, 0x1E), BorderBrush = Tint(green, 0x66), BorderThickness = new Thickness(1),
+            Background = Tint(accent, 0x1E), BorderBrush = Tint(accent, 0x66), BorderThickness = new Thickness(1),
             Padding = new Thickness(10, 8, 10, 8),
         };
         var stack = new StackPanel();
         stack.Children.Add(new TextBlock
         {
-            Text = $"#{f.Number} · IN FLIGHT", FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
-            FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = green,
+            Text = f.IsParked ? $"#{f.Number} · PARKED" : $"#{f.Number} · IN FLIGHT",
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"), FontSize = 9.5,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"), Foreground = accent,
         });
         stack.Children.Add(new TextBlock
         {
@@ -9201,6 +9205,19 @@ public partial class MainWindow : Window
             FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = (double)FindResource("FontSize.11"),
             Foreground = (Brush)FindResource("Brush.Claude.Text.Bright"),
         });
+        if (f.IsParked)
+        {
+            // Git #2316 — the real reason (from the feature's own "Parked: …" comment), or an
+            // honest "no reason recorded" when Park was set without one — never a fabricated one.
+            stack.Children.Add(new TextBlock
+            {
+                Text = f.ParkReason ?? "No reason recorded.",
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 3, 0, 0),
+                FontStyle = string.IsNullOrEmpty(f.ParkReason) ? FontStyles.Italic : FontStyles.Normal,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9.5,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+        }
         string meta = $"{f.OpenGapCount} open gap{(f.OpenGapCount == 1 ? "" : "s")}" +
             (f.BuildQueueStatus != null ? $" · queue: {f.BuildQueueStatus}" : "");
         stack.Children.Add(new TextBlock
@@ -9210,7 +9227,7 @@ public partial class MainWindow : Window
             Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
         });
         var actions = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 7, 0, 0) };
-        actions.Children.Add(DetectionActionLink("Send to chat", green, () => SendFeatureToComposer(f.Number, f.Title)));
+        actions.Children.Add(DetectionActionLink("Send to chat", accent, () => SendFeatureToComposer(f.Number, f.Title)));
         actions.Children.Add(DetectionActionLink("Open on GitHub", (Brush)FindResource("Brush.Claude.Text.Muted"), () => OpenIssueInBrowser(f.Number)));
         stack.Children.Add(actions);
         outer.Child = stack;

@@ -279,6 +279,22 @@ public static class GitEpicPanelService
         return (ok, ok ? null : stderr.Trim());
     }
 
+    /// <summary>Git #2316 — the real "why" behind a Park. Posted as a normal GitHub issue comment
+    /// (`Parked: &lt;reason&gt;`), not a new field anywhere — Project v2 Status has no free-text
+    /// companion field, and a comment is the same "leave a real trail" pattern already used
+    /// elsewhere in this repo (the `blocked` label's own comment requirement). <see
+    /// cref="GitMapService"/>'s Focus Build fallback reads this same comment back to surface the
+    /// reason on the card.</summary>
+    public static async Task<(bool Ok, string? Error)> PostParkReasonCommentAsync(int issueNumber, string reason)
+    {
+        var (ok, _, stderr) = await RunGhAsync(new[]
+        {
+            "issue", "comment", issueNumber.ToString(), "--repo", Repo, "--body", $"Parked: {reason}",
+        });
+        if (!ok) ConsoleOutputSink.Log(LogLevel.Warn, $"[git-epic-panel] park reason comment failed for #{issueNumber}: {stderr.Trim()}");
+        return (ok, ok ? null : stderr.Trim());
+    }
+
     /// <summary>"Queue all" (#2307, item 6 in Build Queue's own spec: "promotes every open issue
     /// in the feature") — every real ProjectV2Item id gets its Status field set to Batter Up in
     /// ONE batched GraphQL request (aliased mutations), not N round-trips. Items with no real
