@@ -89,6 +89,11 @@ namespace ShaneBuilder;
 /// generic "why it is here" line for just these items. Ask Shane membership is checked by number
 /// against <c>counts.AskShaneItems</c>, not by which lane tab is currently selected, so the badge
 /// still shows correctly on the "All" tab.
+///
+/// Git #2363 (Feature #2355 item 8) — a group whose real items are ALL Ask Shane questions has
+/// nothing dispatchable in it, so its header's "Dispatch all" (#2358) doesn't render for it.
+/// Reuses the exact same <c>askShaneNumbers</c> membership set #2361 already resolves — no new
+/// classification logic added here.
 /// </summary>
 /// <summary>Git #2365 — a frozen snapshot of the Batter Up panel's real state (selected lane +
 /// the four live counts) at the moment "Send to tab" was clicked. Carried on <c>TabDef</c>, read
@@ -290,9 +295,13 @@ public partial class MainWindow
                 header.ColumnRight(GitCountPill(stateLabel, stateBrushKey));
             }
             header.ColumnRight(GitCountPill(group.Count().ToString(), isNoHome ? "Brush.Toast.Warning" : "Brush.Text.Muted"));
-            if (!isNoHome)
+            // Git #2363 — a group where every real item is a real Ask Shane question (per the
+            // same askShaneNumbers membership set #2361 already resolved — no new classification
+            // logic here) has nothing dispatchable in it, so "Dispatch all" doesn't render.
+            var groupItems = group.ToList();
+            bool allAskShane = groupItems.Count > 0 && groupItems.All(i => askShaneNumbers.Contains(i.Number));
+            if (!isNoHome && !allAskShane)
             {
-                var groupItems = group.ToList();
                 var dispatchLink = GitEpicActionLink("Dispatch all", disabled: false,
                     () => BatterUpDispatchAllClicked(featureNumber, group.First().FeatureTitle ?? $"#{featureNumber}", groupItems.Count));
                 dispatchLink.Margin = new Thickness(8, 0, 0, 0);
