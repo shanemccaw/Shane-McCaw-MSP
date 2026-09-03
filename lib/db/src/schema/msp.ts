@@ -6966,6 +6966,16 @@ export const portalHoldWindowsTable = pgTable("portal_hold_windows", {
   customerId: integer("customer_id").notNull(),
   /** The runbook this window gates. Cascades: a deleted runbook's windows are meaningless. */
   runbookId: integer("runbook_id").references(() => portalRunbooksTable.id, { onDelete: "cascade" }),
+  /**
+   * The CYCLE this window gates (#1940). `portal_runbook_runs`/`portal_runbook_steps`
+   * (#1557) restart `position` at 1 per cycle, so `gatesStepPosition` alone is
+   * ambiguous once a recurring runbook has spawned a second cycle — "step 4"
+   * could mean cycle 1's step 4 or cycle 2's. Nullable additively: a window
+   * raised before #1557 (or before this column existed) has no cycle to point
+   * at and is matched to a runbook's CURRENT cycle by fallback, same as before.
+   * Cascades: a deleted cycle's own windows are meaningless.
+   */
+  runId: integer("run_id").references(() => portalRunbookRunsTable.id, { onDelete: "cascade" }),
   /** Stable key from the design, e.g. "hold-ca01". */
   holdKey: text("hold_key").notNull(),
   title: text("title").notNull(),
@@ -7028,6 +7038,7 @@ export const portalHoldWindowsTable = pgTable("portal_hold_windows", {
 }, (t) => [
   index("portal_hold_windows_customer_id_idx").on(t.customerId),
   index("portal_hold_windows_runbook_id_idx").on(t.runbookId),
+  index("portal_hold_windows_run_id_idx").on(t.runId),
   uniqueIndex("portal_hold_windows_customer_key_idx").on(t.customerId, t.holdKey),
 ]);
 

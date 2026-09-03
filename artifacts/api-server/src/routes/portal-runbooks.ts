@@ -55,6 +55,16 @@
  * that: it stays as history (`runHistory` on the GET response), which is the
  * whole point — a reset used to silently overwrite the last cycle's
  * completion; now it can't.
+ *
+ * ── A hold window gates a CYCLE too, not just a runbook (#1940) ────────────
+ * `portal_hold_windows` predates #1557 and was left keyed on `runbookId` +
+ * `gatesStepPosition` alone. Since step `position` restarts at 1 per cycle,
+ * that pair is ambiguous the moment a recurring runbook spawns a second
+ * cycle — "step 4" could be cycle 1's step 4 or cycle 2's. `runId` (added
+ * with this fix) resolves that: a window only decorates its runbook's status
+ * on GET when its `runId` matches that runbook's CURRENT cycle. A window
+ * with no `runId` (raised before this column existed) falls back to the old
+ * behavior of decorating whichever runbook it names, for legacy rows.
  */
 
 import { Router, type IRouter, type Request, type Response } from "express";
@@ -132,6 +142,8 @@ interface WireHoldWindow {
   readonly title: string;
   readonly gates: string;
   readonly gatesStepPosition: number | null;
+  /** The cycle this window gates (#1940). Null for a legacy window raised before the column existed. */
+  readonly runId: number | null;
   readonly pillar: string;
   readonly why: string;
   readonly state: string;
@@ -219,6 +231,7 @@ function toWireHold(
     title: row.title,
     gates: row.gates,
     gatesStepPosition: row.gatesStepPosition,
+    runId: row.runId,
     pillar: row.pillar,
     why: row.why,
     state: d.state,
@@ -349,10 +362,22 @@ router.get(
       for (const h of holdRows) {
         const wire = toWireHold(h, now);
         allHolds.push(wire);
+        if (h.runbookId === null || h.closedAt) continue;
+
+        // #1940 — a window carrying a runId only decorates the runbook when it
+        // gates that runbook's CURRENT cycle, not just any cycle of it. A
+        // recurring runbook's cycle 1 hold must not be read as still gating
+        // cycle 2's identically-numbered step once cycle 2 has spawned.
+        // A window with no runId (raised before this column existed, or
+        // before #1557) falls back to the pre-#1940 behavior of decorating
+        // whichever runbook it names, matching legacy rows.
+        const currentRun = (runsByRunbook.get(h.runbookId) ?? []).slice(-1)[0];
+        if (h.runId !== null && (!currentRun || h.runId !== currentRun.id)) continue;
+
         // An open window is the one that decorates its runbook; a closed one
         // stays in the list for the record but must not keep overriding the
         // runbook's status forever.
-        if (h.runbookId !== null && !h.closedAt) holdByRunbook.set(h.runbookId, wire);
+        holdByRunbook.set(h.runbookId, wire);
       }
 
       const runbooks: WireRunbook[] = runbookRows.map((r) => {
