@@ -7958,6 +7958,49 @@ namespace BuildConsole
                         OpenSqlRunnerTab().SetSqlQuery(sqlText);
                     }
                 }
+                else if (type == "BT_SEND_TO_TOOL")
+                {
+                    // Git #2774 — a shell/CLI block's tool-picker dropdown chose a tool; hand the block's
+                    // real text to that tool for real execution. Models BT_LOAD_SQL's chat-tab resolution,
+                    // but routes into the chat's tool rail (#2769's cached-per-tab TerminalView) rather than
+                    // the SQL split-grid. Currently the only real tool is "terminal".
+                    string toolId = Str("tool") ?? "";
+                    string toolText = Str("text") ?? "";
+
+                    // Resolve the chat tab that posted this (or the currently-selected chat tab).
+                    ChatTabState? toolChatState = null;
+                    foreach (var kvp in _chatTabs)
+                    {
+                        if (kvp.Value.WebView?.CoreWebView2 == sender || ReferenceEquals(kvp.Value.WebView, sender))
+                        {
+                            toolChatState = kvp.Value;
+                            break;
+                        }
+                    }
+                    if (toolChatState == null)
+                    {
+                        foreach (var pane in new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 })
+                        {
+                            if (pane.SelectedItem is TabItem sel && _chatTabs.TryGetValue(sel, out var state))
+                            {
+                                toolChatState = state;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (toolChatState?.Container != null)
+                    {
+                        // Opens/focuses the rail with the tool active (reusing the cached TerminalView) and
+                        // feeds the text in — Terminal runs a multi-line block as a real queued sequence.
+                        toolChatState.Container.SendToTool(toolId, toolText);
+                    }
+                    else
+                    {
+                        ToastEngine.Warning("Send to Tool",
+                            "Couldn't find a chat tab's tool rail to send this into. Open the chat's wrench-menu tool first.");
+                    }
+                }
                 // ── Git #1253: issue-mention hover / click handlers ───────────────────
                 else if (type == "BT_OPEN_ISSUE")
                 {

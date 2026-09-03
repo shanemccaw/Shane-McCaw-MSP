@@ -20,7 +20,28 @@ namespace BuildConsole.Services
   window.__btInjected = true;
 
   const SQL_BLOCK_RE = /^\s*(--.*\n)*\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|BEGIN|GRANT|REVOKE)\b/i;
-  function classifyCodeBlock(text) { return SQL_BLOCK_RE.test(text) ? "sql" : "prompt"; }
+
+  // Git #2774 — a shell/CLI command block, same-style heuristic as SQL_BLOCK_RE. Anchored at the
+  // string start (no /m flag): leading blank lines and #-comment lines are consumed first, so this
+  // matches only the FIRST real command line — a prose "prompt" block whose body happens to mention
+  // one of these words further down is NOT caught. Build-dispatch blocks start with a "--flag" line
+  // (or "BUILD:" / plain prose) and never with one of these executables, so they still fall through
+  // to "prompt" and keep the Send-to-Builder bar. The list is the real CLIs this repo drives from
+  // chat (the issue names npm/npx/pnpm/yarn/git first), extend as needed.
+  const SHELL_BLOCK_RE = /^\s*(?:#.*\n|\s*\n)*\s*(?:sudo\s+)?(npm|npx|pnpm|yarn|node|tsc|vitest|jest|deno|bun|git|gh|az|dotnet|python3?|pip3?|curl|wget|docker|kubectl|terraform|make|cargo|go|psql|bash|sh|pwsh|powershell|cd|ls|dir|cat|echo|mkdir|rm|cp|mv|export|set)\b/i;
+
+  function classifyCodeBlock(text) {
+    if (SQL_BLOCK_RE.test(text)) return "sql";
+    if (SHELL_BLOCK_RE.test(text)) return "shell";
+    return "prompt";
+  }
+
+  // Git #2774 — real tools a shell block can be sent to for execution. Only tools that are ACTUALLY
+  // built and wired right now belong here (Terminal, from #2769). Add a row as each new tool lands;
+  // the picker below renders straight from this array, so it's never hardcoded to one entry.
+  const SEND_TO_TOOLS = [
+    { id: "terminal", label: "Terminal" },
+  ];
 
   function extractLeadingFlags(text) {
     const newlineIdx = text.indexOf("\n");
@@ -286,6 +307,13 @@ namespace BuildConsole.Services
     post("BT_LOAD_SQL", { sql: text });
   }
 
+  // Git #2774 — hand a shell block's real text to a chosen tool for real execution. The C# handler
+  // (BT_SEND_TO_TOOL in MainWindow.xaml.cs) resolves this chat tab, opens/focuses its tool rail with
+  // the tool active, and feeds the text in (Terminal runs it as a real queued multi-line sequence).
+  function sendToTool(tool, text) {
+    post("BT_SEND_TO_TOOL", { tool: tool, text: text });
+  }
+
   // Reads the block's CURRENT full text straight off the live DOM node.
   // Buttons must call this at CLICK time, not capture a string when the bar
   // is first built - Claude still streams tokens into the <pre> after the
@@ -302,6 +330,41 @@ namespace BuildConsole.Services
     bar.className = "bt-button-bar bt-button-bar-" + marginSide;
     bar.dataset.btBlock = blockId;
     bar.style.cssText = "display: flex; justify-content: flex-end; gap: 6px; margin-" + marginSide + ": 4px;";
+
+    // Git #2774 — a shell/CLI block is NOT a build-dispatch prompt, so it gets a real tool-picker
+    // dropdown ("Select tool ▾") instead of the Send-to-Builder / Edit / Queue / Park bar. Picking a
+    // tool sends the block's real text into that tool for real execution (BT_SEND_TO_TOOL). Rendered
+    // straight from SEND_TO_TOOLS so it extends automatically as more real tools land — no other
+    // buttons on a shell block.
+    if (kind === "shell") {
+      const picker = document.createElement("select");
+      picker.className = "bt-tool-picker";
+      picker.title = "Send this command block to a tool for execution";
+      picker.style.cssText =
+        "padding: 3px 10px; border-radius: 5px; border: 1px solid #3b3b3b; background: #242424; " +
+        "color: #d6d4d2; font-size: 11px; font-weight: 600; cursor: pointer; font-family: -apple-system, sans-serif;";
+      const placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Select tool ▾";
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      picker.appendChild(placeholder);
+      for (const tool of SEND_TO_TOOLS) {
+        const opt = document.createElement("option");
+        opt.value = tool.id;
+        opt.textContent = tool.label;
+        picker.appendChild(opt);
+      }
+      picker.addEventListener("change", function () {
+        const toolId = picker.value;
+        if (!toolId) return;
+        sendToTool(toolId, currentBlockText(pre));
+        // Reset back to the placeholder so the same block can be re-sent (a re-run) with one click.
+        picker.selectedIndex = 0;
+      });
+      bar.appendChild(picker);
+      return bar;
+    }
 
     const btn = document.createElement("button");
     btn.type = "button";

@@ -5,6 +5,7 @@
     <Grid Background="{StaticResource CrustBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>  <!-- quick-command chips -->
+            <RowDefinition Height="Auto"/>  <!-- Git #2774 — queued-command status panel (collapsed when idle) -->
             <RowDefinition Height="*"/>     <!-- output -->
             <RowDefinition Height="Auto"/>  <!-- input bar -->
         </Grid.RowDefinitions>
@@ -36,8 +37,67 @@
             </WrapPanel>
         </Border>
 
+        <!-- ── Git #2774 — queued-command status panel ──
+             Shows a sent multi-line block as a real per-step sequence: each row is one command with a
+             live status (queued / running / done / failed). Collapsed whenever no queue has run. -->
+        <Border x:Name="QueuePanel"
+                Grid.Row="1"
+                Visibility="Collapsed"
+                Background="{StaticResource MantleBrush}"
+                BorderBrush="{StaticResource Surface0Brush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,6"
+                MaxHeight="160">
+            <DockPanel>
+                <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                    <TextBlock x:Name="QueueHeader"
+                               DockPanel.Dock="Left"
+                               Text="Command queue"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="{StaticResource Subtext1Brush}"
+                               VerticalAlignment="Center"/>
+                    <Button x:Name="QueueClearButton"
+                            DockPanel.Dock="Right"
+                            Content="Clear"
+                            Style="{StaticResource ChipButton}"
+                            HorizontalAlignment="Right"
+                            Click="QueueClear_Click"/>
+                    <TextBlock/>
+                </DockPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ItemsControl x:Name="QueueList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Margin="0,1">
+                                    <TextBlock Text="{Binding StatusGlyph}"
+                                               Foreground="{Binding StatusBrush}"
+                                               FontFamily="Cascadia Code, Consolas"
+                                               FontSize="12"
+                                               Width="16"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Command}"
+                                               Foreground="{StaticResource TextBrush}"
+                                               FontFamily="Cascadia Code, Consolas"
+                                               FontSize="12"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Detail}"
+                                               Foreground="{Binding StatusBrush}"
+                                               FontFamily="Cascadia Code, Consolas"
+                                               FontSize="11"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
         <!-- ── Terminal output ── -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <TextBox x:Name="OutputBox"
                      Style="{StaticResource TerminalOutputBox}"
                      Text="BuildConsole Terminal — commands run on this local machine&#x0A;Type a command or click a chip above."
@@ -66,7 +126,7 @@
         </Grid>
 
         <!-- ── Input bar ── -->
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 Background="{StaticResource MantleBrush}"
                 BorderBrush="{StaticResource Surface0Brush}"
                 BorderThickness="0,1,0,0"

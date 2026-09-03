@@ -442,6 +442,27 @@ namespace BuildConsole.Controls
             UpdateDetectedGlyph();
         }
 
+        /// <summary>Git #2774 — public entry for MainWindow's <c>BT_SEND_TO_TOOL</c> handler (the shell-block
+        /// tool-picker dropdown): open/focus THIS chat tab's tool rail with <paramref name="toolId"/> active
+        /// and hand it the block's real text for execution. Reuses the same cached-per-tab tool instance
+        /// (#2769's <see cref="_terminalView"/>), so a sent command lands in the tab's live session rather
+        /// than a fresh one. Terminal runs a multi-line block as a real queued sequence
+        /// (<see cref="TerminalView.RunQueue"/>). Currently the only wired tool is "terminal"; the tuple
+        /// lookup means adding a row to <see cref="Tools"/> is all a future tool needs on this side.</summary>
+        public void SendToTool(string toolId, string text)
+        {
+            if (string.IsNullOrWhiteSpace(toolId)) return;
+            var tool = Tools.FirstOrDefault(t => t.Id == toolId);
+            if (tool.Id == null)
+            {
+                ToastEngine.Warning("Send to Tool", $"Unknown tool '{toolId}'.");
+                return;
+            }
+            OpenTool(tool.Id, tool.Label, tool.Glyph, tool.Colour);
+            if (toolId == "terminal")
+                _terminalView?.RunQueue(text);
+        }
+
         private void BtnDetected_Click(object sender, RoutedEventArgs e)
         {
             if (_detectedOpen) { CloseRail(); return; }
