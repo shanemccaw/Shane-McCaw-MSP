@@ -794,7 +794,7 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
     // Derive the effective price at signing time — this is the binding amount.
     // If a scoped SOW was generated and matches the current selection, it's
     // the scoped price; otherwise it's the full SOW total.
-    const { effectiveTotalPrice: effectivePriceCents } = await resolveScopeAwarePrice(pres);
+    const { effectiveTotalPrice: effectivePrice } = await resolveScopeAwarePrice(pres);
 
     // New flow: Agreement is signed BEFORE Stripe payment.
     // The checkout step (which follows contract signing) handles the payment gate.
@@ -820,7 +820,7 @@ router.post("/portal/presentations/:id/sign", requireAuth, async (req: Request, 
     res.json({
       ok: true,
       signedAt: signedAt.toISOString(),
-      effectivePriceCents,
+      effectivePrice,
       scopedPhaseIds: pres.scopedPhaseIds ?? null,
     });
   } catch (err) {
