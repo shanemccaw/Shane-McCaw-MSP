@@ -670,6 +670,11 @@ public partial class MainWindow : Window
         if (source != "BatterUp" && _batterUpExpanded)
             SetBatterUpExpanded(false); // leaving the panel always returns the rail to its normal width
         ShotVaultPanelBody.Visibility = source == "ShotVault" ? Visibility.Visible : Visibility.Collapsed;
+        // Git #2373 — panel-level chrome, only shown while Shot Vault is the visible source.
+        BtnShotVaultExpand.Visibility = source == "ShotVault" ? Visibility.Visible : Visibility.Collapsed;
+        BtnShotVaultSendToTab.Visibility = source == "ShotVault" ? Visibility.Visible : Visibility.Collapsed;
+        if (source != "ShotVault" && _shotVaultExpanded)
+            SetShotVaultExpanded(false); // leaving the panel always returns the rail to its normal width
         if (source == "Git")
             _ = EnsureGitPanelLoadedAsync(); // Git #2290 — first open fires the real GitHub reads
         if (source == "BatterUp")
@@ -1156,6 +1161,11 @@ public partial class MainWindow : Window
         // the same lane-chip/status builders the rail panel uses. Null for every other tab kind.
         public BatterUpDocSnapshot? BatterUpSnapshot { get; }
         public bool IsBatterUpDoc => BatterUpSnapshot != null;
+        // Git #2373 — set for a Shot Vault panel sent to a tab via "Send to tab"; the real frozen
+        // shot list ShotVaultItemDock's RenderShotVaultDoc renders through. Null for every other
+        // tab kind.
+        public ShotVaultDocSnapshot? ShotVaultSnapshot { get; }
+        public bool IsShotVaultDoc => ShotVaultSnapshot != null;
         // Git #2287 — set for the Build Matrix drawer sent to a tab via "Tab"; a frozen snapshot
         // of the real 8 slots, rendered by RenderBuildMatrixDoc into BuildMatrixItemDock. Null for
         // every other tab kind.
@@ -1188,7 +1198,8 @@ public partial class MainWindow : Window
             bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false,
             List<GitCrumb>? gitItemTrail = null, int? featureNumber = null, string? subtitle = null,
             TabKeepAliveClass? keepAliveClass = null, BrowserTabCategory? browserCategory = null,
-            BatterUpDocSnapshot? batterUpSnapshot = null, BuildMatrixDocSnapshot? buildMatrixSnapshot = null)
+            BatterUpDocSnapshot? batterUpSnapshot = null, BuildMatrixDocSnapshot? buildMatrixSnapshot = null,
+            ShotVaultDocSnapshot? shotVaultSnapshot = null)
         {
             _keepAliveClassOverride = keepAliveClass;
             BrowserCategory = browserCategory;
@@ -1213,6 +1224,7 @@ public partial class MainWindow : Window
             Subtitle = subtitle;
             BatterUpSnapshot = batterUpSnapshot;
             BuildMatrixSnapshot = buildMatrixSnapshot;
+            ShotVaultSnapshot = shotVaultSnapshot;
         }
     }
 
@@ -1683,8 +1695,9 @@ public partial class MainWindow : Window
         GitItemDock.Visibility = tab.IsGitItemDoc ? Visibility.Visible : Visibility.Collapsed;
         BatterUpItemDock.Visibility = tab.IsBatterUpDoc ? Visibility.Visible : Visibility.Collapsed;
         BuildMatrixItemDock.Visibility = tab.IsBuildMatrixDoc ? Visibility.Visible : Visibility.Collapsed;
+        ShotVaultItemDock.Visibility = tab.IsShotVaultDoc ? Visibility.Visible : Visibility.Collapsed;
         if (tab.IsSettings) RenderSettings();
-        bool isStub = !tab.IsHome && !tab.IsChat && !isGenericBrowserTab && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc && !tab.IsBatterUpDoc && !tab.IsBuildMatrixDoc;
+        bool isStub = !tab.IsHome && !tab.IsChat && !isGenericBrowserTab && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc && !tab.IsBatterUpDoc && !tab.IsBuildMatrixDoc && !tab.IsShotVaultDoc;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -1719,6 +1732,11 @@ public partial class MainWindow : Window
         {
             BuildMatrixItemDocTitleText.Text = tab.Title;
             RenderBuildMatrixDoc(tab);
+        }
+        if (tab.IsShotVaultDoc)
+        {
+            ShotVaultItemDocTitleText.Text = tab.Title;
+            RenderShotVaultDoc(tab);
         }
     }
 
