@@ -86,6 +86,7 @@
     "portal/compliance-drilldowns.json",
     "portal/governance-area-drilldowns.json",
     "portal/governance-area-cards.json",
-    "portal/shell-systems.json"
+    "portal/shell-systems.json",
+    "portal/alerts-dropdown.json"
   ]
 }

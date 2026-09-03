@@ -1,5 +1,6 @@
-import { Bell, ChevronDown, ChevronRight, Eye, ListChecks, User } from "lucide-react";
+import { ChevronDown, ChevronRight, Eye, ListChecks, User } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { AlertsDropdown } from "./notifications/AlertsDropdown";
 
 export interface Breadcrumb {
   readonly parent?: string;
@@ -43,10 +44,11 @@ function ImpersonationBanner() {
 /**
  * The top bar (README "Layout" §2). The right-cluster three triggers are
  * real, focusable, `data-testid`-tagged mount points — their popovers are
- * #1820 (account), #1821 (alerts) and #1822 (SOP runs), which is why none of
- * them carries an unread/run-count badge yet: that count is real data those
- * builds own, and a badge with no real number behind it would be exactly the
- * fabricated-data case CLAUDE.md forbids.
+ * #1820 (account), #1821 (alerts) and #1822 (SOP runs). Alerts (#1821) is
+ * wired to its own real unread count and popover (`AlertsDropdown`); the
+ * other two remain inert until their own issues land, since a badge with no
+ * real number behind it is exactly the fabricated-data case CLAUDE.md
+ * forbids.
  */
 export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
   return (
@@ -89,14 +91,7 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
           >
             <ListChecks size={17} strokeWidth={1.75} color="#94a3b8" />
           </button>
-          <button
-            type="button"
-            data-testid="topbar-alerts-trigger"
-            aria-label="Alerts"
-            className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
-          >
-            <Bell size={17} strokeWidth={1.75} color="#94a3b8" />
-          </button>
+          <AlertsDropdown />
           <div className="mx-[6px] h-5 w-px" style={{ background: HAIRLINE }} />
           <button
             type="button"

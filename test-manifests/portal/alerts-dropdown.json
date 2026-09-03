@@ -1,0 +1,97 @@
+{
+  "issue": 1821,
+  "feature": "Portal Shell: alerts dropdown - the real bell/popover in artifacts/portal's TopBar (components/shell/notifications/AlertsDropdown.tsx), backed by the real GET /api/portal/notifications, /unread-count, /activity-feed, PATCH /:id/read and POST /read-all routes in artifacts/api-server/src/routes/notifications.ts, live via GET /api/portal/notifications/stream (SSE). Every row's linkPath is resolved server-side through portal-deep-links.ts (deepLink.href/available/label) so the dropdown never renders a dead /portal-v2/* href. Supersedes nothing - test-manifests/portal/shell-systems.json covers the retired portal-v2 alerts tray (pv2-alerts-bell/pv2-alerts-tray selectors, a different, deleted surface); this is the real #1821 build against the fresh artifacts/portal shell (#1817).",
+  "baseUrl": "{{DEPLOY_URL}}",
+  "lastVerifiedAgainstCommit": "PENDING",
+
+  "notes": [
+    "WHAT THIS COVERS: the real, deterministic surface of #1821 - that every /api/portal/notifications* route is auth-gated, that a logged-in customer gets the real list/unread-count/activity-feed shapes (including the server-resolved deepLink field), and that read/read-all actually flip the read flag.",
+
+    "WHAT THIS DOES NOT COVER, AND WHY (no portal login page yet): artifacts/portal has no login page today (#1648) - App.tsx's RequireAuth renders an honest 'Sign in required' panel for an unauthenticated visitor rather than a redirect to a route that doesn't exist. So a real end-to-end UI login -> open bell -> see rows flow cannot be exercised through the browser right now, the same structural gap test-manifests/chat/support-chat-active-cards.json (#2519) already documents for /support. The uiSteps below only assert what is honestly reachable today (the shell route mounts, RequireAuth's honest empty state renders, and the inert-until-shell-mounts alerts trigger carries its real data-testid). apiTests exercise the full real backend directly with a real bearer token, the same pattern #2519 uses. Once a portal login page exists, extend this manifest's uiSteps with a real login block + goto '/' + click [data-testid='topbar-alerts-trigger'] + assert [data-testid='alerts-popover'] - no code change needed on the dropdown side.",
+
+    "DEEP-LINK RESOLUTION: TEST-DEEPLINK-1 below only asserts the wire SHAPE (deepLink.href/available/label present) rather than a specific value, because which rows exist (and therefore which linkPath each carries) depends on the designated testbed portal account's real notification history, not something this manifest seeds.",
+
+    "MARK-READ is NOT marked critical: it extracts an id from the real LIST response and PATCHes it read - harmless and idempotent (mirrors how SH-new-sop3 in shell-systems.json accepts writing a real row each run), but if the testbed account happens to have zero personal notifications at run time there is nothing to extract, and that must not fail the whole suite over account state this manifest doesn't control.",
+
+    "ENV VARS required: DEPLOY_URL, TEST_PORTAL_EMAIL / TEST_PORTAL_PASSWORD (the same designated testbed portal account other artifacts/portal manifests use)."
+  ],
+
+  "apiTests": [
+    {
+      "name": "AUTH-GATE-1 - GET /api/portal/notifications with no Authorization header returns 401 (requireAuth)",
+      "method": "GET",
+      "path": "/api/portal/notifications",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "AUTH-GATE-2 - GET /api/portal/notifications/unread-count with no Authorization header returns 401",
+      "method": "GET",
+      "path": "/api/portal/notifications/unread-count",
+      "expect": { "status": 401 }
+    },
+    {
+      "name": "SETUP - log in as the designated testbed portal account to obtain a real client bearer; extract it as {{authToken}}",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "headers": { "Content-Type": "application/json" },
+      "body": { "email": "{{TEST_PORTAL_EMAIL}}", "password": "{{TEST_PORTAL_PASSWORD}}" },
+      "expect": { "status": 200, "jsonPath": "$.accessToken", "exists": true },
+      "extract": { "as": "authToken", "jsonPath": "$.accessToken" }
+    },
+    {
+      "name": "LIST - an authenticated GET /api/portal/notifications returns the real personal-feed array",
+      "method": "GET",
+      "path": "/api/portal/notifications",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "isArray": true },
+      "extract": { "as": "firstNotifId", "jsonPath": "$[0].id" }
+    },
+    {
+      "name": "TEST-DEEPLINK-1 - every returned row's linkPath is resolved server-side (portal-deep-links.ts) into a deepLink object with a real href, never a raw dead /portal-v2/* string",
+      "method": "GET",
+      "path": "/api/portal/notifications",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$[0].deepLink.href", "exists": true }
+    },
+    {
+      "name": "UNREAD-COUNT - the real personal unread count, a plain number never a fabricated placeholder",
+      "method": "GET",
+      "path": "/api/portal/notifications/unread-count",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.unreadCount", "exists": true }
+    },
+    {
+      "name": "ACTIVITY-FEED - the real customer-scoped all_activity feed (the dropdown's 'All activity' tab / 'Open activity feed' action)",
+      "method": "GET",
+      "path": "/api/portal/notifications/activity-feed",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "isArray": true }
+    },
+    {
+      "name": "MARK-READ - PATCH the first personal notification read (harmless, idempotent; no-ops if the testbed account has none right now)",
+      "method": "PATCH",
+      "path": "/api/portal/notifications/{{firstNotifId}}/read",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "equals": true }
+    },
+    {
+      "name": "MARK-ALL-READ - POST /api/portal/notifications/read-all succeeds for the real account",
+      "method": "POST",
+      "path": "/api/portal/notifications/read-all",
+      "headers": { "Authorization": "Bearer {{authToken}}" },
+      "expect": { "status": 200, "jsonPath": "$.ok", "equals": true }
+    }
+  ],
+
+  "uiSteps": [
+    { "action": "goto", "target": "/" },
+    {
+      "name": "Unauthenticated visit: the shell route mounts and RequireAuth's honest sign-in-required panel renders (no portal login page exists yet - see notes)",
+      "action": "expect",
+      "selector": "h1",
+      "state": "visible",
+      "textContains": "Sign in required",
+      "critical": true
+    }
+  ]
+}

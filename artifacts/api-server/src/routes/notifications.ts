@@ -5,8 +5,23 @@ import { requireAdmin, requireAuth } from "../middlewares/requireAuth";
 import jwt from "jsonwebtoken";
 import { registerNotificationSSEClient } from "../lib/sse-channels";
 import { logger } from "../lib/logger";
+import { resolvePortalDeepLink } from "../lib/portal-deep-links";
 
 const router = Router();
+
+/**
+ * #1821 — every customer-portal notification row's `linkPath` is resolved
+ * through the same map customer-alert-delivery.ts already uses for email, so
+ * the alerts dropdown never renders a dead `/portal-v2/*` (or any other
+ * not-yet-real) link — see portal-deep-links.ts's own header comment, which
+ * names this dropdown as the reason the map exists. Scoped to the
+ * `/portal/notifications*` routes only; admin/msp notification links point
+ * at real admin-panel routes and must not be run through this portal-only map.
+ */
+function withResolvedLink<T extends { linkPath: string | null }>(row: T) {
+  const resolved = resolvePortalDeepLink(row.linkPath);
+  return { ...row, deepLink: resolved };
+}
 
 // ── Category → icon/color mapping (used by clients to render the bell UI) ────
 export const CATEGORY_STYLES: Record<string, { icon: string; color: string }> = {
@@ -311,7 +326,7 @@ router.get("/portal/notifications", requireAuth, async (req: Request, res: Respo
       )
       .orderBy(desc(notificationsTable.createdAt))
       .limit(limit);
-    res.json(rows);
+    res.json(rows.map(withResolvedLink));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -391,7 +406,7 @@ router.get("/portal/notifications/activity-feed", requireAuth, async (req: Reque
       )
       .orderBy(desc(notificationsTable.createdAt))
       .limit(limit);
-    res.json(rows);
+    res.json(rows.map(withResolvedLink));
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }

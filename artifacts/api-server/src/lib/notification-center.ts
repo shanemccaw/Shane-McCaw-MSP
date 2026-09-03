@@ -12,6 +12,7 @@ import { broadcastNotification, broadcastUnreadCount } from "./sse-channels";
 import { logger } from "./logger";
 import { sendMessage } from "./graphEmail.ts";
 import { dispatchEvent } from "./event-bus.ts";
+import { resolvePortalDeepLink } from "./portal-deep-links";
 const log = logger.child({ channel: "notification" });
 
 /**
@@ -185,7 +186,13 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
 
     // Broadcast SSE to the right key
     if (userId !== undefined) {
-      // Real-time push to that user's SSE clients
+      // Real-time push to that user's SSE clients. This branch only fires
+      // for recipient.type === "customer_user" (the only caller that sets
+      // `userId` above), so it's the customer portal's own live channel —
+      // safe to resolve linkPath through the portal-only deep-link map
+      // (#1821) so a pushed notification never carries a dead
+      // `/portal-v2/*` href, matching what GET /portal/notifications
+      // already returns for the initial load.
       broadcastNotification(userId, {
         id: notifId,
         title,
@@ -193,6 +200,7 @@ export async function createNotification(opts: CreateNotificationOptions): Promi
         category,
         severity,
         linkPath,
+        deepLink: resolvePortalDeepLink(linkPath),
         feedType,
         read: false,
         createdAt: new Date().toISOString(),
