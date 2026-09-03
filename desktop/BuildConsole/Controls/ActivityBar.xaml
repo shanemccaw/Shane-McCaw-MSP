@@ -204,18 +204,15 @@
                                Foreground="{StaticResource GreenBrush}"/>
                 </Button>
 
-                <!-- Git #2110 — Dynamic Build Queue Map (Phase 2): a floaty, live-updating
-                     visual map of the whole build queue — every item a node, blocker
-                     relationships as connector lines, deadlock loops flagged unmissably,
-                     errors distinct, real age per item. Separate top-level window (a
-                     movable "watch on another monitor" panel, same shape as Build Watch
-                     above), so a plain Button raising a toggle event, not a workspace
-                     RadioButton. -->
-                <Button x:Name="BtnBuildQueueMap"
+                <!-- Git #2483 — Build Chain Map: a single-screen, maximized editor/visualizer
+                     for one Epic's build chain (Epic → Feature → Issue → blocked_by, per
+                     BUILD_QUEUE_METHOD.md §5/§6/§10). Replaces the old #2110 "Build Queue
+                     Map" floaty entry in this slot. -->
+                <Button x:Name="BtnBuildChainMap"
                         Style="{StaticResource IconButton}"
                         Width="48" Height="44"
-                        ToolTip="Build Queue Map — live visual map of the queue: blockers, deadlocks, errors, age (floaty)"
-                        Click="BtnBuildQueueMap_Click">
+                        ToolTip="Build Chain Map — Epic → Feature → Issue → blocked_by, live GitHub read/write (maximized)"
+                        Click="BtnBuildChainMap_Click">
                     <TextBlock Text="&#x1F5FA;" FontSize="16"/>
                 </Button>
 

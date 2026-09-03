@@ -4369,6 +4369,10 @@ namespace BuildConsole.Controls
             try { RenderIssuesTree(_currentFilter == "Done" ? "All" : _currentFilter); } catch { }
         }
 
+        /// <summary>Git #2483 — lets MainWindow read the currently-active working Epic (if any) so the
+        /// Build Chain Map toolbar entry can default to it instead of always prompting Shane.</summary>
+        public int? ActiveEpicGithubNumber => _activeEpicGithubNumber;
+
         private void ActiveWorkingEpicBar_Click(object sender, MouseButtonEventArgs e)
         {
             LocateWorkingEpic();
