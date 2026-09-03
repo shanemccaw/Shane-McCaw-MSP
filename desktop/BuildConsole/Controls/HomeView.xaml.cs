@@ -1155,7 +1155,7 @@ namespace BuildConsole.Controls
 
         #endregion
 
-        #region Burndown Chart (Git #2712)
+        #region Scope & Completion Burn-Up Chart (Git #2721, was the #2712 single-line "burndown")
 
         // Prevents overlapping fetches the same way the migrations scan does — the 10s
         // home rollup tick can land mid-fetch of the (cached) #2711 time series.
@@ -1216,11 +1216,13 @@ namespace BuildConsole.Controls
 
             DrawBurndownCanvas(series);
 
-            var first = series.Points[0];
             var last = series.Points[series.Points.Count - 1];
+            // Real remaining-work gap = the real scope line minus the real completed line at
+            // today's real point — the visual gap the chart draws, stated as a number.
+            int remaining = last.CumulativeOpened - last.ClosedCumulative;
             BurndownSummaryText.Text =
-                $"{first.OpenCount} open on {series.FirstDate:MMM d} → {last.OpenCount} open today  ·  " +
-                $"{series.CurrentClosed}/{series.TotalIssues} closed";
+                $"{series.CurrentClosed}/{series.TotalIssues} closed  ·  {remaining} remaining " +
+                $"(scope grew from {series.Points[0].CumulativeOpened} to {last.CumulativeOpened} since {series.FirstDate:MMM d})";
         }
 
         private void ShowBurndownMessage(string message)
@@ -1233,10 +1235,14 @@ namespace BuildConsole.Controls
         }
 
         /// <summary>
-        /// Hand-drawn line+area chart on <c>BurndownCanvas</c> — this codebase's own convention
-        /// for custom visuals (Build Queue's graph, #839) rather than a new charting dependency
-        /// (see #2710's technical-judgement note). Plots the real running <see cref="IssueTimeSeriesPoint.OpenCount"/>
-        /// per day, oldest to newest, scaled to the canvas's actual real estate.
+        /// Hand-drawn two-line burn-up chart on <c>BurndownCanvas</c> (Git #2721) — same
+        /// Canvas/Polyline convention the #2712 burndown and #2713 open/close-rate charts use
+        /// (this codebase's own convention for custom visuals, #839) rather than a new charting
+        /// dependency. Plots the real running <see cref="IssueTimeSeriesPoint.CumulativeOpened"/>
+        /// (Total Scope) and <see cref="IssueTimeSeriesPoint.ClosedCumulative"/> (Completed) per
+        /// day, oldest to newest, scaled to the canvas's actual real estate. The filled area
+        /// between the two lines is the real remaining-work gap — it reads correctly even while
+        /// real scope keeps growing, unlike a single open-count line trending toward zero.
         /// </summary>
         private void DrawBurndownCanvas(IssueTimeSeries series)
         {
@@ -1247,43 +1253,64 @@ namespace BuildConsole.Controls
             var points = series.Points;
             if (points.Count < 2 || width <= 1 || height <= 1) return;
 
-            int maxOpen = Math.Max(1, points.Max(p => p.OpenCount));
+            // Scope is always >= completed at every real point, so scope alone sets the scale.
+            int maxScope = Math.Max(1, points.Max(p => p.CumulativeOpened));
             const double topPad = 6, bottomPad = 2;
             double plotHeight = Math.Max(1, height - topPad - bottomPad);
 
             double StepX(int i) => width * i / (points.Count - 1);
-            double StepY(int openCount) => topPad + plotHeight - (plotHeight * openCount / maxOpen);
+            double StepY(int count) => topPad + plotHeight - (plotHeight * count / maxScope);
 
-            var lineBrush = (Brush)FindResource("PeachBrush");
-            var fillColor = ((SolidColorBrush)lineBrush).Color;
-            var fillBrush = new SolidColorBrush(fillColor) { Opacity = 0.14 };
+            var scopeBrush = (Brush)FindResource("LavenderBrush");
+            var completedBrush = (Brush)FindResource("GreenBrush");
 
-            // Filled area under the curve, then the real line on top.
-            var polyPoints = new PointCollection(points.Count);
+            var scopePoints = new PointCollection(points.Count);
+            var completedPoints = new PointCollection(points.Count);
             for (int i = 0; i < points.Count; i++)
-                polyPoints.Add(new Point(StepX(i), StepY(points[i].OpenCount)));
+            {
+                scopePoints.Add(new Point(StepX(i), StepY(points[i].CumulativeOpened)));
+                completedPoints.Add(new Point(StepX(i), StepY(points[i].ClosedCumulative)));
+            }
 
-            var areaFigure = new PathFigure { StartPoint = new Point(0, height), IsClosed = true };
-            foreach (var pt in polyPoints) areaFigure.Segments.Add(new LineSegment(pt, true));
-            areaFigure.Segments.Add(new LineSegment(new Point(width, height), true));
-            var areaGeo = new PathGeometry();
-            areaGeo.Figures.Add(areaFigure);
-            BurndownCanvas.Children.Add(new System.Windows.Shapes.Path { Data = areaGeo, Fill = fillBrush });
+            // Filled area between the two real lines — the real remaining-work gap — then both
+            // real lines drawn on top.
+            var gapFigure = new PathFigure { StartPoint = scopePoints[0], IsClosed = true };
+            for (int i = 1; i < scopePoints.Count; i++) gapFigure.Segments.Add(new LineSegment(scopePoints[i], true));
+            for (int i = completedPoints.Count - 1; i >= 0; i--) gapFigure.Segments.Add(new LineSegment(completedPoints[i], true));
+            var gapGeo = new PathGeometry();
+            gapGeo.Figures.Add(gapFigure);
+            var gapFillColor = ((SolidColorBrush)scopeBrush).Color;
+            BurndownCanvas.Children.Add(new System.Windows.Shapes.Path
+            {
+                Data = gapGeo,
+                Fill = new SolidColorBrush(gapFillColor) { Opacity = 0.10 },
+            });
 
             BurndownCanvas.Children.Add(new System.Windows.Shapes.Polyline
             {
-                Points = polyPoints,
-                Stroke = lineBrush,
-                StrokeThickness = 2,
+                Points = scopePoints,
+                Stroke = scopeBrush,
+                StrokeThickness = 1.75,
+                StrokeLineJoin = PenLineJoin.Round,
+            });
+            BurndownCanvas.Children.Add(new System.Windows.Shapes.Polyline
+            {
+                Points = completedPoints,
+                Stroke = completedBrush,
+                StrokeThickness = 1.75,
                 StrokeLineJoin = PenLineJoin.Round,
             });
 
-            // Highlight the real current value at the last point.
-            var lastPt = polyPoints[polyPoints.Count - 1];
-            var dot = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = lineBrush };
-            Canvas.SetLeft(dot, lastPt.X - 3.5);
-            Canvas.SetTop(dot, lastPt.Y - 3.5);
-            BurndownCanvas.Children.Add(dot);
+            // Highlight the real current values at the last point for both lines.
+            var lastScope = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = scopeBrush };
+            Canvas.SetLeft(lastScope, scopePoints[scopePoints.Count - 1].X - 3.5);
+            Canvas.SetTop(lastScope, scopePoints[scopePoints.Count - 1].Y - 3.5);
+            BurndownCanvas.Children.Add(lastScope);
+
+            var lastCompleted = new System.Windows.Shapes.Ellipse { Width = 7, Height = 7, Fill = completedBrush };
+            Canvas.SetLeft(lastCompleted, completedPoints[completedPoints.Count - 1].X - 3.5);
+            Canvas.SetTop(lastCompleted, completedPoints[completedPoints.Count - 1].Y - 3.5);
+            BurndownCanvas.Children.Add(lastCompleted);
         }
 
         #endregion
