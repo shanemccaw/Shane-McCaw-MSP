@@ -187,8 +187,8 @@ export async function getAllRules(): Promise<SignalDerivationRule[]> {
   // appear in admin snapshots, import/export, or platform evaluation.
   const rows = await db.execute(sql`
     SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-           source_key AS "sourceKey", compare_value AS "compareValue", description,
-           sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+           source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
+           description, sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
            ${INTELLIGENCE_FIELDS_SELECT}
     FROM signal_derivation_rules
     WHERE msp_id IS NULL
@@ -828,10 +828,14 @@ router.get("/admin/signal-rules/customer-pillar-scores/:customerId", requireAdmi
 
 router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { signalKey, groupId, ruleType, sourceKey, compareValue, description, sortOrder, newSignal, ...intelligenceBody } =
+    const { signalKey, groupId, ruleType, sourceKey, compareValue, denominatorKey, description, sortOrder, newSignal, ...intelligenceBody } =
       (req.body ?? {}) as Record<string, unknown>;
     if (!signalKey || !ruleType || !sourceKey) {
       res.status(400).json({ error: "signalKey, ruleType, sourceKey are required" });
+      return;
+    }
+    if (ruleType === "profile_key_ratio" && !denominatorKey) {
+      res.status(400).json({ error: "denominatorKey is required for ruleType profile_key_ratio" });
       return;
     }
     const signalKeyStr = String(signalKey).trim();
@@ -887,6 +891,7 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
       ruleType: ruleType as SignalDerivationRule["ruleType"],
       sourceKey: sourceKey as string,
       compareValue: (compareValue as string | null) ?? null,
+      denominatorKey: (denominatorKey as string | null) ?? null,
       description: (description as string | null) ?? null,
       sortOrder: (sortOrder as number) ?? 0,
       createdAt: now,
@@ -917,7 +922,7 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
       }
       const result = await tx.execute(sql`
         INSERT INTO signal_derivation_rules (
-          signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+          signal_key, group_id, rule_type, source_key, compare_value, denominator_key, description, sort_order,
           priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
           governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
           architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
@@ -926,7 +931,7 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
         )
         VALUES (
           ${signalKeyStr}, ${groupId ?? null}, ${ruleType as string}, ${sourceKey as string},
-          ${compareValue ?? null}, ${description ?? null}, ${(sortOrder as number) ?? 0},
+          ${compareValue ?? null}, ${denominatorKey ?? null}, ${description ?? null}, ${(sortOrder as number) ?? 0},
           ${intel.priority}, ${intel.weight}, ${intel.pricingImpact}, ${intel.priorityScoreContribution}, ${intel.pricingValueContribution},
           ${intel.governanceImpact}, ${intel.securityImpact}, ${intel.complianceImpact}, ${intel.adoptionImpact}, ${intel.copilotImpact},
           ${intel.architectureImpact}, ${intel.trendValue}, ${intel.trendDirection}, ${intel.decayRate}, ${intel.ttlDays}, ${intel.confidence},
@@ -934,8 +939,8 @@ router.post("/admin/signal-rules", requireAdmin, async (req: Request, res: Respo
           ${intel.crmMaturityContribution}, ${intel.crmIntentContribution}, ${intel.crmUrgencyContribution}
         )
         RETURNING id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-                  source_key AS "sourceKey", compare_value AS "compareValue", description,
-                  sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                  source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
+                  description, sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
                   ${INTELLIGENCE_FIELDS_SELECT}
       `);
       created = coerceDecayRate([result.rows[0] as unknown as SignalDerivationRule])[0]!;
@@ -966,15 +971,15 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const priorResult = await db.execute(sql`
       SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-             source_key AS "sourceKey", compare_value AS "compareValue", description,
-             sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+             source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
+             description, sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
              ${INTELLIGENCE_FIELDS_SELECT}
       FROM signal_derivation_rules WHERE id = ${id}
     `);
     const prior = coerceDecayRate([priorResult.rows[0] as unknown as SignalDerivationRule])[0] as SignalDerivationRule | undefined;
     if (!prior) { res.status(404).json({ error: "Not found" }); return; }
 
-    const { groupId, ruleType, sourceKey, compareValue, description, sortOrder, ...intelligenceBody } =
+    const { groupId, ruleType, sourceKey, compareValue, denominatorKey, description, sortOrder, ...intelligenceBody } =
       (req.body ?? {}) as Record<string, unknown>;
 
     const hasIntelligenceUpdate = Object.keys(intelligenceBody).length > 0;
@@ -997,6 +1002,7 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
       ruleType: (ruleType as SignalDerivationRule["ruleType"]) ?? prior.ruleType,
       sourceKey: (sourceKey as string) ?? prior.sourceKey,
       compareValue: compareValue !== undefined ? (compareValue as string | null) ?? null : prior.compareValue,
+      denominatorKey: denominatorKey !== undefined ? (denominatorKey as string | null) ?? null : prior.denominatorKey,
       description: description !== undefined ? (description as string | null) ?? null : prior.description,
       sortOrder: sortOrderInt ?? prior.sortOrder,
       ...(hasIntelligenceUpdate ? intel : {}),
@@ -1018,6 +1024,7 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
           rule_type = COALESCE(${ruleType ?? null}, rule_type),
           source_key = COALESCE(${sourceKey ?? null}, source_key),
           compare_value = ${compareValue !== undefined ? (compareValue ?? null) : prior.compareValue},
+          denominator_key = ${denominatorKey !== undefined ? (denominatorKey ?? null) : prior.denominatorKey},
           description = ${description !== undefined ? (description ?? null) : prior.description},
           sort_order = COALESCE(${sortOrderInt}, sort_order),
           priority = ${intel.priority as number},
@@ -1048,8 +1055,8 @@ router.patch("/admin/signal-rules/:id", requireAdmin, async (req: Request, res: 
           updated_at = now()
       WHERE id = ${id}
       RETURNING id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-                source_key AS "sourceKey", compare_value AS "compareValue", description,
-                sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
+                description, sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
                 ${INTELLIGENCE_FIELDS_SELECT}
     `);
     const [updated] = coerceDecayRate([result.rows[0] as unknown as SignalDerivationRule]);
@@ -1070,8 +1077,8 @@ router.delete("/admin/signal-rules/:id", requireAdmin, async (req: Request, res:
     if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
     const priorResult = await db.execute(sql`
       SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-             source_key AS "sourceKey", compare_value AS "compareValue", description,
-             sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt"
+             source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
+             description, sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt"
       FROM signal_derivation_rules WHERE id = ${id}
     `);
     const prior = priorResult.rows[0] as unknown as SignalDerivationRule | undefined;
@@ -1588,7 +1595,7 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
         }
         await tx.execute(sql`
           INSERT INTO signal_derivation_rules (
-            signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+            signal_key, group_id, rule_type, source_key, compare_value, denominator_key, description, sort_order,
             priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
             governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
             architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
@@ -1599,6 +1606,7 @@ router.post("/admin/signal-rules/import", requireAdmin, async (req: Request, res
             ${r.signalKey ?? r.signal_key as string}, ${mappedGroupId},
             ${r.ruleType ?? r.rule_type as string}, ${r.sourceKey ?? r.source_key as string},
             ${r.compareValue ?? r.compare_value ?? null},
+            ${r.denominatorKey ?? r.denominator_key ?? null},
             ${r.description ?? null}, ${(r.sortOrder ?? r.sort_order ?? 0) as number},
             ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
             ${rIntel.governanceImpact}, ${rIntel.securityImpact}, ${rIntel.complianceImpact}, ${rIntel.adoptionImpact}, ${rIntel.copilotImpact},
@@ -1733,7 +1741,7 @@ router.post("/admin/signal-rules/:signalKey/import", requireAdmin, async (req: R
         if (intelError) throw new Error(`rules[${i}]: ${intelError}`);
         await tx.execute(sql`
           INSERT INTO signal_derivation_rules (
-            signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+            signal_key, group_id, rule_type, source_key, compare_value, denominator_key, description, sort_order,
             priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
             governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
             architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
@@ -1745,6 +1753,7 @@ router.post("/admin/signal-rules/:signalKey/import", requireAdmin, async (req: R
             ${(r.ruleType ?? r.rule_type) as string},
             ${(r.sourceKey ?? r.source_key) as string},
             ${(r.compareValue ?? r.compare_value ?? null) as string | null},
+            ${(r.denominatorKey ?? r.denominator_key ?? null) as string | null},
             ${(r.description ?? null) as string | null},
             ${((r.sortOrder ?? r.sort_order ?? i) as number)},
             ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
@@ -1856,7 +1865,7 @@ router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Reque
         if (rIntelError) throw new Error(`rules[${i}]: ${rIntelError}`);
         await tx.execute(sql`
           INSERT INTO signal_derivation_rules (
-            signal_key, group_id, rule_type, source_key, compare_value, description, sort_order,
+            signal_key, group_id, rule_type, source_key, compare_value, denominator_key, description, sort_order,
             priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
             governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
             architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
@@ -1869,6 +1878,7 @@ router.post("/admin/signal-rules/import-bundle", requireAdmin, async (req: Reque
             ${(r.ruleType ?? r.rule_type) as string},
             ${(r.sourceKey ?? r.source_key) as string},
             ${(r.compareValue ?? r.compare_value ?? null) as string | null},
+            ${(r.denominatorKey ?? r.denominator_key ?? null) as string | null},
             ${(r.description ?? null) as string | null},
             ${((r.sortOrder ?? r.sort_order ?? i) as number)},
             ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
@@ -2015,7 +2025,7 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
           }
           await tx.execute(sql`
             INSERT INTO signal_derivation_rules (
-              signal_key, group_id, rule_type, source_key, compare_value, description, sort_order, msp_id,
+              signal_key, group_id, rule_type, source_key, compare_value, denominator_key, description, sort_order, msp_id,
               priority, weight, pricing_impact, priority_score_contribution, pricing_value_contribution,
               governance_impact, security_impact, compliance_impact, adoption_impact, copilot_impact,
               architecture_impact, trend_value, trend_direction, decay_rate, ttl_days, confidence,
@@ -2024,7 +2034,7 @@ router.post("/admin/signal-rules/versions/:id/restore", requireAdmin, async (req
             )
             VALUES (
               ${r.signalKey as string}, ${mappedGroupId}, ${r.ruleType as string}, ${r.sourceKey as string},
-              ${r.compareValue ?? null}, ${r.description ?? null}, ${(r.sortOrder ?? 0) as number}, NULL,
+              ${r.compareValue ?? null}, ${r.denominatorKey ?? null}, ${r.description ?? null}, ${(r.sortOrder ?? 0) as number}, NULL,
               ${rIntel.priority}, ${rIntel.weight}, ${rIntel.pricingImpact}, ${rIntel.priorityScoreContribution}, ${rIntel.pricingValueContribution},
               ${rIntel.governanceImpact}, ${rIntel.securityImpact}, ${rIntel.complianceImpact}, ${rIntel.adoptionImpact}, ${rIntel.copilotImpact},
               ${rIntel.architectureImpact}, ${rIntel.trendValue}, ${rIntel.trendDirection}, ${rIntel.decayRate}, ${rIntel.ttlDays}, ${rIntel.confidence},
@@ -2477,6 +2487,7 @@ router.get("/admin/signal-rules/export", requireAdmin, async (_req: Request, res
             ruleType: r.ruleType,
             sourceKey: r.sourceKey,
             compareValue: r.compareValue,
+            denominatorKey: r.denominatorKey,
             description: r.description,
             rationale: r.description,
             sortOrder: r.sortOrder,

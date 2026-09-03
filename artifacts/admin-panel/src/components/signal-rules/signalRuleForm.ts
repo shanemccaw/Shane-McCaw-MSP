@@ -51,6 +51,8 @@ export interface SignalRule extends Partial<SignalIntelligenceFields> {
   ruleType: string;
   sourceKey: string;
   compareValue: string | null;
+  /** Denominator profile key for ruleType "profile_key_ratio" only (#2514). Null otherwise. */
+  denominatorKey: string | null;
   description: string | null;
   sortOrder: number;
 }
@@ -68,13 +70,16 @@ export interface RuleConflict {
 
 // ─── Rule-type metadata ───────────────────────────────────────────────────────
 // The evaluator (api-server lib/tenant-signals.ts evaluateRule) recognizes
-// exactly these seven types. compareValue is only read by eq/gt/lt/threshold.
+// these eight types. compareValue is only read by eq/gt/lt/threshold/ratio.
+// profile_key_ratio is the only type that also reads a second field,
+// denominatorKey (#2514) — see the `denominator` entry below.
 
 export const RULE_TYPES: Array<{
   value: string;
   label: string;
   sourceKeyLabel: string;
   compare: null | { label: string; hint: string };
+  denominator?: { label: string; hint: string };
 }> = [
   { value: "profile_key_truthy", label: "Profile key is truthy", sourceKeyLabel: "Profile field path", compare: null },
   { value: "profile_key_falsy", label: "Profile key is falsy", sourceKeyLabel: "Profile field path", compare: null },
@@ -83,6 +88,13 @@ export const RULE_TYPES: Array<{
   { value: "profile_key_lt", label: "Profile key less than", sourceKeyLabel: "Profile field path", compare: { label: "Compare value", hint: "Numeric threshold" } },
   { value: "threshold", label: "Monitor item-count threshold", sourceKeyLabel: "Monitor key", compare: { label: "Item count above", hint: "Fires when the monitor's item count exceeds this number" } },
   { value: "findings_keyword", label: "Findings keyword match", sourceKeyLabel: "Keyword", compare: null },
+  {
+    value: "profile_key_ratio",
+    label: "Cross-check ratio (percent below)",
+    sourceKeyLabel: "Numerator profile field path",
+    compare: { label: "Fires below (%)", hint: "Fires when (numerator / denominator) * 100 is less than this" },
+    denominator: { label: "Denominator profile field path", hint: "Read from the same merged cross-check tenant profile — can come from a different monitor check than the numerator" },
+  },
 ];
 
 export const ruleTypeMeta = (value: string) => RULE_TYPES.find(t => t.value === value);
@@ -157,6 +169,8 @@ export interface RuleForm {
   ruleType: string;
   sourceKey: string;
   compareValue: string;
+  /** Denominator profile field path — only used/shown when ruleType is "profile_key_ratio" (#2514). */
+  denominatorKey: string;
   description: string;
   sortOrder: string;
   intel: IntelForm;
@@ -185,6 +199,7 @@ export const emptyRuleForm = (signalKey = ""): RuleForm => ({
   ruleType: "profile_key_truthy",
   sourceKey: "",
   compareValue: "",
+  denominatorKey: "",
   description: "",
   sortOrder: "0",
   intel: { ...EMPTY_INTEL },
@@ -203,6 +218,7 @@ export const ruleFormFromRule = (rule: SignalRule): RuleForm => ({
   ruleType: rule.ruleType,
   sourceKey: rule.sourceKey,
   compareValue: rule.compareValue ?? "",
+  denominatorKey: rule.denominatorKey ?? "",
   description: rule.description ?? "",
   sortOrder: String(rule.sortOrder),
   intel: intelFromRow(rule),
@@ -233,6 +249,9 @@ export function ruleFormToBody(form: RuleForm, isEdit: boolean): Record<string, 
     // omitted entirely: PATCH preserves the stored compareValue when the key
     // is absent, and nulling it here would silently destroy it.
     ...(meta ? { compareValue: meta.compare ? form.compareValue.trim() || null : null } : {}),
+    // Same reasoning as compareValue above — only nulled for recognized types
+    // that don't carry a denominator, never for an unrecognized stored type.
+    ...(meta ? { denominatorKey: meta.denominator ? form.denominatorKey.trim() || null : null } : {}),
     description: form.description.trim() || null,
     groupId: form.groupId ? Number(form.groupId) : null,
     sortOrder: Number(form.sortOrder) || 0,
@@ -286,6 +305,10 @@ export function validateRuleForm(form: RuleForm, isEdit: boolean): string | null
   if (!form.sourceKey.trim()) {
     const label = ruleTypeMeta(form.ruleType)?.sourceKeyLabel ?? "source key";
     return `Enter the ${label.toLowerCase()} this rule reads.`;
+  }
+  const denomMeta = ruleTypeMeta(form.ruleType)?.denominator;
+  if (denomMeta && !form.denominatorKey.trim()) {
+    return `Enter the ${denomMeta.label.toLowerCase()} this rule divides by.`;
   }
   if (!isEdit && form.createNewSignal) {
     // In new-signal mode the "Signal" control shows "➕ Create a new signal…";

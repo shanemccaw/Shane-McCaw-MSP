@@ -97,7 +97,7 @@ router.get(
           `),
           db.execute(sql`
             SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-                   source_key AS "sourceKey", compare_value AS "compareValue",
+                   source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
                    description, sort_order AS "sortOrder", category, msp_id AS "mspId",
                    created_at AS "createdAt", updated_at AS "updatedAt"
             FROM signal_derivation_rules
@@ -117,7 +117,7 @@ router.get(
           `),
           db.execute(sql`
             SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-                   source_key AS "sourceKey", compare_value AS "compareValue",
+                   source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
                    description, sort_order AS "sortOrder", category, msp_id AS "mspId",
                    created_at AS "createdAt", updated_at AS "updatedAt"
             FROM signal_derivation_rules
