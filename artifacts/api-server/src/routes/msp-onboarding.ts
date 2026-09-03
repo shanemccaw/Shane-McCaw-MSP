@@ -7,6 +7,11 @@
  *     MSP operator generates a single-use, expiring customer onboarding link.
  *     Requires MSPOperator role or above.
  *
+ *   GET  /api/msp/onboarding/links
+ *     MSP operator lists the onboarding links they've generated for their own
+ *     MSP (Git #2674 — generate-link had no MSP-side visibility counterpart).
+ *     Requires MSPOperator role or above; scoped to the caller's own mspId.
+ *
  *   GET  /api/public/onboarding/link/:token
  *     Public — customer validates a link, gets MSP branding + pre-selected service info.
  *
@@ -35,7 +40,7 @@ import {
   mspRefreshTokensTable,
   usersTable,
 } from "@workspace/db";
-import { eq, and, isNull, gte, or } from "drizzle-orm";
+import { eq, and, isNull, gte, or, desc } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { requireRole } from "../middlewares/requireAuth.ts";
@@ -137,6 +142,48 @@ router.post(
     const link = `${baseUrl}/onboarding/${token}`;
 
     res.json({ token, link, expiresAt });
+  },
+);
+
+// ── GET /api/msp/onboarding/links ───────────────────────────────────────────────
+// Lists the caller's own MSP's onboarding links, most recent first, with a
+// computed status (used / expired / pending) — the DB only stores usedAt/
+// expiresAt, not a derived status column.
+
+router.get(
+  "/msp/onboarding/links",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response): Promise<void> => {
+    const mspId = req.user!.mspId;
+    if (!mspId) {
+      res.status(403).json({ error: "No MSP scope on this token" });
+      return;
+    }
+
+    const rows = await db
+      .select({
+        token: mspOnboardingLinksTable.token,
+        customerEmail: mspOnboardingLinksTable.customerEmail,
+        serviceId: mspOnboardingLinksTable.serviceId,
+        note: mspOnboardingLinksTable.note,
+        redirectPortalUrl: mspOnboardingLinksTable.redirectPortalUrl,
+        expiresAt: mspOnboardingLinksTable.expiresAt,
+        usedAt: mspOnboardingLinksTable.usedAt,
+        createdByUserId: mspOnboardingLinksTable.createdByUserId,
+        createdAt: mspOnboardingLinksTable.createdAt,
+      })
+      .from(mspOnboardingLinksTable)
+      .where(eq(mspOnboardingLinksTable.mspId, mspId))
+      .orderBy(desc(mspOnboardingLinksTable.createdAt))
+      .limit(200);
+
+    const now = new Date();
+    res.json(
+      rows.map((r) => ({
+        ...r,
+        status: r.usedAt ? "used" : r.expiresAt < now ? "expired" : "pending",
+      })),
+    );
   },
 );
 

@@ -70,7 +70,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { randomBytes, createHmac, timingSafeEqual } from "crypto";
 import { db, tenantsTable, consentInviteTokensTable, checkoutSessionsTable, servicesTable, mspsTable, type TenantConsentRecord, type TenantConsentMap } from "@workspace/db";
-import { eq, and, isNull, gte, desc, sql } from "drizzle-orm";
+import { eq, and, isNull, gte, desc, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
@@ -91,7 +91,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 /** Which key of tenants.consent a flow writes. */
-type ConsentKey = "graph" | "writeBack" | "sharepoint";
+export type ConsentKey = "graph" | "writeBack" | "sharepoint";
 
 /**
  * Stamp one grant onto one tenants row, merging into the rest of the column.
@@ -102,8 +102,8 @@ type ConsentKey = "graph" | "writeBack" | "sharepoint";
  * fallback now, and a grant that lands nowhere is exactly the kind of silent
  * hole this refactor must not introduce.
  */
-async function stampConsent(
-  where: ReturnType<typeof eq>,
+export async function stampConsent(
+  where: SQL,
   key: ConsentKey,
   patch: Partial<TenantConsentRecord>,
 ): Promise<boolean> {
@@ -164,7 +164,7 @@ async function resolveCallbackTenant(
  * through that flow. That is a real, reportable "never granted" state and must
  * never be inferred from a sibling key — the three grants are independent.
  */
-function consentRow(record: TenantConsentRecord | undefined) {
+export function consentRow(record: TenantConsentRecord | undefined) {
   if (!record) return null;
   return {
     consentStatus: record.status,
@@ -243,7 +243,7 @@ function getHostBase(req: Request): string {
  * THIS VALUE MUST BE REGISTERED in the Azure App Registration → Authentication → Redirect URIs.
  * Exact format: https://<your-domain>/api/consent/callback
  */
-function getCallbackUrl(req: Request): string {
+export function getCallbackUrl(req: Request): string {
   return `${getHostBase(req)}/api/consent/callback`;
 }
 
@@ -1159,7 +1159,7 @@ router.get("/admin/consent", requireAdmin, async (_req: Request, res: Response) 
 // Graph/SharePoint revoke mechanisms into ONE route with a consent-type
 // selector — this is that selector. Still flips exactly one key via
 // mergeConsentKey; the other two grants are always left untouched.
-const CONSENT_REVOKE_KEYS: ConsentKey[] = ["graph", "writeBack", "sharepoint"];
+export const CONSENT_REVOKE_KEYS: ConsentKey[] = ["graph", "writeBack", "sharepoint"];
 
 router.patch("/admin/consent/:tenantId/revoke", requireAdmin, async (req: Request, res: Response) => {
   const tenantId = req.params["tenantId"] as string;
