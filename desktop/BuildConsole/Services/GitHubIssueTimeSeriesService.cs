@@ -220,13 +220,27 @@ namespace BuildConsole.Services
         /// <see cref="IssueTimeSeries.HasEnoughData"/> == false when the scope is empty or its
         /// real history is too thin (see <see cref="MinSpanDays"/> / <see cref="MinActivityDays"/>).
         /// Static and pure so it's independently verifiable and reusable on any custom scope.
+        ///
+        /// Git #2739 — <paramref name="scopedIssues"/> is filtered down to real work
+        /// (<see cref="GitBoardIssueFilters.CountsAsRealWork"/>) BEFORE reducing into the daily
+        /// series: Epic/Feature placeholder issues and anything owned by an internal-tooling Epic
+        /// (#1202/#1095) never contribute an opened/closed day, so they can't skew the burndown,
+        /// open/close-rate, or ETA panels that consume this series' output. <paramref name="allIssuesForAncestry"/>
+        /// is the caller's full (ideally ALL-states) issue set used only to resolve the
+        /// internal-tooling-Epic ancestor climb for issues whose parent chain reaches outside
+        /// <paramref name="scopedIssues"/> itself; defaults to <paramref name="scopedIssues"/> when
+        /// the caller has nothing broader on hand.
         /// </summary>
-        public static IssueTimeSeries BuildSeries(IReadOnlyList<GitBoardIssue> scopedIssues, string scopeLabel, DateTime nowUtc)
+        public static IssueTimeSeries BuildSeries(IReadOnlyList<GitBoardIssue> scopedIssues, string scopeLabel, DateTime nowUtc,
+            IReadOnlyList<GitBoardIssue>? allIssuesForAncestry = null)
         {
+            var byNumber = GitBoardIssueFilters.BuildByNumberLookup(allIssuesForAncestry ?? scopedIssues);
+            var realWork = scopedIssues.Where(i => GitBoardIssueFilters.CountsAsRealWork(i, byNumber)).ToList();
+
             // Only issues with a real creation timestamp can contribute — createdAt is always
             // present on a real GitHub issue, so a null here means the field wasn't fetched; skip
             // defensively rather than inventing a date.
-            var withCreate = scopedIssues.Where(i => i.CreatedAt.HasValue).ToList();
+            var withCreate = realWork.Where(i => i.CreatedAt.HasValue).ToList();
             int total = withCreate.Count;
             if (total == 0)
                 return IssueTimeSeries.NotEnough(scopeLabel, "no real issues with creation timestamps in this scope yet.");
@@ -322,7 +336,7 @@ namespace BuildConsole.Services
                 return IssueTimeSeries.NotEnough(label, $"GitHub unreachable: {fetch.Error}");
 
             var scoped = fetch.Issues.Where(i => i.MilestoneNumber == milestoneNumber).ToList();
-            return BuildSeries(scoped, label, DateTime.UtcNow);
+            return BuildSeries(scoped, label, DateTime.UtcNow, fetch.Issues);
         }
 
         /// <summary>Real daily series scoped to one Epic's issue set — every transitive descendant
@@ -337,19 +351,24 @@ namespace BuildConsole.Services
             if (!fetch.Success)
                 return IssueTimeSeries.NotEnough(label, $"GitHub unreachable: {fetch.Error}");
 
-            var descendants = CollectDescendants(fetch.Issues, epicNumber);
-            return BuildSeries(descendants, label, DateTime.UtcNow);
+            var descendants = GitBoardIssueFilters.CollectDescendants(fetch.Issues, epicNumber);
+            return BuildSeries(descendants, label, DateTime.UtcNow, fetch.Issues);
         }
 
         /// <summary>The open Epics (Git #839 definition: top-level issue with ≥1 sub-issue) that
         /// belong to <paramref name="milestoneNumber"/>, so #2714 can produce one real ETA per Epic.
-        /// Empty on an unreachable GitHub (fail-closed — the caller sees no epics rather than a wrong set).</summary>
+        /// Empty on an unreachable GitHub (fail-closed — the caller sees no epics rather than a wrong set).
+        /// Git #2739 — excludes the internal-tooling Epics themselves (#1202/#1095): they're not
+        /// customer-facing product work, so Home dashboard shouldn't project an ETA card for them
+        /// (their own real descendant series is already filtered to empty by <see cref="BuildSeries"/>
+        /// anyway; excluding the row itself avoids rendering an empty/misleading card for it).</summary>
         public static async Task<List<GitBoardIssue>> GetOpenEpicsInMilestoneAsync(int milestoneNumber, bool forceRefresh = false)
         {
             var fetch = await GetAllIssuesAsync(forceRefresh);
             if (!fetch.Success) return new List<GitBoardIssue>();
             return fetch.Issues
-                .Where(i => i.IsEpic && !i.IsClosed && i.MilestoneNumber == milestoneNumber)
+                .Where(i => i.IsEpic && !i.IsClosed && i.MilestoneNumber == milestoneNumber
+                            && !GitBoardIssueFilters.InternalToolingEpicNumbers.Contains(i.Number))
                 .OrderBy(i => i.Number)
                 .ToList();
         }
@@ -401,46 +420,5 @@ namespace BuildConsole.Services
             return await GetMilestoneSeriesAsync(active.Number, active.Title, forceRefresh);
         }
 
-        /// <summary>
-        /// Every transitive descendant of <paramref name="rootNumber"/> present in
-        /// <paramref name="all"/> (children, grandchildren, …), excluding the root itself.
-        /// Builds the parent→children adjacency from BOTH real directions the board fetch
-        /// reconciles (<see cref="GitBoardIssue.ChildIssueNumbers"/> and each issue's
-        /// <see cref="GitBoardIssue.ParentNumber"/>), and BFS-walks it with a visited-set so a
-        /// cyclic mis-link can't loop forever.
-        /// </summary>
-        private static List<GitBoardIssue> CollectDescendants(IReadOnlyList<GitBoardIssue> all, int rootNumber)
-        {
-            var byNumber = all.GroupBy(i => i.Number).ToDictionary(g => g.Key, g => g.First());
-            var children = new Dictionary<int, HashSet<int>>();
-            void AddChild(int parent, int child)
-            {
-                if (parent == child) return;
-                if (!children.TryGetValue(parent, out var set)) { set = new HashSet<int>(); children[parent] = set; }
-                set.Add(child);
-            }
-            foreach (var issue in all)
-            {
-                if (issue.ParentNumber.HasValue) AddChild(issue.ParentNumber.Value, issue.Number);
-                foreach (var c in issue.ChildIssueNumbers) AddChild(issue.Number, c);
-            }
-
-            var result = new List<GitBoardIssue>();
-            var visited = new HashSet<int> { rootNumber };
-            var queue = new Queue<int>();
-            queue.Enqueue(rootNumber);
-            while (queue.Count > 0)
-            {
-                var cur = queue.Dequeue();
-                if (!children.TryGetValue(cur, out var kids)) continue;
-                foreach (var kid in kids)
-                {
-                    if (!visited.Add(kid)) continue;
-                    if (byNumber.TryGetValue(kid, out var kidIssue)) result.Add(kidIssue);
-                    queue.Enqueue(kid);
-                }
-            }
-            return result;
-        }
     }
 }

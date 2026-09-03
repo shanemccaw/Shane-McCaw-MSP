@@ -445,10 +445,21 @@ namespace BuildConsole.Services
         /// <summary><paramref name="trigger"/> — a short human tag for WHAT caused this board feed
         /// (e.g. "manual Git refresh", "board update"), carried straight into the focus-mode progress
         /// recalculation log so a stale-progress-bar report is diagnosable straight from the feed:
-        /// you can see the manual refresh arrive AND the old→new closed/total it produced.</summary>
+        /// you can see the manual refresh arrive AND the old→new closed/total it produced.
+        ///
+        /// <paramref name="allIssuesForCounts"/> — Git #2739. <paramref name="issues"/> is the
+        /// board's OPEN-only fetch (Git #839 — closed issues are deliberately never in it), so it
+        /// alone can never produce a real closed count. This is the caller's separately-fetched
+        /// ALL-states issue set (<see cref="GitHubIssueTimeSeriesService.GetAllIssuesAsync"/>, the
+        /// same real cached source the Home dashboard already uses), used ONLY to compute
+        /// <see cref="FocusMilestone.OpenIssues"/>/<see cref="FocusMilestone.ClosedIssues"/> as real,
+        /// placeholder-filtered counts instead of GitHub's raw native milestone counters — see
+        /// <see cref="GitBoardIssueFilters.CountsAsRealWork"/>. Null/empty (fetch unavailable) falls
+        /// back to the old native-counter behavior rather than showing a broken zero-closed count.</summary>
         public void UpdateBoardSnapshot(
             IReadOnlyList<GitBoardIssue> issues,
             IReadOnlyList<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos,
+            IReadOnlyList<GitBoardIssue>? allIssuesForCounts = null,
             string trigger = "board update")
         {
             _issues = issues?.ToList() ?? new();
@@ -465,13 +476,26 @@ namespace BuildConsole.Services
                     g => g.Key,
                     g => (g.First().ParentNumber, g.First().ParentMilestoneNumber));
 
+            // Git #2739 — real, placeholder-filtered open/closed counts per milestone (shared with
+            // the Git Board tree's own milestone-node badge via GitBoardIssueFilters — see its doc
+            // comment), when the caller could supply the real ALL-states issue set; otherwise fall
+            // back to GitHub's raw native open_issues/closed_issues (the pre-#2739 behavior,
+            // includes placeholders).
+            Dictionary<int, (int Open, int Closed)>? realCountsByMilestone = allIssuesForCounts != null && allIssuesForCounts.Count > 0
+                ? GitBoardIssueFilters.ComputeRealMilestoneCounts(allIssuesForCounts)
+                : null;
+
             _milestones = (milestoneInfos ?? new List<GitHubApiClient.GitHubMilestoneInfo>())
-                .Select(m => new FocusMilestone
+                .Select(m =>
                 {
-                    Number = m.Number,
-                    Title = m.Title,
-                    OpenIssues = m.OpenIssues,
-                    ClosedIssues = m.ClosedIssues
+                    if (realCountsByMilestone != null)
+                    {
+                        var (open, closed) = realCountsByMilestone.TryGetValue(m.Number, out var counts) ? counts : (0, 0);
+                        return new FocusMilestone { Number = m.Number, Title = m.Title, OpenIssues = open, ClosedIssues = closed };
+                    }
+                    // Fallback: no real ALL-states set available this pass — native counters (may
+                    // include Epic/Feature/internal-tooling placeholders, the pre-#2739 behavior).
+                    return new FocusMilestone { Number = m.Number, Title = m.Title, OpenIssues = m.OpenIssues, ClosedIssues = m.ClosedIssues };
                 })
                 .OrderBy(m => m.Title, StringComparer.OrdinalIgnoreCase)
                 .ToList();

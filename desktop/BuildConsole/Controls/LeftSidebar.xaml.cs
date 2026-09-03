@@ -2081,7 +2081,15 @@ namespace BuildConsole.Controls
             if (milestoneInfos != null && milestoneInfos.Count > 0)
             {
                 var activeM = milestoneInfos.FirstOrDefault(m => m.OpenIssues > 0) ?? milestoneInfos[0];
-                BuildConsole.Services.EncouragementService.Instance.UpdateMilestoneProgress(activeM.Title, activeM.OpenIssues, activeM.ClosedIssues);
+                // Git #2739 — the critter cheer's "N% of the way there" reuses the last cycle's
+                // real, placeholder-filtered counts (see GitBoardIssueFilters) when available, so
+                // its percentage doesn't drift from the milestone bar's; falls back to the raw
+                // native counts on a cold board (no prior ALL-states fetch yet).
+                var (cheerOpen, cheerClosed) = _lastAllIssuesForRollups != null
+                    && BuildConsole.Services.GitBoardIssueFilters.ComputeRealMilestoneCounts(_lastAllIssuesForRollups).TryGetValue(activeM.Number, out var cheerReal)
+                        ? cheerReal
+                        : (activeM.OpenIssues, activeM.ClosedIssues);
+                BuildConsole.Services.EncouragementService.Instance.UpdateMilestoneProgress(activeM.Title, cheerOpen, cheerClosed);
             }
 
             // Git #923 — milestoneInfos folded in (Number/Title/counts per
@@ -2096,9 +2104,19 @@ namespace BuildConsole.Controls
             if (!forceFresh && signature == _lastInProgressSignature) return;
             _lastInProgressSignature = signature;
 
+            // Git #2739 — the real, placeholder-filtered milestone progress bar AND the Git Board
+            // tree's own per-Epic transitive rollup pills both need the full ALL-states issue set
+            // (a real transitive leaf count needs to see closed descendants too, which the OPEN-only
+            // `issues` fetch below structurally can't provide). GetAllIssuesAsync() is the same real,
+            // cached (5-min TTL) fetch the Home dashboard already uses — reusing it here costs
+            // nothing extra on a cache hit. Best effort: an unreachable GitHub/no PAT just falls back
+            // to each consumer's own native-counter fallback, it doesn't block the OPEN-only render.
+            var allIssuesFetch = await BuildConsole.Services.GitHubIssueTimeSeriesService.GetAllIssuesAsync();
+            var allIssuesForRollups = allIssuesFetch.Success ? allIssuesFetch.Issues.ToList() : null;
+
             var buildSw = System.Diagnostics.Stopwatch.StartNew();
             await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
-            BuildBoardFromGitHub(issues, milestoneInfos!);
+            BuildBoardFromGitHub(issues, milestoneInfos!, allIssuesForRollups);
 
             // Git #1977 — a Focus Mode milestone that has reached 100% (all issues
             // closed) or been closed on GitHub drops off the OPEN-only board entirely
@@ -2128,9 +2146,12 @@ namespace BuildConsole.Controls
 
             // Feed Focus Mode the real issue→milestone map + milestone counts (this is the
             // OPEN board fetch; the closed-view BuildBoardFromGitHub call deliberately does NOT
-            // feed, so the filter map isn't overwritten with closed-only issues).
+            // feed, so the filter map isn't overwritten with closed-only issues). Git #2739 —
+            // allIssuesForRollups (fetched above, before BuildBoardFromGitHub) is reused here so
+            // the milestone progress bar's real closed count comes from the same ALL-states set.
             BuildConsole.Services.FocusModeService.Instance.UpdateBoardSnapshot(
                 issues, milestoneInfos!,
+                allIssuesForCounts: allIssuesForRollups,
                 trigger: forceFresh ? "manual Git refresh" : "board update");
             await RenderIssuesTreeAsync(_currentFilter == "Done" ? "All" : _currentFilter);
             buildSw.Stop();
@@ -2445,6 +2466,11 @@ namespace BuildConsole.Controls
         /// <summary>Git #844 — the last-fetched real open issues, kept around so "Assign to Epic..." can build its picker (real open issues that ARE epics) from data already in memory instead of a second GitHub round-trip.</summary>
         private List<GitBoardIssue> _lastBoardIssues = new();
         private List<GitHubApiClient.GitHubMilestoneInfo> _lastMilestoneInfos = new();
+        /// <summary>Git #2739 — the last real ALL-states (open+closed) issue fetch, used ONLY to
+        /// compute the Git Board tree's real transitive Epic/Feature rollup pills
+        /// (<see cref="GitBoardIssueFilters.ComputeTransitiveLeafRollup"/>). Null when that fetch
+        /// hasn't succeeded yet (falls back to GitHub's native one-level subIssuesSummary counts).</summary>
+        private List<GitBoardIssue>? _lastAllIssuesForRollups;
 
         /// <summary>Git #921 (Epic #803) — the board's own last real open-issue fetch, so a detail tab can resolve a clicked/linked issue number (its title, epic-ness, To-Do status, linked epic) without a second GitHub round-trip. Read-only view; mutation stays inside BuildBoardFromGitHub.</summary>
         public IReadOnlyList<GitBoardIssue> CurrentBoardIssues => _lastBoardIssues;
@@ -2513,16 +2539,37 @@ namespace BuildConsole.Controls
                 PopulateChatsTree();
         }
 
+        /// <summary>
+        /// Git #2739 — the real rollup for one Epic/Feature node's tree pill / detail tab. For a
+        /// real placeholder node (Epic or Feature — <see cref="GitBoardIssueFilters.IsPlaceholder"/>)
+        /// with the ALL-states set available, this is the transitively-computed real leaf-issue
+        /// rollup (<see cref="GitBoardIssueFilters.ComputeTransitiveLeafRollup"/>) — the full
+        /// Epic→Feature→Issue tree, not just direct sub-issues. Otherwise (a plain issue, or the
+        /// ALL-states fetch hasn't succeeded yet) falls back to GitHub's native one-level
+        /// subIssuesSummary fields, same as before this fix.
+        /// </summary>
+        private (int Total, int Completed, int Percent) ResolveRollup(GitBoardIssue it)
+        {
+            if (_lastAllIssuesForRollups != null && GitBoardIssueFilters.IsPlaceholder(it))
+            {
+                var (total, completed) = GitBoardIssueFilters.ComputeTransitiveLeafRollup(it, _lastAllIssuesForRollups);
+                int percent = total == 0 ? 0 : (completed * 100 / total);
+                return (total, completed, percent);
+            }
+            return (it.SubIssueCount, it.SubIssueCompleted, it.SubIssuePercent);
+        }
+
         /// <summary>Git #921 (Epic #803) — map a real board issue number to the same <see cref="GitIssue"/> display shape the tree nodes carry (identical mapping to MapBucket), so MainWindow's tab-to-tab navigation resolves numbers to detail tabs from cached data. Null when the number isn't on the current OPEN board (MainWindow then falls back to a live GetIssueAsync fetch).</summary>
         public GitIssue? BuildDetailIssue(int number)
         {
             var it = _lastBoardIssues.FirstOrDefault(i => i.Number == number);
             if (it == null) return null;
             var issueInTree = _milestones.SelectMany(m => m.Epics).SelectMany(e => e.Issues).FirstOrDefault(i => i.IssueNumber == number);
+            var (rollupTotal, rollupCompleted, rollupPercent) = ResolveRollup(it);
             return new GitIssue
             {
                 IssueNumber = it.Number,
-                Title = it.IsEpic ? $"{it.Title}  ({it.SubIssueCount} sub)" : it.Title,
+                Title = it.IsEpic ? $"{it.Title}  ({rollupTotal} sub)" : it.Title,
                 RawTitle = it.Title,
                 Priority = it.IsTodo ? "HIGH" : "MED",
                 Status = it.IsClosed ? "CLOSED" : "OPEN",
@@ -2532,9 +2579,9 @@ namespace BuildConsole.Controls
                 IsEpic = it.IsEpic,
                 HasParentEpic = it.ParentNumber != null,
                 ParentNumber = it.ParentNumber,
-                SubIssueCount = it.SubIssueCount,
-                SubIssueCompleted = it.SubIssueCompleted,
-                SubIssuePercent = it.SubIssuePercent,
+                SubIssueCount = rollupTotal,
+                SubIssueCompleted = rollupCompleted,
+                SubIssuePercent = rollupPercent,
                 IsBlocked = issueInTree?.IsBlocked ?? it.IsBlocked,
                 IsInFlight = it.HasInFlightLabel,
                 BlockedByNumber = issueInTree?.BlockedByNumber,
@@ -2543,12 +2590,28 @@ namespace BuildConsole.Controls
             };
         }
 
-        private void BuildBoardFromGitHub(List<GitBoardIssue> issues, List<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos)
+        private void BuildBoardFromGitHub(List<GitBoardIssue> issues, List<GitHubApiClient.GitHubMilestoneInfo> milestoneInfos,
+            List<GitBoardIssue>? allIssuesForRollups = null)
         {
             _lastBoardIssues = issues;
+            if (allIssuesForRollups != null) _lastAllIssuesForRollups = allIssuesForRollups;
             _milestones.Clear();
 
             var milestoneInfoByNumber = milestoneInfos.ToDictionary(mi => mi.Number);
+
+            // Git #2739 — real, placeholder-filtered open/closed counts per milestone (the SAME
+            // shared computation FocusModeService's progress bar uses), so the Git Board's own
+            // milestone-node badge ("947/1430 · 66%") never becomes a second, inconsistent source
+            // of the same wrong (native, placeholder-inflated) number. Null when the ALL-states
+            // fetch hasn't succeeded yet — falls back to GitHub's raw native counts below, same as
+            // before this fix.
+            var realMilestoneCounts = _lastAllIssuesForRollups != null
+                ? GitBoardIssueFilters.ComputeRealMilestoneCounts(_lastAllIssuesForRollups)
+                : null;
+            (int Open, int Closed) ResolveMilestoneCounts(GitHubApiClient.GitHubMilestoneInfo mi) =>
+                realMilestoneCounts != null && realMilestoneCounts.TryGetValue(mi.Number, out var real)
+                    ? real
+                    : (mi.OpenIssues, mi.ClosedIssues);
 
             static string? DeriveSqlPath(string body)
             {
@@ -2570,10 +2633,11 @@ namespace BuildConsole.Controls
                     // inside the enrich throttle window and only came back on Shane's
                     // next manual refresh (which resets that throttle).
                     bool cachedBlocked = _blockedStatusCache.TryGetValue(it.Number, out var cachedBlk);
+                    var (rollupTotal, rollupCompleted, rollupPercent) = ResolveRollup(it);
                     epic.Issues.Add(new GitIssue
                     {
                         IssueNumber = it.Number,
-                        Title = it.IsEpic ? $"{it.Title}  ({it.SubIssueCount} sub)" : it.Title,
+                        Title = it.IsEpic ? $"{it.Title}  ({rollupTotal} sub)" : it.Title,
                         RawTitle = it.Title,
                         Priority = it.IsTodo ? "HIGH" : "MED",
                         Status = it.IsClosed ? "CLOSED" : "OPEN",
@@ -2589,9 +2653,9 @@ namespace BuildConsole.Controls
                         IsEpic = it.IsEpic,
                         HasParentEpic = it.ParentNumber != null,
                         ParentNumber = it.ParentNumber,
-                        SubIssueCount = it.SubIssueCount,
-                        SubIssueCompleted = it.SubIssueCompleted,
-                        SubIssuePercent = it.SubIssuePercent,
+                        SubIssueCount = rollupTotal,
+                        SubIssueCompleted = rollupCompleted,
+                        SubIssuePercent = rollupPercent,
                     });
                 }
                 return epic;
@@ -2637,13 +2701,14 @@ namespace BuildConsole.Controls
 
                 if (info != null)
                 {
-                    milestone.TotalCount = info.OpenIssues + info.ClosedIssues;
-                    milestone.CompletedCount = info.ClosedIssues;
+                    var (realOpen, realClosed) = ResolveMilestoneCounts(info);
+                    milestone.TotalCount = realOpen + realClosed;
+                    milestone.CompletedCount = realClosed;
                     milestone.HasRealCounts = true;
                     // Git #921 — carry the real number + raw open/closed counts so the milestone detail tab shows them as separate pills.
                     milestone.GithubNumber = info.Number;
-                    milestone.OpenIssues = info.OpenIssues;
-                    milestone.ClosedIssues = info.ClosedIssues;
+                    milestone.OpenIssues = realOpen;
+                    milestone.ClosedIssues = realClosed;
                     milestone.State = info.State;
                     seenMilestoneNumbers.Add(info.Number);
                 }
@@ -2667,16 +2732,17 @@ namespace BuildConsole.Controls
             {
                 if (seenMilestoneNumbers.Contains(mi.Number)) continue;
                 if (mi.IsClosed && !_boardShowsClosed) continue;
+                var (realOpen, realClosed) = ResolveMilestoneCounts(mi);
                 _milestones.Add(new GitMilestone
                 {
                     Title = mi.Title,
-                    TotalCount = mi.OpenIssues + mi.ClosedIssues,
-                    CompletedCount = mi.ClosedIssues,
+                    TotalCount = realOpen + realClosed,
+                    CompletedCount = realClosed,
                     HasRealCounts = true,
                     // Git #921 — same real number + raw counts for milestones with no open issues (they still get a clickable tab).
                     GithubNumber = mi.Number,
-                    OpenIssues = mi.OpenIssues,
-                    ClosedIssues = mi.ClosedIssues,
+                    OpenIssues = realOpen,
+                    ClosedIssues = realClosed,
                     State = mi.State,
                 });
             }
