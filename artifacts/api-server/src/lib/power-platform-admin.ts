@@ -572,7 +572,18 @@ export async function pollPowerPlatformEnrollmentDeviceCode(
   };
 
   if (res.ok && data.access_token) {
-    await registerManagementApp(data.access_token, managementAppClientId);
+    // The admin token was acquired successfully — a failure from here on is the
+    // PUT itself (network, or BAP rejecting this admin), not a device-code
+    // problem. Caught here rather than left to propagate: the caller (the
+    // /public/flow/power-platform-enrollment-poll route) treats every outcome
+    // of this function as a resolved result, never a thrown error, matching
+    // every other poll route in consent.ts.
+    try {
+      await registerManagementApp(data.access_token, managementAppClientId);
+    } catch (err) {
+      log.error({ err, aadTenantId, managementAppClientId }, "Power Platform enrolment: admin token acquired but registration PUT failed");
+      return { status: "error", message: err instanceof Error ? err.message : String(err) };
+    }
     const enrolledByUpn = bestEffortUpnFromAccessToken(data.access_token);
     log.info({ aadTenantId, managementAppClientId, enrolledByUpn }, "Power Platform enrolment: management app registered via device code");
     return { status: "enrolled", enrolledByUpn, clientId: managementAppClientId };
