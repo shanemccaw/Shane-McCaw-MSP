@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { db, mspChangeRequestsTable, portalChangeControlPolicyTable, tenantsTable } from "@workspace/db";
+import { db, crApprovalsTable, mspChangeRequestsTable, portalChangeControlPolicyTable, tenantsTable } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 import { z } from "zod";
 import { requireAuth, requireRole } from "../middlewares/requireAuth.ts";
@@ -11,7 +11,8 @@ import { CHANGE_REQUEST_CATEGORIES, workloadForCategory } from "../lib/portal-ch
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
 import { maintenanceCoverageForBookedSpan } from "../lib/portal-change-maintenance-store.ts";
 import { collidingChangeRequestForSubmit } from "../lib/portal-change-collision-store.ts";
-import { loadApprovalPolicy, materializeApprovalsForChange } from "../lib/portal-change-approvals-store.ts";
+import { loadApprovalPolicy, materializeApprovalsForChange, NO_POLICY } from "../lib/portal-change-approvals-store.ts";
+import { requiredStages, summarizeApprovals } from "../lib/portal-change-approvals.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import {
   addAttachment,
@@ -372,6 +373,59 @@ router.patch(
       if (!existing) {
         apiError(res, 404, ApiErrorCode.NOT_FOUND, "Change request not found");
         return;
+      }
+
+      // #2664 — the real approval ledger (#1496) is populated correctly for every
+      // CR raised through this file's own POST route, but until this fix nothing
+      // on the MSP side ever READ it: an operator could drive a CR through
+      // scheduled/in_progress/completed via this generic PATCH with no genuine
+      // approval on record. Gate the same three forward transitions the customer
+      // portal's own approve flow enforces (`routes/portal-change-control.ts`
+      // `toWire()`), reusing its exact `requiredStages`/`summarizeApprovals`
+      // derivation rather than inventing a new one. `rejected` and `rolled_back`
+      // are intentionally NOT gated here: rejecting never required an approval to
+      // begin with, and a rollback is reversing a change that already had to pass
+      // this gate to reach `completed` in the first place.
+      const APPROVAL_GATED_STATUSES = new Set(["scheduled", "in_progress", "completed"]);
+      if (
+        parsedBody.data.status !== undefined &&
+        parsedBody.data.status !== existing.status &&
+        APPROVAL_GATED_STATUSES.has(parsedBody.data.status)
+      ) {
+        const approvalRows = await db
+          .select({
+            stage: crApprovalsTable.stage,
+            decision: crApprovalsTable.decision,
+            dueAt: crApprovalsTable.dueAt,
+          })
+          .from(crApprovalsTable)
+          .where(eq(crApprovalsTable.changeRequestId, dbId));
+
+        // Policy (`portal_change_control_policy.required_signatures`) is keyed by
+        // `tenants.id`, not the CR's free-text `tenantId` — resolve it the same
+        // way the retainer-work hook below already does. A tenant with no
+        // matching row (or no policy row) falls back to the risk-derived stage
+        // count, exactly like every other caller of `loadApprovalPolicy`.
+        const [tenantRow] = await db
+          .select({ id: tenantsTable.id })
+          .from(tenantsTable)
+          .where(and(eq(tenantsTable.mspId, mspId), eq(tenantsTable.tenantId, existing.tenantId)))
+          .limit(1);
+        const policy = tenantRow ? await loadApprovalPolicy(tenantRow.id) : NO_POLICY;
+
+        const required = requiredStages(existing.changeClass as never, existing.riskLevel as never, policy.requiredSignatures);
+        const approvalState = summarizeApprovals(approvalRows, required, new Date());
+
+        if (!approvalState.complete) {
+          apiError(
+            res,
+            409,
+            ApiErrorCode.CONFLICT,
+            `This change has not received the approval(s) required before it may move to "${parsedBody.data.status}".`,
+            { requiredStages: required, approved: approvalState.approved, pending: approvalState.pending, rejected: approvalState.rejected },
+          );
+          return;
+        }
       }
 
       // Update fields
