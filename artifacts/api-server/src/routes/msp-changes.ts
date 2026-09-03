@@ -48,6 +48,13 @@ const createChangeRequestSchema = z.object({
   // #1500 — the ONLY way through an active freeze window: a written
   // justification, submitted with the change itself.
   freezeException: z.object({ justification: z.string().trim().min(1).max(2_000) }).optional(),
+  // #1773 — optional. Set this to `pack:<packKey>` or `sop:<sopId>` when this
+  // CR is being raised specifically to authorize one automated config-pack/SOP
+  // run (e.g. before handing its id to execute_write_pack) — the write gate
+  // then refuses to let it authorize anything else. Omitted for a general,
+  // non-catalog change request, which keeps #1497's original tenant-granularity
+  // authorization unchanged.
+  authorizedTargetKey: z.string().trim().min(1).optional(),
 }).refine(
   (d) => !(d.scheduledStart && d.scheduledEnd) || new Date(d.scheduledEnd).getTime() > new Date(d.scheduledStart).getTime(),
   { message: "Scheduled end must be after scheduled start", path: ["scheduledEnd"] },
@@ -208,6 +215,7 @@ router.post(
           preChangeSnapshot: parsedBody.data.preChangeSnapshot,
           proposedPayload: parsedBody.data.proposedPayload,
           rollbackScriptSnippet: parsedBody.data.rollbackScriptSnippet,
+          authorizedTargetKey: parsedBody.data.authorizedTargetKey ?? null,
         })
         .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
 

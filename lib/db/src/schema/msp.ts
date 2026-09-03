@@ -4313,6 +4313,27 @@ export const mspChangeRequestsTable = pgTable("msp_change_requests", {
    */
   executorRunId: integer("executor_run_id"),
   /**
+   * #1773 — closes the gap #1497 knowingly left open: the write gate authorized
+   * on TENANT alone ("an approved CR for this tenant"), never checking that the
+   * CR actually describes the change being executed. An approved trivial CR
+   * could authorize an unrelated high-impact config-pack/SOP run against the
+   * same tenant.
+   *
+   * When set, this is the `pack:<packKey>` or `sop:<sopId>` this CR was scoped
+   * to at raise time, and `claimChangeRequestForWrite` requires an exact match
+   * against what the caller is actually about to execute — a scoped CR can
+   * never authorize a different target. NULL preserves #1497's original
+   * tenant-granularity model exactly (a CR raised for a general, non-catalog
+   * change was never meant to be pinned to one pack/SOP), so every pre-existing
+   * CR and every general MSP-console-raised CR is unaffected. Populated today
+   * by `raisePolicyEnactmentChangeRequest` (#1550, always exactly one SOP) and
+   * optionally by the MSP console create route, when an operator deliberately
+   * scopes a CR to the specific automated run it is meant to greenlight.
+   * Additive nullable column; see
+   * `lib/db/migrations/manual/2026-09-02-cr-authorized-target-key-1773.sql`.
+   */
+  authorizedTargetKey: text("authorized_target_key"),
+  /**
    * "Raised from" — the finding this change request came out of, e.g.
    * "Governance · External Sharing Drift" (the design's `linked` field).
    *

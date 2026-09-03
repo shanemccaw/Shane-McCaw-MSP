@@ -70,4 +70,65 @@ describe("evaluateChangeRequestAuthorization — fail-closed CR gate (#1497)", (
     });
     expect(v).toEqual({ authorized: false, reason: "change request is already executing under run 7" });
   });
+
+  // #1773 — the CR gate authorized on tenant alone; it never verified the CR
+  // actually describes the change being executed. A CR scoped to one target
+  // at raise time must not authorize a different one.
+  describe("target-key scoping (#1773)", () => {
+    it("authorizes an unscoped CR (authorizedTargetKey unset) against any requested target", () => {
+      expect(
+        evaluateChangeRequestAuthorization({ ...approvedUnconsumed, requestedTargetKey: "pack:high-impact-v1" }),
+      ).toEqual({ authorized: true });
+    });
+
+    it("authorizes an unscoped CR even when the caller requests no target at all", () => {
+      expect(evaluateChangeRequestAuthorization(approvedUnconsumed)).toEqual({ authorized: true });
+    });
+
+    it("authorizes a scoped CR when the requested target matches exactly", () => {
+      expect(
+        evaluateChangeRequestAuthorization({
+          ...approvedUnconsumed,
+          authorizedTargetKey: "pack:quickstart-v1",
+          requestedTargetKey: "pack:quickstart-v1",
+        }),
+      ).toEqual({ authorized: true });
+    });
+
+    it("refuses a scoped CR being used to authorize a DIFFERENT pack — the reported #1773 gap", () => {
+      const v = evaluateChangeRequestAuthorization({
+        ...approvedUnconsumed,
+        authorizedTargetKey: "pack:low-risk-exchange-note-v1",
+        requestedTargetKey: "pack:high-impact-conditional-access-v1",
+      });
+      expect(v).toEqual({
+        authorized: false,
+        reason: "change request is scoped to 'pack:low-risk-exchange-note-v1', not 'pack:high-impact-conditional-access-v1'",
+      });
+    });
+
+    it("refuses a scoped CR when the caller requests no target at all", () => {
+      const v = evaluateChangeRequestAuthorization({
+        ...approvedUnconsumed,
+        authorizedTargetKey: "sop:offboard-user-v2",
+      });
+      expect(v).toEqual({
+        authorized: false,
+        reason: "change request is scoped to 'sop:offboard-user-v2', not '(unscoped)'",
+      });
+    });
+
+    it("scoping is checked even when every other fact is otherwise authorized", () => {
+      // Confirms this check does not silently short-circuit any earlier branch.
+      const v = evaluateChangeRequestAuthorization({
+        found: true,
+        status: "scheduled",
+        executorRunId: null,
+        approvalComplete: true,
+        authorizedTargetKey: "pack:a",
+        requestedTargetKey: "pack:b",
+      });
+      expect(v.authorized).toBe(false);
+    });
+  });
 });
