@@ -429,6 +429,108 @@ export async function listDeskTicketsForContact(contactId: string, mspId?: numbe
   return rows.filter((r) => r.id != null).map(mapTicketSummary);
 }
 
+// ── MSP-operator reads (Git #2672, part of #2570) ───────────────────────────
+// Powers the MSP Console's operator-side view of the exact same tickets the
+// portal-customer-requests.ts routes above serve to customers, plus every
+// escalateToAdmin()-queued chat escalation (support-chat.ts) — both write
+// through the identical zoho_desk_create_ticket job into the SAME department,
+// so there is no separate "escalations" store to query; the operator's
+// request list IS the escalation queue. Unlike the customer-scoped reads
+// above, these are NOT scoped to one Contact — they read every ticket under
+// the caller's MSP's own Zoho Desk org (the org/department the caller's
+// mspId resolves to via orgHeader()), which is the real ownership boundary
+// here: a ticket id from a different MSP's Zoho org simply doesn't exist when
+// queried through this MSP's own org header, so cross-MSP access 404s
+// naturally rather than needing a separate ownership column check.
+
+export interface ListDeskTicketsForOrgResult {
+  tickets: CustomerTicketSummary[];
+  count: number;
+}
+
+/**
+ * Lists every ticket under the caller's MSP's Zoho Desk org (optionally
+ * scoped to `ZOHO_DESK_DEFAULT_DEPARTMENT_ID` when one is configured, same
+ * department every write in this file targets), newest-modified first.
+ * `GET /api/v1/tickets`.
+ */
+export async function listDeskTicketsForOrg(
+  mspId: number | undefined,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<ListDeskTicketsForOrgResult> {
+  const headers = await orgHeader(mspId);
+  const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+  const offset = Math.max(opts.offset ?? 0, 0);
+  const query: Record<string, string | number> = { limit, from: offset, sortBy: "-modifiedTime" };
+  const departmentId = process.env.ZOHO_DESK_DEFAULT_DEPARTMENT_ID;
+  if (departmentId) query.departmentId = departmentId;
+
+  const body = (await zohoGet(`${ZOHO_DESK_API_BASE_PATH}/tickets`, query, mspId, headers, ZOHO_DESK_API_HOST)) as {
+    data?: Array<Record<string, unknown>>;
+    count?: number;
+  };
+  const rows = Array.isArray(body.data) ? body.data : [];
+  return {
+    tickets: rows.filter((r) => r.id != null).map(mapTicketSummary),
+    count: typeof body.count === "number" ? body.count : rows.length,
+  };
+}
+
+/**
+ * Fetches one ticket by id, scoped to the caller's MSP's own Zoho org — no
+ * Contact ownership check (operators can see every ticket in their org).
+ * Returns null when the ticket doesn't exist in this org (also naturally
+ * covers "exists in a different MSP's org").
+ */
+export async function getDeskTicketById(ticketId: string, mspId?: number): Promise<CustomerTicketSummary | null> {
+  const record = await getDeskTicket(ticketId, mspId);
+  return record ? mapTicketSummary(record) : null;
+}
+
+/**
+ * Same conversation timeline as getDeskTicketThread(), but WITHOUT filtering
+ * out private agent notes — an operator is allowed to see the internal notes
+ * a customer never should. Ownership (this MSP's own org) is enforced the
+ * same way as getDeskTicketById() above: call that first and 404 on null.
+ */
+export async function getDeskTicketThreadForOperator(ticketId: string, mspId?: number): Promise<CustomerTicketThreadEntry[]> {
+  const headers = await orgHeader(mspId);
+  const body = (await zohoGet(
+    `${ZOHO_DESK_API_BASE_PATH}/tickets/${encodeURIComponent(ticketId)}/conversations`,
+    undefined,
+    mspId,
+    headers,
+    ZOHO_DESK_API_HOST,
+  )) as { data?: Array<Record<string, unknown>> };
+  const rows = Array.isArray(body.data) ? body.data : [];
+
+  const entries: CustomerTicketThreadEntry[] = [];
+  for (const raw of rows) {
+    if (raw.id == null) continue;
+    const isComment = raw.type === "comment" || raw.commenter != null || raw.commentType != null;
+    const directionRaw = toStr(raw.direction)?.toLowerCase();
+    const direction = directionRaw === "in" || directionRaw === "out" ? directionRaw : null;
+    const isPublic = isComment ? raw.isPublic === true : true;
+    const content = toStr(raw.summary) ?? toStr(raw.content) ?? toStr(raw.plainText) ?? "";
+    const author =
+      toStr((raw.author as Record<string, unknown> | undefined)?.name) ??
+      toStr((raw.commenter as Record<string, unknown> | undefined)?.name) ??
+      toStr(raw.fromEmailAddress) ??
+      null;
+    entries.push({
+      id: String(raw.id),
+      kind: isComment ? "comment" : "thread",
+      direction,
+      author,
+      isPublic,
+      content,
+      createdTime: toStr(raw.createdTime) ?? toStr(raw.commentedTime),
+    });
+  }
+  entries.sort((a, b) => (a.createdTime ?? "").localeCompare(b.createdTime ?? ""));
+  return entries;
+}
+
 /**
  * Fetches one ticket ONLY if it belongs to the given contact. Returns:
  *   - the summary when the ticket exists and its contactId matches,
