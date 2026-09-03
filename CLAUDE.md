@@ -465,6 +465,30 @@ those were never in scope for this guard, and asking permission for them would j
 be noise. It exists solely for the case where a redirect would quietly widen scope
 onto ground that's supposed to be closed to exactly that kind of change.
 
+## ShaneBuilder UI screenshots — check before building any UI (real reference, 2026-09-03)
+
+Real reference screenshots for ShaneBuilder's App Shell v2 rebuild live at
+`desktop/ShaneBuilder/wpf-handoff/screenshots/design-handoff/` — one real screenshot per
+panel/surface: Shell Skeleton v2 (Compact default, Home tab), App Shell v2 Color Palette,
+Batter Up (Batter Up / AI Batter Up / AI For Shane lanes), Git Health Map (Atlas, Git Panel,
+Health Findings, Claude Handoff views), Git Map (epic view, milestone view), Git Panel
+Redesign, Build Watch, Shot Vault (wall default, text index), Build Chain Map, Feature Index
+(index view), Claude Floaty (SQL Runner / JSON / PowerShell / File Browser / Terminal tabs,
+01 default), FilterStudio, MilestoneDoc, BuildConsole Shell (Home default), Shell Skeleton v1.
+
+**Before building or modifying any ShaneBuilder UI surface, check this folder for a matching
+screenshot first.** Match filename to the panel/feature you're building (loosely — e.g.
+`Batter Up - Batter Up lane.png` for the Batter Up lane). If a real screenshot exists, build
+against it for spacing/color/layout/copy fidelity — same discipline this repo already applies
+to `.dc.html` exports (read the real reference, don't approximate from prose alone). If none
+exists for what you're building, say so and build against the written spec (README/issue body)
+alone — don't assume a screenshot exists that isn't there.
+
+This exists because real visual drift accumulated across many small, individually-correct
+builds: each shipped clean, working code, verified by build + code review, with no shared
+visual reference to check spacing/density/hierarchy against — so functionally-correct panels
+landed looking inconsistent with each other and with the actual design intent.
+
 ## Build-prompt header convention (queued builds)
 
 ### `--title` must be a LEAF issue, never an epic
