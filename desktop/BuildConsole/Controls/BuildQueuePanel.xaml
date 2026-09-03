@@ -226,7 +226,18 @@
                                    Visibility="Collapsed"
                                    MouseLeftButtonDown="BuildSetRollupClear_Click"/>
                     </DockPanel>
-                    <StackPanel x:Name="BuildSetRollupList"/>
+                    <!-- Git #2179 — Shane: a wide/active queue can have 15-20+ concurrent build
+                         sets, and this section was unbounded (Dock=Top, no MaxHeight), so it grew
+                         tall enough to push the real queue graph below it clean off the visible
+                         panel — "blocking my view of the actual build queue and cannot manage the
+                         queue items." Cap it and let IT scroll instead of the whole panel, so the
+                         queue graph below always stays reachable regardless of how many build
+                         sets are active. -->
+                    <ScrollViewer MaxHeight="180"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled">
+                        <StackPanel x:Name="BuildSetRollupList"/>
+                    </ScrollViewer>
                 </StackPanel>
             </Border>
 
