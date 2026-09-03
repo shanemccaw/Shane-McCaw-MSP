@@ -876,10 +876,44 @@ export async function rollbackExecution(auditLogId: number): Promise<RollbackExe
     return { ...result, rollbackAuditLogId: result.auditLogId };
   }
 
+  // Special case — group membership add/remove: action.add-group-member captures
+  // "memberId" (its own required variable) but its real reverse,
+  // microrem.remove-stale-group-member, requires "userId" for the same
+  // directoryObject id — same principal, different variable name per template.
+  // Alias it across both names before replay so the reverse call's {{userId}}
+  // (or {{memberId}}) placeholder actually resolves instead of coming back
+  // missingVariables/400. See #2703.
+  if (
+    (template.templateId === "action.add-group-member" && template.reverseTemplateId === "microrem.remove-stale-group-member") ||
+    (template.templateId === "microrem.remove-stale-group-member" && template.reverseTemplateId === "action.add-group-member")
+  ) {
+    const principalId = requestVariables["memberId"] ?? requestVariables["userId"];
+    if (typeof principalId !== "string" || !principalId) {
+      throw new Error(`Audit log entry ${auditLogId} is missing the member id needed to roll back group membership`);
+    }
+    requestVariables["memberId"] = principalId;
+    requestVariables["userId"] = principalId;
+    const result = await runBaselineTemplateAgainstTenant(
+      template.reverseTemplateId, tenantId, customerId, requestVariables, "launch_control_rollback",
+    );
+    return { ...result, rollbackAuditLogId: result.auditLogId };
+  }
+
   // Special case — Teams remove, when rolling back an add: teams.remove_member
   // requires the Teams CONVERSATION MEMBERSHIP id, not the memberId (user id)
   // captured for the add — that id can't be pulled from requestVariables
   // alone and requires a live read immediately before the reverse call.
+  //
+  // NOTE (#2703 / #2772): teams.add_member/teams.remove_member are NOT live
+  // baseline_action_templates rows — no Teams conversation-member template
+  // exists in the current 102-row catalog under any naming, confirmed against
+  // local DATABASE_URL. This branch is therefore currently unreachable dead
+  // code (no execution can ever produce an audit log row with this
+  // templateId), left in place as the correct implementation pending #2772's
+  // resolution (add real action.add-team-member/action.remove-team-member
+  // templates, or remove this branch if Teams membership actions are dropped
+  // from the catalog). Do not re-point these ids without a live template to
+  // back them.
   if (template.templateId === "teams.add_member" && template.reverseTemplateId === "teams.remove_member") {
     const teamId = requestVariables["teamId"];
     const memberId = requestVariables["memberId"];
