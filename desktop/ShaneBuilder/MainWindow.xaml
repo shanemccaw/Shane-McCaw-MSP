@@ -2708,8 +2708,57 @@
                                                    Foreground="{StaticResource Brush.Text.Muted}"/>
                                     </StackPanel>
                                 </Border>
+
+                                <!-- Git #2281/#2286 — Build Matrix chip. Toggles the 8-slot
+                                     agent drawer below (MatrixDrawer). No fixture slots —
+                                     RenderMatrixDrawer derives every slot from real, currently
+                                     "Running" _queueItems rows. -->
+                                <Border x:Name="BtnMatrixChip" Margin="6,0,0,0"
+                                        Background="{StaticResource Brush.Bg.Chip}" BorderBrush="{StaticResource Brush.Border.Default}"
+                                        BorderThickness="1" CornerRadius="5" Padding="7,3" Cursor="Hand"
+                                        ToolTip="Build Matrix — 8 agent slots"
+                                        MouseLeftButtonDown="BtnMatrixChip_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#xE80F;" Margin="0,0,4,0" VerticalAlignment="Center"
+                                                   FontFamily="Segoe MDL2 Assets" FontSize="9"
+                                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                                        <TextBlock Text="Matrix" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                   FontWeight="{StaticResource FontWeight.Bold}"
+                                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                                        <TextBlock x:Name="MatrixChipCount" Margin="5,0,0,0" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10.5}"
+                                                   FontWeight="{StaticResource FontWeight.Bold}"
+                                                   Foreground="{StaticResource Brush.Text.Dim}"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </DockPanel>
+                    </Border>
+
+                    <!-- Git #2281/#2286 — Build Matrix drawer. Collapsed (Visibility.Collapsed)
+                         until the Matrix chip above is clicked; RenderMatrixDrawer() fills
+                         MatrixSlotsHost from real running builds every time RenderQueue runs.
+                         Sits above the queue list per the design doc ("Lives inside the Build
+                         Queue... drawer above the queue list"). -->
+                    <Border x:Name="MatrixDrawer" DockPanel.Dock="Top" Visibility="Collapsed"
+                            BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}"
+                            Background="{StaticResource Brush.Bg.Panel}" Padding="10,8">
+                        <StackPanel>
+                            <DockPanel LastChildFill="False" Margin="0,0,0,6">
+                                <TextBlock DockPanel.Dock="Left" Text="BUILD MATRIX"
+                                           FontFamily="{StaticResource FontFamily.Monospace}"
+                                           FontSize="{StaticResource FontSize.10}"
+                                           FontWeight="{StaticResource FontWeight.Bold}"
+                                           Foreground="{StaticResource Brush.Text.Dim}"/>
+                                <TextBlock x:Name="MatrixSlotSummary" DockPanel.Dock="Right"
+                                           FontFamily="{StaticResource FontFamily.Monospace}"
+                                           FontSize="{StaticResource FontSize.10}"
+                                           FontWeight="{StaticResource FontWeight.Bold}"
+                                           Foreground="{StaticResource Brush.Text.Dim}"/>
+                            </DockPanel>
+                            <WrapPanel x:Name="MatrixSlotsHost"/>
+                        </StackPanel>
                     </Border>
                     <!-- Build Queue body — grouped Build Set cards, each a
                          vertical timeline of build cards, per README's

@@ -13,6 +13,7 @@ using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
@@ -754,6 +755,203 @@ public partial class MainWindow : Window
     // Lens chip — opens Filter Studio, now that docs/Filter Studio & Lenses.md
     // gives it a real spec to build against.
     private void BtnLensChip_Click(object sender, MouseButtonEventArgs e) => OpenFilterStudio();
+
+    // ── Build Matrix drawer — Git #2281/#2286. 8 fixed agent slots, per the
+    // design doc ("Feature: Build Matrix"). No slot column exists anywhere —
+    // BuildConsole's own BuildWatchWindow (desktop/BuildConsole) proves the
+    // same real pattern this borrows: a slot is just an admission index over
+    // whichever queue rows are currently "Running", not separate stored
+    // state. _matrixSlotAssignments keeps that admission STABLE across
+    // re-renders (a running build keeps its slot number until it stops
+    // running) so slots don't visually reshuffle every RenderQueue().
+    private const int MatrixSlotCount = 8;
+    private bool _matrixDrawerOpen;
+    private readonly Dictionary<string, int> _matrixSlotAssignments = new(); // QueueItem.Id -> slot index (0-based)
+    private readonly Dictionary<string, Border> _queueCardsByItemId = new(); // QueueItem.Id -> its rendered card, for focus-scroll
+
+    private void BtnMatrixChip_Click(object sender, MouseButtonEventArgs e)
+    {
+        _matrixDrawerOpen = !_matrixDrawerOpen;
+        RenderMatrixDrawer();
+    }
+
+    private void RenderMatrixDrawer()
+    {
+        MatrixDrawer.Visibility = _matrixDrawerOpen ? Visibility.Visible : Visibility.Collapsed;
+
+        var running = _queueItems.Where(i => i.Status == "Running").ToList();
+        var runningIds = running.Select(i => i.Id).ToHashSet();
+
+        // Free any slot whose build is no longer running.
+        foreach (var staleId in _matrixSlotAssignments.Keys.Where(id => !runningIds.Contains(id)).ToList())
+            _matrixSlotAssignments.Remove(staleId);
+
+        // Assign a free slot (lowest index first) to any running build that doesn't have one yet.
+        foreach (var item in running)
+        {
+            if (_matrixSlotAssignments.ContainsKey(item.Id)) continue;
+            var taken = _matrixSlotAssignments.Values.ToHashSet();
+            for (int slot = 0; slot < MatrixSlotCount; slot++)
+            {
+                if (taken.Contains(slot)) continue;
+                _matrixSlotAssignments[item.Id] = slot;
+                break;
+            }
+            // If every slot is already taken, this running build simply has no
+            // slot to show yet — same "waiting for a slot" honesty as
+            // BuildWatchWindow's own _waitingForSlot list; it isn't rendered.
+        }
+
+        var byId = running.ToDictionary(i => i.Id);
+        int occupied = Math.Min(_matrixSlotAssignments.Count, MatrixSlotCount);
+        MatrixSlotSummary.Text = $"{occupied}/{MatrixSlotCount} slots";
+        MatrixChipCount.Text = $"{occupied}/{MatrixSlotCount}";
+
+        MatrixSlotsHost.Children.Clear();
+        for (int slot = 0; slot < MatrixSlotCount; slot++)
+        {
+            var itemId = _matrixSlotAssignments.FirstOrDefault(kv => kv.Value == slot).Key;
+            QueueItem? item = itemId != null && byId.TryGetValue(itemId, out var found) ? found : null;
+            MatrixSlotsHost.Children.Add(MatrixSlotCard(slot, item));
+        }
+    }
+
+    // One slot card — slot number, state badge, issue# + title, feature
+    // (this app's closest real equivalent is BuildSet — the same grouping
+    // BuildSetCard already labels above) and model. Idle slots render
+    // dimmed with no badge/issue/feature/model, since there's nothing real
+    // to show. A busy slot pulses via a real looping opacity Storyboard
+    // (not a static glow) and is clickable — focuses that build (#2286).
+    private Border MatrixSlotCard(int slotIndex, QueueItem? item)
+    {
+        bool busy = item != null;
+        var accent = busy ? StatusBrush(item!.Status) : (Brush)FindResource("Brush.Text.Dim");
+
+        var card = new Border
+        {
+            Width = 150,
+            Margin = new Thickness(0, 0, 6, 6),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(8, 6, 8, 6),
+            Background = busy ? Tint(accent, 0x1a) : (Brush)FindResource("Brush.Bg.Chip"),
+            BorderBrush = busy ? Tint(accent, 0x66) : (Brush)FindResource("Brush.Border.Default"),
+            BorderThickness = new Thickness(1),
+            Opacity = busy ? 1.0 : 0.45,
+            Cursor = busy ? Cursors.Hand : Cursors.Arrow
+        };
+
+        var stack = new StackPanel();
+        var slotRow = new StackPanel { Orientation = Orientation.Horizontal };
+        slotRow.Children.Add(new TextBlock
+        {
+            Text = $"SLOT {slotIndex + 1}",
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"),
+            FontSize = 9,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = (Brush)FindResource("Brush.Text.Dim")
+        });
+        stack.Children.Add(slotRow);
+
+        if (busy)
+        {
+            var (slotFg, slotBg, slotBorder) = StatusPalette(item!.Status);
+            stack.Children.Add(StatusPill(item.Status, slotFg, slotBg, slotBorder));
+            stack.Children.Add(new TextBlock
+            {
+                Text = item.GithubNumber.HasValue ? $"#{item.GithubNumber.Value} {item.Title}" : item.Title,
+                Margin = new Thickness(0, 4, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = (double)FindResource("FontSize.10.5"),
+                FontWeight = (FontWeight)FindResource("FontWeight.SemiBold"),
+                Foreground = (Brush)FindResource("Brush.Text.Primary")
+            });
+            string modelEffort = item.Model != null && item.Effort != null ? $"{item.Model} · {item.Effort}" : (item.Model ?? item.Effort ?? "");
+            stack.Children.Add(new TextBlock
+            {
+                Text = string.IsNullOrEmpty(modelEffort) ? item.BuildSet : $"{item.BuildSet} · {modelEffort}",
+                Margin = new Thickness(0, 2, 0, 0),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = 9,
+                Foreground = (Brush)FindResource("Brush.Text.Muted")
+            });
+
+            // Running slots pulse — a real looping opacity animation on the
+            // card, not a static highlight.
+            var pulse = new DoubleAnimation
+            {
+                From = 1.0,
+                To = 0.55,
+                Duration = new Duration(TimeSpan.FromSeconds(1.1)),
+                AutoReverse = true,
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+            card.BeginAnimation(UIElement.OpacityProperty, pulse);
+
+            var focusTarget = item;
+            card.MouseLeftButtonDown += (s, e) => { e.Handled = true; FocusBuildInQueue(focusTarget); };
+        }
+        else
+        {
+            stack.Children.Add(new TextBlock
+            {
+                Text = "Idle",
+                Margin = new Thickness(0, 4, 0, 0),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+                FontSize = (double)FindResource("FontSize.10.5"),
+                Foreground = (Brush)FindResource("Brush.Text.Dim")
+            });
+        }
+
+        card.Child = stack;
+        return card;
+    }
+
+    // Git #2286 — clicking a busy slot focuses that build in the queue:
+    // expand its Build Set if collapsed, re-render, open its detail panel
+    // (the same OpenBuildDetail every queue card click already uses), then
+    // scroll its card into view once the new layout has actually settled.
+    private void FocusBuildInQueue(QueueItem item)
+    {
+        _expandedSets.Add(item.BuildSet);
+        RenderQueue();
+        OpenBuildDetail(item);
+
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (_queueCardsByItemId.TryGetValue(item.Id, out var card))
+            {
+                card.BringIntoView();
+                FlashCard(card);
+            }
+        }), DispatcherPriority.ContextIdle);
+    }
+
+    // A brief border-color flash so "focused" is visible even when the card
+    // was already on-screen (BringIntoView alone wouldn't show anything).
+    private void FlashCard(Border card)
+    {
+        var flashAccent = ((SolidColorBrush)FindResource("Brush.Accent.Primary")).Color;
+        var restoreColor = (card.BorderBrush as SolidColorBrush)?.Color ?? Colors.Transparent;
+        var original = card.BorderBrush;
+        var flashBrush = new SolidColorBrush(flashAccent);
+        card.BorderBrush = flashBrush;
+        var priorThickness = card.BorderThickness;
+        card.BorderThickness = new Thickness(2);
+        var anim = new ColorAnimation
+        {
+            From = flashAccent,
+            To = restoreColor,
+            Duration = new Duration(TimeSpan.FromMilliseconds(900))
+        };
+        anim.Completed += (s, e) =>
+        {
+            card.BorderBrush = original;
+            card.BorderThickness = priorThickness;
+        };
+        flashBrush.BeginAnimation(SolidColorBrush.ColorProperty, anim);
+    }
 
     // ── Document host — tab strip + content switch, per mockup's tabDefs /
     // tabs (Shell Skeleton v2.html lines 1489-1494, 2465-2474). The Home tab
@@ -1599,10 +1797,12 @@ public partial class MainWindow : Window
             ? "No builds in the queue yet."
             : "No builds match the current Filter Studio facets.";
 
+        _queueCardsByItemId.Clear();
         foreach (var group in visible.GroupBy(q => q.BuildSet))
             QueueSetsHost.Children.Add(BuildSetCard(group.Key, group.ToList()));
 
         RenderStatusBar();
+        RenderMatrixDrawer();
     }
 
     // ── Status bar — 23px, per README's spec: flat "Label: N" segments
@@ -2059,6 +2259,7 @@ public partial class MainWindow : Window
         var card = BuildQueueCard(item);
         Grid.SetColumn(card, 1);
         row.Children.Add(card);
+        _queueCardsByItemId[item.Id] = card; // Git #2286 — lookup target for FocusBuildInQueue's scroll+flash
 
         return row;
     }
