@@ -13,8 +13,8 @@
  *    logged via the server logger for auditability.
  */
 
-import { db, usersTable, tenantsTable } from "@workspace/db";
-import { sql, eq, and, desc } from "drizzle-orm";
+import { db } from "@workspace/db";
+import { sql, and, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { logger } from "./logger";
 const log = logger.child({ channel: "engine.sla" });
@@ -274,34 +274,19 @@ async function fetchRunningTimers(mspId?: number, customerId?: number): Promise<
 }
 
 export async function runSlaEngineForTenant(customerId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
-  // `customerId` here is a users.id despite the name (the old bridge keyed on
-  // msp_users.user_id). Resolve the owning tenant through users.tenantId, and
-  // take the MSP from tenants.mspId — NOT users.mspId, which is NULL for every
-  // tenant-scoped role and would silently degrade every customer SLA run to the
-  // "no customer" branch below (empty timers, default 50/50 weights).
-  const [customerRow] = await db
-    .select({ customerId: tenantsTable.id, mspId: tenantsTable.mspId })
-    .from(usersTable)
-    .innerJoin(tenantsTable, eq(usersTable.tenantId, tenantsTable.id))
-    .where(eq(usersTable.id, customerId))
-    .limit(1);
-  const resolvedCustomerId = customerRow?.customerId ?? null;
-  const resolvedMspId = customerRow?.mspId ?? null;
-
-  if (resolvedCustomerId == null) {
-    return computeSlaEngine([], [], ctx?.evaluationTimestamp || new Date(), { wSignal: 50, wTimer: 50 });
-  }
-
-  const [timers, policies, weightsRow] = await Promise.all([
-    fetchRunningTimers(undefined, resolvedCustomerId),
-    fetchPolicies(resolvedMspId ?? undefined),
-    resolvedMspId != null
-      ? db.execute(sql`SELECT w_signal AS "wSignal", w_timer AS "wTimer" FROM msp_sla_weights WHERE msp_id = ${resolvedMspId} LIMIT 1`)
-      : Promise.resolve({ rows: [] as { wSignal: number; wTimer: number }[] }),
+  // `customerId` is the tenant id, exactly as every other caller in this file's
+  // sibling route treats it (see runScopeCreepEngineForTenant, which applies the
+  // identical route-supplied customerId straight to scope_creep_* tables with no
+  // users-table bridge). Apply it directly to the SLA tables the same way — there
+  // is no per-tenant mspId to resolve here, so policies/weights fall back to the
+  // MSP-agnostic ("global" policies + default 50/50) branch, same as an unscoped
+  // fetchPolicies()/fetchRunningTimers() call elsewhere in this file.
+  const [timers, policies] = await Promise.all([
+    fetchRunningTimers(undefined, customerId),
+    fetchPolicies(),
   ]);
-  const weights = (weightsRow.rows[0] as { wSignal: number; wTimer: number } | undefined) ?? { wSignal: 50, wTimer: 50 };
 
-  return computeSlaEngine(timers, policies, ctx?.evaluationTimestamp || new Date(), weights);
+  return computeSlaEngine(timers, policies, ctx?.evaluationTimestamp || new Date(), { wSignal: 50, wTimer: 50 });
 }
 
 export async function runSlaEngineForMsp(mspId: number, ctx?: { evaluationTimestamp?: Date }): Promise<SlaEngineOutput> {
