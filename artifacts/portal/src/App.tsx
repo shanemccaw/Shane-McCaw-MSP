@@ -8,6 +8,7 @@ import { SlugProvider, getStoredSlug } from "@/lib/slug-context";
 import { PortalLayout } from "@/components/layout";
 import IndexPage from "@/pages/index";
 import ComingSoon from "@/pages/coming-soon";
+import SupportPage from "@/pages/support";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -53,6 +54,7 @@ function AppRoutes() {
     <PortalLayout>
       <Switch>
         <Route path="/" component={IndexPage} />
+        <Route path="/support" component={SupportPage} />
         <Route path="/coming-soon" component={ComingSoon} />
         <Route component={NotFound} />
       </Switch>
