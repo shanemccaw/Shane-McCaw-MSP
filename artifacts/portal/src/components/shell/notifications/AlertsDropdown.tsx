@@ -85,9 +85,24 @@ function NotificationRow({ n, onOpen }: { n: PortalNotification; onOpen: (n: Por
  * Zero-unread renders as "Up to date", not an error — and a customer with no
  * notifications at all yet gets the calm empty state below, never a blank
  * hole (design README "Popovers" — Alerts, empty state).
+ *
+ * `open`/`onToggle`/`onClose` are controlled by `TopBar`'s shared
+ * `openPopover` state (README "State" §`openPopover`) — the same mutual
+ * exclusivity + shared full-viewport overlay #1820's `UserMenu` and #1822's
+ * `SopTray` already share, so alerts, SOP and account never show open at
+ * once. Unlike those two, the trigger button lives inside this component
+ * rather than inline in `TopBar` (its badge needs the real unread count this
+ * component's own `useNotifications()` call owns).
  */
-export function AlertsDropdown() {
-  const [open, setOpen] = useState(false);
+export function AlertsDropdown({
+  open,
+  onToggle,
+  onClose,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onClose: () => void;
+}) {
   const [tab, setTab] = useState<Tab>("personal");
   const rootRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -110,17 +125,17 @@ export function AlertsDropdown() {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open]);
+  }, [open, onClose]);
 
   const openNotification = (n: PortalNotification) => {
     if (!n.read) void markRead(n.id);
     if (n.linkPath !== null) {
       navigate(n.deepLink.href);
-      setOpen(false);
+      onClose();
     }
   };
 
@@ -136,10 +151,11 @@ export function AlertsDropdown() {
         type="button"
         data-testid="topbar-alerts-trigger"
         aria-label={anyUnread ? `Alerts, ${unreadCount} unread` : "Alerts"}
+        aria-haspopup="true"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="relative flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
-        style={{ background: open ? "rgba(255,255,255,.06)" : "transparent" }}
+        onClick={onToggle}
+        className="relative z-50 flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
+        style={{ background: open ? "rgba(255,255,255,.06)" : undefined }}
       >
         <Bell size={17} strokeWidth={1.75} color="#94a3b8" />
         {anyUnread ? (
@@ -154,12 +170,6 @@ export function AlertsDropdown() {
 
       {open ? (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-            aria-hidden="true"
-            data-testid="alerts-overlay"
-          />
           <div
             data-testid="alerts-popover"
             className="absolute right-0 z-50 flex flex-col overflow-hidden rounded-[14px]"
@@ -296,7 +306,7 @@ export function AlertsDropdown() {
                 type="button"
                 data-testid="alerts-preferences-link"
                 onClick={() => {
-                  setOpen(false);
+                  onClose();
                   navigate("/coming-soon?feature=" + encodeURIComponent("Alert preferences"));
                 }}
                 className="ml-auto flex items-center gap-[6px] text-xs text-[#94a3b8] hover:text-[#cbd5e1]"

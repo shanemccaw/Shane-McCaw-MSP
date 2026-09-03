@@ -107,8 +107,8 @@ export async function fetchSignalRulesAndGroups(mspId?: number | null): Promise<
     scopedMspId != null
       ? db.execute(sql`
           SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-                 source_key AS "sourceKey", compare_value AS "compareValue", description,
-                 sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                 source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
+                 description, sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
                  ${SIGNAL_INTELLIGENCE_COLUMNS_SQL}
           FROM signal_derivation_rules
           WHERE msp_id IS NULL OR msp_id = ${scopedMspId}
@@ -116,8 +116,8 @@ export async function fetchSignalRulesAndGroups(mspId?: number | null): Promise<
         `)
       : db.execute(sql`
           SELECT id, signal_key AS "signalKey", group_id AS "groupId", rule_type AS "ruleType",
-                 source_key AS "sourceKey", compare_value AS "compareValue", description,
-                 sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
+                 source_key AS "sourceKey", compare_value AS "compareValue", denominator_key AS "denominatorKey",
+                 description, sort_order AS "sortOrder", created_at AS "createdAt", updated_at AS "updatedAt",
                  ${SIGNAL_INTELLIGENCE_COLUMNS_SQL}
           FROM signal_derivation_rules
           WHERE msp_id IS NULL

@@ -52,7 +52,7 @@ export const MODULE_NAV_ITEMS: readonly ModuleNavItem[] = [
   { key: "security-plan", label: "Security Plan", icon: FileCheck2, builtPath: null },
 ];
 
-/** `/coming-soon?feature=<label>&group=module` for a not-yet-built module row. */
-export function comingSoonHref(label: string, group: "module" | "pillar"): string {
+/** `/coming-soon?feature=<label>&group=<group>` for a not-yet-built destination. */
+export function comingSoonHref(label: string, group: "module" | "pillar" | "account"): string {
   return `/coming-soon?feature=${encodeURIComponent(label)}&group=${group}`;
 }

@@ -1,5 +1,9 @@
+import { useState } from "react";
 import { ChevronDown, ChevronRight, Eye, ListChecks, User } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { SopTray } from "./SopTray";
+import { useSopRunsShell } from "./useSopRuns";
+import { UserMenu } from "./UserMenu";
 import { AlertsDropdown } from "./notifications/AlertsDropdown";
 
 export interface Breadcrumb {
@@ -44,16 +48,28 @@ function ImpersonationBanner() {
 /**
  * The top bar (README "Layout" §2). The right-cluster three triggers are
  * real, focusable, `data-testid`-tagged mount points — their popovers are
- * #1820 (account), #1821 (alerts) and #1822 (SOP runs). Alerts (#1821) is
- * wired to its own real unread count and popover (`AlertsDropdown`); the
- * other two remain inert until their own issues land, since a badge with no
- * real number behind it is exactly the fabricated-data case CLAUDE.md
- * forbids.
+ * #1820 (account), #1821 (alerts) and #1822 (SOP runs), all three sharing
+ * this one `openPopover` state so only one is ever open at a time (README
+ * "State" §`openPopover`). The SOP trigger's badge is real
+ * (`useSopRunsShell`'s own live queue count); the alerts trigger's badge and
+ * popover are `AlertsDropdown`'s own real unread count / notification feed.
  */
 export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
+  const [openPopover, setOpenPopover] = useState<null | "user" | "sop" | "alerts">(null);
+  const { user, logout } = useAuth();
+  const { queue, loading } = useSopRunsShell();
+  const sopCount = queue.length;
+
   return (
     <>
       <ImpersonationBanner />
+      {openPopover ? (
+        <div
+          className="fixed inset-0 z-40"
+          onClick={() => setOpenPopover(null)}
+          aria-hidden="true"
+        />
+      ) : null}
       <div
         className="flex flex-none items-center gap-[14px] border-b"
         style={{ height: 56, padding: "0 16px 0 20px", borderColor: HAIRLINE }}
@@ -83,30 +99,68 @@ export function TopBar({ breadcrumb }: { breadcrumb: Breadcrumb }) {
           <span className="text-sm font-semibold text-[#f8fafc]">{breadcrumb.current}</span>
         </div>
         <div className="ml-auto flex items-center gap-[6px]">
-          <button
-            type="button"
-            data-testid="topbar-sop-trigger"
-            aria-label="SOP runs"
-            className="flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
-          >
-            <ListChecks size={17} strokeWidth={1.75} color="#94a3b8" />
-          </button>
-          <AlertsDropdown />
-          <div className="mx-[6px] h-5 w-px" style={{ background: HAIRLINE }} />
-          <button
-            type="button"
-            data-testid="topbar-user-trigger"
-            aria-label="Account menu"
-            className="flex items-center gap-[6px] rounded-full py-[3px] pl-[3px] pr-[6px] transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
-          >
-            <div
-              className="flex size-7 items-center justify-center rounded-full"
-              style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)" }}
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="topbar-sop-trigger"
+              aria-label="SOP runs"
+              aria-haspopup="true"
+              aria-expanded={openPopover === "sop"}
+              onClick={() => setOpenPopover((p) => (p === "sop" ? null : "sop"))}
+              className="relative z-50 flex size-8 items-center justify-center rounded-md transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
+              style={{ background: openPopover === "sop" ? "rgba(255,255,255,.06)" : undefined }}
             >
-              <User size={14} strokeWidth={1.75} color="#cbd5e1" />
-            </div>
-            <ChevronDown size={13} color="#64748b" />
-          </button>
+              <ListChecks size={17} strokeWidth={1.75} color="#94a3b8" />
+              {sopCount > 0 ? (
+                <span
+                  data-testid="sop-tray-badge"
+                  className="absolute flex min-w-[15px] items-center justify-center rounded-full px-1 text-[10px] font-bold"
+                  style={{ top: -3, right: -3, height: 15, background: "#00B4D8", color: "#020617" }}
+                >
+                  {sopCount}
+                </span>
+              ) : null}
+            </button>
+            {openPopover === "sop" ? (
+              <SopTray onClose={() => setOpenPopover(null)} queue={queue} loading={loading} />
+            ) : null}
+          </div>
+          <AlertsDropdown
+            open={openPopover === "alerts"}
+            onToggle={() => setOpenPopover((p) => (p === "alerts" ? null : "alerts"))}
+            onClose={() => setOpenPopover(null)}
+          />
+          <div className="mx-[6px] h-5 w-px" style={{ background: HAIRLINE }} />
+          <div className="relative">
+            <button
+              type="button"
+              data-testid="topbar-user-trigger"
+              aria-label="Account menu"
+              aria-haspopup="menu"
+              aria-expanded={openPopover === "user"}
+              onClick={() => setOpenPopover((p) => (p === "user" ? null : "user"))}
+              className="relative z-50 flex items-center gap-[6px] rounded-full py-[3px] pl-[3px] pr-[6px] transition-colors hover:bg-white/[.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0078D4]"
+              style={{ background: openPopover === "user" ? "rgba(255,255,255,.06)" : undefined }}
+            >
+              <div
+                className="flex size-7 items-center justify-center rounded-full"
+                style={{ background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.10)" }}
+              >
+                <User size={14} strokeWidth={1.75} color="#cbd5e1" />
+              </div>
+              <ChevronDown size={13} color="#64748b" />
+            </button>
+            {openPopover === "user" && user ? (
+              <UserMenu
+                user={user}
+                onClose={() => setOpenPopover(null)}
+                onSignOut={() => {
+                  setOpenPopover(null);
+                  void logout();
+                }}
+              />
+            ) : null}
+          </div>
         </div>
       </div>
     </>
