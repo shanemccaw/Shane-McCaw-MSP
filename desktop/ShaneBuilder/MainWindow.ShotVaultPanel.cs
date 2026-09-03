@@ -25,16 +25,17 @@ public sealed record ShotVaultDocSnapshot(IReadOnlyList<ShotVaultItem> Shots, Da
 /// each tile carries a real, computed DIFF badge.
 /// Git #2368 (Feature #2367 item 1) — a real search box filters the same real shot list by filename
 /// or by the shot's real capture-time screen (<see cref="Services.ShotVaultService.MatchesQuery"/>).
+/// Git #2369 (Feature #2367 item 2) — real tag filter chips, derived from each shot's own real
+/// properties (see <see cref="RenderShotVaultTagChips"/>).
 ///
 /// Real audit before #2372: Shot Vault (#2367) was entirely `notBuilt` — grouped into
 /// <c>MainWindow.xaml.cs</c>'s shared "not built" placeholder alongside Build Console / Build Watch /
 /// UI Testing, with no panel, no data source, and no index anywhere in ShaneBuilder. The only real
 /// shot-producing mechanism is <see cref="Services.DesktopScreenClipService"/>'s manual desktop clip,
 /// which drops loose timestamped PNGs into <c>%Pictures%\Screenshots\ShaneBuilder\</c> with no
-/// metadata or tags — there was no search/tag indexed store to build the fuller panel spec against
-/// (tags are #2369, still a separate, real sibling sub-issue). Git #2368 closed that gap for search by
-/// having <c>DesktopScreenClipService</c> encode the real monitor a shot was captured from straight
-/// into the filename at save time — no second sidecar file, no fabricated screen name.
+/// metadata or tags. Git #2368 closed that gap for search by having <c>DesktopScreenClipService</c>
+/// encode the real monitor a shot was captured from straight into the filename at save time — no
+/// second sidecar file, no fabricated screen name. There is still no manual tag store beyond that.
 ///
 /// #2372 stood up the minimum real scaffold Shot Vault needed to exist at all: a real, newest-first
 /// list of the actual shots on disk (<see cref="ShotVaultService.ListShots"/>), each with a real
@@ -49,9 +50,14 @@ public sealed record ShotVaultDocSnapshot(IReadOnlyList<ShotVaultItem> Shots, Da
 /// before it in time (chronological, independent of which run it falls in — see the service for the
 /// honest reasoning). No fixture DIFF state, no random/rotating badge — a tile is only badged when its
 /// own bytes actually changed. #2368 filters the same runs/tiles by a real query against filename or
-/// screen, re-grouping only the matches into runs so a filtered view never shows a stale span. Tag
-/// chips remain deliberately NOT built here; #2369 extends this same
-/// <c>ShotVaultPanelBody</c>/<see cref="RenderShotVaultPanel"/> surface rather than it being redone.
+/// screen, re-grouping only the matches into runs so a filtered view never shows a stale span. This
+/// build (#2369) adds the tag chip row on top of that same (already search-filtered) shot set — since
+/// there's still no manual tag store, a shot's tags are computed straight off data it already really
+/// carries: its real capture screen (#2368), a date bucket off its own real timestamp, a resolution
+/// tag off its own real decoded pixel dimensions, and "Changed" when the tile already carries a real
+/// DIFF flag (#2371). Chips are multi-select with AND semantics; clicking one re-runs
+/// <see cref="RenderShotVaultPanel"/> filtered to shots matching every active label AND the current
+/// search query, and runs left with no matching shots simply don't render.
 /// </summary>
 public partial class MainWindow
 {
@@ -77,6 +83,13 @@ public partial class MainWindow
     /// TextBox itself stays in the visual tree.</summary>
     private string _shotVaultSearchQuery = "";
 
+    /// <summary>Git #2369 — the currently-active tag filter chips (multi-select, AND semantics: a
+    /// shot must carry every active label to show, on top of the real search query above). Empty
+    /// means no filter — every (search-)matched shot shows, same as before this issue. Survives
+    /// across re-renders of the same panel session; cleared only when the active shot set no longer
+    /// has a matching tag at all (see <see cref="RenderShotVaultPanel"/>).</summary>
+    private readonly HashSet<string> _shotVaultActiveTagFilters = new(StringComparer.Ordinal);
+
     /// <summary>Fires the real folder read the first time the SHOT VAULT rail panel opens. A missing
     /// folder (nothing captured yet) renders an honest empty state, not a fixture row.</summary>
     private void EnsureShotVaultPanelLoaded()
@@ -94,6 +107,7 @@ public partial class MainWindow
     private void RenderShotVaultPanel()
     {
         ShotVaultRows.Children.Clear();
+        ShotVaultTagChips.Children.Clear();
 
         // Git #2370: runs newest-first, each with a real timestamp + shot count, grouping the same
         // real shot list ListShots() reads. ListRuns() derives runs from ListShots() itself, so this
@@ -116,6 +130,7 @@ public partial class MainWindow
         {
             ShotVaultPanelStatus.Text = $"No shots yet — captures land in {ShotVaultService.ShotsDirectory}.";
             ShotVaultPanelStatus.Visibility = Visibility.Visible;
+            _shotVaultActiveTagFilters.Clear(); // nothing left to filter against
             return;
         }
 
@@ -128,20 +143,35 @@ public partial class MainWindow
             .ToDictionary(t => t.Shot.FilePath, t => t);
         int diffCount = tilesByPath.Values.Count(t => t.HasDiffFromPrevious);
 
+        // Git #2369: real tags per shot, derived off tilesByPath — never a second real read of disk.
+        var tagsByPath = tilesByPath.ToDictionary(kv => kv.Key, kv => ShotVaultService.GetTags(kv.Value));
+
+        // Drop any active filter label the current shot set no longer has anything tagged with (a
+        // shot behind it may have aged off, or the whole vault may have been cleared) — an active
+        // chip that can never match anything again would otherwise silently hide everything forever.
+        var allLabels = tagsByPath.Values.SelectMany(t => t).Select(t => t.Label).ToHashSet(StringComparer.Ordinal);
+        _shotVaultActiveTagFilters.RemoveWhere(label => !allLabels.Contains(label));
+
+        RenderShotVaultTagChips(tagsByPath);
+
         int totalShots = runs.Sum(r => r.Count);
 
-        // Git #2368 — real "search by shot name or screen": filter each run's own shot list down to
-        // matches, drop any run left with none, re-derive runs so a filtered-out gap doesn't leave a
-        // stale multi-shot header/span. Empty query renders every run untouched.
+        // Git #2368 — real "search by shot name or screen"; Git #2369 — real tag chip filter, AND'd
+        // with the search query. Filter the flat shot list down to matches, then re-derive runs so a
+        // filtered-out gap doesn't leave a stale multi-shot header/span.
         string query = _shotVaultSearchQuery.Trim();
-        IReadOnlyList<ShotVaultRun> visibleRuns = runs;
-        if (query.Length > 0)
-        {
-            var matches = _shotVaultLastShots!.Where(s => ShotVaultService.MatchesQuery(s, query)).ToList();
-            visibleRuns = ShotVaultService.ListRuns(matches);
-        }
+        bool tagFiltered = _shotVaultActiveTagFilters.Count > 0;
+        bool anyFilterActive = query.Length > 0 || tagFiltered;
 
-        if (query.Length == 0)
+        bool MatchesFilter(ShotVaultItem shot) =>
+            (query.Length == 0 || ShotVaultService.MatchesQuery(shot, query)) &&
+            (!tagFiltered || _shotVaultActiveTagFilters.All(f => tagsByPath[shot.FilePath].Any(t => t.Label == f)));
+
+        IReadOnlyList<ShotVaultRun> visibleRuns = anyFilterActive
+            ? ShotVaultService.ListRuns(_shotVaultLastShots!.Where(MatchesFilter).ToList())
+            : runs;
+
+        if (!anyFilterActive)
         {
             ShotVaultPanelStatus.Text = diffCount == 0
                 ? $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first."
@@ -150,9 +180,12 @@ public partial class MainWindow
         else
         {
             int matchCount = visibleRuns.Sum(r => r.Count);
+            string against = query.Length > 0 && tagFiltered
+                ? $"\"{query}\" + {_shotVaultActiveTagFilters.Count} tag{(_shotVaultActiveTagFilters.Count == 1 ? "" : "s")}"
+                : query.Length > 0 ? $"\"{query}\"" : $"{_shotVaultActiveTagFilters.Count} tag{(_shotVaultActiveTagFilters.Count == 1 ? "" : "s")}";
             ShotVaultPanelStatus.Text = matchCount == 0
-                ? $"No shots match \"{query}\" (of {totalShots} total)."
-                : $"{matchCount} of {totalShots} shot{(totalShots == 1 ? "" : "s")} match \"{query}\".";
+                ? $"No shots match {against} (of {totalShots} total)."
+                : $"{matchCount} of {totalShots} shot{(totalShots == 1 ? "" : "s")} match {against}.";
         }
         ShotVaultPanelStatus.Visibility = Visibility.Visible;
 
@@ -165,6 +198,77 @@ public partial class MainWindow
                 grid.Children.Add(BuildShotVaultTile(tilesByPath[shot.FilePath]));
             ShotVaultRows.Children.Add(grid);
         }
+    }
+
+    /// <summary>Git #2369 — the real tag chip row: every distinct label actually present across the
+    /// current shot set, each with its own real match count, grouped by kind (screen, then date, then
+    /// resolution, then diff) and sorted most-common-first within a kind so the row stays stable
+    /// between refreshes rather than reshuffling on every render.</summary>
+    private void RenderShotVaultTagChips(Dictionary<string, IReadOnlyList<ShotVaultTag>> tagsByPath)
+    {
+        var counts = tagsByPath.Values.SelectMany(t => t)
+            .GroupBy(t => (t.Kind, t.Label))
+            .Select(g => (g.Key.Kind, g.Key.Label, Count: g.Count()))
+            .ToList();
+
+        if (counts.Count == 0)
+            return;
+
+        var kindOrder = new[] { "screen", "date", "resolution", "diff" };
+        var ordered = counts
+            .OrderBy(c => Array.IndexOf(kindOrder, c.Kind))
+            .ThenByDescending(c => c.Count)
+            .ThenBy(c => c.Label, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (_, label, count) in ordered)
+            ShotVaultTagChips.Children.Add(ShotVaultTagChip(label, count));
+    }
+
+    /// <summary>One clickable, multi-select tag filter chip — same active/inactive visual language
+    /// as <c>GitStateChip</c> (Git Panel's own build-state chips), reused rather than reinvented, but
+    /// toggling into a set instead of a single selection since a shot can carry several real tags
+    /// (screen, date bucket, resolution, optionally "Changed") that combine with AND.</summary>
+    private Border ShotVaultTagChip(string label, int count)
+    {
+        bool active = _shotVaultActiveTagFilters.Contains(label);
+        var fg = (SolidColorBrush)FindResource("Brush.Accent.Primary");
+        var border = new Border
+        {
+            Padding = new Thickness(7, 3, 7, 3),
+            Margin = new Thickness(0, 0, 4, 4),
+            CornerRadius = new CornerRadius(99),
+            Background = new SolidColorBrush(fg.Color) { Opacity = active ? 0.28 : 0.12 },
+            BorderThickness = new Thickness(active ? 1.5 : 1),
+            BorderBrush = new SolidColorBrush(fg.Color) { Opacity = active ? 0.9 : 0.4 },
+            Cursor = Cursors.Hand,
+            ToolTip = active ? $"Showing only shots tagged \"{label}\" — click to clear" : $"Filter to shots tagged \"{label}\""
+        };
+        var stack = new StackPanel { Orientation = Orientation.Horizontal };
+        stack.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = 9,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = fg
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = $" {count}",
+            FontFamily = (FontFamily)FindResource("FontFamily.Monospace"),
+            FontSize = 9,
+            FontWeight = (FontWeight)FindResource("FontWeight.Bold"),
+            Foreground = fg,
+            Margin = new Thickness(3, 0, 0, 0)
+        });
+        border.Child = stack;
+        border.MouseLeftButtonDown += (_, _) =>
+        {
+            if (!_shotVaultActiveTagFilters.Remove(label))
+                _shotVaultActiveTagFilters.Add(label);
+            RenderShotVaultPanel();
+        };
+        return border;
     }
 
     /// <summary>Git #2368 — live-filters as the panel's search box changes. Re-renders the whole panel

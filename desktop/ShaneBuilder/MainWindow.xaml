@@ -643,12 +643,13 @@
 
                         <!-- Git #2372 (Feature #2367 item 5) — Shot Vault rail panel: a real,
                              newest-first list of the shots DesktopScreenClipService already
-                             saves to disk, each with a working per-shot Copy action. Tag chips
-                             (#2369) are a separate sibling sub-issue layered on this same body.
+                             saves to disk, each with a working per-shot Copy action.
                              Git #2370 added real run grouping; Git #2371 turned the row list into
                              a wrapped thumbnail grid with real, computed DIFF badges; Git #2368
                              added the real search box below, filtering by shot filename or the
-                             shot's real capture-time screen. Built in code-behind
+                             shot's real capture-time screen; Git #2369 adds the real tag filter
+                             chip row, derived from each shot's own real properties (capture
+                             screen, date bucket, decoded resolution, DIFF). Built in code-behind
                              (MainWindow.ShotVaultPanel.cs). -->
                         <StackPanel x:Name="ShotVaultPanelBody" Margin="8,8,8,12" Visibility="Collapsed">
                             <!-- Git #2368 (Feature #2367 item 1) — "search by shot name or screen",
@@ -667,6 +668,9 @@
                                        Foreground="{StaticResource Brush.Text.Dim}"
                                        FontFamily="{StaticResource FontFamily.Sans}"
                                        FontSize="{StaticResource FontSize.10.5}"/>
+                            <!-- Git #2369 (Feature #2367 item 2) — tag filter chips, built in
+                                 RenderShotVaultTagChips (MainWindow.ShotVaultPanel.cs). -->
+                            <WrapPanel x:Name="ShotVaultTagChips" Margin="4,0,4,8"/>
                             <StackPanel x:Name="ShotVaultRows" Margin="2,0,2,0"/>
                         </StackPanel>
 

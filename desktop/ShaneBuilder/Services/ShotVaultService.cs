@@ -39,17 +39,25 @@ namespace ShaneBuilder.Services
     }
 
     /// <summary>Git #2371 (Feature #2367 item 4) — a real shot plus whether it visually differs from
-    /// the shot immediately before it in time. There is still no tag/screen-name metadata (#2369 is a
-    /// separate sibling issue), so "before it" means chronologically previous on disk — the only real
-    /// ordering that exists today, independent of which run (#2370) it happens to fall in.</summary>
+    /// the shot immediately before it in time. "Before it" means chronologically previous on disk —
+    /// the only real ordering that exists, independent of which run (#2370) it happens to fall in.</summary>
     public sealed record ShotVaultTile(ShotVaultItem Shot, bool HasDiffFromPrevious);
+
+    /// <summary>Git #2369 (Feature #2367 item 2) — the real, derived tag set for one shot. There is
+    /// still no manual tag store (real audit — see <see cref="ShotVaultItem"/>'s own doc-comment), so
+    /// every tag here is computed straight off data the shot already really carries: its own real
+    /// capture screen (#2368), its own real capture timestamp, its own real decoded pixel dimensions,
+    /// and (when known) whether it diffs from the shot before it (#2371). Nothing here is a fixture
+    /// label or a guessed taxonomy — a shot with no decodable image still gets its screen/date tags,
+    /// just no resolution tag.</summary>
+    public sealed record ShotVaultTag(string Label, string Kind);
 
     /// <summary>Git #2372 (Feature #2367 item 5) — reads the real shots <see
     /// cref="DesktopScreenClipService"/> already saves to disk, and copies one back to the clipboard.
     /// Git #2370 (Feature #2367 item 3) adds real run grouping on top of that same list. Git #2371
     /// (Feature #2367 item 4) adds the real DIFF computation below. Git #2368 (Feature #2367 item 1)
-    /// adds real search by shot name or screen (<see cref="MatchesQuery"/>). Tags (#2369) remain a
-    /// separate, real sibling sub-issue under Feature #2367, layered on top of this same list.</summary>
+    /// adds real search by shot name or screen (<see cref="MatchesQuery"/>). Git #2369 (Feature #2367
+    /// item 2) adds real, derived tag computation (<see cref="GetTags"/>) on top of the same tiles.</summary>
     public static class ShotVaultService
     {
         /// <summary>Gap between two consecutive shots (by real file timestamp) beyond which they're
@@ -156,6 +164,66 @@ namespace ShaneBuilder.Services
 
             tiles.Reverse(); // back to newest-first, matching the input order
             return tiles;
+        }
+
+        /// <summary>Git #2369 — the real, derived tag set for one shot: its real capture <see
+        /// cref="ShotVaultItem.Screen"/> (#2368), a date bucket off its own real
+        /// <see cref="ShotVaultItem.CreatedAtUtc"/>, a resolution tag off its own real decoded pixel
+        /// dimensions (when the file decodes), and a "Changed" tag when <paramref name="tile"/>
+        /// already carries a real DIFF flag (#2371). Order is stable (screen, date, resolution, diff)
+        /// so chip rendering doesn't reshuffle between panel refreshes.</summary>
+        public static IReadOnlyList<ShotVaultTag> GetTags(ShotVaultTile tile)
+        {
+            var tags = new List<ShotVaultTag> { new(tile.Shot.Screen, "screen"), new(DateBucket(tile.Shot.CreatedAtUtc), "date") };
+
+            var resolution = TryGetResolution(tile.Shot.FilePath);
+            if (resolution is { } res)
+                tags.Add(new ShotVaultTag($"{res.Width}×{res.Height}", "resolution"));
+
+            if (tile.HasDiffFromPrevious)
+                tags.Add(new ShotVaultTag("Changed", "diff"));
+
+            return tags;
+        }
+
+        /// <summary>Real date-bucket label off a shot's own real capture timestamp — "Today"/
+        /// "Yesterday" while it's genuinely recent, the real weekday name inside the last 7 days
+        /// (still unambiguous at that range), and the real calendar date beyond that. Compared in
+        /// local time since that's what the panel's own timestamps already render in.</summary>
+        public static string DateBucket(DateTime createdAtUtc)
+        {
+            var createdLocalDate = createdAtUtc.ToLocalTime().Date;
+            var today = DateTime.Now.Date;
+            int daysAgo = (today - createdLocalDate).Days;
+
+            return daysAgo switch
+            {
+                0 => "Today",
+                1 => "Yesterday",
+                >= 2 and <= 6 => createdLocalDate.ToString("dddd"),
+                _ => createdLocalDate.ToString("MMM d")
+            };
+        }
+
+        /// <summary>Real pixel dimensions of a shot, read from the file's own decoded header —
+        /// <c>BitmapCacheOption.None</c> so this stays a cheap header read, not a full-size decode.
+        /// Returns null on any decode failure (corrupt file, still mid-write) rather than a guessed
+        /// size — the same honest-failure convention <see cref="TryComputeVisualHash"/> already uses.</summary>
+        public static (int Width, int Height)? TryGetResolution(string filePath)
+        {
+            try
+            {
+                var decoder = BitmapDecoder.Create(
+                    new Uri(filePath, UriKind.Absolute),
+                    BitmapCreateOptions.DelayCreation,
+                    BitmapCacheOption.None);
+                var frame = decoder.Frames[0];
+                return (frame.PixelWidth, frame.PixelHeight);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>A cheap perceptual hash: decode the shot at a tiny fixed size (so two shots of
