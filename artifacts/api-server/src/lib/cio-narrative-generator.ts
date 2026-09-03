@@ -14,7 +14,7 @@
  * documents finish generating — so the gap between "scan done" and
  * "documents done" becomes the narrative's value-delivery moment instead of
  * dead wait time. Result is persisted onto msp_diagnostic_runs so the
- * wizard's existing status poll (GET /api/portal/assessment/status) picks it
+ * wizard's existing status poll (GET /api/portal/diagnostics/status) picks it
  * up with no new client-side mechanism.
  *
  * Deliberate non-goals — real, confirmed gaps, not fabricated:

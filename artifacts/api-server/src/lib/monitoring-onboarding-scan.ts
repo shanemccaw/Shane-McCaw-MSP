@@ -15,7 +15,7 @@
  * readConsentRequirementForServiceType — only "retainer" may skip it), that
  * callback is ALWAYS reached, so a real scan is normally already running before
  * the buyer even finishes account setup. There is NO customer-facing self-serve
- * trigger — the portal's only trigger, POST /portal/assessment/debug-trigger-scan,
+ * trigger — the portal's only trigger, POST /portal/diagnostics/debug-trigger-scan,
  * is hard-gated to testbed tenants.
  *
  * ── What this module adds ─────────────────────────────────────────────────────

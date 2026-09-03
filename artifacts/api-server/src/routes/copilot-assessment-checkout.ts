@@ -5,8 +5,10 @@
  * (#183), Phase 10 / #193. Wires SowScreen.tsx's purchase modal to a real
  * Stripe Checkout Session, using the same Stripe SDK + getStripeKey() +
  * verifyCaptchaToken() mechanism already proven in portal-checkout.ts and
- * portal-assessment.ts's "/portal/assessment/sow/checkout" — reused here,
- * not rebuilt.
+ * (formerly) portal-assessment.ts's "/portal/assessment/sow/checkout" —
+ * that SOW checkout route was retired with the SOW/checkout flow (#1674,
+ * #1753); this route is independent of it and reused the same pattern, not
+ * the route itself.
  *
  * Unlike the rest of this epic's screens, the SOW builder's scope modules
  * (SCOPE_MODULES in SowScreen.tsx) have no backing database row yet — the

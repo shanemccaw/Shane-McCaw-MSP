@@ -7,7 +7,7 @@
  * portal-reachable surfaces the completed /m365-health wiring uses (no new
  * server endpoints; see useM365HealthLive.ts for the full rationale):
  *
- *   1. GET  /api/portal/assessment/status
+ *   1. GET  /api/portal/diagnostics/status
  *        — real package-aware pillar radar (radar.pillars, pillar-coverage.ts).
  *          The pillar keys are exactly this suite's page topics (governance,
  *          compliance, adoption, copilot, architecture, licensing), so each
@@ -331,7 +331,7 @@ export function useTopicHealthLive(options: TopicHealthLiveOptions): TopicHealth
 
     const loadStatus = async () => {
       try {
-        const res = await fetchWithAuth("/api/portal/assessment/status", undefined, { silent: true });
+        const res = await fetchWithAuth("/api/portal/diagnostics/status", undefined, { silent: true });
         if (!res.ok) return;
         const data = (await res.json()) as TopicStatusSlice;
         // Wire-boundary normalization — same guards as useAssessmentLiveStatus.

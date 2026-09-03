@@ -1,7 +1,7 @@
 /**
  * portal-assessment-debug-trigger-scan.test.ts
  *
- * Regression test for #242: POST /portal/assessment/debug-trigger-scan must
+ * Regression test for #242: POST /portal/diagnostics/debug-trigger-scan must
  * resolve packageKey off the customer's active Copilot entitlement
  * (client_services row for copilot-readiness-snapshot / copilot-readiness-assessment,
  * read via services.type_attributes->>'packageKey'), not the unrelated
@@ -111,7 +111,7 @@ vi.mock("../lib/tenant-signals", () => ({ resolveCustomerIdForPortalUser: vi.fn(
 vi.mock("../lib/graph", () => ({ REQUIRED_MT_SCOPES: [] }));
 vi.mock("../lib/sharepoint-admin", () => ({ REQUIRED_SHAREPOINT_APP_PERMISSIONS: [] }));
 
-describe("POST /portal/assessment/debug-trigger-scan — packageKey resolution (#242)", () => {
+describe("POST /portal/diagnostics/debug-trigger-scan — packageKey resolution (#242)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     insertedPackageKey = null;
@@ -124,7 +124,7 @@ describe("POST /portal/assessment/debug-trigger-scan — packageKey resolution (
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);
 
-    const res = await request(app).post("/api/portal/assessment/debug-trigger-scan").send({});
+    const res = await request(app).post("/api/portal/diagnostics/debug-trigger-scan").send({});
 
     expect(res.status).toBe(202);
     // The 7-check assess:copilot-readiness package, not the old

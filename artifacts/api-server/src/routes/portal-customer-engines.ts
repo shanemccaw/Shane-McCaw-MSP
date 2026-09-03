@@ -297,7 +297,7 @@ router.get(
   // real audience (see the file-level doc comment above): its eligibility query
   // looks for an active mspRole='Assessment' user on the tenant, so a
   // CustomerUser+ floor 403'd the free-tier Assessment customers this route
-  // exists to inform. Lowered to match /portal/assessment/status and
+  // exists to inform. Lowered to match /portal/diagnostics/status and
   // /portal/scan-status's own Assessment floor (same data domain).
   requireRole("Assessment"),
   async (req: Request, res: Response) => {
@@ -721,10 +721,10 @@ router.get(
   },
 );
 
-// ── GET /api/portal/assessment-results ────────────────────────────────────────
+// ── GET /api/portal/diagnostics/results ────────────────────────────────────────
 
 router.get(
-  "/portal/assessment-results",
+  "/portal/diagnostics/results",
   requireRole("CustomerUser"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
@@ -765,7 +765,7 @@ router.get(
         enabledModules: Array.from(enabledModules),
       });
     } catch (err) {
-      log.error({ err, customerId }, "portal-customer-engines: assessment-results failed");
+      log.error({ err, customerId }, "portal-customer-engines: diagnostics results failed");
       res.status(500).json({ error: "Unable to load assessment results." });
     }
   },

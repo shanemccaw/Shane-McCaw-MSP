@@ -778,7 +778,7 @@ router.get(
   "/portal/health-benchmark",
   // requireAuth, not requireRole("CustomerUser") — every other customer-facing
   // route in this file (diagnostics/latest, scripts/download, diagnostics/runs,
-  // assessment-results) only requires authentication. The stricter floor here
+  // diagnostics/results) only requires authentication. The stricter floor here
   // silently 403'd Free-tier customers who already have real diagnostic data,
   // which the frontend couldn't distinguish from "no data yet" (#1157).
   requireAuth,
@@ -884,11 +884,11 @@ router.get(
   },
 );
 
-// ── GET /api/portal/assessment-results/:serviceSlug ───────────────────────────
+// ── GET /api/portal/diagnostics/results/:serviceSlug ───────────────────────────
 // Customer-facing: returns the assessment run data formatted for the dashboard.
 
 router.get(
-  "/portal/assessment-results/:serviceSlug",
+  "/portal/diagnostics/results/:serviceSlug",
   requireAuth,
   async (req: Request, res: Response) => {
     try {
@@ -996,7 +996,7 @@ router.get(
         evaluatedAt: latestRun.completedAt?.toISOString() ?? latestRun.createdAt.toISOString(),
       });
     } catch (err) {
-      log.error({ err }, "GET /portal/assessment-results/:serviceSlug error");
+      log.error({ err }, "GET /portal/diagnostics/results/:serviceSlug error");
       res.status(500).json({ error: "Internal server error" });
     }
   }
