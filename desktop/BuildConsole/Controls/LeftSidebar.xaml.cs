@@ -2564,16 +2564,39 @@ namespace BuildConsole.Controls
         /// Epic→Feature→Issue tree, not just direct sub-issues. Otherwise (a plain issue, or the
         /// ALL-states fetch hasn't succeeded yet) falls back to GitHub's native one-level
         /// subIssuesSummary fields, same as before this fix.
+        /// Git #2773 — passes <c>it.Number</c> as the self-rollup escape hatch, so when <c>it</c> IS
+        /// an internal-tooling Epic (#1202/#1095) this is "how much of me is done" (its own real
+        /// descendants counted normally), not the milestone-bar/Home-dashboard cross-epic aggregate
+        /// (those call sites are unaffected — they don't go through this method). For every other
+        /// Epic/Feature <c>it.Number</c> never matches an internal-tooling number, so behavior is
+        /// unchanged. This is still the real LEAF rollup (feeds EpicProgress / GATE fraction /
+        /// progress-bar %) — the Epic tree-PILL NUMBER itself has its own separate definition, see
+        /// <see cref="GitBoardIssueFilters.ComputeOpenFeatureCount"/> and its call sites below.
         /// </summary>
         private (int Total, int Completed, int Percent) ResolveRollup(GitBoardIssue it)
         {
             if (_lastAllIssuesForRollups != null && GitBoardIssueFilters.IsPlaceholder(it))
             {
-                var (total, completed) = GitBoardIssueFilters.ComputeTransitiveLeafRollup(it, _lastAllIssuesForRollups);
+                var (total, completed) = GitBoardIssueFilters.ComputeTransitiveLeafRollup(it, _lastAllIssuesForRollups, selfRootEpicNumber: it.Number);
                 int percent = total == 0 ? 0 : (completed * 100 / total);
                 return (total, completed, percent);
             }
             return (it.SubIssueCount, it.SubIssueCompleted, it.SubIssuePercent);
+        }
+
+        /// <summary>
+        /// Git #2773 — the Epic tree-pill NUMBER shown in "(N sub)", per Shane's real scope
+        /// redefinition: count of the Epic's direct real Feature-titled children that are NOT
+        /// themselves 100% complete — NOT a raw leaf-issue count (that's <see cref="ResolveRollup"/>,
+        /// which stays unchanged and still backs the progress-bar %). Falls back to GitHub's native
+        /// one-level SubIssueCount when the ALL-states fetch isn't available yet, same fallback
+        /// ResolveRollup already uses.
+        /// </summary>
+        private int ResolveEpicPillCount(GitBoardIssue it)
+        {
+            if (_lastAllIssuesForRollups != null)
+                return GitBoardIssueFilters.ComputeOpenFeatureCount(it, _lastAllIssuesForRollups);
+            return it.SubIssueCount;
         }
 
         /// <summary>Git #921 (Epic #803) — map a real board issue number to the same <see cref="GitIssue"/> display shape the tree nodes carry (identical mapping to MapBucket), so MainWindow's tab-to-tab navigation resolves numbers to detail tabs from cached data. Null when the number isn't on the current OPEN board (MainWindow then falls back to a live GetIssueAsync fetch).</summary>
@@ -2583,10 +2606,11 @@ namespace BuildConsole.Controls
             if (it == null) return null;
             var issueInTree = _milestones.SelectMany(m => m.Epics).SelectMany(e => e.Issues).FirstOrDefault(i => i.IssueNumber == number);
             var (rollupTotal, rollupCompleted, rollupPercent) = ResolveRollup(it);
+            var pillCount = it.IsEpic ? ResolveEpicPillCount(it) : rollupTotal;
             return new GitIssue
             {
                 IssueNumber = it.Number,
-                Title = it.IsEpic ? $"{it.Title}  ({rollupTotal} sub)" : it.Title,
+                Title = it.IsEpic ? $"{it.Title}  ({pillCount} sub)" : it.Title,
                 RawTitle = it.Title,
                 Priority = it.IsTodo ? "HIGH" : "MED",
                 Status = it.IsClosed ? "CLOSED" : "OPEN",
@@ -2651,10 +2675,11 @@ namespace BuildConsole.Controls
                     // next manual refresh (which resets that throttle).
                     bool cachedBlocked = _blockedStatusCache.TryGetValue(it.Number, out var cachedBlk);
                     var (rollupTotal, rollupCompleted, rollupPercent) = ResolveRollup(it);
+                    var pillCount = it.IsEpic ? ResolveEpicPillCount(it) : rollupTotal;
                     epic.Issues.Add(new GitIssue
                     {
                         IssueNumber = it.Number,
-                        Title = it.IsEpic ? $"{it.Title}  ({rollupTotal} sub)" : it.Title,
+                        Title = it.IsEpic ? $"{it.Title}  ({pillCount} sub)" : it.Title,
                         RawTitle = it.Title,
                         Priority = it.IsTodo ? "HIGH" : "MED",
                         Status = it.IsClosed ? "CLOSED" : "OPEN",
