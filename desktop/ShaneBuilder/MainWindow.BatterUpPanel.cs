@@ -69,6 +69,14 @@ namespace ShaneBuilder;
 /// issue in the browser and copies a ready-to-act prompt to the clipboard, leaving the actual
 /// build-prompt-and-queue-push flow as a real, named hook point (<see cref="BatterUpDispatchClicked"/>)
 /// for #2366 to extend.
+///
+/// Git #2361 (Feature #2355 item 6) — a real "Ask Shane" lane item renders as a question: a real
+/// NEEDS YOU badge, an amber row tint (the same <c>Brush.Toast.Warning</c> token #2364's
+/// "No Feature" bucket and #2311's amber banner already use), and the real reason it's blocking —
+/// the issue's own most-recent comment (or body, when there's no comment yet) — replacing the
+/// generic "why it is here" line for just these items. Ask Shane membership is checked by number
+/// against <c>counts.AskShaneItems</c>, not by which lane tab is currently selected, so the badge
+/// still shows correctly on the "All" tab.
 /// </summary>
 /// <summary>Git #2365 — a frozen snapshot of the Batter Up panel's real state (selected lane +
 /// the four live counts) at the moment "Send to tab" was clicked. Carried on <c>TabDef</c>, read
@@ -222,6 +230,11 @@ public partial class MainWindow
             return;
         }
 
+        // Git #2361 — real Ask Shane membership by number, not by which lane is currently
+        // selected: the "All" lane concatenates all three lists and loses per-item lane
+        // identity, so an Ask Shane item must still read as one there too.
+        var askShaneNumbers = counts.AskShaneItems.Select(i => i.Number).ToHashSet();
+
         // Group by real parent Feature (Git #2357). No parent = an honest "No Feature" bucket
         // (key 0), never an invented grouping key. Sorting by real feature number (not insertion
         // order) is what keeps a given feature's group in the same visual slot across re-renders —
@@ -287,6 +300,8 @@ public partial class MainWindow
 
             foreach (var item in group)
             {
+                bool isAskShane = askShaneNumbers.Contains(item.Number);
+
                 var row = GitRowShell(indent: 24);
                 row.ColumnLeft(GitMono($"#{item.Number}", 10, "Brush.Accent.IssueNum"));
                 var itemText = GitText(item.Title, 10.5, "Brush.Text.Muted");
@@ -302,8 +317,25 @@ public partial class MainWindow
                 row.ColumnRight(GitCountPill(
                     item.IsAgentFinding ? "AGENT FOUND" : "CHAT FILED",
                     item.IsAgentFinding ? "Brush.Status.Running" : "Brush.Text.Muted"));
+                // Git #2361 — a real Ask Shane item is a question, not just another row: a NEEDS
+                // YOU badge and an amber row tint, reusing the same Brush.Toast.Warning token
+                // #2364's "No Feature" bucket and #2311's amber banner already use — never a new
+                // amber invented for this.
+                if (isAskShane)
+                {
+                    row.ColumnRight(GitCountPill("NEEDS YOU", "Brush.Toast.Warning"));
+                    var askWarn = (SolidColorBrush)FindResource("Brush.Toast.Warning");
+                    row.Root.Background = new SolidColorBrush(askWarn.Color) { Opacity = 0.08 };
+                    row.Root.BorderBrush = new SolidColorBrush(askWarn.Color) { Opacity = 0.35 };
+                    row.Root.BorderThickness = new Thickness(0, 1, 0, 1);
+                }
                 BatterUpLaneBody.Children.Add(row.Root);
-                BatterUpLaneBody.Children.Add(BatterUpWhyHereLine(BatterUpWhyHereLabel(item), indent: 44));
+                // The real reason it's blocking (the issue's own most-recent comment or body —
+                // never invented) replaces the generic "why it is here" scope line for an Ask
+                // Shane item, since that's the actually load-bearing question here.
+                BatterUpLaneBody.Children.Add(BatterUpWhyHereLine(
+                    isAskShane ? BatterUpBlockingReasonLabel(item) : BatterUpWhyHereLabel(item),
+                    indent: 44));
                 // Git #2360 — real per-item actions: Dispatch, and Hold/Release.
                 BatterUpLaneBody.Children.Add(BatterUpActionRow(item, held));
             }
@@ -327,6 +359,15 @@ public partial class MainWindow
         item.DetailError != null ? $"Couldn't load why this is here — {item.DetailError}"
         : string.IsNullOrWhiteSpace(item.WhyHere) ? "No description yet."
         : item.WhyHere!;
+
+    /// <summary>Git #2361 — the real reason a genuine Ask Shane item is blocking: its issue's own
+    /// most-recent comment or body (see <see cref="ChatGitHubFilter.BatterUpItemRef.BlockingReason"/>),
+    /// never invented. A genuine fetch failure or a genuinely empty body/comment both say so
+    /// plainly, same honesty convention as <see cref="BatterUpWhyHereLabel"/>.</summary>
+    private static string BatterUpBlockingReasonLabel(BatterUpItemRef item) =>
+        item.DetailError != null ? $"Couldn't load why this is blocking — {item.DetailError}"
+        : string.IsNullOrWhiteSpace(item.BlockingReason) ? "No open question stated yet."
+        : item.BlockingReason!;
 
     /// <summary>A single-line, ellipsis-truncated dim/italic line under a Batter Up item row —
     /// the real "why it is here" text. Deliberately non-wrapping so a long scope paragraph doesn't

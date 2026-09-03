@@ -81,6 +81,13 @@ public sealed class BatterUpItemRef
     /// the panel can say "couldn't load" honestly instead of mislabeling a fetch failure as "not
     /// yet estimated".</summary>
     public string? DetailError { get; set; }
+    /// <summary>Git #2361 — for a real "Ask Shane" lane item: the actual open question blocking
+    /// it, pulled from the issue's own most-recent comment (any comment — the real open question
+    /// is typically a live discussion reply, not a `BUILD:` dispatch comment) or its body when
+    /// there's no comment yet. Null only when both are genuinely empty. Populated for every item
+    /// off the same batched detail fetch #2359 already runs — the panel only renders it for items
+    /// actually in the Ask Shane lane.</summary>
+    public string? BlockingReason { get; set; }
 }
 
 /// <summary>Git #2356 (Feature #2355 item 1) — real per-lane item counts for the Batter Up rail
@@ -570,19 +577,26 @@ public sealed class ChatGitHubFilter
 
         string? effort = null;
         string? scope = null;
+        string? latestCommentBody = null;
         if (issueEl.TryGetProperty("comments", out var commentsEl) &&
             commentsEl.TryGetProperty("nodes", out var commentNodes) &&
             commentNodes.ValueKind == JsonValueKind.Array)
         {
-            // GraphQL `last: 20` returns oldest→newest within that tail — reverse so a later
-            // BUILD: comment (a re-dispatch) is checked, and wins, before an older one. Same
-            // most-recent-first convention as BuildConsole's own
-            // BatterUpQueueService.FindBuildCommentAsync.
-            var bodies = commentNodes.EnumerateArray()
+            // GraphQL `last: 20` returns oldest→newest within that tail. Real comment bodies,
+            // still in that oldest→newest order, so the last element is the genuinely most
+            // recent comment on the issue — that's what #2361's "reason it is blocking" reads
+            // (the real open question is typically a live discussion reply, not a BUILD:
+            // dispatch comment, so it's read before any BUILD:-specific filtering below).
+            var realBodies = commentNodes.EnumerateArray()
                 .Select(c => c.TryGetProperty("body", out var b) ? b.GetString() : null)
                 .Where(b => !string.IsNullOrEmpty(b))
-                .Reverse();
-            foreach (var commentBody in bodies)
+                .ToList();
+            latestCommentBody = realBodies.Count > 0 ? realBodies[^1] : null;
+
+            // Reverse so a later BUILD: comment (a re-dispatch) is checked, and wins, before an
+            // older one, for effort/"why it is here" — same most-recent-first convention as
+            // BuildConsole's own BatterUpQueueService.FindBuildCommentAsync.
+            foreach (var commentBody in Enumerable.Reverse(realBodies))
             {
                 var parsed = ParseBuildComment(commentBody!);
                 if (parsed == null) continue;
@@ -595,6 +609,7 @@ public sealed class ChatGitHubFilter
         item.IsAgentFinding = isAgentFinding;
         item.Effort = effort;
         item.WhyHere = scope ?? ExtractLeadParagraph(body);
+        item.BlockingReason = ExtractBlockingReason(latestCommentBody) ?? ExtractBlockingReason(body);
         item.DetailLoaded = true;
     }
 
@@ -685,6 +700,39 @@ public sealed class ChatGitHubFilter
 
         var joined = string.Join(" ", paragraph).Trim();
         return joined.Length == 0 ? null : joined;
+    }
+
+    /// <summary>Git #2361 — the real open question an Ask Shane item is blocking on: the first
+    /// real paragraph of <paramref name="text"/>, skipping a leading pure-navigation "Sub-issue
+    /// of #N. From `...`" line (the standard boilerplate this codebase's own issue bodies open
+    /// with — see e.g. #2404/#2405/#2406) that carries no real reason. Unlike
+    /// <see cref="ExtractLeadParagraph"/> (built for a `BUILD:` prompt/scope, where the first
+    /// paragraph genuinely is the content), a real "why is this blocking" question in this
+    /// codebase's issues is typically the paragraph AFTER that boilerplate line — verified against
+    /// real live issues #2399 ("Sub-issue of #1202..." then "**Status: SPEC — real open
+    /// question...**") during this build. Returns null — never a fabricated guess — when nothing
+    /// beyond the boilerplate line exists (the real body genuinely doesn't state a reason; the
+    /// panel then shows an honest empty state rather than that boilerplate).</summary>
+    private static string? ExtractBlockingReason(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        var paragraphs = new List<string>();
+        var current = new List<string>();
+        foreach (var line in lines)
+        {
+            if (line.Trim().Length == 0)
+            {
+                if (current.Count > 0) { paragraphs.Add(string.Join(" ", current).Trim()); current.Clear(); }
+                continue;
+            }
+            current.Add(line.Trim());
+        }
+        if (current.Count > 0) paragraphs.Add(string.Join(" ", current).Trim());
+
+        int start = paragraphs.Count > 0 && paragraphs[0].StartsWith("Sub-issue of #", StringComparison.Ordinal) ? 1 : 0;
+        return start < paragraphs.Count ? paragraphs[start] : null;
     }
 
     // ── gh process runner ────────────────────────────────────────────────────────────────────
