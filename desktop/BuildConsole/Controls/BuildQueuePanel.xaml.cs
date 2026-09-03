@@ -2568,8 +2568,15 @@ namespace BuildConsole.Controls
                 counts.members.Add(item);
             }
 
-            var orderedKeys = bucketOrder
+            // Git #2695 — keep the real UNFILTERED any-activity set (pre-#2693 behavior) separate
+            // from the activity-filtered set below. The section's own visibility (header + chips)
+            // must gate on the UNFILTERED count only, so a filter that matches zero build sets
+            // hides just the rows, never the chips Shane needs to switch back to "All".
+            var anyActivityKeys = bucketOrder
                 .Where(k => buckets[k].upNext.Count + buckets[k].running.Count + buckets[k].verifying.Count > 0)
+                .ToList();
+
+            var orderedKeys = anyActivityKeys
                 // Git #2693 — activity filter chips narrow the any-activity set above further:
                 // "running" keeps only sets with a real running item, "verifying" only sets with
                 // a real verifying item. "all" (default) leaves the any-activity filter as-is.
@@ -2584,10 +2591,30 @@ namespace BuildConsole.Controls
                 .ToList();
 
             BuildSetRollupList.Children.Clear();
-            BuildSetRollupSection.Visibility = orderedKeys.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+            BuildSetRollupSection.Visibility = anyActivityKeys.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
             BuildSetRollupClearText.Visibility = _buildSetFilter != null ? Visibility.Visible : Visibility.Collapsed;
             BuildSetRollupClearText.Text = _buildSetFilter != null ? $"Showing: {_buildSetFilter} ✕" : "";
             UpdateRollupActivityFilterChipsVisual();
+
+            if (orderedKeys.Count == 0 && anyActivityKeys.Count > 0)
+            {
+                // Git #2695 — real build sets have real activity, just none matches the currently
+                // selected filter chip. Say so instead of leaving an unexplained blank list.
+                string filterLabel = _rollupActivityFilter switch
+                {
+                    "running" => "running",
+                    "verifying" => "verifying",
+                    _ => "matching",
+                };
+                BuildSetRollupList.Children.Add(new TextBlock
+                {
+                    Text = $"No build sets currently {filterLabel}",
+                    Foreground = (Brush)Application.Current.FindResource("Subtext0Brush"),
+                    FontStyle = FontStyles.Italic,
+                    Margin = new Thickness(2, 4, 0, 4),
+                });
+                return;
+            }
 
             foreach (var key in orderedKeys)
             {
