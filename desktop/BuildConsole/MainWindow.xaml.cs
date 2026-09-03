@@ -6936,9 +6936,101 @@ namespace BuildConsole
 
                 wv.WebMessageReceived -= ChatWv_WebMessageReceived;
                 wv.WebMessageReceived += ChatWv_WebMessageReceived;
+
+                // Git #2699 — add the native "Send Selection to Test Pad" right-click item.
+                WireSendSelectionToTestPad(wv);
                 return true;
             }
             catch { return false; }
+        }
+
+        // Git #2699 — the CoreWebView2s that already have the "Send Selection to Test Pad" context
+        // menu handler wired, so re-injecting the builder buttons on the same WebView2 (which the
+        // WebMessageReceived -=/+= dance above implies can happen) never double-subscribes and adds
+        // the menu item twice.
+        private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Microsoft.Web.WebView2.Core.CoreWebView2, object> _selectionMenuWired = new();
+
+        /// <summary>
+        /// Git #2699 (Feature: Test Pad #2530) — adds a native "Send Selection to Test Pad" item to
+        /// a claude.ai chat WebView2's real right-click menu, shown only when the user right-clicks
+        /// with a genuine, non-empty selection (<c>ContextMenuTarget.HasSelection</c>). On click it
+        /// reads the selected DOM range as real markdown — table structure preserved — via
+        /// <see cref="BuildConsole.Services.ChatSelectionCaptureScript"/> (see that class for why a
+        /// getSelection round-trip is used rather than the flattened <c>SelectionText</c>), files a
+        /// new note through the existing real <see cref="BuildConsole.Services.TestPad.TestPadService"/>
+        /// (stamped with the current chat/feature context by <c>NoteContextStamper</c>), and brings
+        /// the Test Pad pill forward so Shane sees the unsent-count badge tick up.
+        /// </summary>
+        private void WireSendSelectionToTestPad(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        {
+            try
+            {
+                var core = wv.CoreWebView2;
+                if (core == null) return;
+                if (_selectionMenuWired.TryGetValue(core, out _)) return;
+                _selectionMenuWired.Add(core, new object());
+
+                core.ContextMenuRequested += (s, e) =>
+                {
+                    try
+                    {
+                        // Only offer it on a real, non-empty selection — the whole feature is
+                        // "grab THIS selection", so a right-click with nothing selected shows the
+                        // normal menu untouched.
+                        if (e.ContextMenuTarget == null || !e.ContextMenuTarget.HasSelection) return;
+
+                        var item = core.Environment.CreateContextMenuItem(
+                            "Send Selection to Test Pad",
+                            null,
+                            Microsoft.Web.WebView2.Core.CoreWebView2ContextMenuItemKind.Command);
+
+                        item.CustomItemSelected += async (_, __) =>
+                        {
+                            await CaptureSelectionToTestPadAsync(wv);
+                        };
+
+                        // Append below the default items rather than crowding the top.
+                        e.MenuItems.Add(item);
+                    }
+                    catch { /* a menu-decoration failure must never break the native menu */ }
+                };
+            }
+            catch { /* wiring the menu must never break chat init */ }
+        }
+
+        /// <summary>
+        /// Git #2699 — runs the getSelection→markdown round-trip against <paramref name="wv"/> and
+        /// files the result as a new Test Pad note. Empty result (nothing usably selected) is a
+        /// silent no-op; any failure is swallowed so a capture attempt can never take down the chat.
+        /// </summary>
+        private async System.Threading.Tasks.Task CaptureSelectionToTestPadAsync(Microsoft.Web.WebView2.Wpf.WebView2 wv)
+        {
+            try
+            {
+                var core = wv?.CoreWebView2;
+                if (core == null) return;
+
+                string raw = await core.ExecuteScriptAsync(BuildConsole.Services.ChatSelectionCaptureScript.Script);
+                // ExecuteScriptAsync returns the JS return value JSON-encoded; a returned string
+                // comes back as a JSON string literal, so deserialize it back to the real text.
+                string markdown;
+                try { markdown = System.Text.Json.JsonSerializer.Deserialize<string>(raw) ?? ""; }
+                catch { markdown = raw?.Trim('"') ?? ""; }
+                markdown = markdown.Trim();
+                if (markdown.Length == 0) return;
+
+                BuildConsole.Services.TestPad.TestPadService.AddNote(new BuildConsole.Services.TestPad.TestPadNote
+                {
+                    Text = markdown,
+                    Type = BuildConsole.Services.TestPad.NoteType.Note,
+                });
+
+                // Make sure the pill exists and is visible so Shane sees the note landed (its
+                // unsent-count badge updates off TestPadService.NotesChanged already).
+                EnsureTestPadPill();
+                try { _testPadPill?.Activate(); } catch { }
+            }
+            catch { /* a failed capture must never surface as an app error */ }
         }
 
         private FrameworkElement CreateChatContextWrapper(Microsoft.Web.WebView2.Wpf.WebView2 wv)
