@@ -73,6 +73,12 @@ public partial class MainWindow : Window
         _claudeActivityPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _claudeActivityPollTimer.Tick += async (_, _) => await PollClaudeActivityAsync();
         _claudeActivityPollTimer.Start();
+
+        // Git #2402 — Repo Health's "findings update from the conversation": the same busy/free
+        // signal Test Pad's status band already reads off is the real, honest moment a sent
+        // finding might have just been addressed (Claude's reply landed). No polling of our own —
+        // piggyback on the transition ClaudeActivityService already publishes.
+        ClaudeActivityService.Changed += OnClaudeActivityChangedForRepoHealth;
     }
 
     private bool _claudeActivityPollInFlight;
@@ -8821,16 +8827,61 @@ public partial class MainWindow : Window
         await RunRepoHealthScanAsync();
     }
 
-    private async Task RunRepoHealthScanAsync()
+    /// <summary>Git #2402 — the real "findings update from the conversation" half of the design doc's
+    /// item. <paramref name="auto"/> distinguishes a rescan Shane clicked himself from one fired
+    /// automatically off <see cref="OnClaudeActivityChangedForRepoHealth"/> so only the latter posts a
+    /// "here's what changed" toast — a manual rescan already has the user's full attention on the
+    /// panel.</summary>
+    private async Task RunRepoHealthScanAsync(bool auto = false)
     {
         _rhLoading = true;
         RepoHealthScanLine.Text = "Scanning…";
         RepoHealthDocScanLine.Text = "Scanning…";
+
+        var previouslySent = new HashSet<string>(_rhSent);
         _rhScan = await _repoHealthService.RunScanAsync();
         _rhLoaded = true;
         _rhLoading = false;
+
+        // A sent finding whose Id no longer appears in this fresh scan means the real GitHub state
+        // actually changed since it was sent (retitled, re-parented, closed) — genuinely resolved,
+        // not just marked. Prune it so it doesn't linger as a phantom "In chat" row forever, and
+        // count it so the auto-rescan path below can report the real number honestly.
+        var liveIds = _rhScan.GitHubReachable
+            ? new HashSet<string>(_rhScan.Findings.Select(f => f.Id))
+            : null; // an unreachable scan proves nothing was fixed — never prune off a failed read
+        int resolvedCount = 0;
+        if (liveIds != null)
+        {
+            foreach (var id in previouslySent)
+            {
+                if (liveIds.Contains(id)) continue;
+                _rhSent.Remove(id);
+                resolvedCount++;
+            }
+            _rhSelected.RemoveWhere(id => !liveIds.Contains(id));
+        }
+
         RenderRepoHealth();
         RenderRepoHealthDoc();
+
+        if (auto && resolvedCount > 0)
+            ToastEngine.Show("Repo Health",
+                $"{resolvedCount} sent finding{(resolvedCount == 1 ? "" : "s")} resolved based on the conversation — cleared from the list.",
+                ToastKind.Success);
+    }
+
+    /// <summary>Fires on every ClaudeActivityService.Changed — including the transition INTO "working"
+    /// (a reply just started streaming), which this deliberately ignores via the IsWorking guard below.
+    /// Only the working→free transition (a reply just landed) is a real moment to recheck; rescanning
+    /// mid-stream would just re-read the same not-yet-changed GitHub state. Never fires unless the
+    /// panel has actually been opened before (_rhLoaded) and there's something sent to recheck.</summary>
+    private void OnClaudeActivityChangedForRepoHealth()
+    {
+        if (ClaudeActivityService.IsWorking) return;
+        if (!_rhLoaded || _rhLoading) return;
+        if (_rhSent.Count == 0) return;
+        _ = RunRepoHealthScanAsync(auto: true);
     }
 
     private string RepoHealthScanLineText()
