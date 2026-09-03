@@ -6754,7 +6754,13 @@ namespace BuildConsole.Controls
         // Clear()+rebuild of the staged/unstaged TreeViewItem visual tree.
         private string? _lastGitStatusRawOutput;
 
-        public async void RefreshGitStatus()
+        // Git #2535 — thin fire-and-forget wrapper kept for the many void call sites
+        // (BtnGitRefresh_Click, the FileSystemWatcher debounce, MainWindow, etc.).
+        // The real body is now awaitable so RunGitCommand can await it and then set a
+        // command-result message that wins over the summary this writes at its tail.
+        public async void RefreshGitStatus() => await RefreshGitStatusAsync();
+
+        private async System.Threading.Tasks.Task RefreshGitStatusAsync()
         {
             _gitStatusLoadingTimer?.Dispose();
             _gitStatusLoadingTimer = new System.Threading.Timer(_ =>
@@ -7010,7 +7016,7 @@ namespace BuildConsole.Controls
                         {
                             row.Cursor = Cursors.Hand;
                             string branchName = b.Name;
-                            row.MouseLeftButtonUp += (s, e) => RunGitCommand($"checkout \"{branchName}\"");
+                            row.MouseLeftButtonUp += (s, e) => _ = RunGitCommand($"checkout \"{branchName}\"");
                         }
 
                         GitBranchListHost.Children.Add(row);
@@ -7068,17 +7074,17 @@ namespace BuildConsole.Controls
             if (item.IsStaged)
             {
                 var miUnstage = new MenuItem { Header = "Unstage Change (-)" };
-                miUnstage.Click += (s, e) => RunGitCommand($"restore --staged \"{item.RelativePath}\"");
+                miUnstage.Click += (s, e) => _ = RunGitCommand($"restore --staged \"{item.RelativePath}\"");
                 cm.Items.Add(miUnstage);
             }
             else
             {
                 var miStage = new MenuItem { Header = "Stage Change (+)" };
-                miStage.Click += (s, e) => RunGitCommand($"add \"{item.RelativePath}\"");
+                miStage.Click += (s, e) => _ = RunGitCommand($"add \"{item.RelativePath}\"");
                 cm.Items.Add(miStage);
 
                 var miDiscard = new MenuItem { Header = "Discard Changes (↩)" };
-                miDiscard.Click += (s, e) => RunGitCommand($"checkout -- \"{item.RelativePath}\"");
+                miDiscard.Click += (s, e) => _ = RunGitCommand($"checkout -- \"{item.RelativePath}\"");
                 cm.Items.Add(miDiscard);
             }
 
@@ -7140,10 +7146,23 @@ namespace BuildConsole.Controls
             }
         }
 
-        private async void RunGitCommand(string args)
+        /// <summary>
+        /// Git #2535 — runs a git mutation (commit/push/pull/add/restore/checkout) and
+        /// SURFACES the real result. Before this, stdout/stderr were redirected but never
+        /// read, the exit code was never checked, and the whole thing sat in an empty
+        /// `catch {}` — so every commit/push that actually failed (nothing staged, a hook
+        /// rejection, a non-fast-forward push, an auth/network error) looked identical to
+        /// one that succeeded. Now: both streams are drained (before WaitForExit, to avoid
+        /// a full-pipe deadlock), the exit code decides success vs failure, and git's own
+        /// message is shown in <see cref="GitStatusSummaryText"/> — with the full raw
+        /// output on its ToolTip. Returns true only on a genuine zero-exit result.
+        /// </summary>
+        private async System.Threading.Tasks.Task<bool> RunGitCommand(string args)
         {
             GitStatusSummaryText.Text = $"RUNNING: git {args}...";
-            await System.Threading.Tasks.Task.Run(() =>
+            GitStatusSummaryText.ToolTip = null;
+
+            var (exitCode, stdout, stderr, launchError) = await System.Threading.Tasks.Task.Run(() =>
             {
                 try
                 {
@@ -7158,17 +7177,107 @@ namespace BuildConsole.Controls
                         CreateNoWindow = true
                     };
                     using var p = System.Diagnostics.Process.Start(psi);
-                    p?.WaitForExit();
+                    if (p == null)
+                        return (-1, "", "", (string?)"git process failed to start");
+                    // Drain both streams before WaitForExit: a full stdout/stderr pipe
+                    // buffer would otherwise deadlock a process we're only WaitForExit-ing.
+                    string outText = p.StandardOutput.ReadToEnd();
+                    string errText = p.StandardError.ReadToEnd();
+                    p.WaitForExit();
+                    return (p.ExitCode, outText, errText, (string?)null);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    return (-1, "", "", (string?)ex.Message);
+                }
             });
 
-            RefreshGitStatus();
+            // Rebuild the Changes tree first, THEN set the result message so it wins over
+            // the "STAGED (n) • CHANGES (m)" summary RefreshGitStatusAsync writes at its tail.
+            await RefreshGitStatusAsync();
+
+            string full = ($"{stdout}\n{stderr}").Trim();
+            GitStatusSummaryText.ToolTip = string.IsNullOrWhiteSpace(full) ? null : full;
+
+            if (launchError != null)
+            {
+                GitStatusSummaryText.Text = $"✗ git {args} — {launchError}";
+                try { ActivityLog.Log("git-panel.error", $"git {args} could not run: {launchError}"); } catch { }
+                return false;
+            }
+
+            if (exitCode == 0)
+            {
+                // Success summary from stdout only — commit/pull put the useful line there
+                // ("[branch hash] msg", "Already up to date."), while add/push emit only
+                // CRLF/progress noise to stderr that shouldn't masquerade as the result.
+                string ok = BestGitLine(stdout, "");
+                GitStatusSummaryText.Text = string.IsNullOrEmpty(ok)
+                    ? $"✓ git {args} succeeded"
+                    : $"✓ {ok}";
+                try { ActivityLog.Log("git-panel.ok", $"git {args} succeeded (exit 0)"); } catch { }
+                return true;
+            }
+
+            string err = BestGitLine(stderr, stdout);
+            if (string.IsNullOrEmpty(err)) err = $"exit code {exitCode}";
+            GitStatusSummaryText.Text = $"✗ git {args} failed — {err}";
+            try { ActivityLog.Log("git-panel.error", $"git {args} failed (exit {exitCode}): {err}"); } catch { }
+            return false;
+        }
+
+        /// <summary>
+        /// Git #2535 — picks the single most informative line from git's output for the
+        /// one-line status summary: an explicit fatal/error/rejected/no-op line if present,
+        /// otherwise the first substantive line (skipping warning:/hint: noise).
+        /// <paramref name="primary"/> is searched
+        /// before <paramref name="secondary"/> (stdout-first for success, stderr-first for
+        /// failure). Full raw output is preserved on the ToolTip by the caller.
+        /// </summary>
+        private static string BestGitLine(string primary, string secondary)
+        {
+            var lines = new List<string>();
+            foreach (var src in new[] { primary, secondary })
+            {
+                if (string.IsNullOrWhiteSpace(src)) continue;
+                foreach (var raw in src.Split('\n'))
+                {
+                    string t = raw.Trim();
+                    if (t.Length > 0) lines.Add(t);
+                }
+            }
+            if (lines.Count == 0) return "";
+            // 1) An explicit outcome line wins — the real reason a mutation failed or was a
+            //    no-op, which is often not the first line git prints (e.g. "nothing to commit"
+            //    comes after "On branch ...").
+            foreach (var key in new[] { "fatal:", "error:", "rejected", "! [",
+                                        "nothing to commit", "nothing added to commit", "no changes added" })
+            {
+                var hit = lines.FirstOrDefault(l => l.IndexOf(key, StringComparison.OrdinalIgnoreCase) >= 0);
+                if (hit != null) return hit;
+            }
+            // 2) Otherwise the first substantive line, skipping pure noise (CRLF/hint chatter).
+            var substantive = lines.FirstOrDefault(l =>
+                !l.StartsWith("warning:", StringComparison.OrdinalIgnoreCase) &&
+                !l.StartsWith("hint:", StringComparison.OrdinalIgnoreCase));
+            return substantive ?? lines[0];
         }
 
         private void BtnGitRefresh_Click(object sender, RoutedEventArgs e) => RefreshGitStatus();
-        private void BtnGitPush_Click(object sender, RoutedEventArgs e) => RunGitCommand("push");
-        private void BtnGitPull_Click(object sender, RoutedEventArgs e) => RunGitCommand("pull");
+
+        /// <summary>
+        /// Git #2535 — bulk "Stage All". Before this, staging was per-file only via each
+        /// row's right-click context menu; a multi-file check-in meant N right-clicks.
+        /// `git add -A` stages every real change in one action — new, modified, and deleted
+        /// tracked/untracked files alike — and its success/failure is surfaced like any
+        /// other RunGitCommand.
+        /// </summary>
+        private async void BtnGitStageAll_Click(object sender, RoutedEventArgs e)
+        {
+            await RunGitCommand("add -A");
+        }
+        private void BtnGitPush_Click(object sender, RoutedEventArgs e) => _ = RunGitCommand("push");
+        private void BtnGitPull_Click(object sender, RoutedEventArgs e) => _ = RunGitCommand("pull");
 
         // ── GIT #860 (Git panel Phase 2): real rendered commit graph ────────
         // Replaces the old PopulateGitHistoryGraph(), which parsed
@@ -7563,7 +7672,7 @@ namespace BuildConsole.Controls
             GitGraphHost.Children.Add(grid);
         }
 
-        private void BtnGitCommit_Click(object sender, RoutedEventArgs e)
+        private async void BtnGitCommit_Click(object sender, RoutedEventArgs e)
         {
             string msg = GitCommitMsgBox.Text.Trim();
             if (string.IsNullOrEmpty(msg))
@@ -7572,8 +7681,12 @@ namespace BuildConsole.Controls
                 return;
             }
 
-            RunGitCommand($"commit -m \"{msg.Replace("\"", "\\\"")}\"");
-            GitCommitMsgBox.Text = string.Empty;
+            // Git #2535 — only clear the box on a genuine zero-exit commit. A failed commit
+            // (nothing staged, hook rejection, ...) now shows git's real error AND keeps the
+            // typed message so the user can fix the cause and retry without retyping it.
+            bool ok = await RunGitCommand($"commit -m \"{msg.Replace("\"", "\\\"")}\"");
+            if (ok)
+                GitCommitMsgBox.Text = string.Empty;
         }
 
         private void GitCommitMsgBox_KeyDown(object sender, KeyEventArgs e)
