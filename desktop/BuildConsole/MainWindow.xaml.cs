@@ -3498,25 +3498,6 @@ namespace BuildConsole
             home.ResumeChatRequested += Home_ResumeChatRequested;
             home.ReopenAllRequested  += Home_ReopenAllRequested;
             home.RunningItemClicked  += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
-            home.DoneItemClicked     += (s, c) =>
-            {
-                if (c.GithubNumber.HasValue && c.GithubNumber.Value < 0)
-                {
-                    var logPath = BuildConsole.Services.BuildLogPaths.ForQueueItem(c.QueueItemId);
-                    if (System.IO.File.Exists(logPath))
-                    {
-                        OpenFileTab(logPath);
-                    }
-                    else
-                    {
-                        ToastEngine.Warning("Open Log", $"Build log file not found.");
-                    }
-                }
-                else if (c.GithubNumber.HasValue)
-                {
-                    _ = OpenGitDetailByNumberAsync(c.GithubNumber.Value);
-                }
-            };
             // Clear a stale/orphaned "Running now" row — cancel the queue item (same
             // DELETE queue/{id} the Build Queue panel's right-click Cancel uses), then refresh.
             home.ClearStuckItemRequested += async (s, c) =>
@@ -3526,8 +3507,6 @@ namespace BuildConsole
                 catch { /* best-effort — a failed cancel just leaves the row, never crashes the glance screen */ }
                 await RefreshHomeRollupAsync(force: true);
             };
-            home.DoneRefreshRequested += async (s, e) => await RefreshHomeRollupAsync(force: true);
-
             // Fast actions & dashboard navigation
             home.NewIssueRequested += (s, e) => _ = LeftSidebar.CreateNewIssueAsync();
             home.BuildWatchRequested += (s, e) => ToggleBuildWatch();
@@ -3537,22 +3516,6 @@ namespace BuildConsole
             home.DeployRequested += async (s, e) => await TriggerUpdateAsync(forceDeploy: true);
             home.GitBoardRequested += (s, e) => ActivityBar.SelectGitBoard();
             home.SettingsRequested += (s, e) => OpenSettingsTab();
-            home.IssueDetailRequested += (s, issue) =>
-            {
-                var gitIssue = new BuildConsole.Controls.GitIssue
-                {
-                    IssueNumber = issue.Number,
-                    Title = issue.Title,
-                    RawTitle = issue.Title,
-                    Status = issue.State,
-                    Body = issue.Body,
-                    DatabaseId = issue.DatabaseId,
-                    IsEpic = issue.IsEpic,
-                    IsComplete = issue.IsComplete,
-                    HasParentEpic = issue.ParentNumber.HasValue,
-                };
-                OpenGitIssueDetailTab(gitIssue);
-            };
             home.MilestoneDetailRequested += (s, milestoneNum) =>
             {
                 var m = LeftSidebar.CurrentMilestones.FirstOrDefault(m => m.GithubNumber == milestoneNum);
@@ -3904,12 +3867,10 @@ namespace BuildConsole
             if (home == null) return; // Home tab closed — nothing to refresh
 
             List<BuildConsole.Services.QueueItem> running;
-            List<BuildConsole.Services.QueueItem> doneWaiting;
 
             if (_buildTrackerApi == null || !_buildTrackerApi.IsConfigured)
             {
                 running = new();
-                doneWaiting = new();
             }
             else
             {
@@ -3927,23 +3888,25 @@ namespace BuildConsole
                 }
                 catch { return; } // best-effort — keep whatever's already rendered
 
-                // Manual-only GitHub (Shane, 2026-08-14): "Done, waiting for you"
-                // needs the open-issue set (a `gh` CLI call). This USED to auto-
-                // refresh every ~60s the whole time the Home tab was open — real,
-                // recurring GitHub traffic on the shared 5,000/hr limit ("this app
-                // is killing my git connections"). It now fetches ONLY on a force
-                // refresh: opening the Home tab (OpenHomeTab passes force:true)
-                // re-syncs it once, and that's the manual trigger for now. The
-                // background 10s roll-up tick (force:false) still keeps the live
-                // Running list fresh from the LOCAL dev-server queue, but no longer
-                // touches GitHub. Logged on github.manual-refresh (attributable).
+                // Manual-only GitHub (Shane, 2026-08-14): the open-issue set (a `gh`
+                // CLI call) drives queue↔board reconciliation below (Verifying → Done
+                // promotion, #2136/#2486 status sync) — not any Home card render (#2709
+                // removed the "Done, waiting for you" card that used to be the reason
+                // for this fetch). This USED to auto-refresh every ~60s the whole time
+                // the Home tab was open — real, recurring GitHub traffic on the shared
+                // 5,000/hr limit ("this app is killing my git connections"). It now
+                // fetches ONLY on a force refresh: opening the Home tab (OpenHomeTab
+                // passes force:true) re-syncs it once, and that's the manual trigger
+                // for now. The background 10s roll-up tick (force:false) still keeps
+                // the live Running list fresh from the LOCAL dev-server queue, but no
+                // longer touches GitHub. Logged on github.manual-refresh (attributable).
                 if (force)
                 {
                     try
                     {
                         _homeOpenIssueNumbers = await BuildConsole.Services.GitHubIssuesService.GetOpenIssueNumbersAsync();
                         BuildConsole.Services.ActivityLog.Log("github.manual-refresh",
-                            $"Home 'Done, waiting for you' [Home-tab open/refresh]: {_homeOpenIssueNumbers.Count} open issue number(s) via gh CLI");
+                            $"Home queue/board reconciliation [Home-tab open/refresh]: {_homeOpenIssueNumbers.Count} open issue number(s) via gh CLI");
 
                         // Git #1469 — same manual-refresh moment promotes every queue row
                         // sitting in Verifying whose real GitHub issue has now closed to
@@ -3975,10 +3938,6 @@ namespace BuildConsole
                     .Where(i => i.Status == "running")
                     .OrderByDescending(i => i.UpdatedAt)
                     .ToList();
-                doneWaiting = queue
-                    .Where(i => i.Status == "done" && i.GithubNumber.HasValue && _homeOpenIssueNumbers.Contains(i.GithubNumber.Value))
-                    .OrderByDescending(i => i.UpdatedAt)
-                    .ToList();
             }
 
             // Skip the re-render (and its section-render logging) when nothing
@@ -3986,13 +3945,11 @@ namespace BuildConsole
             var signature = System.Text.Json.JsonSerializer.Serialize(new
             {
                 r = running.Select(i => new { i.Id, i.Status, i.UpdatedAt }),
-                d = doneWaiting.Select(i => new { i.Id, i.GithubNumber, i.UpdatedAt }),
             });
             if (!force && signature == _homeRollupSignature) return;
             _homeRollupSignature = signature;
 
             home.RenderRunning(running);
-            home.RenderDoneWaiting(doneWaiting);
             home.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
             home.UpdateFocusState();
         }

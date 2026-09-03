@@ -43,7 +43,6 @@ namespace BuildConsole.Controls
         /// already uses, once per tab.</summary>
         public event EventHandler<IReadOnlyList<PersistedChatTab>>? ReopenAllRequested;
         public event EventHandler<HomeQueueClick>? RunningItemClicked;
-        public event EventHandler<HomeQueueClick>? DoneItemClicked;
         public event EventHandler<HomeStuckItemClear>? ClearStuckItemRequested;
         public event EventHandler? NewIssueRequested;
         public event EventHandler? BuildWatchRequested;
@@ -53,9 +52,7 @@ namespace BuildConsole.Controls
         public event EventHandler? DeployRequested;
         public event EventHandler? GitBoardRequested;
         public event EventHandler? SettingsRequested;
-        public event EventHandler<GitBoardIssue>? IssueDetailRequested;
         public event EventHandler<int>? MilestoneDetailRequested;
-        public event EventHandler? DoneRefreshRequested;
 
         /// <summary>
         /// Raised when a pending-migration row is clicked, carrying the full local
@@ -68,7 +65,6 @@ namespace BuildConsole.Controls
         private const int StaleRunningMinutes = 60;
         private readonly Random _rng = new();
         private DispatcherTimer? _mascotTimer;
-        private GitBoardIssue? _recommendedTask;
 
         private static readonly string[] MascotQuotes =
         {
@@ -208,130 +204,6 @@ namespace BuildConsole.Controls
             BoardEpicsCount.Text = $"{totalEpics}";
             BoardIssuesCount.Text = $"{openIssues}";
             BoardMilestonesCount.Text = $"{totalMilestones}";
-
-            // Find top Shane To-Do items & recommended next task
-            var todos = issues
-                .Where(i => !i.IsClosed && (i.IsTodo || i.Labels.Any(l => string.Equals(l.Name, "Shane To-Do", StringComparison.OrdinalIgnoreCase))))
-                .OrderByDescending(i => i.Number)
-                .ToList();
-
-            TodoList.Children.Clear();
-            TodoCountText.Text = $"({todos.Count})";
-            TodoEmpty.Visibility = todos.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-            foreach (var item in todos.Take(6))
-            {
-                var captured = item;
-                TodoList.Children.Add(BuildRow(
-                    "🔥", "#FAB387",
-                    captured.Title,
-                    $"#{captured.Number}  ·  Shane To-Do  ·  click to open",
-                    $"Open issue #{captured.Number}",
-                    (_, _) => IssueDetailRequested?.Invoke(this, captured)));
-            }
-
-            // ── Top Priority "WHAT TO DO NEXT (NO OVERWHELM)" — Current Milestone Quick Win ──
-            var focus = FocusModeService.Instance;
-            int? activeMilestoneNumber = focus.IsActive ? focus.ActiveMilestoneNumber : null;
-            string activeMilestoneTitle = focus.IsActive ? focus.ActiveMilestoneTitle : "";
-
-            // Non-epic, open issues
-            var candidates = issues.Where(i => !i.IsClosed && !i.IsEpic).ToList();
-
-            // Filter to current milestone if active
-            List<GitBoardIssue> milestoneCandidates;
-            if (activeMilestoneNumber.HasValue)
-            {
-                milestoneCandidates = candidates.Where(i =>
-                    i.MilestoneNumber == activeMilestoneNumber.Value ||
-                    i.ParentMilestoneNumber == activeMilestoneNumber.Value ||
-                    focus.IsIssueInFocus(i.Number)).ToList();
-            }
-            else
-            {
-                milestoneCandidates = candidates;
-            }
-
-            // Pick fastest Quick Win (lowest estimated completion time, Shane To-Do prioritized)
-            _recommendedTask = milestoneCandidates
-                .OrderBy(i => EstimateIssueMinutes(i))
-                .ThenByDescending(i => i.IsTodo)
-                .ThenBy(i => i.Number)
-                .FirstOrDefault() ?? candidates.OrderBy(i => EstimateIssueMinutes(i)).FirstOrDefault();
-
-            if (_recommendedTask != null)
-            {
-                int estMins = EstimateIssueMinutes(_recommendedTask);
-                string estFormatted = FormatEstimate(estMins);
-
-                NextTaskBadgeText.Text = $"⚡ Quick Win ({estFormatted})";
-                NextTaskTitle.Text = $"#{_recommendedTask.Number} — {_recommendedTask.Title}";
-
-                string milestoneTag = !string.IsNullOrWhiteSpace(_recommendedTask.MilestoneTitle)
-                    ? _recommendedTask.MilestoneTitle
-                    : (!string.IsNullOrWhiteSpace(activeMilestoneTitle) ? activeMilestoneTitle : "Current Backlog");
-
-                NextTaskSubtitle.Text = $"🎯 Milestone: {milestoneTag}  ·  Est. {estFormatted}  ·  Fastest unblocked win";
-                BtnStartNextTask.Content = $"🚀 Jump into This Quick Win ({estFormatted})";
-                BtnStartNextTask.Visibility = Visibility.Visible;
-            }
-            else
-            {
-                NextTaskBadgeText.Text = "🎉 Complete";
-                NextTaskTitle.Text = "All caught up on this milestone! 🚀";
-                NextTaskSubtitle.Text = "No open quick tasks remaining in the active milestone.";
-                BtnStartNextTask.Visibility = Visibility.Collapsed;
-            }
-        }
-
-        private static int EstimateIssueMinutes(GitBoardIssue issue)
-        {
-            string text = $"{issue.Title} {issue.Body}";
-
-            // 1. Explicit minute indicator e.g. "15m", "20 min", "est: 30 mins"
-            var mMin = System.Text.RegularExpressions.Regex.Match(text, @"(?i)(?:est\.?|estimate|time|takes|duration)?\s*[:~-]?\s*(\d+)\s*(?:m|min|mins|minutes)\b");
-            if (mMin.Success && int.TryParse(mMin.Groups[1].Value, out var mins) && mins > 0)
-                return mins;
-
-            // 2. Explicit hour indicator e.g. "1h", "2 hrs"
-            var mHr = System.Text.RegularExpressions.Regex.Match(text, @"(?i)(?:est\.?|estimate|time)?\s*[:~-]?\s*(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hours)\b");
-            if (mHr.Success && double.TryParse(mHr.Groups[1].Value, out var hrs) && hrs > 0)
-                return (int)(hrs * 60);
-
-            // 3. Label heuristics
-            if (issue.Labels.Any(l => l.Name.Contains("quick", StringComparison.OrdinalIgnoreCase) || l.Name.Contains("easy", StringComparison.OrdinalIgnoreCase)))
-                return 10;
-            if (issue.Labels.Any(l => l.Name.Contains("15m", StringComparison.OrdinalIgnoreCase)))
-                return 15;
-            if (issue.Labels.Any(l => l.Name.Contains("30m", StringComparison.OrdinalIgnoreCase)))
-                return 30;
-            if (issue.Labels.Any(l => l.Name.Contains("1h", StringComparison.OrdinalIgnoreCase)))
-                return 60;
-            if (issue.IsTodo)
-                return 15;
-            if (issue.Labels.Any(l => l.Name.Contains("bug", StringComparison.OrdinalIgnoreCase)))
-                return 20;
-
-            // 4. Text length heuristic
-            int len = (issue.Title ?? "").Length + (issue.Body ?? "").Length;
-            if (len < 100) return 15;
-            if (len < 300) return 25;
-            if (len < 800) return 40;
-            return 60;
-        }
-
-        private static string FormatEstimate(int minutes)
-        {
-            if (minutes < 60) return $"~{minutes}m";
-            int h = minutes / 60;
-            int m = minutes % 60;
-            return m > 0 ? $"~{h}h {m}m" : $"~{h}h";
-        }
-
-        private void BtnStartNextTask_Click(object sender, RoutedEventArgs e)
-        {
-            if (_recommendedTask != null)
-                IssueDetailRequested?.Invoke(this, _recommendedTask);
         }
 
         // ── Section 0: What's New ───────────────────────────────────────────
@@ -600,29 +472,6 @@ namespace BuildConsole.Controls
             if (age.TotalHours >= 24) { int d = (int)age.TotalDays; return $"{d}d ago"; }
             if (age.TotalHours >= 1) { int h = (int)age.TotalHours; return $"{h}h ago"; }
             return $"{Math.Max(1, (int)age.TotalMinutes)}m ago";
-        }
-
-        // ── Section 3: Done, waiting for you ────────────────────────────────
-        public void RenderDoneWaiting(IReadOnlyList<QueueItem> done)
-        {
-            DoneList.Children.Clear();
-            DoneCountText.Text = $"({done.Count})";
-            DoneEmpty.Visibility = done.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-
-            foreach (var item in done)
-            {
-                var captured = item;
-                string when = item.UpdatedAt.HasValue ? item.UpdatedAt.Value.ToLocalTime().ToString("MMM d, h:mm tt") : "recently";
-                string refStr = item.GithubNumber.HasValue ? BuildConsole.Services.LocalBuildId.FormatRef(item.GithubNumber.Value) : "";
-                string sub = (item.GithubNumber.HasValue ? $"{refStr}  ·  " : "") + $"done {when}  ·  click to review";
-
-                DoneList.Children.Add(BuildRow(
-                    "✅", "#7FAE91",
-                    string.IsNullOrWhiteSpace(item.Title) ? "(untitled build)" : item.Title,
-                    sub,
-                    item.GithubNumber.HasValue ? $"Open chat for {refStr}" : null,
-                    (_, _) => DoneItemClicked?.Invoke(this, new HomeQueueClick { GithubNumber = captured.GithubNumber, Title = captured.Title, QueueItemId = captured.Id })));
-            }
         }
 
         public void UpdateClaudeStatus(string statusText, bool isOperational)
@@ -987,11 +836,6 @@ namespace BuildConsole.Controls
         private async void BtnRefreshHealth_Click(object sender, RoutedEventArgs e)
         {
             await RefreshHealthAsync();
-        }
-
-        private void BtnRefreshDone_Click(object sender, RoutedEventArgs e)
-        {
-            DoneRefreshRequested?.Invoke(this, EventArgs.Empty);
         }
 
         private async void BtnCleanWorktrees_Click(object sender, RoutedEventArgs e)
