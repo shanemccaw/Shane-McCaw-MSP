@@ -8428,6 +8428,14 @@ export type InsertPsCapabilitySurveyResult = typeof psCapabilitySurveyResultsTab
 export const CLEARANCE_TRIGGER_TYPES = ["license_sku", "manual"] as const;
 export type PolicyClearanceTriggerType = (typeof CLEARANCE_TRIGGER_TYPES)[number];
 
+/** #2518 — Shane decided Option A: `reviewCadence` is a fixed enum, not free
+ * text (carried forward from #2092, which left this genuinely open — see the
+ * column's own comment below for the "no fixed vocabulary" state that decided
+ * against). Anything outside this set is rejected at create time (400), never
+ * silently accepted with a null `reviewDueAt`. */
+export const REVIEW_CADENCES = ["Monthly", "Quarterly", "Semi-Annual", "Annual", "Biennial"] as const;
+export type ReviewCadence = (typeof REVIEW_CADENCES)[number];
+
 export const policyDecisionsTable = pgTable("policy_decisions", {
   id: serial("id").primaryKey(),
   mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
@@ -8448,13 +8456,12 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
   owner: text("owner").notNull(),
   /** RACI person key behind `owner`, matching the Risk Register's ownership chips. */
   ownerId: text("owner_id"),
-  /** The "Sign it off" form's own `review` field — a cadence ("Quarterly",
-   * "Annual"), not a date. Free text: no fixed cadence vocabulary has been
-   * decided yet, and inventing one here would be exactly the kind of display
-   * vocabulary this schema's house style forbids. NULL for a dependency-based
+  /** The "Sign it off" form's own `review` field — a cadence, not a date.
+   * REVIEW_CADENCES (#2518, Shane decided Option A — fixed enum, superseding
+   * the earlier free-text state #2092 left open). NULL for a dependency-based
    * decision (#1526) — see `clearanceCondition` below; a decision carries
    * exactly one of the two clocks, never both. */
-  reviewCadence: text("review_cadence"),
+  reviewCadence: text("review_cadence", { enum: REVIEW_CADENCES }),
   /** The "Sign it off" form's own `control` field. */
   compensatingControl: text("compensating_control").notNull(),
 
@@ -8464,21 +8471,18 @@ export const policyDecisionsTable = pgTable("policy_decisions", {
    * `advancePolicyReviewClock` (#1527): `due` mirrors a due review, `overdue`
    * collapses back to `live` — the decision never itself shows as lapsed. */
   decisionState: text("decision_state").notNull().default("live"),
-  /** RISK_REVIEW_STATES. Starts `on_track` for a date-based decision; nothing
-   * has computed a due date from `reviewCadence` yet, so `reviewDueAt` stays
-   * null until that exists — served as null rather than a guessed date,
-   * matching this schema's rule that an unscheduled review is null, never
-   * defaulted. Once set, advanced by alert-engine.ts's
-   * `advancePolicyReviewClock` (#1527), which also feeds the
-   * `policy_review_overdue` alert to the MSP — but no writer computes the
-   * initial `reviewDueAt` from `reviewCadence` yet (filed as its own finding;
-   * parsing free-text cadence into a due date is a real product decision, not
-   * ordinary backend work). NULL — not `on_track`, and never defaulted — for a
-   * dependency-based decision (#1526): a dependency has no "on track/due/
-   * overdue" reading, so forcing this vocabulary onto it would manufacture a
-   * false operational state, and `advancePolicyReviewClock` never touches a row
-   * with `review_due_at IS NULL` (every dependency-based row), so the two
-   * clocks stay genuinely independent on one table. */
+  /** RISK_REVIEW_STATES. Starts `on_track` for a date-based decision.
+   * `reviewDueAt` is computed at create time (#2518) from `reviewCadence` +
+   * `createdAt` as the anchor — Monthly=+1mo, Quarterly=+3mo, Semi-Annual=
+   * +6mo, Annual=+12mo, Biennial=+24mo (`portal-policy-decisions.ts`'s create
+   * route). Once set, advanced by alert-engine.ts's `advancePolicyReviewClock`
+   * (#1527), which also feeds the `policy_review_overdue` alert to the MSP.
+   * NULL — not `on_track`, and never defaulted — for a dependency-based
+   * decision (#1526): a dependency has no "on track/due/overdue" reading, so
+   * forcing this vocabulary onto it would manufacture a false operational
+   * state, and `advancePolicyReviewClock` never touches a row with
+   * `review_due_at IS NULL` (every dependency-based row), so the two clocks
+   * stay genuinely independent on one table. */
   reviewState: text("review_state"),
   reviewDueAt: timestamp("review_due_at", { withTimezone: true }),
 

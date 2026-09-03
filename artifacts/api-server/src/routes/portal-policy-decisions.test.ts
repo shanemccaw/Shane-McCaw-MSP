@@ -26,6 +26,7 @@ import request from "supertest";
 
 let mockSelectResultsQueue: any[][] = [];
 let mockInsertReturns: any[][] = [];
+let mockInsertValues: any[] = [];
 let mockUpdateSets: any[] = [];
 let mockUpdateReturns: any[][] = [];
 
@@ -44,7 +45,10 @@ vi.mock("@workspace/db", () => {
 
   const makeInsertChain = () => {
     const chain: any = {
-      values: () => chain,
+      values: (v: any) => {
+        mockInsertValues.push(v);
+        return chain;
+      },
       returning: () => Promise.resolve(mockInsertReturns.shift() ?? [{ id: 1 }]),
     };
     return chain;
@@ -76,6 +80,7 @@ vi.mock("@workspace/db", () => {
       clearanceResolvedAt: col("clearance_resolved_at"),
     },
     CLEARANCE_TRIGGER_TYPES: ["license_sku", "manual"] as const,
+    REVIEW_CADENCES: ["Monthly", "Quarterly", "Semi-Annual", "Annual", "Biennial"] as const,
   };
 });
 
@@ -168,6 +173,7 @@ function bareDecisionRow(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   mockSelectResultsQueue = [];
   mockInsertReturns = [];
+  mockInsertValues = [];
   mockUpdateSets = [];
   mockUpdateReturns = [];
   mockScope = SCOPE;
@@ -187,13 +193,44 @@ describe("POST /portal/policy-register — reviewCadence XOR clearanceCondition"
   });
 
   it("accepts a date-based decision (reviewCadence alone)", async () => {
-    mockInsertReturns = [[bareDecisionRow({ reviewCadence: "Quarterly", reviewState: "on_track", clearanceCondition: null, clearanceTriggerType: null })]];
+    mockInsertReturns = [[bareDecisionRow({ reviewCadence: "Quarterly", reviewState: "on_track", reviewDueAt: new Date("2026-11-30T00:00:00Z"), clearanceCondition: null, clearanceTriggerType: null })]];
     const res = await request(makeApp(CUSTOMER))
       .post("/api/portal/policy-register")
       .send({ ...CREATE_BASE, reviewCadence: "Quarterly" });
     expect(res.status).toBe(201);
     expect(res.body.decision.reviewCadence).toBe("Quarterly");
     expect(res.body.decision.clearanceCondition).toBeNull();
+  });
+
+  it("rejects a reviewCadence outside the fixed enum (#2518)", async () => {
+    const res = await request(makeApp(CUSTOMER))
+      .post("/api/portal/policy-register")
+      .send({ ...CREATE_BASE, reviewCadence: "Weekly" });
+    expect(res.status).toBe(400);
+  });
+
+  it("computes reviewDueAt from reviewCadence + createdAt anchor (#2518)", async () => {
+    mockInsertReturns = [[bareDecisionRow({ reviewCadence: "Monthly", reviewState: "on_track", clearanceCondition: null, clearanceTriggerType: null })]];
+    const res = await request(makeApp(CUSTOMER))
+      .post("/api/portal/policy-register")
+      .send({ ...CREATE_BASE, reviewCadence: "Monthly" });
+    expect(res.status).toBe(201);
+    // Assert the insert was actually called with a computed reviewDueAt
+    // exactly one month after the createdAt anchor it used, not just that
+    // the (mocked) response echoes something back.
+    const inserted = mockInsertValues[0];
+    expect(inserted.reviewDueAt).toBeInstanceOf(Date);
+    expect(inserted.createdAt).toBeInstanceOf(Date);
+    const expectedMonth = (inserted.createdAt.getUTCMonth() + 1) % 12;
+    expect(inserted.reviewDueAt.getUTCMonth()).toBe(expectedMonth);
+  });
+
+  it("leaves reviewDueAt null for a dependency-based decision (#2518)", async () => {
+    mockInsertReturns = [[bareDecisionRow()]];
+    await request(makeApp(CUSTOMER))
+      .post("/api/portal/policy-register")
+      .send({ ...CREATE_BASE, clearanceCondition: "Entra P2 licences land", clearanceTriggerType: "manual" });
+    expect(mockInsertValues[0].reviewDueAt).toBeNull();
   });
 
   it("requires clearanceTriggerType when clearanceCondition is set", async () => {

@@ -53,7 +53,7 @@
 
 import { Router, type IRouter, type Request, type Response } from "express";
 import { createHash } from "node:crypto";
-import { db, policyDecisionsTable, CLEARANCE_TRIGGER_TYPES, complianceObligationsTable, complianceFrameworksTable } from "@workspace/db";
+import { db, policyDecisionsTable, CLEARANCE_TRIGGER_TYPES, REVIEW_CADENCES, complianceObligationsTable, complianceFrameworksTable } from "@workspace/db";
 import { and, eq, desc, isNull, inArray, or } from "drizzle-orm";
 import { z } from "zod";
 
@@ -222,7 +222,10 @@ const createSchema = z
     pillar: z.string().trim().max(100).optional(),
     owner: z.string().trim().min(1, "Assign an owner").max(200),
     ownerId: z.string().trim().max(200).optional(),
-    reviewCadence: z.string().trim().min(1).max(100).optional(),
+    /** REVIEW_CADENCES (#2518, Shane decided Option A — fixed enum). Anything
+     * outside that set is rejected here at create time (400), never silently
+     * accepted with a null reviewDueAt. */
+    reviewCadence: z.enum(REVIEW_CADENCES).optional(),
     clearanceCondition: z.string().trim().min(1).max(500).optional(),
     clearanceTriggerType: z.enum(CLEARANCE_TRIGGER_TYPES).optional(),
     clearanceTriggerSkuPartNumber: z.string().trim().min(1).max(100).optional(),
@@ -268,6 +271,27 @@ const createSchema = z
       }
     }
   });
+
+/** Months to advance from the anchor date per REVIEW_CADENCES value (#2518). */
+const REVIEW_CADENCE_MONTHS: Record<(typeof REVIEW_CADENCES)[number], number> = {
+  Monthly: 1,
+  Quarterly: 3,
+  "Semi-Annual": 6,
+  Annual: 12,
+  Biennial: 24,
+};
+
+/** Computes `reviewDueAt` from a cadence + anchor date (#2518) — `createdAt`
+ * at create time, per the decided Option A. Uses `setUTCMonth` (not manual
+ * millisecond math) so month-length variance is handled the same way the JS
+ * Date engine already handles it elsewhere on this platform (e.g. a Jan 31
+ * anchor + Monthly rolls to the last day of Feb via native overflow rules,
+ * not a fabricated day count). */
+function computeReviewDueAt(cadence: (typeof REVIEW_CADENCES)[number], anchor: Date): Date {
+  const due = new Date(anchor);
+  due.setUTCMonth(due.getUTCMonth() + REVIEW_CADENCE_MONTHS[cadence]);
+  return due;
+}
 
 router.post(
   "/portal/policy-register",
@@ -336,11 +360,21 @@ router.post(
         ].join(" "))
         .digest("hex");
 
-      // #1526: date-based rows get reviewState "on_track" (nothing has computed
-      // a due date yet, matching this schema's existing convention); a
-      // dependency-based row gets no reviewState at all — there is no
-      // on_track/due/overdue reading for a dependency, only resolved/unresolved.
+      // #1526: date-based rows get reviewState "on_track"; a dependency-based
+      // row gets no reviewState at all — there is no on_track/due/overdue
+      // reading for a dependency, only resolved/unresolved.
       const dependencyBased = parsed.data.clearanceCondition !== undefined;
+      // #2518: reviewDueAt is computed from reviewCadence + createdAt as the
+      // anchor. `createdAt` is DB-defaulted (defaultNow()), so `signedAt`
+      // (already `new Date()`, taken moments earlier) stands in for it here
+      // and is written explicitly to the createdAt column below too, so the
+      // anchor actually used matches the row's own createdAt exactly rather
+      // than drifting by the few ms between this point and the DB's own
+      // defaultNow() — the two must never be one insert apart for the same
+      // decision. NULL for a dependency-based row — no date clock to anchor.
+      const reviewDueAt = dependencyBased || parsed.data.reviewCadence === undefined
+        ? null
+        : computeReviewDueAt(parsed.data.reviewCadence, signedAt);
 
       const [created] = await db
         .insert(policyDecisionsTable)
@@ -355,12 +389,14 @@ router.post(
           ownerId: parsed.data.ownerId ?? null,
           reviewCadence: parsed.data.reviewCadence ?? null,
           reviewState: dependencyBased ? null : "on_track",
+          reviewDueAt,
           clearanceCondition: parsed.data.clearanceCondition ?? null,
           clearanceTriggerType: parsed.data.clearanceTriggerType ?? null,
           clearanceTriggerSkuPartNumber: parsed.data.clearanceTriggerSkuPartNumber ?? null,
           compensatingControl: parsed.data.compensatingControl,
           signedBy: parsed.data.signerName,
           signedAt,
+          createdAt: signedAt,
           statement: parsed.data.statement,
           ipAddress,
           signatureHash,
