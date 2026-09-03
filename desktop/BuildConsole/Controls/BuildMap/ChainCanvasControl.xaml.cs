@@ -89,6 +89,15 @@ namespace BuildConsole.Controls.BuildMap
         private string? _selectedFeatureId;
         private int? _linkModeTarget;
 
+        // Drag-to-reorder state (README "Interactions": "Drag a Feature header onto another").
+        // A press records the point + Feature id but does NOT toggle/select yet; only movement past
+        // the system drag threshold promotes it to a drag (so a plain click still toggles+selects on
+        // mouse-up). While a drag is live the source header shows at .45 opacity, matching the
+        // prototype's `opacity: drag === fid ? .45 : 1`.
+        private Point _headerPressPoint;
+        private string? _pressedHeaderId;
+        private bool _headerDragging;
+
         public ChainCanvasControl()
         {
             InitializeComponent();
@@ -121,6 +130,12 @@ namespace BuildConsole.Controls.BuildMap
         public event EventHandler? Rendered;
         /// <summary>Gate pill clicked — the §5.3 manual-gate toggle itself is #2479/#2480's to perform.</summary>
         public event EventHandler<string>? GatePillClicked;
+        /// <summary>A Feature header was dragged onto another (README "Interactions": "Drag a Feature
+        /// header onto another"). <c>From</c> = the dragged Feature's id, <c>To</c> = the drop
+        /// target's id. The splice + §5.2-step-3 gate re-wire itself is the window's to perform
+        /// (<c>BuildChainMapWindow.ReorderFeature</c>) — same window-owns-the-mutation split the gate
+        /// pill and inspector reorder arrows already use.</summary>
+        public event EventHandler<(string From, string To)>? FeatureReordered;
         /// <summary>Fires whenever link mode is entered, cancelled, or resolved by picking a blocker.</summary>
         public event EventHandler? LinkModeChanged;
         /// <summary>Fires when link mode resolves a real edge pick — <c>WasNew</c> is
@@ -166,6 +181,27 @@ namespace BuildConsole.Controls.BuildMap
                 return;
             }
             SelectIssue(num);
+        }
+
+        /// <summary>Runs the modal WPF drag loop for a Feature header, showing the source at .45
+        /// opacity for its duration (the prototype's `opacity: drag === fid ? .45 : 1`). The drop
+        /// itself lands on another header's <c>Drop</c> handler, which raises
+        /// <see cref="FeatureReordered"/>; a drop on empty canvas just cancels (opacity restored in
+        /// the finally). The dragged Feature id travels as the drag payload.</summary>
+        private void BeginHeaderDrag(FrameworkElement card, string featureId)
+        {
+            double prev = card.Opacity;
+            card.Opacity = 0.45;
+            try
+            {
+                DragDrop.DoDragDrop(card, featureId, DragDropEffects.Move);
+            }
+            finally
+            {
+                card.Opacity = prev;
+                _headerDragging = false;
+                _pressedHeaderId = null;
+            }
         }
 
         /// <summary>Set (or replace) the real ChainDoc and render. Derived state is recomputed via
@@ -456,16 +492,53 @@ namespace BuildConsole.Controls.BuildMap
                 stroke: selected ? BlueSoft : expanded ? Border3 : Border2,
                 radius: 7, padding: new Thickness(10, 9, 10, 9), content: content,
                 ring: selected ? BlueSoft : null);
-            card.ToolTip = $"Feature: {feature.Name} · #{feature.Num}\nClick to {(expanded ? "collapse" : "open its issues")}.";
+            card.ToolTip = $"Feature: {feature.Name} · #{feature.Num}\nClick to {(expanded ? "collapse" : "open its issues")}. Drag to change priority.";
             card.Cursor = Cursors.Hand;
+            card.AllowDrop = true;
+            string fid = feature.Id;
+
+            // Press records the intent; the actual toggle+select happens on mouse-up only if no drag
+            // occurred (README: a click toggles+selects, a drag reorders — they must not both fire).
             card.MouseLeftButtonDown += (_, e) =>
             {
                 e.Handled = true;
-                if (!_expanded.Remove(feature.Id)) _expanded.Add(feature.Id);
-                _selectedFeatureId = feature.Id;
+                _headerPressPoint = e.GetPosition(this);
+                _pressedHeaderId = fid;
+                _headerDragging = false;
+            };
+            card.MouseMove += (_, e) =>
+            {
+                if (e.LeftButton != MouseButtonState.Pressed || _pressedHeaderId != fid || _headerDragging) return;
+                var p = e.GetPosition(this);
+                if (Math.Abs(p.X - _headerPressPoint.X) < SystemParameters.MinimumHorizontalDragDistance
+                    && Math.Abs(p.Y - _headerPressPoint.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+                _headerDragging = true;
+                BeginHeaderDrag(card, fid);
+            };
+            card.MouseLeftButtonUp += (_, e) =>
+            {
+                bool wasClick = _pressedHeaderId == fid && !_headerDragging;
+                _pressedHeaderId = null;
+                _headerDragging = false;
+                if (!wasClick) return;
+                e.Handled = true;
+                if (!_expanded.Remove(fid)) _expanded.Add(fid);
+                _selectedFeatureId = fid;
                 _selectedIssue = null;
+                ClearEdgeSelectionSilently();
                 Render();
                 SelectionChanged?.Invoke(this, EventArgs.Empty);
+            };
+            card.DragOver += (_, e) =>
+            {
+                e.Effects = e.Data.GetDataPresent(DataFormats.StringFormat) ? DragDropEffects.Move : DragDropEffects.None;
+                e.Handled = true;
+            };
+            card.Drop += (_, e) =>
+            {
+                e.Handled = true;
+                if (e.Data.GetData(DataFormats.StringFormat) is string fromId && fromId != fid)
+                    FeatureReordered?.Invoke(this, (fromId, fid));
             };
 
             Place(card, head.X, head.Y);

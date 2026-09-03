@@ -62,6 +62,7 @@ namespace BuildConsole
             Canvas.EdgeSelectionChanged += (_, __) => { RenderInspector(); RenderStatusStrip(); };
             Canvas.LinkModeChanged += (_, __) => { RenderInspector(); RenderStatusStrip(); };
             Canvas.GatePillClicked += (_, fid) => ToggleManualGate(fid);
+            Canvas.FeatureReordered += (_, args) => ReorderFeature(args.From, args.To);
             Canvas.ZoomChanged += (_, __) => { _zoom = Canvas.Zoom; RenderZoom(); };
             Canvas.EdgeLinked += (_, args) => ShowConfirmation(args.WasNew
                 ? $"#{args.To} is now blocked_by #{args.From}."

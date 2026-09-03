@@ -792,19 +792,40 @@ namespace BuildConsole
             ShowConfirmation($"#{num} is now the sentinel of {feature.Name}. Fan-in and the downstream gate were re-wired.");
         }
 
-        /// <summary>Adjacent-priority swap — README "Inspector ← / →" / "drag a header" (arrow
-        /// buttons only move by one step, so this is the reference's <c>reorder</c> splice dance
-        /// simplified to a plain swap, which produces the identical result for the adjacent case).</summary>
+        /// <summary>Priority reorder — the reference's <c>reorder(from, to)</c> ported verbatim
+        /// (README "Interactions": "Drag a Feature header onto another … dragged Feature takes the
+        /// drop target's index"). A <b>splice</b>, not a swap: remove the dragged Feature from its
+        /// slot, then insert it at the drop target's original index — identical to a swap only for
+        /// the adjacent case, so the non-adjacent drag path genuinely needs this. Then every
+        /// <c>gate</c> edge is regenerated for the new order (§5.2 step 3); <c>fanin</c> and
+        /// user-added <c>manual</c> edges are kept (<see cref="ChainRules.RechainGates"/> only
+        /// touches gate edges). Selects the moved Feature and posts the reference's own note. Shared
+        /// by the canvas drag (<c>Canvas.FeatureReordered</c>) and the inspector reorder arrows
+        /// (<see cref="MoveFeature"/>).</summary>
+        private void ReorderFeature(string fromId, string toId)
+        {
+            if (_doc == null || fromId == toId) return;
+            int fi = _doc.Order.IndexOf(fromId);
+            int ti = _doc.Order.IndexOf(toId);
+            if (fi < 0 || ti < 0) return;
+            _doc.Order.RemoveAt(fi);
+            _doc.Order.Insert(ti, fromId);
+            ChainRules.RechainGates(_doc);
+            AfterDocMutation();
+            Canvas.SelectFeature(fromId);
+            ShowConfirmation("Priority changed. Cross-feature gates re-wired per §5.2; your added edges were kept.");
+        }
+
+        /// <summary>Reorder by one step — README "Inspector ← / →". Ported 1:1 from the reference's
+        /// <c>moveFeature(fid, dir)</c>, which itself just calls <c>reorder(fid, order[i+dir])</c>,
+        /// so this shares the exact same splice + gate-rewire path as the drag.</summary>
         private void MoveFeature(string featureId, int dir)
         {
             if (_doc == null) return;
             int i = _doc.Order.IndexOf(featureId);
             int j = i + dir;
             if (i < 0 || j < 0 || j >= _doc.Order.Count) return;
-            (_doc.Order[i], _doc.Order[j]) = (_doc.Order[j], _doc.Order[i]);
-            ChainRules.RechainGates(_doc);
-            AfterDocMutation();
-            ShowConfirmation("Priority changed. Cross-feature gates re-wired per §5.2; your added edges were kept.");
+            ReorderFeature(featureId, _doc.Order[j]);
         }
 
         /// <summary>Board status change — ported 1:1 from the reference's <c>setStatus</c>: entering
