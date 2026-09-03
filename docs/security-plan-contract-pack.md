@@ -5,6 +5,19 @@ under **#1495** on 2026-08-29. Method fixed by **#1577** (contract extraction pa
 as step 3 of **#1578**), under **#1485** (EPIC: Portal New Design). Backend sub-issues
 **#1561–#1568**, all closed; **#2085** (business-unit scope gap) closed with a real fix.
 
+**Also serves #2601** (same "regenerate the contract pack" ask, filed minutes after #1731 as a
+sibling under #1689, "Feature: Security Plan (MSP Console)" — the operator/authoring half of this
+same module, per #1689's own body: "The operator half is architected during #1495's own
+architecture conversation, against that module's real contract pack — not invented here"). §2 of
+this pack **is** that operator/authoring contract: `msp-security-plan.ts`'s freeze → author prose →
+seal → sign sequence, `MSPOperator`/`MSPAdmin`-gated, is the write surface #1689 needs, already
+built and already documented here. `artifacts/msp-console` (#1689's own home, blocked on #1680)
+does not exist in this repo yet — confirmed at #2601 pack-verification time — so there is no UI to
+wire this contract to today; that is #1689's own stated blocker, not a gap this pack introduces.
+#2601's own audit re-verified this pack against current `main` (route line numbers, wire
+interfaces, and local DB row counts all re-checked and found unchanged since #1731's extraction)
+rather than re-deriving a duplicate file — see §9.
+
 Read-only. Every field below is extracted verbatim from a route's own `Wire*`/exported interface
 and the Drizzle schema, cited to file:line. **Nothing here is authored or invented.** No product
 code, no schema changes, no UI, no `drizzle-kit push`.
@@ -606,3 +619,14 @@ the local `DATABASE_URL` for real row counts (§1.1, §2.9). Confirmed via `git 
 §0/§1/§5.1 differ so substantially from the #1495 pack's account of the customer-facing side.
 Architecture deltas cited to GitHub issues #1495, #1561–#1568, #2085, #2145, under epic #1485 and
 method issues #1577/#1578/#1642. Read-only pass: no product code, schema, or UI was changed.
+
+**#2601 re-verification, 2026-09-03, same commit range (no relevant file changed since
+`6b7c2f72c`):** re-read `msp-security-plan.ts` in full — every route path, line range, wire
+interface (`WireSecurityPlanVersion`, `WireSecurityPlanDraft`), role gate
+(`MSPOperator`/`MSPAdmin`), and error-response shape in §2/§5.2/§6 above matches the live file
+exactly, byte-for-byte line numbers included. Re-queried the local `DATABASE_URL`:
+`portal_security_plans`, `msp_security_plan_versions`, `msp_security_plan_drafts` still all report
+0 rows, unchanged from §1.1/§2.9. Confirmed `artifacts/msp-console` does not exist in the repo
+(#1689's own stated blocker, #1680). No new backend, schema, or UI change was made or needed —
+this was a read-only confirmation, not a regeneration, because nothing to regenerate against had
+changed.
