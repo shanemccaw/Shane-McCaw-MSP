@@ -902,6 +902,11 @@ public partial class MainWindow : Window
 
             var focusTarget = item;
             card.MouseLeftButtonDown += (s, e) => { e.Handled = true; FocusBuildInQueue(focusTarget); };
+
+            // Git #2288 — the drawer's own stated gap: slot-level cancel/requeue/reassign.
+            // A thin action row under the card body; each button stops its own click from
+            // bubbling into the card's own MouseLeftButtonDown (focus-in-queue) above.
+            stack.Children.Add(MatrixSlotActionRow(item));
         }
         else
         {
@@ -917,6 +922,100 @@ public partial class MainWindow : Window
 
         card.Child = stack;
         return card;
+    }
+
+    // Git #2288 — the three real slot actions the drawer's own "Gap" line named: Cancel (stop
+    // the running process, mark the row failed), Requeue (stop + reset the same row back to
+    // 'queued'), Reassign (stop + requeue with a different model). All three go through
+    // Services.QueueWriteClient — the one deliberate exception to QueueReadClient's read-only
+    // contract, using the exact same pid-fingerprint-kill + status semantics BuildConsole's own
+    // BuildQueuePostgresClient established. Every button is a tiny icon so three of them still
+    // fit the 150px card; a slot mid-action shows a spinner glyph instead of double-firing.
+    private readonly HashSet<string> _matrixSlotsBusyWithAction = new();
+
+    private StackPanel MatrixSlotActionRow(QueueItem item)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 4, 0, 0) };
+        bool busy = _matrixSlotsBusyWithAction.Contains(item.Id);
+
+        row.Children.Add(MatrixSlotActionButton("", busy, "Cancel — stops the process and marks it failed",
+            () => RunMatrixSlotActionAsync(item, "Cancel", w => w.CancelRunningAsync(int.Parse(item.Id)))));
+        row.Children.Add(MatrixSlotActionButton("", busy, "Requeue — stops it and sends it back to the queue",
+            () => RunMatrixSlotActionAsync(item, "Requeue", w => w.RequeueAsync(int.Parse(item.Id)))));
+        row.Children.Add(MatrixSlotActionButton("", busy, "Reassign — stops it, requeues under a different model",
+            () => ReassignMatrixSlot(item)));
+        return row;
+    }
+
+    private Button MatrixSlotActionButton(string glyph, bool disabled, string tooltip, Action onClick)
+    {
+        var btn = new Button
+        {
+            Style = (Style)FindResource("PanelCollapseButton"),
+            Margin = new Thickness(0, 0, 4, 0),
+            IsEnabled = !disabled,
+            ToolTip = tooltip,
+            Content = new TextBlock { Text = disabled ? "" : glyph, FontFamily = new FontFamily("Segoe MDL2 Assets"), FontSize = 9 }
+        };
+        btn.Click += (s, e) => { e.Handled = true; onClick(); };
+        btn.PreviewMouseLeftButtonDown += (s, e) => e.Handled = true; // don't let the card's own focus-click fire too
+        return btn;
+    }
+
+    // Git #2288 — the small model choice for Reassign. Real, currently-supported model ids
+    // (same three CLAUDE.md itself names as the current Claude 5 family) — not a fetched list,
+    // since ShaneBuilder has no "list available models" endpoint to read one from; picking among
+    // these three is a real, bounded action rather than free-text a mistyped id would silently
+    // fail against on the next claim.
+    private static readonly (string Id, string Label)[] MatrixReassignModels =
+    {
+        ("claude-sonnet-5", "Sonnet 5"),
+        ("claude-opus-5", "Opus 5"),
+        ("claude-haiku-4-5-20251001", "Haiku 4.5"),
+    };
+
+    private void ReassignMatrixSlot(QueueItem item)
+    {
+        var menu = new ContextMenu();
+        foreach (var (id, label) in MatrixReassignModels)
+        {
+            var mi = new MenuItem { Header = $"Reassign to {label}" };
+            mi.Click += (s, e) => RunMatrixSlotActionAsync(item, "Reassign",
+                w => w.ReassignAsync(int.Parse(item.Id), id));
+            menu.Items.Add(mi);
+        }
+        menu.IsOpen = true;
+    }
+
+    private async void RunMatrixSlotActionAsync(QueueItem item, string actionLabel, Func<Services.QueueWriteClient, Task<Services.SlotActionResult>> action)
+    {
+        var writer = Services.QueueWriteClient.CreateFromEnvironment();
+        if (writer == null)
+        {
+            ToastEngine.Warning(actionLabel, "No DATABASE_URL resolvable — can't reach the queue.");
+            return;
+        }
+
+        _matrixSlotsBusyWithAction.Add(item.Id);
+        RenderMatrixDrawer();
+        try
+        {
+            var result = await action(writer);
+            if (result.Success)
+                ToastEngine.Success(actionLabel, $"#{(item.GithubNumber?.ToString() ?? item.Id)} {item.Title}: {result.Message}");
+            else
+                ToastEngine.Warning(actionLabel, result.Message);
+        }
+        catch (Exception ex)
+        {
+            ToastEngine.Error(actionLabel, $"Failed: {ex.Message}");
+        }
+        finally
+        {
+            _matrixSlotsBusyWithAction.Remove(item.Id);
+        }
+
+        await LoadQueueFromDatabaseAsync(); // real re-read — the row's new status, not a locally-guessed one
     }
 
     // Git #2286 — clicking a busy slot focuses that build in the queue:
