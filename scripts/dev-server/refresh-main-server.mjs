@@ -58,6 +58,7 @@ const FRONTEND_SERVICES = [
   { name: "admin-panel", port: 5174, title: "Admin" },
   { name: "portal", port: 5175, title: "Portal" },
   { name: "msp-website", port: 5176, title: "Website" },
+  { name: "msp-console", port: 5177, title: "MSP Console" },
 ];
 
 /**

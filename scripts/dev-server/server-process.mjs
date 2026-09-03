@@ -31,6 +31,7 @@ const SERVICE_NAMES = [
   "admin-panel",
   "portal",
   "msp-website",
+  "msp-console",
 ];
 
 /**

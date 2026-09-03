@@ -40,6 +40,7 @@ export const SERVICES = [
   { name: "admin-panel", title: "Admin", artifact: "artifacts/admin-panel/", alwaysOn: false },
   { name: "portal", title: "Portal", artifact: "artifacts/portal/", alwaysOn: false },
   { name: "msp-website", title: "Website", artifact: "artifacts/msp-website/", alwaysOn: false },
+  { name: "msp-console", title: "MSP Console", artifact: "artifacts/msp-console/", alwaysOn: false },
 ];
 
 export const ALL_SERVICE_NAMES = SERVICES.map((s) => s.name);

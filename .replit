@@ -163,6 +163,27 @@ PORT = "23333"
 BASE_PATH = "/msp/"
 
 [[workflows.workflow]]
+name = "artifacts/msp-console: web"
+author = "agent"
+mode = "sequential"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+artifactId = "artifacts/msp-console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pnpm --filter @workspace/msp-console run dev"
+cwd = "./artifacts/msp-console"
+waitForPort = 24815
+ensurePreviewReachable = "/"
+router = "path"
+
+[workflows.workflow.tasks.env]
+PORT = "24815"
+BASE_PATH = "/msp-console/"
+
+[[workflows.workflow]]
 name = "Git  pull"
 mode = "sequential"
 author = 60842278

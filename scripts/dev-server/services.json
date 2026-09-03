@@ -5,7 +5,8 @@
     { "name": "shane-mccaw-consulting", "pkg": "@workspace/shane-mccaw-consulting", "port": 5173, "title": "Marketing" },
     { "name": "admin-panel", "pkg": "@workspace/admin-panel", "port": 5174, "title": "Admin" },
     { "name": "portal", "pkg": "@workspace/portal", "port": 5175, "title": "Portal" },
-    { "name": "msp-website", "pkg": "@workspace/msp-website", "port": 5176, "title": "Website" }
+    { "name": "msp-website", "pkg": "@workspace/msp-website", "port": 5176, "title": "Website" },
+    { "name": "msp-console", "pkg": "@workspace/msp-console", "port": 5177, "title": "MSP Console" }
   ],
   "excluded": [
     {
