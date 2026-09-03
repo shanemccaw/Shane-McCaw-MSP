@@ -565,6 +565,25 @@
                                        Margin="0,0,10,0" VerticalAlignment="Center"
                                        ToolTip="Expand full page here" Visibility="Collapsed"
                                        MouseLeftButtonDown="BtnBatterUpExpand_Click"/>
+                            <!-- Git #2373 (Feature #2367 item 6) — Shot Vault panel-level chrome:
+                                 "Expand full page here" (widen the rail in place, no tab) and
+                                 "Send to tab" (open the same real shot list as a document tab).
+                                 Same mechanism/glyphs Git #2312 (Git Panel) and Git #2365 (Batter
+                                 Up panel) already established — reused, not reinvented. Only shown
+                                 while the Shot Vault panel is the visible left-panel source
+                                 (visibility set in OpenLeftPanel). -->
+                            <TextBlock x:Name="BtnShotVaultSendToTab" DockPanel.Dock="Right" Text="&#x2197;"
+                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="12"
+                                       Foreground="{StaticResource Brush.Text.Dim}" Cursor="Hand"
+                                       Margin="0,0,10,0" VerticalAlignment="Center"
+                                       ToolTip="Send to tab" Visibility="Collapsed"
+                                       MouseLeftButtonDown="BtnShotVaultSendToTab_Click"/>
+                            <TextBlock x:Name="BtnShotVaultExpand" DockPanel.Dock="Right" Text="&#x26F6;"
+                                       FontFamily="{StaticResource FontFamily.Sans}" FontSize="12"
+                                       Foreground="{StaticResource Brush.Text.Dim}" Cursor="Hand"
+                                       Margin="0,0,10,0" VerticalAlignment="Center"
+                                       ToolTip="Expand full page here" Visibility="Collapsed"
+                                       MouseLeftButtonDown="BtnShotVaultExpand_Click"/>
                             <TextBlock x:Name="LeftPanelTitle" Text="CHATS" Margin="14,0,0,0"
                                        VerticalAlignment="Center"
                                        Foreground="{StaticResource Brush.Text.Muted}"
@@ -2580,6 +2599,40 @@
 
                         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                             <StackPanel x:Name="BatterUpItemDocHost" Margin="24,16" MaxWidth="640" HorizontalAlignment="Left"/>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <!-- Git #2373 (Feature #2367 item 6) — "Send to tab" document surface for the
+                         Shot Vault rail panel, same real "one data source, two hosts" precedent
+                         GitItemDock (#2312) and BatterUpItemDock (#2365) already set. A frozen
+                         snapshot of the real shot list at the moment it was sent, not a live
+                         drill surface. -->
+                    <Grid x:Name="ShotVaultItemDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,10" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.ShotVault}"
+                                      Width="16" Height="16" Margin="0,0,10,0"
+                                      Fill="{StaticResource Brush.Accent.Primary}"/>
+                                <StackPanel>
+                                    <TextBlock x:Name="ShotVaultItemDocTitleText" Text="Shot Vault" FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                               FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                               Foreground="{StaticResource Brush.Text.Heading}"/>
+                                    <TextBlock Text="Sent from the Shot Vault panel — same real shots on disk, frozen at send time."
+                                               Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="620"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                               Foreground="{StaticResource Brush.Text.Dim}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="ShotVaultItemDocHost" Margin="24,16" MaxWidth="640" HorizontalAlignment="Left"/>
                         </ScrollViewer>
                     </Grid>
 

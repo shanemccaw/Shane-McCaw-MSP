@@ -1,12 +1,21 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ShaneBuilder.Services;
 
 namespace ShaneBuilder;
+
+/// <summary>Git #2373 (Feature #2367 item 6) — a frozen snapshot of the Shot Vault panel's real
+/// shot list at the moment "Send to tab" was clicked. Carried on <c>TabDef</c>, read by
+/// <see cref="MainWindow.RenderShotVaultDoc"/>. Records — not the live <see cref="ShotVaultItem"/>
+/// list itself — so a later re-open of the rail panel (which may have picked up new/removed
+/// shots) can't silently mutate a tab that already claims to be a frozen send-time copy.</summary>
+public sealed record ShotVaultDocSnapshot(IReadOnlyList<ShotVaultItem> Shots, DateTime SentAtUtc);
 
 /// <summary>
 /// Git #2372 (Feature #2367 item 5) — Shot Vault rail panel: the real per-shot Copy action.
@@ -32,6 +41,17 @@ namespace ShaneBuilder;
 public partial class MainWindow
 {
     private bool _shotVaultPanelLoaded;
+
+    // Git #2373 — "Expand full page here" widens the rail panel in place (no tab opened); "Send to
+    // tab" is the explicit opt-in takeover that opens the same real shot list in a document tab
+    // (ShotVaultItemDock). Same split, same widths, as Git #2312/#2365 already built for the Git
+    // Panel peek and the Batter Up panel — reused rather than reinvented for this panel.
+    private bool _shotVaultExpanded;
+
+    /// <summary>The real shot list from the panel's most recent successful render — read by "Send
+    /// to tab" to build its frozen snapshot. Null until the panel has actually loaded at least once
+    /// (never a guessed/empty stand-in for "not loaded yet").</summary>
+    private IReadOnlyList<ShotVaultItem>? _shotVaultLastShots;
 
     /// <summary>Fires the real folder read the first time the SHOT VAULT rail panel opens. A missing
     /// folder (nothing captured yet) renders an honest empty state, not a fixture row.</summary>
@@ -62,6 +82,8 @@ public partial class MainWindow
             ShotVaultPanelStatus.Visibility = Visibility.Visible;
             return;
         }
+
+        _shotVaultLastShots = shots; // real list, read by "Send to tab" (#2373)
 
         if (shots.Count == 0)
         {
@@ -156,5 +178,85 @@ public partial class MainWindow
         {
             ToastEngine.Error("Copy failed", ex.Message);
         }
+    }
+
+    // ── Panel-level chrome (#2373) ───────────────────────────────────────────────────────────
+
+    /// <summary>Widens/collapses the rail in place for "Expand full page here" (#2373). Only
+    /// touches the shared <c>LeftPanel</c> while Shot Vault is the one actually showing it —
+    /// switching rail sources (Git/Chats/BatterUp/...) leaves this state behind rather than
+    /// stretching an unrelated panel. Same width Git #2312/#2365 use for their own peek expand.</summary>
+    private void SetShotVaultExpanded(bool expanded)
+    {
+        _shotVaultExpanded = expanded;
+        BtnShotVaultExpand.ToolTip = expanded ? "Collapse back to the rail width" : "Expand full page here";
+        if (_leftPanelSource == "ShotVault")
+            LeftPanel.Width = expanded ? GitPeekExpandedWidth : LeftPanelWidth;
+    }
+
+    private void BtnShotVaultExpand_Click(object sender, MouseButtonEventArgs e) => SetShotVaultExpanded(!_shotVaultExpanded);
+
+    /// <summary>"Send to tab" (#2373) — opens (or refreshes and focuses) a document tab holding a
+    /// real frozen snapshot of the panel's current shot list, via <see cref="RenderShotVaultDoc"/>.
+    /// One real disk-backed panel, two surfaces — same "widen in place vs. explicit opt-in
+    /// takeover" split Git #2312/#2365 built for the Git Panel peek and the Batter Up panel.
+    /// A panel that hasn't loaded yet (no real list to freeze) reports that honestly instead of
+    /// sending an empty tab that looks like a genuinely empty vault.</summary>
+    private void BtnShotVaultSendToTab_Click(object sender, MouseButtonEventArgs e)
+    {
+        var shots = _shotVaultLastShots;
+        if (shots == null)
+        {
+            ToastEngine.Show("Shot Vault", "Still loading the shot list — try again in a moment.", ToastKind.Warning);
+            return;
+        }
+
+        var snapshot = new ShotVaultDocSnapshot(shots.ToList(), DateTime.UtcNow);
+
+        const string tabId = "shotvault-doc";
+        var existing = _tabs.Find(t => t.Id == tabId);
+        if (existing != null)
+        {
+            _tabs.Remove(existing); // refresh — the real shot list may have moved since it was last sent
+        }
+
+        var tab = new TabDef(tabId, "Shot Vault", shotVaultSnapshot: snapshot,
+            dot: (Brush)FindResource("Brush.Accent.Primary"),
+            // Same reasoning as the Batter Up doc tab (#2472) — a Shot Vault document is the
+            // contract's named reloadable class, never a dedicated parked WebView2.
+            keepAliveClass: TabKeepAliveClass.Reloadable);
+        _tabs.Add(tab);
+        SelectTab(tabId);
+    }
+
+    /// <summary>Renders a "Send to tab" document (#2373) into the shared ShotVaultItemDock — the
+    /// same thumbnail rows + Copy action the rail panel shows, off the frozen snapshot rather than
+    /// the live folder read (a re-open of the rail panel after this tab was sent may have picked up
+    /// new/removed shots; the doc stays honest about what it was actually sent, not silently
+    /// live).</summary>
+    private void RenderShotVaultDoc(TabDef tab)
+    {
+        ShotVaultItemDocHost.Children.Clear();
+        var snap = tab.ShotVaultSnapshot;
+        if (snap == null) return;
+
+        var status = new TextBlock
+        {
+            Margin = new Thickness(6, 0, 6, 10),
+            TextWrapping = TextWrapping.Wrap,
+            Text = snap.Shots.Count == 0
+                ? $"No shots at send time ({snap.SentAtUtc.ToLocalTime():MMM d, h:mm tt})."
+                : $"{snap.Shots.Count} shot{(snap.Shots.Count == 1 ? "" : "s")} — as of {snap.SentAtUtc.ToLocalTime():MMM d, h:mm tt}.",
+            Foreground = (Brush)FindResource("Brush.Text.Dim"),
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = (double)FindResource("FontSize.10.5"),
+        };
+        ShotVaultItemDocHost.Children.Add(status);
+
+        // Same real row + real Copy action the rail panel uses — a sent shot still copies to the
+        // clipboard from the tab (the file on disk hasn't moved, only the panel's own list state
+        // is frozen), so this isn't a dead, inert copy of the rail panel.
+        foreach (var shot in snap.Shots)
+            ShotVaultItemDocHost.Children.Add(BuildShotVaultRow(shot));
     }
 }
