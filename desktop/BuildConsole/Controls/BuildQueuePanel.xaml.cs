@@ -3533,6 +3533,15 @@ namespace BuildConsole.Controls
             SetQueueCardTooltip(card, item);
             mainStack.Children.Add(titleBlock);
 
+            // ── Git #2692 — segmented step-bubble progress row ──
+            // Reuses the exact same live BuildProgressTracker.GetProgress(item.Id) data
+            // ChatSessionPane's RefreshProgress already renders in Build Watch. Fails closed
+            // to exactly today's card (no extra row at all) when this build has never called
+            // reportProgress — no fake/fixture bar. Subscribed to the same real
+            // ProgressChanged event so it updates live without a full card rebuild.
+            var progressBubbleRow = BuildProgressBubbleRow(item.Id);
+            mainStack.Children.Add(progressBubbleRow);
+
             // ── Third Row: Extra info (blocker ghost cards, exit code) ──
             // Git #2070: gate on the same live-filtered set BuildWaitingOnText renders,
             // not the raw declared list — otherwise this row can render with an empty
@@ -3610,6 +3619,86 @@ namespace BuildConsole.Controls
             card.ContextMenu = BuildCardContextMenu(item, node);
 
             return card;
+        }
+
+        /// <summary>
+        /// Git #2692 — a compact row of small step bubbles, one per <c>BuildProgressReport.Total</c>,
+        /// built from the exact same live <see cref="BuildProgressTracker.GetProgress"/> data
+        /// <see cref="ChatSessionPane.RefreshProgress"/> already renders in Build Watch. Bubbles
+        /// before the current step render full/filled (done), the current in-progress step renders
+        /// active (visually distinct from both done and not-yet-started), and remaining steps render
+        /// empty/waiting. A build that never calls reportProgress (report null or Total &lt;= 0)
+        /// collapses this row entirely — the card looks exactly as it does today, no fake/fixture bar.
+        /// Self-subscribes to <see cref="BuildProgressTracker.ProgressChanged"/> for this build's own
+        /// id so the bubbles update live without a full card rebuild, same as ChatSessionPane's own
+        /// column — and unsubscribes on Unloaded (this row is rebuilt fresh on every RenderQueue pass
+        /// anyway, so a stale subscription would just leak, never misfire on the wrong card).
+        /// </summary>
+        private FrameworkElement BuildProgressBubbleRow(int queueItemId)
+        {
+            var row = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(1, 4, 1, 0),
+                Visibility = Visibility.Collapsed
+            };
+
+            void Refresh()
+            {
+                row.Children.Clear();
+                var report = BuildProgressTracker.GetProgress(queueItemId);
+                if (report == null || report.Total <= 0)
+                {
+                    row.Visibility = Visibility.Collapsed;
+                    return;
+                }
+
+                row.Visibility = Visibility.Visible;
+                row.ToolTip = string.IsNullOrWhiteSpace(report.CurrentLabel)
+                    ? $"{report.Step}/{report.Total} ({report.Percent:0}%)"
+                    : $"{report.Step}/{report.Total} ({report.Percent:0}%) — {report.CurrentLabel}";
+
+                for (int i = 1; i <= report.Total; i++)
+                {
+                    bool isFull = i < report.Step || (report.IsComplete && i <= report.Step);
+                    bool isActive = !isFull && i == report.Step;
+
+                    Brush fill = isFull
+                        ? (Brush)Application.Current.FindResource("GreenBrush")
+                        : (isActive
+                            ? (Brush)Application.Current.FindResource("YellowBrush")
+                            : (Brush)Application.Current.FindResource("Surface0Brush"));
+                    Brush border = isFull
+                        ? (Brush)Application.Current.FindResource("GreenBrush")
+                        : (isActive
+                            ? (Brush)Application.Current.FindResource("YellowBrush")
+                            : (Brush)Application.Current.FindResource("Subtext1Brush"));
+
+                    row.Children.Add(new Border
+                    {
+                        Width = 14,
+                        Height = 5,
+                        CornerRadius = new CornerRadius(2.5),
+                        Background = fill,
+                        BorderBrush = border,
+                        BorderThickness = new Thickness(1),
+                        Margin = new Thickness(0, 0, 3, 0)
+                    });
+                }
+            }
+
+            Refresh();
+
+            void OnProgressChanged(BuildProgressReport report)
+            {
+                if (report.QueueItemId == queueItemId)
+                    Refresh();
+            }
+
+            row.Loaded += (_, _) => BuildProgressTracker.ProgressChanged += OnProgressChanged;
+            row.Unloaded += (_, _) => BuildProgressTracker.ProgressChanged -= OnProgressChanged;
+
+            return row;
         }
 
         private void SelectNode(QueueGraphNode node, bool openLogPanel = false)
