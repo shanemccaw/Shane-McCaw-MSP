@@ -9051,10 +9051,98 @@ public partial class MainWindow : Window
         else
             foreach (var d in data.Dropped) children.Add(GitMapDroppedCard(d));
 
+        // Git #2315 — real mirrored feature pairs between EPIC #1485 (Portal) and EPIC #1571 (Portal
+        // Admin), global (not epic-scoped) like Started-and-Dropped above.
+        children.Add(GitMapSectionHeader($"Mirrored Pairs — Portal ↔ MSP Console ({data.MirroredPairs.Count})"));
+        if (data.MirroredPairs.Count == 0)
+            children.Add(GitMapNote("No real title-matched pairs found between EPIC #1485 (Portal) and EPIC #1571 (Portal Admin)."));
+        else
+            foreach (var p in data.MirroredPairs) children.Add(GitMapMirroredPairCard(p));
+        if (data.UnmirroredPortalFeatures.Count > 0 || data.UnmirroredAdminFeatures.Count > 0)
+            children.Add(GitMapUnmirroredNote(data.UnmirroredPortalFeatures, data.UnmirroredAdminFeatures));
+
         children.Add(GitMapSectionHeader($"Epics ({data.Epics.Count})"));
         foreach (var e in data.Epics) children.Add(GitMapEpicRow(e));
 
         return children;
+    }
+
+    /// <summary>Git #2315 — one real mirrored feature pair card: the Portal side, the MSP Console
+    /// side, and — when the match isn't exact — the real Jaccard score that produced it.</summary>
+    private Border GitMapMirroredPairCard(Services.GitMapMirroredPair p)
+    {
+        var outer = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 6), CornerRadius = new CornerRadius(7),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Bubble"), BorderBrush = (Brush)FindResource("Brush.Claude.Border"),
+            BorderThickness = new Thickness(1), Padding = new Thickness(8, 6, 8, 6),
+        };
+        var stack = new StackPanel();
+
+        TextBlock SideRow(string label, int number, string title, bool closed)
+        {
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            var tb = new TextBlock
+            {
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10,
+                Foreground = closed ? (Brush)FindResource("Brush.Claude.Text.Muted") : (Brush)FindResource("Brush.Claude.Text.Bright"),
+            };
+            var run1 = new Run($"{label} ") { FontWeight = (FontWeight)FindResource("FontWeight.ExtraBold"), FontSize = 7.5, BaselineAlignment = BaselineAlignment.Center };
+            var run2 = new Run($"#{number} {title}{(closed ? " (closed)" : "")}");
+            tb.Inlines.Add(run1);
+            tb.Inlines.Add(run2);
+            return tb;
+        }
+
+        stack.Children.Add(SideRow("PORTAL", p.PortalNumber, p.PortalTitle, p.PortalClosed));
+        var adminRow = SideRow("ADMIN", p.AdminNumber, p.AdminTitle, p.AdminClosed);
+        adminRow.Margin = new Thickness(0, 3, 0, 0);
+        stack.Children.Add(adminRow);
+
+        if (p.MatchScore < 1.0)
+            stack.Children.Add(new TextBlock
+            {
+                Text = $"partial name match · {p.MatchScore:P0} token overlap", Margin = new Thickness(0, 4, 0, 0),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 8.5,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+
+        outer.Child = stack;
+        return outer;
+    }
+
+    /// <summary>Git #2315 — real, honest list of "Feature: …" sub-issues on either side of the
+    /// Portal ↔ MSP Console mirror that found no counterpart above the match threshold — never
+    /// silently dropped from view.</summary>
+    private Border GitMapUnmirroredNote(List<Services.GitMapFeature> unmirroredPortal, List<Services.GitMapFeature> unmirroredAdmin)
+    {
+        var outer = new Border
+        {
+            Margin = new Thickness(0, 0, 0, 8), CornerRadius = new CornerRadius(8),
+            Background = (Brush)FindResource("Brush.Claude.Bg.Bubble"), Padding = new Thickness(10, 8, 10, 8),
+        };
+        var stack = new StackPanel();
+        if (unmirroredPortal.Count > 0)
+            stack.Children.Add(new TextBlock
+            {
+                Text = $"{unmirroredPortal.Count} Portal feature{(unmirroredPortal.Count == 1 ? "" : "s")} with no MSP Console mirror yet: " +
+                    string.Join(", ", unmirroredPortal.Select(f => $"#{f.Number} {f.Title}")),
+                TextWrapping = TextWrapping.Wrap,
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+        if (unmirroredAdmin.Count > 0)
+            stack.Children.Add(new TextBlock
+            {
+                Text = $"{unmirroredAdmin.Count} MSP Console feature{(unmirroredAdmin.Count == 1 ? "" : "s")} with no Portal mirror: " +
+                    string.Join(", ", unmirroredAdmin.Select(f => $"#{f.Number} {f.Title}")),
+                TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, unmirroredPortal.Count > 0 ? 6 : 0, 0, 0),
+                FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 9,
+                Foreground = (Brush)FindResource("Brush.Claude.Text.Muted"),
+            });
+        outer.Child = stack;
+        return outer;
     }
 
     private TextBlock GitMapSectionHeader(string text) => new()

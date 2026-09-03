@@ -60,6 +60,25 @@ public sealed class GitMapFeature
     public double? BurndownFraction => TotalCount > 0 ? (double)ClosedCount / TotalCount : (double?)null;
 }
 
+/// <summary>Git #2315 — one real mirrored feature pair between Customer Portal (EPIC #1485) and
+/// MSP / Portal Admin (EPIC #1571), matched by real title-token correspondence off each epic's own
+/// established naming convention — sub-issues titled "Feature: &lt;name&gt; (Portal)" on one side and
+/// "Feature: &lt;name&gt; (MSP Console)" on the other (confirmed live: #1486/#1681 "Change Control",
+/// #1487/#1682 "Risk Register / RBD", etc). Not a fabricated pairing table — <see cref="MatchScore"/>
+/// is the real Jaccard token-overlap score <see cref="GitMapService"/> computed to produce this pair,
+/// so a partial-name match (e.g. "Microsoft Changes / Message Center" ↔ "Microsoft Changes") stays
+/// visibly distinct from an exact one.</summary>
+public sealed class GitMapMirroredPair
+{
+    public int PortalNumber { get; init; }
+    public string PortalTitle { get; init; } = "";
+    public bool PortalClosed { get; init; }
+    public int AdminNumber { get; init; }
+    public string AdminTitle { get; init; } = "";
+    public bool AdminClosed { get; init; }
+    public double MatchScore { get; init; }
+}
+
 /// <summary>The real, currently in-flight feature under one epic — "Focus Build" per §6.5's mini
 /// panel description. Null when no feature in that epic currently carries the real `in-flight`
 /// GitHub label (an honest empty state, never a fabricated placeholder build).</summary>
@@ -109,6 +128,14 @@ public sealed class GitMapData
     public List<GitMapEpic> Epics { get; init; } = new();
     public GitMapFocusBuild? FocusBuild { get; init; }
     public List<GitMapDroppedItem> Dropped { get; init; } = new();
+    /// <summary>Git #2315 — real matched pairs between EPIC #1485 (Portal) and EPIC #1571 (Portal
+    /// Admin). Global, not epic-scoped — same convention as <see cref="Dropped"/>.</summary>
+    public List<GitMapMirroredPair> MirroredPairs { get; init; } = new();
+    /// <summary>Real "Feature: …" sub-issues under #1485 that found no matching #1571 counterpart —
+    /// an honest gap list, not silently dropped.</summary>
+    public List<GitMapFeature> UnmirroredPortalFeatures { get; init; } = new();
+    /// <summary>Same as <see cref="UnmirroredPortalFeatures"/>, the #1571 side.</summary>
+    public List<GitMapFeature> UnmirroredAdminFeatures { get; init; } = new();
     public bool GitHubReachable { get; init; } = true;
     public string? GitHubError { get; init; }
 
@@ -134,7 +161,17 @@ public static class GitMapService
     private const string RepoName = "Shane-McCaw-MSP";
     private const string Repo = "shanemccaw/Shane-McCaw-MSP";
 
+    /// <summary>Git #2315 — the two real epic numbers CLAUDE.md's own area-epic routing table names
+    /// for these two surfaces ("EPIC: Portal" / "EPIC: Portal Admin"), not invented here.</summary>
+    public const int PortalEpicNumber = 1485;
+    public const int AdminEpicNumber = 1571;
+
     private static readonly Regex EpicTitlePrefix = new(@"^epic:\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FeatureTitlePrefix = new(@"^feature:\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex FeatureTitleSuffix = new(@"\s*\((Portal|MSP Console)\)\s*$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    private static readonly Regex WordPattern = new(@"[A-Za-z0-9]+", RegexOptions.Compiled);
+    private static readonly HashSet<string> MirrorStopwords = new(StringComparer.OrdinalIgnoreCase) { "and", "or", "the", "of", "for", "a", "an" };
+    private const double MirrorMatchThreshold = 0.5;
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     /// <summary>Every open issue whose title genuinely starts with "Epic:"/"EPIC:" — the repo's own
@@ -246,6 +283,98 @@ public static class GitMapService
             ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] couldn't parse sub_issues for epic #{epicNumber}: {ex.Message}");
             return (false, new List<GitMapFeature>(), $"couldn't parse gh output: {ex.Message}");
         }
+    }
+
+    /// <summary>Git #2315 — real token set for one "Feature: …" title, used for mirror matching:
+    /// strips the "Feature: " prefix and the trailing "(Portal)"/"(MSP Console)" suffix, then splits
+    /// the remaining real name into lowercase word tokens, dropping stopwords. No fabricated
+    /// synonym table — the two epics' own title text is the only input.</summary>
+    private static HashSet<string> MirrorTokens(string title)
+    {
+        var stripped = FeatureTitleSuffix.Replace(FeatureTitlePrefix.Replace(title, ""), "");
+        return WordPattern.Matches(stripped)
+            .Select(m => m.Value.ToLowerInvariant())
+            .Where(w => !MirrorStopwords.Contains(w))
+            .ToHashSet();
+    }
+
+    /// <summary>Real Jaccard token-overlap score (|A∩B| / |A∪B|) between two title token sets — the
+    /// actual similarity metric behind every mirrored pair, not a fixed synonym lookup.</summary>
+    private static double MirrorJaccard(HashSet<string> a, HashSet<string> b)
+    {
+        if (a.Count == 0 || b.Count == 0) return 0;
+        int union = a.Union(b).Count();
+        if (union == 0) return 0;
+        return (double)a.Intersect(b).Count() / union;
+    }
+
+    /// <summary>Git #2315 — real stable mutual-best pairing between EPIC #1485's and EPIC #1571's own
+    /// "Feature: …" sub-issues, off real title-token overlap (see <see cref="MirrorTokens"/> /
+    /// <see cref="MirrorJaccard"/>) — no fabricated pairing table. A pair only forms when each side's
+    /// own best-scoring counterpart on the other side is genuinely each other, at or above
+    /// <see cref="MirrorMatchThreshold"/>; everything else is reported honestly as unmirrored rather
+    /// than force-matched.</summary>
+    private static (List<GitMapMirroredPair> Pairs, List<GitMapFeature> UnmatchedPortal, List<GitMapFeature> UnmatchedAdmin)
+        ComputeMirroredPairs(List<GitMapFeature> portalFeatures, List<GitMapFeature> adminFeatures)
+    {
+        var portalNamed = portalFeatures.Where(f => FeatureTitlePrefix.IsMatch(f.Title)).ToList();
+        var adminNamed = adminFeatures.Where(f => FeatureTitlePrefix.IsMatch(f.Title)).ToList();
+
+        var portalTokens = portalNamed.ToDictionary(f => f.Number, f => MirrorTokens(f.Title));
+        var adminTokens = adminNamed.ToDictionary(f => f.Number, f => MirrorTokens(f.Title));
+
+        var pairs = new List<GitMapMirroredPair>();
+        foreach (var pf in portalNamed)
+        {
+            GitMapFeature? bestAdmin = null;
+            double bestScore = 0;
+            foreach (var af in adminNamed)
+            {
+                double score = MirrorJaccard(portalTokens[pf.Number], adminTokens[af.Number]);
+                if (score > bestScore) { bestScore = score; bestAdmin = af; }
+            }
+            if (bestAdmin == null || bestScore < MirrorMatchThreshold) continue;
+
+            // Mutual-best check: does that admin feature's own best portal match point back at pf?
+            GitMapFeature? bestPortalForAdmin = null;
+            double bestReverseScore = 0;
+            foreach (var pf2 in portalNamed)
+            {
+                double score = MirrorJaccard(portalTokens[pf2.Number], adminTokens[bestAdmin.Number]);
+                if (score > bestReverseScore) { bestReverseScore = score; bestPortalForAdmin = pf2; }
+            }
+            if (bestPortalForAdmin == null || bestPortalForAdmin.Number != pf.Number) continue;
+
+            pairs.Add(new GitMapMirroredPair
+            {
+                PortalNumber = pf.Number, PortalTitle = pf.Title, PortalClosed = pf.IsClosed,
+                AdminNumber = bestAdmin.Number, AdminTitle = bestAdmin.Title, AdminClosed = bestAdmin.IsClosed,
+                MatchScore = bestScore,
+            });
+        }
+
+        var pairedPortal = pairs.Select(p => p.PortalNumber).ToHashSet();
+        var pairedAdmin = pairs.Select(p => p.AdminNumber).ToHashSet();
+        var unmatchedPortal = portalNamed.Where(f => !pairedPortal.Contains(f.Number))
+            .OrderBy(f => f.Title, StringComparer.OrdinalIgnoreCase).ToList();
+        var unmatchedAdmin = adminNamed.Where(f => !pairedAdmin.Contains(f.Number))
+            .OrderBy(f => f.Title, StringComparer.OrdinalIgnoreCase).ToList();
+
+        return (pairs.OrderBy(p => p.PortalTitle, StringComparer.OrdinalIgnoreCase).ToList(), unmatchedPortal, unmatchedAdmin);
+    }
+
+    /// <summary>Git #2315 — the real mirrored-pair snapshot between EPIC #1485 (Portal) and EPIC
+    /// #1571 (Portal Admin), fetched fresh off each epic's own real sub-issues (reuses
+    /// <see cref="GetFeaturesForEpicAsync"/>, same single fetch path everything else here uses).</summary>
+    public static async Task<(bool Ok, List<GitMapMirroredPair> Pairs, List<GitMapFeature> UnmatchedPortal, List<GitMapFeature> UnmatchedAdmin, string? Error)> GetMirroredPairsAsync()
+    {
+        var (portalOk, portalFeatures, portalError) = await GetFeaturesForEpicAsync(PortalEpicNumber);
+        if (!portalOk) return (false, new(), new(), new(), portalError);
+        var (adminOk, adminFeatures, adminError) = await GetFeaturesForEpicAsync(AdminEpicNumber);
+        if (!adminOk) return (false, new(), new(), new(), adminError);
+
+        var (pairs, unmatchedPortal, unmatchedAdmin) = ComputeMirroredPairs(portalFeatures, adminFeatures);
+        return (true, pairs, unmatchedPortal, unmatchedAdmin, null);
     }
 
     /// <summary>The active chat epic's real Focus Build: the one sub-issue (if any) currently
@@ -373,7 +502,22 @@ public static class GitMapService
 
         var dropped = await GetStartedAndDroppedAsync(repoRoot, db);
 
-        return new GitMapData { Epics = epics, FocusBuild = focus, Dropped = dropped, GitHubReachable = true };
+        var mirroredPairs = new List<GitMapMirroredPair>();
+        var unmirroredPortal = new List<GitMapFeature>();
+        var unmirroredAdmin = new List<GitMapFeature>();
+        try
+        {
+            var (mirrorOk, pairs, unPortal, unAdmin, mirrorError) = await GetMirroredPairsAsync();
+            if (mirrorOk) { mirroredPairs = pairs; unmirroredPortal = unPortal; unmirroredAdmin = unAdmin; }
+            else ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] mirrored-pair fetch failed: {mirrorError}");
+        }
+        catch (Exception ex) { ConsoleOutputSink.Log(LogLevel.Warn, $"[git-map] mirrored-pair fetch threw: {ex.Message}"); }
+
+        return new GitMapData
+        {
+            Epics = epics, FocusBuild = focus, Dropped = dropped, GitHubReachable = true,
+            MirroredPairs = mirroredPairs, UnmirroredPortalFeatures = unmirroredPortal, UnmirroredAdminFeatures = unmirroredAdmin,
+        };
     }
 
     // ── gh / git process runner (mirrors ChatGitHubFilter's proven RunAsync — kept local rather
