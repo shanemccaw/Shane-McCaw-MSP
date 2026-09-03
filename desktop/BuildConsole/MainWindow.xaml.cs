@@ -1448,15 +1448,50 @@ namespace BuildConsole
         // whether or not the tab is a tracked BoardChat yet. Parse it out of
         // the real displayed title text so the Working-epic highlight can
         // resolve WITHOUT requiring manual assignment first.
-        private static readonly Regex TabTitleIssueNumberRegex = new(@"^\s*(?:\[#(\d+)\]|#(\d+)(?=\s|$))", RegexOptions.Compiled);
+        // Git #2545 — Shane clicked "Hand Off Now" on a real tab titled literally
+        // `1202 Build Console` (confirmed as a live bt_chats row) and got "Cannot hand
+        // off: chat has no associated epic." That title is a bare leading issue number
+        // with NO `#` and NO brackets — a manually-renamed chat (the rename dialog at
+        // LeftSidebar accepts free text, so a title that predates or sidesteps the `[#N]`
+        // convention is genuinely out there). The original two branches BOTH required a
+        // `#`, so a bare `1202` could never match and every handoff-number fallback fell
+        // through. Add a third anchored alternative for a bare leading number — still
+        // anchored to the start and still requiring a real word boundary after the digits,
+        // so it only fires on a title that genuinely LEADS with a standalone number token
+        // (not "v1.1 launch" or "10x ideas"). This also lets the #1802/#1905 Working-epic
+        // board highlight resolve such a tab, which it likewise couldn't before.
+        private static readonly Regex TabTitleIssueNumberRegex = new(@"^\s*(?:\[#(\d+)\]|#(\d+)(?=\s|$)|(\d+)(?=\s|$))", RegexOptions.Compiled);
+
+        // Git #2545 — final last resort, looser than the anchored regex above: a real issue
+        // number that isn't at the very START of a (manually-renamed) title, e.g.
+        // "Handoff for #1202" or "Build Console 1202". Scans the whole title for the first
+        // #?<digits> token that sits on a real boundary (not embedded in a word or a
+        // dotted version like 1.1), so "Hand Off Now" can never fall through to "no
+        // associated epic" on a tab whose title visibly contains an issue number. Used
+        // ONLY where a false guess is recoverable (the handoff toast shows the number) —
+        // never as the primary board-highlight resolver.
+        private static readonly Regex AnyTitleIssueNumberRegex = new(@"(?<![\w.])#?(\d+)(?=\s|$|\])", RegexOptions.Compiled);
 
         private static int? ExtractTabTitleIssueNumber(string? title)
         {
             if (string.IsNullOrWhiteSpace(title)) return null;
             var match = TabTitleIssueNumberRegex.Match(title);
             if (!match.Success) return null;
-            var group = match.Groups[1].Success ? match.Groups[1] : match.Groups[2];
-            return int.TryParse(group.Value, out var number) ? number : null;
+            var group = match.Groups[1].Success ? match.Groups[1]
+                      : match.Groups[2].Success ? match.Groups[2]
+                      : match.Groups[3];
+            return int.TryParse(group.Value, out var number) && number > 0 ? number : null;
+        }
+
+        // Git #2545 — see AnyTitleIssueNumberRegex. Deliberately separate from
+        // ExtractTabTitleIssueNumber so the loose whole-title scan is confined to the
+        // handoff last-resort and can't silently loosen the board-highlight resolvers.
+        private static int? ExtractAnyTitleIssueNumber(string? title)
+        {
+            if (string.IsNullOrWhiteSpace(title)) return null;
+            var match = AnyTitleIssueNumberRegex.Match(title);
+            if (!match.Success) return null;
+            return int.TryParse(match.Groups[1].Value, out var number) && number > 0 ? number : null;
         }
 
         private static string ExtractTabTitle(TabItem tab)
@@ -7031,6 +7066,24 @@ namespace BuildConsole
                     {
                         var titleEpic = LeftSidebar.GetEpicByGithubNumber(titleNumber.Value);
                         targetIssue = titleEpic?.GithubNumber ?? titleNumber.Value;
+                    }
+                }
+
+                // Git #2545 — final last resort. The anchored parse above (now including
+                // #2545's bare-leading-number branch) resolves the real reported case,
+                // `1202 Build Console`. But a manually-renamed chat can carry its number
+                // anywhere in the title, so scan the whole visible title for any real
+                // #?<n> token before giving up. This exists specifically so this exact
+                // "no associated epic" failure — which already recurred once after #1905
+                // was declared fixed — can never fire again on a tab that visibly shows an
+                // issue number, regardless of which path (or manual rename) set the title.
+                if (!targetIssue.HasValue)
+                {
+                    var anyNumber = ExtractAnyTitleIssueNumber(ExtractTabTitle(oldTab));
+                    if (anyNumber.HasValue)
+                    {
+                        var anyEpic = LeftSidebar.GetEpicByGithubNumber(anyNumber.Value);
+                        targetIssue = anyEpic?.GithubNumber ?? anyNumber.Value;
                     }
                 }
 
