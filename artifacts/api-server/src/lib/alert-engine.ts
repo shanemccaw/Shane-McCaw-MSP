@@ -313,11 +313,10 @@ async function advancePolicyClearances(): Promise<number> {
  * live the moment it exists (see the table's own schema comment), so every
  * row is eligible once it has a `review_due_at`.
  *
- * `review_due_at` is NULL on every row today — nothing yet computes it from
- * the free-text `review_cadence` field (a real, separate gap, filed as its
- * own finding rather than invented here). Until something schedules a
- * review, this evaluator legitimately finds nothing to advance — same
- * "served as null, never guessed" contract the schema itself documents.
+ * `review_due_at` is computed at create time (#2518) from `review_cadence` +
+ * `created_at` as the anchor (`portal-policy-decisions.ts`'s create route) —
+ * still NULL for a dependency-based row (#1526), which this evaluator
+ * correctly skips.
  */
 async function advancePolicyReviewClock(): Promise<number> {
   await pool.query(
