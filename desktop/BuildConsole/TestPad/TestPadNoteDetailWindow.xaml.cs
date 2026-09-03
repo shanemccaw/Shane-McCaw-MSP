@@ -19,6 +19,8 @@ namespace BuildConsole.TestPad
     /// stays in the existing composer edit-in-place flow on the main pad.</summary>
     public partial class TestPadNoteDetailWindow : Window
     {
+        private TestPadNote? _note;
+
         private TestPadNoteDetailWindow()
         {
             InitializeComponent();
@@ -38,13 +40,46 @@ namespace BuildConsole.TestPad
         {
             var dlg = new TestPadNoteDetailWindow { Owner = owner };
             if (owner != null) dlg.ShowInTaskbar = false;
+            dlg._note = note;
 
             dlg.TitleText.Text = $"[{TypeTag(note.Type)}] Note";
             dlg.MetaText.Text = BuildMetaLine(note);
             dlg.BodyText.Text = note.Text;
-            dlg.RenderedContent.Content = MarkdownRenderer.Render(note.Text);
+            dlg.RenderNote();
 
             dlg.ShowDialog();
+        }
+
+        /// <summary>Renders <see cref="_note"/>'s current text into the Rendered view, wiring
+        /// <see cref="MarkdownRenderer.RenderOptions.OnTaskToggled"/> so a real checklist item's
+        /// checkbox is clickable — #2706. Called both from <see cref="ShowFor"/> and again after
+        /// a toggle persists, so the row's strikethrough reflects the new state immediately.</summary>
+        private void RenderNote()
+        {
+            if (_note == null) return;
+            RenderedContent.Content = MarkdownRenderer.Render(_note.Text, new MarkdownRenderer.RenderOptions
+            {
+                OnTaskToggled = OnTaskToggled
+            });
+        }
+
+        /// <summary>#2706 — flips one checklist line's `- [ ]`/`- [x]` marker in the note's real
+        /// underlying text (by the real line index the renderer's click callback carries), persists
+        /// it via <see cref="TestPadService.UpdateNote"/>, and re-renders so the row's strikethrough
+        /// updates immediately. A no-op if the note is already sent (locked — the same rule
+        /// <see cref="TestPadService.UpdateNote"/> itself enforces) or the targeted line no longer
+        /// parses as a task item.</summary>
+        private void OnTaskToggled(int lineIndex, bool newChecked)
+        {
+            if (_note == null || _note.IsSent) return;
+
+            string? updated = MarkdownRenderer.ToggleTaskLine(_note.Text, lineIndex, newChecked);
+            if (updated == null) return;
+
+            TestPadService.UpdateNote(_note.Id, updated, _note.Type);
+            _note.Text = updated;
+            BodyText.Text = updated;
+            RenderNote();
         }
 
         /// <summary>#2705 — Rendered/Raw toggle. Behaves like a two-state radio group (exactly one
