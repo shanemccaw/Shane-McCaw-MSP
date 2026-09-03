@@ -44,6 +44,7 @@ import {
 import { eq, and, desc, lt, inArray } from "drizzle-orm";
 import { ENGINE_DEFS } from "../lib/engine-registry";
 import { evaluateDocGateCoverage } from "../lib/doc-gate-coverage";
+import { resolveCustomerUserIds } from "../lib/tenant-signals";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -80,7 +81,6 @@ router.get(
   requireRole("CustomerUser"),
   async (req: Request, res: Response) => {
     const customerId = req.user!.customerId;
-    const userId = req.user!.id;
     if (!customerId) {
       res.status(400).json({ error: "No customer account associated with this user" });
       return;
@@ -91,6 +91,13 @@ router.get(
     const beforeValid = before && !isNaN(before.getTime()) ? before : undefined;
 
     try {
+      // documents/offers are stored under a users.id-shaped `customerId` FK
+      // that actually names a login, not the customer — scope across every
+      // linked login (resolveCustomerUserIds bridge), the same pattern the
+      // sibling portal/dashboard route (portal-customer-engines.ts) already
+      // uses for projects/clientServices/invoices/reports (#2499).
+      const customerUserIds = await resolveCustomerUserIds(customerId);
+
       const [runs, findings, snapshots, documents, offers] = await Promise.all([
         db
           .select({
@@ -169,7 +176,7 @@ router.get(
           .from(insightsGeneratedDocumentsTable)
           .where(
             and(
-              eq(insightsGeneratedDocumentsTable.customerId, userId),
+              inArray(insightsGeneratedDocumentsTable.customerId, customerUserIds),
               inArray(insightsGeneratedDocumentsTable.status, ["delivered", "approved"]),
               beforeValid ? lt(insightsGeneratedDocumentsTable.createdAt, beforeValid) : undefined,
             ),
@@ -190,7 +197,7 @@ router.get(
           .from(salesOffersTable)
           .where(
             and(
-              eq(salesOffersTable.customerId, userId),
+              inArray(salesOffersTable.customerId, customerUserIds),
               inArray(salesOffersTable.state, ["sent", "accepted", "rejected", "expired"]),
               beforeValid ? lt(salesOffersTable.createdAt, beforeValid) : undefined,
             ),
