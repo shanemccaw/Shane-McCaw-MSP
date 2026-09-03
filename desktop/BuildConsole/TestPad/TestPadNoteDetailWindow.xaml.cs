@@ -32,8 +32,11 @@ namespace BuildConsole.TestPad
             WindowChromeHelper.Setup(this);
         }
 
-        /// <summary>Shows the pop-out modally, owner-scoped to the Test Pad, for one note's full
-        /// text. Title/meta line mirror the same type-tag vocabulary
+        /// <summary>#2715 — shows the pop-out as a non-modal, always-on-top floaty, owner-scoped
+        /// to the Test Pad, for one note's full text. Same real convention
+        /// <see cref="StickyNotesWindow"/> already uses (Topmost="True" in XAML + a plain
+        /// <c>.Show()</c>, never <c>ShowDialog</c>) so it no longer blocks the owner (or the whole
+        /// app) while open. Title/meta line mirror the same type-tag vocabulary
         /// <see cref="TestPadSendFormatter"/> already uses so the pop-out reads consistently with
         /// every other Test Pad surface.</summary>
         public static void ShowFor(Window? owner, TestPadNote note)
@@ -47,7 +50,7 @@ namespace BuildConsole.TestPad
             dlg.BodyText.Text = note.Text;
             dlg.RenderNote();
 
-            dlg.ShowDialog();
+            dlg.Show();
         }
 
         /// <summary>Renders <see cref="_note"/>'s current text into the Rendered view, wiring

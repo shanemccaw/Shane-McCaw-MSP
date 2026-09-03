@@ -6,6 +6,7 @@
         Width="720" Height="520"
         MinWidth="420" MinHeight="280"
         WindowStartupLocation="CenterOwner"
+        Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="CanResize"
         WindowStyle="None"
