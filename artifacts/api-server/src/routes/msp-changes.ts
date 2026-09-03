@@ -7,7 +7,7 @@ import { resolveMspIdStrict } from "../lib/resolve-msp-id.ts";
 import { apiError, ApiErrorCode } from "../lib/api-helpers.ts";
 import { logger } from "../lib/logger.ts";
 import { logRetainerWorkFromTracker, pillarHintForCategory } from "../lib/retainer-work-logger.ts";
-import { workloadForCategory } from "../lib/portal-change-control.ts";
+import { CHANGE_REQUEST_CATEGORIES, workloadForCategory } from "../lib/portal-change-control.ts";
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
 import { loadApprovalPolicy, materializeApprovalsForChange } from "../lib/portal-change-approvals-store.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
@@ -33,7 +33,10 @@ const createChangeRequestSchema = z.object({
   description: z.string(),
   changeClass: z.enum(["standard", "normal", "emergency"]),
   riskLevel: z.enum(["critical", "high", "medium", "low"]),
-  category: z.enum(["ConditionalAccess", "Exchange", "Identity", "Intune", "Defender"]),
+  // #1764 — widened to the full 8-value CHANGE_REQUEST_CATEGORIES so the MSP console
+  // door onto msp_change_requests agrees with the portal wizard door and the column
+  // itself, instead of the stale 5-value literal that predated the widening.
+  category: z.enum(CHANGE_REQUEST_CATEGORIES),
   targetResource: z.string(),
   psaTicketId: z.string(),
   scheduledFor: z.string(),
