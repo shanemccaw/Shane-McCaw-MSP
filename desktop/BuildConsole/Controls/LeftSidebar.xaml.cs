@@ -699,7 +699,30 @@ namespace BuildConsole.Controls
             SetupGitWatcher();
 
             ShaneAppStreamService.Instance.StatusChanged += OnShaneAppStatusChanged;
+
+            // Git #2540 — nothing told the Chats panel to re-render when Focus gets
+            // engaged/disengaged, so it kept showing the pre-Focus legacy all-epics view
+            // (or vice versa) until some unrelated trigger happened to repaint it. Same
+            // subscribe/unsubscribe pattern FocusImmersiveView/HomeView already use.
+            try { FocusModeService.Instance.StateChanged += OnFocusStateChanged; } catch { }
+
+            Unloaded += (_, _) =>
+            {
+                try { FocusModeService.Instance.StateChanged -= OnFocusStateChanged; } catch { }
+            };
         }
+
+        /// <summary>Git #2540 — Focus engaging/disengaging changes RenderChatsTree's own
+        /// milestoneMode gate (<c>focusSvc.IsActive &amp;&amp; activeMilestone.HasValue &amp;&amp;
+        /// _lastBoardIssues.Count &gt; 0</c>), not the board data itself, so a cheap
+        /// re-render is enough — no need to re-fetch via PopulateChatsTree. Falls back to a
+        /// full PopulateChatsTree only if the board hasn't loaded yet (_lastBoardIssues empty),
+        /// matching the same fail-open fallback PopulateChatsTree itself documents.</summary>
+        private void OnFocusStateChanged() => Dispatcher.Invoke(() =>
+        {
+            if (_lastBoardIssues.Count == 0) { PopulateChatsTree(); return; }
+            try { RenderChatsTree(); } catch { }
+        });
 
         private void OnShaneAppStatusChanged()
         {
