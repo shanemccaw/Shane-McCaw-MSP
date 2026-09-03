@@ -939,6 +939,63 @@ namespace BuildConsole.Services
             return await cmd.ExecuteNonQueryAsync();
         }
 
+        // ── False-done reconciliation (Git #2685) ─────────────────────────────────
+        /// <summary>
+        /// Git #2685 — every issue-linked queue row currently sitting in a terminal <c>done</c>
+        /// status, returned so the manual-refresh reconciliation pass
+        /// (<see cref="Services.FalseDoneReconciler"/>) can check each one's real origin/main
+        /// bookend. A self-blocked session that wrote a real 🛑 BLOCKED bookend and exited cleanly
+        /// (process exit 0, nothing crashed) is marked <c>done</c> by the watcher's only completion
+        /// signal (<see cref="MarkCompleteAsync"/>) — this is the set that must be reconciled against
+        /// the authoritative bookend, since <c>done</c> is invisible to every dedup dead-check.
+        /// </summary>
+        public async Task<List<(int Id, int GithubNumber)>> GetDoneGithubRowsAsync()
+        {
+            var rows = new List<(int, int)>();
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                SELECT id, github_number
+                  FROM bt_build_queue
+                 WHERE status = 'done'
+                   AND github_number IS NOT NULL", conn);
+            await using var reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                rows.Add((reader.GetInt32(0), reader.GetInt32(1)));
+            return rows;
+        }
+
+        /// <summary>
+        /// Git #2685 — the deliberate, narrow exception to
+        /// <see cref="MarkSupersededByReplyAsync"/>'s "never rewrite a terminal <c>done</c> row"
+        /// guard: a NEW, dedicated method (the Reply-supersede guard exists for good reason and is
+        /// NOT weakened here) that resets a confirmed false-<c>done</c> row — its origin/main bookend
+        /// proves it is actually BLOCKED, not done — to <c>canceled</c>.
+        ///
+        /// <c>canceled</c> is chosen over <c>superseded</c> deliberately, and after live verification
+        /// (see the issue): <c>canceled</c> is a real non-blocking terminal state
+        /// (<see cref="IsTerminalStatus"/>) that already flows through EVERY dedup dead-check —
+        /// <see cref="Services.BatterUpQueueService"/>.RefreshAsync (failed/canceled ⇒ reappear) and
+        /// QueueRowAsync (IsTerminalStatus &amp;&amp; !done ⇒ re-queue via reuseRowId) — so the issue
+        /// becomes re-dispatchable with zero changes to any gate and zero risk to the Reply flow. A
+        /// <c>superseded</c> row, by contrast, is invisible to all three dead-checks and would stay
+        /// dedup-locked. The <c>status = 'done'</c> guard makes this idempotent and race-safe: a row
+        /// already moved on (by a concurrent watcher/refresh) is left untouched and returns 0.
+        /// Returns the number of rows changed (0 or 1).
+        /// </summary>
+        public async Task<int> MarkFalseDoneReconciledAsync(int id)
+        {
+            await using var conn = await OpenAsync();
+            await using var cmd = new NpgsqlCommand(@"
+                UPDATE bt_build_queue
+                   SET status     = 'canceled',
+                       updated_at = NOW()
+                 WHERE id = @id
+                   AND status = 'done'
+                   AND github_number IS NOT NULL", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            return await cmd.ExecuteNonQueryAsync();
+        }
+
         // ── StampBuildPidAsync ────────────────────────────────────────────────────
         /// <summary>
         /// Git #1839 — records the launched build process's pid and its process-creation time on

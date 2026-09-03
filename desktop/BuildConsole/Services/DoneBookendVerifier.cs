@@ -43,6 +43,14 @@ namespace BuildConsole.Services
         private static readonly object _cacheLock = new();
         private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
 
+        // Git #2685 — separate short-TTL cache for the BLOCKED reconciliation read (see
+        // GetBlockedAsync). Kept apart from the DONE cache above because the two answer opposite
+        // questions and fail in opposite directions (DONE fails closed to "not satisfied"; BLOCKED
+        // fails closed to "not blocked" so a genuine done row is never wrongly cancelled). A bookend
+        // can flip BLOCKED→DONE at any time, so a negative is re-read after the TTL just like above.
+        private static readonly Dictionary<int, (bool Blocked, DateTime AtUtc)> _blockedCache = new();
+        private static readonly object _blockedCacheLock = new();
+
         // origin/main freshness: a completed blocker build pushes its bookend to origin from its
         // own worktree, so THIS repo's remote-tracking ref can lag. We refresh it (a single-ref,
         // cheap fetch) at most once per cooldown, and ONLY when something is actually waiting on a
@@ -96,6 +104,87 @@ namespace BuildConsole.Services
             if (issueNumber <= 0) return false;
             var set = await GetSatisfiedAsync(new[] { issueNumber });
             return set.Contains(issueNumber);
+        }
+
+        /// <summary>
+        /// Git #2685 — the subset of <paramref name="issueNumbers"/> whose real
+        /// <c>origin/main:build-journal/{N}.md</c> bookend's EFFECTIVE (last) <c>**Status:**</c>
+        /// field contains <c>BLOCKED</c> (a self-blocked session that wrote a real 🛑 BLOCKED
+        /// bookend and exited cleanly). This is the authoritative signal used by the false-done
+        /// reconciliation pass (<see cref="Services.FalseDoneReconciler"/>) to tell a genuinely-done
+        /// queue row apart from one the watcher marked <c>done</c> only because the process exited 0.
+        ///
+        /// Reuses this class's exact git machinery (the same <c>git show origin/main:…</c> read, the
+        /// same rate-limited origin/main refresh, the same <see cref="StatusFieldRx"/>). It
+        /// deliberately fails CLOSED to "NOT blocked" on any uncertainty — an unresolvable repo root,
+        /// a missing bookend, a git error, or a bookend whose effective status is anything other than
+        /// BLOCKED — because the caller CANCELS a done row on a positive, and wrongly cancelling a
+        /// genuinely-done row is the strictly-worse error. Returns an empty set on any failure.
+        /// </summary>
+        public static async Task<HashSet<int>> GetBlockedAsync(IEnumerable<int> issueNumbers)
+        {
+            var wanted = issueNumbers?.Where(n => n > 0).Distinct().ToList() ?? new List<int>();
+            var blocked = new HashSet<int>();
+            if (wanted.Count == 0) return blocked;
+
+            var repoRoot = BuildTrackerConfig.FindRepoRoot();
+            if (string.IsNullOrEmpty(repoRoot))
+            {
+                ActivityLog.Log("batter-up", "Git #2685: repo root unresolved — cannot reconcile false-done rows against bookends this pass (fail closed, no row is treated as BLOCKED).");
+                return blocked;
+            }
+
+            await EnsureOriginMainFreshAsync(repoRoot);
+
+            foreach (var n in wanted)
+            {
+                if (await IsBlockedInternalAsync(n, repoRoot))
+                    blocked.Add(n);
+            }
+            return blocked;
+        }
+
+        private static async Task<bool> IsBlockedInternalAsync(int issueNumber, string repoRoot)
+        {
+            lock (_blockedCacheLock)
+            {
+                if (_blockedCache.TryGetValue(issueNumber, out var hit) && DateTime.UtcNow - hit.AtUtc < CacheTtl)
+                    return hit.Blocked;
+            }
+
+            bool blocked = await VerifyBlockedAsync(issueNumber, repoRoot);
+
+            lock (_blockedCacheLock)
+            {
+                _blockedCache[issueNumber] = (blocked, DateTime.UtcNow);
+            }
+            return blocked;
+        }
+
+        private static async Task<bool> VerifyBlockedAsync(int issueNumber, string repoRoot)
+        {
+            // The bookend must exist on origin/main. No bookend → we cannot prove the done row is
+            // wrong, so leave it done (fail closed to "not blocked").
+            var show = await RunGitAsync(repoRoot, "show", $"origin/main:build-journal/{issueNumber}.md");
+            if (show.ExitCode != 0 || string.IsNullOrWhiteSpace(show.StdOut))
+                return false;
+
+            // Use the EFFECTIVE status — the LAST **Status:** line — not the first. A self-blocked
+            // bookend commonly reads "IN FLIGHT" then "BLOCKED" as two separate status lines (real
+            // example #2385), and a row that went BLOCKED then genuinely resolved to DONE would read
+            // "…BLOCKED" then "…DONE"; the final line is the true current state in both cases. Taking
+            // the last match means a resolved-to-DONE row is never wrongly cancelled.
+            Match? last = null;
+            foreach (Match m in StatusFieldRx.Matches(show.StdOut))
+                last = m;
+            if (last == null) return false;
+
+            var statusValue = last.Groups[1].Value;
+            // A genuinely-done bookend's effective status is DONE and never contains BLOCKED, so a
+            // plain contains-BLOCKED on the effective status value is exact here. This intentionally
+            // also catches MERGE-BLOCKED (work committed but not merged) — that is likewise a
+            // not-actually-done row that must not stay dedup-locked as "done".
+            return statusValue.IndexOf("BLOCKED", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static async Task<bool> IsSatisfiedInternalAsync(int issueNumber, string repoRoot)

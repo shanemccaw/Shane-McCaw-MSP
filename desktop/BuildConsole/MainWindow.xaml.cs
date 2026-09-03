@@ -872,6 +872,34 @@ namespace BuildConsole
             LeftSidebar.BoardRefreshCompleted += async (s, e) => await _batterUpPanel.RefreshAsync();
             LeftSidebar.BoardRefreshCompleted += async (s, e) => await _aiBatterUpPanel.RefreshAsync();
 
+            // Git #2685 — same event-piggyback pattern as the hooks above. A self-blocked session
+            // that wrote a real 🛑 BLOCKED bookend and exited cleanly gets marked 'done' by the
+            // watcher (its only completion signal), then dedup-locks that issue forever because
+            // 'done' is in none of the dedup dead-checks. Ride this same manual board refresh to
+            // reconcile every false-done row against its authoritative origin/main bookend: reset it
+            // to 'canceled' (re-dispatchable) and move its board Status to Backlog (a conscious
+            // re-dispatch, never an auto-relaunch). Fail-soft — a reconcile error never breaks the
+            // cascade.
+            LeftSidebar.BoardRefreshCompleted += async (s, e) =>
+            {
+                if (_queueDb == null) return;
+                try
+                {
+                    var settings = Services.BuildConsoleSettings.Load();
+                    if (!settings.HasGitHubPat) return;
+                    var gh = new Services.GitHubApiClient(settings.GitHubPat);
+                    int n = await Services.FalseDoneReconciler.ReconcileAsync(
+                        _queueDb, gh, msg => Services.ActivityLog.Log("batter-up", msg));
+                    if (n > 0)
+                        Services.ActivityLog.Log("batter-up",
+                            $"Git #2685 false-done reconcile: {n} false-done row(s) reset to 'canceled' + moved to Backlog this refresh.");
+                }
+                catch (Exception ex)
+                {
+                    Services.ActivityLog.Log("batter-up", $"Git #2685 false-done reconcile FAILED: {ex.Message}");
+                }
+            };
+
             // Git #802 - Shane: "The Claude chats should open in their own
             // tabs. And if there is a build, that tab should split with the
             // build happening right there in that chats tab." Each chat gets
