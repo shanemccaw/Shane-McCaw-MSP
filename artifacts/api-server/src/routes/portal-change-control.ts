@@ -137,6 +137,7 @@ import {
   listCommentsForChangeIds,
   listEventsForChangeIds,
 } from "../lib/portal-change-timeline-store";
+import { computeChangeMetrics } from "../lib/portal-change-metrics";
 import { logger } from "../lib/logger";
 import {
   CHANGE_CLASSES,
@@ -1268,6 +1269,73 @@ router.post(
     } catch (err) {
       log.error({ err, customerId, crId }, "POST /portal/change-control/:code/attachments failed");
       res.status(500).json({ error: "Failed to record the attachment" });
+    }
+  },
+);
+
+// ── Change metrics (Git #1506) ───────────────────────────────────────────────
+//
+// The KPIs an MSP sells the change-control program on: change success rate,
+// failed-change rate, emergency-change ratio, lead time, CAB throughput. All
+// real aggregates over `cr_events`/`cr_executions`/`cab_agenda_items` — see
+// `lib/portal-change-metrics.ts` for the formulas and the honesty rule (a
+// metric with no qualifying events reads as unavailable, never as zero).
+//
+// Same middleware pair as the register read and the timeline: this is a view
+// over the same customer-scoped Change Control data, gated the same way —
+// CustomerUser + an active `change_control` entitlement.
+
+interface WireRateMetric {
+  readonly available: boolean;
+  readonly rate: number | null;
+  readonly numerator: number;
+  readonly denominator: number;
+}
+
+interface WireDurationMetric {
+  readonly available: boolean;
+  readonly averageHours: number | null;
+  readonly medianHours: number | null;
+  readonly sampleSize: number;
+}
+
+interface WireCabThroughputMetric {
+  readonly available: boolean;
+  readonly meetingsHeld: number;
+  readonly itemsDecided: number;
+  readonly itemsDeferred: number;
+  readonly averageDecisionLatencyHours: number | null;
+}
+
+interface WireChangeMetrics {
+  readonly changeSuccessRate: WireRateMetric;
+  readonly failedChangeRate: WireRateMetric;
+  readonly emergencyChangeRatio: WireRateMetric;
+  readonly leadTime: WireDurationMetric;
+  readonly cabThroughput: WireCabThroughputMetric;
+}
+
+router.get(
+  "/portal/change-control/metrics",
+  requireRole("CustomerUser"),
+  requireAddOnEntitlement(CHANGE_CONTROL_FEATURE_KEY),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+    try {
+      const scope = await resolveScope(customerId);
+      if (!scope) {
+        res.status(409).json({ error: "This account has no connected Microsoft 365 tenant" });
+        return;
+      }
+      const metrics = await computeChangeMetrics({ mspId: scope.mspId, tenantId: scope.tenantId });
+      res.json({ metrics: metrics satisfies WireChangeMetrics });
+    } catch (err) {
+      log.error({ err, customerId }, "GET /portal/change-control/metrics failed");
+      res.status(500).json({ error: "Failed to compute change metrics" });
     }
   },
 );
