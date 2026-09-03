@@ -6,7 +6,7 @@
  * and fires SSE events so open tabs update in real time.
  */
 
-import { db, notificationsTable, usersTable, customerNotificationPreferencesTable } from "@workspace/db";
+import { db, notificationsTable, usersTable, customerNotificationPreferencesTable, portalOwnershipAssignmentsTable } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { broadcastNotification, broadcastUnreadCount } from "./sse-channels";
 import { logger } from "./logger";
@@ -352,6 +352,96 @@ export async function notifyOwnershipDeclined(opts: {
     });
   } catch (err) {
     log.warn({ err, customerId, assignerPersonId, objectId }, "notification-center: ownership decline escalation failed (non-fatal)");
+  }
+}
+
+/**
+ * Notify the customer's real Accountable ("a") RACI owner(s) of the workload
+ * a drift event landed on (Git #1544 — "the customer's Accountable owner for
+ * the affected object — it is their operation"). `objectId` is the exact
+ * `portal_ownership_assignments.object_id` scheme a real "workload" row uses
+ * ("wl-" + the tenant-workloads.ts key, e.g. "wl-icam") — the caller resolves
+ * that key from the drift event's own `domain_key` via
+ * `drift-check-specs.ts`'s `checkKeyForDriftDomain` +
+ * `tenant-workloads.ts`'s `resolveWorkloadForCheckKey`, so this function never
+ * has to know about drift at all.
+ *
+ * Dual-side by construction, same as `notifyOwnershipPending`: an
+ * `ownerPersonId` resolves to a real `users` row on either side of the tenant
+ * boundary and routes to `customer_user` or `msp_user` accordingly — no
+ * separate "is this the MSP's own workload assignment" branch needed. A
+ * `declined` A cell is excluded — that holder explicitly refused the role, so
+ * routing a fresh drift alert to them would be wrong; `""`/`pending`/`accepted`
+ * all still name a real accountable holder. Best-effort: a delivery failure
+ * for one holder never blocks the others, and the whole call never throws —
+ * it must never fail the drift alert firing that triggered it.
+ */
+export async function notifyDriftAccountableOwners(opts: {
+  customerId: number;
+  workloadObjectId: string; // "wl-<key>", e.g. "wl-icam"
+  workloadLabel: string; // e.g. "Identity & Access (Entra ID)"
+  summary: string;
+}): Promise<{ notified: number }> {
+  const { customerId, workloadObjectId, workloadLabel, summary } = opts;
+  try {
+    const holders = await db
+      .select({ ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId })
+      .from(portalOwnershipAssignmentsTable)
+      .where(
+        and(
+          eq(portalOwnershipAssignmentsTable.customerId, customerId),
+          eq(portalOwnershipAssignmentsTable.objectId, workloadObjectId),
+          eq(portalOwnershipAssignmentsTable.roleKey, "a"),
+        ),
+      );
+
+    const uniqueOwnerIds: string[] = [...new Set(
+      holders
+        .map((h): string | null => (typeof h.ownerPersonId === "string" ? h.ownerPersonId : null))
+        .filter((id): id is string => id !== null && id !== ""),
+    )];
+    let notified = 0;
+
+    for (const ownerPersonId of uniqueOwnerIds) {
+      const match = /^u(\d+)$/.exec(ownerPersonId);
+      if (!match) continue;
+      const userId = Number(match[1]);
+
+      const [row] = await db
+        .select({ id: usersTable.id, mspRole: usersTable.mspRole, mspId: usersTable.mspId, acceptance: portalOwnershipAssignmentsTable.acceptance })
+        .from(usersTable)
+        .leftJoin(
+          portalOwnershipAssignmentsTable,
+          and(
+            eq(portalOwnershipAssignmentsTable.customerId, customerId),
+            eq(portalOwnershipAssignmentsTable.objectId, workloadObjectId),
+            eq(portalOwnershipAssignmentsTable.roleKey, "a"),
+            eq(portalOwnershipAssignmentsTable.ownerPersonId, ownerPersonId),
+          ),
+        )
+        .where(eq(usersTable.id, userId))
+        .limit(1);
+      if (!row || row.acceptance === "declined") continue;
+
+      const isMspStaff = row.mspRole === "MSPAdmin" || row.mspRole === "MSPOperator";
+      const notifId = await createNotification({
+        title: `Unauthorized change on ${workloadLabel}`,
+        body: summary,
+        category: "drift",
+        severity: "warning",
+        notifType: "general",
+        linkPath: "/ownership",
+        recipient: isMspStaff
+          ? { type: "msp_user", mspUserId: row.id, mspId: row.mspId ?? undefined }
+          : { type: "customer_user", userId: row.id },
+      });
+      if (notifId !== null) notified++;
+    }
+
+    return { notified };
+  } catch (err) {
+    log.warn({ err, customerId, workloadObjectId }, "notification-center: drift accountable-owner notification failed (non-fatal)");
+    return { notified: 0 };
   }
 }
 

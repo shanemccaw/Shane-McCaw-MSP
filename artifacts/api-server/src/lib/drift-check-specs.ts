@@ -277,3 +277,16 @@ export const DRIFT_CHECK_SPECS: Record<string, DriftCheckSpec> = {
 export function driftSpecForCheck(checkKey: string): DriftCheckSpec | undefined {
   return DRIFT_CHECK_SPECS[checkKey];
 }
+
+/**
+ * The check key that produced a given drift domain (Git #1544 — reverse of
+ * `driftSpecForCheck`). A `drift_events` row only ever carries `domain_key`,
+ * never the check key that produced it, so anything that needs to route a
+ * drift event back to the check-category-owning workload (#1544's
+ * "accountable owner for the affected object") starts here. Undefined for a
+ * domain with no live spec — the same "silence is the honest answer" the
+ * check-key lookups in `tenant-workloads.ts` already follow.
+ */
+export function checkKeyForDriftDomain(domainKey: string): string | undefined {
+  return Object.entries(DRIFT_CHECK_SPECS).find(([, spec]) => spec.domainKey === domainKey)?.[0];
+}

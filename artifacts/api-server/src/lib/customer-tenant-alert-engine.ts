@@ -41,6 +41,9 @@ import {
   deliverCustomerTenantAlertToCustomer,
   type CustomerDeliveryStatus,
 } from "./customer-alert-delivery";
+import { notifyDriftAccountableOwners } from "./notification-center";
+import { checkKeyForDriftDomain } from "./drift-check-specs";
+import { resolveWorkloadForCheckKey } from "./tenant-workloads.ts";
 
 const log = logger.child({ channel: "engine.alert" });
 
@@ -521,6 +524,73 @@ async function getConditionValue(
   }
 }
 
+// ── Accountable-owner routing (Git #1544) ──────────────────────────────────────
+//
+// A firing of a drift.* rule doesn't itself say WHICH domain(s) drove the
+// count — the same query getConditionValue used to count them can name them.
+// Re-runs the identical predicate (tenant + window, same verdict/domain
+// filters) to fetch the real domain_key(s) that qualified, so "the affected
+// object" is read off the actual firing rows, never guessed from the rule.
+
+async function getDriftDomainKeys(conditionType: string, tenantId: string, windowMinutes: number): Promise<string[]> {
+  const res = await pool.query<{ domain_key: string }>(
+    conditionType === "drift.ca_policy_change"
+      ? `SELECT DISTINCT domain_key FROM drift_events
+         WHERE tenant_id = $1 AND domain_key = 'ca-policy'
+           AND detected_at > NOW() - ($2 * INTERVAL '1 minute')`
+      : `SELECT DISTINCT domain_key FROM drift_events
+         WHERE tenant_id = $1 AND verdict IN ('attributed_unapproved','unattributed')
+           AND detected_at > NOW() - ($2 * INTERVAL '1 minute')`,
+    [tenantId, windowMinutes],
+  );
+  return res.rows.map((r) => r.domain_key);
+}
+
+/**
+ * Resolves each domain a drift.* rule fired on to its real accountable
+ * workload (`drift-check-specs.ts`'s domain->checkKey, then
+ * `tenant-workloads.ts`'s established #1511 checkKey->workload map — the same
+ * vocabulary risk-acceptance authority already uses, nothing invented here)
+ * and notifies that workload's real "a" RACI holder(s). A domain whose check
+ * category has no single-workload owner (governance/compliance — by design,
+ * see tenant-workloads.ts) resolves to nothing, honestly, same as it does
+ * everywhere else that map is read. Best-effort: never throws, never blocks
+ * the rest of the firing.
+ */
+async function notifyAccountableOwnersForDrift(
+  rule: RuleRow,
+  ctx: TenantContext,
+  summary: string,
+): Promise<void> {
+  if (rule.alert_category !== "drift" || !ctx.tenantId) return;
+  try {
+    const domainKeys = await getDriftDomainKeys(rule.condition_type, ctx.tenantId, rule.window_minutes);
+    const workloadObjectIds = new Set<string>();
+    for (const domainKey of domainKeys) {
+      const checkKey = checkKeyForDriftDomain(domainKey);
+      if (!checkKey) continue;
+      const workload = resolveWorkloadForCheckKey(checkKey);
+      if (!workload) continue;
+      const workloadObjectId = "wl-" + workload.key;
+      if (workloadObjectIds.has(workloadObjectId)) continue;
+      workloadObjectIds.add(workloadObjectId);
+
+      const outcome = await notifyDriftAccountableOwners({
+        customerId: ctx.customerId,
+        workloadObjectId,
+        workloadLabel: workload.label,
+        summary,
+      });
+      log.info(
+        { customerId: ctx.customerId, domainKey, workloadObjectId, notified: outcome.notified },
+        "customer-alert: drift accountable-owner routing",
+      );
+    }
+  } catch (err) {
+    log.warn({ err, ruleKey: rule.rule_key, customerId: ctx.customerId }, "customer-alert: drift accountable-owner routing failed (non-fatal)");
+  }
+}
+
 // ── Summary copy ──────────────────────────────────────────────────────────────
 
 function buildSummary(conditionType: string, value: number, ctx: TenantContext): string {
@@ -717,6 +787,14 @@ export async function evaluateCustomerTenantRules(): Promise<void> {
           customerStatus = outcome.status;
           if (outcome.status === "delivered") customerDeliveredAt = new Date().toISOString();
         }
+
+        // ── Accountable-owner routing (#1544) — dual delivery's second half.
+        // Admin delivery above already covers "the MSP — knowing is the job";
+        // this covers "the customer's Accountable owner for the affected
+        // object — it is their operation". Independent of rule.notify_customer:
+        // an Accountable owner is named by the customer themselves via RACI,
+        // not by this rule's generic delivery toggle.
+        await notifyAccountableOwnersForDrift(rule, ctx, summary);
 
         await pool.query(
           `UPDATE customer_tenant_alert_events

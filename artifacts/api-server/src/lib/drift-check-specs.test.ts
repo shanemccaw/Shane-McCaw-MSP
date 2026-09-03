@@ -6,9 +6,11 @@ import {
   buildTenantSharingCapabilityDriftConfig,
   buildEmailAuthDriftConfig,
   driftSpecForCheck,
+  checkKeyForDriftDomain,
   DRIFT_CHECK_SPECS,
   type DriftScanContext,
 } from "./drift-check-specs.ts";
+import { resolveWorkloadForCheckKey } from "./tenant-workloads.ts";
 import { detectDrift } from "./pcc/drift-detector.ts";
 
 const ctx = (over: Partial<DriftScanContext>): DriftScanContext => ({
@@ -36,6 +38,26 @@ describe("drift-check-specs — registry (#1287)", () => {
   it("a check with no spec is not drift-tracked (intended no-op, not a gap)", () => {
     expect(driftSpecForCheck("compliance:dlp-incidents")).toBeUndefined();
     expect(driftSpecForCheck("identity:mfa-coverage")).toBeUndefined();
+  });
+
+  it("checkKeyForDriftDomain is the real inverse of driftSpecForCheck's domainKey", () => {
+    for (const [checkKey, spec] of Object.entries(DRIFT_CHECK_SPECS)) {
+      expect(checkKeyForDriftDomain(spec.domainKey)).toBe(checkKey);
+    }
+    expect(checkKeyForDriftDomain("not-a-real-domain")).toBeUndefined();
+  });
+});
+
+describe("drift-check-specs — domain -> accountable workload routing (Git #1544)", () => {
+  it("ca-policy, tenant-sharing-capability and email-authentication resolve to a real single-workload owner", () => {
+    expect(resolveWorkloadForCheckKey(checkKeyForDriftDomain("ca-policy")!)?.key).toBe("icam");
+    expect(resolveWorkloadForCheckKey(checkKeyForDriftDomain("tenant-sharing-capability")!)?.key).toBe("sharepoint");
+    expect(resolveWorkloadForCheckKey(checkKeyForDriftDomain("email-authentication")!)?.key).toBe("exchange");
+  });
+
+  it("public-teams-discoverable and eeeu-site-sharing have no single-workload owner, honestly (governance/compliance are cross-cutting)", () => {
+    expect(resolveWorkloadForCheckKey(checkKeyForDriftDomain("public-teams-discoverable")!)).toBeNull();
+    expect(resolveWorkloadForCheckKey(checkKeyForDriftDomain("eeeu-site-sharing")!)).toBeNull();
   });
 });
 
