@@ -35,6 +35,20 @@ namespace ShaneBuilder.Services
         // title-bar icon and the PrintScreen paths funnel through here).
         private static bool _overlayOpen;
 
+        /// <summary>Git #2372 (Feature #2367 item 5) — Shot Vault's per-shot Copy action: put an
+        /// already-saved shot PNG back on the clipboard, using the exact same multi-format write
+        /// (Bitmap + PNG, see <see cref="CopyToClipboard"/>) a fresh <see cref="Capture"/> uses,
+        /// rather than inventing a second clipboard-write path for a read off disk. Loads the file
+        /// fully into memory first (not <c>Image.FromFile</c> directly) so the returned
+        /// <see cref="Bitmap"/> doesn't keep a lock on the source file.</summary>
+        public static void CopyFileToClipboard(string pngPath)
+        {
+            byte[] bytes = File.ReadAllBytes(pngPath);
+            using var ms = new MemoryStream(bytes);
+            using var bmp = new Bitmap(ms);
+            CopyToClipboard(bmp);
+        }
+
         /// <summary>Run one capture: draw a region, then copy to clipboard + save to disk. Safe to call
         /// repeatedly. No-op (logged) if an overlay is already open.</summary>
         public static void Capture()

@@ -608,18 +608,34 @@
                             <StackPanel x:Name="ChatsPanelArchivedRows"/>
                         </StackPanel>
 
-                        <!-- Shared placeholder for the 4 rail panels that don't have
+                        <!-- Shared placeholder for the remaining rail panels that don't have
                              real content or a design yet (Build Console / Build Watch /
-                             UI Testing / Shot Vault) — text is set per panel in
-                             RailToggle_Click rather than duplicating this block 4 times.
-                             Batter Up moved out to its own real BatterUpPanelBody below
-                             (Git #2356, Feature #2355 item 1). -->
+                             UI Testing) — text is set per panel in RailToggle_Click rather
+                             than duplicating this block per panel. Batter Up moved out to its
+                             own real BatterUpPanelBody below (Git #2356, Feature #2355 item 1);
+                             Shot Vault moved out to its own real ShotVaultPanelBody below
+                             (Git #2372, Feature #2367 item 5). -->
                         <TextBlock x:Name="NotBuiltPanelBody" Margin="14,16,14,0"
                                    TextWrapping="Wrap"
                                    Visibility="Collapsed"
                                    Foreground="{StaticResource Brush.Text.Dim}"
                                    FontFamily="{StaticResource FontFamily.Sans}"
                                    FontSize="{StaticResource FontSize.11}"/>
+
+                        <!-- Git #2372 (Feature #2367 item 5) — Shot Vault rail panel: a real,
+                             newest-first list of the shots DesktopScreenClipService already
+                             saves to disk, each with a working per-shot Copy action. Search
+                             (#2368), tag chips (#2369), run grouping (#2370), and DIFF badges
+                             (#2371) are separate sibling sub-issues layered on this same body.
+                             Built in code-behind (MainWindow.ShotVaultPanel.cs). -->
+                        <StackPanel x:Name="ShotVaultPanelBody" Margin="8,8,8,12" Visibility="Collapsed">
+                            <TextBlock x:Name="ShotVaultPanelStatus" Margin="6,4,6,10"
+                                       TextWrapping="Wrap"
+                                       Foreground="{StaticResource Brush.Text.Dim}"
+                                       FontFamily="{StaticResource FontFamily.Sans}"
+                                       FontSize="{StaticResource FontSize.10.5}"/>
+                            <StackPanel x:Name="ShotVaultRows" Margin="6,0,6,0"/>
+                        </StackPanel>
 
                         <!-- Git #2356 (Feature #2355 item 1) — Batter Up rail panel shell: the
                              lane switch (All / Batter Up / AI Batter Up / Ask Shane) with a real
