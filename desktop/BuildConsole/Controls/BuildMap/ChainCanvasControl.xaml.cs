@@ -23,9 +23,11 @@ namespace BuildConsole.Controls.BuildMap
     /// View-only interactions live here (expand/collapse on header click, zoom, selection
     /// highlight); every document-mutating interaction (drag reorder, gate toggle, sentinel
     /// change, board status, edge add/remove) is Git #2480 and hangs off the public events below.
-    /// Git #2478 draws the blocked_by edge layer into <see cref="EdgeLayer"/> using
-    /// <see cref="ChainLayout.OutPort"/>/<see cref="ChainLayout.InPort"/> against
-    /// <see cref="Layout"/>/<see cref="Derived"/>/<see cref="ExpandedFeatures"/>.
+    /// Git #2478 (the <c>ChainCanvasControl.EdgeLayer.cs</c> partial) draws the blocked_by edge
+    /// layer into <see cref="EdgeLayer"/> using <see cref="ChainLayout.OutPort"/>/
+    /// <see cref="ChainLayout.InPort"/> against <see cref="Layout"/>/<see cref="Derived"/>/
+    /// <see cref="ExpandedFeatures"/>, and owns its own click-to-select/hover state — edge
+    /// selection is a 4th selection kind alongside the issue/Feature selection below.
     /// </summary>
     public partial class ChainCanvasControl : UserControl
     {
@@ -121,6 +123,8 @@ namespace BuildConsole.Controls.BuildMap
             _expanded.RemoveWhere(id => doc.Features.All(f => f.Id != id));
             if (_selectedFeatureId != null && doc.Features.All(f => f.Id != _selectedFeatureId)) _selectedFeatureId = null;
             if (_selectedIssue != null && ChainRules.FindIssue(doc, _selectedIssue.Value) == null) _selectedIssue = null;
+            if (_selectedEdgePairs != null && !_selectedEdgePairs.Any(p => doc.Edges.Any(e => e.From == p.From && e.To == p.To)))
+                ClearEdgeSelectionSilently();
             Render();
         }
 
@@ -152,6 +156,7 @@ namespace BuildConsole.Controls.BuildMap
             if (ensureExpanded && _derived.FeatureOf.TryGetValue(num, out var f)) _expanded.Add(f.Id);
             _selectedIssue = num;
             _selectedFeatureId = null;
+            ClearEdgeSelectionSilently(); // mutual exclusivity — selecting a node deselects any edge (#2478)
             Render();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -160,15 +165,17 @@ namespace BuildConsole.Controls.BuildMap
         {
             _selectedFeatureId = featureId;
             _selectedIssue = null;
+            ClearEdgeSelectionSilently();
             Render();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
 
         public void ClearSelection()
         {
-            if (_selectedIssue == null && _selectedFeatureId == null) return;
+            if (_selectedIssue == null && _selectedFeatureId == null && _selectedEdgePairs == null) return;
             _selectedIssue = null;
             _selectedFeatureId = null;
+            ClearEdgeSelectionSilently();
             Render();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
         }
@@ -210,8 +217,9 @@ namespace BuildConsole.Controls.BuildMap
         {
             RailLayer.Children.Clear();
             NodeLayer.Children.Clear();
-            // #2478's edge layer is invalidated by any relayout; it redraws on the Rendered event.
             EdgeLayerHost.Children.Clear();
+            _edgeGroups.Clear();
+            _edgeVisuals.Clear();
 
             if (_doc == null)
             {
@@ -229,6 +237,7 @@ namespace BuildConsole.Controls.BuildMap
             Stage.Height = _layout.H;
 
             RenderEpicTreeRail(_doc, _layout);
+            RenderEdgeLayer(_doc, _derived, _layout); // #2478 — under the nodes, per README layer order
             RenderEpicCard(_doc, _derived, _layout);
             RenderGatePills(_doc, _layout);
 

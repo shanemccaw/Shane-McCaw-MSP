@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace BuildConsole.Services.BuildMap
@@ -123,7 +124,32 @@ namespace BuildConsole.Services.BuildMap
             if (stageWidth <= 0) return 1;
             return Math.Round(Math.Max(ZoomMin, Math.Min(1, (viewportWidth - 16) / stageWidth)) * 100) / 100;
         }
+
+        /// <summary>Git #2478 — the edge path itself, a 1:1 port of `Build Chain Map.dc.html`'s
+        /// `pathD(a, b, ortho)`. Orthogonal (default): `M a H mid V b.y H b` where
+        /// `mid = (a.x + b.x)/2` — two right-angle turns, matching WPF's own supported Path Markup
+        /// Syntax (M/H/V/C are all real WPF mini-language commands, already proven by the epic-tree
+        /// rail in <see cref="ChainCanvasControl.RenderEpicTreeRail"/>). Curved: a cubic Bézier with
+        /// control offset `dx = clamp(|b.x − a.x|/2, 36, 110)` — note `dx` is always positive, so the
+        /// curve's tangent at `b` always points +x (see <see cref="ChainCanvasControl"/>'s edge-layer
+        /// arrowhead comment for what this means for a backward-running edge; ported faithfully, not
+        /// "corrected", since the reference is high-fidelity).</summary>
+        public static string PathData(ChainPort a, ChainPort b, ChainEdgeStyle style)
+        {
+            var inv = CultureInfo.InvariantCulture;
+            if (style == ChainEdgeStyle.Orthogonal)
+            {
+                double mid = (a.X + b.X) / 2;
+                return string.Format(inv, "M{0} {1} H{2} V{3} H{4}", a.X, a.Y, mid, b.Y, b.X);
+            }
+            double dx = Math.Max(36, Math.Min(110, Math.Abs(b.X - a.X) * .5));
+            return string.Format(inv, "M{0} {1} C{2} {3} {4} {5} {6} {7}",
+                a.X, a.Y, a.X + dx, a.Y, b.X - dx, b.Y, b.X, b.Y);
+        }
     }
+
+    /// <summary>The README's "Tweakable props" `edgeStyle`: `'orthogonal'` (default) | `'curved'`.</summary>
+    public enum ChainEdgeStyle { Orthogonal, Curved }
 
     public enum ChainNodeKind { Row, Sentinel }
 
