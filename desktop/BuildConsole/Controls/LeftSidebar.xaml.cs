@@ -3722,7 +3722,16 @@ namespace BuildConsole.Controls
             };
             miToggleProgress.Click += (_, _) =>
             {
-                BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(chat.ConversationId, chat.Title, chat.ClaudeUrl);
+                // Git #2663 — route through MainWindow's ONE shared resolver so the same
+                // live-tab-URL identity path all four In Progress entry points use also
+                // covers the sidebar card: if this chat is open in a tab that navigated to a
+                // new conversation, its URL is refreshed while its authoritative persisted
+                // conversation id (used to match an unmark) is preserved. Falls back to the
+                // direct toggle only if the main window somehow isn't a MainWindow.
+                if (Application.Current.MainWindow is MainWindow mw)
+                    mw.ToggleChatInProgressResolved(null, chat.ConversationId, chat.Title, chat.ClaudeUrl);
+                else
+                    BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(chat.ConversationId, chat.Title, chat.ClaudeUrl);
                 RenderChatsTree();
             };
             cm.Items.Add(miToggleProgress);

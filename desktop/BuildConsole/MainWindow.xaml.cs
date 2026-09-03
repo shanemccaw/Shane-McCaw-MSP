@@ -3296,9 +3296,14 @@ namespace BuildConsole
                     : "Mark as In Progress (keep accessible in Focus Mode)";
             }
             UpdateBoltAppearance();
+            // Git #2663 — resolve the chat this tab REALLY shows now (live WebView2 URL),
+            // not the cached BoardChat snapshot, so marking a tab that has navigated to a
+            // new conversation stores the right chat. `boltTab` is assigned to the real
+            // TabItem once it's constructed below (this closure runs only on click).
+            TabItem? boltTab = null;
             boltBtn.Click += (s, e) =>
             {
-                BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(chat.ConversationId, chat.Title, chat.ClaudeUrl);
+                ToggleChatInProgressResolved(boltTab, chat.ConversationId, chat.Title, chat.ClaudeUrl);
                 UpdateBoltAppearance();
             };
             headerPanel.Children.Add(boltBtn);
@@ -3381,6 +3386,7 @@ namespace BuildConsole
             container.SetBody(splitGrid);
 
             var newTab = new TabItem { Tag = chat, Header = headerPanel, Content = container };
+            boltTab = newTab; // Git #2663 — the bolt handler above resolves live off THIS tab
             var state = new ChatTabState
             {
                 GithubNumber = githubNumber,
@@ -4614,6 +4620,95 @@ namespace BuildConsole
             return null;
         }
 
+        /// <summary>Git #2663 — the open chat tab (across all four panes) whose BoardChat tag
+        /// carries this conversation id, or null. Lets the shared resolver below refresh a
+        /// chat's live URL even when the caller only knows the persisted conversation id
+        /// (the sidebar card / immersive chip) and never held the tab itself.</summary>
+        private TabItem? FindOpenChatTabByConversationId(string? conversationId)
+        {
+            if (string.IsNullOrWhiteSpace(conversationId)) return null;
+            foreach (var kvp in _chatTabs)
+            {
+                if (kvp.Key.Tag is BuildConsole.Services.BoardChat bc &&
+                    string.Equals(bc.ConversationId, conversationId, StringComparison.OrdinalIgnoreCase))
+                    return kvp.Key;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Git #2663 — the ONE conversation-identity resolver every "toggle In Progress"
+        /// entry point shares (tab-header ⚡ bolt, tab right-click, sidebar card right-click,
+        /// immersive chip, and the new Replace action). Reads the chat's REAL current identity
+        /// live off its open tab's WebView2 URL (<see cref="TryGetChatUrlForTab"/> +
+        /// <see cref="ClaudeChatUrlRegex"/>) so a tab that has navigated to a new conversation
+        /// is marked as the chat it ACTUALLY shows — never a cached
+        /// <c>BoardChat.ClaudeUrl</c> / <c>PersistedInProgressChat.ClaudeUrl</c> that went
+        /// stale after the tab moved (the "marks the new chat, opens the old one" bug).
+        ///
+        /// <para>Two intents, one path: when the caller hands us the tab directly (the
+        /// tab-header bolt / tab menu / Replace — "mark what THIS tab really shows"), the live
+        /// URL is authoritative even if it moved past the cached id. When we only *find* the
+        /// tab via the cached conversation id (the sidebar card / immersive chip operate on an
+        /// already-known persisted chat), we keep that authoritative id and merely refresh its
+        /// URL — so an unmark still matches the exact row it is removing. Falls back to the
+        /// supplied cached values when no live URL resolves (chat not open, or a brand-new chat
+        /// with no <c>/chat/&lt;uuid&gt;</c> URL yet); returns (null, null) only when nothing
+        /// at all resolves.</para>
+        /// </summary>
+        public (string? conversationId, string? claudeUrl) ResolveChatIdentity(
+            TabItem? tab, string? cachedConversationId, string? cachedClaudeUrl)
+        {
+            bool tabWasExplicit = tab != null;
+            tab ??= FindOpenChatTabByConversationId(cachedConversationId);
+            if (tab != null)
+            {
+                var liveUrl = TryGetChatUrlForTab(tab);
+                if (!string.IsNullOrEmpty(liveUrl))
+                {
+                    var m = ClaudeChatUrlRegex.Match(liveUrl);
+                    if (m.Success)
+                    {
+                        var liveCid = m.Groups[1].Value;
+                        if (tabWasExplicit || string.IsNullOrEmpty(cachedConversationId))
+                            return (liveCid, liveUrl);
+                        // Found via the cached id — keep it authoritative, just refresh the URL.
+                        return (cachedConversationId, liveUrl);
+                    }
+                }
+            }
+            return (string.IsNullOrEmpty(cachedConversationId) ? null : cachedConversationId,
+                    string.IsNullOrEmpty(cachedClaudeUrl) ? null : cachedClaudeUrl);
+        }
+
+        /// <summary>Git #2663 — the ONE toggle path the tab-header bolt / sidebar card /
+        /// immersive chip (and the new Replace action) share: resolve live identity via
+        /// <see cref="ResolveChatIdentity"/>, then flip FocusModeService's In Progress mark.
+        /// Returns the resolved conversation id, or null when nothing resolved (caller may
+        /// warn). <see cref="MarkChatTabInProgressAsync"/> deliberately does NOT go through
+        /// this wrapper — it resolves via the same <see cref="ResolveChatIdentity"/> helper but
+        /// keeps its own gh-label / toast / tab-decoration work around the toggle.</summary>
+        public string? ToggleChatInProgressResolved(TabItem? tab, string? cachedConversationId, string title, string? cachedClaudeUrl)
+        {
+            var (cid, url) = ResolveChatIdentity(tab, cachedConversationId, cachedClaudeUrl);
+            if (string.IsNullOrEmpty(cid)) return null;
+            BuildConsole.Services.FocusModeService.Instance.ToggleChatInProgress(cid, title, url);
+            return cid;
+        }
+
+        /// <summary>Git #2663 — the selected chat tab across all four editor panes (primary
+        /// wins), or null if no selected tab genuinely shows a claude.ai conversation. Backs
+        /// the FocusModeBar chip's "Replace with active tab" action.</summary>
+        private TabItem? GetActiveChatTab()
+        {
+            foreach (var pane in new[] { EditorTabs, EditorTabs2, EditorTabs3, EditorTabs4 })
+            {
+                if (pane.SelectedItem is TabItem sel && TryGetChatUrlForTab(sel) != null)
+                    return sel;
+            }
+            return null;
+        }
+
         /// <summary>Git #1629 — a tab's visible title text (icon TextBlock is child 0 in
         /// every header this app builds, so prefer the second), for chat rows created from
         /// tabs that have no BoardChat snapshot to take a title from.</summary>
@@ -4947,18 +5042,14 @@ namespace BuildConsole
                 // conversation id from the tab itself (live WebView2 source — the same
                 // logic backing GetActiveChatUrl, but for THIS tab, selected or not) so
                 // any genuine claude.ai tab actually gets marked — or say plainly why not.
-                string? conversationId = chat?.ConversationId;
-                string? chatUrl = chat?.ClaudeUrl;
                 string title = chat?.Title ?? TabTitleOf(tabItem);
-                if (string.IsNullOrEmpty(conversationId) || string.IsNullOrEmpty(chatUrl))
-                {
-                    chatUrl = TryGetChatUrlForTab(tabItem);
-                    if (chatUrl != null)
-                    {
-                        var convMatch = ClaudeChatUrlRegex.Match(chatUrl);
-                        if (convMatch.Success) conversationId = convMatch.Groups[1].Value;
-                    }
-                }
+                // Git #2663 — resolve what THIS tab REALLY shows now through the one shared
+                // resolver. Previously the live-URL read was only a fallback taken when the
+                // cached BoardChat fields were empty, so a stale-but-nonempty snapshot URL
+                // (tab navigated to a new chat after opening) still won and the wrong
+                // conversation got marked. Now the live tab URL is authoritative, with the
+                // cached snapshot only as the last resort.
+                var (conversationId, chatUrl) = ResolveChatIdentity(tabItem, chat?.ConversationId, chat?.ClaudeUrl);
                 if (string.IsNullOrEmpty(conversationId) || string.IsNullOrEmpty(chatUrl))
                 {
                     ToastEngine.Warning("In-Progress",

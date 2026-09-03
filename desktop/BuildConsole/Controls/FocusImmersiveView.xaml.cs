@@ -574,7 +574,15 @@ namespace BuildConsole.Controls
                 unpinBtn.Click += (s, e) =>
                 {
                     e.Handled = true;
-                    svc.ToggleChatInProgress(item.ConversationId, item.Title, item.ClaudeUrl);
+                    // Git #2663 — route through MainWindow's ONE shared resolver like the other
+                    // three entry points. This is the unmark path: the resolver preserves the
+                    // persisted conversation id when it locates the chat via that same id, so the
+                    // toggle still removes the exact row it's targeting (and merely refreshes the
+                    // URL if the chat happens to be open). Direct toggle as the fallback.
+                    if (System.Windows.Application.Current.MainWindow is MainWindow mw)
+                        mw.ToggleChatInProgressResolved(null, item.ConversationId, item.Title, item.ClaudeUrl);
+                    else
+                        svc.ToggleChatInProgress(item.ConversationId, item.Title, item.ClaudeUrl);
                     if (isSelected) ExitChatMode();
                 };
                 sp.Children.Add(unpinBtn);

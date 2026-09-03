@@ -29,6 +29,10 @@ namespace BuildConsole.Controls
         public event Action? ImmersiveRequested;
         /// <summary>An in-progress chat chip was clicked in the bar — open/switch to that chat tab.</summary>
         public event Action<PersistedInProgressChat>? InProgressChatActivated;
+        /// <summary>Git #2663 — "Replace with active tab" was chosen on an in-progress chip:
+        /// MainWindow unmarks this chip's chat and marks whatever chat tab is currently active,
+        /// in one action (kills the old open-old-tab → unmark → find-new-tab → mark round trip).</summary>
+        public event Action<PersistedInProgressChat>? InProgressChatReplaceRequested;
 
         public FocusModeBar()
         {
@@ -112,8 +116,16 @@ namespace BuildConsole.Controls
         private void RefreshInProgressChats()
         {
             var svc = FocusModeService.Instance;
-            // Git #1480 — scoped to the title-bar Primary/Secondary toggle's current value.
-            var list = svc.InProgressChatsForAccount(BuildConsoleSettings.CurrentAccountLabel());
+            // Git #2663 — GLOBAL across both accounts (was Git #1480's per-account filter
+            // via svc.InProgressChatsForAccount(CurrentAccountLabel())). A chat marked under
+            // one account silently vanished from the strip the moment Shane flipped the
+            // title-bar Primary/Secondary toggle — the "chips just disappear on their own"
+            // symptom. Showing every marked chat regardless of the active account is the
+            // safer default for "why did this disappear." NOTE: this is a judgment-call
+            // default per the #2663 dispatch, not a confirmed product decision — if Shane
+            // wants per-account scoping back, restore the InProgressChatsForAccount(...) call
+            // (and surface an "N more on <other account>" indicator instead of hiding).
+            var list = svc.InProgressChats;
             if (list == null || list.Count == 0)
             {
                 InProgressStrip.Visibility = Visibility.Collapsed;
@@ -152,6 +164,16 @@ namespace BuildConsole.Controls
                 {
                     InProgressChatActivated?.Invoke(item);
                 };
+
+                // Git #2663 — right-click a chip to swap which chat is "in progress" in ONE
+                // action: unmark this chip's chat and mark whatever chat tab is currently
+                // active. `item` is captured per-chip (foreach's own loop variable).
+                var captured = item;
+                var cm = new ContextMenu();
+                var miReplace = new MenuItem { Header = "Replace with active tab" };
+                miReplace.Click += (_, _) => InProgressChatReplaceRequested?.Invoke(captured);
+                cm.Items.Add(miReplace);
+                chip.ContextMenu = cm;
 
                 InProgressList.Children.Add(chip);
             }
