@@ -1261,9 +1261,20 @@ export function applyMapping(
         // "not present at all" comes back as null and "present but unset" comes
         // back as "", so a stored rule can say which one it means:
         //   {{groupNaming}} == null || {{groupNaming}} == ''
+        //
+        // #2187 second reading: sourceField as a WHOLE_ITEM_SOURCE_FIELDS
+        // sentinel (e.g. "value") means matchField/extractField apply directly
+        // to the fetched ITEMS themselves, not to a nested array inside each
+        // one. This is what a flat top-level list needs — /subscribedSkus'
+        // items already ARE {skuPartNumber, consumedUnits} objects, there is
+        // no nested array to descend into, so the original array-only reading
+        // could never select "the Copilot SKU's consumedUnits" out of a list
+        // of every SKU the tenant owns. No existing stored rule used
+        // valueWhere before this, so this widening changes no live behavior.
         const matchField = valueWhereMatch![1];
         const matchValue = valueWhereMatch![2];
         const extractField = valueWhereMatch![3] ?? "value";
+        const isWholeItem = WHOLE_ITEM_SOURCE_FIELDS.has(sourceField?.trim() ?? "");
 
         let sawArray = false;
         let found = false;
@@ -1272,8 +1283,11 @@ export function applyMapping(
         const distinctExtracted = new Set<string>();
         const nearMisses = new Set<string>();
 
-        for (const val of vals) {
-          if (!Array.isArray(val)) continue;
+        const entryLists: unknown[][] = isWholeItem && items.length > 0
+          ? [items]
+          : vals.filter((v): v is unknown[] => Array.isArray(v));
+
+        for (const val of entryLists) {
           sawArray = true;
           for (const entry of val) {
             if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
