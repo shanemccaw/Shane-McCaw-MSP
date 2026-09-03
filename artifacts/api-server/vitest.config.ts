@@ -240,6 +240,7 @@ export default defineConfig({
       "src/routes/portal-messages.test.ts",
       "src/routes/portal-risk-register.test.ts",
       "src/routes/portal-policy-decisions.test.ts",
+      "src/routes/msp-policy-decisions.test.ts",
       "src/lib/direct-tenant-provisioning.test.ts",
       "src/routes/msp-settings-portal-links.test.ts",
       "src/routes/portal-customer-search.test.ts",
