@@ -491,7 +491,7 @@ namespace BuildConsole
             Services.ChatDockData data;
             try
             {
-                data = await Services.ChatDockService.BuildAsync(db, chatUrl, tab.Chat.Id);
+                data = await Services.ChatDockService.BuildAsync(db, chatUrl, tab.Chat.Id, _owner?.BuildQueuePanel?.CurrentQueueItems);
             }
             catch (Exception ex)
             {

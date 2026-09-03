@@ -36,6 +36,14 @@ namespace BuildConsole.Services
         /// <summary>The real board "Status" column name (e.g. "Batter Up", "In Progress"), null if
         /// unavailable (no PAT configured, or the lookup itself failed).</summary>
         public string? BoardStatus { get; init; }
+        /// <summary>Git #2686 — the real live build-queue status for this number ("queued", "running",
+        /// "verifying", "failed", "parked", etc — raw <c>QueueItem.Status</c>), cross-referenced from
+        /// <c>BuildQueuePanel.CurrentQueueItems</c> (the same in-memory, already-current collection
+        /// #2548's Chat Document Container context bar already reuses for this exact class of
+        /// problem). Distinct from <see cref="BoardStatus"/> on purpose — the board column is a static
+        /// project-board label, this is what the build is ACTUALLY doing right now. Null when no live
+        /// queue row exists for this number; the panel falls back to <see cref="BoardStatus"/> then.</summary>
+        public string? LiveQueueStatus { get; init; }
         public List<ChatDockEdge> BlockedBy { get; init; } = new();
         public List<ChatDockEdge> Blocks { get; init; } = new();
         public bool HasChain => BlockedBy.Count > 0 || Blocks.Count > 0;
@@ -96,7 +104,19 @@ namespace BuildConsole.Services
         /// hundreds of sequential GitHub calls.</summary>
         private const int MaxEnrichedItems = 40;
 
-        public static async Task<ChatDockData> BuildAsync(BuildQueuePostgresClient db, string chatUrl, int chatId)
+        public static Task<ChatDockData> BuildAsync(BuildQueuePostgresClient db, string chatUrl, int chatId) =>
+            BuildAsync(db, chatUrl, chatId, null);
+
+        /// <param name="liveQueueItems">Git #2686 — <c>BuildQueuePanel.CurrentQueueItems</c> (or an
+        /// equivalent already-current snapshot), used to cross-reference each mentioned issue's REAL
+        /// live build state. Null (the default, and every pre-#2686 call site) means "no live queue
+        /// available this pass" — every item then simply has a null <see cref="ChatDockItem.LiveQueueStatus"/>
+        /// and the panel falls back to the plain board-status chip, same as before this change.</param>
+        public static async Task<ChatDockData> BuildAsync(
+            BuildQueuePostgresClient db,
+            string chatUrl,
+            int chatId,
+            IReadOnlyList<QueueItem>? liveQueueItems)
         {
             if (db == null) return ChatDockData.Empty;
 
@@ -139,54 +159,16 @@ namespace BuildConsole.Services
             var settings = BuildConsoleSettings.Load();
             GitHubApiClient? gh = settings.HasGitHubPat ? new GitHubApiClient(settings.GitHubPat) : null;
 
-            var items = new List<ChatDockItem>();
-            foreach (var number in mentioned)
-            {
-                bool? isOpen = reachedGitHub ? openResult.OpenNumbers.Contains(number) : (bool?)null;
-                // Fail-closed: unknown (GitHub unreachable) is treated as still-relevant, same as a
-                // confirmed-open issue. Only a CONFIRMED closed state drops it from the dock.
-                if (isOpen == false) continue;
-
-                string title = $"#{number}";
-                string? boardStatus = null;
-                var blockedBy = new List<ChatDockEdge>();
-                var blocks = new List<ChatDockEdge>();
-
-                try
-                {
-                    var titleLookup = await GitHubIssuesService.GetIssueTitleAsync(number);
-                    if (!string.IsNullOrWhiteSpace(titleLookup.Title)) title = titleLookup.Title!;
-                }
-                catch { /* title stays the bare number — not fatal, the item is still real */ }
-
-                if (gh != null)
-                {
-                    try
-                    {
-                        var statusTask = gh.GetIssueBoardStatusAsync(number);
-                        blockedBy = await WalkChainAsync(gh, number, reverse: false);
-                        blocks = await WalkChainAsync(gh, number, reverse: true);
-                        var status = await statusTask;
-                        boardStatus = status?.StatusName;
-                    }
-                    catch (Exception ex)
-                    {
-                        // Metadata-only failure — the item itself stays in the actionable list
-                        // (fail-closed), it just renders without a chain/board-status this pass.
-                        ActivityLog.Log("chat.dock", $"relationship/board-status fetch failed for #{number}: {ex.Message}");
-                    }
-                }
-
-                items.Add(new ChatDockItem
-                {
-                    Number = number,
-                    Title = title,
-                    StateUnknown = isOpen == null,
-                    BoardStatus = boardStatus,
-                    BlockedBy = blockedBy,
-                    Blocks = blocks,
-                });
-            }
+            // Git #2686 — was a sequential `foreach` doing 3-4 real awaited GitHub calls PER mentioned
+            // issue (title, board-status, two chain walks), each item fully blocking the next — O(N ×
+            // chain-depth) sequential round trips. Fan every item's own fetch out concurrently instead;
+            // each still fails closed on its own (a single item's fetch failure never aborts the batch,
+            // it just lands with less metadata — same behavior as before, just not serialized).
+            var itemTasks = mentioned
+                .Select(number => BuildItemAsync(number, reachedGitHub, openResult, gh, liveQueueItems))
+                .ToList();
+            var built = await Task.WhenAll(itemTasks);
+            var items = built.Where(i => i != null).Select(i => i!).ToList();
 
             return new ChatDockData
             {
@@ -195,6 +177,87 @@ namespace BuildConsole.Services
                 GitHubReachable = reachedGitHub,
                 GitHubError = openResult.Error,
             };
+        }
+
+        /// <summary>Git #2686 — one mentioned issue's full fetch (title, board-status, both chain
+        /// walks, live-queue cross-reference), extracted so <see cref="BuildAsync"/> can run every
+        /// mentioned number's fetch concurrently via <c>Task.WhenAll</c> instead of a blocking
+        /// sequential loop. Returns null only for a confirmed-closed issue (dropped from the dock);
+        /// every other outcome — including every kind of per-field fetch failure — still returns a
+        /// real item, same fail-closed shape the original sequential loop had.</summary>
+        private static async Task<ChatDockItem?> BuildItemAsync(
+            int number,
+            bool reachedGitHub,
+            LiveOpenIssuesResult openResult,
+            GitHubApiClient? gh,
+            IReadOnlyList<QueueItem>? liveQueueItems)
+        {
+            bool? isOpen = reachedGitHub ? openResult.OpenNumbers.Contains(number) : (bool?)null;
+            // Fail-closed: unknown (GitHub unreachable) is treated as still-relevant, same as a
+            // confirmed-open issue. Only a CONFIRMED closed state drops it from the dock.
+            if (isOpen == false) return null;
+
+            string title = $"#{number}";
+            string? boardStatus = null;
+            var blockedBy = new List<ChatDockEdge>();
+            var blocks = new List<ChatDockEdge>();
+
+            try
+            {
+                var titleLookup = await GitHubIssuesService.GetIssueTitleAsync(number);
+                if (!string.IsNullOrWhiteSpace(titleLookup.Title)) title = titleLookup.Title!;
+            }
+            catch { /* title stays the bare number — not fatal, the item is still real */ }
+
+            if (gh != null)
+            {
+                try
+                {
+                    var statusTask = gh.GetIssueBoardStatusAsync(number);
+                    var blockedByTask = WalkChainAsync(gh, number, reverse: false);
+                    var blocksTask = WalkChainAsync(gh, number, reverse: true);
+                    await Task.WhenAll(statusTask, blockedByTask, blocksTask);
+                    boardStatus = statusTask.Result?.StatusName;
+                    blockedBy = blockedByTask.Result;
+                    blocks = blocksTask.Result;
+                }
+                catch (Exception ex)
+                {
+                    // Metadata-only failure — the item itself stays in the actionable list
+                    // (fail-closed), it just renders without a chain/board-status this pass.
+                    ActivityLog.Log("chat.dock", $"relationship/board-status fetch failed for #{number}: {ex.Message}");
+                }
+            }
+
+            return new ChatDockItem
+            {
+                Number = number,
+                Title = title,
+                StateUnknown = isOpen == null,
+                BoardStatus = boardStatus,
+                LiveQueueStatus = FindLiveQueueStatus(number, liveQueueItems),
+                BlockedBy = blockedBy,
+                Blocks = blocks,
+            };
+        }
+
+        /// <summary>Git #2686 — reuses the exact match shape #2548's Chat Document Container context
+        /// bar already proved for this class of problem (<c>ChatDocumentContainer.ComputeAndRenderCounts</c>):
+        /// a queue row belongs to this issue number if either its own <c>GithubNumber</c> or any of its
+        /// <c>AssociatedIssueNumbers</c> matches. When more than one live row matches (a re-dispatch
+        /// history), prefer a still-ACTIVE row over a terminal one, then the most recently updated —
+        /// the real "what's happening right now" signal, not just whichever row sorts first.</summary>
+        private static string? FindLiveQueueStatus(int number, IReadOnlyList<QueueItem>? liveQueueItems)
+        {
+            if (liveQueueItems == null || liveQueueItems.Count == 0) return null;
+
+            var match = liveQueueItems
+                .Where(q => (q.GithubNumber.HasValue && q.GithubNumber.Value == number) || q.AssociatedIssueNumbers.Contains(number))
+                .OrderByDescending(q => BuildQueuePostgresClient.IsActiveStatus(q.Status) ? 1 : 0)
+                .ThenByDescending(q => q.UpdatedAt ?? DateTimeOffset.MinValue)
+                .FirstOrDefault();
+
+            return match?.Status;
         }
 
         /// <summary>

@@ -186,7 +186,30 @@ namespace BuildConsole.Controls
             }
             content.Children.Add(headerRow);
 
-            if (!string.IsNullOrWhiteSpace(item.BoardStatus))
+            // Git #2686 — real live build state wins when a live queue row exists for this number
+            // (BuildQueuePanel.CurrentQueueItems, same mechanism #2548 already proved for this class
+            // of problem); the plain board-column label is the fallback, only shown when there's no
+            // live row to report on.
+            if (!string.IsNullOrWhiteSpace(item.LiveQueueStatus))
+            {
+                var (text, color) = LiveStatusVisual(item.LiveQueueStatus);
+                content.Children.Add(new Border
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(0x33, color.R, color.G, color.B)),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(5, 1, 5, 1),
+                    Margin = new Thickness(0, 3, 0, 0),
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                    Child = new TextBlock
+                    {
+                        Text = text,
+                        FontSize = 9.5,
+                        FontWeight = FontWeights.SemiBold,
+                        Foreground = new SolidColorBrush(color),
+                    },
+                });
+            }
+            else if (!string.IsNullOrWhiteSpace(item.BoardStatus))
             {
                 content.Children.Add(new Border
                 {
@@ -261,6 +284,23 @@ namespace BuildConsole.Controls
             card.Child = content;
             return card;
         }
+
+        /// <summary>Git #2686 — short status label + color for a real live queue status, mirroring
+        /// the exact vocabulary/colors <c>BuildQueuePanel.GhostStatusLabel</c> already uses for these
+        /// same states, so a live-active item's chip here reads as the same real state a queue card
+        /// would show, not a second invented visual language.</summary>
+        private static (string text, Color color) LiveStatusVisual(string status) => status switch
+        {
+            "running" => ("▶ RUNNING", Color.FromRgb(0x89, 0xB4, 0xFA)),
+            BuildQueuePostgresClient.VerifyingStatus => ("🔎 VERIFYING", Color.FromRgb(0x74, 0xC7, 0xEC)),
+            "queued" => ("⏳ QUEUED", Color.FromRgb(0xBA, 0xB4, 0xCD)),
+            "parked" => ("⏸ PARKED", Color.FromRgb(0xFA, 0xB3, 0x87)),
+            "failed" => ("✕ FAILED", Color.FromRgb(0xF3, 0x8B, 0xA8)),
+            "canceled" => ("⊘ CANCELED", Color.FromRgb(0xBA, 0xB4, 0xCD)),
+            "done" => ("✨ DONE", Color.FromRgb(0xA6, 0xE3, 0xA1)),
+            "external" => ("↗ EXTERNAL", Color.FromRgb(0xBA, 0xB4, 0xCD)),
+            _ => (status.ToUpperInvariant(), Color.FromRgb(0xBA, 0xB4, 0xCD)),
+        };
 
         private Button SmallActionButton(string label, string toolTip) => new Button
         {

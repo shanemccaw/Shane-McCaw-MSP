@@ -439,7 +439,7 @@ namespace BuildConsole.Controls
                 string chatUrl = !string.IsNullOrWhiteSpace(_chat.ClaudeUrl)
                     ? _chat.ClaudeUrl
                     : (string.IsNullOrWhiteSpace(_chat.ConversationId) ? "" : $"https://claude.ai/chat/{_chat.ConversationId}");
-                var data = await ChatDockService.BuildAsync(db, chatUrl, _chat.Id);
+                var data = await ChatDockService.BuildAsync(db, chatUrl, _chat.Id, _owner.BuildQueuePanel?.CurrentQueueItems);
                 _lastDockData = data;
                 RenderDock();
 
