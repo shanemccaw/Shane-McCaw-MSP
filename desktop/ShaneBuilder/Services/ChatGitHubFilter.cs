@@ -45,6 +45,16 @@ public sealed class BatterUpItemRef
     public bool FeatureIsClosed { get; init; }
     public List<string> FeatureLabels { get; init; } = new();
 
+    // ── Git #2360 — real per-item write targets for Hold/Release ────────────────────────────
+    /// <summary>The real ProjectV2Item node id (not the issue's own id) — what
+    /// <c>updateProjectV2ItemFieldValue</c> needs to move this item's Status. Null only if the
+    /// GraphQL response genuinely didn't carry it (never fabricated).</summary>
+    public string? ProjectItemId { get; init; }
+    /// <summary>The real Status option id this item was actually sitting in when the lane walk
+    /// fetched it (Batter Up / AI Batter Up / Ask Shane) — Release writes back to exactly this,
+    /// so an item held from AI Batter Up returns to AI Batter Up, not a guessed default lane.</summary>
+    public string? LaneOptionId { get; init; }
+
     // ── Git #2359 — item-card detail: real badge, effort, "why it is here". Resolved by a
     // second, batched GraphQL call scoped to just the items already sorted into one of the 3
     // lanes (see <see cref="ChatGitHubFilter.EnrichBatterUpItemDetailsAsync"/>), so these start
@@ -376,6 +386,7 @@ public sealed class ChatGitHubFilter
       items(last: {LanePageSize}, before: {beforeArg}) {{
         pageInfo {{ hasPreviousPage startCursor }}
         nodes {{
+          id
           fieldValueByName(name: ""Status"") {{
             ... on ProjectV2ItemFieldSingleSelectValue {{ optionId }}
           }}
@@ -420,6 +431,7 @@ public sealed class ChatGitHubFilter
                 if (!string.Equals(issue.Repository?.NameWithOwner, Repo, StringComparison.OrdinalIgnoreCase)) continue;
                 if (!string.Equals(issue.State, "OPEN", StringComparison.OrdinalIgnoreCase)) continue;
 
+                string? laneOptionId = n.FieldValueByName?.OptionId;
                 var itemRef = new BatterUpItemRef
                 {
                     Number = issue.Number,
@@ -429,9 +441,11 @@ public sealed class ChatGitHubFilter
                     FeatureIsClosed = string.Equals(issue.Parent?.State, "CLOSED", StringComparison.OrdinalIgnoreCase),
                     FeatureLabels = issue.Parent?.Labels?.Nodes?.Select(l => l.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList()
                         ?? new List<string>(),
+                    ProjectItemId = n.Id,
+                    LaneOptionId = laneOptionId,
                 };
 
-                switch (n.FieldValueByName?.OptionId)
+                switch (laneOptionId)
                 {
                     case BatterUpOptionId: batterUp.Add(itemRef); break;
                     case AiBatterUpOptionId: aiBatterUp.Add(itemRef); break;
@@ -746,6 +760,7 @@ public sealed class ChatGitHubFilter
     }
     private sealed class LaneItemNode
     {
+        [JsonPropertyName("id")] public string? Id { get; set; }
         [JsonPropertyName("fieldValueByName")] public LaneFieldValue? FieldValueByName { get; set; }
         [JsonPropertyName("content")] public LaneIssueContent? Content { get; set; }
     }

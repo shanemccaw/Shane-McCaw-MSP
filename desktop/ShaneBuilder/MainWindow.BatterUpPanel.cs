@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
@@ -56,6 +57,18 @@ namespace ShaneBuilder;
 /// real dispatch semantics land downstream in #2366 (built on top of #2360's per-item actions).
 /// The "No Feature" bucket gets neither — there's no real parent Feature to show state for or
 /// dispatch against.
+///
+/// Git #2360 (Feature #2355 item 5) — each item row now carries real per-item action links:
+/// Hold / Release moves the item's real board Status to/from Park (<see
+/// cref="GitEpicPanelService.StatusOption_Park"/> — the same real bucket #2307/#2308 built for
+/// exactly this "pull it out of the queue, put it in its own queue away from the build" use
+/// case), via the same <see cref="GitEpicPanelService.SetProjectStatusAsync"/> write path that
+/// panel already uses; Release writes back to <see cref="BatterUpItemRef.LaneOptionId"/> — the
+/// real lane the item was actually sitting in, not a guessed default. Dispatch is deliberately
+/// NOT a queue write (per #2360's own governing comment, #2366 owns that): it opens the real
+/// issue in the browser and copies a ready-to-act prompt to the clipboard, leaving the actual
+/// build-prompt-and-queue-push flow as a real, named hook point (<see cref="BatterUpDispatchClicked"/>)
+/// for #2366 to extend.
 /// </summary>
 /// <summary>Git #2365 — a frozen snapshot of the Batter Up panel's real state (selected lane +
 /// the four live counts) at the moment "Send to tab" was clicked. Carried on <c>TabDef</c>, read
@@ -82,6 +95,17 @@ public partial class MainWindow
     /// never cleared by a lane switch, so a group's expand/collapse choice survives switching
     /// lanes and back — the whole point of this build.</summary>
     private readonly HashSet<int> _batterUpCollapsedGroups = new();
+
+    /// <summary>Git #2360 — real items currently held (their board Status was written to Park by
+    /// this panel's own Hold action this session). Kept locally, same convention as
+    /// <see cref="_gitEpicActionBusy"/>: the real write already happened on GitHub; this just lets
+    /// the row keep showing (with a Release action) instead of vanishing until the next full lane
+    /// walk re-fetches from the board.</summary>
+    private readonly HashSet<int> _batterUpHeldItems = new();
+
+    /// <summary>Git #2360 — items with a Hold/Release/Dispatch write in flight, so a second click
+    /// can't double-fire the same mutation. Same pattern as <see cref="_gitEpicActionBusy"/>.</summary>
+    private readonly HashSet<int> _batterUpActionBusy = new();
 
     /// <summary>Fires the real lane-count walk the first time the BATTER UP rail panel opens.
     /// A failed walk reports its real error in the status line; nothing falls back to a fixture
@@ -272,12 +296,16 @@ public partial class MainWindow
                 // Git #2359 — real badge (AGENT FOUND / CHAT FILED) + real effort label, right of
                 // the title, using the same right-column pill pattern the Git Panel feature rows
                 // already use for their own state/bug/open pills.
+                bool held = _batterUpHeldItems.Contains(item.Number);
+                if (held) row.ColumnRight(GitCountPill("HELD", "Brush.Status.Parked"));
                 row.ColumnRight(GitCountPill(BatterUpEffortLabel(item), "Brush.Text.Dim"));
                 row.ColumnRight(GitCountPill(
                     item.IsAgentFinding ? "AGENT FOUND" : "CHAT FILED",
                     item.IsAgentFinding ? "Brush.Status.Running" : "Brush.Text.Muted"));
                 BatterUpLaneBody.Children.Add(row.Root);
                 BatterUpLaneBody.Children.Add(BatterUpWhyHereLine(BatterUpWhyHereLabel(item), indent: 44));
+                // Git #2360 — real per-item actions: Dispatch, and Hold/Release.
+                BatterUpLaneBody.Children.Add(BatterUpActionRow(item, held));
             }
         }
     }
@@ -312,6 +340,113 @@ public partial class MainWindow
         tb.TextTrimming = TextTrimming.CharacterEllipsis;
         tb.ToolTip = text;
         return tb;
+    }
+
+    // ── Git #2360 — per-item actions: Dispatch, Hold/Release ────────────────────────────────
+
+    /// <summary>The real action row under a Batter Up item: Hold/Release (toggles on <paramref
+    /// name="held"/>) and Dispatch, reusing the same <see cref="GitEpicActionLink"/> link-style
+    /// action the Git Panel's Epic peek already established for Queue all/Park/Pause.</summary>
+    private StackPanel BatterUpActionRow(BatterUpItemRef item, bool held)
+    {
+        bool busy = _batterUpActionBusy.Contains(item.Number);
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(44, 0, 6, 6) };
+        row.Children.Add(GitEpicActionLink(
+            busy ? "…" : (held ? "Release" : "Hold"),
+            busy,
+            () => { if (held) BatterUpReleaseClicked(item); else BatterUpHoldClicked(item); }));
+        row.Children.Add(GitEpicActionLink(busy ? "…" : "Dispatch", busy, () => BatterUpDispatchClicked(item)));
+        return row;
+    }
+
+    /// <summary>Hold — takes the real item out of active consideration. Writes the item's real
+    /// board Status to <see cref="GitEpicPanelService.StatusOption_Park"/> (Git #2307/#2308's real
+    /// "pull it out of the queue, into its own queue away from the build" bucket — audited against
+    /// the live board before reuse, not guessed). An item with no real <see
+    /// cref="BatterUpItemRef.ProjectItemId"/> genuinely isn't on the project board and can't have
+    /// its Status written — reported honestly, never silently no-op'd.</summary>
+    private async void BatterUpHoldClicked(BatterUpItemRef item)
+    {
+        if (string.IsNullOrEmpty(item.ProjectItemId))
+        {
+            ToastEngine.Show("Batter Up", $"#{item.Number} isn't on the project board — can't set its Status.", ToastKind.Warning);
+            return;
+        }
+        if (!_batterUpActionBusy.Add(item.Number)) return;
+        RenderBatterUpLaneBody();
+
+        var (ok, error) = await GitEpicPanelService.SetProjectStatusAsync(item.ProjectItemId, GitEpicPanelService.StatusOption_Park);
+        _batterUpActionBusy.Remove(item.Number);
+
+        if (ok)
+        {
+            _batterUpHeldItems.Add(item.Number);
+            ToastEngine.Show("Batter Up", $"Held #{item.Number} — {item.Title} (moved to Park).", ToastKind.Success);
+        }
+        else
+        {
+            ToastEngine.Show("Batter Up", $"Hold — #{item.Number} failed: {error}", ToastKind.Warning);
+        }
+        RenderBatterUpLaneBody();
+    }
+
+    /// <summary>Release — returns a held item to the real lane it was actually in before Hold
+    /// (<see cref="BatterUpItemRef.LaneOptionId"/>), never a guessed default. Same write path,
+    /// reverse direction.</summary>
+    private async void BatterUpReleaseClicked(BatterUpItemRef item)
+    {
+        if (string.IsNullOrEmpty(item.ProjectItemId) || string.IsNullOrEmpty(item.LaneOptionId))
+        {
+            ToastEngine.Show("Batter Up", $"#{item.Number} — missing real board identity, can't release.", ToastKind.Warning);
+            return;
+        }
+        if (!_batterUpActionBusy.Add(item.Number)) return;
+        RenderBatterUpLaneBody();
+
+        var (ok, error) = await GitEpicPanelService.SetProjectStatusAsync(item.ProjectItemId, item.LaneOptionId);
+        _batterUpActionBusy.Remove(item.Number);
+
+        if (ok)
+        {
+            _batterUpHeldItems.Remove(item.Number);
+            ToastEngine.Show("Batter Up", $"Released #{item.Number} — {item.Title}.", ToastKind.Success);
+        }
+        else
+        {
+            ToastEngine.Show("Batter Up", $"Release — #{item.Number} failed: {error}", ToastKind.Warning);
+        }
+        RenderBatterUpLaneBody();
+    }
+
+    /// <summary>Dispatch — real, safe, standalone: opens the real issue in the browser and copies
+    /// a ready-to-act signal to the clipboard. Per #2360's own governing comment, a Batter Up item
+    /// requires a build prompt written by Claude in chat after approval, then a Git issue push,
+    /// then an app-side Git refresh — nothing here may write <c>bt_build_queue</c> or push a build
+    /// prompt directly, and this never claims a "Dispatched!" success state for something that
+    /// didn't actually happen. #2366 (blocked by this issue, the governing spec for the real
+    /// dispatch flow) is the named hook to extend this into the real end-to-end action.</summary>
+    private void BatterUpDispatchClicked(BatterUpItemRef item)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo($"https://github.com/shanemccaw/Shane-McCaw-MSP/issues/{item.Number}") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            ToastEngine.Show("Batter Up", $"Dispatch — couldn't open #{item.Number} in the browser: {ex.Message}", ToastKind.Warning);
+        }
+
+        try
+        {
+            Clipboard.SetText($"Write a build prompt and dispatch Batter Up item #{item.Number} — {item.Title}.");
+            ToastEngine.Show("Batter Up",
+                $"Opened #{item.Number} in the browser and copied a dispatch prompt to the clipboard — paste it into chat to write the real build prompt.",
+                ToastKind.Success);
+        }
+        catch (Exception ex)
+        {
+            ToastEngine.Show("Batter Up", $"Opened #{item.Number} in the browser, but couldn't copy to clipboard: {ex.Message}", ToastKind.Warning);
+        }
     }
 
     /// <summary>Toggles one group's expand/collapse state and re-renders. The state lives in
