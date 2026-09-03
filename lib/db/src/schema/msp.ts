@@ -3932,6 +3932,14 @@ export const writeActionCatalogTable = pgTable("write_action_catalog", {
   minBundledTier: text("min_bundled_tier"),
   requiredCapabilityKey: text("required_capability_key"),
   snapshotNotes: text("snapshot_notes"),
+  // Real live values (no DB-level check constraint): 'metadata_pending' /
+  // 'endpoint_design_pending' (not yet wired to a runnable template),
+  // 'blocked' / 'blocked_no_workaround' (a real, documented platform gap),
+  // and 'execution_ready' (Git #2702 — added when a row's templateId was
+  // linked to a real, active baseline_action_templates row; not read by any
+  // route logic today — msp-launch-control.ts's execute route gates purely
+  // on `templateId` being non-null — this column stays a readiness/
+  // documentation field kept honest alongside the link).
   status: text("status"),
   blockedReason: text("blocked_reason"),
   sortOrder: integer("sort_order").notNull().default(0),
