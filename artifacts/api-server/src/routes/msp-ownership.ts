@@ -120,6 +120,7 @@ router.get(
               ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId,
               acceptance: portalOwnershipAssignmentsTable.acceptance,
               orderRank: portalOwnershipAssignmentsTable.orderRank,
+              declineReason: portalOwnershipAssignmentsTable.declineReason,
             })
             .from(portalOwnershipAssignmentsTable)
             .where(
@@ -257,6 +258,7 @@ router.post(
     const acceptance = initialAcceptance(ownerPersonId, roleKey, gateMode);
     const setBy = actingMspName(req);
     const setAt = formatOwnDate(new Date());
+    const setByPersonId = personIdForUser(req.user!.id);
 
     try {
       const orderRank = await db.transaction(async (tx) => {
@@ -282,6 +284,7 @@ router.post(
             acceptance,
             setBy,
             setAt,
+            setByPersonId,
             setWhy: WRITE_WHY,
             orderRank: sql`(SELECT COALESCE(MAX(${portalOwnershipAssignmentsTable.orderRank}), -1) + 1
               FROM ${portalOwnershipAssignmentsTable}
@@ -296,7 +299,7 @@ router.post(
               portalOwnershipAssignmentsTable.roleKey,
               portalOwnershipAssignmentsTable.ownerPersonId,
             ],
-            set: { acceptance, setBy, setAt, setWhy: WRITE_WHY, updatedAt: new Date() },
+            set: { acceptance, setBy, setAt, setByPersonId, setWhy: WRITE_WHY, updatedAt: new Date() },
           })
           .returning({ orderRank: portalOwnershipAssignmentsTable.orderRank });
 
@@ -412,6 +415,17 @@ router.post(
   },
 );
 
+/**
+ * Decline a pending cell — MSP side (#1519). Unlike the customer-side
+ * decline, a reason is REQUIRED, not optional: the "Settled" text on #1519
+ * draws the line by which side is declining, not by role. The MSP proposing
+ * itself into a customer's cell and then declining means the conversation
+ * about scope already happened before the click — the reason box is the
+ * durable record of that agreement, so there is nothing to record if it's
+ * left blank. A customer-side decline (`routes/portal-ownership.ts`) stays
+ * optional on purpose: that decline escalates internally to the assigner
+ * instead of standing alone as the record.
+ */
 router.post(
   "/msp/ownership/:customerId/decline",
   requireRole("MSPOperator"),
@@ -422,6 +436,10 @@ router.post(
     const declineReason = bodyStr((req.body as Record<string, unknown>)?.reason);
     if (!objectId || !roleKey) {
       res.status(400).json({ error: "objectId and a valid roleKey (r|a|c|i) are required" });
+      return;
+    }
+    if (!declineReason) {
+      res.status(400).json({ error: "A reason is required to decline this cell." });
       return;
     }
     const actor = actingMspName(req);

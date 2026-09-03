@@ -518,6 +518,23 @@ export interface WireOwnAssignment {
    * customer can reorder a cell (`POST /portal/ownership/reorder`) explicitly.
    */
   readonly order: number;
+  /**
+   * Who actually responded (accepted/declined) and when — text provenance,
+   * same shape as `setBy`/`setAt` but a DIFFERENT party at a DIFFERENT moment
+   * (#1519): `setBy` is who ASSIGNED the holder, `respondedBy` is the named
+   * holder themselves agreeing or refusing. "" until the cell has been
+   * responded to.
+   */
+  readonly respondedBy: string;
+  readonly respondedAt: string;
+  /**
+   * Free-text reason for a decline (#1519) — a genuinely different field from
+   * `setWhy` (the assigner's reason for setting the cell in the first place).
+   * "" for every acceptance value other than "declined". Was being stored
+   * since #2162 but never reached this wire shape until now, so a declined
+   * cell's own "why" was unreadable by any client.
+   */
+  readonly declineReason: string;
 }
 
 /** One stored handover as the wire shape the overlay sends. */
@@ -558,6 +575,9 @@ export interface AssignmentRow {
   readonly setAt: string | null;
   readonly setWhy: string | null;
   readonly orderRank?: number | null;
+  readonly respondedBy?: string | null;
+  readonly respondedAt?: string | null;
+  readonly declineReason?: string | null;
 }
 
 export function toWireAssignment(row: AssignmentRow): WireOwnAssignment {
@@ -570,6 +590,9 @@ export function toWireAssignment(row: AssignmentRow): WireOwnAssignment {
     setAt: row.setAt ?? "",
     setWhy: row.setWhy ?? "",
     order: row.orderRank ?? 0,
+    respondedBy: row.respondedBy ?? "",
+    respondedAt: row.respondedAt ?? "",
+    declineReason: row.declineReason ?? "",
   };
 }
 

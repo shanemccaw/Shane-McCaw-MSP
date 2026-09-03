@@ -290,6 +290,72 @@ export async function notifyOwnershipPending(opts: {
 }
 
 /**
+ * Best-effort escalation notification for a CUSTOMER-SIDE Ownership/RACI
+ * decline (#1519). #1519's own "Settled" section draws the line by which
+ * side declines, not by role: a customer-side decline "escalates internally,
+ * to the assigner" rather than requiring a stated reason, because the
+ * conversation about scope has NOT already happened the way it has for an
+ * MSP-side decline (which requires a reason instead — see
+ * `routes/msp-ownership.ts`'s `/decline`). This function is that escalation,
+ * for real: it notifies whoever actually made the assignment.
+ *
+ * `assignerPersonId` is `setByPersonId` (#1519) — the assigner's own wire
+ * person id, captured at assign time. Rows written before that column
+ * existed carry "" and get no notification, the same graceful no-op every
+ * other best-effort path here takes on an unresolvable id. Also a no-op when
+ * the assigner and the decliner are the same person — declining your own
+ * assignment needs no escalation to yourself.
+ *
+ * "Escalates ... or up their chain" (the issue's own words) stops at the
+ * assigner here: there is no management-hierarchy column anywhere in this
+ * schema to climb further, so that half is a real, filed gap (see #1519's
+ * own build notes), not something invented for this function.
+ */
+export async function notifyOwnershipDeclined(opts: {
+  customerId: number;
+  assignerPersonId: string;
+  declinerPersonId: string;
+  objectId: string;
+  roleKey: "r" | "a";
+  declineReason: string;
+}): Promise<void> {
+  const { customerId, assignerPersonId, declinerPersonId, objectId, roleKey, declineReason } = opts;
+  if (!assignerPersonId || assignerPersonId === declinerPersonId) return;
+  const match = /^u(\d+)$/.exec(assignerPersonId);
+  if (!match) return;
+  const userId = Number(match[1]);
+
+  try {
+    const [row] = await db
+      .select({ id: usersTable.id, mspRole: usersTable.mspRole, mspId: usersTable.mspId })
+      .from(usersTable)
+      .where(eq(usersTable.id, userId))
+      .limit(1);
+    if (!row) return;
+
+    const roleLabel = roleKey === "r" ? "Responsible" : "Accountable";
+    const title = `${roleLabel} assignment declined on your Ownership matrix`;
+    const body = declineReason
+      ? `The cell you assigned was declined: "${declineReason}"`
+      : "The cell you assigned was declined.";
+    const isMspStaff = row.mspRole === "MSPAdmin" || row.mspRole === "MSPOperator";
+
+    await createNotification({
+      title,
+      body,
+      category: "ownership",
+      notifType: "general",
+      linkPath: "/ownership",
+      recipient: isMspStaff
+        ? { type: "msp_user", mspUserId: row.id, mspId: row.mspId ?? undefined }
+        : { type: "customer_user", userId: row.id },
+    });
+  } catch (err) {
+    log.warn({ err, customerId, assignerPersonId, objectId }, "notification-center: ownership decline escalation failed (non-fatal)");
+  }
+}
+
+/**
  * Create notifications for ALL platform_admin users.
  * Used by the create_notification workflow node.
  */

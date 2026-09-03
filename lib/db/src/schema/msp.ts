@@ -7291,6 +7291,19 @@ export const portalOwnershipAssignmentsTable = pgTable("portal_ownership_assignm
   setAt: text("set_at").notNull().default(""),
   setWhy: text("set_why").notNull().default(""),
   /**
+   * The assigner's own wire person id (#1519), same "u{id}" scheme as
+   * `ownerPersonId` — not a duplicate of `setBy`. `setBy` is display-name/
+   * email text for showing a human "who set this"; it is not reliably
+   * resolvable back to a real recipient (two people can share a display
+   * name). A customer-side decline needs a stable identity to escalate the
+   * notification to (see `notifyOwnershipDeclined`), so the assigner's real
+   * user id is captured here at assign time, the same way `ownerPersonId`
+   * captures the holder's. "" for any row assigned before this column
+   * existed — those simply do not get an escalation notification, exactly
+   * like every other best-effort notification path in this module.
+   */
+  setByPersonId: text("set_by_person_id").notNull().default(""),
+  /**
    * Provenance the RESPOND flow records (#1518) — who actually accepted or
    * declined this cell, and when. Deliberately separate from `setBy`/`setAt`:
    * those record who ASSIGNED the holder, which may be a different person

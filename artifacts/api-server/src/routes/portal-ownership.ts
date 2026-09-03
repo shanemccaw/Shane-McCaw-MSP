@@ -134,7 +134,7 @@ import {
 } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import { resolveGateMode } from "../lib/portal-ownership-policy";
-import { notifyOwnershipPending } from "../lib/notification-center";
+import { notifyOwnershipPending, notifyOwnershipDeclined } from "../lib/notification-center";
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
 import { groupEnabledServicePlansByWorkload } from "../lib/tenant-workloads.ts";
 import { resolveUntrackedWorkloadKeys } from "../lib/ownership-workload-membership";
@@ -462,6 +462,9 @@ router.get(
             setAt: portalOwnershipAssignmentsTable.setAt,
             setWhy: portalOwnershipAssignmentsTable.setWhy,
             orderRank: portalOwnershipAssignmentsTable.orderRank,
+            respondedBy: portalOwnershipAssignmentsTable.respondedBy,
+            respondedAt: portalOwnershipAssignmentsTable.respondedAt,
+            declineReason: portalOwnershipAssignmentsTable.declineReason,
           })
           .from(portalOwnershipAssignmentsTable)
           .where(eq(portalOwnershipAssignmentsTable.customerId, customerId))
@@ -616,6 +619,7 @@ router.post(
     const acceptance = initialAcceptance(ownerPersonId, roleKey, gateMode);
     const setBy = actingName(req);
     const setAt = formatOwnDate(new Date());
+    const setByPersonId = personIdForUser(req.user!.id);
 
     try {
       const orderRank = await db.transaction(async (tx) => {
@@ -641,6 +645,7 @@ router.post(
             acceptance,
             setBy,
             setAt,
+            setByPersonId,
             setWhy: WRITE_WHY,
             orderRank: sql`(SELECT COALESCE(MAX(${portalOwnershipAssignmentsTable.orderRank}), -1) + 1
               FROM ${portalOwnershipAssignmentsTable}
@@ -655,7 +660,7 @@ router.post(
               portalOwnershipAssignmentsTable.roleKey,
               portalOwnershipAssignmentsTable.ownerPersonId,
             ],
-            set: { acceptance, setBy, setAt, setWhy: WRITE_WHY, updatedAt: new Date() },
+            set: { acceptance, setBy, setAt, setByPersonId, setWhy: WRITE_WHY, updatedAt: new Date() },
           })
           .returning({ orderRank: portalOwnershipAssignmentsTable.orderRank });
 
@@ -880,6 +885,13 @@ router.post(
  * decline records WHY (`declineReason`) — accepting needs no reason; declining
  * a role someone was just named to is exactly the case a reader later wants
  * an explanation for (see the #1518 migration's own header).
+ *
+ * The reason is OPTIONAL here, on purpose (#1519): this is the CUSTOMER-SIDE
+ * decline, and #1519's "Settled" text draws the by-side line the other way —
+ * a customer-side decline escalates internally to the assigner instead of
+ * demanding a reason up front (contrast the MSP-side `/decline` in
+ * `routes/msp-ownership.ts`, which requires one). The escalation is real,
+ * not just documented: `notifyOwnershipDeclined` below.
  */
 router.post(
   "/portal/ownership/decline",
@@ -929,7 +941,10 @@ router.post(
             updatedAt: new Date(),
           })
           .where(and(...conditions))
-          .returning({ ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId });
+          .returning({
+            ownerPersonId: portalOwnershipAssignmentsTable.ownerPersonId,
+            setByPersonId: portalOwnershipAssignmentsTable.setByPersonId,
+          });
 
         if (rows.length > 0) {
           await tx.insert(portalOwnershipEventsTable).values(
@@ -947,6 +962,22 @@ router.post(
 
         return rows;
       });
+
+      // Escalation, not a reason requirement (#1519) — a customer-side decline
+      // notifies whoever assigned the cell instead. Best-effort, fired once
+      // per holder actually declined; only r/a cells ever notify.
+      if (roleKey === "r" || roleKey === "a") {
+        for (const row of updated) {
+          void notifyOwnershipDeclined({
+            customerId,
+            assignerPersonId: row.setByPersonId ?? "",
+            declinerPersonId: row.ownerPersonId ?? "",
+            objectId,
+            roleKey,
+            declineReason,
+          });
+        }
+      }
 
       log.info({ customerId, objectId, roleKey, gateMode, matched: updated.length > 0 }, "portal ownership cell declined");
       res.json({ ok: true, matched: updated.length > 0 });

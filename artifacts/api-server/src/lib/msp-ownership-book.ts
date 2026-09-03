@@ -48,6 +48,8 @@ export interface WireMspOwnHolding {
   readonly holderPersonId: string;
   readonly acceptance: string;
   readonly order: number;
+  /** Free-text reason for a decline (#1519) — "" unless `acceptance` is "declined". */
+  readonly declineReason: string;
 }
 
 /** Per-customer coverage — present for every in-scope customer, zero included. */
@@ -70,6 +72,7 @@ export interface RawMspAssignmentRow {
   readonly ownerPersonId: string;
   readonly acceptance: string | null;
   readonly orderRank: number | null;
+  readonly declineReason?: string | null;
 }
 
 /**
@@ -104,6 +107,7 @@ export function resolveHoldingsForCustomer(
       holderPersonId: row.ownerPersonId,
       acceptance: row.acceptance ?? "",
       order: row.orderRank ?? 0,
+      declineReason: row.declineReason ?? "",
     });
   }
   return holdings;
