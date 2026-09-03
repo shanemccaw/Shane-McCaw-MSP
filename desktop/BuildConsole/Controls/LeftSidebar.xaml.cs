@@ -2972,11 +2972,27 @@ namespace BuildConsole.Controls
                 .Where(c => string.Equals(c.Account, otherAccount, StringComparison.OrdinalIgnoreCase))
                 .Count(c => BuildConsole.Services.FocusModeService.Instance.IsChatInProgressForAccount(c.ConversationId, otherAccount));
 
+            // Git #2534 — Milestone→Epic→Chat mode. When a real Focus milestone is active
+            // and we have live board data, the panel is scoped to that milestone and lists
+            // EVERY open epic in it (even zero-chat ones, so each has a "New Chat" affordance),
+            // grouping each epic's chats under it via bt_chats.epic_id (GetEpicForChat's first
+            // resolution path). The per-epic scoping IS the milestone scoping, so the older
+            // per-chat IsChatInFocus predicate is skipped here (it resolves the same milestone
+            // less directly). With no active milestone, the legacy chat-derived grouping below
+            // is used unchanged.
+            // Gate on IsActive (focus genuinely engaged AND a milestone set), not just a
+            // last-focused milestone lingering after Deactivate — so toggling Focus off restores
+            // the legacy all-chats grouping exactly as before, and only an engaged Focus session
+            // gets the milestone-scoped structure.
+            var focusSvc = BuildConsole.Services.FocusModeService.Instance;
+            int? activeMilestone = focusSvc.ActiveMilestoneNumber;
+            bool milestoneMode = focusSvc.IsActive && activeMilestone.HasValue && _lastBoardIssues.Count > 0;
+
             // Focus Mode — hard-hide chats that don't belong to the active milestone
             // (resolved via the chat's issue / epic issue number). Off-focus = all chats.
             var focusChats = _lastBoardChats
                 .Where(c => string.Equals(c.Account, currentAccount, StringComparison.OrdinalIgnoreCase))
-                .Where(c => BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
+                .Where(c => milestoneMode || BuildConsole.Services.FocusModeService.Instance.IsChatInFocus(c))
                 .Where(c => showArchivedOnly ? c.Archived : !c.Archived)
                 .Where(c =>
                 {
@@ -3030,29 +3046,67 @@ namespace BuildConsole.Controls
 
             int hiddenClosedEpics = 0, hiddenClosedChats = 0;
 
-            // Build (title, chats) groups: real epics first, sorted alphabetically
-            // (a stable top-level index, exactly like #984's alphabetical areas),
-            // with "Unlinked" pinned last as the no-category bucket.
+            // Build (title, chats) groups.
             var groups = new List<(string Title, int? GithubNumber, List<BoardChat> Chats)>();
-            foreach (var grp in byEpic)
+            if (milestoneMode)
             {
-                var chatsInGroup = grp.OrderByDescending(c => c.UpdatedAt).ToList();
-                if (IsEpicClosed(grp.Key))
+                // Git #2534 — list EVERY open epic in the active milestone from the live board
+                // (_lastBoardIssues, OPEN-only), then hang each epic's real chats under it,
+                // matched by the epic's GitHub number against each chat's resolved epic_id.
+                // A zero-chat epic still gets a group (its section renders a "New Chat" button).
+                var chatsByEpicGithub = chatsWithEpic
+                    .Where(x => x.Epic?.GithubNumber != null)
+                    .GroupBy(x => x.Epic!.GithubNumber!.Value)
+                    .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Chat.UpdatedAt).Select(x => x.Chat).ToList());
+
+                var milestoneEpics = _lastBoardIssues
+                    .Where(i => i.IsEpic && !i.IsClosed && i.MilestoneNumber == activeMilestone!.Value)
+                    .GroupBy(i => i.Number).Select(g => g.First())
+                    .ToList();
+
+                foreach (var epic in milestoneEpics)
                 {
-                    hiddenClosedEpics++;
-                    hiddenClosedChats += chatsInGroup.Count;
-                    continue;
+                    var epicChats = chatsByEpicGithub.TryGetValue(epic.Number, out var cs) ? cs : new List<BoardChat>();
+                    groups.Add((epic.Title, epic.Number, epicChats));
                 }
-                epicById.TryGetValue(grp.Key, out var epic);
-                var title = epic != null ? epic.Title : $"Epic #{grp.Key}";
-                groups.Add((title, epic?.GithubNumber, chatsInGroup));
-            }
-            if (hiddenClosedEpics > 0)
+                // Most-recently-active epics first; zero-chat epics fall to the bottom (by title).
+                groups.Sort((a, b) =>
+                {
+                    DateTime? la = a.Chats.Count > 0 ? a.Chats.Max(c => c.UpdatedAt) : null;
+                    DateTime? lb = b.Chats.Count > 0 ? b.Chats.Max(c => c.UpdatedAt) : null;
+                    if (la.HasValue && lb.HasValue) return Nullable.Compare(lb, la);
+                    if (la.HasValue) return -1;
+                    if (lb.HasValue) return 1;
+                    return string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase);
+                });
                 ActivityLog.Log("git-board.chats",
-                    $"closed-epic filter hid {hiddenClosedEpics} closed epic(s) and their {hiddenClosedChats} nested chat(s) from the Chats panel (#839 convention)");
-            groups.Sort((a, b) => string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase));
-            if (unlinked.Count > 0)
-                groups.Add(("Unlinked", null, unlinked.OrderByDescending(c => c.UpdatedAt).ToList()));
+                    $"milestone→epic→chat: milestone #{activeMilestone!.Value} — {milestoneEpics.Count} open epic(s), {chatsByEpicGithub.Values.Sum(v => v.Count)} chat(s) grouped by epic_id (Git #2534)");
+            }
+            else
+            {
+                // Legacy (no active milestone): real epics that HAVE chats, sorted alphabetically
+                // (a stable top-level index, exactly like #984's alphabetical areas), with
+                // "Unlinked" pinned last as the no-category bucket. Closed epics drop out (#839).
+                foreach (var grp in byEpic)
+                {
+                    var chatsInGroup = grp.OrderByDescending(c => c.UpdatedAt).ToList();
+                    if (IsEpicClosed(grp.Key))
+                    {
+                        hiddenClosedEpics++;
+                        hiddenClosedChats += chatsInGroup.Count;
+                        continue;
+                    }
+                    epicById.TryGetValue(grp.Key, out var epic);
+                    var title = epic != null ? epic.Title : $"Epic #{grp.Key}";
+                    groups.Add((title, epic?.GithubNumber, chatsInGroup));
+                }
+                if (hiddenClosedEpics > 0)
+                    ActivityLog.Log("git-board.chats",
+                        $"closed-epic filter hid {hiddenClosedEpics} closed epic(s) and their {hiddenClosedChats} nested chat(s) from the Chats panel (#839 convention)");
+                groups.Sort((a, b) => string.Compare(a.Title, b.Title, StringComparison.OrdinalIgnoreCase));
+                if (unlinked.Count > 0)
+                    groups.Add(("Unlinked", null, unlinked.OrderByDescending(c => c.UpdatedAt).ToList()));
+            }
 
             // Apply the search filter per group, keeping only groups with visible chats,
             // and tally the global "in progress / waiting on you" counts for the summary strip.
@@ -3065,7 +3119,9 @@ namespace BuildConsole.Controls
                     .Where(c => !searching || epicMatches
                                 || (c.Title ?? "").Contains(search, StringComparison.OrdinalIgnoreCase))
                     .ToList();
-                if (leaves.Count == 0) continue;
+                // Git #2534 — in milestone mode a zero-chat epic still renders (so its "New Chat"
+                // button is reachable): keep it unless a search is active that it doesn't match.
+                if (leaves.Count == 0 && !(milestoneMode && (!searching || epicMatches))) continue;
                 visibleGroups.Add((title, githubNumber, leaves));
                 shown += leaves.Count;
                 var s = GroupBuildStats(leaves);
@@ -3087,7 +3143,10 @@ namespace BuildConsole.Controls
                 ChatsHost.Children.Add(BuildEpicSection(title, githubNumber, chats, brushKey, forceExpanded: searching, openGithubNumbers));
             }
 
-            bool empty = shown == 0;
+            // Git #2534 — in milestone mode a section list with only zero-chat epics is NOT the
+            // "no chats" empty state (each epic is actionable via its New Chat button), so key
+            // the placeholder off whether any section rendered at all, not the chat count.
+            bool empty = visibleGroups.Count == 0;
             if (TxtNoChats != null)
             {
                 TxtNoChats.Visibility = empty && !_chatsIsStale ? Visibility.Visible : Visibility.Collapsed;
@@ -3117,7 +3176,9 @@ namespace BuildConsole.Controls
         {
             var accent = GetBrush(brushKey);
             string epicKey = "epic:" + title;
-            bool expanded = forceExpanded || _expandedEpicKeys.Contains(epicKey);
+            // Git #2534 — a zero-chat epic starts expanded so its "New Chat" button is visible
+            // without a first click (it's the only actionable thing in the section).
+            bool expanded = forceExpanded || _expandedEpicKeys.Contains(epicKey) || chats.Count == 0;
 
             var section = new StackPanel { Margin = new Thickness(0, 0, 0, 6) };
 
@@ -3140,6 +3201,24 @@ namespace BuildConsole.Controls
             var countBadge = new TextBlock { Text = chats.Count.ToString(), FontSize = 10.5, Foreground = GetBrush("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0), ToolTip = $"{chats.Count} chat(s)" };
             DockPanel.SetDock(countBadge, Dock.Right);
             topRow.Children.Add(countBadge);
+            // Git #2534 — green-tinted "<N> open" pill: the epic's real count of still-open
+            // sub-issues on the live board (design-reference right-aligned badge).
+            if (githubNumber.HasValue)
+            {
+                int openIssues = _lastBoardIssues.Count(i => i.ParentNumber == githubNumber.Value && !i.IsClosed);
+                var openPill = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromArgb(0x22, 0xA6, 0xE3, 0xA1)),
+                    CornerRadius = new CornerRadius(8),
+                    Padding = new Thickness(6, 0, 6, 0),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    ToolTip = $"{openIssues} open sub-issue(s) under this epic",
+                    Child = new TextBlock { Text = $"{openIssues} open", FontSize = 10, Foreground = GetBrush("GreenBrush"), VerticalAlignment = VerticalAlignment.Center },
+                };
+                DockPanel.SetDock(openPill, Dock.Right);
+                topRow.Children.Add(openPill);
+            }
             if (githubNumber.HasValue)
             {
                 var numTb = new TextBlock { Text = $"#{githubNumber.Value}", FontSize = 10.5, Foreground = GetBrush("Subtext0Brush"), VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
@@ -3165,9 +3244,9 @@ namespace BuildConsole.Controls
                 hStack.Children.Add(new TextBlock { Text = $"{done}/{total} issues done", FontSize = 9.5, Foreground = GetBrush("Subtext0Brush"), Margin = new Thickness(0, 2, 0, 0) });
             }
 
-            // Status counters + last-active.
+            // Status counters + last-active. (chats may be empty in milestone mode — guard Max.)
             var stats = GroupBuildStats(chats);
-            DateTime? lastActive = chats.Max(c => c.UpdatedAt);
+            DateTime? lastActive = chats.Count > 0 ? chats.Max(c => c.UpdatedAt) : null;
             var counters = new WrapPanel { Margin = new Thickness(0, 5, 0, 0) };
             void AddCounter(string text, string bk, string tip) => counters.Children.Add(new TextBlock { Text = text, FontSize = 10, Foreground = GetBrush(bk), Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center, ToolTip = tip });
             if (stats.inProgress > 0) AddCounter($"⚡ {stats.inProgress} in progress", "YellowBrush", $"{stats.inProgress} chat(s) marked In Progress");
@@ -3180,6 +3259,32 @@ namespace BuildConsole.Controls
 
             var body = new StackPanel { Margin = new Thickness(2, 5, 0, 0), Visibility = expanded ? Visibility.Visible : Visibility.Collapsed };
             foreach (var chat in chats) body.Children.Add(BuildChatCard(chat, brushKey, openGithubNumbers));
+
+            // Git #2534 — every real epic section gets a "New Chat" affordance (req 4/5): a
+            // zero-chat epic reads "+ New Chat", one with chats reads "+ Continue in a new chat".
+            // Both start a new chat pre-associated to THIS epic (epic_id set on create by the
+            // same LinkChatToIssueAsync write path via AssociateChatWithIssueAsync).
+            if (githubNumber.HasValue)
+            {
+                string newChatLabel = chats.Count == 0 ? "+ New Chat" : "+ Continue in a new chat";
+                var newChatBtn = new Border
+                {
+                    Background = GetBrush("MantleBrush"),
+                    BorderBrush = accent,
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(8, 5, 8, 5),
+                    Margin = new Thickness(0, 2, 0, 4),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    ToolTip = $"Start a new chat pre-associated to #{githubNumber.Value} — {title}",
+                    Child = new TextBlock { Text = newChatLabel, FontSize = 11.5, Foreground = accent, HorizontalAlignment = HorizontalAlignment.Center, FontWeight = FontWeights.SemiBold },
+                };
+                int capturedNumber = githubNumber.Value;
+                string capturedTitle = title;
+                newChatBtn.MouseLeftButtonUp += (s, e) => { e.Handled = true; StartNewEpicChat(capturedNumber, capturedTitle); };
+                body.Children.Add(newChatBtn);
+            }
 
             header.MouseLeftButtonUp += (s, e) =>
             {
@@ -4177,6 +4282,38 @@ namespace BuildConsole.Controls
 
         /// <summary>Git #910 — the epic's real GitHub issue number, so BuildQueuePanel can fetch its real sub-issues directly (GetSubIssuesAsync) instead of the disconnected internal bt_issues.epic_id table.</summary>
         public int? GetEpicGithubNumber(int epicId) => _chatEpicById.TryGetValue(epicId, out var epic) ? epic.GithubNumber : null;
+
+        /// <summary>Git #2534 — starts a new chat pre-associated to <paramref name="epicNumber"/>,
+        /// reusing the exact settings/URL-build/EpicChatRequested path the Git Board's own epic
+        /// "New Chat" context-menu item uses (so there is a single new-epic-chat write path). The
+        /// forced default title <c>[#N] &lt;Epic Name&gt;</c> becomes both the persisted bt_chats
+        /// title and the tab title, and <c>associateIssueNumber</c> makes MainWindow's watcher set
+        /// <c>bt_chats.epic_id</c> on the new row the moment the conversation is created
+        /// (AssociateChatWithIssueAsync → LinkChatToIssueAsync). Invoked by each epic section's
+        /// New Chat / "Continue in a new chat" button.</summary>
+        private void StartNewEpicChat(int epicNumber, string epicTitle)
+        {
+            var settings = BuildConsole.Services.BuildConsoleSettings.Load();
+            if (!settings.HasEpicChatProjectUrl)
+            {
+                ActivityLog.Log("git-board.chat", $"new epic chat #{epicNumber} aborted — no New Chat Project URL configured (Git #2534)");
+                ToastEngine.Warning("New Chat", "Set a \"New Chat Project URL\" in the Settings tab first.");
+                return;
+            }
+            var baseUrl = settings.EpicChatProjectUrl.Trim();
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out _))
+            {
+                ActivityLog.Log("git-board.chat", $"new epic chat #{epicNumber} aborted — invalid New Chat Project URL '{baseUrl}' (Git #2534)");
+                ToastEngine.Warning("New Chat", "The configured New Chat Project URL isn't a valid URL.");
+                return;
+            }
+            var pat = settings.GitHubPat?.Trim() ?? "";
+            var label = $"Epic #{epicNumber}";
+            var fullUrl = EpicChatUrlBuilder.BuildEpicChatUrl(baseUrl, pat, epicNumber, label: label);
+            var defaultTitle = $"[#{epicNumber}] {epicTitle}";
+            ActivityLog.Log("git-board.chat", $"new epic chat #{epicNumber} ('{epicTitle}') from Chats panel -> {baseUrl} (Git #2534)");
+            EpicChatRequested?.Invoke(this, (fullUrl, $"#{epicNumber} New Chat", true, epicNumber, "Epic", defaultTitle));
+        }
 
         public BuildConsole.Services.BoardEpic? GetEpicByGithubNumber(int githubNumber)
         {

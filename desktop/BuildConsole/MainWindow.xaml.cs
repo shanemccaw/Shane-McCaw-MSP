@@ -3128,12 +3128,24 @@ namespace BuildConsole
                 Margin = new Thickness(0, 0, 6, 0), VerticalAlignment = VerticalAlignment.Center,
                 Foreground = (Brush)FindResource("BlueBrush")
             });
+            // Git #2534 — for any chat with a real epic_id, force the tab title to
+            // "[#<epic github number>] <Epic Name>", regardless of the chat's own title or
+            // the claude.ai page title. The epic-linked format always wins (req 6);
+            // GetEpicForChat resolves EpicId directly as its first resolution path.
+            // Only the DISPLAY title is forced — state.GithubNumber below is left as the
+            // caller's value so per-chat build matching (which keys on the leaf issue,
+            // not the epic) keeps working for a sub-issue chat that also carries an epic.
+            BuildConsole.Services.BoardEpic? forcedEpic =
+                chat.EpicId.HasValue ? LeftSidebar?.GetEpicForChat(chat) : null;
+            string headerTitle = forcedEpic?.GithubNumber != null
+                ? $"[#{forcedEpic.GithubNumber.Value}] {forcedEpic.Title}"
+                : (githubNumber.HasValue ? $"[#{githubNumber.Value}] {chat.Title}" : chat.Title);
             // Git #2079 — prefix with the linked Git issue number so the tab header
             // reads "[#N] Title" (matches the [#N]/#N formats ExtractTabTitleIssueNumber
             // already parses back out at ~line 1368 for the #1802 epic-highlight fallback).
             headerPanel.Children.Add(new TextBlock
             {
-                Text = githubNumber.HasValue ? $"[#{githubNumber.Value}] {chat.Title}" : chat.Title,
+                Text = headerTitle,
                 FontSize = 13, Margin = new Thickness(0, 0, 6, 0),
                 VerticalAlignment = VerticalAlignment.Center, Foreground = (Brush)FindResource("TextBrush")
             });
