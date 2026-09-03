@@ -1967,6 +1967,19 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   armOperation: text("arm_operation"),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
+  /**
+   * Whether this check's result is something a customer should ever see (a
+   * portal finding, a remediation-KB entry, a monitoring-package listing). Real
+   * `status = 'active'` checks split into two kinds that `status` alone cannot
+   * distinguish: customer governance findings, and platform-internal
+   * self-tests/diagnostics that happen to run against a customer's tenant
+   * (e.g. `appgov:enterprise-app-registration-list` checks for THIS platform's
+   * own multi-tenant app registration as a connectivity health check, not a
+   * customer finding; `diagnostics:ps-execution-test` is a PowerShell-path
+   * diagnostic). Defaults `true` — the common case — so every existing check
+   * except the two backfilled `false` below is unaffected. #2188.
+   */
+  isCustomerFacing: boolean("is_customer_facing").notNull().default(true),
   createdByAdminId: integer("created_by_admin_id"),
   updatedByAdminId: integer("updated_by_admin_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -5676,6 +5689,22 @@ export const mspRiskDecisionsTable = pgTable("msp_risk_decisions", {
    * free-text `controlViolated`/`framework`/`title` fields above.
    */
   checkKey: text("check_key"),
+  /**
+   * Every check key BEYOND `checkKey` above that this same accepted risk should
+   * also suppress alert re-firing for (Git #1957, part of #1489). Several
+   * `remediation_tracker_steps` map to more than one check
+   * (`REMEDIATION_TRACKER_STEP_CHECK_KEYS` in `remediation-tracker-verification.ts`,
+   * e.g. s8 -> `identity:ca-policy-count` + `identity:ca-mfa-coverage`) — a
+   * customer declining one such step and accepting the whole step's risk must
+   * suppress re-firing on ALL of its mapped checks, not just the first. `checkKey`
+   * itself is left untouched (existing single-key rows, and `msp-rbd.ts` /
+   * `m365-change-router.ts`'s #1514 path, which never populate this column,
+   * keep working exactly as before) — this is purely additive. NULL/empty is
+   * the common case. The alert engine's `NOT_ACCEPTED_AS_RISK` suppression
+   * (customer-tenant-alert-engine.ts, #1279) matches a finding's check key
+   * against `checkKey` OR any element of this array.
+   */
+  additionalCheckKeys: jsonb("additional_check_keys").$type<string[]>(),
   rawRiskLevel: text("raw_risk_level").notNull(),
   residualRiskLevel: text("residual_risk_level").notNull(),
   rawRiskScore: integer("raw_risk_score").notNull(),
@@ -6953,6 +6982,16 @@ export const portalHoldWindowsTable = pgTable("portal_hold_windows", {
   customerId: integer("customer_id").notNull(),
   /** The runbook this window gates. Cascades: a deleted runbook's windows are meaningless. */
   runbookId: integer("runbook_id").references(() => portalRunbooksTable.id, { onDelete: "cascade" }),
+  /**
+   * The CYCLE this window gates (#1940). `portal_runbook_runs`/`portal_runbook_steps`
+   * (#1557) restart `position` at 1 per cycle, so `gatesStepPosition` alone is
+   * ambiguous once a recurring runbook has spawned a second cycle — "step 4"
+   * could mean cycle 1's step 4 or cycle 2's. Nullable additively: a window
+   * raised before #1557 (or before this column existed) has no cycle to point
+   * at and is matched to a runbook's CURRENT cycle by fallback, same as before.
+   * Cascades: a deleted cycle's own windows are meaningless.
+   */
+  runId: integer("run_id").references(() => portalRunbookRunsTable.id, { onDelete: "cascade" }),
   /** Stable key from the design, e.g. "hold-ca01". */
   holdKey: text("hold_key").notNull(),
   title: text("title").notNull(),
@@ -7015,6 +7054,7 @@ export const portalHoldWindowsTable = pgTable("portal_hold_windows", {
 }, (t) => [
   index("portal_hold_windows_customer_id_idx").on(t.customerId),
   index("portal_hold_windows_runbook_id_idx").on(t.runbookId),
+  index("portal_hold_windows_run_id_idx").on(t.runId),
   uniqueIndex("portal_hold_windows_customer_key_idx").on(t.customerId, t.holdKey),
 ]);
 

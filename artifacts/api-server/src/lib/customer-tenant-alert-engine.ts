@@ -165,7 +165,7 @@ async function count(sqlText: string, params: unknown[]): Promise<number> {
   return parseInt(res.rows[0]?.n ?? "0", 10);
 }
 
-// ── Accepted-risk suppression (#1279) ──────────────────────────────────────
+// ── Accepted-risk suppression (#1279, widened #1957) ────────────────────────
 //
 // msp_risk_decisions has no structured link to any automated check by
 // default (controlViolated/framework/obligation are all free text — see the
@@ -175,11 +175,21 @@ async function count(sqlText: string, params: unknown[]): Promise<number> {
 // finding by accident. `$N` below is `tenantId ?? '__no_tenant__'`, a value
 // that can never equal a real tenant_id, so the subquery is a safe no-op
 // when the alert condition has no resolvable tenant.
+//
+// additional_check_keys (#1957) carries every check key BEYOND check_key that
+// this same accepted risk also covers — several remediation_tracker_steps map
+// to more than one check (REMEDIATION_TRACKER_STEP_CHECK_KEYS), and declining
+// one such step accepts the risk on ALL of its mapped checks, not just the
+// first. NULL/empty for every row that predates #1957 or was never given a
+// second key, so this OR is a no-op for them.
 const NOT_ACCEPTED_AS_RISK = (checkKeyExpr: string, tenantParam: string) => `
   NOT EXISTS (
     SELECT 1 FROM msp_risk_decisions rd
     WHERE rd.tenant_id = ${tenantParam} AND rd.status = 'active'
-      AND rd.check_key = ${checkKeyExpr}
+      AND (
+        rd.check_key = ${checkKeyExpr}
+        OR rd.additional_check_keys @> to_jsonb(${checkKeyExpr}::text)
+      )
   )`;
 
 // ── Which run statuses carry real findings (#1301) ─────────────────────────

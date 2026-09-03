@@ -972,6 +972,9 @@ router.post(
           await db.insert(portalHoldWindowsTable).values({
             customerId,
             runbookId: inserted.id,
+            // #1940 — every seeded window gates cycle 1, the only cycle this
+            // fixture ever creates, so the run link is unambiguous here.
+            runId: run.id,
             holdKey: rb.hold.key,
             title: rb.hold.title,
             gates: rb.hold.gates,

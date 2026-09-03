@@ -982,6 +982,52 @@ describe("applyMapping — valueWhere (#403)", () => {
   });
 });
 
+// ── #2187: valueWhere over top-level flat items (no nested array) ──────────────
+//
+// Real v1.0 shape of GET /subscribedSkus: each item IS a {skuPartNumber,
+// consumedUnits, prepaidUnits} object directly — there is no nested settings
+// array to descend into the way GET /groupSettings has. sourceField as a
+// WHOLE_ITEM_SOURCE_FIELDS sentinel ("value") tells valueWhere to match/extract
+// against the items themselves.
+
+const SUBSCRIBED_SKUS = [
+  { skuId: "sku-e3", skuPartNumber: "SPE_E3", consumedUnits: 120, prepaidUnits: { enabled: 150 } },
+  { skuId: "sku-copilot", skuPartNumber: "Microsoft_365_Copilot", consumedUnits: 25, prepaidUnits: { enabled: 40 } },
+  { skuId: "sku-visio", skuPartNumber: "VISIOCLIENT", consumedUnits: 5, prepaidUnits: { enabled: 5 } },
+];
+
+describe("applyMapping — valueWhere over flat top-level items (#2187)", () => {
+  beforeEach(() => vi.mocked(logger.warn).mockClear());
+
+  it("extracts the matching item's field, not an arbitrary item's", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "value", targetField: "copilotLicenseCount", transform: "valueWhere('skuPartNumber', 'Microsoft_365_Copilot', 'consumedUnits')" },
+    ];
+    const result = applyMapping(SUBSCRIBED_SKUS, mapping, []);
+    expect(result.copilotLicenseCount).toBe(25);
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it("returns null (not the first item's value) when no item matches", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "value", targetField: "copilotLicenseCount", transform: "valueWhere('skuPartNumber', 'Microsoft_365_Copilot', 'consumedUnits')" },
+    ];
+    const result = applyMapping(
+      SUBSCRIBED_SKUS.filter(s => s.skuPartNumber !== "Microsoft_365_Copilot"),
+      mapping, [],
+    );
+    expect(result.copilotLicenseCount).toBeNull();
+  });
+
+  it("leaves the existing nested-array reading (sourceField='values') unaffected", () => {
+    const mapping: MappingRule[] = [
+      { sourceField: "values", targetField: "guestsAllowed", transform: "valueWhere('name', 'AllowToAddGuests')" },
+    ];
+    const result = applyMapping(GROUP_UNIFIED_SETTINGS, mapping, []);
+    expect(result.guestsAllowed).toBe("true");
+  });
+});
+
 // ── #403: flattenValues / countDuplicatesBy — nested-array field extraction ────
 //
 // Real v1.0 shape: user.assignedLicenses is an assignedLicense collection of

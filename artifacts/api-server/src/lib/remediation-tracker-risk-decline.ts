@@ -43,14 +43,16 @@
  *   - `graphEndpoint` — always "". Nothing to cite; the same precedent leaves
  *     it blank rather than guessing one.
  *
- * ONE CHECK KEY, DOCUMENTED LIMITATION
- * --------------------------------------
+ * ALL MAPPED CHECK KEYS ARE LINKED (#1957)
+ * -------------------------------------------
  * A handful of steps map to more than one check (see
- * `REMEDIATION_TRACKER_STEP_CHECK_KEYS`). The risk decision's single
- * `checkKey` column can only carry one, so the customer-tenant alert engine's
- * checkKey-linked suppression only covers the first mapped key for those
- * steps. Filed as a finding rather than silently accepted — see the #1542
- * bookend.
+ * `REMEDIATION_TRACKER_STEP_CHECK_KEYS`). The risk decision's `checkKey`
+ * column still only carries the first, but every additional mapped key goes
+ * into `additionalCheckKeys` (#1957) — the customer-tenant alert engine's
+ * suppression query matches either column, so declining one of these steps
+ * now suppresses re-firing on the WHOLE mapped set, not just the first. This
+ * closes the documented limitation #1542 originally shipped with (see the
+ * #1957 bookend).
  *
  * THE REVIEW CLOCK (#1507)
  * --------------------------
@@ -180,9 +182,12 @@ export async function declineRemediationStepToRisk(input: RemediationDeclineInpu
         .limit(1)
     : [];
 
-  // Only the FIRST mapped key is linked — see the header's documented
-  // limitation for steps that map to more than one check.
+  // Primary key on the existing `checkKey` column, every remaining mapped key
+  // on `additionalCheckKeys` (#1957) — see the header. `undefined` (not `[]`)
+  // when there's nothing beyond the primary, so the column stays NULL rather
+  // than storing an empty array on every single-key step.
   const primaryCheckKey = mappedKeys[0] ?? null;
+  const additionalCheckKeys = mappedKeys.length > 1 ? mappedKeys.slice(1) : undefined;
 
   const [kbRow] = primaryCheckKey
     ? await db
@@ -243,6 +248,7 @@ export async function declineRemediationStepToRisk(input: RemediationDeclineInpu
       controlViolated,
       framework: "Remediation Tracker",
       checkKey: primaryCheckKey,
+      additionalCheckKeys,
       rawRiskLevel: riskLevel,
       residualRiskLevel: riskLevel, // declining accepts the risk whole — no mitigation applied
       rawRiskScore: riskScore,
@@ -272,7 +278,7 @@ export async function declineRemediationStepToRisk(input: RemediationDeclineInpu
     .returning({ id: mspRiskDecisionsTable.id });
 
   log.info(
-    { customerId: scope.customerId, stepId, riskDecisionId: inserted.id, rbdId, checkKey: primaryCheckKey },
+    { customerId: scope.customerId, stepId, riskDecisionId: inserted.id, rbdId, checkKey: primaryCheckKey, additionalCheckKeys },
     "remediation step declined to risk register — accepted risk created (#1542)",
   );
 

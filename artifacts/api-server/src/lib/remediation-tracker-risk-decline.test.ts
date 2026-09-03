@@ -165,6 +165,34 @@ describe("declineRemediationStepToRisk", () => {
     expect(mockInsertValues).toHaveLength(0);
   });
 
+  it("a step mapped to more than one check (#1957) links the first on checkKey and the rest on additionalCheckKeys", async () => {
+    // s8 -> ["identity:ca-policy-count", "identity:ca-mfa-coverage"] (REMEDIATION_TRACKER_STEP_CHECK_KEYS).
+    mockSelectResultsQueue = [
+      [], // no existing risk decision
+      [{ severity: "critical", title: "No CA policies", description: "Zero active CA policies.", checkKey: "identity:ca-policy-count" }], // finding
+      [], // no published KB row
+      [{ label: "Conditional Access Policy Count" }], // check label fallback
+    ];
+
+    await declineRemediationStepToRisk({ ...baseInput, stepId: "s8" });
+
+    expect(mockInsertValues[0].checkKey).toBe("identity:ca-policy-count");
+    expect(mockInsertValues[0].additionalCheckKeys).toEqual(["identity:ca-mfa-coverage"]);
+  });
+
+  it("a single-check step (#1957) leaves additionalCheckKeys undefined rather than an empty array", async () => {
+    mockSelectResultsQueue = [
+      [],
+      [{ severity: "critical", title: "Legacy auth in use", description: "23 accounts use legacy auth.", checkKey: "identity:legacy-auth-usage" }],
+      [],
+      [{ label: "Legacy Authentication Usage" }],
+    ];
+
+    await declineRemediationStepToRisk(baseInput); // s10 -> one mapped check
+
+    expect(mockInsertValues[0].additionalCheckKeys).toBeUndefined();
+  });
+
   it("never fabricates a step title for an id outside the catalogue", async () => {
     mockSelectResultsQueue = [[]];
     await declineRemediationStepToRisk({ ...baseInput, stepId: "s26", trackerStepRowId: 999 });
