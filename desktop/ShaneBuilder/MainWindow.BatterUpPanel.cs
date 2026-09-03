@@ -27,14 +27,23 @@ namespace ShaneBuilder;
 /// expand/collapse state stable across lane switches via <see cref="_batterUpCollapsedGroups"/>,
 /// an instance field never reset by <see cref="RenderBatterUpPanel"/>/<see cref="SelectBatterUpLane"/>.
 /// An issue with no real parent gets an honest "No Feature" bucket — never an invented grouping
-/// key. Group header content (badges/actions) is out of scope here — #2358/#2359/#2360 land the
-/// richer header/item content on top of this grouping+persistence structure.
+/// key. Group header content (badges/actions) is out of scope here — #2358/#2360 land the
+/// richer header content on top of this grouping+persistence structure.
 ///
 /// Git #2364 (Feature #2355 item 9) — that no-parent bucket is now flagged, not just another
 /// group: distinct warning-tinted styling, an honest "needs a home before it can be built" label,
 /// and it sorts last (the existing #2357 <c>OrderBy</c> already puts key 0 at the end) so items
 /// with nothing to build against visibly collect at the bottom of the panel instead of blending
 /// into the real Feature groups above them.
+///
+/// Git #2359 (Feature #2355 item 4) — each item row now carries real per-item detail: an AGENT
+/// FOUND / CHAT FILED badge (the real <c>agent-finding</c> label — both origins are AI-authored,
+/// this label is the only structural signal that distinguishes an unplanned mid-build finding from
+/// a planned chat-filed issue), a real effort label (the item's own most-recent <c>BUILD:</c>
+/// comment's <c>effort=</c> token, or an honest "not yet estimated"), and a real "why it is here"
+/// line (that comment's stated scope, or the issue body). Resolved by
+/// <see cref="ChatGitHubFilter.EnrichBatterUpItemDetailsAsync"/> — a second, batched GraphQL call
+/// scoped to just the real items already sorted into a lane, not the whole board walk.
 /// </summary>
 /// <summary>Git #2365 — a frozen snapshot of the Batter Up panel's real state (selected lane +
 /// the four live counts) at the moment "Send to tab" was clicked. Carried on <c>TabDef</c>, read
@@ -76,17 +85,30 @@ public partial class MainWindow
 
         var counts = await _chatGitHubFilter.GetBatterUpLaneCountsAsync();
 
-        _batterUpPanelLoading = false;
-        _batterUpCounts = counts;
-        _batterUpPanelLoaded = counts.Success; // a total failure stays unloaded so reopening retries
-
         if (!counts.Success)
         {
+            _batterUpPanelLoading = false;
+            _batterUpCounts = counts;
+            _batterUpPanelLoaded = false; // a total failure stays unloaded so reopening retries
             BatterUpPanelStatus.Text = "GitHub unreachable — " + (counts.Error ?? "unknown error");
             BatterUpLaneTabs.Children.Clear();
             BatterUpLaneBody.Children.Clear();
             return;
         }
+
+        // Git #2359 — a second, batched detail fetch (badge/effort/why-here) scoped to just the
+        // real items the lane walk resolved, not the whole board. A failure here doesn't fail the
+        // whole panel load — items just render with an honest "couldn't load" detail state.
+        var allItems = counts.BatterUpItems.Concat(counts.AiBatterUpItems).Concat(counts.AskShaneItems).ToList();
+        if (allItems.Count > 0)
+        {
+            BatterUpPanelStatus.Text = "Loading item details…";
+            await _chatGitHubFilter.EnrichBatterUpItemDetailsAsync(allItems);
+        }
+
+        _batterUpPanelLoading = false;
+        _batterUpCounts = counts;
+        _batterUpPanelLoaded = true;
 
         RenderBatterUpPanel();
     }
@@ -144,10 +166,11 @@ public partial class MainWindow
         _ => counts.BatterUpItems.Concat(counts.AiBatterUpItems).Concat(counts.AskShaneItems).ToList(),
     };
 
-    /// <summary>Git #2357 — real items for the selected lane, grouped by real parent Feature.
-    /// Group header content beyond number/title/count and item content beyond number/title are
-    /// deliberately out of scope (#2358/#2359/#2360 land those on top of this structure); this
-    /// build is the grouping + persisted expand/collapse state only.</summary>
+    /// <summary>Git #2357 — real items for the selected lane, grouped by real parent Feature, with
+    /// persisted expand/collapse state. Git #2364 flags the no-parent bucket distinctly. Git #2359
+    /// adds each item's real badge/effort/why-here detail (see <see cref="BatterUpEffortLabel"/>/
+    /// <see cref="BatterUpWhyHereLabel"/>). Group header content beyond number/title/count is still
+    /// out of scope here — #2358 lands that on top of this structure.</summary>
     private void RenderBatterUpLaneBody()
     {
         BatterUpLaneBody.Children.Clear();
@@ -214,9 +237,49 @@ public partial class MainWindow
                 itemText.TextTrimming = TextTrimming.CharacterEllipsis;
                 itemText.Margin = new Thickness(5, 0, 0, 0);
                 row.ColumnFill(itemText);
+                // Git #2359 — real badge (AGENT FOUND / CHAT FILED) + real effort label, right of
+                // the title, using the same right-column pill pattern the Git Panel feature rows
+                // already use for their own state/bug/open pills.
+                row.ColumnRight(GitCountPill(BatterUpEffortLabel(item), "Brush.Text.Dim"));
+                row.ColumnRight(GitCountPill(
+                    item.IsAgentFinding ? "AGENT FOUND" : "CHAT FILED",
+                    item.IsAgentFinding ? "Brush.Status.Running" : "Brush.Text.Muted"));
                 BatterUpLaneBody.Children.Add(row.Root);
+                BatterUpLaneBody.Children.Add(BatterUpWhyHereLine(BatterUpWhyHereLabel(item), indent: 44));
             }
         }
+    }
+
+    /// <summary>Git #2359 — the real effort label: the item's own parsed `effort=` value when a
+    /// `BUILD:` comment exists, an honest "unknown" when the detail fetch for this item's batch
+    /// failed (never silently mislabeled as "not yet estimated"), else the real "not yet
+    /// estimated" state for an item that genuinely hasn't been dispatched yet.</summary>
+    private static string BatterUpEffortLabel(BatterUpItemRef item) =>
+        item.DetailError != null ? "effort: unknown"
+        : string.IsNullOrWhiteSpace(item.Effort) ? "not yet estimated"
+        : $"effort: {item.Effort}";
+
+    /// <summary>Git #2359 — the real "why it is here" line: the item's most-recent `BUILD:`
+    /// comment's stated scope, or its issue body, per <see cref="ChatGitHubFilter.EnrichBatterUpItemDetailsAsync"/>.
+    /// Never invented — a genuine fetch failure or a genuinely empty body/comment both say so
+    /// plainly instead of fabricating text.</summary>
+    private static string BatterUpWhyHereLabel(BatterUpItemRef item) =>
+        item.DetailError != null ? $"Couldn't load why this is here — {item.DetailError}"
+        : string.IsNullOrWhiteSpace(item.WhyHere) ? "No description yet."
+        : item.WhyHere!;
+
+    /// <summary>A single-line, ellipsis-truncated dim/italic line under a Batter Up item row —
+    /// the real "why it is here" text. Deliberately non-wrapping so a long scope paragraph doesn't
+    /// blow out the row height; the full text remains available via the item's real GitHub body/
+    /// BUILD comment, not reproduced here.</summary>
+    private TextBlock BatterUpWhyHereLine(string text, double indent)
+    {
+        var tb = GitText(text, 9.5, "Brush.Text.Dim");
+        tb.Margin = new Thickness(indent, 0, 6, 5);
+        tb.FontStyle = FontStyles.Italic;
+        tb.TextTrimming = TextTrimming.CharacterEllipsis;
+        tb.ToolTip = text;
+        return tb;
     }
 
     /// <summary>Toggles one group's expand/collapse state and re-renders. The state lives in

@@ -38,6 +38,33 @@ public sealed class BatterUpItemRef
     public string Title { get; init; } = "";
     public int? FeatureNumber { get; init; }
     public string? FeatureTitle { get; init; }
+
+    // ── Git #2359 — item-card detail: real badge, effort, "why it is here". Resolved by a
+    // second, batched GraphQL call scoped to just the items already sorted into one of the 3
+    // lanes (see <see cref="ChatGitHubFilter.EnrichBatterUpItemDetailsAsync"/>), so these start
+    // null/false and are filled in after the initial lane-count walk returns — mutable, not
+    // init-only, for exactly that reason. ────────────────────────────────────────────────────
+    /// <summary>True once the detail fetch has run for this item (success OR failure) — lets the
+    /// panel distinguish "not fetched yet" from "fetched, genuinely nothing there".</summary>
+    public bool DetailLoaded { get; set; }
+    /// <summary>True when this issue carries the real <c>agent-finding</c> label — filed by a
+    /// build session mid-build, unplanned. False (the default) means CHAT FILED — planned, filed
+    /// by Claude.ai chat. GitHub gives no structural signal beyond this label (every issue is
+    /// authored as <c>shanemccaw</c> via PAT regardless of real origin) — see #2359's own
+    /// corrected badge semantics.</summary>
+    public bool IsAgentFinding { get; set; }
+    /// <summary>The real <c>effort=</c> token off this issue's own most-recent <c>BUILD:</c>
+    /// comment header, or null when no <c>BUILD:</c> comment exists yet (not dispatched) — the
+    /// panel shows an honest "not yet estimated" for null, never a fabricated default.</summary>
+    public string? Effort { get; set; }
+    /// <summary>The real "why it is here" line: the most-recent <c>BUILD:</c> comment's stated
+    /// scope (its first real prose paragraph) when one exists, else the issue body's first real
+    /// paragraph. Null only when both are genuinely empty.</summary>
+    public string? WhyHere { get; set; }
+    /// <summary>Set when the detail fetch for this item's batch failed — the real error text, so
+    /// the panel can say "couldn't load" honestly instead of mislabeling a fetch failure as "not
+    /// yet estimated".</summary>
+    public string? DetailError { get; set; }
 }
 
 /// <summary>Git #2356 (Feature #2355 item 1) — real per-lane item counts for the Batter Up rail
@@ -305,6 +332,10 @@ public sealed class ChatGitHubFilter
     // ── Batter Up lane counts (reverse of board status — status → items) ────────────────────────
     private const int LanePageSize = 100;
     private const int LaneMaxPages = 50; // runaway guard; real board is ~2,403 items / ~25 pages today
+    /// <summary>Git #2359 — items per batched detail-fetch GraphQL call. Scoped only to the real
+    /// items already sorted into one of the 3 Batter Up lanes (dozens, realistically), never the
+    /// whole board, so this stays modest without needing the lane walk's own page-cap machinery.</summary>
+    private const int DetailBatchSize = 20;
 
     /// <summary>Git #2356 — the real per-lane counts (Batter Up / AI Batter Up / Ask Shane) driving
     /// the Batter Up rail panel's four tabs. This is the REVERSE of <see cref="GetBoardStatusAsync"/>
@@ -414,6 +445,223 @@ public sealed class ChatGitHubFilter
         ConsoleOutputSink.Log(LogLevel.Warn,
             $"[batterup.lanes] hit the {LaneMaxPages}-page cap with more items remaining — counts are a real partial, not final.");
         return BatterUpLaneCounts.Ok(batterUp, aiBatterUp, askShane, complete: false);
+    }
+
+    /// <summary>Git #2359 (Feature #2355 item 4) — real per-item detail for the Batter Up item
+    /// cards: a real AGENT FOUND / CHAT FILED badge (the <c>agent-finding</c> label), a real
+    /// effort label (the most-recent <c>BUILD:</c> comment's <c>effort=</c> token), and a real
+    /// "why it is here" line (that same comment's stated scope, or the issue body when there's no
+    /// <c>BUILD:</c> comment yet). Scoped to just <paramref name="items"/> — the real items
+    /// already sorted into one of the 3 lanes by <see cref="GetBatterUpLaneCountsAsync"/>, not the
+    /// whole ~2,400-item board walk — and batched via GraphQL aliases
+    /// (<see cref="DetailBatchSize"/> issues per HTTP round trip) rather than one call per item,
+    /// the same "no per-item round trip" discipline #2357 established for each item's parent.
+    /// Mutates each <see cref="BatterUpItemRef"/> in place; a batch that fails leaves its items'
+    /// <see cref="BatterUpItemRef.DetailError"/> set rather than silently guessing.</summary>
+    public async Task EnrichBatterUpItemDetailsAsync(IReadOnlyList<BatterUpItemRef> items)
+    {
+        if (items.Count == 0) return;
+
+        foreach (var batch in items.Chunk(DetailBatchSize))
+        {
+            var byNumber = batch.ToDictionary(i => i.Number);
+            var sb = new StringBuilder("query {\n  repository(owner: \"" + Owner + "\", name: \"" + RepoName + "\") {\n");
+            foreach (var item in batch)
+            {
+                sb.Append($"    i{item.Number}: issue(number: {item.Number}) {{\n");
+                sb.Append("      body\n");
+                sb.Append("      labels(first: 20) { nodes { name } }\n");
+                // Most recent 20 comments is enough to find a re-dispatch's newer BUILD: comment
+                // for any item realistically staged in one of these 3 lanes today; a real partial
+                // for an outlier issue with a much longer thread is an honest limitation, not
+                // silently wrong (same "real partial, not final" posture as the lane walk's own
+                // page cap).
+                sb.Append("      comments(last: 20) { nodes { body } }\n");
+                sb.Append("    }\n");
+            }
+            sb.Append("  }\n}");
+
+            var (ok, stdout, stderr) = await RunAsync("gh", new[] { "api", "graphql", "-f", "query=" + sb });
+            if (!ok)
+            {
+                ConsoleOutputSink.Log(LogLevel.Warn, $"[batterup.detail] gh api graphql failed for a {batch.Length}-item batch: {stderr.Trim()}");
+                foreach (var item in batch) { item.DetailError = stderr.Trim(); item.DetailLoaded = true; }
+                continue;
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(stdout);
+                if (!doc.RootElement.TryGetProperty("data", out var data) ||
+                    !data.TryGetProperty("repository", out var repo) ||
+                    repo.ValueKind != JsonValueKind.Object)
+                {
+                    foreach (var item in batch) { item.DetailError = "unexpected gh graphql response shape"; item.DetailLoaded = true; }
+                    continue;
+                }
+
+                foreach (var prop in repo.EnumerateObject())
+                {
+                    if (!prop.Name.StartsWith("i", StringComparison.Ordinal)) continue;
+                    if (!int.TryParse(prop.Name.AsSpan(1), out var number)) continue;
+                    if (!byNumber.TryGetValue(number, out var item)) continue;
+
+                    if (prop.Value.ValueKind != JsonValueKind.Object)
+                    {
+                        item.DetailError = "issue not found";
+                        item.DetailLoaded = true;
+                        continue;
+                    }
+                    ApplyItemDetail(item, prop.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                ConsoleOutputSink.Log(LogLevel.Warn, $"[batterup.detail] couldn't parse gh graphql output: {ex.Message}");
+                foreach (var item in batch) { item.DetailError = ex.Message; item.DetailLoaded = true; }
+            }
+        }
+    }
+
+    /// <summary>Applies one issue's real <c>body</c>/<c>labels</c>/<c>comments</c> onto its
+    /// <see cref="BatterUpItemRef"/>: the <c>agent-finding</c> label decides the badge; the
+    /// most-recent parseable <c>BUILD:</c> comment (see <see cref="ParseBuildComment"/>) supplies
+    /// effort + "why it is here"; falling back to the issue body's own lead paragraph when there
+    /// is no <c>BUILD:</c> comment yet.</summary>
+    private static void ApplyItemDetail(BatterUpItemRef item, JsonElement issueEl)
+    {
+        string? body = issueEl.TryGetProperty("body", out var bodyEl) && bodyEl.ValueKind == JsonValueKind.String
+            ? bodyEl.GetString() : null;
+
+        bool isAgentFinding = false;
+        if (issueEl.TryGetProperty("labels", out var labelsEl) &&
+            labelsEl.TryGetProperty("nodes", out var labelNodes) &&
+            labelNodes.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var l in labelNodes.EnumerateArray())
+            {
+                var name = l.TryGetProperty("name", out var n) ? n.GetString() : null;
+                if (string.Equals(name, "agent-finding", StringComparison.OrdinalIgnoreCase)) { isAgentFinding = true; break; }
+            }
+        }
+
+        string? effort = null;
+        string? scope = null;
+        if (issueEl.TryGetProperty("comments", out var commentsEl) &&
+            commentsEl.TryGetProperty("nodes", out var commentNodes) &&
+            commentNodes.ValueKind == JsonValueKind.Array)
+        {
+            // GraphQL `last: 20` returns oldest→newest within that tail — reverse so a later
+            // BUILD: comment (a re-dispatch) is checked, and wins, before an older one. Same
+            // most-recent-first convention as BuildConsole's own
+            // BatterUpQueueService.FindBuildCommentAsync.
+            var bodies = commentNodes.EnumerateArray()
+                .Select(c => c.TryGetProperty("body", out var b) ? b.GetString() : null)
+                .Where(b => !string.IsNullOrEmpty(b))
+                .Reverse();
+            foreach (var commentBody in bodies)
+            {
+                var parsed = ParseBuildComment(commentBody!);
+                if (parsed == null) continue;
+                effort = parsed.Value.Effort;
+                scope = ExtractLeadParagraph(parsed.Value.Prompt);
+                break;
+            }
+        }
+
+        item.IsAgentFinding = isAgentFinding;
+        item.Effort = effort;
+        item.WhyHere = scope ?? ExtractLeadParagraph(body);
+        item.DetailLoaded = true;
+    }
+
+    /// <summary>Parses a `BUILD:` comment body — mirrors BuildConsole's own
+    /// <c>BatterUpQueueService.ParseBuildComment</c> so ShaneBuilder reads the exact same
+    /// `BUILD:`/`Posted:` header convention (CLAUDE.md's "Build-prompt header convention") rather
+    /// than growing a second, possibly-drifting parser:
+    /// <code>
+    /// BUILD: model=claude-sonnet-5 effort=high buildSet=Portal
+    /// Posted: 2026-08-31T23:23:47Z
+    /// &lt;the rest of the comment is the self-contained prompt&gt;
+    /// </code>
+    /// The `Posted:` line is optional — a legacy comment written before it was required has none,
+    /// and that's not a parse failure, just a null <c>Posted</c>. Returns null if
+    /// <paramref name="commentBody"/> has no `BUILD:` header line, or the header line has no
+    /// prompt text following it.</summary>
+    internal static (string? Model, string? Effort, string? BuildSet, DateTime? Posted, string Prompt)? ParseBuildComment(string commentBody)
+    {
+        if (string.IsNullOrWhiteSpace(commentBody)) return null;
+
+        var lines = commentBody.Replace("\r\n", "\n").Split('\n');
+        int headerIdx = Array.FindIndex(lines, l => l.TrimStart().StartsWith("BUILD:", StringComparison.OrdinalIgnoreCase));
+        if (headerIdx < 0) return null;
+
+        var headerLine = lines[headerIdx].TrimStart();
+        var afterPrefix = headerLine.Substring(headerLine.IndexOf("BUILD:", StringComparison.OrdinalIgnoreCase) + "BUILD:".Length);
+
+        string? model = null, effort = null, buildSet = null;
+        foreach (var token in afterPrefix.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = token.IndexOf('=');
+            if (eq <= 0) continue;
+            var key = token.Substring(0, eq).Trim();
+            var val = token.Substring(eq + 1).Trim();
+            if (val.Length == 0) continue;
+            if (string.Equals(key, "model", StringComparison.OrdinalIgnoreCase)) model = val;
+            else if (string.Equals(key, "effort", StringComparison.OrdinalIgnoreCase)) effort = val;
+            else if (string.Equals(key, "buildSet", StringComparison.OrdinalIgnoreCase)) buildSet = val;
+        }
+
+        int promptStartIdx = headerIdx + 1;
+        DateTime? posted = null;
+        if (promptStartIdx < lines.Length)
+        {
+            var nextLine = lines[promptStartIdx].TrimStart();
+            if (nextLine.StartsWith("Posted:", StringComparison.OrdinalIgnoreCase))
+            {
+                var postedRaw = nextLine.Substring("Posted:".Length).Trim();
+                if (DateTime.TryParse(postedRaw, null,
+                    System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                    out var parsedPosted))
+                {
+                    posted = parsedPosted;
+                }
+                promptStartIdx++;
+            }
+        }
+
+        var prompt = string.Join("\n", lines.Skip(promptStartIdx)).Trim();
+        if (prompt.Length == 0) return null;
+
+        return (model, effort, buildSet, posted, prompt);
+    }
+
+    /// <summary>Git #2359 — the "why it is here" line: the first real prose paragraph of a
+    /// `BUILD:` comment's prompt (after its leading `--flag value` header line, per CLAUDE.md's
+    /// build-prompt header convention) or of the issue body when there's no `BUILD:` comment yet.
+    /// Never invents text — a genuinely empty/whitespace-only input returns null so the caller can
+    /// show an honest empty-state line instead.</summary>
+    private static string? ExtractLeadParagraph(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+
+        var lines = text.Replace("\r\n", "\n").Split('\n');
+        int i = 0;
+        while (i < lines.Length && lines[i].Trim().Length == 0) i++;
+        // Skip a leading `--flag value ...` line (the build-prompt header convention) — that's
+        // launch plumbing, not the real "why it is here" prose.
+        if (i < lines.Length && lines[i].TrimStart().StartsWith("--", StringComparison.Ordinal)) i++;
+        while (i < lines.Length && lines[i].Trim().Length == 0) i++;
+
+        var paragraph = new List<string>();
+        while (i < lines.Length && lines[i].Trim().Length > 0)
+        {
+            paragraph.Add(lines[i].Trim());
+            i++;
+        }
+
+        var joined = string.Join(" ", paragraph).Trim();
+        return joined.Length == 0 ? null : joined;
     }
 
     // ── gh process runner ────────────────────────────────────────────────────────────────────
