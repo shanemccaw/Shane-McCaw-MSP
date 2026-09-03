@@ -318,14 +318,33 @@ namespace BuildConsole.Services
             // minus manually-paused ids.
             var pausedIds = BuildConsoleSettings.Load().PausedBuildIds;
             var candidates = new List<QueueItem>();
+            var heldReasons = new Dictionary<int, string>();
+
+            // "Build Only This Set" exclusive hold — a build-set group header context-menu
+            // action (BuildQueuePanel.BuildBuildSetHeaderContextMenu). While a set is marked
+            // exclusive, every queued row NOT belonging to it is held here, before it ever
+            // reaches the live GitHub blocker check below — cheapest possible gate, and it
+            // needs no live round trip to decide. Auto-clears on its own (see
+            // BuildQueuePanel.CheckExclusiveBuildSetCompletion) once every member of the
+            // exclusive set reaches a terminal state.
+            var exclusiveSet = BuildSetExclusiveStore.ActiveSet;
+
             await using (var fetchCmd = new NpgsqlCommand(QueuedCandidateSql, conn))
             await using (var reader = await fetchCmd.ExecuteReaderAsync())
             {
                 while (await reader.ReadAsync())
                 {
                     var item = MapRow(reader);
-                    if (!pausedIds.Contains(item.Id))
-                        candidates.Add(item);
+                    if (pausedIds.Contains(item.Id)) continue;
+
+                    if (exclusiveSet != null &&
+                        !string.Equals((item.BuildSet ?? "").Trim(), exclusiveSet, StringComparison.OrdinalIgnoreCase))
+                    {
+                        heldReasons[item.Id] = $"holding — build set \"{exclusiveSet}\" is marked exclusive (\"Build Only This Set\")";
+                        continue;
+                    }
+
+                    candidates.Add(item);
                 }
             }
 
@@ -336,7 +355,6 @@ namespace BuildConsole.Services
             // GitHub's real open-issue set ONCE, then decide each candidate from that
             // single snapshot — a blocked queue of N items costs one `gh` call per
             // tick, not N (and zero when the caller supplies the snapshot).
-            var heldReasons = new Dictionary<int, string>();
             var ready = new List<QueueItem>();
             var distinctBlockerNums = candidates.SelectMany(EffectiveBlockers).Distinct().ToList();
             // Git #1904 — the same live open-issue snapshot also drives the self-check

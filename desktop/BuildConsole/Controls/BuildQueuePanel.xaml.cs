@@ -759,6 +759,7 @@ namespace BuildConsole.Controls
                 if (myGeneration != _refreshGeneration) return;
                 BuildConsole.Services.NotGitNumberRegistry.SyncFromQueue(_lastItems);
                 CheckPriorityBuildSetCompletion(_lastItems);
+                CheckExclusiveBuildSetCompletion(_lastItems);
                 ReportActiveBuildSets(_lastItems);
 
                 string restartSignature;
@@ -828,6 +829,30 @@ namespace BuildConsole.Controls
                     $"Priority build set \"{setName}\" — all {members.Count} member(s) reached a terminal state ({string.Join(", ", members.Select(m => m.Status).Distinct())}). Firing completion notification and auto-clearing priority.");
                 BuildSetPriorityCompleted?.Invoke(this, new BuildSetPriorityCompletedEventArgs(setName, members));
             }
+        }
+
+        /// <summary>
+        /// "Build Only This Set" auto-clear — the moment every build currently belonging to
+        /// the exclusive build set has reached a terminal state (done/failed/canceled), lifts
+        /// the hold so the queue resumes normal dispatch on its own. Mirrors
+        /// <see cref="CheckPriorityBuildSetCompletion"/> exactly, including walking the FULL
+        /// <paramref name="items"/> list (not the filtered/grouped view) for the same reason:
+        /// the default "Running" filter drops "done" items, so grouping off the filtered view
+        /// would mean a finished exclusive set's bucket goes empty and this would never fire.
+        /// </summary>
+        private void CheckExclusiveBuildSetCompletion(List<QueueItem> items)
+        {
+            var setName = Services.BuildSetExclusiveStore.ActiveSet;
+            if (setName == null) return;
+
+            var members = items.Where(i => string.Equals((i.BuildSet ?? "").Trim(), setName, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (members.Count == 0) return; // nothing currently known under this name — nothing to declare finished
+            if (!members.All(i => PriorityTerminalStatuses.Contains(i.Status))) return;
+
+            Services.BuildSetExclusiveStore.Clear();
+            ActivityLog.Log("build-queue-panel.exclusive",
+                $"Exclusive build set \"{setName}\" — all {members.Count} member(s) reached a terminal state ({string.Join(", ", members.Select(m => m.Status).Distinct())}). Auto-clearing exclusive mode; queue resumes normal dispatch.");
+            RenderQueue(ApplyFilter(_lastItems));
         }
 
         /// <summary>
@@ -1829,17 +1854,25 @@ namespace BuildConsole.Controls
                         // critter + distinct border" so a set he's actually waiting on reads
                         // differently at a glance from the rest while he tinkers elsewhere.
                         bool isPriority = Services.BuildSetPriorityStore.IsPriority(node.BuildSet);
+                        // "Build Only This Set" — see Services.BuildSetExclusiveStore. Exclusive
+                        // styling wins over Priority's when both happen to be set on the same
+                        // build set, since exclusive is the stronger, dispatch-affecting state.
+                        bool isExclusive = Services.BuildSetExclusiveStore.IsExclusive(node.BuildSet);
 
                         var setContainer = new Border
                         {
-                            BorderBrush = isPriority
-                                ? (Brush)Application.Current.FindResource("PeachBrush")
-                                : (Brush)Application.Current.FindResource("MauveBrush"),
-                            BorderThickness = new Thickness(isPriority ? 2.5 : 1),
+                            BorderBrush = isExclusive
+                                ? (Brush)Application.Current.FindResource("RedBrush")
+                                : isPriority
+                                    ? (Brush)Application.Current.FindResource("PeachBrush")
+                                    : (Brush)Application.Current.FindResource("MauveBrush"),
+                            BorderThickness = new Thickness(isExclusive || isPriority ? 2.5 : 1),
                             CornerRadius = new CornerRadius(6),
-                            Background = isPriority
-                                ? new SolidColorBrush(Color.FromArgb(0x16, 0xFA, 0xB3, 0x87))
-                                : new SolidColorBrush(Color.FromArgb(0x0A, 0xCB, 0xA6, 0xF7)),
+                            Background = isExclusive
+                                ? new SolidColorBrush(Color.FromArgb(0x16, 0xF3, 0x8B, 0xA8))
+                                : isPriority
+                                    ? new SolidColorBrush(Color.FromArgb(0x16, 0xFA, 0xB3, 0x87))
+                                    : new SolidColorBrush(Color.FromArgb(0x0A, 0xCB, 0xA6, 0xF7)),
                             Margin = new Thickness(0, 8, 0, 8),
                             Padding = new Thickness(8, 6, 8, 6),
                             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -1866,7 +1899,19 @@ namespace BuildConsole.Controls
                             VerticalAlignment = VerticalAlignment.Center,
                             ToolTip = $"Build Set \"{node.BuildSet}\" — merges + restarts together as one wave"
                         });
-                        if (isPriority)
+                        if (isExclusive)
+                        {
+                            headerLabel.Children.Add(new TextBlock
+                            {
+                                Text = " 🔒",
+                                FontSize = 12,
+                                FontWeight = FontWeights.Bold,
+                                Foreground = (Brush)Application.Current.FindResource("RedBrush"),
+                                VerticalAlignment = VerticalAlignment.Center,
+                                ToolTip = $"Exclusive — the queue holds every other build set until every build in \"{node.BuildSet}\" finishes."
+                            });
+                        }
+                        else if (isPriority)
                         {
                             // Reuses the same "⭐" glyph IssueChompAnimation's milestone parade
                             // already decorates a marching mascot with — not a new asset.
@@ -2311,6 +2356,36 @@ namespace BuildConsole.Controls
                 RenderQueue(ApplyFilter(_lastItems));
             };
             cm.Items.Add(mi);
+
+            // "Build Only This Set" — puts the queue dispatcher into an exclusive hold (see
+            // Services.BuildSetExclusiveStore / BuildQueuePostgresClient.SelectClaimCandidatesAsync):
+            // only members of this build set are eligible to claim a free slot until every
+            // member reaches a terminal state (auto-clears) or Shane clears it manually. Only
+            // one set can be exclusive at a time, so marking a different one silently replaces it.
+            bool isExclusive = Services.BuildSetExclusiveStore.IsExclusive(buildSetName);
+            var exclusiveItem = new MenuItem
+            {
+                Header = isExclusive ? "🔓 Clear Exclusive Mode" : "🔒 Build Only This Set",
+                ToolTip = isExclusive
+                    ? $"Stop holding every other build set — let the queue resume dispatching normally."
+                    : $"Hold every OTHER build set — the queue will only dispatch \"{buildSetName}\" until it finishes."
+            };
+            exclusiveItem.Click += (_, _) =>
+            {
+                if (isExclusive)
+                {
+                    Services.BuildSetExclusiveStore.Clear();
+                    ActivityLog.Log("build-queue-panel.exclusive", $"Build set \"{buildSetName}\" — exclusive mode cleared; queue resumes normal dispatch.");
+                }
+                else
+                {
+                    Services.BuildSetExclusiveStore.SetExclusive(buildSetName);
+                    ActivityLog.Log("build-queue-panel.exclusive", $"Build set \"{buildSetName}\" marked exclusive — queue will hold every other build set until it finishes.");
+                }
+                RenderQueue(ApplyFilter(_lastItems));
+            };
+            cm.Items.Add(exclusiveItem);
+
             return cm;
         }
 
