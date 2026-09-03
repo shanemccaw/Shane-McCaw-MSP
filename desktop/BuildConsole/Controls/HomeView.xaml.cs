@@ -464,6 +464,200 @@ namespace BuildConsole.Controls
             RunningEmpty.Visibility = running.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
+        // ── Projected Completion (#2714) ────────────────────────────────────
+        //
+        // One honest projected completion date per open Epic in the active Milestone, plus one
+        // Milestone-level projected release date. Every date is fit — from real GitHub
+        // closed-timestamp history (#2711) — with the SAME IssueEtaProjection discipline the
+        // Focus bar uses; a scope with too little real history shows an honest reason, never a
+        // fabricated date. Loaded on Home tab open (cache-reuse) and on the manual ⟳ (force).
+        private bool _etaLoadInFlight;
+
+        public async System.Threading.Tasks.Task RefreshEtaProjectionsAsync(bool force = false)
+        {
+            if (_etaLoadInFlight) return; // single in-flight compute — the ⟳ can't stack on tab-open
+            _etaLoadInFlight = true;
+            try
+            {
+                BtnRefreshEta.IsEnabled = false;
+                var proj = await HomeEtaProjectionService.ComputeAsync(force);
+                RenderEtaProjection(proj);
+            }
+            catch (Exception ex)
+            {
+                // Fail closed to an honest error state — never a fabricated projection.
+                EtaMilestoneCard.Visibility = Visibility.Collapsed;
+                EtaEpicsHeader.Visibility = Visibility.Collapsed;
+                EtaEpicList.Children.Clear();
+                EtaEpicCountText.Text = "";
+                EtaGeneratedText.Text = "";
+                EtaEmpty.Visibility = Visibility.Visible;
+                EtaEmpty.Text = $"Couldn't load projections: {ex.Message}";
+                ActivityLog.Log("git-board.data", $"home ETA projection refresh failed (fail-closed): {ex.Message}");
+            }
+            finally
+            {
+                BtnRefreshEta.IsEnabled = true;
+                _etaLoadInFlight = false;
+            }
+        }
+
+        private void BtnRefreshEta_Click(object sender, RoutedEventArgs e) => _ = RefreshEtaProjectionsAsync(force: true);
+
+        public void RenderEtaProjection(HomeEtaProjection proj)
+        {
+            EtaEpicList.Children.Clear();
+
+            if (!proj.Available)
+            {
+                EtaMilestoneCard.Visibility = Visibility.Collapsed;
+                EtaEpicsHeader.Visibility = Visibility.Collapsed;
+                EtaEpicCountText.Text = "";
+                EtaGeneratedText.Text = "";
+                EtaEmpty.Visibility = Visibility.Visible;
+                EtaEmpty.Text = proj.UnavailableReason ?? "No active milestone to project.";
+                return;
+            }
+
+            // Milestone-level projected release date.
+            if (proj.Milestone is EtaProjectionRow ms)
+            {
+                EtaMilestoneCard.Visibility = Visibility.Visible;
+                EtaMilestoneTitle.Text = $"{proj.MilestoneTitle}";
+                if (ms.HasEta && ms.ProjectedUtc.HasValue)
+                {
+                    EtaMilestoneDate.Text = FormatProjectedDate(ms.ProjectedUtc.Value);
+                    EtaMilestoneDate.Foreground = (Brush)FindResource("GreenBrush");
+                    EtaMilestoneSub.Text = $"{ms.ClosedIssues}/{ms.TotalIssues} closed · {ms.IssuesPerDay:0.0}/day · {FormatEtaSpan(ms.ProjectedUtc.Value)}";
+                }
+                else
+                {
+                    EtaMilestoneDate.Text = ms.AllClosed ? "✓ done" : "—";
+                    EtaMilestoneDate.Foreground = ms.AllClosed
+                        ? (Brush)FindResource("GreenBrush")
+                        : (Brush)FindResource("Subtext0Brush");
+                    EtaMilestoneSub.Text = $"{ms.ClosedIssues}/{ms.TotalIssues} closed · {ms.Reason}";
+                }
+            }
+            else
+            {
+                EtaMilestoneCard.Visibility = Visibility.Collapsed;
+            }
+
+            // Per-Epic rows.
+            int projectedCount = proj.Epics.Count(r => r.HasEta);
+            EtaEpicCountText.Text = proj.Epics.Count == 0
+                ? "(no open epics)"
+                : $"({proj.Epics.Count} epic{(proj.Epics.Count == 1 ? "" : "s")} · {projectedCount} dated)";
+            EtaEpicsHeader.Visibility = proj.Epics.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            foreach (var epic in proj.Epics)
+                EtaEpicList.Children.Add(BuildEtaEpicRow(epic));
+
+            EtaEmpty.Visibility = (proj.Milestone == null && proj.Epics.Count == 0) ? Visibility.Visible : Visibility.Collapsed;
+            if (EtaEmpty.Visibility == Visibility.Visible)
+                EtaEmpty.Text = "No open epics or milestone data to project yet.";
+
+            EtaGeneratedText.Text = $"Fit from real GitHub close history · updated {proj.GeneratedUtc.ToLocalTime():h:mm tt}";
+        }
+
+        private Border BuildEtaEpicRow(EtaProjectionRow epic)
+        {
+            var titleBlock = new TextBlock
+            {
+                Text = $"#{epic.Number}  {epic.Title}",
+                FontSize = 11.5,
+                FontWeight = FontWeights.SemiBold,
+                Foreground = (Brush)FindResource("TextBrush"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.NoWrap,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            var dateBlock = new TextBlock
+            {
+                FontSize = 11.5,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Right,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 0, 0),
+            };
+            string sub;
+            if (epic.HasEta && epic.ProjectedUtc.HasValue)
+            {
+                dateBlock.Text = FormatProjectedDate(epic.ProjectedUtc.Value);
+                dateBlock.Foreground = (Brush)FindResource("GreenBrush");
+                sub = $"{epic.ClosedIssues}/{epic.TotalIssues} closed · {epic.IssuesPerDay:0.0}/day · {FormatEtaSpan(epic.ProjectedUtc.Value)}";
+            }
+            else if (epic.AllClosed)
+            {
+                dateBlock.Text = "✓ done";
+                dateBlock.Foreground = (Brush)FindResource("GreenBrush");
+                sub = epic.Reason ?? "all issues closed";
+            }
+            else
+            {
+                dateBlock.Text = "—";
+                dateBlock.Foreground = (Brush)FindResource("Subtext0Brush");
+                sub = $"{epic.ClosedIssues}/{epic.TotalIssues} closed · {epic.Reason}";
+            }
+
+            var subBlock = new TextBlock
+            {
+                Text = sub,
+                FontSize = 10,
+                Foreground = (Brush)FindResource("Subtext0Brush"),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                TextWrapping = TextWrapping.NoWrap,
+                Margin = new Thickness(0, 2, 0, 0),
+            };
+
+            var topRow = new Grid();
+            topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            topRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            Grid.SetColumn(titleBlock, 0);
+            Grid.SetColumn(dateBlock, 1);
+            topRow.Children.Add(titleBlock);
+            topRow.Children.Add(dateBlock);
+
+            var stack = new StackPanel();
+            stack.Children.Add(topRow);
+            stack.Children.Add(subBlock);
+
+            return new Border
+            {
+                Background = (Brush)FindResource("Surface0Brush"),
+                BorderBrush = (Brush)FindResource("Surface1Brush"),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(0, 0, 0, 6),
+                Child = stack,
+                ToolTip = epic.HasEta
+                    ? $"Projected completion for epic #{epic.Number} at the current close pace ({epic.IssuesPerDay:0.0} issues/day)."
+                    : $"No honest projection for epic #{epic.Number}: {epic.Reason}",
+            };
+        }
+
+        /// <summary>Local-time projected date. Includes the year only when it isn't the current
+        /// year, so a near-term date stays compact.</summary>
+        private static string FormatProjectedDate(DateTime utc)
+        {
+            var local = utc.ToLocalTime();
+            return local.Year == DateTime.Now.Year ? local.ToString("MMM d") : local.ToString("MMM d, yyyy");
+        }
+
+        /// <summary>Honest relative span to the projected date (e.g. "in ~18 days", "in ~3 months").</summary>
+        private static string FormatEtaSpan(DateTime utc)
+        {
+            var remaining = utc - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero) return "due now";
+            double days = remaining.TotalDays;
+            if (days < 1) return $"in ~{Math.Max(1, (int)remaining.TotalHours)}h";
+            if (days < 60) return $"in ~{(int)Math.Round(days)} days";
+            return $"in ~{Math.Round(days / 30.0, 1):0.#} months";
+        }
+
         private static bool IsRunningStale(DateTimeOffset? updatedAt)
         {
             if (!updatedAt.HasValue) return true;

@@ -42,10 +42,9 @@ namespace BuildConsole.Services
         // ---- tunables --------------------------------------------------
         private const int PointsPerClose = 10;
         private const int MaxSuggestions = 5;
-        // ETA confidence gates (mirrors UsageProjection's spirit; closes are rarer than
-        // usage ticks, so the span gate is looser but never trusts one or two points).
-        private const int MinEtaSamples = 3;
-        private static readonly TimeSpan MinEtaSpan = TimeSpan.FromHours(1);
+        // ETA confidence gates now live in the shared IssueEtaProjection core (#2714 extracted
+        // them verbatim so the Home dashboard panel reuses the same discipline) —
+        // see IssueEtaProjection.MinEtaSamples / .MinEtaSpan.
 
         // ---- live state ------------------------------------------------
         private FocusPersistState _state = new();
@@ -658,33 +657,19 @@ namespace BuildConsole.Services
 
             int number = ms.Number ?? -1;
             var samples = _state.ClosedSamples.Where(s => s.MilestoneNumber == number).OrderBy(s => s.At).ToList();
-            if (samples.Count < MinEtaSamples)
-            {
-                p.EtaReason = $"not enough closed-count history yet ({samples.Count}/{MinEtaSamples} readings)";
-                return p;
-            }
-            var span = samples[^1].At - samples[0].At;
-            if (span < MinEtaSpan)
-            {
-                p.EtaReason = $"history only spans {span.TotalMinutes:0}m (< {MinEtaSpan.TotalMinutes:0}m) — too short to trust a pace";
-                return p;
-            }
 
-            // Reuse the usage-meter's least-squares slope: feed (time, closed-count) as the
-            // series so the fitted slope is "issues closed per hour" (UsageSample.Percent is
-            // just the y value here). Same math as the "time until 100%" projection.
+            // Fit the ETA with the ONE shared honest-projection core (#2714 extracted this from
+            // here verbatim so the Home dashboard's per-Epic / Milestone panel reuses the exact
+            // same sampling/gating discipline instead of approximating it). Feed (time, closed-count)
+            // so the fitted slope is "issues closed per hour"; the gates and reason strings are
+            // unchanged from what this method has always produced.
             var window = samples.Select(s => new UsageSample { At = s.At, Percent = s.Closed }).ToList();
-            double perHour = UsageProjection.LeastSquaresSlopePerHour(window);
-            if (perHour <= 0.0001)
-            {
-                p.EtaReason = "pace is flat in the current history — no honest ETA";
-                return p;
-            }
-            p.IssuesPerDay = perHour * 24.0;
             int remaining = Math.Max(0, ms.TotalIssues - ms.ClosedIssues);
-            if (remaining == 0) { p.EtaReason = "milestone complete"; return p; }
-            p.Eta = TimeSpan.FromHours(remaining / perHour);
-            p.HasEta = true;
+            var proj = IssueEtaProjection.Project(window, remaining, "milestone");
+            p.HasEta = proj.HasEta;
+            p.Eta = proj.HasEta ? proj.Eta : (TimeSpan?)null;
+            p.IssuesPerDay = proj.IssuesPerDay;
+            p.EtaReason = proj.EtaReason ?? "";
             return p;
         }
 

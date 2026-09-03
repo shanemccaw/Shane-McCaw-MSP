@@ -3586,6 +3586,10 @@ namespace BuildConsole
             home.RenderLeftOff(_chatTabsAtLaunch);
             home.RenderDashboardState(LeftSidebar.CurrentBoardIssues, LeftSidebar.CurrentMilestones);
             home.UpdateFocusState();
+            // #2714 — real per-Epic + Milestone projected-completion panel. force:false reuses the
+            // #2711 5-minute issue-fetch cache so a tab open doesn't hit GitHub every time (the
+            // panel's own ⟳ forces a fresh pull); respects the manual-refresh-only discipline.
+            _ = home.RefreshEtaProjectionsAsync(force: false);
             // Re-render the "What's New" section from the launch-time cache (no-op /
             // stays collapsed until InitWhatsNewAsync has computed it, or when there's
             // nothing new). Reopening Home mid-session shows the same set.
