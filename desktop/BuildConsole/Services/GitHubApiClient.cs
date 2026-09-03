@@ -219,8 +219,32 @@ namespace BuildConsole.Services
 
         private readonly HttpClient _http;
 
+        // Git #2770 — the real state of the token this client was built with, captured once at
+        // construction so a 401 later can be attributed. We record ONLY whether it was empty and
+        // its length — never the token value itself (it goes to the activity log, which Shane and
+        // agents read). An empty token here is the direct signature of the settings.json torn-read
+        // race (#2770): BuildConsoleSettings.Load() degraded to blank credentials under a concurrent
+        // Save(), and this client will 401 on its very first call.
+        private readonly bool _patWasEmpty;
+        private readonly int _patLength;
+
         public GitHubApiClient(string pat)
         {
+            _patWasEmpty = string.IsNullOrWhiteSpace(pat);
+            _patLength = pat?.Length ?? 0;
+
+            // Git #2770 — loud, immediate signal at the exact moment a doomed client is built. A
+            // client with no token WILL 401; logging it here (with the real empty/length state, not
+            // the value) means the next occurrence is diagnosable from the activity log without
+            // waiting to correlate a downstream 401 back to its source. This is the race the issue
+            // asked to make visible: an empty token here == Load() handed back blank credentials.
+            if (_patWasEmpty)
+                ActivityLog.Log("git-board.auth",
+                    "WARNING: GitHubApiClient constructed with an EMPTY/blank PAT — every call it makes will 401. " +
+                    "This is the #2770 signature: BuildConsoleSettings.Load() returned blank credentials (a torn read " +
+                    "of settings.json under a concurrent Save, or a genuinely-unconfigured PAT). A manual refresh that " +
+                    "reads a stable settings.json will build a client with a real token and succeed.");
+
             // Git #1784 — raised from 20s. A full 18-page project walk measured ~16s on a bare
             // network with zero overhead, close enough to the old 20s ceiling that Shane's real
             // run genuinely timed out mid-walk ("The request was canceled due to the configured
@@ -231,6 +255,26 @@ namespace BuildConsole.Services
             _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", pat);
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("BuildConsole");
             _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+        }
+
+        /// <summary>
+        /// Git #2770 — the single choke-point that turns a raw 401 into a diagnosable log line.
+        /// Called right after every <see cref="HttpClient.SendAsync(HttpRequestMessage)"/> in this
+        /// class (both the REST GET path and the GraphQL POST helpers) BEFORE the response is
+        /// consumed / EnsureSuccessStatusCode throws, so a 401 is always attributed to a real path
+        /// and a real token state. Records the token's empty/length state captured at construction
+        /// (never the value) plus the request path, so the next 401 tells us whether the cause was
+        /// an empty token (the torn-read race) or a present-but-rejected one (a genuinely
+        /// revoked/invalid PAT — a different problem). No-op on any non-401 response.
+        /// </summary>
+        private void LogIfUnauthorized(HttpResponseMessage res, string path)
+        {
+            if (res.StatusCode != HttpStatusCode.Unauthorized) return;
+            ActivityLog.Log("git-board.auth",
+                $"401 Unauthorized from GitHub on '{path}'. Token state at this client's construction: " +
+                (_patWasEmpty
+                    ? "EMPTY/blank — this is the #2770 torn-read race (Load() returned blank credentials); a manual refresh should clear it."
+                    : $"PRESENT (length {_patLength}) — a non-empty token was REJECTED, so this is NOT the empty-token race but a genuinely invalid/revoked/expired PAT or a scope problem. Check the PAT in Settings."));
         }
 
         // ── Git #876 (reopened): conditional requests (ETag) + traffic telemetry ─
@@ -312,6 +356,7 @@ namespace BuildConsole.Services
 
             var res = await _http.SendAsync(req);
             System.Threading.Interlocked.Increment(ref _restGetTotal);
+            LogIfUnauthorized(res, path); // Git #2770 — attribute any 401 before EnsureSuccessStatusCode throws
 
             if (res.StatusCode == HttpStatusCode.NotModified && cached != null)
             {
@@ -1462,6 +1507,7 @@ namespace BuildConsole.Services
                 Content = JsonContent.Create(new { query }),
             };
             var res = await _http.SendAsync(req);
+            LogIfUnauthorized(res, "graphql"); // Git #2770
             res.EnsureSuccessStatusCode();
 
             var body = await res.Content.ReadFromJsonAsync<GraphQLProjectResponse>(JsonOpts);
@@ -1510,6 +1556,7 @@ namespace BuildConsole.Services
             req.Headers.Add("GraphQL-Features", "sub_issues");
 
             var res = await _http.SendAsync(req);
+            LogIfUnauthorized(res, "graphql (issues board)"); // Git #2770
             res.EnsureSuccessStatusCode();
 
             var body = await res.Content.ReadFromJsonAsync<GraphQLIssuesResponse>(JsonOpts);

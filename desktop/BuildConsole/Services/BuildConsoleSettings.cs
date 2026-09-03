@@ -728,11 +728,69 @@ namespace BuildConsole.Services
 
         private static string SettingsPath => Path.Combine(SettingsDir, "settings.json");
 
+        // Git #2770 — the intermittent "Git 401 that clears itself after a manual Queue Panel
+        // refresh" traced to THIS method colliding with a concurrent Save(). Load() reads
+        // settings.json fresh on every call and is invoked from many threads/timers at once
+        // (every GitHubApiClient is built from BuildConsoleSettings.Load().GitHubPat, and
+        // startup fires a burst of board/queue polls simultaneously). The OLD Save() below used
+        // a non-atomic File.WriteAllText, which truncates the file to zero bytes and THEN writes
+        // — so a Load() landing in that window either got a sharing-violation IOException or a
+        // torn/empty read. Either way the blanket `catch` returned a fresh BuildConsoleSettings
+        // whose GitHubPat is "" — a GitHubApiClient built with an empty Bearer token 401s, and a
+        // later manual refresh (reading the now-stable file) succeeds. Two fixes, together:
+        //   1. Save() is now atomic (temp file + File.Move overwrite) so a reader never sees a
+        //      partial/truncated file — this removes the race window itself.
+        //   2. Load() retries a transient read/parse failure a few times before giving up (a
+        //      sharing violation clears in milliseconds), and if it still fails on a file that
+        //      genuinely EXISTS, logs LOUDLY rather than silently handing back blank credentials
+        //      that masquerade as "no PAT configured" / cause a 401. A genuinely-absent file
+        //      (fresh install) is still the legitimate empty-settings case and is not logged.
         public static BuildConsoleSettings Load()
         {
-            try
+            bool fileExists;
+            try { fileExists = File.Exists(SettingsPath); }
+            catch { fileExists = false; }
+            if (!fileExists) return new BuildConsoleSettings();
+
+            const int maxAttempts = 4;
+            Exception? lastError = null;
+            for (int attempt = 1; attempt <= maxAttempts; attempt++)
             {
-                if (!File.Exists(SettingsPath)) return new BuildConsoleSettings();
+                try
+                {
+                    return LoadCore();
+                }
+                catch (Exception ex) when (attempt < maxAttempts && (ex is IOException || ex is JsonException))
+                {
+                    // A concurrent Save() (sharing violation) or a torn read of a half-written
+                    // file — both transient and clear within milliseconds. Back off briefly and
+                    // retry rather than degrading to blank credentials on the first stumble.
+                    lastError = ex;
+                    System.Threading.Thread.Sleep(25 * attempt); // 25ms, 50ms, 75ms
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    break;
+                }
+            }
+
+            // The file exists but every attempt to read/parse it failed. Do NOT pretend this is a
+            // clean fresh install — that silent degrade to an empty GitHubPat is the #2770 bug.
+            ActivityLog.Log("settings.load",
+                $"WARNING: settings.json exists but could not be read after {maxAttempts} attempts " +
+                $"({lastError?.GetType().Name}: {lastError?.Message}). Returning DEFAULT settings for this call " +
+                $"— GitHub/credential-backed features will behave as if unconfigured until the next successful read. " +
+                $"If a GitHub 401 or a spurious 'no PAT configured' appears right now, this is why (see #2770).");
+            return new BuildConsoleSettings();
+        }
+
+        /// <summary>Git #2770 — the real read/deserialize/backfill body, factored out of <see cref="Load"/>
+        /// so the retry loop above can re-invoke it. Throws on a transient IO/parse failure (the retry
+        /// loop catches and retries); a genuinely-missing file is handled by the caller before this runs.</summary>
+        private static BuildConsoleSettings LoadCore()
+        {
+            {
                 var json = File.ReadAllText(SettingsPath);
                 var settings = JsonSerializer.Deserialize<BuildConsoleSettings>(
                     json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
@@ -772,17 +830,23 @@ namespace BuildConsole.Services
 
                 return settings;
             }
-            catch
-            {
-                return new BuildConsoleSettings();
-            }
         }
 
         public void Save()
         {
             Directory.CreateDirectory(SettingsDir);
             var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(SettingsPath, json);
+
+            // Git #2770 — atomic write. The old File.WriteAllText truncated settings.json to zero
+            // bytes then wrote, so a concurrent Load() (there are many — every GitHubApiClient is
+            // built from Load().GitHubPat) could read an empty/partial file or hit a sharing
+            // violation, degrade to blank credentials, and 401. Writing to a sibling temp file and
+            // then File.Move(overwrite) means a reader ever only sees the OLD complete file or the
+            // NEW complete file, never a half-written one. Temp lives in the same directory (same
+            // volume) so the move is a real atomic replace on NTFS, not a copy.
+            var tmpPath = SettingsPath + ".tmp";
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, SettingsPath, overwrite: true);
         }
     }
 }
