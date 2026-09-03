@@ -3496,6 +3496,7 @@ namespace BuildConsole
             var home = new BuildConsole.Controls.HomeView();
             home.InitializeHealthMonitor(_buildTrackerApi);
             home.ResumeChatRequested += Home_ResumeChatRequested;
+            home.ReopenAllRequested  += Home_ReopenAllRequested;
             home.RunningItemClicked  += (s, c) => { if (c.GithubNumber is int n) OpenChatForIssue(n); };
             home.DoneItemClicked     += (s, c) =>
             {
@@ -3874,6 +3875,19 @@ namespace BuildConsole
                 IssueGithubNumber = p.IssueGithubNumber,
             };
             OpenChatTab(chat, p.IssueGithubNumber);
+        }
+
+        /// <summary>Git #2707 — "Reopen All" on the RECENT CHATS card: reopens every remembered
+        /// tab, in the same saved order the list renders in. Reuses <see cref="Home_ResumeChatRequested"/>
+        /// per tab (same OpenChatTab path, same honest skip/toast for an entry with no ClaudeUrl) —
+        /// no separate reopen logic. Pane targeting is a known, noted limitation (#2707): OpenChatTab's
+        /// existing default placement logic decides the pane, not each tab's original PaneIndex.</summary>
+        private void Home_ReopenAllRequested(object? sender, IReadOnlyList<BuildConsole.Services.PersistedChatTab> tabs)
+        {
+            foreach (var p in tabs)
+            {
+                Home_ResumeChatRequested(sender, p);
+            }
         }
 
         /// <summary>

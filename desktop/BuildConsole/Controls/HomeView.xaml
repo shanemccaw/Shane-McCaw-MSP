@@ -340,9 +340,15 @@
                                             <TextBlock Text="RECENT CHATS" Style="{StaticResource HomeCardHeader}"/>
                                             <TextBlock x:Name="LeftOffCountText" Text="(0)" FontSize="11" Margin="6,0,0,0"
                                                        VerticalAlignment="Center" Foreground="{StaticResource Subtext1Brush}"/>
+                                            <Button x:Name="BtnReopenAllLeftOff" Content="Reopen All" Style="{StaticResource SecondaryButton}"
+                                                    FontSize="11" Padding="8,2" Margin="10,0,0,0" Cursor="Hand"
+                                                    ToolTip="Reopen every remembered chat, in saved order"
+                                                    Visibility="Collapsed" Click="BtnReopenAllLeftOff_Click"/>
                                         </StackPanel>
                                     </Grid>
-                                    <StackPanel x:Name="LeftOffList"/>
+                                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                                        <StackPanel x:Name="LeftOffList"/>
+                                    </ScrollViewer>
                                     <TextBlock x:Name="LeftOffEmpty" Text="No recent chats from your last session."
                                                FontSize="11" Foreground="{StaticResource Subtext1Brush}"
                                                Margin="2,2,0,0" Visibility="Collapsed"/>

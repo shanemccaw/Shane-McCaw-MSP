@@ -36,6 +36,12 @@ namespace BuildConsole.Controls
     public partial class HomeView : UserControl
     {
         public event EventHandler<PersistedChatTab>? ResumeChatRequested;
+
+        /// <summary>Git #2707 — "Reopen All" in the RECENT CHATS card header: raised with
+        /// the FULL remembered tab list (real saved order, no cap, no reshuffling). MainWindow
+        /// reuses the same per-tab <c>Home_ResumeChatRequested</c> handling ResumeChatRequested
+        /// already uses, once per tab.</summary>
+        public event EventHandler<IReadOnlyList<PersistedChatTab>>? ReopenAllRequested;
         public event EventHandler<HomeQueueClick>? RunningItemClicked;
         public event EventHandler<HomeQueueClick>? DoneItemClicked;
         public event EventHandler<HomeStuckItemClear>? ClearStuckItemRequested;
@@ -505,13 +511,19 @@ namespace BuildConsole.Controls
         }
 
         // ── Section 1: Where you left off ───────────────────────────────────
+        // Git #2707: full remembered list, no hard cap — LeftOffList now sits inside its
+        // own ScrollViewer (see HomeView.xaml) so a big session scrolls instead of truncating.
+        private IReadOnlyList<PersistedChatTab> _leftOffTabs = Array.Empty<PersistedChatTab>();
+
         public void RenderLeftOff(IReadOnlyList<PersistedChatTab> tabs)
         {
+            _leftOffTabs = tabs;
             LeftOffList.Children.Clear();
             LeftOffCountText.Text = $"({tabs.Count})";
             LeftOffEmpty.Visibility = tabs.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            BtnReopenAllLeftOff.Visibility = tabs.Count > 1 ? Visibility.Visible : Visibility.Collapsed;
 
-            foreach (var tab in tabs.Take(5))
+            foreach (var tab in tabs)
             {
                 var captured = tab;
                 string sub =
@@ -525,6 +537,15 @@ namespace BuildConsole.Controls
                     string.IsNullOrWhiteSpace(tab.ClaudeUrl) ? null : tab.ClaudeUrl,
                     (_, _) => ResumeChatRequested?.Invoke(this, captured)));
             }
+        }
+
+        /// <summary>Git #2707 — "Reopen All": reopens every remembered tab, in saved order.
+        /// MainWindow handles this the same way it handles a single ResumeChatRequested (same
+        /// OpenChatTab path, same honest skip/toast for entries with no ClaudeUrl).</summary>
+        private void BtnReopenAllLeftOff_Click(object sender, RoutedEventArgs e)
+        {
+            if (_leftOffTabs.Count == 0) return;
+            ReopenAllRequested?.Invoke(this, _leftOffTabs);
         }
 
         // ── Section 2: Running now ──────────────────────────────────────────
