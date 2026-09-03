@@ -20,6 +20,18 @@
  *       Also accepts a CustomerUser JWT when its customerId claim matches
  *       :customerId (dashboard Mission Control live scan progress).
  *
+ *   GET  /api/msp/customers/:customerId/scripts
+ *     — Requires-script findings on the customer's latest run, joined against
+ *       monitor_checks/script_modules so an operator can see per-check whether
+ *       a script is actually assigned (available: true/false, never invented).
+ *       #2673 — the real gap this file had: Diagnostics already had a full
+ *       MSP-operator surface (above); Scripts had none.
+ *
+ *   GET  /api/msp/customers/:customerId/scripts/:checkKey/download
+ *     — MSP-operator mirror of the customer download below: same script, same
+ *       three-step resolution, ownership scoped by assertCustomerAccess instead
+ *       of "caller IS this customer".
+ *
  * Customer portal routes (require CustomerUser role):
  *   GET  /api/portal/diagnostics/latest
  *     — Customer's latest run + findings summary (read-only).
@@ -624,6 +636,203 @@ router.get(
     } catch (err) {
       log.error({ err }, "GET /msp/customers/:id/diagnostics/runs/:runId/sse error");
       if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
+    }
+  },
+);
+
+// ── GET /api/msp/customers/:customerId/scripts ─────────────────────────────────
+// MSP-operator mirror of the customer-facing script-download surface (#2673,
+// Part of #2571 "Feature: Diagnostics and Scripts (MSP Console)"). Diagnostics
+// itself already has a full MSP-operator surface above (trigger/list/detail/
+// SSE) — this route file had zero MSP-operator routes for Scripts specifically,
+// which was the real, confirmed gap.
+//
+// Lists every requires_script finding on the customer's MOST RECENT run, joined
+// against monitor_checks/script_modules so an operator can see, per check,
+// whether a script package has actually been assigned — the same three-step
+// resolution GET /api/portal/scripts/:checkKey/download (customer-facing, above)
+// walks at download time, surfaced here as data instead of a 404 so an operator
+// can tell WHY a customer's download would fail before they try it.
+
+router.get(
+  "/msp/customers/:customerId/scripts",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(req.params["customerId"] as string, 10);
+      if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
+
+      const [customer] = await db
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+      if (!customer) { res.status(404).json({ error: "Customer not found" }); return; }
+      // Ownership + per-staff scoping via the shared source of truth, same
+      // pattern as every other MSP-operator route in this file.
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(404).json({ error: "Customer not found" }); return;
+      }
+
+      const [latestRun] = await db
+        .select({ runId: mspDiagnosticRunsTable.runId, createdAt: mspDiagnosticRunsTable.createdAt })
+        .from(mspDiagnosticRunsTable)
+        .where(and(
+          eq(mspDiagnosticRunsTable.customerId, customerId),
+          or(
+            eq(mspDiagnosticRunsTable.status, "completed"),
+            eq(mspDiagnosticRunsTable.status, "partial"),
+          ),
+        ))
+        .orderBy(desc(mspDiagnosticRunsTable.createdAt))
+        .limit(1);
+
+      if (!latestRun) { res.json({ runId: null, scripts: [] }); return; }
+
+      const findings = await db
+        .select({
+          findingId: mspDiagnosticFindingsTable.findingId,
+          checkKey: mspDiagnosticFindingsTable.checkKey,
+          checkLabel: mspDiagnosticFindingsTable.checkLabel,
+          severity: mspDiagnosticFindingsTable.severity,
+          title: mspDiagnosticFindingsTable.title,
+          createdAt: mspDiagnosticFindingsTable.createdAt,
+        })
+        .from(mspDiagnosticFindingsTable)
+        .where(and(
+          eq(mspDiagnosticFindingsTable.runId, latestRun.runId),
+          eq(mspDiagnosticFindingsTable.checkStatus, "requires_script"),
+        ))
+        .orderBy(mspDiagnosticFindingsTable.severity);
+
+      if (findings.length === 0) { res.json({ runId: latestRun.runId, scripts: [] }); return; }
+
+      const checkKeys = [...new Set(findings.map((f) => f.checkKey))];
+      const checks = await db
+        .select({ key: monitorChecksTable.key, scriptPackageId: monitorChecksTable.scriptPackageId })
+        .from(monitorChecksTable)
+        .where(inArray(monitorChecksTable.key, checkKeys));
+      const packageIdByCheckKey = new Map(checks.map((c) => [c.key, c.scriptPackageId]));
+
+      const packageIds = [...new Set(checks.map((c) => c.scriptPackageId).filter((id): id is string => Boolean(id)))];
+      const modules = packageIds.length > 0
+        ? await db
+          .select({ packageId: scriptModulesTable.packageId, filename: scriptModulesTable.filename, sortOrder: scriptModulesTable.sortOrder })
+          .from(scriptModulesTable)
+          .where(inArray(scriptModulesTable.packageId, packageIds))
+          .orderBy(scriptModulesTable.sortOrder)
+        : [];
+      const firstModuleByPackageId = new Map<string, { filename: string | null }>();
+      for (const m of modules) {
+        if (!firstModuleByPackageId.has(m.packageId)) firstModuleByPackageId.set(m.packageId, { filename: m.filename });
+      }
+
+      // Real, honest per-check availability — never invented. A check with no
+      // scriptPackageId assigned, or a package with no modules, reports
+      // available: false with the real reason rather than a synthesized script.
+      const scripts = findings.map((f) => {
+        const scriptPackageId = packageIdByCheckKey.get(f.checkKey) ?? null;
+        const module = scriptPackageId ? firstModuleByPackageId.get(scriptPackageId) : undefined;
+        return {
+          findingId: f.findingId,
+          checkKey: f.checkKey,
+          checkLabel: f.checkLabel,
+          severity: f.severity,
+          title: f.title,
+          createdAt: f.createdAt,
+          scriptPackageId,
+          filename: module?.filename ?? null,
+          available: Boolean(scriptPackageId && module),
+        };
+      });
+
+      res.json({ runId: latestRun.runId, scripts });
+    } catch (err) {
+      const status = (err as { status?: number }).status ?? 500;
+      log.error({ err }, "GET /msp/customers/:id/scripts error");
+      res.status(status).json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+);
+
+// ── GET /api/msp/customers/:customerId/scripts/:checkKey/download ─────────────
+// MSP-operator mirror of GET /api/portal/scripts/:checkKey/download (below).
+// Same three-step resolution and same honest 404s, but scoped by MSP ownership
+// of the customer (assertCustomerAccess) rather than "the caller IS this
+// customer" — an operator can pull the exact file a customer would receive.
+
+router.get(
+  "/msp/customers/:customerId/scripts/:checkKey/download",
+  requireRole("MSPOperator"),
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = parseInt(req.params["customerId"] as string, 10);
+      const { checkKey } = req.params as { checkKey: string };
+      if (isNaN(customerId)) { res.status(400).json({ error: "Invalid customerId" }); return; }
+
+      const [customer] = await db
+        .select({ id: tenantsTable.id, mspId: tenantsTable.mspId })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, customerId))
+        .limit(1);
+      if (!customer) { res.status(404).json({ error: "No script available for this check" }); return; }
+      if (!(await assertCustomerAccess(req.user!, customerId))) {
+        res.status(404).json({ error: "No script available for this check" }); return;
+      }
+
+      const [finding] = await db
+        .select({ findingId: mspDiagnosticFindingsTable.findingId })
+        .from(mspDiagnosticFindingsTable)
+        .where(and(
+          eq(mspDiagnosticFindingsTable.customerId, customerId),
+          eq(mspDiagnosticFindingsTable.checkKey, checkKey),
+          eq(mspDiagnosticFindingsTable.checkStatus, "requires_script"),
+        ))
+        .orderBy(desc(mspDiagnosticFindingsTable.createdAt))
+        .limit(1);
+
+      if (!finding) {
+        res.status(404).json({ error: "No script available for this check" });
+        return;
+      }
+
+      const [check] = await db
+        .select({ scriptPackageId: monitorChecksTable.scriptPackageId })
+        .from(monitorChecksTable)
+        .where(eq(monitorChecksTable.key, checkKey))
+        .limit(1);
+
+      if (!check?.scriptPackageId) {
+        res.status(404).json({ error: "No script has been assigned to this check yet" });
+        return;
+      }
+
+      const modules = await db
+        .select({
+          filename: scriptModulesTable.filename,
+          content: scriptModulesTable.content,
+        })
+        .from(scriptModulesTable)
+        .where(eq(scriptModulesTable.packageId, check.scriptPackageId))
+        .orderBy(scriptModulesTable.sortOrder)
+        .limit(1);
+
+      const [module] = modules;
+      if (!module) {
+        res.status(404).json({ error: "No script has been assigned to this check yet" });
+        return;
+      }
+
+      const filename = module.filename?.trim() || `${checkKey}.ps1`;
+
+      log.info({ customerId, checkKey, operatorId: req.user!.id }, "GET /msp/customers/:id/scripts/:checkKey/download");
+
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(module.content);
+    } catch (err) {
+      log.error({ err }, "GET /msp/customers/:id/scripts/:checkKey/download error");
+      res.status(500).json({ error: "Internal server error" });
     }
   },
 );
