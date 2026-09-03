@@ -1,60 +1,144 @@
 # Security Plan — contract extraction pack for Claude Design
 
-**#1495** (Portal New Design: Security Plan), following the method fixed by **#1577**
-(contract extraction pack, run per module as step 3 of **#1578**), under **#1485**
-(EPIC: Portal New Design). Sub-issues **#1561–#1568**.
+**#1731** (regenerate from the finished backend, the #1642 pattern), superseding the pack shipped
+under **#1495** on 2026-08-29. Method fixed by **#1577** (contract extraction pack, run per module
+as step 3 of **#1578**), under **#1485** (EPIC: Portal New Design). Backend sub-issues
+**#1561–#1568**, all closed; **#2085** (business-unit scope gap) closed with a real fix.
 
-Read-only. Every field below is extracted verbatim from the route's own `Wire*` interface and
-the Drizzle schema, cited to file:line. **Nothing here is authored or invented.** No product
+Read-only. Every field below is extracted verbatim from a route's own `Wire*`/exported interface
+and the Drizzle schema, cited to file:line. **Nothing here is authored or invented.** No product
 code, no schema changes, no UI, no `drizzle-kit push`.
 
-**This pack is unlike its five siblings in one important way.** Change Control (#1486), Risk
-Register (#1487) and Microsoft Changes (#1494) each extract a contract that is *becoming* more
-correct. Security Plan extracts a contract that is **structurally the wrong shape** — a real,
-live, admin-authored plan-of-record built *before* the architecture settled underneath it, and
-the settled architecture (#1495's 2026-08-28 comment, sub-issues #1561–1567) describes a
-**different kind of artifact entirely**: not a hand-typed narrative, but a view **assembled**
-from the other eight modules plus authored prose, frozen and sealed as versions. Both are true
-at once and neither should be papered over: §1 extracts what exists; §2 states plainly that it
-is not the same thing #1561 describes.
+**Why this pack replaces the #1495 one wholesale, not edited.** The prior pack's whole thesis
+(§2 there) was that a real, live, admin-authored plan existed but did **not** implement the
+settled 2026-08-28 architecture — "a view over the other eight modules, owning almost no data of
+its own" (#1561). That architecture has since actually shipped: #1561–#1567 landed real code
+(`security-plan-assembly.ts`, `security-plan-versioning.ts`, `security-plan-drift.ts`,
+`security-plan-prose.ts`, `security-plan-draft.ts`, `routes/msp-security-plan.ts`), and #2085 (a
+finding raised by the #1561 build itself) landed a real `tenants.business_unit` column plus its
+own AdminV2 editor. So the situation this pack must document has fully inverted from the last
+one: **the settled architecture is now the real, built, tested MSP-side surface** — and the
+**original admin-authored table is now the stale one**, unchanged since 2026-08-21 and, as of this
+pack, disconnected from any live customer-facing page at all (§0.3). Both halves are documented
+here on their own terms; neither is presented as if it were the other.
 
-Backend route: `artifacts/api-server/src/routes/portal-security-plan.ts` (customer-scoped, GET only)
-Schema: `lib/db/src/schema/msp.ts:4545-4684` (`portal_security_plans` + 3 child tables)
-Seed migration: `lib/db/migrations/manual/2026-08-21-portal-v2-security-plan.sql`
-Portal wire/model/live files: `artifacts/msp-portal/src/components/portal-v2/securityPlanWire.ts`,
-`securityPlanModel.ts`, `securityPlanLive.ts`, `securityPlanData.ts` (design-reference-only fixture)
-Page: `artifacts/msp-portal/src/pages/portal-v2-security-plan.tsx`
-
----
-
-## 0. The one surface and its consumer
-
-| Endpoint | Method | Route file:line | Consumed by | Orphaned? |
-|---|---|---|---|---|
-| `/api/portal/security-plan` | GET | `portal-security-plan.ts:109-212` | `useSecurityPlan` (`securityPlanLive.ts:104-174`) → `portal-v2-security-plan.tsx` | No |
-
-**No orphaned live endpoint in this module.** The single customer-scoped endpoint is fully
-consumed — every field in `WireSecurityPlanPayload` (tenant, env, tier, version, updated,
-approver, owner.initials, owner.tone, every section, every row, every history entry) is read and
-rendered by the page (`portal-v2-security-plan.tsx:168-625`). Per #1577 / the #1485 standing
-convention, **no sub-issue is filed** for this module — there is nothing orphaned to file for.
-
-There is deliberately **no POST/PATCH/DELETE** on this route (`portal-security-plan.ts:16-24`):
-the plan is authored by the MSP through the manual migration, not through the portal. This is a
-genuine, current product decision, not a gap — see §9.
+Backend routes: `artifacts/api-server/src/routes/portal-security-plan.ts` (customer-scoped,
+GET-only, unchanged since #1495) and `artifacts/api-server/src/routes/msp-security-plan.ts`
+(MSP-scoped, the assembled/versioned/signed surface, #1561–#1567)
+Assembly/versioning/drift/prose/draft libs: `artifacts/api-server/src/lib/security-plan-assembly.ts`,
+`security-plan-versioning.ts`, `security-plan-drift.ts`, `security-plan-prose.ts`,
+`security-plan-draft.ts`, `security-plan-cross-tenant.ts` (#2145, no route yet — §7.2)
+Schema: `lib/db/src/schema/msp.ts:6391-6679` (`msp_security_plan_versions` +
+`msp_security_plan_drafts` + their shared TS types) and `lib/db/src/schema/msp.ts:7441-7580`
+(`portal_security_plans` + 3 child tables, unchanged since #1495)
+Seed/DDL migrations: `lib/db/migrations/manual/2026-08-21-portal-v2-security-plan.sql`,
+`2026-08-31-security-plan-versioning-1561.sql`, `2026-08-31-security-plan-prose-1566.sql`,
+`2026-09-01-tenants-business-unit-2085.sql`
+Customer-facing page: **none currently in the live portal build** — see §0.3.
 
 ---
 
-## 1. Wire contract — what exists today (CURRENT)
+## 0. The surfaces and their consumers
+
+**msp-portal was retired and replaced by `artifacts/portal` (Git commit `f40438cdc`, "Portal
+scaffolding: create artifacts/portal, retire artifacts/msp-portal") since the #1495 pack was
+written.** `artifacts/msp-portal` no longer exists in the repo. `artifacts/portal/src/pages`
+currently holds four files: `coming-soon.tsx`, `index.tsx`, `not-found.tsx`, `support.tsx` — no
+Security Plan page, no `securityPlanWire.ts`/`securityPlanModel.ts`/`securityPlanLive.ts`, and no
+`securityPlanData.ts` fixture (`find … -iname securityPlanData.ts` across the repo, outside
+`node_modules`, returns nothing). `Design/portal/` (the live #1485 design source) has no Security
+Plan `.dc.html` export either. Per the standing convention, that means Security Plan has **no
+design and no page today** — this pack is the input the eventual Design pass needs, not a
+description of something already wired. The shell nav does carry a placeholder entry —
+`artifacts/portal/src/components/shell/moduleNav.ts:52`:
+`{ key: "security-plan", label: "Security Plan", icon: FileCheck2, builtPath: null }` —
+`builtPath: null` marks it explicitly unbuilt, consistent with everything else in this section.
+
+| Endpoint | Method | Route file:line | Role | Consumed by | Orphaned? |
+|---|---|---|---|---|---|
+| `/api/portal/security-plan` | GET | `portal-security-plan.ts:109-212` | `CustomerUser` | **Nothing.** No page in `artifacts/portal` calls it. | **Yes — orphaned since the portal-v2→portal migration removed its only caller.** Not a new sub-issue (see §0.3): the endpoint's data model is itself superseded by §0.2 below, so re-wiring the old page verbatim would be wiring the wrong contract. |
+| `/api/msp/security-plan/:customerId/assembled` | GET | `msp-security-plan.ts:209-225` | `MSPOperator` | Nothing (§0.2) | **Yes — deliberately, per the route's own header ("SCOPE STOP … there is no `Design/portal` export and no `artifacts/portal` page to wire it to yet")** |
+| `/api/msp/security-plan/:customerId/drift` | GET | `msp-security-plan.ts:238-253` | `MSPOperator` | Nothing | Yes, same reason |
+| `/api/msp/security-plan/:customerId/versions` | GET | `msp-security-plan.ts:256-271` | `MSPOperator` | Nothing | Yes, same reason |
+| `/api/msp/security-plan/:customerId/versions/current` | GET | `msp-security-plan.ts:275-294` | `MSPOperator` | Nothing | Yes, same reason |
+| `/api/msp/security-plan/:customerId/draft/freeze` | POST | `msp-security-plan.ts:308-332` | `MSPOperator` | Nothing | Yes, same reason |
+| `/api/msp/security-plan/:customerId/draft` | GET | `msp-security-plan.ts:336-355` | `MSPOperator` | Nothing | Yes, same reason |
+| `/api/msp/security-plan/:customerId/draft/prose` | PATCH | `msp-security-plan.ts:365-389` | `MSPOperator` | Nothing | Yes, same reason |
+| `/api/msp/security-plan/:customerId/versions` | POST | `msp-security-plan.ts:397-456` | `MSPOperator` | Nothing | Yes, same reason |
+| `/api/msp/security-plan/:customerId/versions/:versionUid/sign` | PATCH | `msp-security-plan.ts:468-508` | `MSPAdmin` | Nothing | Yes, same reason |
+
+Both routers are genuinely mounted and live: `routes/index.ts:487` (`router.use(portalSecurityPlanRouter)`)
+and `routes/index.ts:537` (`router.use(mspSecurityPlanRouter)`), imported at `:180` and `:268`
+respectively — these are real, reachable endpoints, not dead imports.
+
+### 0.1 Why nine endpoints are orphaned and this pack does not file nine sub-issues for them
+
+Per §"Trigger for filing sub-issues" in #1731's own issue body: a pack files a sub-issue for "a
+real, live endpoint the page does not call." All nine MSP-side endpoints qualify literally, but
+`msp-security-plan.ts:23-27`'s own header already states the scope stop explicitly and by design:
+*"SCOPE STOP on #1561/#1562/#1566 ends this build at the wire contract — there is no
+`Design/portal` export and no `artifacts/portal` page to wire it to yet."* That is not an
+oversight to file as a gap — it is a **documented, deliberate handoff point**, and #1568's own
+resolution (§7.2) makes the same call for the MSP cross-tenant read. Filing "the endpoint your own
+header says is not wired yet" as a surprise finding would misrepresent a planned stopping point as
+an accidental one. What this pack *does* flag as a genuine, previously-undocumented gap is §0.3.
+
+### 0.2 What each MSP-side surface is, briefly (full detail in §1–§6)
+
+`/assembled` — the live, honest (or scoped) assembled document: every module's current rows,
+`GET`, non-mutating. `/drift` — the same live document plus its diff against the last **signed**
+version. `/draft/*` — the frozen-state holding pen between "freeze" and "seal" (#1566's fixed
+authoring sequence). `/versions` (`POST`) — seals the frozen draft as a new, superseding version.
+`/versions/:versionUid/sign` — signs the current, unsigned version.
+
+### 0.3 New finding — the customer-facing endpoint's own data model is now stale, not just its page
+
+`portal-security-plan.ts` has exactly one commit in its history (`d3c3bfa3c`, the #1495 build) and
+has not been touched since. It still serves `portal_security_plans` — a table of **hand-typed**
+`req`/`state`/`detail` rows, authored once via a manual-migration seed, with **zero reads from any
+of the seven source modules** the settled #1561 architecture assembles from. Meanwhile the MSP
+side now has a real, tested assembly/versioning/signing pipeline over exactly those seven modules.
+So there are now genuinely **two different, disconnected models of "the Security Plan" in the same
+codebase**: an old admin-authored plan-of-record table with a customer-facing (but currently
+page-less) read route, and a new assembled/versioned/signed pipeline with an MSP-facing (but
+currently unwired) surface. Nothing bridges them — the customer route does not read
+`msp_security_plan_versions`, and nothing on the MSP side writes to `portal_security_plans`. This
+is filed as a sub-issue (§8) because it is a genuine, previously-undocumented architectural split,
+not something either #1561's header or #1568 already named.
+
+---
+
+## 1. Customer-facing wire contract — the ORIGINAL model (CURRENT, but orphaned — §0.3)
 
 `GET /api/portal/security-plan` reads `portalSecurityPlansTable` and its three child tables
-(`msp.ts:4575-4684`), scoped to the caller's own `customerId` (`portal-security-plan.ts:113,
-123`, a direct `tenants.id` equality — no `(mspId, tenantId)` pair, because nothing here reads
-an MSP-era table; `:26-30`).
+(`msp.ts:7471-7580`), scoped to the caller's own `customerId` (`portal-security-plan.ts:113, 123`
+— a direct `tenants.id` equality, no `(mspId, tenantId)` pair, matching #1495's original note that
+nothing here reads an MSP-era table).
 
 ```ts
-// portal-security-plan.ts:91-107 — WireSecurityPlan / WireSecurityPlanPayload (verbatim)
-interface WireSecurityPlan {
+// portal-security-plan.ts:64-107 — verbatim
+export interface WireSecPlanRow {
+  readonly req: string;
+  readonly state: string;      // met | partial | gap
+  readonly detail: string;
+  readonly to: string;         // a portal route path
+  readonly toLabel: string;
+}
+export interface WireSecPlanSection {
+  readonly k: string;
+  readonly n: string;
+  readonly label: string;
+  readonly lead: string;
+  readonly rows: readonly WireSecPlanRow[];
+}
+export interface WireSecPlanVersion {
+  readonly v: string;
+  readonly when: string;
+  readonly who: string;
+  readonly what: string;
+  readonly cr: string;
+}
+export interface WireSecurityPlan {
   readonly tenant: string;
   readonly env: string;
   readonly tier: string;
@@ -65,132 +149,299 @@ interface WireSecurityPlan {
   readonly sections: readonly WireSecPlanSection[];
   readonly history: readonly WireSecPlanVersion[];
 }
-interface WireSecurityPlanPayload {
-  readonly plan: WireSecurityPlan | null;   // null = this customer has none authored yet
-}
-```
-
-### 1.1 Plan header
-
-| Wire field | Source column | DB type | Wire nullable | Status |
-|---|---|---|---|---|
-| `tenant` | `tenant` (`msp.ts:4580`) | text, notNull | no | CURRENT — authored label, not a live tenant-name join |
-| `env` | `env` (`msp.ts:4582`) | text, notNull | no | CURRENT — authored, e.g. "Production" |
-| `tier` | `tier` (`msp.ts:4584`) | text, notNull | no | CURRENT — authored, e.g. "Enhanced" |
-| `version` | `version` (`msp.ts:4586`) | text, notNull | no | CURRENT — authored string, e.g. "v4.2"; **not** the versioning model #1562 describes (§2) |
-| `updated` | `updated_label` (`msp.ts:4588-4592`) | text, notNull | no | CURRENT — a display string typed as authored ("19 August 2026"), not a timestamp |
-| `approver` | `approver` (`msp.ts:4594`) | text, notNull | no | CURRENT — authored name + title; **not** the same thing as the signature-to-scope model #1564 leaves open (§2, §7) |
-| `owner.initials` | `owner_initials` (`msp.ts:4596`) | text, notNull | no | CURRENT |
-| `owner.tone` | `owner_tone` (`msp.ts:4598`) | text, notNull | no | CURRENT — hex colour for the header chip |
-
-### 1.2 Section — `WireSecPlanSection`
-
-```ts
-// portal-security-plan.ts:72-79 — verbatim
-interface WireSecPlanSection {
-  readonly k: string;       // stable key, e.g. "governance"
-  readonly n: string;       // two-digit display number, e.g. "02" — a label, not an int
-  readonly label: string;
-  readonly lead: string;
-  readonly rows: readonly WireSecPlanRow[];
+export interface WireSecurityPlanPayload {
+  readonly plan: WireSecurityPlan | null;
 }
 ```
 
 | Wire field | Source column | DB type | Status |
 |---|---|---|---|
-| `k` | `section_key` (`msp.ts:4614`) | text, notNull | CURRENT |
-| `n` | `number` (`msp.ts:4616`) | text, notNull | CURRENT |
-| `label` | `label` (`msp.ts:4619`) | text, notNull | CURRENT |
-| `lead` | `lead` (`msp.ts:4620`) | text, notNull | CURRENT |
-| `rows` | joined from `portal_security_plan_rows` by `section_id`, ordered by `position` | — | CURRENT |
+| `tenant` | `tenant` (`msp.ts:7476`) | text, notNull | CURRENT — authored label |
+| `env` | `env` (`msp.ts:7478`) | text, notNull | CURRENT — authored |
+| `tier` | `tier` (`msp.ts:7480`) | text, notNull | CURRENT — authored |
+| `version` | `version` (`msp.ts:7482`) | text, notNull | CURRENT — authored string, **not** the versioning model §2 describes |
+| `updated` | `updated_label` (`msp.ts:7489`) | text, notNull | CURRENT — a display string, not a timestamp |
+| `approver` | `approver` (`msp.ts:7491`) | text, notNull | CURRENT — authored name+title; **not** the signature record §3.4 describes |
+| `owner.initials` / `owner.tone` | `owner_initials` / `owner_tone` (`msp.ts:7493-7495`) | text, notNull | CURRENT |
+| `sections[].k`/`n`/`label`/`lead` | `portal_security_plan_sections` (`msp.ts:7506-7523`) | text, notNull | CURRENT |
+| `sections[].rows[].req`/`state`/`detail` | `portal_security_plan_rows` (`msp.ts:7528-7553`) | text/enum, notNull | CURRENT — **hand-typed judgment**, no read from any of the seven source modules |
+| `sections[].rows[].to`/`toLabel` | `to_route`/`to_label` (`msp.ts:7545-7547`) | text, notNull | CURRENT — a navigation link, not a data join |
+| `history[]` | `portal_security_plan_versions` (`msp.ts:7558-7577`) | text, notNull | CURRENT — hand-typed; `cr` (`msp.ts:7572`) carries no FK to `msp_change_requests` |
 
-### 1.3 Requirement row — `WireSecPlanRow`
+**Derived, client-side only (dead in the current portal build — the code that read this payload no
+longer exists):** the header verdict, met percentage, per-section gap count and tallies were
+computed in `securityPlanModel.ts`, which was removed along with the rest of `artifacts/msp-portal`
+(§0.3). If/when this data is wired into a new page, "derive, don't store a copy" remains the right
+model to carry forward.
 
-```ts
-// portal-security-plan.ts:64-70 — verbatim
-interface WireSecPlanRow {
-  readonly req: string;
-  readonly state: string;      // met | partial | gap
-  readonly detail: string;
-  readonly to: string;         // a portal-v2 route path
-  readonly toLabel: string;
-}
-```
+### 1.1 Local DB state, honestly reported
 
-| Wire field | Source column | DB type | Status |
-|---|---|---|---|
-| `req` | `req` (`msp.ts:4638`) | text, notNull | CURRENT — **hand-typed prose**, not derived from any control/policy/risk row |
-| `state` | `state` (`msp.ts:4640`) | text, notNull, enum `met\|partial\|gap` | CURRENT — **hand-typed judgment**, not computed from a real check/finding (see §2, §6) |
-| `detail` | `detail` (`msp.ts:4642`) | text, notNull | CURRENT — hand-typed |
-| `to` | `to_route` (`msp.ts:4644-4648`) | text, notNull | CURRENT — a **navigation link**, stored verbatim; the page's own `LIVE_ROUTES` set (`portal-v2-security-plan.tsx:60-74`) decides at render time whether it is clickable. This is the only place the row touches another module, and it is a link, not a data join (§2). |
-| `toLabel` | `to_label` (`msp.ts:4650`) | text, notNull | CURRENT |
-
-### 1.4 Version history entry — `WireSecPlanVersion`
-
-```ts
-// portal-security-plan.ts:82-88 — verbatim
-interface WireSecPlanVersion {
-  readonly v: string;
-  readonly when: string;
-  readonly who: string;
-  readonly what: string;
-  readonly cr: string;
-}
-```
-
-| Wire field | Source column | DB type | Status |
-|---|---|---|---|
-| `v` | `version` (`msp.ts:4668`) | text, notNull | CURRENT — authored version label |
-| `when` | `when_label` (`msp.ts:4670`) | text, notNull | CURRENT — display string, not a timestamp |
-| `who` | `who` (`msp.ts:4672`) | text, notNull | CURRENT — hand-typed name |
-| `what` | `what` (`msp.ts:4674`) | text, notNull | CURRENT — hand-typed change description |
-| `cr` | `cr` (`msp.ts:4676`) | text, notNull | CURRENT — a **display string** of a CR code (e.g. "CR-0131"), rendered as a button that navigates to `/portal-v2/change-control` (`portal-v2-security-plan.tsx:603-620`) but **carries no `change_request_id` FK** — it is not joined to `mspChangeRequestsTable`. Compare to the real edge `portal_hold_window_events.change_request_id` the Change Control pack documents; this one is text-only. |
-
-**Derived, not served (client-side only, `securityPlanModel.ts`):** the header verdict
-(`spVerdict`), the met percentage (`spPct`), the per-section gap count (`spSectionGaps`), and the
-met/partial/gap tallies (`spCounts`) are all computed from `rows` at render time — deliberately
-not duplicated server-side, "a plan that could disagree with itself defeats its own claim"
-(`portal-security-plan.ts:37-42`). This part of the architecture (derive, don't store a copy) is
-consistent with, and should carry forward into, the assembled-view model §2 describes.
+Queried directly against the local `DATABASE_URL` at pack time: `portal_security_plans`,
+`portal_security_plan_sections`, `portal_security_plan_rows`, `portal_security_plan_versions` all
+report **0 rows**, even though `simulator_migration_runs` records
+`2026-08-21-portal-v2-security-plan.sql` as having run (`ran_at 2026-08-21 19:16:00-04`) and that
+file's own seed is idempotent (`DELETE ... WHERE customer_id = v_customer_id` then re-`INSERT`,
+`lib/db/migrations/manual/2026-08-21-portal-v2-security-plan.sql:141-244`). The local database was
+evidently reset since that seed last ran, and this read-only pack does not re-run it (out of scope
+for a pack that changes no data). This does not change any field mapping above — the migration
+file, route, and schema are all real and unchanged — but a session verifying live behavior locally
+should not be surprised to find `{ plan: null }` for the testbed customer today.
 
 ---
 
-## 2. What this module actually owns vs. what the settled architecture says it should own
+## 2. MSP-side wire contract — the SETTLED architecture, as actually built (CURRENT, real, orphaned by design — §0.1)
 
-**#1561 (settled 2026-08-28) says:** "This is not a tenth module. It is a VIEW over the other
-eight, plus authored prose. It owns almost no data of its own" — contributions come from Policy
-Engine (#1490), Risk Register (#1487), Ownership/RACI (#1491), SOPs/Runbooks (#1493),
-Remediation (#1489), Change Control (#1486), and Microsoft Changes (#1494); this module owns only
-the authored prose and the version records.
+`assembleSecurityPlan(tenant, scope)` (`security-plan-assembly.ts:424-451`) reads seven source
+tables — no eighth "own" table beyond the version/draft records themselves:
 
-**What is actually built today owns 100% of its own data**, not "almost none". Every requirement
-row's `req` / `state` / `detail` is typed directly into the four `portal_security_plan*` tables
-by the manual migration (`2026-08-21-portal-v2-security-plan.sql`) — there is **no read from any
-of the eight modules' own tables anywhere in `portal-security-plan.ts`**. The `to` / `toLabel`
-pair on each row is a navigation hint, not a data join: clicking it *sends the reader* to, say,
-Ownership, but the row's `state` ("met"/"partial"/"gap") was never computed from an Ownership
-row — it was typed by whoever authored the migration, at the same time as the prose.
+```
+Policy Decisions   (#1490) — policy_decisions            (security-plan-assembly.ts:122-149)
+Risk Register      (#1487) — msp_risk_decisions           (:151-179)
+Ownership / RACI    (#1491) — portal_ownership_rows        (:181-207)
+SOPs / Runbooks     (#1493) — msp_sops                     (:209-240)
+Remediation         (#1489) — remediation_tracker_steps    (:242-267)
+Change Control      (#1486) — msp_change_requests          (:269-296)
+Microsoft Changes   (#1494) — m365_change_interpretations  (:298-324)
+```
 
-This is not a bug to fix in this read-only pass — it is the honest gap this pack exists to
-surface. The schema/route/page shipped **before** #1495's architecture comment settled (migration
-dated 2026-08-21; the comment settling "view, not tenth module" is dated 2026-08-28), so the
-current build reflects an earlier, simpler idea of the page ("port the fixture to a real table")
-rather than the assembled-view design decided afterward. Concretely:
+Every reader is scoped by `(mspId, tenantId)` or `customerId` off the resolved `TenantScope`
+(`portal-customer-scope.ts:43-52`), never by a caller-supplied id. Each returns a uniform
+`SecurityPlanAssembledItem` (`msp.ts:6495-6503`):
 
-| What #1561 says this module should do | What is actually built |
-|---|---|
-| Assemble `state` per requirement from real data in the owning module | `state` is a hand-typed enum value, no computation |
-| `req`/`detail` describe a control whose real configuration lives in Policy Engine/Ownership/etc. | `req`/`detail` are free text with no FK to any owning table |
-| Version = frozen assembled state + prose, sealed together (#1562) | `version`/`history` are hand-typed strings with no seal, no frozen snapshot, no signature capture |
-| Signature attaches to a scope (#1564, open) | `approver`/`updated_label` are a single authored name + date string, not a signature record |
-| Scope filtering, never findings filtering (#1563) | No filtering of any kind exists — the page renders the plan's rows unconditionally |
-| Filter footprint on every generated artifact (#1565) | No export/generation path exists at all |
-| Divergence flagging — data drift only, never prose staleness (#1567) | No comparison against underlying module state exists; nothing is flagged |
+```ts
+// msp.ts:6495-6503 — verbatim
+export interface SecurityPlanAssembledItem {
+  readonly id: string;
+  readonly title: string;
+  readonly state: string | null;
+  readonly detail: string | null;
+  readonly pillar: string | null;
+  readonly framework: string | null;
+  readonly businessUnit: string | null;
+}
+```
 
-**Consequence for Design:** the current wire contract in §1 is real and can be extracted
-verbatim, but it must not be presented to Design as "the Security Plan contract" without this
-caveat — it is the *previous* model's contract, not the *settled* one's. Design should be handed
-this pack expecting a rebuild of the assembly layer, not a wire job over what exists.
+`state`/`detail` per module (all real column reads, none fabricated — `security-plan-assembly.ts`):
+
+| Module | `state` from | `detail` from |
+|---|---|---|
+| Policy Decisions | `decision_state` | `Review: {reviewState}` if present, else `obligation` |
+| Risk Register | `status` | `Raw {rawRiskLevel} → residual {residualRiskLevel}` |
+| Ownership / RACI | `obj_type` | `sub` |
+| SOPs / Runbooks | `version_status` | `{category} · {automationType}` |
+| Remediation | `status` | `Verification: {verificationState}` if present |
+| Change Control | `status` | `{changeClass} · {riskLevel} · {category}` |
+| Microsoft Changes | `status` | `{changeClass} · controllable: {controllable}` if present |
+
+`pillar`/`framework` are only populated where a real column exists (Policy Decisions: `pillar`
+only; Risk Register: both; every other module: both `null` — SOPs' own `category` is deliberately
+**not** mapped onto `pillar`, "conflating two different vocabularies," `security-plan-assembly.ts:231-234`).
+`businessUnit` is the same value on every item in one assembly — `tenants.business_unit` (§2.1),
+not a per-row column.
+
+### 2.1 Scope dimensions (#1563, #2085) — real, all three backed
+
+```ts
+// msp.ts:6437 — verbatim
+export const SECURITY_PLAN_SCOPE_DIMENSIONS = ["pillar", "framework", "businessUnit"] as const;
+```
+
+| Dimension | Backing column | Status |
+|---|---|---|
+| `pillar` | `policy_decisions.pillar`, `msp_risk_decisions.pillar` | CURRENT — varies per row |
+| `framework` | `msp_risk_decisions.framework` | CURRENT — varies per row |
+| `businessUnit` | `tenants.business_unit` (added by `2026-09-01-tenants-business-unit-2085.sql`) | **CURRENT as of #2085** — nullable freeform text, one value per tenant (so scoping on it within one plan is all-or-nothing, `security-plan-assembly.ts:28-30`); editable via `PATCH /admin/active-directory/customer/:id` (`admin-active-directory.ts:641-674`), wired in AdminV2's `AdCustomerCanvas.tsx`. Locally, both seeded tenants (`id 1`, `id 3`) currently have `business_unit` **null** — the column and its editor are real, but no tenant has been given a value yet, so the dimension is real-but-currently-inert on this DB. |
+
+`isExcludedByScope` (`security-plan-assembly.ts:108-118`, tested `security-plan-assembly.test.ts:52-90`
+including a dedicated `businessUnit (#2085) excludes/retains exactly like pillar/framework` case,
+`:72-76`): a row is excluded by a dimension only when it *carries* a value not in the allowed set;
+a `null` value is always retained, never dropped by absence. **No outcome filter exists anywhere in
+this module** — the `scopeSchema` (`msp-security-plan.ts:156-164`) accepts only `dimensions.pillar`
+/ `dimensions.framework` / `dimensions.businessUnit` and an optional `statement`; any other query
+key (e.g. an attempted `severity=`) is silently ignored (`msp-security-plan.ts:166-180`), which is
+what structurally enforces #1563 rather than merely documenting it.
+
+### 2.2 Filter footprint (#1565) — always computed, snapshotted at seal
+
+```ts
+// msp.ts:6468-6476 — verbatim
+export interface SecurityPlanFilterFootprint {
+  readonly scope: SecurityPlanScope & { readonly statement: string };
+  readonly isHonestView: boolean;
+  readonly excludedByModule: readonly SecurityPlanModuleExclusion[];
+  readonly totalExcluded: number;
+  readonly computedAt: string;
+}
+```
+
+Computed by `applyScopeAndFootprint` (`security-plan-assembly.ts:380-418`), pure and unit-tested
+(`security-plan-assembly.test.ts:114-139`) independent of any DB seed. `scope.statement` is
+**never blank** on anything that reaches a seal: `synthesizeScopeStatement`
+(`security-plan-assembly.ts:358-371`) fills a canonical honest-view sentence
+("Full assessed estate — no scope narrowing applied.") when the caller supplied none for the
+unscoped case, and the seal route (`msp-security-plan.ts:419-427`) hard-fails a scoped seal with no
+human statement via `scopeMissingRequiredStatement` (`security-plan-assembly.ts:341-343`) — a 400,
+not a synthesized fallback, for the scoped case (#1564's distinction between the two: an honest
+seal still needs a canonical bounded claim; a scoped seal needs a *real, human* one).
+
+### 2.3 Authored prose (#1566) — the module's only self-owned content
+
+```ts
+// msp.ts:6526-6539 — verbatim
+export const SECURITY_PLAN_PROSE_SECTIONS = ["scope", "methodology", "exclusions", "executiveSummary"] as const;
+export interface SecurityPlanProseSectionContent {
+  readonly text: string;
+  readonly editedInThisVersion: boolean;
+}
+export type SecurityPlanProse = Record<SecurityPlanProseSection, SecurityPlanProseSectionContent>;
+```
+
+Carried forward by default from the plan's last version; only sections actually touched while
+authoring the current draft are marked `editedInThisVersion` (`security-plan-prose.ts:37-52`,
+`:64-81`), diffed against a `baselineProse` snapshot fixed once at draft creation — never against
+the section's own last edit — so reverting text to its baseline correctly clears the flag again
+(`security-plan-prose.ts:65-70`; `security-plan-draft.ts:98-120` wires this server-side, never
+client-set). `null` only on a version sealed before #1566 shipped (`msp.ts:6552-6556`) — a real
+legacy case, not a live gap: `carryForwardLegacyOrProse` (`security-plan-prose.ts:54-62`) treats
+that old free-text stub the same as "no prior version" rather than fabricating a section split that
+was never authored.
+
+### 2.4 The fixed authoring sequence (#1566)
+
+`freeze → author prose against the frozen state → seal`, enforced structurally, not just by
+convention:
+
+1. **`POST /draft/freeze`** (`msp-security-plan.ts:308-332`) — `freezeSecurityPlanDraft`
+   (`security-plan-draft.ts:44-86`) assembles NOW (optionally scoped) into `frozenContent`. First
+   freeze for a plan also seeds `baselineProse`/`prose` from the current sealed version's prose (or
+   an empty baseline). A re-freeze refreshes only `frozenContent` — never touches in-progress
+   `prose`.
+2. **`GET /draft`**, **`PATCH /draft/prose`** — read/edit one section against the frozen snapshot.
+3. **`POST /versions`** (`msp-security-plan.ts:397-456`) — **seals the draft, does not re-assemble
+   live and does not accept inline prose/scope.** No frozen draft → `409 CONFLICT`
+   (`msp-security-plan.ts:406-415`), never a silent fallback to "assemble now." On success, the
+   draft's `frozenContent` + `prose` are combined into one `SecurityPlanContent` and the draft row
+   is deleted (`msp-security-plan.ts:429, 444`; `security-plan-draft.ts:122-128`).
+
+### 2.5 Versioning/sealing (#1561, #1562 — "the RBD pattern one level up")
+
+```ts
+// msp.ts:6601-6629 — verbatim (comments trimmed)
+export const mspSecurityPlanVersionsTable = pgTable("msp_security_plan_versions", {
+  id: serial("id").primaryKey(),
+  versionUid: uuid("version_uid").notNull().unique().defaultRandom(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  versionNumber: integer("version_number").notNull(),
+  content: jsonb("content").$type<SecurityPlanContent>().notNull(),
+  createdBy: jsonb("created_by").$type<MspAssessor>().notNull(),
+  signed: boolean("signed").notNull().default(false),
+  signedBy: jsonb("signed_by").$type<ClientApprover>(),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  index("msp_security_plan_versions_msp_id_customer_id_idx").on(t.mspId, t.customerId),
+  index("msp_security_plan_versions_customer_superseded_idx").on(t.customerId, t.supersededAt),
+  unique("msp_security_plan_versions_msp_customer_version_uidx").on(t.mspId, t.customerId, t.versionNumber),
+]);
+```
+
+`createSecurityPlanVersion` (`security-plan-versioning.ts:52-95`) runs supersede-then-insert in one
+transaction: a reader can never observe two `supersededAt IS NULL` rows for the same
+`(mspId, customerId)`, nor a moment with zero. `content` is a full, self-contained snapshot — never
+a pointer re-resolved against live rows at read time (matching `msp_rbd_versions`'s own rule).
+`signSecurityPlanVersion` (`:164-185`) only updates a row matching current-and-unsigned
+(`supersededAt IS NULL AND signed = false`); signing a superseded or already-signed version is
+structurally impossible via this function, not merely discouraged.
+
+`getLastSignedSecurityPlanVersion` (`:121-138`) is the one addition beyond the RBD shape — the
+anchor `security-plan-drift.ts` compares the live view against.
+
+```ts
+// msp-security-plan.ts:86-107 — verbatim, the wire shape
+interface WireSecurityPlanVersion {
+  readonly versionUid: string;
+  readonly customerId: number;
+  readonly tenantId: string;
+  readonly tenantName: string;
+  readonly versionNumber: number;
+  readonly content: unknown;
+  readonly scopeStatement: string;   // mirrored out of content.footprint.scope.statement
+  readonly createdBy: unknown;
+  readonly createdAt: string;
+  readonly signed: boolean;
+  readonly signedBy: unknown;
+  readonly signedAt: string | null;
+  readonly isCurrent: boolean;       // supersededAt === null
+}
+```
+
+### 2.6 Signing (#1564)
+
+`PATCH /versions/:versionUid/sign` requires `MSPAdmin` (a stricter role floor than every other
+route on this router, all `MSPOperator`) and a real signature payload (`name`, `title`, `email`,
+`ipAddress`, `signatureHash`, `msp-security-plan.ts:458-464`). Signing attaches to the version's own
+recorded `scopeStatement`, never to an unqualified claim — see §2.2's synthesized-statement
+guarantee, which exists specifically so this signature never attaches to a blank scope.
+
+### 2.7 Drift (#1562, #1567)
+
+```ts
+// msp.ts:6590-6599 — verbatim
+export interface SecurityPlanDrift {
+  readonly hasLastSignedVersion: boolean;
+  readonly lastSignedVersionUid: string | null;
+  readonly lastSignedVersionNumber: number | null;
+  readonly lastSignedAt: string | null;
+  readonly modules: readonly SecurityPlanModuleDrift[];
+  readonly totalAdded: number;
+  readonly totalRemoved: number;
+  readonly totalChanged: number;
+}
+```
+
+`computeSecurityPlanDrift` (`security-plan-drift.ts:42-123`) is pure — diffs the live (always
+honest/unscoped, `msp-security-plan.ts:246`) assembled document against the last **signed**
+snapshot, module-by-module, item-by-item-id. `sameContent` (`:31-33`) compares only `state` and
+`detail` — the two fields a reader can actually see change. **It never reads `.prose` at all**
+(`security-plan-drift.ts:20-22`) — this is the structural enforcement of #1567's "mechanical data
+drift only, never prose staleness" rule, not a policy note that could be bypassed by a future edit
+to the same function. `hasLastSignedVersion: false` (nothing ever signed) returns an all-empty
+drift with no baseline to compare against — a distinct case from "signed and unchanged."
+
+### 2.8 Draft holding pen
+
+```ts
+// msp.ts:6650-6674 — verbatim (comments trimmed)
+export const mspSecurityPlanDraftsTable = pgTable("msp_security_plan_drafts", {
+  id: serial("id").primaryKey(),
+  mspId: integer("msp_id").notNull().references(() => mspsTable.id, { onDelete: "cascade" }),
+  customerId: integer("customer_id").notNull(),
+  tenantId: text("tenant_id").notNull(),
+  tenantName: text("tenant_name").notNull(),
+  frozenContent: jsonb("frozen_content").$type<SecurityPlanContent>().notNull(),
+  frozenAt: timestamp("frozen_at", { withTimezone: true }).notNull(),
+  baselineProse: jsonb("baseline_prose").$type<SecurityPlanProse>().notNull(),
+  prose: jsonb("prose").$type<SecurityPlanProse>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("msp_security_plan_drafts_msp_customer_uidx").on(t.mspId, t.customerId),
+]);
+```
+
+One draft row per `(mspId, customerId)` — enforced by the unique index, not just convention.
+
+### 2.9 Local DB state, honestly reported
+
+`msp_security_plan_versions` and `msp_security_plan_drafts` both report **0 rows** locally. No
+version has ever been sealed for either seeded tenant on this database. This does not indicate a
+bug — the sealing flow requires an explicit freeze→author→seal sequence that nothing has triggered
+yet on this environment — but it means every wire shape in §2.5–§2.8 above is verified against the
+route/schema/test code, not against a live row on this database.
 
 ---
 
@@ -198,208 +449,160 @@ this pack expecting a rebuild of the assembly layer, not a wire job over what ex
 
 | Vocabulary | Values | Where fixed | Status |
 |---|---|---|---|
-| Requirement row state | `met`, `partial`, `gap` | `PORTAL_SECURITY_PLAN_ROW_STATE`, `msp.ts:4572-4573`; enforced as a Drizzle `text(...,{enum})` column, **not** a Postgres `pgEnum`/CHECK (`msp.ts:4566-4568` convention comment — deliberate, so the vocabulary can widen in code without a migration) | CURRENT, but see §2 — this three-value state is authored judgment, not a state the settled model has said how to derive |
+| Portal (customer-side) requirement row state | `met`, `partial`, `gap` | `PORTAL_SECURITY_PLAN_ROW_STATE`, `msp.ts:7468-7469`; a Drizzle `text(...,{enum})` column, not a Postgres `pgEnum`/CHECK (`msp.ts:7462-7464` — deliberate, so the vocabulary can widen without a migration) | CURRENT on the orphaned §1 model; **not** used or referenced anywhere in the §2 assembly model — the two `state` concepts are unrelated strings from different tables |
+| Security Plan scope dimension | `pillar`, `framework`, `businessUnit` | `SECURITY_PLAN_SCOPE_DIMENSIONS`, `msp.ts:6437` — a TS `as const` tuple, not a DB enum (there is no DB column literally named "dimension"; each dimension is backed by its own real column, §2.1) | CURRENT, all three real (#2085 closed the last gap) |
+| Security Plan prose section | `scope`, `methodology`, `exclusions`, `executiveSummary` | `SECURITY_PLAN_PROSE_SECTIONS`, `msp.ts:6526` | CURRENT |
+| Assembled item `state`/`detail` per module | free text, sourced from each module's own status/state column (§2, table) | not a single fixed vocabulary — each source module keeps its own | CURRENT, honestly heterogeneous — the assembly layer does not normalize seven different modules' state vocabularies into one enum, and does not claim to |
 
-No other enum-shaped field exists on this module's own tables. `tier`, `env`, `version` etc. are
-free text, not constrained vocabularies.
-
----
-
-## 4. Cross-surface edges — borrowed fields, named to their owning module
-
-Per the task instruction, every field this view would need to *borrow* is named here against its
-owning module, with that module's own CURRENT/DECIDED state as of this pack (2026-08-29) — not
-invented for this pack. Where the owning module has already shipped its own contract pack, the
-field names below are drawn from that pack directly (cited); where it has not, the field is named
-off the Drizzle schema directly, marked per that module's own build status.
-
-### 4.1 Policy Decisions + Policy Engine (#1490) — control declarations and their configuration
-
-**Status: contract pack shipped while this pack was in flight** (`docs/policy-decisions-contract-pack.md`,
-merged to `origin/main` at `d5e12127e`, landing after this pack's own investigation pass started —
-its bookend, `build-journal/1490.md`, was still `⏳ IN FLIGHT` at last check). That pack itself
-corrects #1490's own original issue body: the module is **two objects**, not one.
-
-1. **Policy Decisions** — reactive, obligation-bound, signed. **Real today.** Rides on the same
-   `mspRiskDecisionsTable` rows as Risk Register (#1487), filtered to non-empty `decision_state`
-   (`portal-risk-register.ts:306-336`) — not a separate schema.
-2. **Policy Engine** — proactive, declarative, no obligation, no signature (e.g. "mailbox size
-   150MB", "VIP → extra spam filtering"). **Fully unbuilt** — "no table, no route, no wire type,
-   zero references anywhere in `lib/db/src/schema/` or `artifacts/api-server/src`"
-   (policy-decisions-contract-pack.md §intro). Also corrects a table-name error in #1490's
-   original body: `policy_rules`/`policy_rule_*` are unrelated alert-engine tables (#1279), not
-   this module (policy-decisions-contract-pack.md §0).
-
-Security Plan would borrow:
-
-| Field it would need | Owning table.column | Status |
-|---|---|---|
-| Control identity / obligation cited | `obligation` (`msp.ts:4006`, `WirePolicyDecision.obligation`) | CURRENT on Policy Decisions' own contract (policy-decisions-contract-pack.md §1.1); **not consumed by Security Plan today** |
-| Declared configuration / documented deviation | `rationale` (`msp.ts:4004`), `compensating` (`WirePolicyDecision.compensating`) | CURRENT there; not consumed here |
-| Decision lifecycle state | `decision_state` → `WirePolicyDecision.state` | **DECIDED-wrong** per Risk Register pack §5 / Policy Decisions pack — carries `expired`, must not be reused verbatim (#1527) |
-| Proactive declarative control configuration (mailbox size, VIP routing, etc.) | — | **OPEN GAP / fully unbuilt** — Policy Engine half has no table, route, or wire type at all (#1547–1553); nothing exists yet for Security Plan to borrow from this half |
-
-### 4.2 Risk Register (#1487) — carried risks, acceptances, review state
-
-**Status: contract pack shipped** (`docs/risk-register-contract-pack.md`, DONE, merged
-`14b5f2ac7`). Security Plan would borrow, per that pack's own field citations:
-
-| Field it would need | Owning field (risk-register-contract-pack.md §) | Status |
-|---|---|---|
-| Whether a risk is carried/open | `WireRisk.status` (risk-register pack §1.1) | CURRENT there; not consumed here |
-| Acceptance record (who, when, statement) | `WireRisk.accepted` (§1.2) | CURRENT there; not consumed here |
-| Review state / overdue flag | `review_date` (§1, marked **DECIDED-wrong** pending the acceptance/review clock split, #1507) | DECIDED — #1507; not built |
-| Liability value | `liabilityValueUsd` (§1.1) | CURRENT there; not consumed here |
-
-### 4.3 Ownership / RACI (#1491) — who is accountable for what
-
-**Status: contract pack in flight** (`build-journal/1491.md`, not yet shipped as of this pack).
-Named off the Drizzle schema directly since no `docs/ownership-raci-contract-pack.md` exists yet
-to cite:
-
-| Field it would need | Owning table.column | Status |
-|---|---|---|
-| Accountable/Responsible person per object | `portalOwnershipAssignmentsTable.ownerPersonId`, `.roleKey` (`msp.ts:4714-4739`) | CURRENT (schema exists, route serves it per #1491's own in-flight pack); not consumed here |
-| Acceptance of an ownership assignment | `portalOwnershipAssignmentsTable.acceptance` (`msp.ts:4725`) | CURRENT; not consumed here |
-| Delegated cover during absence | `portalOwnershipDelegationsTable` (`msp.ts:4750-4769`) | CURRENT; not consumed here |
-| Role-based acceptance authority as the source for who may sign a scope | — | **DECIDED**, #1511 (Risk Register pack §4) and directly relevant to #1564 (§7 below) — not built |
-
-### 4.4 SOPs / Runbooks (#1493 / #1488) — procedures that maintain each control
-
-**Status: contract pack shipped while this pack was in flight** (`docs/sops-contract-pack.md`,
-landed on `origin/main` alongside this pack's own merge). That pack's own §0 finding matters
-directly to Security Plan: `msp_sops`/`msp_sop_runs` (definition + execution, correct shape) and
-`portal_runbooks`/`portal_runbook_steps` (actually a **recurring review cycle**, not a procedure)
-are being **unified** into one procedure-definition + one run-record model (#1556), with
-recurrence becoming a schedule property rather than a row that gets wiped on cycle reset (fixing
-#1557). Security Plan would borrow:
-
-| Field it would need | Owning table.column | Status |
-|---|---|---|
-| Active runbook/procedure against a control area | `portalRunbooksTable.runbookKey`, `.pillar`, `.status` (`msp.ts:4362-4387`, enum `PORTAL_RUNBOOK_STATUS`) | CURRENT (schema, route both exist); not consumed here |
-| Step completion / cycle progress | `portalRunbookStepsTable.checked`, `.checkedAt` (`msp.ts:4392-4416`) | CURRENT, but **DECIDED-wrong** — no run history; cycle reset wipes last cycle's completion (#1557), resolved by the unification (#1556) |
-| SOP catalogue entry (definition, versioned) | `mspSopsTable` (`msp.ts:3840`) | CURRENT, MSP-scoped and versioned; sops-contract-pack.md §0 |
-| A run record against a definition, with origin (`policy \| lifecycle \| remediation \| manual`) | `mspSopRunsTable` (`msp.ts:3873`) | **DECIDED, not built** — "no route writes `msp_sop_runs`" today (#1559); the unified run model is #1556 |
-
-### 4.5 Remediation Tracking (#1489) — outstanding findings, verification state
-
-**Status: contract pack in flight** (`build-journal/1489.md`, not yet shipped as of this pack).
-Named off the Drizzle schema:
-
-| Field it would need | Owning table.column | Status |
-|---|---|---|
-| Step status (backlog/in-progress/done/etc.) | `remediationTrackerStepsTable.status` (`msp.ts:4292`, enum `REMEDIATION_TRACKER_STEP_STATUS`) | CURRENT; not consumed here |
-| Verification state against a real scan | `.verificationState`, `.verifiedByRunId` (`msp.ts:4311-4322`) | CURRENT; not consumed here |
-
-### 4.6 Change Control (#1486) — change history against controls
-
-**Status: contract pack shipped** (`docs/change-control-contract-pack.md`, DONE, merged
-`020d46dcb`). This is the one module Security Plan's current build already links toward, via the
-`cr` display string on each history entry (§1.4) — but as a **label**, not a join:
-
-| Field it would need | Owning field (change-control-contract-pack.md) | Status |
-|---|---|---|
-| Real CR record behind the `cr` label | `WireChangeRequest` (change-control pack §2), keyed by the CR's own id | CURRENT on Change Control's table; **not joined** — Security Plan's `cr` column (`msp.ts:4676`) is free text with no FK, so a renamed/renumbered CR would silently desync from the plan's history row |
-| Approve/reject/rollback outcome that produced the change | **DECIDED**, #1496 (change-control-contract-pack.md — five dead buttons, no `onClick` yet) | DECIDED, not built |
-
-### 4.7 Microsoft Changes (#1494) — what is coming that alters posture
-
-**Status: contract pack shipped** (`docs/microsoft-changes-contract-pack.md`, DONE, merged
-`42d5bb2ce`). Security Plan's current build has **zero fields, links or references** to this
-module anywhere in its schema, route, or page. Per #1561's own description this is a real,
-intended future contribution ("what is coming that alters the posture") with no wiring of any
-kind today:
-
-| Field it would need | Owning field (microsoft-changes-contract-pack.md) | Status |
-|---|---|---|
-| Upcoming roadmap items affecting this tenant's posture | `WirePost` / `analysis` fields (microsoft-changes pack §1a) | CURRENT there; **OPEN GAP** here — no issue on #1495's own sub-issue list (#1561-1568) names how/whether Microsoft Changes items should surface on the plan |
+No `pgEnum` (a real Postgres `CREATE TYPE ... AS ENUM`) exists anywhere in this module's own
+tables — every vocabulary above is either a Drizzle `text({enum})` column or a TypeScript-only
+`as const` tuple, consistent with the rest of this codebase's stated convention of keeping
+in-code vocabularies widenable without a migration.
 
 ---
 
-## 5. Honest-empty contract & the tri-state
+## 4. Cross-surface edges — now REAL reads, not named-but-unconsumed borrows
 
-| State | Wire behaviour | Hook signal |
+The #1495 pack's whole §4 was a table of fields Security Plan *would need to borrow* from seven
+other modules, each marked "not consumed here." That is no longer accurate for the MSP-side
+assembly — §2's table above **is** that consumption, cited to the actual `readXxx()` function for
+each module. What remains genuinely unconsumed:
+
+| Module | What §2's assembly reads | What it does NOT read |
 |---|---|---|
-| Loading | — | `dataState: "loading"` until the first response (`securityPlanLive.ts:107, 156-172`) |
-| Live, genuinely empty | Not reachable as "empty" in the risk-register sense — a plan either exists (has ≥1 section with ≥1 row) or is treated as `no-plan`. There is no "plan exists but has zero sections" live state; `toSecurityPlan` treats a sectionless or rowless payload as unusable and the caller reports it as `"error"`, not empty (`securityPlanWire.ts:157-165`, `securityPlanLive.ts:131-143`) | `dataState: "live"` |
-| No plan authored (this module's actual "genuinely empty") | `200 { plan: null }` (`portal-security-plan.ts:129-133`) — explicit, checked via `isExplicitlyNoPlan` **before** the generic null-collapse so it is never confused with a malformed payload (`securityPlanWire.ts:145-147`) | `dataState: "no-plan"`, distinct from `"error"` |
-| Read failed / malformed | Non-2xx, thrown, or a non-null `plan` `toSecurityPlan` cannot use (missing header field, no sections, or every section empty of rows — division-by-zero guard, `securityPlanWire.ts:161-182`) | `dataState: "error"`, and a `SecurityPlanMalformed` client event is reported (`securityPlanLive.ts:134-139`) |
+| Policy Decisions (#1490) | `title`, `pillar`, `obligation`, `decisionState`, `reviewState` | `rationale`, `compensating` (real fields on that module's own contract pack, not pulled in here) |
+| Risk Register (#1487) | `title`, `pillar`, `framework`, `rawRiskLevel`, `residualRiskLevel`, `status` | The acceptance record (`WireRisk.accepted`), liability value |
+| Ownership/RACI (#1491) | `rowId`, `objType`, `name`, `sub` | `ownerPersonId`, `roleKey`, delegation records |
+| SOPs/Runbooks (#1493) | `sopId`, `title`, `category`, `automationType`, `versionStatus` | Run-history rows (`msp_sop_runs`) |
+| Remediation (#1489) | `stepId`, `status`, `verificationState` | `verifiedByRunId` |
+| Change Control (#1486) | `title`, `changeClass`, `riskLevel`, `status`, `category` | Approve/reject/rollback outcome linkage |
+| Microsoft Changes (#1494) | `title`, `changeClass`, `status`, `controllable` | Cloud-instance/date-quality fields those modules' own packs document |
 
-**This module's tri-state is genuinely a four-state**, and that is correct, not an error: unlike
-Risk Register/Change Control where "empty" and "unresolvable scope" collapse to the same wire
-shape, here "no plan authored yet" is itself a first-class, common, expected case (every real
-tenant besides the one seeded testbed customer) that the frontend deliberately keeps separate
-from a genuine read failure — Git #1439 fixed exactly the failure mode of collapsing them, per
-`securityPlanLive.ts:14-29`'s own header. Design must render **all four** states, not the usual
-three, and must not add a fixture-shaped fifth.
+None of the "does NOT read" columns above are gaps to file — the assembly deliberately takes a
+small, uniform slice (`id`/`title`/`state`/`detail`/dimensions) per module rather than every field
+each source module owns; that is the "uniform display shape" design (`msp.ts:6478-6480`), not an
+oversight.
 
-**Hard-rule note (already fixed, cited for completeness):** `securityPlanData.ts`'s
-`SECURITY_PLAN` / `SECURITY_PLAN_OWNER` constants remain in the codebase as design-reference /
-unit-test fixtures only — no runtime code path renders them (`portal-v2-security-plan.tsx:17-28`,
-`securityPlanWire.ts:11-25`). This was a real violation of the fixture/real-data hard rule until
-Git #1439 fixed it; it is not a live gap today, but Design should not be handed
-`securityPlanData.ts` as if it were a live-data reference.
+**The old §4's genuinely open items carry forward unchanged, because nothing since has resolved
+them:** #1527 (Policy Decisions' `decision_state` carrying `expired`, "DECIDED-wrong" per the Risk
+Register pack), #1507 (Risk Register review-clock split), #1511 (role-based acceptance authority),
+#1556/#1557 (SOPs/Runbooks unification), #1496 (Change Control's five dead buttons). None of these
+block what §2 already reads — they are about fields §2 does not currently consume.
+
+---
+
+## 5. Honest-empty contract & the tri-state — now two separate contracts
+
+### 5.1 Customer-facing (`/api/portal/security-plan`, §1) — orphaned, so this describes the route only, not a rendered page
+
+| State | Wire behaviour |
+|---|---|
+| No plan authored | `200 { plan: null }` (`portal-security-plan.ts:129-133`) |
+| Plan exists | `200 { plan: {...} }` with every field populated (no partial-plan shape) |
+| Read failed | `500 { error: "Your security plan could not be loaded." }` (`:204-210`) |
+
+Since no page currently calls this route (§0.3), there is no client-side tri-state to describe —
+the old #1495 pack's four-state client contract (`loading` / `live` / `no-plan` / `error`) lived in
+`securityPlanLive.ts`, which was removed with the rest of `artifacts/msp-portal`. If/when a page is
+rebuilt against either this route or the §2 assembly, that four-state discipline (particularly
+"no plan authored" as its own first-class state, distinct from a read failure) is worth carrying
+forward — Git #1439 fixed exactly the failure mode of collapsing them.
+
+### 5.2 MSP-side (`/api/msp/security-plan/:customerId/*`, §2)
+
+| State | Wire behaviour |
+|---|---|
+| Tenant not owned by caller's MSP, or doesn't exist | `404 { error: "No such customer tenant" }` (`msp-security-plan.ts:196-204`) — deliberately identical for both cases, "do not leak that it exists" |
+| No MSP context on the caller | `403 { error: "MSP context required" }` (`:186-189`) |
+| `/assembled`, `/drift` | Always `200` with a real (possibly all-empty-modules) document — an assembly with zero rows in every module is a legitimate honest-empty result, not an error; nothing here distinguishes "no data" from "not yet built for this tenant" because there is no such distinction to make — the assembly always runs live |
+| `/versions/current` with nothing ever sealed | `404 { error: "No version has been sealed for this Security Plan" }` (`:284-286`) |
+| `/draft` with nothing frozen | `404 { error: "No draft — freeze the assembled state first" }` (`:345-347`) |
+| `POST /versions` with no frozen draft | `409 CONFLICT` (`:406-414`) |
+| `POST /versions` with a scoped draft carrying no statement | `400 VALIDATION` (`:419-427`) |
+| Sign a version that's missing, superseded, or already signed | `409 { error: "Version not found, not current, or already signed" }` (`:493-496`) |
+| Any route, unhandled exception | `500 INTERNAL` with the real error message (`apiError(..., ApiErrorCode.INTERNAL, ...)`) |
 
 ---
 
 ## 6. The forbidden list — declared, not merely absent
 
-1. **No customer write path.** The route is GET-only; there is no POST/PATCH/DELETE
-   (`portal-security-plan.ts:16-24`). A Security Plan is authored and signed by the MSP for a
-   tenant; the customer reads it. If a customer-editable plan is ever wanted, that is a new,
-   separate design decision, not an oversight here.
-2. **No server-side re-derivation of the header verdict/percentage/gap badge.** These are
-   computed once, client-side, from the served rows (`securityPlanModel.ts`) — "a plan that
-   could disagree with itself defeats its own claim" (`portal-security-plan.ts:37-42`). A second,
-   server-computed copy is deliberately not built.
-3. **No fixture fallback on a failed or empty read** (Git #1439, §5). A customer with no plan
-   authored, or a malformed response, never renders `SECURITY_PLAN`'s fabricated "Halden
-   Materials" content.
-4. **No fabricated register/module data anywhere in the current build** — every row's `req` /
-   `state` / `detail` is authored text by design (§2); the current build does not pretend a row
-   is derived from live module data when it is not. The dishonesty this pack must prevent is not
-   in what exists today, it is in what Design might be handed *next* without the caveat in §2.
-5. **Prose staleness detection is a recorded non-goal** (#1495's own architecture comment, §1567):
-   the platform may flag that a section's underlying module data has changed since a version was
-   sealed; it must never claim to know whether the authored prose is still an accurate sentence.
-   Nothing in the current build attempts this (there is no sealing/versioning mechanism yet to
-   compare against), and nothing planned should attempt the prose half.
+1. **No customer write path anywhere.** `portal-security-plan.ts` is GET-only (unchanged). The
+   MSP-side authoring surface (`msp-security-plan.ts`) is entirely `MSPOperator`/`MSPAdmin`-gated —
+   no route on that router accepts a `CustomerUser` token. If a customer-editable or
+   customer-signable plan is ever wanted, that is new work, not a gap in what exists.
+2. **No outcome filter on Security Plan scope, structurally, not just by convention** — §2.1: the
+   accepted query schema has no key that could express severity/accepted/open/pass-fail, and any
+   extra key sent is silently dropped rather than validated-and-rejected (which would at least
+   acknowledge the attempt) or silently honored (which would violate #1563). Silently dropping is
+   the deliberate choice recorded in the route's own header.
+3. **No server-side re-derivation of a header verdict/percentage/gap badge on the MSP side** — the
+   assembly returns raw per-module items and counts; nothing in `security-plan-assembly.ts`
+   computes a single rolled-up score. (The old client-side derivation this rule described on the
+   customer side no longer runs anywhere — its code was removed with `artifacts/msp-portal`.)
+4. **Drift never reads `.prose`** (§2.7) — enforced by the function's own field access, not a
+   comment that could silently drift out of sync with the code.
+5. **A scoped seal can never reach the database without a real, human-authored statement** — checked
+   before `createSecurityPlanVersion` is ever called (`msp-security-plan.ts:419-427`), not as a
+   nullable column filled in later.
+6. **No fabricated register/module data anywhere in either model.** The §1 rows are honestly
+   hand-typed by design (not derived, and not pretending to be); the §2 rows are honestly derived
+   from real source-table columns, cited per module in §2's table. Neither model claims to be the
+   other.
 
 ---
 
 ## 7. Open, flagged — not resolved
 
-Per the task instruction, these stay open exactly as recorded on their own issues. Nothing below
-is decided by this pack.
+1. **§0.3 (new, this pack) — the two Security Plan models are unbridged.** Not decided by this
+   pack: whether the eventual customer-facing page reads the §1 table, the §2 assembly, or the §2
+   assembly is migrated to replace §1 outright (the settled 2026-08-28 architecture comment on
+   #1495 implies the latter, but no issue has actually scheduled that migration or the removal/
+   repurposing of `portal_security_plans`). Filed as a sub-issue, §8.
 
-1. **#1564 — who signs a Security Plan.** Settled: signature attaches to a *scope*, not to "the
-   plan" unqualified. **Not settled:** the authority itself — either the plan carries no
-   signature and is purely informational, or it is signed by whoever holds **A at the tenant
-   level** rather than per-object (contrast with RBD acceptance authority, which resolves
-   role-by-role through `portal_ownership_assignments`, #1511). The current build's `approver`
-   field (§1.1) is a single authored name with no signature-capture mechanism at all — it does
-   not implement either resolution of #1564, it precedes the question.
+2. **#1568 — is there a cross-customer MSP posture view — now split and partially answered.**
+   `security-plan-cross-tenant.ts` exists (Git #2145, closed) and is a real, tested, fail-closed
+   read primitive (`resolveSecurityPlanCrossTenantBook`/`readSecurityPlanAcrossCustomers`,
+   `security-plan-cross-tenant.ts:63-143`; guard tests in `security-plan-cross-tenant.test.ts:21-44`
+   covering no-user, CustomerUser, unscoped MSP-staff, and Free/Assessment-tier callers all
+   resolving to an empty book). Its own header is explicit that this is deliberately a read
+   primitive only: *"No route is registered against it and no page reads it; v1.2 wires the actual
+   'posture across every customer' surface on top of this once that page exists."* So #1568's
+   question ("is there a cross-customer view") is answered **"the safe primitive exists; the
+   surface does not yet"** — not fully open, not fully resolved. Nothing to file: the module's own
+   header already states the plan and the version gate (v1.2) precisely.
 
-2. **#1568 — is there a cross-customer MSP posture view.** Not decided. If yes, this becomes the
-   second deliberately cross-boundary surface in the epic (after the RACI cross-tenant view,
-   #1521) and needs the same explicit guard work: every other module here scopes to one customer
-   with a fail-closed predicate (`portal-security-plan.ts:113-117` — a missing `customerId`
-   claim 403s, it does not silently widen). A cross-customer read would have to be built
-   deliberately, for the MSP only, never inherited from the customer-scoped route.
+3. **Carried forward from the #1495 pack, still genuinely open, nothing since has touched them:**
+   #1527 (Policy Decisions `decision_state` carrying `expired`), #1507 (Risk Register review-clock
+   split), #1511 (role-based acceptance authority), #1556/#1557 (SOPs/Runbooks unification), #1496
+   (Change Control's dead buttons). See §4.
 
 ---
 
-## 8. Provenance
+## 8. Findings filed at pack time
 
-Extracted 2026-08-29 against branch `agent/1495-q789`. Sources cited inline by file:line:
-`portal-security-plan.ts`, `lib/db/src/schema/msp.ts:4545-4684` (+ the borrowed-module tables at
-their own cited line numbers), the portal wire/model/live/page files under
-`artifacts/msp-portal/src/components/portal-v2/` and `artifacts/msp-portal/src/pages/`, and the
-sibling contract packs `docs/change-control-contract-pack.md`, `docs/risk-register-contract-pack.md`,
-`docs/microsoft-changes-contract-pack.md`, `docs/policy-decisions-contract-pack.md`,
-`docs/sops-contract-pack.md`, and `docs/runbooks-contract-pack.md` (the last three landed on
-`origin/main` while this pack was already in flight; §4.1 and §4.4 were updated against them
-before merge — `runbooks-contract-pack.md` restates the same #1557 finding `sops-contract-pack.md`
-already gave §4.4, so no further change was needed there). Architecture deltas cited to
-GitHub issues #1495, #1561–#1568, under epic #1485 and method issues #1577/#1578. Read-only
-pass: no product code, schema, or UI was changed.
+- **New sub-issue, filed under #1495** (the module's own Feature-tier parent — #1731 has no
+  Feature-tier parent of its own beyond #1495 itself, so per the standing convention the finding
+  parents to the Feature the contract-pack issue belongs to): the customer-facing
+  `portal_security_plans` model (§1) and the MSP-facing assembled/versioned model (§2) are two
+  live, independently-functioning, completely disconnected representations of "the Security Plan,"
+  and no issue currently schedules reconciling them. See §0.3 / §7.1. Filed as **#2576** (`bug`,
+  Feature-tier parent #1495, board status "AI Batter Up").
+
+---
+
+## 9. Provenance
+
+Extracted 2026-09-03 against `agent/1731-q1391` (branch base `origin/main` at the time of
+extraction). Sources cited inline by file:line: `artifacts/api-server/src/routes/portal-security-plan.ts`,
+`artifacts/api-server/src/routes/msp-security-plan.ts`, `artifacts/api-server/src/lib/security-plan-assembly.ts`
+(+ its test file), `security-plan-versioning.ts`, `security-plan-drift.ts` (+ test),
+`security-plan-prose.ts`, `security-plan-draft.ts`, `security-plan-cross-tenant.ts` (+ test),
+`lib/db/src/schema/msp.ts:6391-6679` and `:7441-7580`, `artifacts/api-server/src/routes/admin-active-directory.ts:636-674`,
+`artifacts/api-server/src/lib/portal-customer-scope.ts`, `routes/index.ts:180,268,487,537`,
+the four migration files under `lib/db/migrations/manual/` named above, and a direct query against
+the local `DATABASE_URL` for real row counts (§1.1, §2.9). Confirmed via `git log` that
+`portal-security-plan.ts` carries exactly one commit (`d3c3bfa3c`) since the #1495 pack, and that
+`artifacts/msp-portal` was removed and replaced by `artifacts/portal` at `f40438cdc` — the reason
+§0/§1/§5.1 differ so substantially from the #1495 pack's account of the customer-facing side.
+Architecture deltas cited to GitHub issues #1495, #1561–#1568, #2085, #2145, under epic #1485 and
+method issues #1577/#1578/#1642. Read-only pass: no product code, schema, or UI was changed.
