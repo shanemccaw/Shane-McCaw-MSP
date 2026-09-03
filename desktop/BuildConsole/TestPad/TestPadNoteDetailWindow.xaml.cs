@@ -42,8 +42,21 @@ namespace BuildConsole.TestPad
             dlg.TitleText.Text = $"[{TypeTag(note.Type)}] Note";
             dlg.MetaText.Text = BuildMetaLine(note);
             dlg.BodyText.Text = note.Text;
+            dlg.RenderedContent.Content = MarkdownRenderer.Render(note.Text);
 
             dlg.ShowDialog();
+        }
+
+        /// <summary>#2705 — Rendered/Raw toggle. Behaves like a two-state radio group (exactly one
+        /// checked) even though each is a plain <see cref="System.Windows.Controls.Primitives.ToggleButton"/>
+        /// reusing the existing <c>FilterChip</c> style, not a RadioButton pair.</summary>
+        private void ViewModeToggle_Click(object sender, RoutedEventArgs e)
+        {
+            bool showRendered = ReferenceEquals(sender, BtnRenderedView);
+            BtnRenderedView.IsChecked = showRendered;
+            BtnRawView.IsChecked = !showRendered;
+            RenderedScroll.Visibility = showRendered ? Visibility.Visible : Visibility.Collapsed;
+            RawScroll.Visibility = showRendered ? Visibility.Collapsed : Visibility.Visible;
         }
 
         private static string TypeTag(NoteType type) => type switch

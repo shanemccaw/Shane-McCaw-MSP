@@ -74,7 +74,16 @@
                                    VerticalAlignment="Center"
                                    Foreground="{StaticResource TextSecondaryBrush}"/>
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" WindowChrome.IsHitTestVisibleInChrome="True" VerticalAlignment="Center">
+                        <!-- #2705 — Rendered/Raw toggle. Default Rendered (calls MarkdownRenderer.Render
+                             on the note's real text); Raw keeps #2698's original NoWrap TextBox source
+                             view for exact-copy needs (e.g. a wide table's column alignment in source). -->
+                        <ToggleButton x:Name="BtnRenderedView" Content="Rendered" IsChecked="True"
+                                      Style="{StaticResource FilterChip}"
+                                      Click="ViewModeToggle_Click"/>
+                        <ToggleButton x:Name="BtnRawView" Content="Raw"
+                                      Style="{StaticResource FilterChip}"
+                                      Click="ViewModeToggle_Click" Margin="0,0,10,0"/>
                         <Button x:Name="BtnCloseWindow" Style="{StaticResource DialogCaptionCloseButton}" ToolTip="Close" Click="BtnCloseWindow_Click">
                             <TextBlock Text="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10"/>
                         </Button>
@@ -85,19 +94,29 @@
             <Border Margin="16" CornerRadius="6"
                     Background="{StaticResource Surface0Brush}"
                     BorderBrush="{StaticResource BorderDividerBrush}" BorderThickness="1">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
-                    <TextBox x:Name="BodyText"
-                             IsReadOnly="True"
-                             AcceptsReturn="True"
-                             TextWrapping="NoWrap"
-                             BorderThickness="0"
-                             Background="Transparent"
-                             Foreground="{StaticResource TextPrimaryBrush}"
-                             CaretBrush="{StaticResource TextPrimaryBrush}"
-                             FontFamily="Consolas"
-                             FontSize="13"
-                             Padding="12,10"/>
-                </ScrollViewer>
+                <Grid>
+                    <!-- #2705 — Rendered view (default): the note's real markdown run through
+                         MarkdownRenderer.Render, so a real table (Shane's actual ask) shows as an
+                         actual bordered table instead of raw pipe-delimited source text. -->
+                    <ScrollViewer x:Name="RenderedScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                        <ContentControl x:Name="RenderedContent" Padding="12,10"/>
+                    </ScrollViewer>
+                    <!-- Raw view (#2698's original) — exact source, NoWrap + horizontal scroll so a
+                         wide table's column alignment in the SOURCE text stays legible/copy-pastable. -->
+                    <ScrollViewer x:Name="RawScroll" Visibility="Collapsed" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                        <TextBox x:Name="BodyText"
+                                 IsReadOnly="True"
+                                 AcceptsReturn="True"
+                                 TextWrapping="NoWrap"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Foreground="{StaticResource TextPrimaryBrush}"
+                                 CaretBrush="{StaticResource TextPrimaryBrush}"
+                                 FontFamily="Consolas"
+                                 FontSize="13"
+                                 Padding="12,10"/>
+                    </ScrollViewer>
+                </Grid>
             </Border>
         </DockPanel>
     </Border>

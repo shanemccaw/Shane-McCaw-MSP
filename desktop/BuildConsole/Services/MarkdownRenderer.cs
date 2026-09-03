@@ -21,6 +21,9 @@ namespace BuildConsole.Services
         private static readonly Regex TaskListRegex = new(@"^(\s*)(?:[\*\-\+]|\u2022)\s+\[([ xX])\]\s+(.*)$", RegexOptions.Compiled);
         private static readonly Regex BlockquoteRegex = new(@"^>\s*(.*)$", RegexOptions.Compiled);
         private static readonly Regex HorizontalRuleRegex = new(@"^\s*(?:---|\*\*\*|___)\s*$", RegexOptions.Compiled);
+        // GFM pipe-table separator row: |---|:---:|---:| etc, one or more dash-cells, optional leading/trailing pipe.
+        private static readonly Regex TableSeparatorRegex = new(@"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$", RegexOptions.Compiled);
+        private static readonly Regex TableRowLineRegex = new(@"^\s*\|", RegexOptions.Compiled);
         private static readonly Regex FileRegex = new(@"(?:\w[\w\-\./\\]*)\.(?:sql|cs|ts|tsx|json|xaml|ps1|cmd|md)\b", RegexOptions.Compiled);
         private static readonly Regex UrlRegex = new(@"https?://[^\s\)\>\]]+", RegexOptions.Compiled);
         private static readonly Regex IssueRefRegex = new(@"(?:^|\s)#(\d+)\b", RegexOptions.Compiled);
@@ -103,6 +106,28 @@ namespace BuildConsole.Services
                         Margin = new Thickness(0, 10, 0, 10)
                     });
                     i++;
+                    continue;
+                }
+
+                // 2.5. GFM Pipe Table (header row | header |, separator row |---|---|, data rows)
+                // Real gap fixed by #2705: a header row must itself contain a pipe (a bare "---"
+                // line is already consumed as a Horizontal Rule above) and be immediately followed
+                // by a separator row matching GFM's `|---|:---:|---:|` syntax.
+                if (line.Contains('|') && i + 1 < lines.Length &&
+                    lines[i + 1].Contains('|') && TableSeparatorRegex.IsMatch(lines[i + 1]))
+                {
+                    var headerCells = SplitTableRow(line);
+                    var alignments = ParseTableAlignments(lines[i + 1]);
+                    i += 2;
+
+                    var dataRows = new List<List<string>>();
+                    while (i < lines.Length && lines[i].Contains('|') && !string.IsNullOrWhiteSpace(lines[i]))
+                    {
+                        dataRows.Add(SplitTableRow(lines[i]));
+                        i++;
+                    }
+
+                    root.Children.Add(CreateTable(headerCells, alignments, dataRows, options, getBrush));
                     continue;
                 }
 
@@ -442,6 +467,123 @@ namespace BuildConsole.Services
 
             border.Child = grid;
             return border;
+        }
+
+        private enum TableAlign { Left, Center, Right }
+
+        /// <summary>Splits one GFM table row into trimmed cell strings, honoring a leading/trailing
+        /// pipe (both optional per spec) and an escaped <c>\|</c> inside a cell's content.</summary>
+        private static List<string> SplitTableRow(string line)
+        {
+            string trimmed = line.Trim();
+            if (trimmed.StartsWith("|")) trimmed = trimmed.Substring(1);
+            if (trimmed.EndsWith("|") && !trimmed.EndsWith("\\|")) trimmed = trimmed.Substring(0, trimmed.Length - 1);
+
+            var cells = new List<string>();
+            var current = new System.Text.StringBuilder();
+            for (int c = 0; c < trimmed.Length; c++)
+            {
+                if (trimmed[c] == '\\' && c + 1 < trimmed.Length && trimmed[c + 1] == '|')
+                {
+                    current.Append('|');
+                    c++;
+                }
+                else if (trimmed[c] == '|')
+                {
+                    cells.Add(current.ToString().Trim());
+                    current.Clear();
+                }
+                else
+                {
+                    current.Append(trimmed[c]);
+                }
+            }
+            cells.Add(current.ToString().Trim());
+            return cells;
+        }
+
+        private static List<TableAlign> ParseTableAlignments(string separatorLine)
+        {
+            var result = new List<TableAlign>();
+            foreach (var raw in SplitTableRow(separatorLine))
+            {
+                string cell = raw.Trim();
+                bool left = cell.StartsWith(":");
+                bool right = cell.EndsWith(":");
+                result.Add(left && right ? TableAlign.Center : right ? TableAlign.Right : TableAlign.Left);
+            }
+            return result;
+        }
+
+        /// <summary>Renders a real bordered WPF table (Grid, header row visually distinct) for a
+        /// GFM pipe table — #2705's fix for the shared renderer's previous total lack of table
+        /// support (a table rendered as flat paragraph text, pipes and all).</summary>
+        private static FrameworkElement CreateTable(List<string> headerCells, List<TableAlign> alignments,
+            List<List<string>> dataRows, RenderOptions options, Func<string, Brush> getBrush)
+        {
+            int columnCount = headerCells.Count;
+
+            var outerBorder = new Border
+            {
+                BorderBrush = getBrush("Surface1Brush"),
+                BorderThickness = new Thickness(1, 1, 0, 0),
+                CornerRadius = new CornerRadius(4),
+                Margin = new Thickness(0, 8, 0, 8),
+                ClipToBounds = true
+            };
+
+            var grid = new Grid();
+            for (int c = 0; c < columnCount; c++)
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            int totalRows = 1 + dataRows.Count;
+            for (int r = 0; r < totalRows; r++)
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            AddTableRow(grid, 0, headerCells, columnCount, alignments, isHeader: true, options, getBrush);
+            for (int r = 0; r < dataRows.Count; r++)
+                AddTableRow(grid, r + 1, dataRows[r], columnCount, alignments, isHeader: false, options, getBrush);
+
+            outerBorder.Child = grid;
+            return outerBorder;
+        }
+
+        private static void AddTableRow(Grid grid, int rowIndex, List<string> cells, int columnCount,
+            List<TableAlign> alignments, bool isHeader, RenderOptions options, Func<string, Brush> getBrush)
+        {
+            for (int c = 0; c < columnCount; c++)
+            {
+                string cellText = c < cells.Count ? cells[c] : "";
+                TableAlign align = c < alignments.Count ? alignments[c] : TableAlign.Left;
+
+                var cellBorder = new Border
+                {
+                    BorderBrush = getBrush("Surface1Brush"),
+                    BorderThickness = new Thickness(0, 0, 1, 1),
+                    Background = isHeader ? getBrush("Surface0Brush") : Brushes.Transparent,
+                    Padding = new Thickness(8, 5, 8, 5)
+                };
+
+                var tb = new TextBlock
+                {
+                    FontSize = options.BaseFontSize - (isHeader ? 0 : 0.5),
+                    FontWeight = isHeader ? FontWeights.SemiBold : FontWeights.Normal,
+                    Foreground = getBrush(isHeader ? "TextBrush" : "Subtext1Brush"),
+                    TextWrapping = TextWrapping.Wrap,
+                    TextAlignment = align switch
+                    {
+                        TableAlign.Center => TextAlignment.Center,
+                        TableAlign.Right => TextAlignment.Right,
+                        _ => TextAlignment.Left
+                    }
+                };
+                PopulateInlines(tb, cellText, options, getBrush);
+                cellBorder.Child = tb;
+
+                Grid.SetRow(cellBorder, rowIndex);
+                Grid.SetColumn(cellBorder, c);
+                grid.Children.Add(cellBorder);
+            }
         }
 
         private static FrameworkElement CreateParagraph(string text, RenderOptions options, Func<string, Brush> getBrush)
