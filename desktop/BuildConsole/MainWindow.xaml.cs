@@ -107,6 +107,11 @@ namespace BuildConsole
             /// <summary>Git #2548 — the Chat Document Container chrome wrapping this tab's chat body
             /// (the WebView2 split grid lives inside it). Null for a tab opened before this landed.</summary>
             public Controls.ChatDocumentContainer? Container;
+            /// <summary>Git #2688 — the handler subscribed to <see cref="Controls.LeftSidebar.BoardRefreshCompleted"/>
+            /// so this tab's Detected panel refreshes on the same cascade Batter Up/AI Batter Up already
+            /// use (#1813). Kept so <see cref="CloseTab"/> can unsubscribe it and let the container be
+            /// collected instead of leaking a handler forever.</summary>
+            public EventHandler? DetectedRefreshHandler;
         }
         private readonly Dictionary<TabItem, ChatTabState> _chatTabs = new();
 
@@ -3399,6 +3404,14 @@ namespace BuildConsole
             };
             _chatTabs[newTab] = state;
 
+            // Git #2688 — wire this tab's Detected dock into the same BoardRefreshCompleted cascade
+            // (#1813) already driving BatterUpPanel/AiBatterUpPanel, so a closed issue drops out of
+            // an already-open chat's Detected panel on the app's main manual refresh instead of only
+            // on the panel's own hidden per-tab refresh icon (RailRefresh_Click) or first open.
+            EventHandler detectedRefreshHandler = async (s, e) => await container.RefreshDetectedAsync();
+            state.DetectedRefreshHandler = detectedRefreshHandler;
+            if (LeftSidebar != null) LeftSidebar.BoardRefreshCompleted += detectedRefreshHandler;
+
             closeBtn.Click += (s, e) => CloseTab(newTab);
 
             AttachTabContextMenu(newTab, EditorTabs);
@@ -5249,8 +5262,14 @@ namespace BuildConsole
             if (owner == null) return;
 
             // Clean up tab tracking
-            if (_chatTabs.ContainsKey(tabItem))
+            if (_chatTabs.TryGetValue(tabItem, out var closingChatState))
             {
+                // Git #2688 — unsubscribe the Detected-panel refresh handler wired at tab creation,
+                // or this tab's container leaks forever off LeftSidebar.BoardRefreshCompleted.
+                if (closingChatState.DetectedRefreshHandler != null && LeftSidebar != null)
+                {
+                    LeftSidebar.BoardRefreshCompleted -= closingChatState.DetectedRefreshHandler;
+                }
                 _chatTabs.Remove(tabItem);
                 PersistOpenChatTabs();
             }
