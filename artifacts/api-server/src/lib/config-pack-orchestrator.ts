@@ -498,6 +498,9 @@ export async function runConfigPackForCustomer(opts: {
       changeRequestId: opts.changeRequestAuthorization.changeRequestId,
       mspId: tenantRow.mspId,
       tenantId: customer.tenantId,
+      // #1773 — a CR scoped to a specific pack at raise time may only
+      // authorize THIS pack; an unscoped CR is unaffected.
+      targetKey: `pack:${packKey}`,
     });
     if (!claim.ok) {
       throw new ConfigPackError(

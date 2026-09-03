@@ -132,6 +132,12 @@ export async function raisePolicyEnactmentChangeRequest(opts: RaisePolicyEnactme
       catalogItemId: item.id,
       // The catalog item's own real, signed approver — inherited, never "the system".
       approvedBy: item.approvedByName,
+      // #1773 — this CR is auto-raised for exactly one SOP enactment, so it can
+      // (and must) be pinned: the write gate now refuses to let it authorize
+      // anything else. `sopId` is nullable on the schema but is always set here
+      // — `runSopForCustomer` already verified it matches the SOP being run
+      // before calling in.
+      authorizedTargetKey: policy.sopId ? `sop:${policy.sopId}` : null,
     })
     .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
 

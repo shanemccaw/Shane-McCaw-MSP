@@ -67,6 +67,20 @@ export interface ChangeRequestAuthorizationFacts {
   readonly executorRunId: number | null;
   /** Whether every required approval stage has cleared (from the #1496 ledger). */
   readonly approvalComplete: boolean;
+  /**
+   * #1773 — the `pack:<packKey>` / `sop:<sopId>` this CR was scoped to at raise
+   * time, from `msp_change_requests.authorized_target_key`. `undefined`/`null`
+   * means the CR was never pinned to one target — #1497's original
+   * tenant-granularity model, unaffected by this check.
+   */
+  readonly authorizedTargetKey?: string | null;
+  /**
+   * The `pack:<packKey>` / `sop:<sopId>` the caller is actually about to
+   * execute under this claim. Only compared against `authorizedTargetKey` when
+   * the CR carries one — an unscoped CR still authorizes any target for this
+   * tenant, exactly as before #1773.
+   */
+  readonly requestedTargetKey?: string | null;
 }
 
 /**
@@ -94,6 +108,16 @@ export function evaluateChangeRequestAuthorization(
   }
   if (!facts.approvalComplete) {
     return { authorized: false, reason: "change request approval is not complete" };
+  }
+  // #1773 — a CR scoped to a specific target at raise time may ONLY authorize
+  // that target. Fail-closed on a mismatch even though every other branch above
+  // already passed; an unscoped CR (authorizedTargetKey null/undefined) still
+  // authorizes any target for this tenant, exactly as before this check existed.
+  if (facts.authorizedTargetKey != null && facts.authorizedTargetKey !== facts.requestedTargetKey) {
+    return {
+      authorized: false,
+      reason: `change request is scoped to '${facts.authorizedTargetKey}', not '${facts.requestedTargetKey ?? "(unscoped)"}'`,
+    };
   }
   return { authorized: true };
 }
@@ -132,6 +156,13 @@ export async function claimChangeRequestForWrite(opts: {
   changeRequestId: number;
   mspId: number;
   tenantId: string;
+  /**
+   * #1773 — the `pack:<packKey>` / `sop:<sopId>` this write is actually about
+   * to execute. Compared against the claimed CR's own `authorizedTargetKey`
+   * when it has one; omitted/undefined is fine for a CR that was never scoped
+   * to a single target (#1497's original tenant-granularity model).
+   */
+  targetKey?: string;
   now?: Date;
 }): Promise<ClaimOutcome> {
   const now = opts.now ?? new Date();
@@ -143,6 +174,7 @@ export async function claimChangeRequestForWrite(opts: {
       riskLevel: mspChangeRequestsTable.riskLevel,
       status: mspChangeRequestsTable.status,
       executorRunId: mspChangeRequestsTable.executorRunId,
+      authorizedTargetKey: mspChangeRequestsTable.authorizedTargetKey,
     })
     .from(mspChangeRequestsTable)
     .where(
@@ -174,6 +206,8 @@ export async function claimChangeRequestForWrite(opts: {
     status: cr.status,
     executorRunId: cr.executorRunId,
     approvalComplete: isApprovalComplete(approvals, cr.changeClass, cr.riskLevel, now),
+    authorizedTargetKey: cr.authorizedTargetKey,
+    requestedTargetKey: opts.targetKey ?? null,
   });
   if (!verdict.authorized) {
     return { ok: false, reason: verdict.reason };

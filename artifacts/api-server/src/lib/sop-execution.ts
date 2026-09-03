@@ -267,6 +267,9 @@ export async function runSopForCustomer(opts: {
       changeRequestId: opts.changeRequestAuthorization.changeRequestId,
       mspId,
       tenantId: customer.tenantId,
+      // #1773 — a CR scoped to a specific SOP at raise time may only
+      // authorize THIS SOP; an unscoped CR is unaffected.
+      targetKey: `sop:${sopId}`,
     });
     if (!claim.ok) {
       throw new SopExecutionError(
@@ -300,6 +303,10 @@ export async function runSopForCustomer(opts: {
       changeRequestId: raised.changeRequestId,
       mspId,
       tenantId: customer.tenantId,
+      // #1773 — this CR was just auto-raised scoped to exactly this SOP
+      // (raisePolicyEnactmentChangeRequest sets authorizedTargetKey), so the
+      // claim must name the same target or the gate would reject its own row.
+      targetKey: `sop:${sopId}`,
     });
     if (!claim.ok) {
       // Should not happen — the CR was just raised fully pre-approved via
