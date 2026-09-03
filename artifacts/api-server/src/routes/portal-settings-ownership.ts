@@ -37,7 +37,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { db, portalOwnershipPolicyTable } from "@workspace/db";
 
-import { requireRole } from "../middlewares/requireAuth";
+import { requireRole, type AuthUser } from "../middlewares/requireAuth";
 import { resolveCustomerId } from "../lib/portal-customer-scope";
 import { logger } from "../lib/logger";
 import {
@@ -45,6 +45,7 @@ import {
   isOwnershipGateMode,
   resolveGateMode,
 } from "../lib/portal-ownership-policy";
+import { listWorkloadMembership, setWorkloadTracked } from "../lib/ownership-workload-membership";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -104,6 +105,77 @@ router.put(
         "portal ownership policy save failed",
       );
       res.status(500).json({ error: "Your ownership acceptance-gate setting could not be saved." });
+    }
+  },
+);
+
+/**
+ * The per-workload RACI-MEMBERSHIP toggle (#1933). See
+ * `lib/ownership-workload-membership.ts`'s header for what this is and, just
+ * as importantly, what it is NOT: it does not scope scanning, findings, or
+ * alerting — those keep running unchanged. It only removes a workload from
+ * the RACI accountability matrix, and untracking a still-enabled workload
+ * writes a real finding rather than silently opting out.
+ */
+router.get(
+  "/portal/settings/ownership/workloads",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    try {
+      const workloads = await listWorkloadMembership(customerId);
+      res.json({ workloads });
+    } catch (err) {
+      log.error(
+        { customerId, err: err instanceof Error ? err.message : String(err) },
+        "workload RACI-membership read failed",
+      );
+      res.status(500).json({ error: "Your workload RACI-membership settings could not be loaded." });
+    }
+  },
+);
+
+router.put(
+  "/portal/settings/ownership/workloads/:key",
+  requireRole("CustomerUser"),
+  async (req: Request, res: Response): Promise<void> => {
+    const customerId = resolveCustomerId(req);
+    if (customerId === null) {
+      res.status(403).json({ error: "No customer identity on token" });
+      return;
+    }
+
+    const workloadKey = String(req.params.key ?? "").trim();
+    if (!workloadKey) {
+      res.status(400).json({ error: "A workload key is required." });
+      return;
+    }
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body.tracked !== "boolean") {
+      res.status(400).json({ error: "'tracked' must be a boolean." });
+      return;
+    }
+
+    const actor = req.user as AuthUser | undefined;
+    try {
+      const result = await setWorkloadTracked(customerId, workloadKey, body.tracked, actor?.id ?? null);
+      log.info(
+        { customerId, workloadKey, tracked: result.tracked, findingsCreated: result.findingsCreated.length },
+        "workload RACI-membership saved",
+      );
+      res.json({ ok: true, workloadKey, tracked: result.tracked });
+    } catch (err) {
+      log.error(
+        { customerId, workloadKey, err: err instanceof Error ? err.message : String(err) },
+        "workload RACI-membership save failed",
+      );
+      res.status(500).json({ error: "Your workload RACI-membership setting could not be saved." });
     }
   },
 );

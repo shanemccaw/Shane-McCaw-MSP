@@ -28,7 +28,12 @@
  *                 `lib/tenant-workloads.ts`. Scoped like `change`/`cr` below,
  *                 through `resolveTenantScope`. Unlike every other row here,
  *                 this one is NOT gated on a purchase: #1523 settled that RACI
- *                 attaches to what the tenant runs, not to what was bought.
+ *                 attaches to what the tenant runs, not to what was bought. A
+ *                 workload the customer has UNTRACKED via the Settings RACI-
+ *                 membership toggle (#1933) is omitted here — and only here;
+ *                 it keeps scanning, keeps alerting, and untracking a still-
+ *                 enabled workload writes its own finding. See
+ *                 `lib/ownership-workload-membership.ts`.
  *   • `service` — `client_services` joined to `services`, reached through the
  *                 customer's own users (`client_services.client_user_id`).
  *   • `change`  — `msp_message_center_items` whose action-required date is
@@ -132,6 +137,7 @@ import { resolveGateMode } from "../lib/portal-ownership-policy";
 import { notifyOwnershipPending } from "../lib/notification-center";
 import { displayStatus, formatChangeRequestCode } from "../lib/portal-change-control";
 import { groupEnabledServicePlansByWorkload } from "../lib/tenant-workloads.ts";
+import { resolveUntrackedWorkloadKeys } from "../lib/ownership-workload-membership";
 import {
   actorMayRespond,
   assignEventType,
@@ -298,7 +304,15 @@ export async function gatherOwnershipObjects(
           eq(tenantServicePlansTable.tenantId, scope.tenantId),
         ),
       );
-    const workloadGroups = groupEnabledServicePlansByWorkload(servicePlanRows);
+    // #1933 — a workload the customer has untracked (RACI-membership toggle,
+    // Settings) is omitted from the matrix entirely: nobody is asked to be
+    // its A/R/C/I. This does NOT touch scanning/findings/alerting for that
+    // workload — see ownership-workload-membership.ts's header. Untracking a
+    // still-enabled workload writes its own finding, independent of this read.
+    const untrackedKeys = await resolveUntrackedWorkloadKeys(customerId);
+    const workloadGroups = groupEnabledServicePlansByWorkload(servicePlanRows).filter(
+      (group) => !untrackedKeys.has(group.key),
+    );
     for (const group of workloadGroups) {
       objects.push(workloadObject({ key: group.key, label: group.label, servicePlanNames: group.servicePlanNames }));
     }

@@ -7494,6 +7494,52 @@ export const portalOwnershipPolicyTable = pgTable("portal_ownership_policy", {
 export type PortalOwnershipPolicy = typeof portalOwnershipPolicyTable.$inferSelect;
 export type InsertPortalOwnershipPolicy = typeof portalOwnershipPolicyTable.$inferInsert;
 
+/**
+ * Per-workload RACI-MEMBERSHIP toggle (#1933, correcting the issue body's
+ * original "tracking scope" framing per Shane's 2026-08-30 comment).
+ *
+ * What this is NOT: a scan/finding/alert suppressor. Untracking a workload
+ * here does not stop monitoring, does not stop findings, does not stop
+ * alerting — that would recreate exactly the #1563 findings-suppression
+ * hazard Shane's correction explicitly ruled out. What it DOES do: remove
+ * the workload from the RACI accountability matrix (`GET /portal/ownership`
+ * omits it, so nobody is asked to be its A/R/C/I). A workload's `key` is one
+ * of `tenant-workloads.ts`'s coarse buckets ("exchange", "sharepoint", ...),
+ * not an FK — workloads are derived at read time from `tenant_service_plans`,
+ * never stored as their own row (see that module's header).
+ *
+ * `tracked = true` (the default, no row) means "in the RACI" — the behaviour
+ * every customer already has today. A customer must take a deliberate action
+ * to flip a workload to `tracked = false`; that action is itself a finding
+ * (an enabled, disowned workload is real attack surface — see
+ * ownership-workload-membership.ts), never a silent opt-out.
+ *
+ * Untracking is not deletion: toggling back to `tracked = true` is a plain
+ * update to the same row (upsert on the unique `(customer_id, workload_key)`
+ * pair), so ownership assignment history on `portal_ownership_assignments`
+ * for this workload's object id is untouched either way.
+ *
+ * Same shape/convention as `portalOwnershipPolicyTable` immediately above —
+ * no FK (matching every portal-own* table), customer id straight off the JWT.
+ */
+export const portalOwnershipWorkloadMembershipTable = pgTable("portal_ownership_workload_membership", {
+  id: serial("id").primaryKey(),
+  /** tenants.id — the JWT's customerId claim. No FK, matching the table above. */
+  customerId: integer("customer_id").notNull(),
+  /** One of tenant-workloads.ts's WORKLOAD_BY_SERVICE_PLAN_NAME bucket keys. */
+  workloadKey: text("workload_key").notNull(),
+  tracked: boolean("tracked").notNull().default(true),
+  /** users.id of whoever last changed this row, or null (system/unknown). */
+  updatedBy: integer("updated_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [
+  uniqueIndex("portal_ownership_workload_membership_customer_workload_idx").on(t.customerId, t.workloadKey),
+]);
+
+export type PortalOwnershipWorkloadMembership = typeof portalOwnershipWorkloadMembershipTable.$inferSelect;
+export type InsertPortalOwnershipWorkloadMembership = typeof portalOwnershipWorkloadMembershipTable.$inferInsert;
+
 // #1759 removed `portal_change_control_approvers` (the `CC_APPROVER_BANDS`
 // `normal`/`emergency` stored approver set). Approver eligibility now derives
 // live from `users.can_approve_changes`; see the block comment above and
