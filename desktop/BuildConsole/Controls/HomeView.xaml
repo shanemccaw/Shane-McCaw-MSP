@@ -388,6 +388,45 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
+
+                        <!-- 🔀 Real Open/Close Rate Crossing Chart (Git #2713) — real issues-opened/day
+                             vs. issues-closed/day for the active Milestone, two real lines from #2711's
+                             daily time series. Same hand-drawn Canvas/Polyline convention as the
+                             burndown chart (#2712) rather than a second charting approach. Fails closed
+                             to OpenCloseRateEmptyText's honest reason when #2711's series doesn't have
+                             enough real history — never a fabricated/interpolated line. -->
+                        <Border x:Name="OpenCloseRateCard" Style="{StaticResource HomeCard}" Margin="0">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,4">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="🔀" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                        <TextBlock Text="OPEN/CLOSE RATE" Style="{StaticResource HomeCardHeader}"/>
+                                    </StackPanel>
+                                    <Button x:Name="BtnRefreshOpenCloseRate" Content="⟳" Style="{StaticResource SecondaryButton}"
+                                            Width="22" Height="22" Padding="0" FontSize="12" FontWeight="Bold" Cursor="Hand"
+                                            HorizontalAlignment="Right" ToolTip="Re-fetch the real daily open/close series now"
+                                            Click="BtnRefreshOpenCloseRate_Click"/>
+                                </Grid>
+                                <Grid Margin="0,0,0,8">
+                                    <TextBlock x:Name="OpenCloseRateScopeText" Text="Active milestone" FontSize="10.5"
+                                               Foreground="{StaticResource Subtext0Brush}" TextTrimming="CharacterEllipsis"/>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource PeachBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Opened/day" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        <Ellipse Width="7" Height="7" Fill="{StaticResource GreenBrush}" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                        <TextBlock Text="Closed/day" FontSize="10" Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </Grid>
+                                <Canvas x:Name="OpenCloseRateCanvas" Height="120" Background="Transparent"
+                                        SizeChanged="OpenCloseRateCanvas_SizeChanged"/>
+                                <TextBlock x:Name="OpenCloseRateSummaryText" Text="" FontSize="10.5"
+                                           Foreground="{StaticResource Subtext1Brush}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                           Visibility="Collapsed"/>
+                                <TextBlock x:Name="OpenCloseRateEmptyText" Text="Loading real open/close history…"
+                                           FontSize="11" Foreground="{StaticResource Subtext1Brush}" TextWrapping="Wrap"
+                                           Margin="2,4,0,0" Visibility="Visible"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- ───────────────────────────────────────────────────────

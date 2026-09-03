@@ -194,10 +194,11 @@ namespace BuildConsole.Controls
             // stale after a migration is executed.
             RefreshPendingMigrations();
 
-            // Git #2712 — same cadence: the underlying #2711 series is cache-backed (5-min
-            // TTL) so this passive call is cheap; it just re-renders from cache except on
-            // the rare tick the TTL actually expires.
+            // Git #2712 / #2713 — same cadence: the underlying #2711 series is cache-backed
+            // (5-min TTL) so these passive calls are cheap; they just re-render from cache
+            // except on the rare tick the TTL actually expires.
             RefreshBurndown();
+            RefreshOpenCloseRateChart();
 
             if (issues == null) return;
 
@@ -1283,6 +1284,182 @@ namespace BuildConsole.Controls
             Canvas.SetLeft(dot, lastPt.X - 3.5);
             Canvas.SetTop(dot, lastPt.Y - 3.5);
             BurndownCanvas.Children.Add(dot);
+        }
+
+        #endregion
+
+        #region Open/Close Rate Crossing Chart (Git #2713)
+
+        // Prevents overlapping fetches the same way the migrations scan / burndown chart
+        // do — the passive rollup tick can land mid-fetch of the (cached) #2711 time series.
+        private bool _rateChartFetchInFlight;
+        private IssueTimeSeries? _lastRateChartSeries;
+
+        private void BtnRefreshOpenCloseRate_Click(object sender, RoutedEventArgs e) => RefreshOpenCloseRateChart(forceRefresh: true);
+
+        private void OpenCloseRateCanvas_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            // A resize (column reflow, window resize) needs a full redraw — the polylines'
+            // points are computed against the canvas's actual pixel size.
+            if (_lastRateChartSeries is { HasEnoughData: true } series) DrawOpenCloseRateCanvas(series);
+        }
+
+        /// <summary>
+        /// Real open/close-rate data for the Home dashboard (Git #2713) — the active
+        /// Milestone's real per-day opened/closed counts from
+        /// <see cref="GitHubIssueTimeSeriesService"/> (#2711), the exact same shared source
+        /// the burndown chart (#2712) reads. <paramref name="forceRefresh"/> bypasses that
+        /// service's 5-minute cache (the manual ⟳ button); the passive rollup tick always
+        /// reads the cache.
+        /// </summary>
+        public async void RefreshOpenCloseRateChart(bool forceRefresh = false)
+        {
+            if (_rateChartFetchInFlight) return;
+            _rateChartFetchInFlight = true;
+            try
+            {
+                var series = await GitHubIssueTimeSeriesService.GetActiveMilestoneSeriesAsync(forceRefresh);
+                _lastRateChartSeries = series;
+                RenderOpenCloseRateChart(series);
+            }
+            catch (Exception ex)
+            {
+                _lastRateChartSeries = null;
+                ShowOpenCloseRateMessage($"Open/close rate chart failed to load: {ex.Message}");
+            }
+            finally
+            {
+                _rateChartFetchInFlight = false;
+            }
+        }
+
+        private void RenderOpenCloseRateChart(IssueTimeSeries series)
+        {
+            OpenCloseRateScopeText.Text = series.ScopeLabel;
+
+            // Fail-closed (#2711's HasEnoughData contract): an honest "not enough history"
+            // state, never a fabricated/interpolated line.
+            if (!series.HasEnoughData)
+            {
+                ShowOpenCloseRateMessage(series.Reason ?? "Not enough real history yet to chart a trend.");
+                return;
+            }
+
+            OpenCloseRateEmptyText.Visibility = Visibility.Collapsed;
+            OpenCloseRateCanvas.Visibility = Visibility.Visible;
+            OpenCloseRateSummaryText.Visibility = Visibility.Visible;
+
+            DrawOpenCloseRateCanvas(series);
+
+            // Real trailing-week totals (real per-day counts summed over a real window — an
+            // honest aggregation, not a smoothed/interpolated curve) so the summary line
+            // reads sensibly even when the very last real day is noisy/quiet.
+            int windowDays = Math.Min(7, series.Points.Count);
+            var window = series.Points.Skip(series.Points.Count - windowDays).ToList();
+            int openedWindow = window.Sum(p => p.Opened);
+            int closedWindow = window.Sum(p => p.Closed);
+            string trend = closedWindow > openedWindow
+                ? $"closing faster than opening (last {windowDays}d: {closedWindow} closed vs {openedWindow} opened) 📉"
+                : closedWindow < openedWindow
+                    ? $"opening faster than closing (last {windowDays}d: {openedWindow} opened vs {closedWindow} closed) 📈"
+                    : $"opening and closing at the same real pace (last {windowDays}d: {openedWindow} each)";
+            OpenCloseRateSummaryText.Text = $"{series.CurrentOpen} open now — {trend}.";
+        }
+
+        private void ShowOpenCloseRateMessage(string message)
+        {
+            OpenCloseRateCanvas.Children.Clear();
+            OpenCloseRateCanvas.Visibility = Visibility.Collapsed;
+            OpenCloseRateSummaryText.Visibility = Visibility.Collapsed;
+            OpenCloseRateEmptyText.Text = message;
+            OpenCloseRateEmptyText.Visibility = Visibility.Visible;
+        }
+
+        /// <summary>
+        /// Hand-drawn two-line chart on <c>OpenCloseRateCanvas</c> — same Canvas/Polyline
+        /// convention the burndown chart (#2712) uses (this codebase's own convention for
+        /// custom visuals, #839) rather than a new charting dependency. Plots the real
+        /// per-day <see cref="IssueTimeSeriesPoint.Opened"/> and
+        /// <see cref="IssueTimeSeriesPoint.Closed"/> counts, oldest to newest, scaled to the
+        /// canvas's actual real estate, and marks the most recent real day the closed line
+        /// crosses to at-or-above the opened line — the exact "close rate overtaking open
+        /// rate" signal #2713 asks to make visually obvious.
+        /// </summary>
+        private void DrawOpenCloseRateCanvas(IssueTimeSeries series)
+        {
+            OpenCloseRateCanvas.Children.Clear();
+
+            double width = OpenCloseRateCanvas.ActualWidth;
+            double height = OpenCloseRateCanvas.ActualHeight;
+            var points = series.Points;
+            if (points.Count < 2 || width <= 1 || height <= 1) return;
+
+            int maxDaily = Math.Max(1, points.Max(p => Math.Max(p.Opened, p.Closed)));
+            const double topPad = 6, bottomPad = 2;
+            double plotHeight = Math.Max(1, height - topPad - bottomPad);
+
+            double StepX(int i) => width * i / (points.Count - 1);
+            double StepY(int count) => topPad + plotHeight - (plotHeight * count / maxDaily);
+
+            var openedBrush = (Brush)FindResource("PeachBrush");
+            var closedBrush = (Brush)FindResource("GreenBrush");
+
+            var openedPoints = new PointCollection(points.Count);
+            var closedPoints = new PointCollection(points.Count);
+            for (int i = 0; i < points.Count; i++)
+            {
+                openedPoints.Add(new Point(StepX(i), StepY(points[i].Opened)));
+                closedPoints.Add(new Point(StepX(i), StepY(points[i].Closed)));
+            }
+
+            OpenCloseRateCanvas.Children.Add(new System.Windows.Shapes.Polyline
+            {
+                Points = openedPoints,
+                Stroke = openedBrush,
+                StrokeThickness = 1.75,
+                StrokeLineJoin = PenLineJoin.Round,
+            });
+            OpenCloseRateCanvas.Children.Add(new System.Windows.Shapes.Polyline
+            {
+                Points = closedPoints,
+                Stroke = closedBrush,
+                StrokeThickness = 1.75,
+                StrokeLineJoin = PenLineJoin.Round,
+            });
+
+            // Real crossover marker: the most recent real day Closed caught up to or passed
+            // Opened while the immediately preceding real day still had Closed behind —
+            // an actual sign change between the two real series, never a guessed one.
+            for (int i = points.Count - 1; i >= 1; i--)
+            {
+                bool nowClosedAhead = points[i].Closed >= points[i].Opened;
+                bool prevClosedBehind = points[i - 1].Closed < points[i - 1].Opened;
+                if (!nowClosedAhead || !prevClosedBehind) continue;
+
+                var marker = new System.Windows.Shapes.Ellipse
+                {
+                    Width = 8,
+                    Height = 8,
+                    Fill = closedBrush,
+                    Stroke = (Brush)FindResource("TextBrush"),
+                    StrokeThickness = 1,
+                };
+                Canvas.SetLeft(marker, closedPoints[i].X - 4);
+                Canvas.SetTop(marker, closedPoints[i].Y - 4);
+                OpenCloseRateCanvas.Children.Add(marker);
+                break;
+            }
+
+            // Highlight the real current values at the last point for both lines.
+            var lastOpened = new System.Windows.Shapes.Ellipse { Width = 6, Height = 6, Fill = openedBrush };
+            Canvas.SetLeft(lastOpened, openedPoints[openedPoints.Count - 1].X - 3);
+            Canvas.SetTop(lastOpened, openedPoints[openedPoints.Count - 1].Y - 3);
+            OpenCloseRateCanvas.Children.Add(lastOpened);
+
+            var lastClosed = new System.Windows.Shapes.Ellipse { Width = 6, Height = 6, Fill = closedBrush };
+            Canvas.SetLeft(lastClosed, closedPoints[closedPoints.Count - 1].X - 3);
+            Canvas.SetTop(lastClosed, closedPoints[closedPoints.Count - 1].Y - 3);
+            OpenCloseRateCanvas.Children.Add(lastClosed);
         }
 
         #endregion
