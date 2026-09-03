@@ -914,6 +914,8 @@ async function raiseHoldChangeRequest(opts: {
       // and a customer reading their own register should not see the internal
       // casing of a database column.
       linkedFinding: `${titleCasePillar(opts.hold.pillar)} · ${opts.hold.title}`,
+      // #1505 — the real FK backing the free text above.
+      linkedHoldWindowId: opts.hold.id,
     })
     .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
 

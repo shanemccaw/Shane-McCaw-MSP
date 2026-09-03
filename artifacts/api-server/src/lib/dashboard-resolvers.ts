@@ -781,6 +781,8 @@ async function resolveDriftEvents(def: MetricDef, tenantId: string, ctx: Resolve
       changedBy: r.changedBy ?? null,
       verdict: r.verdict,
       crRef: r.crRef ?? null,
+      // #1505 — the real FK behind crRef above.
+      changeRequestId: r.changeRequestId ?? null,
     };
   });
 

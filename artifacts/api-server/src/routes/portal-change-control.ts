@@ -229,6 +229,15 @@ interface WireChangeRequest {
   readonly intake: string | null;
   readonly implementer: string | null;
   readonly sourceGraphMessageId: string | null;
+  /**
+   * #1505 — the real FKs now sitting beside `linkedFinding` / `sourceGraphMessageId`
+   * above: the `m365_change_interpretations` / `m365_change_resolutions` rows
+   * behind an auto-routed Microsoft change, and the `portal_hold_windows` row
+   * behind a hold-window-raised CR. NULL on every CR not raised that way.
+   */
+  readonly sourceInterpretationId: number | null;
+  readonly sourceResolutionId: number | null;
+  readonly linkedHoldWindowId: number | null;
   readonly createdAt: string;
   /**
    * #1497 — the wf_run executing this change, when an approved CR authorized a
@@ -302,6 +311,9 @@ interface ChangeRequestRow {
   intake: string | null;
   implementer: string | null;
   sourceGraphMessageId: string | null;
+  sourceInterpretationId: number | null;
+  sourceResolutionId: number | null;
+  linkedHoldWindowId: number | null;
   executorRunId: number | null;
   createdAt: Date;
 }
@@ -367,6 +379,9 @@ function toWire(
     intake: displayIntake(row.intake),
     implementer: displayImplementer(row.implementer),
     sourceGraphMessageId: row.sourceGraphMessageId,
+    sourceInterpretationId: row.sourceInterpretationId,
+    sourceResolutionId: row.sourceResolutionId,
+    linkedHoldWindowId: row.linkedHoldWindowId,
     executorRunId: row.executorRunId,
     createdAt: row.createdAt.toISOString(),
     approvalRecords,
@@ -537,6 +552,9 @@ router.get(
           intake: mspChangeRequestsTable.intake,
           implementer: mspChangeRequestsTable.implementer,
           sourceGraphMessageId: mspChangeRequestsTable.sourceGraphMessageId,
+          sourceInterpretationId: mspChangeRequestsTable.sourceInterpretationId,
+          sourceResolutionId: mspChangeRequestsTable.sourceResolutionId,
+          linkedHoldWindowId: mspChangeRequestsTable.linkedHoldWindowId,
           executorRunId: mspChangeRequestsTable.executorRunId,
           createdAt: mspChangeRequestsTable.createdAt,
         })
