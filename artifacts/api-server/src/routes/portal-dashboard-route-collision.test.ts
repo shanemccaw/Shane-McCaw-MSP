@@ -30,14 +30,16 @@
  * same harness as portal-customer-engines-assessment-redaction.test.ts:
  *   1. tenantEngineSnapshotsTable   (engine snapshots)
  *   2. assessmentSowAgreementsTable (#164 paid/free_activated gate)
- *   3. clientServicesTable/servicesTable join (activeServices -> type_attributes)
- *   4. tenantsTable                 (status + customerName)
- *   5. projectsTable
- *   6. clientServicesTable/servicesTable join (clientServicesResult)
- *   7. invoicesTable
- *   8. reportsTable
- *   9. notificationsTable  (unread count)
- *   10. messagesTable      (unread count)
+ *   3. mspDiagnosticFindingsTable   (#2500: latest run id for priorityItems)
+ *   4. mspDiagnosticFindingsTable   (#2500: critical/warning findings for that run)
+ *   5. clientServicesTable/servicesTable join (activeServices -> type_attributes)
+ *   6. tenantsTable                 (status + customerName)
+ *   7. projectsTable
+ *   8. clientServicesTable/servicesTable join (clientServicesResult)
+ *   9. invoicesTable
+ *   10. reportsTable
+ *   11. notificationsTable  (unread count)
+ *   12. messagesTable      (unread count)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -81,6 +83,9 @@ vi.mock("@workspace/db", () => {
     mspSalesBundleAssignmentsTable: tbl(["customerId", "mspId", "status"]),
     mspAuditLogsTable: tbl(["id"]),
     assessmentSowAgreementsTable: tbl(["id", "clientUserId", "status"]),
+    mspDiagnosticFindingsTable: tbl([
+      "runId", "customerId", "checkKey", "severity", "title", "description", "createdAt",
+    ]),
   };
 });
 
@@ -156,21 +161,23 @@ function queueFullDashboard({ paid = false }: { paid?: boolean } = {}) {
   ]);
   // 2. assessmentSowAgreementsTable (#164 gate)
   mockResultQueue.push(paid ? [{ id: 999 }] : []);
-  // 3. activeServices (empty -> default type_attributes)
+  // 3. mspDiagnosticFindingsTable — latest run id for priorityItems (#2500; none here)
   mockResultQueue.push([]);
-  // 4. tenantsTable — status + the real customerName (#315)
+  // 5. activeServices (empty -> default type_attributes)
+  mockResultQueue.push([]);
+  // 6. tenantsTable — status + the real customerName (#315)
   mockResultQueue.push([{ status: "active", customerName: REAL_TENANT_NAME }]);
-  // 5. projectsTable (empty -> no kanbanTasks query is issued)
+  // 7. projectsTable (empty -> no kanbanTasks query is issued)
   mockResultQueue.push([]);
-  // 6. clientServicesResult
+  // 8. clientServicesResult
   mockResultQueue.push([]);
-  // 7. invoicesTable
+  // 9. invoicesTable
   mockResultQueue.push([]);
-  // 8. reportsTable
+  // 10. reportsTable
   mockResultQueue.push([]);
-  // 9. notificationsTable unread count
+  // 11. notificationsTable unread count
   mockResultQueue.push([{ unread: 0 }]);
-  // 10. messagesTable unread count
+  // 12. messagesTable unread count
   mockResultQueue.push([{ unreadMessages: 0 }]);
 }
 
@@ -208,6 +215,7 @@ describe("GET /api/portal/dashboard — #327 route collision fix", () => {
   it("returns customerName as null (not an absent key) when the tenants row is missing", async () => {
     mockResultQueue.push([]); // snapshots
     mockResultQueue.push([]); // sow agreements
+    mockResultQueue.push([]); // mspDiagnosticFindingsTable latest run (#2500; none)
     mockResultQueue.push([]); // activeServices
     mockResultQueue.push([]); // tenantsTable -> NO ROW
     mockResultQueue.push([]); // projects

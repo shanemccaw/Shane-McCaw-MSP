@@ -34,7 +34,7 @@ import { runSlaEngineForTenant, type SlaEngineOutput } from "../lib/sla-engine";
 import { runScopeCreepEngineForTenant, type ScopeCreepEngineOutput } from "../lib/scope-creep-engine";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "tenant.portal" });
-import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, usersTable, wfTriggersTable, wfDefinitionsTable } from "@workspace/db";
+import { db, tenantEngineSnapshotsTable, tenantsTable, clientServicesTable, servicesTable, projectsTable, kanbanTasksTable, invoicesTable, reportsTable, notificationsTable, messagesTable, mspSalesBundleAssignmentsTable, mspAuditLogsTable, assessmentSowAgreementsTable, mspDiagnosticRunsTable, mspDiagnosticFindingsTable, usersTable, wfTriggersTable, wfDefinitionsTable } from "@workspace/db";
 import { eq, desc, and, count, inArray, or, asc } from "drizzle-orm";
 import { createAuditLog } from "../lib/audit";
 import { getStripeKey } from "../lib/stripe";
@@ -494,6 +494,65 @@ router.get(
         }
       }
 
+      // #2500: priorityItems — the customer's real critical/warning diagnostic
+      // findings from their MOST RECENT scan run, worst-severity-first. This was
+      // previously a hardcoded `[]` literal with no query behind it at all
+      // (found during #2446's contract-pack extraction). Mirrors the same
+      // "latest run for this customer" + severity-filter pattern already used by
+      // fetchPillarFindings (pillar-summary-stats.ts) and the cross-tenant alert
+      // feed (msp-alerts.ts), scoped down to what this route needs — no
+      // rank-weight machinery, since this list is a short customer-facing
+      // headline, not the full per-pillar radar those callers build.
+      // Same #164 paywall as the pillars block above: an unpaid customer sees
+      // that priority items exist (count + severity) but not the finding text
+      // itself, consistent with how `pillars[engineKey]` gates findings/
+      // recommendations text one paragraph up.
+      type PriorityItem = {
+        checkKey: string;
+        severity: "critical" | "warning";
+        title: string | null;
+        description: string | null;
+      };
+      let priorityItems: PriorityItem[] = [];
+      const [latestFindingsRun] = await db
+        .select({ runId: mspDiagnosticFindingsTable.runId })
+        .from(mspDiagnosticFindingsTable)
+        .where(eq(mspDiagnosticFindingsTable.customerId, customerId))
+        .orderBy(desc(mspDiagnosticFindingsTable.createdAt))
+        .limit(1);
+
+      if (latestFindingsRun) {
+        const findingRows = await db
+          .select({
+            checkKey: mspDiagnosticFindingsTable.checkKey,
+            severity: mspDiagnosticFindingsTable.severity,
+            title: mspDiagnosticFindingsTable.title,
+            description: mspDiagnosticFindingsTable.description,
+            createdAt: mspDiagnosticFindingsTable.createdAt,
+          })
+          .from(mspDiagnosticFindingsTable)
+          .where(
+            and(
+              eq(mspDiagnosticFindingsTable.runId, latestFindingsRun.runId),
+              inArray(mspDiagnosticFindingsTable.severity, ["critical", "warning"]),
+            ),
+          );
+
+        const severityRank: Record<string, number> = { critical: 0, warning: 1 };
+        findingRows.sort(
+          (a, b) =>
+            severityRank[a.severity] - severityRank[b.severity] ||
+            b.createdAt.getTime() - a.createdAt.getTime(),
+        );
+
+        priorityItems = findingRows.slice(0, 5).map((row) => ({
+          checkKey: row.checkKey,
+          severity: row.severity as "critical" | "warning",
+          title: isPaidTier ? row.title : null,
+          description: isPaidTier ? row.description : null,
+        }));
+      }
+
       // Determine type_attributes / modules to mount
       const activeServices = await db
         .select({ typeAttributes: servicesTable.typeAttributes })
@@ -635,7 +694,7 @@ router.get(
           generatedAt,
           summary: {
             compositeScore: compositeCount > 0 ? Math.round(compositeScore / compositeCount) : null,
-            priorityItems: [],
+            priorityItems,
           },
           pillars
         },
