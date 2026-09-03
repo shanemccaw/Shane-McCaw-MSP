@@ -31,9 +31,11 @@ export interface AssessmentStage {
   description?: string;
   documentData?: PipelineDocumentData;
   /** The real insights_generated_documents.id backing this stage, once the
-   * document exists (GET /api/portal/assessment/documents/:id fetchable only
-   * when status is 'done' — approved/delivered). Undefined for expected-but-
-   * not-yet-generated stages. */
+   * document exists. Its fetch endpoint (GET /api/portal/assessment/documents/:id)
+   * was retired with the SOW/checkout flow (#1674, #1753) and has no
+   * replacement — this field, and the component cluster that reads it, are
+   * currently unwired to any live route. Undefined for expected-but-not-yet-
+   * generated stages. */
   documentId?: number;
 }
 
@@ -81,9 +83,12 @@ export interface TelemetryItem {
   };
 }
 
-/** A real recommended offer from the Sales Offer Engine
- * (GET /api/portal/assessment/recommended-offers — real catalog service,
- * real engine-adjusted price, real destination link). */
+/** A real recommended offer from the Sales Offer Engine. Its fetch endpoint
+ * (GET /api/portal/assessment/recommended-offers — real catalog service, real
+ * engine-adjusted price, real destination link) was retired with the
+ * SOW/checkout flow (#1674, #1753) and has no replacement — this type, and
+ * the component cluster that reads it, are currently unwired to any live
+ * route. */
 export interface RecommendedOffer {
   serviceId: number;
   serviceName: string;

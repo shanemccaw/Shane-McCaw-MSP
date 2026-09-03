@@ -18,7 +18,7 @@
  * query parameter), so one tenant can never read or overwrite another's quiz.
  *
  * ID space: the JWT's customerId claim carries tenants.id post-Tenant/User
- * refactor — the same lookup GET /portal/assessment/testbed-status already
+ * refactor — the same lookup GET /portal/diagnostics/testbed-status already
  * does (`tenantsTable.where(eq(tenantsTable.id, customerId))`).
  *
  * Deliberately NOT here: mid-quiz partial-answer autosave. #237 scopes this to

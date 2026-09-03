@@ -60,7 +60,7 @@ const MFA_SETUP_ALLOWLIST: ReadonlyArray<{ method: string; path: string }> = [
   // enrollment state off this status endpoint before it can render the gate
   // at all — without it a pending Assessment session could never reach the
   // enrollment UI in the first place.
-  { method: "GET", path: "/portal/assessment/status" },
+  { method: "GET", path: "/portal/diagnostics/status" },
 ];
 
 declare global {

@@ -1,7 +1,7 @@
 /**
  * portal-assessment-debug-reset-session.test.ts
  *
- * Regression coverage for #284's POST /portal/assessment/debug-reset-session:
+ * Regression coverage for #284's POST /portal/diagnostics/debug-reset-session:
  *  - a full reset clears the quiz key, diagnostic runs, the owned
  *    doc-generation workflow runs, and generated documents, while leaving
  *    client_services (the real Copilot entitlement) completely untouched
@@ -131,7 +131,7 @@ vi.mock("../lib/tenant-signals", () => ({
 vi.mock("../lib/graph", () => ({ REQUIRED_MT_SCOPES: [] }));
 vi.mock("../lib/sharepoint-admin", () => ({ REQUIRED_SHAREPOINT_APP_PERMISSIONS: [] }));
 
-describe("POST /portal/assessment/debug-reset-session (#284)", () => {
+describe("POST /portal/diagnostics/debug-reset-session (#284)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUser = { id: 99, customerId: 10 };
@@ -150,7 +150,7 @@ describe("POST /portal/assessment/debug-reset-session (#284)", () => {
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);
 
-    const res = await request(app).post("/api/portal/assessment/debug-reset-session").send({});
+    const res = await request(app).post("/api/portal/diagnostics/debug-reset-session").send({});
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -178,7 +178,7 @@ describe("POST /portal/assessment/debug-reset-session (#284)", () => {
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);
 
-    const res = await request(app).post("/api/portal/assessment/debug-reset-session").send({});
+    const res = await request(app).post("/api/portal/diagnostics/debug-reset-session").send({});
 
     expect(res.status).toBe(200);
     expect(res.body.cleared.workflowRuns).toBe(0);
@@ -193,7 +193,7 @@ describe("POST /portal/assessment/debug-reset-session (#284)", () => {
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);
 
-    const res = await request(app).post("/api/portal/assessment/debug-reset-session").send({});
+    const res = await request(app).post("/api/portal/diagnostics/debug-reset-session").send({});
 
     expect(res.status).toBe(403);
     // Blocked before any mutation ran — no update/delete calls at all.
@@ -208,7 +208,7 @@ describe("POST /portal/assessment/debug-reset-session (#284)", () => {
     app.use(express.json());
     app.use("/api", portalAssessmentRouter);
 
-    const res = await request(app).post("/api/portal/assessment/debug-reset-session").send({});
+    const res = await request(app).post("/api/portal/diagnostics/debug-reset-session").send({});
 
     expect(res.status).toBe(403);
     expect(state.deleteCalls).toHaveLength(0);

@@ -1,6 +1,6 @@
 /**
  * ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
- * This file's POST /portal/assessment/debug-trigger-scan route (below) exists
+ * This file's POST /portal/diagnostics/debug-trigger-scan route (below) exists
  * only so scan progress can be watched live during development. It is hard-gated
  * to isTestbed=true customers, but must be fully removed before this flow reaches
  * real customers. See backlog: [Shane to add ticket].
@@ -15,7 +15,7 @@
  * unlock a step.
  *
  * Single route:
- *   GET /api/portal/assessment/status
+ *   GET /api/portal/diagnostics/status
  *     — Everything the wizard polls for:
  *         • scan     : the customer's latest diagnostics run (active or last
  *                      completed) so the wizard can drive the live scan step and
@@ -51,12 +51,8 @@ import {
   clientServicesTable,
   servicesTable,
   usersTable,
-  couponsTable,
-  assessmentSowAgreementsTable,
   wfRunsTable,
   wfDefinitionsTable,
-  presentationDocViewsTable,
-  checkoutSessionsTable,
   tenantPillarSnapshotsTable,
   type CopilotAssessmentStateMap,
 } from "@workspace/db";
@@ -69,21 +65,11 @@ import {
  */
 const ASSESSMENT_DOC_WORKFLOW_NAME =
   "__system__: Assessment Document Generation — Service-Mapped, Sequenced SOW";
-import { eq, ne, and, desc, asc, gte, inArray, isNull, sql } from "drizzle-orm";
-import { requireRole, requireAdmin } from "../middlewares/requireAuth";
-import { fireWorkflowForDefinition } from "../lib/workflow-executor.ts";
-import jwt from "jsonwebtoken";
-import { registerWorkflowRunSSEClient } from "../lib/sse-channels";
+import { eq, and, desc, asc, gte, inArray, sql } from "drizzle-orm";
+import { requireRole } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
-import { type OmgCard } from "../lib/omg-card-generator-v2";
 import { runDiagnostics } from "../lib/diagnostics-runner";
-import { generateSowDocument } from "../lib/document-engine-sow.ts";
-import { getStripeKey, getStripePublishableKey } from "../lib/stripe";
 import { isProductionEnvironment } from "../lib/env.ts";
-import { fireEventRule } from "../lib/alert-engine.ts";
-import { ensureFlowStripeCustomer } from "../lib/assessment-flow-rescan-addon.ts";
-import { verifyCaptchaToken } from "../lib/captcha";
-import { getMspPortalBaseUrl } from "../lib/portal-url";
 import { randomUUID } from "crypto";
 import { getPillarCoverage, PILLAR_LABELS, RADAR_PILLARS, type RadarPillar } from "../lib/pillar-coverage";
 // The executor's OWN package→ordered-checks resolver, reused verbatim so the
@@ -108,14 +94,9 @@ import { generateAdoptionNarrative } from "../lib/adoption-narrative-generator.t
 import type { PillarReportAttribution, PillarReportNarrativeResult } from "../lib/pillar-report-narrative.ts";
 import { resolveMspId } from "../lib/resolve-msp-id";
 import { resolveBillingMspId } from "../lib/ai-billing";
-import { runSalesOfferEngineForTenant } from "../lib/sales-offer-engine";
-import { resolveTenantMonitoringAddon, resolveArchitectRetainerAddon } from "../lib/sow-monitoring-addon.ts";
-import { fetchSignalRulesAndGroups } from "../lib/priority-engine";
-import { resolveCustomerIdForPortalUser, resolveSiblingUserIds } from "../lib/tenant-signals";
+import { resolveSiblingUserIds } from "../lib/tenant-signals";
 import { REQUIRED_MT_SCOPES } from "../lib/graph";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin";
-import { createAuditLog } from "../lib/audit.ts";
-import { z } from "zod";
 
 const log = logger.child({ channel: "engine.dashboard" });
 // Payment / checkout for the Assessment SOW belongs on the billing channel per the
@@ -139,12 +120,12 @@ const COMPLETED_RUN_STATUSES = ["completed", "partial"] as const;
 // Document statuses that count as "finished generating, ready to review".
 const READY_DOC_STATUSES = ["approved", "delivered"] as const;
 
-// Trailing window /portal/assessment/history looks back — 12 weeks, matching
+// Trailing window /portal/diagnostics/history looks back — 12 weeks, matching
 // the weekly Copilot Assessment rescan's own cadence (#1058).
 const HISTORY_WINDOW_DAYS = 12 * 7;
 
 router.get(
-  "/portal/assessment/status",
+  "/portal/diagnostics/status",
   // Floor is Assessment (the lowest role); CustomerUser/Free above it also carry
   // a customerId and may read their own status. MSP-side roles have no customerId
   // claim and fall through to the 403 below.
@@ -362,7 +343,7 @@ router.get(
 
       if (pillarSourceRun) {
         pillarCoverage = await getPillarCoverage(pillarSourceRun.packageKey, customerId).catch((err) => {
-          log.warn({ err, customerId }, "GET /portal/assessment/status: pillar coverage computation failed");
+          log.warn({ err, customerId }, "GET /portal/diagnostics/status: pillar coverage computation failed");
           return [];
         });
       }
@@ -415,11 +396,11 @@ router.get(
               }
             }
           } catch (err) {
-            log.warn({ err, customerId }, "GET /portal/assessment/status: license waste computation failed");
+            log.warn({ err, customerId }, "GET /portal/diagnostics/status: license waste computation failed");
           }
 
           copilotReadiness = await computeCopilotReadiness(coverageRun.tenantId).catch((err) => {
-            log.warn({ err, customerId }, "GET /portal/assessment/status: copilot readiness computation failed");
+            log.warn({ err, customerId }, "GET /portal/diagnostics/status: copilot readiness computation failed");
             return null;
           });
         }
@@ -567,7 +548,7 @@ router.get(
         isTestbed: customerRow?.isTestbed === true,
       });
     } catch (err) {
-      log.error({ err, customerId, userId }, "GET /portal/assessment/status failed");
+      log.error({ err, customerId, userId }, "GET /portal/diagnostics/status failed");
       res.status(500).json({ error: "Failed to load assessment status" });
     }
   },
@@ -591,7 +572,7 @@ router.get(
 // fabricated point.
 router.get(
   "/portal/pillars/history",
-  // Same floor as /portal/assessment/status — the assessment wizard's own role.
+  // Same floor as /portal/diagnostics/status — the assessment wizard's own role.
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -658,7 +639,7 @@ router.get(
 
 // ── Telemetry right-panel comparison (#245) ──────────────────────────────────
 //
-//   GET /api/portal/assessment/telemetry-comparison
+//   GET /api/portal/diagnostics/telemetry-comparison
 //
 // The four right-panel elements of the Copilot Assessment telemetry page —
 // Score gauges, Multi-Dimension Radar, Dimension Gap Analysis, Top
@@ -667,14 +648,14 @@ router.get(
 // note (no new scoring formula; why it is genuinely live mid-scan; and why
 // `selfAssessment` is null pending Shane's design decision).
 //
-// Deliberately a separate route from /portal/assessment/status rather than more
+// Deliberately a separate route from /portal/diagnostics/status rather than more
 // fields on it: this one is re-fetched repeatedly WHILE a scan runs (the panel
 // updates as checks land), and status already carries the wizard's whole
 // heavyweight payload — documents, cost engine, copilot readiness, SOW state —
 // none of which changes per check.
 router.get(
-  "/portal/assessment/telemetry-comparison",
-  // Same floor as /portal/assessment/status — the assessment wizard's own role.
+  "/portal/diagnostics/telemetry-comparison",
+  // Same floor as /portal/diagnostics/status — the assessment wizard's own role.
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -686,7 +667,7 @@ router.get(
     try {
       res.json(await buildTelemetryComparison(customerId));
     } catch (err) {
-      log.error({ err, customerId }, "GET /portal/assessment/telemetry-comparison failed");
+      log.error({ err, customerId }, "GET /portal/diagnostics/telemetry-comparison failed");
       res.status(500).json({ error: "Failed to compute telemetry comparison" });
     }
   },
@@ -728,7 +709,7 @@ router.get(
 
 // ── Copilot Readiness report — the three AI-written prose sections (#409) ─────
 //
-//   GET /api/portal/assessment/copilot-readiness-narrative
+//   GET /api/portal/diagnostics/copilot-readiness-narrative
 //
 // The Copilot Readiness, Safety & Enablement Report's three prose sections —
 // Copilot Safety & Exposure, Workflow Enablement & Value, Gate Blockers &
@@ -747,7 +728,7 @@ router.get(
 // for why a narrative grounded in request-supplied figures is a narrative
 // anyone can dictate.
 router.get(
-  "/portal/assessment/copilot-readiness-narrative",
+  "/portal/diagnostics/copilot-readiness-narrative",
   // Same floor as the pillar stats it is grounded in.
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
@@ -782,7 +763,7 @@ router.get(
       // Only reached when the REAL data behind the prose could not be read at
       // all. A thin or empty tenant is not an error — the generator returns
       // omitted sections with a machine reason and the viewer says so.
-      log.error({ err, customerId }, "GET /portal/assessment/copilot-readiness-narrative failed");
+      log.error({ err, customerId }, "GET /portal/diagnostics/copilot-readiness-narrative failed");
       res.status(500).json({ error: "Failed to generate the Copilot readiness narrative" });
     }
   },
@@ -790,7 +771,7 @@ router.get(
 
 // ── Security Posture report — prose sections + Secure Score (#343) ────────────
 //
-//   GET /api/portal/assessment/security-posture-narrative
+//   GET /api/portal/diagnostics/security-posture-narrative
 //
 // The Microsoft 365 Security Posture & Blast Radius Report's three prose
 // sections — the Summary's opening paragraph, the Blast Radius section's causal
@@ -811,7 +792,7 @@ router.get(
 // number the prose is grounded in is recomputed server-side from this
 // customer's own real data.
 router.get(
-  "/portal/assessment/security-posture-narrative",
+  "/portal/diagnostics/security-posture-narrative",
   // Same floor as the pillar stats it is grounded in.
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
@@ -843,7 +824,7 @@ router.get(
       // Only reached when the REAL data behind the report could not be read at
       // all. A thin or empty tenant is not an error — the generator returns
       // omitted sections with a machine reason and the viewer says so.
-      log.error({ err, customerId }, "GET /portal/assessment/security-posture-narrative failed");
+      log.error({ err, customerId }, "GET /portal/diagnostics/security-posture-narrative failed");
       res.status(500).json({ error: "Failed to generate the security posture narrative" });
     }
   },
@@ -851,11 +832,11 @@ router.get(
 
 // ── The pillar reports' prose sections (#292, extended) ───────────────────────
 //
-//   GET /api/portal/assessment/governance-posture-narrative
-//   GET /api/portal/assessment/compliance-alignment-narrative
-//   GET /api/portal/assessment/licensing-alignment-narrative
-//   GET /api/portal/assessment/operational-health-narrative
-//   GET /api/portal/assessment/adoption-narrative
+//   GET /api/portal/diagnostics/governance-posture-narrative
+//   GET /api/portal/diagnostics/compliance-alignment-narrative
+//   GET /api/portal/diagnostics/licensing-alignment-narrative
+//   GET /api/portal/diagnostics/operational-health-narrative
+//   GET /api/portal/diagnostics/adoption-narrative
 //
 // Five routes with one body, registered by the helper below rather than written
 // out five times. They differ ONLY in which generator they call and what the log
@@ -928,22 +909,22 @@ function registerPillarReportNarrativeRoute(
 }
 
 registerPillarReportNarrativeRoute(
-  "/portal/assessment/governance-posture-narrative",
+  "/portal/diagnostics/governance-posture-narrative",
   "governance-posture-report",
   generateGovernancePostureNarrative,
 );
 registerPillarReportNarrativeRoute(
-  "/portal/assessment/compliance-alignment-narrative",
+  "/portal/diagnostics/compliance-alignment-narrative",
   "compliance-alignment-report",
   generateComplianceAlignmentNarrative,
 );
 registerPillarReportNarrativeRoute(
-  "/portal/assessment/licensing-alignment-narrative",
+  "/portal/diagnostics/licensing-alignment-narrative",
   "licensing-alignment-report",
   generateLicensingAlignmentNarrative,
 );
 registerPillarReportNarrativeRoute(
-  "/portal/assessment/operational-health-narrative",
+  "/portal/diagnostics/operational-health-narrative",
   "operational-health-report",
   generateOperationalHealthNarrative,
 );
@@ -954,7 +935,7 @@ registerPillarReportNarrativeRoute(
 // section that reaches the floor on the pillar score and its findings alone is
 // exactly the case `MIN_FACTS_FOR_NARRATIVE` was set to 1 for.
 registerPillarReportNarrativeRoute(
-  "/portal/assessment/adoption-narrative",
+  "/portal/diagnostics/adoption-narrative",
   "adoption-report",
   generateAdoptionNarrative,
 );
@@ -963,7 +944,7 @@ registerPillarReportNarrativeRoute(
 //
 //   GET /api/portal/scan-status
 //
-// Deliberately minimal sibling of /portal/assessment/status above — that route
+// Deliberately minimal sibling of /portal/diagnostics/status above — that route
 // pulls the full assessment-wizard payload (documents, radar, cost engine,
 // copilot readiness, etc.) and is too heavy to poll from every page in the
 // shell. This route reads only the customer's latest msp_diagnostic_runs row,
@@ -1023,14 +1004,14 @@ router.get(
         .limit(1);
 
       // ── Doc-generation workflow run (id + status) ─────────────────────────
-      // Deliberately the SAME query shape /portal/assessment/status already uses
+      // Deliberately the SAME query shape /portal/diagnostics/status already uses
       // for `docWfRun` (see the block above it) — same workflow name, same
       // three-legged trigger-payload predicate, same "most recent run" ordering.
       // Not a second lookup shape and not a new stream: it exists so the Copilot
       // Assessment telemetry page can subscribe to the ALREADY-LIVE run-scoped
-      // stream (GET /portal/assessment/doc-workflow/:runId/sse) the old wizard
+      // stream (GET /portal/diagnostics/doc-workflow/:runId/sse) the old wizard
       // subscribes to today, without having to poll the heavyweight
-      // /portal/assessment/status payload from a page that only needs the run id.
+      // /portal/diagnostics/status payload from a page that only needs the run id.
       // Additive and optional at the wire boundary, exactly like lastRunSummary.
       const [docWfRun] = await db
         .select({ id: wfRunsTable.id, status: wfRunsTable.status })
@@ -1214,7 +1195,7 @@ router.get(
 
 // ── Real weekly-rescan history for drift visualization (#1059, epic #454) ──────
 //
-//   GET /api/portal/assessment/history
+//   GET /api/portal/diagnostics/history
 //
 // The customer's real per-check history off `tenant_monitor_profiles` — one row
 // per check per weekly rescan run (#1058, now live) — capped to a trailing
@@ -1233,7 +1214,7 @@ router.get(
 // whatever it needs (e.g. ok-rate per pillar per run) from the real
 // status/severityMatched values.
 router.get(
-  "/portal/assessment/history",
+  "/portal/diagnostics/history",
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1280,230 +1261,14 @@ router.get(
 
       res.json({ points });
     } catch (err) {
-      log.error({ err, customerId }, "GET /portal/assessment/history failed");
+      log.error({ err, customerId }, "GET /portal/diagnostics/history failed");
       res.status(500).json({ error: "Failed to load assessment history" });
     }
   },
 );
 
-// ── Assessment document-generation live progress SSE ───────────────────────────
-//
-//   GET /api/portal/assessment/doc-workflow/:runId/sse?jwt=<accessToken>
-//
-// Run-ID-scoped Server-Sent Events for the seeded Assessment Document Generation
-// workflow. Keyed on the WORKFLOW run ID (wf_runs.id) — the only stable handle
-// from the very first node, since client_presentations doesn't exist until the
-// end. Mirrors the diagnostics-run SSE pattern exactly (query-JWT auth because
-// EventSource can't set headers, 25s heartbeat, replay-on-connect from the hub).
-// Emits { type: "workflow_run_progress" | "workflow_run_complete" | "workflow_run_error", ... }.
-// A customer may subscribe only to a run whose trigger payload references their
-// own customerId/userId. Completion/failure remain authoritatively detected via
-// the status endpoint's workflowStatus; this stream is a live-UX enhancement.
-router.get(
-  "/portal/assessment/doc-workflow/:runId/sse",
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const runIdNum = parseInt(String(req.params["runId"] ?? ""), 10);
-      if (isNaN(runIdNum)) { res.status(400).json({ error: "Invalid run id" }); return; }
-
-      // Authenticate via query JWT (EventSource cannot set an Authorization header).
-      const token = String((req.query as Record<string, unknown>).jwt ?? "");
-      if (!token) { res.status(401).json({ error: "JWT required" }); return; }
-      const jwtSecret = process.env.JWT_SECRET ?? "dev-secret";
-      let decoded: Record<string, unknown>;
-      try {
-        decoded = jwt.verify(token, jwtSecret) as Record<string, unknown>;
-      } catch {
-        res.status(401).json({ error: "Invalid or expired JWT" }); return;
-      }
-      const tokenUserId = decoded.id as number | undefined;
-      const tokenCustomerId = decoded.customerId as number | undefined;
-      if (tokenUserId == null && tokenCustomerId == null) {
-        res.status(403).json({ error: "No customer identity on token" }); return;
-      }
-
-      // Ownership: the run must be an Assessment doc-gen run whose trigger payload
-      // references this customer/user. Prevents cross-tenant subscription.
-      const [ownedRun] = await db
-        .select({ id: wfRunsTable.id })
-        .from(wfRunsTable)
-        .innerJoin(wfDefinitionsTable, eq(wfDefinitionsTable.id, wfRunsTable.definitionId))
-        .where(
-          and(
-            eq(wfRunsTable.id, runIdNum),
-            eq(wfDefinitionsTable.name, ASSESSMENT_DOC_WORKFLOW_NAME),
-            sql`(${wfRunsTable.payload}->>'customerId' = ${String(tokenCustomerId ?? "")} OR ${wfRunsTable.payload}->>'userId' = ${String(tokenUserId ?? "")} OR ${wfRunsTable.payload}->>'clientUserId' = ${String(tokenUserId ?? "")})`,
-          ),
-        )
-        .limit(1);
-      if (!ownedRun) { res.status(404).json({ error: "Run not found" }); return; }
-
-      res.setHeader("Content-Type", "text/event-stream");
-      res.setHeader("Cache-Control", "no-cache");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
-      res.flushHeaders();
-
-      registerWorkflowRunSSEClient(String(runIdNum), res, () => {
-        log.info({ runId: runIdNum }, "assessment doc-workflow SSE client disconnected");
-      });
-
-      const heartbeat = setInterval(() => {
-        try { res.write(": heartbeat\n\n"); } catch { clearInterval(heartbeat); }
-      }, 25_000);
-      res.on("close", () => clearInterval(heartbeat));
-    } catch (err) {
-      log.error({ err }, "GET /portal/assessment/doc-workflow/:runId/sse error");
-      if (!res.headersSent) res.status(500).json({ error: "Internal server error" });
-    }
-  },
-);
-
-// ── Single document — content + OMG cards for the Results Viewer ───────────────
-//
-// Returns one of the customer's own generated assessment documents: its rendered
-// HTML (for the iframe viewer, same pattern as customer-sow.tsx) plus its
-// AI-extracted "OMG cards".
-//
-// OMG cards are extracted LAZILY here, on the customer's first open of the
-// document, then persisted to insights_generated_documents.omg_cards. This avoids
-// spending an AI call on any document the customer never opens (assessments always
-// run a fresh scan and AI credits cost money). Every later view reads the stored
-// cards. Extraction failure never blocks the document — the HTML is always
-// returned; cards simply come back empty.
-router.get(
-  "/portal/assessment/documents/:id",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    if (userId == null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-
-    const documentId = Number(req.params.id);
-    if (!Number.isInteger(documentId) || documentId <= 0) {
-      res.status(400).json({ error: "Invalid document id" });
-      return;
-    }
-
-    try {
-      // Scope to the caller's CUSTOMER's documents: the doc row's customerId is
-      // a users.id-shaped FK, and any linked login of the same customer may
-      // read the customer's own assessment documents (never another customer's
-      // — the sibling set is derived server-side from msp_users).
-      const viewerScopeUserIds = await resolveSiblingUserIds(userId);
-      const [doc] = await db
-        .select({
-          id: insightsGeneratedDocumentsTable.id,
-          customerId: insightsGeneratedDocumentsTable.customerId,
-          docType: insightsGeneratedDocumentsTable.docType,
-          category: insightsGeneratedDocumentsTable.category,
-          title: insightsGeneratedDocumentsTable.title,
-          status: insightsGeneratedDocumentsTable.status,
-          htmlContent: insightsGeneratedDocumentsTable.htmlContent,
-          omgCards: insightsGeneratedDocumentsTable.omgCards,
-        })
-        .from(insightsGeneratedDocumentsTable)
-        .where(
-          and(
-            eq(insightsGeneratedDocumentsTable.id, documentId),
-            inArray(insightsGeneratedDocumentsTable.customerId, viewerScopeUserIds),
-          ),
-        )
-        .limit(1);
-
-      if (!doc || doc.status === "archived") {
-        res.status(404).json({ error: "Document not found" });
-        return;
-      }
-
-      // Only expose documents that have finished generating and are ready to read.
-      const isReady = (READY_DOC_STATUSES as readonly string[]).includes(doc.status);
-      if (!isReady) {
-        res.status(409).json({ error: "Document is not ready yet", status: doc.status });
-        return;
-      }
-
-      const omgCards: OmgCard[] = (doc.omgCards as OmgCard[] | null) ?? [];
-
-      res.json({
-        id: doc.id,
-        docType: doc.docType,
-        category: doc.category,
-        title: doc.title,
-        status: doc.status,
-        htmlContent: doc.htmlContent,
-        omgCards,
-      });
-    } catch (err) {
-      log.error({ err, userId, documentId }, "GET /portal/assessment/documents/:id failed");
-      res.status(500).json({ error: "Failed to load document" });
-    }
-  },
-);
-
-// ── Document view tracking ──────────────────────────────────────────────────
-//
-// Reuses presentation_doc_views (presentationId: null is the documented
-// non-presentation case — see the /public/documents/:shareToken/doc-views and
-// /portal/documents/:id/share routes in portal.ts, which record the same
-// non-presentation event shape for share-link views) rather than inventing a
-// second, pipeline-only tracking table. Fired once per real document open;
-// the modal's per-session "read" checkmarks are a client-side derivation on
-// top of this, not a separate source of truth.
-router.post(
-  "/portal/assessment/documents/:id/view",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    if (userId == null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-
-    const documentId = Number(req.params.id);
-    if (!Number.isInteger(documentId) || documentId <= 0) {
-      res.status(400).json({ error: "Invalid document id" });
-      return;
-    }
-
-    try {
-      // Same customer-scoped ownership check as the document read above.
-      const viewScopeUserIds = await resolveSiblingUserIds(userId);
-      const [doc] = await db
-        .select({ id: insightsGeneratedDocumentsTable.id, title: insightsGeneratedDocumentsTable.title })
-        .from(insightsGeneratedDocumentsTable)
-        .where(
-          and(
-            eq(insightsGeneratedDocumentsTable.id, documentId),
-            inArray(insightsGeneratedDocumentsTable.customerId, viewScopeUserIds),
-          ),
-        )
-        .limit(1);
-
-      if (!doc) {
-        res.status(404).json({ error: "Document not found" });
-        return;
-      }
-
-      await db.insert(presentationDocViewsTable).values({
-        presentationId: null,
-        documentId: doc.id,
-        documentTitle: doc.title,
-        eventType: "view",
-      });
-
-      res.status(204).end();
-    } catch (err) {
-      log.error({ err, userId, documentId }, "POST /portal/assessment/documents/:id/view failed");
-      res.status(500).json({ error: "Failed to record view" });
-    }
-  },
-);
-
 // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
-// POST /portal/assessment/debug-trigger-scan
+// POST /portal/diagnostics/debug-trigger-scan
 // Exists only so scan progress can be watched live during development. Real
 // customers never get a self-serve scan trigger (prevents AI-credit spam) —
 // this is a narrow, hard-gated exception: testbed customers only, enforced
@@ -1513,7 +1278,7 @@ router.post(
 // logic elsewhere. Remove this route entirely before production. See
 // backlog: [Shane to add ticket].
 router.post(
-  "/portal/assessment/debug-trigger-scan",
+  "/portal/diagnostics/debug-trigger-scan",
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1593,21 +1358,21 @@ router.post(
         },
       );
     } catch (err) {
-      log.error({ err, customerId }, "POST /portal/assessment/debug-trigger-scan failed");
+      log.error({ err, customerId }, "POST /portal/diagnostics/debug-trigger-scan failed");
       if (!res.headersSent) res.status(500).json({ error: "Failed to trigger scan" });
     }
   },
 );
 
 // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
-// GET /portal/assessment/testbed-status
+// GET /portal/diagnostics/testbed-status
 // Exists only so QuizScreen.tsx's [DEBUG] auto-fill button can gate itself off
 // the real server-side isTestbed flag instead of a client-only heuristic —
 // same discipline, and the same tenantsTable.isTestbed lookup, as
 // debug-trigger-scan just above. Remove this route (and the button that calls
 // it) entirely before production. See backlog: [Shane to add ticket].
 router.get(
-  "/portal/assessment/testbed-status",
+  "/portal/diagnostics/testbed-status",
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1625,14 +1390,14 @@ router.get(
 
       res.json({ isTestbed: customer?.isTestbed === true });
     } catch (err) {
-      authLog.error({ err, customerId }, "GET /portal/assessment/testbed-status failed");
+      authLog.error({ err, customerId }, "GET /portal/diagnostics/testbed-status failed");
       res.status(500).json({ error: "Failed to resolve testbed status" });
     }
   },
 );
 
 // ⚠️ TEMPORARY DEBUG CODE — DELETE BEFORE PRODUCTION ⚠️
-// POST /portal/assessment/debug-reset-session
+// POST /portal/diagnostics/debug-reset-session
 // #284, parent epic #183. Resets a testbed customer back to a fresh,
 // never-scanned, never-quizzed state so Shane doesn't have to hand-run SQL
 // between test passes. Hard server-side isTestbed guard, same discipline as
@@ -1645,7 +1410,7 @@ router.get(
 //      msp_diagnostic_findings via the existing FK).
 //   3. Delete wf_runs for the Assessment doc-generation workflow whose
 //      trigger payload references this customer/user — the same ownership
-//      predicate GET /portal/assessment/status uses to find the run.
+//      predicate GET /portal/diagnostics/status uses to find the run.
 //   4. Delete insights_generated_documents for this customer (users.id
 //      space, customer-scoped via resolveSiblingUserIds — the same helper
 //      every other document read/write in this file uses).
@@ -1654,7 +1419,7 @@ router.get(
 // flow. Remove this route entirely before production. See backlog: [Shane to
 // add ticket].
 router.post(
-  "/portal/assessment/debug-reset-session",
+  "/portal/diagnostics/debug-reset-session",
   requireRole("Assessment"),
   async (req: Request, res: Response): Promise<void> => {
     const customerId = resolveCustomerId(req);
@@ -1742,2080 +1507,10 @@ router.post(
         },
       });
     } catch (err) {
-      log.error({ err, customerId }, "POST /portal/assessment/debug-reset-session failed");
+      log.error({ err, customerId }, "POST /portal/diagnostics/debug-reset-session failed");
       if (!res.headersSent) res.status(500).json({ error: "Failed to reset session" });
     }
   },
 );
-
-// ── Recommended offers for assessment findings ────────────────────────────────
-//
-//   GET /api/portal/assessment/recommended-offers
-//
-// Runs the REAL Sales Offer Engine (sales-offer-engine.ts — the platform's one
-// offer mechanism: fired tenant signals × configured rule groups × Product
-// Catalog pricing) in pure-compute mode for the caller's own tenant, and maps
-// each candidate to a customer-safe shape. Nothing is persisted and no offer
-// state machine is touched — this is a read-only recommendation surface for
-// the assessment page's telemetry findings, deliberately NOT a second offer
-// mechanism (same engine, same catalog prices, same rationale text the
-// customer-facing /portal/offers surface shows).
-//
-// Each candidate additionally carries the health pillars of the signals that
-// fired it (from the same signal_derivation_rules rows the engine evaluated),
-// so the client can attach the right offer to the right finding category
-// without ever seeing raw internal signal keys beyond the rationale the offer
-// engine itself already writes for customers.
-//
-// Fetched once per page load (NOT polled — the engine walks the full tenant
-// profile, which is far too heavy for the 4s status poll).
-//
-// `addons` carries the SOW's two real optional services — Tenant Monitoring
-// (seat-priced, 3 real quality tiers) and the Architect Retainer (one real
-// row, no tiering) — resolved by sow-monitoring-addon.ts. This is a SEPARATE
-// path from the Sales Offer Engine candidates above: those are eligibility-
-// scored remediation phases, these are always-offered recurring add-ons keyed
-// off the tenant's own real seat count and the catalog's monitoring_tier /
-// copilot-governance-retainer rows. Either entry can be absent for a tenant
-// this platform cannot honestly price.
-router.get(
-  "/portal/assessment/recommended-offers",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const customerId = resolveCustomerId(req);
-    if (customerId === null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-
-    try {
-      const [customer] = await db
-        .select({ mspId: tenantsTable.mspId, tenantId: tenantsTable.tenantId })
-        .from(tenantsTable)
-        .where(eq(tenantsTable.id, customerId))
-        .limit(1);
-
-      const [engineOutput, { rules }, monitoringAddon, retainerAddon] = await Promise.all([
-        runSalesOfferEngineForTenant(customerId, customer?.mspId ?? null),
-        fetchSignalRulesAndGroups(customer?.mspId ?? null),
-        resolveTenantMonitoringAddon(customer?.tenantId ?? null),
-        resolveArchitectRetainerAddon(customer?.tenantId ?? null),
-      ]);
-
-      const pillarsBySignal = new Map<string, string>();
-      for (const rule of rules) {
-        if (rule.pillar) pillarsBySignal.set(rule.signalKey, rule.pillar);
-      }
-
-      res.json({
-        offers: engineOutput.candidates.map((c) => ({
-          serviceId: c.serviceId,
-          serviceName: c.serviceName,
-          title: c.title,
-          rationale: c.rationale,
-          // The engine's real adjusted catalog price — the same figure a
-          // persisted offer would carry into /portal/offers.
-          priceCents: c.adjustedPriceCents,
-          pillars: [...new Set(c.firedSignalKeys.map((k) => pillarsBySignal.get(k)).filter(Boolean))],
-          // Real destination: the existing customer offers page.
-          link: "/customer-offers",
-          // Git #593 — the phase's real Gantt-sequencing bucket + duration,
-          // read off the catalog row's own type_attributes (see
-          // sales-offer-engine.ts). Never invented on this route.
-          stage: c.stage,
-          durationWeeks: c.durationWeeks,
-        })),
-        // Tenant Monitoring + Architect Retainer — real, already-priced catalog
-        // services, resolved independently of the Sales Offer Engine's
-        // eligibility-scored remediation candidates above (see
-        // sow-monitoring-addon.ts). Either can be omitted for a tenant this
-        // platform cannot honestly price (no seat count, missing catalog row).
-        addons: [monitoringAddon, retainerAddon].filter((a) => a !== null),
-      });
-    } catch (err) {
-      log.error({ err, customerId }, "GET /portal/assessment/recommended-offers failed");
-      res.status(500).json({ error: "Failed to compute recommended offers" });
-    }
-  },
-);
-
-// ── GET /portal/assessment/sow/pay-in-full-offer ────────────────────────────
-//
-// Git #659. The SOW page's Pay in Full / Pay by Phase selector had no real
-// urgency signal for Pay in Full — the discount that `checkout-session` below
-// applies at signing was invisible until the customer had already committed
-// to a plan. This reads the SAME live `PAY_IN_FULL_COUPON_CODE` coupon, ahead
-// of signing, so the selector can show a real percentage rather than a
-// hardcoded "20% off" that would drift the moment Shane edits the coupon row.
-// No pricing math here — just the coupon's own active/percentage state; the
-// authoritative cents figure is still computed exactly once, at signing, by
-// `computePayInFullOffer` below.
-router.get(
-  "/portal/assessment/sow/pay-in-full-offer",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const customerId = resolveCustomerId(req);
-    if (customerId === null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-    try {
-      const coupon = await loadPayInFullCoupon();
-      const discountPct = coupon ? parseFloat(String(coupon.discountValue)) : null;
-      const active = coupon !== null && discountPct !== null && Number.isFinite(discountPct) && discountPct > 0;
-      res.json({ active, discountPct: active ? discountPct : null });
-    } catch (err) {
-      billingLog.error({ err, customerId }, "GET /portal/assessment/sow/pay-in-full-offer failed");
-      res.status(500).json({ error: "Failed to load pay-in-full offer" });
-    }
-  },
-);
-
-// ── POST /portal/assessment/sow/checkout-session ────────────────────────────────
-//
-// Git #599 (Epic #597 stage 2). Creates a `checkout_sessions` row (#598's new
-// `sow_*` columns) snapshotting a real, live-priced SOW cart — the multi-item
-// counterpart to the marketing site's single-product `/public/checkout-session`.
-//
-// The request names WHICH phases/add-ons the customer has toggled on; it never
-// carries a price. Every dollar in the response and in the stored snapshot is
-// resolved here, server-side, from the SAME two sources
-// `/portal/assessment/recommended-offers` reads — `runSalesOfferEngineForTenant`
-// for remediation phases and `sow-monitoring-addon.ts` for the two optional
-// services — so this can never quote a different number than what the customer
-// saw on the document they are signing. A `selectedPhaseServiceIds` entry that
-// does not match a real, currently-eligible candidate (stale scope, tampered
-// request) is silently dropped rather than trusted; same for an addon/tier pair
-// that does not resolve against this tenant's real offer.
-//
-// `sowCartTotalCents` is the one-off total only (remediation phases' prices plus
-// any selected add-on's one-off `upfrontUsd`) — the figure a PaymentIntent would
-// actually charge today, mirroring `journeyPricing.ts`'s `computeTotals().
-// upfrontUsd`. A selected add-on's recurring `monthlyUsd` is snapshotted in
-// `addons` for the next epic stage (subscription creation, following the
-// `public-assessment-payment.ts` rescan-addon pattern) but deliberately excluded
-// from this total — it is not money this session's eventual PaymentIntent takes.
-//
-// Replaces no existing route: the legacy `POST .../sow/checkout` above still
-// signs/pays a STORED `insights_generated_documents` SOW; this is the new,
-// document-free path `StatementOfWorkBody`'s live scope moves to.
-//
-// Signature + discount (Git #603, Epic #597 stage 5): this IS the "sign()"
-// moment — the scope locks the instant this request is made — so it carries
-// the same drawn-PNG + typed-name contract every signing endpoint on this
-// platform takes (JourneySignaturePanel), validated identically to the
-// docId flow's `POST .../sow/checkout` above. The pay-in-full discount
-// reuses that SAME live PAY_IN_FULL_COUPON_CODE coupon (never a second,
-// route-local number) — applied unconditionally rather than gated by the
-// docId flow's 72h window, because a checkout_sessions row expires in 24h
-// (see `expiresAt` below), always inside any 72h window a fresh session
-// could represent. There is no separate window state to compute here.
-/**
- * Orders phase candidates the same way `StatementOfWorkBody.tsx`'s
- * `buildGanttLayout` sequences the Gantt (Git #593): Foundation first,
- * Parallel-eligible next (their real concurrent order doesn't matter for
- * invoice numbering — each still gets its own sequential slot), unstaged/
- * Continuous folded in after, Closeout always last. Reimplemented here rather
- * than imported because `buildGanttLayout` is a client-only React module with
- * no server-safe export — this ports only the bucket/concat ordering, not the
- * pixel layout math. Git #613 (Pay-by-Phase billing) numbers "Phase 1..N"
- * directly off this order, snapshotted once at signing.
- */
-function orderPhasesForBilling<T extends { stage: string | null }>(phases: readonly T[]): T[] {
-  const foundation = phases.filter((p) => p.stage === "foundation");
-  const parallel = phases.filter((p) => p.stage === "parallel-eligible");
-  const closeout = phases.filter((p) => p.stage === "closeout");
-  const rest = phases.filter((p) => p.stage !== "foundation" && p.stage !== "parallel-eligible" && p.stage !== "closeout");
-  return [...foundation, ...parallel, ...rest, ...closeout];
-}
-
-const checkoutSessionSchema = z.object({
-  selectedPhaseServiceIds: z.array(z.number().int().positive()).default([]),
-  addonSelections: z
-    .array(z.object({ addonId: z.string().min(1), tierId: z.string().min(1) }))
-    .default([]),
-  signatureData: z.string().min(1),
-  signerName: z.string().min(1),
-  // Git #613 — which plan this signature locks in. Defaults "full" so every
-  // pre-#613 caller (and any request that omits the field) behaves exactly as
-  // it did before this field existed.
-  paymentPlan: z.enum(["full", "phased"]).default("full"),
-});
-
-router.post(
-  "/portal/assessment/sow/checkout-session",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    const customerId = resolveCustomerId(req);
-    if (userId == null || customerId === null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-
-    const parsed = checkoutSessionSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "selectedPhaseServiceIds must be an array of service ids; addonSelections an array of { addonId, tierId }" });
-      return;
-    }
-
-    // Signature — same contract enforced by the docId flow's `POST .../sow/checkout`
-    // above: data:image/ prefix, non-trivial length, a real typed name.
-    const signatureData = parsed.data.signatureData;
-    const signerName = parsed.data.signerName.trim();
-    const paymentPlan = parsed.data.paymentPlan;
-    if (!signatureData.startsWith("data:image/") || signatureData.length < 100) {
-      res.status(400).json({ error: "A drawn signature is required" });
-      return;
-    }
-    if (!signerName) {
-      res.status(400).json({ error: "Your full legal name is required to sign" });
-      return;
-    }
-
-    try {
-      const [customer] = await db
-        .select({ mspId: tenantsTable.mspId, tenantId: tenantsTable.tenantId })
-        .from(tenantsTable)
-        .where(eq(tenantsTable.id, customerId))
-        .limit(1);
-
-      if (!customer) {
-        res.status(404).json({ error: "No tenant record for this customer" });
-        return;
-      }
-
-      // The SAME real sources /portal/assessment/recommended-offers reads —
-      // never a second, independently-derived candidate/pricing list.
-      const [engineOutput, monitoringAddon, retainerAddon] = await Promise.all([
-        runSalesOfferEngineForTenant(customerId, customer.mspId ?? null),
-        resolveTenantMonitoringAddon(customer.tenantId ?? null),
-        resolveArchitectRetainerAddon(customer.tenantId ?? null),
-      ]);
-
-      if (engineOutput.candidates.length === 0) {
-        res.status(409).json({ error: "no_priced_scope", message: "No priced remediation scope for this tenant" });
-        return;
-      }
-
-      // Real candidates only, keyed by the same services.id the wire already
-      // carries as `serviceId` (sowLiveScope.ts's WireRecommendedOffer) — never
-      // the client-side display slug JourneyPhase.id uses.
-      const candidatesById = new Map(engineOutput.candidates.map((c) => [c.serviceId, c]));
-      const requestedPhaseIds = [...new Set(parsed.data.selectedPhaseServiceIds)];
-      const droppedPhaseIds = requestedPhaseIds.filter((id) => !candidatesById.has(id));
-      const includedPhases = requestedPhaseIds
-        .filter((id) => candidatesById.has(id))
-        .map((id) => candidatesById.get(id)!);
-
-      const realAddons = [monitoringAddon, retainerAddon].filter((a) => a !== null);
-      const addonsById = new Map(realAddons.map((a) => [a.id, a]));
-      const seenAddonIds = new Set<string>();
-      const droppedAddonSelections: Array<{ addonId: string; tierId: string }> = [];
-      const includedAddons: Array<{ addonId: string; addonTitle: string; tierId: string; tierLabel: string; upfrontCents: number; monthlyCents: number }> = [];
-      for (const sel of parsed.data.addonSelections) {
-        if (seenAddonIds.has(sel.addonId)) {
-          droppedAddonSelections.push(sel);
-          continue;
-        }
-        const addon = addonsById.get(sel.addonId);
-        const tier = addon?.tiers.find((t) => t.id === sel.tierId);
-        if (!addon || !tier) {
-          droppedAddonSelections.push(sel);
-          continue;
-        }
-        seenAddonIds.add(sel.addonId);
-        includedAddons.push({
-          addonId: addon.id,
-          addonTitle: addon.title,
-          tierId: tier.id,
-          tierLabel: tier.label,
-          upfrontCents: Math.round(tier.upfrontUsd * 100),
-          monthlyCents: Math.round(tier.monthlyUsd * 100),
-        });
-      }
-
-      if (droppedPhaseIds.length > 0 || droppedAddonSelections.length > 0) {
-        log.warn(
-          { customerId, droppedPhaseIds, droppedAddonSelections },
-          "sow/checkout-session: request named phases/add-ons not in this tenant's real current offer — dropped rather than trusted",
-        );
-      }
-
-      const phaseTotalCents = includedPhases.reduce((sum, p) => sum + p.adjustedPriceCents, 0);
-      const addonUpfrontCents = includedAddons.reduce((sum, a) => sum + a.upfrontCents, 0);
-      const originalTotalCents = phaseTotalCents + addonUpfrontCents;
-
-      // Pay-in-full discount — the SAME live PAY_IN_FULL_COUPON_CODE coupon the
-      // docId flow's payment-options/checkout routes read, applied
-      // unconditionally (windowState forced "discount"): see this route's own
-      // header comment for why a 24h-lived checkout session never needs the
-      // 72h window gate that flow computes off a stored document's createdAt.
-      // This cart has no "adjustments" line (journeyScopeFromOffers() never
-      // produces one), so computePayInFullOffer's variant always resolves
-      // "percentage_off" here, never "adjustments_waived". Git #613: this is a
-      // pay-in-full-only incentive, never applied to a phased signature.
-      const coupon = paymentPlan === "full" ? await loadPayInFullCoupon() : null;
-      const payInFullOffer = computePayInFullOffer(originalTotalCents / 100, 0, "discount", coupon);
-      const totalCents = payInFullOffer.active ? payInFullOffer.discountedCents : originalTotalCents;
-
-      // Git #613 — Pay-by-Phase billing. The per-phase price/duration snapshot
-      // (`sowPhaseBreakdown`) and the deposit amount both need the real, live
-      // `PHASE_DEPOSIT_COUPON_CODE` row Shane controls (unlimited-use,
-      // percentage-off, same `coupons` mechanism PAY_IN_FULL_COUPON_CODE
-      // already uses) — refusing rather than falling back to a hardcoded 30%
-      // so the deposit percentage stays a live, Shane-editable number, never a
-      // second hardcoded figure this route would drift from. The RESULT
-      // (`depositCents`) is computed and stored here, ONCE, rather than
-      // re-derived from the coupon later — see `sowDepositCents`'s own schema
-      // comment for why re-deriving at charge/invoicing time would be wrong.
-      let phaseBreakdown: Array<{ serviceId: number; title: string; priceCents: number; stage: string | null; durationWeeks: number | null }> = [];
-      let depositCents: number | null = null;
-      // Returned to the client alongside `depositCents` (Git #630) so the
-      // post-signature payment panel can state the real, live deposit
-      // percentage rather than a hardcoded guess — derived from the SAME
-      // coupon fraction `depositCents` itself came from, never a second
-      // number this route could drift from.
-      let depositPct: number | null = null;
-      if (paymentPlan === "phased") {
-        const depositCoupon = await loadPhaseDepositCoupon();
-        if (!depositCoupon) {
-          billingLog.error({ userId, customerId }, "sow/checkout-session: PHASE_DEPOSIT_COUPON_CODE coupon missing/inactive — phased plan unavailable");
-          res.status(409).json({ error: "phased_plan_unavailable" });
-          return;
-        }
-        phaseBreakdown = orderPhasesForBilling(includedPhases).map((p) => ({
-          serviceId: p.serviceId,
-          title: p.serviceName,
-          priceCents: p.adjustedPriceCents,
-          stage: p.stage,
-          durationWeeks: p.durationWeeks,
-        }));
-        const depositFraction = phaseDepositFraction(depositCoupon);
-        depositCents = Math.round(originalTotalCents * depositFraction);
-        depositPct = Math.round(depositFraction * 100);
-      }
-
-      const [profile] = await db
-        .select({ email: usersTable.email, name: usersTable.name })
-        .from(usersTable)
-        .where(eq(usersTable.id, userId))
-        .limit(1);
-      const email = profile?.email ?? req.user?.email ?? "";
-      const fullName = profile?.name?.trim() || req.user?.name?.trim() || email;
-      if (!email) {
-        res.status(409).json({ error: "No email on file for this account" });
-        return;
-      }
-
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-      const signatureIp = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null;
-
-      const [row] = await db
-        .insert(checkoutSessionsTable)
-        .values({
-          // No single catalog product backs a multi-item cart — this constant
-          // marks the shape rather than naming a servicesTable.slug, matching
-          // #598's "purely additive, does not touch the single-product path"
-          // scope. Nothing resolves a service by this slug (only
-          // public-assessment-payment.ts's resolveOrder() does that, against
-          // its OWN sessions).
-          productSlug: "sow-cart",
-          fullName,
-          email,
-          tenantId: customer.tenantId ?? undefined,
-          // A portal customer reaching this endpoint already has a consented,
-          // onboarded tenant (that's how recommended-offers priced their
-          // scope) — reusing "consented" rather than "pending" keeps this row
-          // honestly aligned with what that status has always meant elsewhere
-          // on this table: a known, chargeable tenant.
-          status: "consented",
-          sowSelectedPhaseServiceIds: includedPhases.map((p) => p.serviceId),
-          sowSelectedPhaseTitles: includedPhases.map((p) => p.serviceName),
-          sowAddonSelections: includedAddons.map((a) => ({ addonId: a.addonId, tierId: a.tierId })),
-          sowCartTotalCents: totalCents,
-          sowCartOriginalTotalCents: originalTotalCents,
-          sowSignatureData: signatureData,
-          sowSignerName: signerName,
-          sowSignatureIp: signatureIp ?? undefined,
-          sowPaymentPlan: paymentPlan,
-          sowPhaseBreakdown: phaseBreakdown,
-          sowDepositCents: depositCents ?? undefined,
-          expiresAt,
-        })
-        .returning({ id: checkoutSessionsTable.id });
-
-      if (!row) {
-        res.status(500).json({ error: "Failed to create checkout session" });
-        return;
-      }
-
-      await createAuditLog({
-        actorUserId: userId,
-        actorName: email,
-        actorRole: "client",
-        actionType: "sow_checkout_session_created",
-        entityType: "checkout_session",
-        entityId: row.id,
-        metadata: {
-          customerId,
-          tenantId: customer.tenantId,
-          selectedPhaseServiceIds: includedPhases.map((p) => p.serviceId),
-          addonSelections: includedAddons.map((a) => ({ addonId: a.addonId, tierId: a.tierId })),
-          totalCents,
-          originalTotalCents,
-          paymentPlan,
-          couponCode: payInFullOffer.active ? PAY_IN_FULL_COUPON_CODE : null,
-          signerName,
-        },
-      });
-
-      billingLog.info(
-        { userId, customerId, sessionId: row.id, phaseCount: includedPhases.length, addonCount: includedAddons.length, totalCents, discountApplied: payInFullOffer.active, paymentPlan },
-        "sow/checkout-session: live SOW cart snapshotted",
-      );
-
-      res.status(201).json({
-        sessionId: row.id,
-        expiresAt: expiresAt.toISOString(),
-        paymentPlan,
-        totalCents,
-        originalTotalCents,
-        discount: payInFullOffer.active
-          ? { couponCode: PAY_IN_FULL_COUPON_CODE, savingsCents: payInFullOffer.savingsCents, discountPct: payInFullOffer.discountPct }
-          : null,
-        // Git #630 — the real deposit + per-phase snapshot #613 already
-        // computes and stores on the row, now also returned so the
-        // customer-facing payment panel can show it rather than the
-        // aggregate-only totals above. `[]`/`null` on a "full" signature,
-        // matching the row's own pre-#613 default.
-        phaseBreakdown,
-        depositCents,
-        depositPct,
-        phases: includedPhases.map((p) => ({
-          serviceId: p.serviceId,
-          serviceName: p.serviceName,
-          priceCents: p.adjustedPriceCents,
-        })),
-        addons: includedAddons.map((a) => ({
-          addonId: a.addonId,
-          addonTitle: a.addonTitle,
-          tierId: a.tierId,
-          tierLabel: a.tierLabel,
-          upfrontCents: a.upfrontCents,
-          monthlyCents: a.monthlyCents,
-        })),
-      });
-    } catch (err) {
-      billingLog.error({ err, userId, customerId }, "POST /portal/assessment/sow/checkout-session failed");
-      res.status(500).json({ error: "Failed to create checkout session" });
-    }
-  },
-);
-
-// ── SOW cart payment: shared order resolution (Git #600, Epic #597 stage 3) ──
-//
-// Resolves a `checkout_sessions` row created by `/portal/assessment/sow/
-// checkout-session` (#599) into what the PaymentIntent routes below need, or
-// responds and returns null.
-//
-// Ownership is enforced by TENANT, not by trusting the sessionId alone: #599
-// always stamps `tenantId` (the Entra GUID) from the authenticated customer's
-// own `tenants` row at snapshot time, so a session only resolves here when it
-// was created by THIS SAME customer — a portal customer can never pay for
-// another customer's cart by guessing/reusing a session id.
-//
-// The charge amount is NEVER recomputed here. `sowCartTotalCents` is the
-// number #599 already computed server-side (from the same Sales Offer Engine
-// + monitoring/retainer addon sources `/recommended-offers` reads) and
-// snapshotted onto the row at that time — this reads it back verbatim, same
-// discipline #599 already established.
-type SowOrder = {
-  sessionId: string;
-  status: string;
-  email: string;
-  fullName: string;
-  company: string | null;
-  /** The Entra tenant GUID #599 stamped on the row. */
-  tenantId: string | null;
-  /** `tenants.id` — same id space `resolveCustomerId` returns, so it doubles as the `tenantRowId` `ensureFlowStripeCustomer` needs. */
-  customerId: number;
-  /** The full contract value — what "full" charges today, what "phased" ultimately collects across every phase. */
-  totalCents: number;
-  originalTotalCents: number;
-  phaseCount: number;
-  addonCount: number;
-  phaseTitles: string[];
-  /** JourneySignaturePanel's drawn-PNG + typed-name capture from #599 — required to record an agreement row on payment success. */
-  signatureData: string | null;
-  signerName: string | null;
-  signatureIp: string | null;
-  // Git #613 — Pay-by-Phase billing.
-  paymentPlan: "full" | "phased";
-  phaseBreakdown: Array<{ serviceId: number; title: string; priceCents: number; stage: string | null; durationWeeks: number | null }>;
-  /**
-   * What today's PaymentIntent actually charges. "full" — the discounted
-   * contract total, unchanged from pre-#613 behaviour. "phased" — the 30%
-   * deposit plus Phase 1's own full price (both collected at signing, per
-   * #611's confirmed math), UNLESS there is only one phase in scope, in which
-   * case Phase 1 IS the last phase and the deposit is credited against it
-   * immediately (charge = Phase 1's price minus the deposit) rather than
-   * collecting 130% of a single-phase contract.
-   */
-  chargeCents: number;
-  /** Only set for "phased" — informational, not a separate charge. */
-  depositCents: number | null;
-};
-
-async function resolveSowOrder(
-  sessionId: string,
-  customerId: number,
-  res: Response,
-): Promise<SowOrder | null> {
-  const [session] = await db
-    .select({
-      id: checkoutSessionsTable.id,
-      status: checkoutSessionsTable.status,
-      email: checkoutSessionsTable.email,
-      fullName: checkoutSessionsTable.fullName,
-      company: checkoutSessionsTable.company,
-      tenantId: checkoutSessionsTable.tenantId,
-      sowCartTotalCents: checkoutSessionsTable.sowCartTotalCents,
-      sowCartOriginalTotalCents: checkoutSessionsTable.sowCartOriginalTotalCents,
-      sowSelectedPhaseServiceIds: checkoutSessionsTable.sowSelectedPhaseServiceIds,
-      sowSelectedPhaseTitles: checkoutSessionsTable.sowSelectedPhaseTitles,
-      sowAddonSelections: checkoutSessionsTable.sowAddonSelections,
-      sowSignatureData: checkoutSessionsTable.sowSignatureData,
-      sowSignerName: checkoutSessionsTable.sowSignerName,
-      sowSignatureIp: checkoutSessionsTable.sowSignatureIp,
-      sowPaymentPlan: checkoutSessionsTable.sowPaymentPlan,
-      sowPhaseBreakdown: checkoutSessionsTable.sowPhaseBreakdown,
-      sowDepositCents: checkoutSessionsTable.sowDepositCents,
-      expiresAt: checkoutSessionsTable.expiresAt,
-    })
-    .from(checkoutSessionsTable)
-    .where(eq(checkoutSessionsTable.id, sessionId))
-    .limit(1);
-
-  if (!session || session.expiresAt.getTime() < Date.now()) {
-    res.status(404).json({ error: "session_expired" });
-    return null;
-  }
-
-  const [customer] = await db
-    .select({ tenantId: tenantsTable.tenantId })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, customerId))
-    .limit(1);
-
-  if (!customer?.tenantId || !session.tenantId || session.tenantId !== customer.tenantId) {
-    billingLog.warn(
-      { sessionId, customerId },
-      "sow cart payment: REFUSED — session does not belong to this customer's tenant",
-    );
-    res.status(403).json({ error: "not_your_session" });
-    return null;
-  }
-
-  // "consented" is what #599 sets on creation; "paid" is a replayed/recovered
-  // confirm on an already-paid session — never "pending"/"expired".
-  if (session.status !== "consented" && session.status !== "paid") {
-    res.status(409).json({ error: "session_not_ready" });
-    return null;
-  }
-
-  const totalCents = session.sowCartTotalCents ?? 0;
-  if (totalCents <= 0) {
-    billingLog.error(
-      { sessionId, customerId },
-      "sow cart payment: session carries no positive sowCartTotalCents — refusing to charge an unresolved amount",
-    );
-    res.status(409).json({ error: "price_unresolved" });
-    return null;
-  }
-
-  const paymentPlan = session.sowPaymentPlan === "phased" ? "phased" : "full";
-  let chargeCents = totalCents;
-  let depositCents: number | null = null;
-
-  if (paymentPlan === "phased") {
-    const phase1 = session.sowPhaseBreakdown[0];
-    // sowDepositCents is computed and stored ONCE, at signing (#599) — never
-    // recomputed here. See that column's own schema comment for why: the
-    // final-phase square-up (the phased-invoicing node, run later) must
-    // credit the exact deposit actually collected, not whatever a since-edited
-    // coupon would compute today.
-    if (!phase1 || session.sowDepositCents == null) {
-      billingLog.error({ sessionId, customerId }, "sow cart payment: phased session carries no sowPhaseBreakdown/sowDepositCents — refusing to charge an unresolved amount");
-      res.status(409).json({ error: "price_unresolved" });
-      return null;
-    }
-    depositCents = session.sowDepositCents;
-    // Single-phase contract: Phase 1 IS the last phase, so the deposit is
-    // credited against it immediately rather than collected on top of it —
-    // see SowOrder.chargeCents's own comment.
-    chargeCents = session.sowPhaseBreakdown.length === 1
-      ? phase1.priceCents - depositCents
-      : depositCents + phase1.priceCents;
-    if (chargeCents <= 0) {
-      billingLog.error(
-        { sessionId, customerId, depositCents, phase1PriceCents: phase1.priceCents },
-        "sow cart payment: phased charge resolved to zero/negative — refusing to charge an unresolved amount",
-      );
-      res.status(409).json({ error: "price_unresolved" });
-      return null;
-    }
-  }
-
-  return {
-    sessionId: session.id,
-    status: session.status,
-    email: session.email,
-    fullName: session.fullName,
-    company: session.company,
-    tenantId: session.tenantId,
-    customerId,
-    totalCents,
-    originalTotalCents: session.sowCartOriginalTotalCents ?? totalCents,
-    phaseCount: session.sowSelectedPhaseServiceIds.length,
-    addonCount: session.sowAddonSelections.length,
-    phaseTitles: session.sowSelectedPhaseTitles,
-    signatureData: session.sowSignatureData,
-    signerName: session.sowSignerName,
-    signatureIp: session.sowSignatureIp,
-    paymentPlan,
-    phaseBreakdown: session.sowPhaseBreakdown,
-    chargeCents,
-    depositCents,
-  };
-}
-
-// ── POST /portal/assessment/sow/checkout-session/payment-intent ─────────────
-//
-// Creates (or recovers) the PaymentIntent the embedded Payment Element (#602,
-// the next epic stage) will confirm against. Reuses the EXACT pattern already
-// proven live on the marketing site's assessment purchase flow
-// (`public-assessment-payment.ts`'s `/public/flow/payment-intent`) — same
-// idempotency-key convention (derived from the checkout session id, so a
-// reload, a retry after a declined card, or a double submit all recover the
-// SAME intent rather than minting a second one against the same cart), same
-// `receipt_email`, same flat metadata shape. Not a second payment mechanism.
-//
-// The amount is `order.totalCents` — #599's own server-computed
-// `sowCartTotalCents`, read back verbatim by `resolveSowOrder` above. There is
-// no price field on this request to trust in the first place.
-//
-// Deliberately narrower than its marketing-site sibling: no #490 rescan-addon
-// save-card/subscription branch. A selected SOW addon's recurring monthly
-// component is snapshotted on the session (`sowAddonSelections`) for a LATER
-// stage to subscribe — following the rescan-addon pattern, per #599's own
-// comment — creating that subscription is not this issue's scope.
-const sowPaymentIntentSchema = z.object({ sessionId: z.string().uuid() });
-
-router.post(
-  "/portal/assessment/sow/checkout-session/payment-intent",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const customerId = resolveCustomerId(req);
-    if (customerId === null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-
-    const parsed = sowPaymentIntentSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "sessionId is required" });
-      return;
-    }
-
-    const order = await resolveSowOrder(parsed.data.sessionId, customerId, res);
-    if (!order) return;
-
-    const publishableKey = getStripePublishableKey();
-    if (!publishableKey) {
-      billingLog.error(
-        {},
-        "sow cart payment: STRIPE_PUBLISHABLE_KEY is not configured — the in-page Payment Element cannot be initialised",
-      );
-      res.status(503).json({ error: "payment_unavailable" });
-      return;
-    }
-
-    let stripeKey: string;
-    try {
-      stripeKey = getStripeKey();
-    } catch (err) {
-      billingLog.error({ err }, "sow cart payment: Stripe secret key is not configured");
-      res.status(503).json({ error: "payment_unavailable" });
-      return;
-    }
-
-    try {
-      const { default: Stripe } = await import("stripe");
-      const stripe = new Stripe(stripeKey);
-
-      // Same non-fatal degrade as the marketing flow's own customer
-      // resolution: a Stripe customer is an ENHANCEMENT (real receipt
-      // history on the account) whose absence must never block the charge.
-      let stripeCustomerId: string | null = null;
-      try {
-        stripeCustomerId = await ensureFlowStripeCustomer(stripe, {
-          tenantRowId: order.customerId,
-          tenantGuid: order.tenantId,
-          email: order.email,
-          fullName: order.fullName,
-          company: order.company,
-        });
-      } catch (err) {
-        billingLog.error(
-          { err, checkoutSessionId: order.sessionId, tenantRowId: order.customerId },
-          "sow cart payment: Stripe customer could not be resolved — falling back to an anonymous PaymentIntent",
-        );
-      }
-
-      const phaseLabel = `${order.phaseCount} phase${order.phaseCount === 1 ? "" : "s"}`;
-      const addonLabel = order.addonCount > 0 ? `, ${order.addonCount} add-on${order.addonCount === 1 ? "" : "s"}` : "";
-      // Git #613 — a phased signature charges the deposit + Phase 1 today
-      // (order.chargeCents), not the full contract (order.totalCents).
-      const planLabel = order.paymentPlan === "phased" ? " — deposit + Phase 1" : "";
-
-      const intent = await stripe.paymentIntents.create(
-        {
-          amount: order.chargeCents,
-          currency: "usd",
-          // Lets Stripe offer whatever in-page methods are enabled on the
-          // account without a hosted page or a redirect — same as the
-          // marketing flow's embedded card entry.
-          automatic_payment_methods: { enabled: true },
-          ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
-          receipt_email: order.email,
-          description: `SOW Cart${order.company ? ` — ${order.company}` : ""} (${phaseLabel}${addonLabel}${planLabel})`,
-          metadata: {
-            flow: "portal_sow_cart",
-            checkoutSessionId: order.sessionId,
-            customerId: String(order.customerId),
-            tenantId: order.tenantId ?? "",
-            phaseCount: String(order.phaseCount),
-            addonCount: String(order.addonCount),
-            paymentPlan: order.paymentPlan,
-            ...(order.paymentPlan === "phased" ? { depositCents: String(order.depositCents ?? 0), contractTotalCents: String(order.totalCents) } : {}),
-          },
-        },
-        { idempotencyKey: `portal-sow-cart:pi:${order.sessionId}:${stripeCustomerId ? "cust" : "anon"}` },
-      );
-
-      billingLog.info(
-        {
-          checkoutSessionId: order.sessionId,
-          paymentIntentId: intent.id,
-          amountCents: order.chargeCents,
-          paymentPlan: order.paymentPlan,
-          status: intent.status,
-          stripeCustomerId,
-        },
-        "sow cart payment: PaymentIntent ready",
-      );
-
-      res.json({
-        clientSecret: intent.client_secret,
-        publishableKey,
-        paymentIntentId: intent.id,
-        amountCents: order.chargeCents,
-        paymentPlan: order.paymentPlan,
-        // A recovered, already-succeeded intent (paid, then reloaded before
-        // the confirm callback landed) — the client skips straight to confirming.
-        alreadyPaid: intent.status === "succeeded",
-      });
-    } catch (err) {
-      billingLog.error({ err, checkoutSessionId: order.sessionId }, "sow cart payment: PaymentIntent creation failed");
-      res.status(500).json({ error: "payment_intent_failed" });
-    }
-  },
-);
-
-// ── POST /portal/assessment/sow/checkout-session/payment-confirmed ──────────
-//
-// Same server-verified confirm pattern as the marketing flow's
-// `/public/flow/payment-confirmed`: the browser's success claim is not
-// evidence — the PaymentIntent is re-read from Stripe and must be
-// "succeeded" AND carry this exact checkout session in its metadata before
-// the session is marked paid.
-//
-// No confirmation email / CRM signal here (the marketing flow's
-// `purchaseConfirmationEmail`/`markAssessmentLeadPurchased` are shaped for a
-// single flat product and a pre-conversion marketing lead respectively —
-// neither fits a multi-item cart for an already-onboarded portal customer).
-//
-// Agreement recording (Git #603, Epic #597 stage 5): on the same "was not
-// already paid" transition that marks the session paid, this also writes an
-// `assessment_sow_agreements` row via the `checkoutSessionId` path (docId is
-// null — this scope was never a stored document; see that table's own header
-// comment). The signature (drawn PNG + typed name) was captured back at
-// #599's `checkout-session` creation — the real "sign()" moment, when the
-// scope locked — and is only READ here, never invented. `paymentPlan` reads
-// back the session's own `sowPaymentPlan` (Git #613) — "full" charges the
-// whole contract right here; "phased" charges only the deposit + Phase 1
-// (`order.chargeCents`, see `resolveSowOrder`), and the phased-invoicing
-// workflow node (adapted #613) is what generates the remaining phases'
-// scheduled invoices later, off this same agreement row.
-const sowPaymentConfirmedSchema = z.object({
-  sessionId: z.string().uuid(),
-  paymentIntentId: z.string().min(1),
-});
-
-router.post(
-  "/portal/assessment/sow/checkout-session/payment-confirmed",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    const customerId = resolveCustomerId(req);
-    if (userId == null || customerId === null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-
-    const parsed = sowPaymentConfirmedSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "sessionId and paymentIntentId are required" });
-      return;
-    }
-
-    const order = await resolveSowOrder(parsed.data.sessionId, customerId, res);
-    if (!order) return;
-
-    let stripeKey: string;
-    try {
-      stripeKey = getStripeKey();
-    } catch {
-      res.status(503).json({ error: "payment_unavailable" });
-      return;
-    }
-
-    try {
-      const { default: Stripe } = await import("stripe");
-      const stripe = new Stripe(stripeKey);
-      const intent = await stripe.paymentIntents.retrieve(parsed.data.paymentIntentId);
-
-      if (intent.metadata?.["checkoutSessionId"] !== order.sessionId) {
-        billingLog.warn(
-          {
-            checkoutSessionId: order.sessionId,
-            paymentIntentId: intent.id,
-            metaSessionId: intent.metadata?.["checkoutSessionId"],
-          },
-          "sow cart payment: REFUSED — PaymentIntent belongs to a different checkout session",
-        );
-        res.status(403).json({ error: "intent_session_mismatch" });
-        return;
-      }
-
-      if (intent.status !== "succeeded") {
-        billingLog.info(
-          { checkoutSessionId: order.sessionId, paymentIntentId: intent.id, status: intent.status },
-          "sow cart payment: confirm callback for an intent that has not succeeded",
-        );
-        res.status(409).json({ error: "payment_not_succeeded", status: intent.status });
-        return;
-      }
-
-      // Already "paid" from an earlier confirm — replaying is a no-op, not an error.
-      if (order.status !== "paid") {
-        await db
-          .update(checkoutSessionsTable)
-          .set({ status: "paid", updatedAt: new Date() })
-          .where(eq(checkoutSessionsTable.id, order.sessionId));
-
-        await createAuditLog({
-          actorUserId: userId,
-          actorName: order.email,
-          actorRole: "client",
-          actionType: "sow_cart_payment_succeeded",
-          entityType: "checkout_session",
-          entityId: order.sessionId,
-          metadata: {
-            customerId: order.customerId,
-            paymentIntentId: intent.id,
-            amountCents: intent.amount_received || order.chargeCents,
-            tenantId: order.tenantId,
-            phaseCount: order.phaseCount,
-            addonCount: order.addonCount,
-            paymentPlan: order.paymentPlan,
-          },
-        });
-
-        billingLog.info(
-          { checkoutSessionId: order.sessionId, paymentIntentId: intent.id, amountCents: intent.amount_received },
-          "sow cart payment: checkout session marked paid",
-        );
-
-        // Git #603 — record the signed, paid agreement. #599 requires
-        // signatureData/signerName to create the session at all, so their
-        // absence here means an older, pre-#603 session slipped through
-        // (the schema's own CHECK/NOT NULL would reject the insert regardless)
-        // — logged and skipped rather than crashing a confirm whose charge
-        // already succeeded.
-        if (!order.signatureData || !order.signerName) {
-          billingLog.error(
-            { checkoutSessionId: order.sessionId, paymentIntentId: intent.id },
-            "sow cart payment: paid, but no signature on the session — agreement NOT recorded",
-          );
-        } else {
-          const tenant = await resolveTenantForCustomer(order.customerId);
-          // Git #613: the PAY-TODAY discount is a "full" plan incentive only —
-          // a phased signature's totalCents === originalTotalCents by
-          // construction (see the checkout-session route above), so this is
-          // never true for a phased agreement.
-          const discountApplied = order.paymentPlan === "full" && order.totalCents < order.originalTotalCents;
-          try {
-            await db.insert(assessmentSowAgreementsTable).values({
-              checkoutSessionId: order.sessionId,
-              clientUserId: userId,
-              customerId: tenant.customerId ?? undefined,
-              mspId: tenant.mspId ?? undefined,
-              selectedWorkstreamTitles: order.phaseTitles,
-              scopeKey: normalizeSet(order.phaseTitles),
-              agreedTotalCents: order.originalTotalCents,
-              discountedTotalCents: discountApplied ? order.totalCents : undefined,
-              couponCode: discountApplied ? PAY_IN_FULL_COUPON_CODE : undefined,
-              windowStateAtSigning: discountApplied ? "discount" : "standard",
-              paymentPlan: order.paymentPlan,
-              signatureData: order.signatureData,
-              signerName: order.signerName,
-              signatureIp: order.signatureIp ?? undefined,
-              status: "paid",
-              stripePaymentIntentId: intent.id,
-              paidAt: new Date(),
-            });
-          } catch (agreementErr) {
-            // Same doctrine: the charge already succeeded — an agreement-row
-            // failure (e.g. a replay racing this same insert) must not turn
-            // into a customer-facing payment failure.
-            billingLog.error(
-              { err: agreementErr, checkoutSessionId: order.sessionId, paymentIntentId: intent.id },
-              "sow cart payment: paid, but agreement row insert failed",
-            );
-          }
-        }
-      }
-
-      res.json({
-        ok: true,
-        amountCents: intent.amount_received || order.chargeCents,
-        paymentPlan: order.paymentPlan,
-        email: order.email,
-      });
-    } catch (err) {
-      billingLog.error({ err, checkoutSessionId: order.sessionId }, "sow cart payment: confirm failed");
-      res.status(500).json({ error: "confirm_failed" });
-    }
-  },
-);
-
-// ── POST /api/admin/checkout-sessions/:id/create-phased-invoices ────────────
-//
-// Git #613 (v1.1) manual trigger. Admin-only — Shane fires this once, by hand,
-// after confirming a checkout_sessions row is a paid Pay-by-Phase signature
-// (assessment_sow_agreements.paymentPlan="phased", status="paid" — the deposit
-// + Phase 1 charge already succeeded via the payment-confirmed route above).
-// Targeted single-entity route, same pattern as
-// `portal-delivery-kanban.ts`'s `POST .../:id/run-workflow`: resolves the
-// real, already-seeded "Pay-by-Phase: Generate Remaining Invoices" workflow
-// definition (seed-system-workflows.ts) by name and fires it with
-// `{ checkoutSessionId }` — the workflow engine runs the actual
-// `create_phased_invoices` node (adapted #613), so this route does no
-// invoicing logic of its own. Does NOT auto-charge anything and does NOT wire
-// any Zoho webhook — that automation is #611, v1.2, explicitly deferred.
-const PHASED_INVOICING_WORKFLOW_NAME = "Pay-by-Phase: Generate Remaining Invoices";
-
-router.post(
-  "/admin/checkout-sessions/:id/create-phased-invoices",
-  requireAdmin,
-  async (req: Request, res: Response): Promise<void> => {
-    const checkoutSessionId = String(req.params.id ?? "");
-    if (!checkoutSessionId) {
-      res.status(400).json({ error: "checkout session id is required" });
-      return;
-    }
-
-    const [session] = await db
-      .select({ id: checkoutSessionsTable.id, sowPaymentPlan: checkoutSessionsTable.sowPaymentPlan, status: checkoutSessionsTable.status })
-      .from(checkoutSessionsTable)
-      .where(eq(checkoutSessionsTable.id, checkoutSessionId))
-      .limit(1);
-    if (!session) { res.status(404).json({ error: "checkout session not found" }); return; }
-    if (session.sowPaymentPlan !== "phased") { res.status(409).json({ error: "not_a_phased_plan" }); return; }
-    if (session.status !== "paid") { res.status(409).json({ error: "deposit_not_paid" }); return; }
-
-    const [def] = await db
-      .select({ id: wfDefinitionsTable.id, name: wfDefinitionsTable.name })
-      .from(wfDefinitionsTable)
-      .where(eq(wfDefinitionsTable.name, PHASED_INVOICING_WORKFLOW_NAME))
-      .limit(1);
-    if (!def) {
-      billingLog.error({ checkoutSessionId }, "create-phased-invoices: system workflow definition not found — has seedSystemWorkflows() run?");
-      res.status(503).json({ error: "workflow_not_seeded" });
-      return;
-    }
-
-    const runId = await fireWorkflowForDefinition(def.id, "manual", `admin:create-phased-invoices:${checkoutSessionId}`, { checkoutSessionId });
-    if (!runId) {
-      res.status(503).json({ error: "Workflow could not be started (no published version or concurrency limit reached)" });
-      return;
-    }
-
-    billingLog.info({ checkoutSessionId, workflowDefId: def.id, runId, actorUserId: req.user?.id }, "create-phased-invoices: admin manually fired phased-invoicing workflow");
-    res.json({ ok: true, runId });
-  },
-);
-
-// ── Interactive SOW scope selector (Assessment wizard, task 4) ─────────────────
-//
-// The consolidated SOW is the last document in the wizard sequence. Unlike the
-// read-only findings reports, the customer can toggle optional workstream phases
-// on/off here. Two price surfaces:
-//   • Instant, free preview — the client sums the already-stored per-phase
-//     sowPricingLines on every checkbox click. No AI call, no round-trip.
-//   • Deliberate regeneration — POST .../sow/select produces a real, updated,
-//     telemetry-grounded SOW for the narrower scope (a genuine AI cost), UNLESS
-//     the requested scope exactly matches a version already in storage (e.g.
-//     "reset to full scope" restores the original document), in which case that
-//     stored version is simply re-activated for free.
-//
-// Versioning: exactly one consolidated_sow row is "approved" (active) at a time;
-// every superseded version is "archived" (hidden by the reader filters but still
-// retrievable by exact-scope match). The generator writes those transitions in
-// supersedeMode: "archive"; this route owns the free re-activation path.
-//
-// Pricing window (30-day / 72-hour rule): the SOW and its price are valid for 30
-// days from the first generation; a 72-hour pay-in-full discount window opens at
-// that same anchor. There is no dedicated timestamp column — the anchor is the
-// earliest non-failed consolidated_sow row's createdAt, which is preserved across
-// regenerations (superseded rows are archived, not deleted), so re-scoping never
-// resets the clock. The actual pay-in-full vs phased choice is task 5; this route
-// only surfaces where the customer sits in the window.
-
-const SOW_DOC_TYPE = "sow";
-const DISCOUNT_WINDOW_MS = 72 * 60 * 60 * 1000; // 72 hours
-const VALIDITY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-
-// Statuses that represent a real, persisted SOW (anchor-eligible); excludes
-// "generating" (not yet a document) and "failed" (never became one).
-const SOW_REAL_STATUSES = ["approved", "delivered", "archived"] as const;
-const SOW_ACTIVE_STATUSES = ["approved", "delivered"] as const;
-
-type SowPricingLineRow = {
-  title: string;
-  scope: string;
-  priceUsd: number;
-  notes?: string;
-  line_type?: "workstream" | "adjustment";
-  weeks?: number;
-  deliveryDate?: string;
-};
-
-interface SowDocRow {
-  id: number;
-  projectId: number | null;
-  title: string;
-  status: string;
-  htmlContent: string;
-  sowPricingLines: SowPricingLineRow[] | null;
-  sowTotalPrice: string | null;
-  createdAt: Date;
-}
-
-async function loadSowDocs(userId: number): Promise<SowDocRow[]> {
-  // CUSTOMER-scoped: the SOW belongs to the customer; a version generated
-  // under any sibling login of the same customer is part of the same set.
-  const sowScopeUserIds = await resolveSiblingUserIds(userId);
-  return db
-    .select({
-      id: insightsGeneratedDocumentsTable.id,
-      projectId: insightsGeneratedDocumentsTable.projectId,
-      title: insightsGeneratedDocumentsTable.title,
-      status: insightsGeneratedDocumentsTable.status,
-      htmlContent: insightsGeneratedDocumentsTable.htmlContent,
-      sowPricingLines: insightsGeneratedDocumentsTable.sowPricingLines,
-      sowTotalPrice: insightsGeneratedDocumentsTable.sowTotalPrice,
-      createdAt: insightsGeneratedDocumentsTable.createdAt,
-    })
-    .from(insightsGeneratedDocumentsTable)
-    .where(
-      and(
-        inArray(insightsGeneratedDocumentsTable.customerId, sowScopeUserIds),
-        eq(insightsGeneratedDocumentsTable.docType, SOW_DOC_TYPE),
-        ne(insightsGeneratedDocumentsTable.status, "failed"),
-      ),
-    )
-    .orderBy(insightsGeneratedDocumentsTable.createdAt) as Promise<SowDocRow[]>;
-}
-
-const linesOf = (d: SowDocRow): SowPricingLineRow[] => (d.sowPricingLines ?? []) as SowPricingLineRow[];
-// Only an explicit "adjustment" line_type is a mandatory (non-toggleable) adjustment;
-// anything else (incl. legacy rows without line_type) is treated as a toggleable workstream.
-const workstreamLinesOf = (d: SowDocRow): SowPricingLineRow[] => linesOf(d).filter((l) => l.line_type !== "adjustment");
-const adjustmentLinesOf = (d: SowDocRow): SowPricingLineRow[] => linesOf(d).filter((l) => l.line_type === "adjustment");
-const workstreamTitlesOf = (d: SowDocRow): string[] => workstreamLinesOf(d).map((l) => l.title);
-const normalizeSet = (titles: string[]): string => [...new Set(titles)].sort().join("");
-
-/**
- * The baseline full-scope document = the SOW version containing the most
- * workstream phases (the original generation always includes every fired-signal
- * workstream; a narrowed regeneration has fewer). Ties break to the earliest.
- * Its workstream lines define the complete toggleable set the client renders,
- * even when a narrower version is currently active.
- */
-function baselineDoc(docs: SowDocRow[]): SowDocRow | null {
-  let best: SowDocRow | null = null;
-  let bestCount = -1;
-  for (const d of docs) {
-    const count = workstreamLinesOf(d).length;
-    if (count > bestCount) {
-      best = d;
-      bestCount = count;
-    }
-  }
-  return best;
-}
-
-function buildSowState(docs: SowDocRow[]) {
-  const activeDoc =
-    [...docs]
-      .filter((d) => (SOW_ACTIVE_STATUSES as readonly string[]).includes(d.status))
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
-  const regenerating = docs.some((d) => d.status === "generating");
-
-  if (!activeDoc) {
-    return { ready: false as const, regenerating };
-  }
-
-  const baseline = baselineDoc(docs) ?? activeDoc;
-  const allWorkstreams = workstreamLinesOf(baseline).map((l) => ({
-    title: l.title,
-    scope: l.scope,
-    priceUsd: l.priceUsd,
-    weeks: l.weeks ?? null,
-    deliveryDate: l.deliveryDate ?? null,
-  }));
-  const adjustments = adjustmentLinesOf(activeDoc).map((l) => ({
-    title: l.title,
-    scope: l.scope,
-    priceUsd: l.priceUsd,
-  }));
-  const selectedWorkstreamTitles = workstreamTitlesOf(activeDoc);
-  const isFullScope = normalizeSet(selectedWorkstreamTitles) === normalizeSet(allWorkstreams.map((w) => w.title));
-
-  // Pricing window anchored to the earliest real SOW row (preserved across regens).
-  const anchorRow = docs.find((d) => (SOW_REAL_STATUSES as readonly string[]).includes(d.status)) ?? activeDoc;
-  const anchorAt = anchorRow.createdAt;
-  const discountWindowEndsAt = new Date(anchorAt.getTime() + DISCOUNT_WINDOW_MS);
-  const validUntil = new Date(anchorAt.getTime() + VALIDITY_WINDOW_MS);
-  const now = Date.now();
-  const windowState: "discount" | "standard" | "expired" =
-    now < discountWindowEndsAt.getTime() ? "discount" : now < validUntil.getTime() ? "standard" : "expired";
-
-  return {
-    ready: true as const,
-    regenerating,
-    doc: {
-      id: activeDoc.id,
-      title: activeDoc.title,
-      htmlContent: activeDoc.htmlContent,
-      totalPrice: activeDoc.sowTotalPrice != null ? Number(activeDoc.sowTotalPrice) : null,
-    },
-    allWorkstreams,
-    adjustments,
-    selectedWorkstreamTitles,
-    isFullScope,
-    pricing: {
-      anchorAt: anchorAt.toISOString(),
-      discountWindowEndsAt: discountWindowEndsAt.toISOString(),
-      validUntil: validUntil.toISOString(),
-      windowState,
-    },
-  };
-}
-
-// GET — current interactive SOW state (active doc, full toggleable phase set,
-// current selection, mandatory adjustments, and pricing-window countdown).
-router.get(
-  "/portal/assessment/sow",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    if (userId == null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-    try {
-      const docs = await loadSowDocs(userId);
-      res.json(buildSowState(docs));
-    } catch (err) {
-      log.error({ err, userId }, "GET /portal/assessment/sow failed");
-      res.status(500).json({ error: "Failed to load statement of work" });
-    }
-  },
-);
-
-// POST — apply a scope selection.
-//   • Exact match to a stored version (incl. full scope) → re-activate it, free.
-//   • Genuinely new subset → regenerate a real, updated SOW (AI cost). Responds
-//     202 with the new "generating" docId once the row exists; generation
-//     continues in the background and the client polls GET .../sow for completion.
-router.post(
-  "/portal/assessment/sow/select",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    if (userId == null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-
-    const rawSelected = (req.body as { selectedWorkstreamTitles?: unknown })?.selectedWorkstreamTitles;
-    if (!Array.isArray(rawSelected) || !rawSelected.every((t) => typeof t === "string")) {
-      res.status(400).json({ error: "selectedWorkstreamTitles must be an array of strings" });
-      return;
-    }
-
-    try {
-      const docs = await loadSowDocs(userId);
-      const state = buildSowState(docs);
-      if (!state.ready) {
-        res.status(409).json({ error: "No active statement of work to update yet" });
-        return;
-      }
-      if (state.regenerating) {
-        res.status(409).json({ error: "A scope update is already in progress" });
-        return;
-      }
-
-      const activeDoc =
-        [...docs]
-          .filter((d) => (SOW_ACTIVE_STATUSES as readonly string[]).includes(d.status))
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0]!;
-      const projectId = activeDoc.projectId;
-
-      // Constrain the request to real, toggleable workstream titles from the baseline.
-      const allTitles = new Set(state.allWorkstreams.map((w) => w.title));
-      const requested = [...new Set(rawSelected)].filter((t) => allTitles.has(t));
-      if (requested.length === 0) {
-        res.status(400).json({ error: "Select at least one workstream phase" });
-        return;
-      }
-      const requestedKey = normalizeSet(requested);
-
-      // Free path — a stored version already has exactly this workstream set.
-      // Re-activate it and archive every other version. Covers "reset to full
-      // scope" and re-selecting any previously-generated subset.
-      const match = docs.find((d) => normalizeSet(workstreamTitlesOf(d)) === requestedKey);
-      if (match) {
-        if (match.status !== "approved") {
-          await db
-            .update(insightsGeneratedDocumentsTable)
-            .set({ status: "approved", approvedAt: new Date(), updatedAt: new Date() })
-            .where(eq(insightsGeneratedDocumentsTable.id, match.id));
-        }
-        // Customer-scoped archival — a superseded version generated under a
-        // sibling login of the same customer must not stay live.
-        const archiveScopeUserIds = await resolveSiblingUserIds(userId);
-        await db
-          .update(insightsGeneratedDocumentsTable)
-          .set({ status: "archived", updatedAt: new Date() })
-          .where(
-            and(
-              inArray(insightsGeneratedDocumentsTable.customerId, archiveScopeUserIds),
-              projectId != null
-                ? eq(insightsGeneratedDocumentsTable.projectId, projectId)
-                : isNull(insightsGeneratedDocumentsTable.projectId),
-              eq(insightsGeneratedDocumentsTable.docType, SOW_DOC_TYPE),
-              ne(insightsGeneratedDocumentsTable.id, match.id),
-              inArray(insightsGeneratedDocumentsTable.status, ["draft", "approved", "delivered"]),
-            ),
-          );
-        log.info(
-          { userId, docId: match.id, requestedCount: requested.length },
-          "portal/assessment/sow/select: re-activated stored scope version (no regeneration)",
-        );
-        res.json({ regenerated: false, docId: match.id });
-        return;
-      }
-
-      // Regeneration path — a genuinely new, narrower subset. Kick off a real
-      // generation and respond as soon as the "generating" row exists so the
-      // client can show its progress state; the AI step continues in the background.
-      log.info(
-        { userId, projectId, requestedCount: requested.length, selectedTitles: requested },
-        "portal/assessment/sow/select: regenerating SOW for new customer scope selection",
-      );
-
-      // This is the "logged-in customer requests their own document" case: the
-      // route only ever knows the portal user on the token, so the users.id →
-      // msp_customers.id translation the SOW engine used to do internally now
-      // happens here, before the call. A customer with no engine tenant can't
-      // have a SOW regenerated at all, so it's a real 409, not a silent
-      // empty-scope generation.
-      const mspCustomerId = await resolveCustomerIdForPortalUser(userId);
-      if (mspCustomerId == null) {
-        log.error({ userId }, "portal/assessment/sow/select: no MSP customer linked to this portal user");
-        res.status(409).json({ error: "Your account isn't linked to a tenant yet, so the statement of work can't be updated." });
-        return;
-      }
-
-      let responded = false;
-      let onRow: (docId: number) => void = () => {};
-      const rowReady = new Promise<number>((resolve, reject) => {
-        onRow = (docId: number) => resolve(docId);
-        void generateSowDocument({
-          mspCustomerId,
-          // Keeps the regenerated SOW owned by the same login that owned the
-          // one it supersedes — unchanged from before the signature flip.
-          documentOwnerUserId: userId,
-          projectId: projectId ?? 0,
-          docTypeKey: SOW_DOC_TYPE,
-          selectedWorkstreamTitles: requested,
-          // The customer changed their own scope selection — that is the entire
-          // reason this branch runs, and it is an input the document drift gate
-          // structurally cannot see (it compares tenant DATA timestamps only).
-          // Without this, an unchanged tenant would get the OLD, wider SOW back
-          // and be told it was regenerated: wrong scope and wrong price on a
-          // document they sign. Non-empty selectedWorkstreamTitles suppresses
-          // reuse inside the engine too, but this states the intent at the
-          // caller and holds even when `requested` is empty.
-          forceRegenerate: true,
-          supersedeMode: "archive",
-          onRowCreated: (docId) => onRow(docId),
-        })
-          .then((result) => resolve(result.documentId))
-          .catch((genErr) => {
-            if (responded) {
-              log.error({ genErr, userId }, "portal/assessment/sow/select: background SOW regeneration failed");
-            } else {
-              reject(genErr);
-            }
-          });
-      });
-
-      const newDocId = await rowReady;
-      responded = true;
-      res.status(202).json({ regenerated: true, docId: newDocId, status: "generating" });
-    } catch (err) {
-      log.error({ err, userId }, "POST /portal/assessment/sow/select failed");
-      if (!res.headersSent) res.status(500).json({ error: "Failed to update statement of work scope" });
-    }
-  },
-);
-
-// ── Comparison mode — side-by-side SOW scope versions ──────────────────────────
-//
-// Non-obvious feature from the original product spec: let the customer compare
-// their SOW scope/pricing across versions (e.g. full scope vs. a narrower
-// re-scope). Real historical versions already exist in storage — every
-// superseded regeneration is archived, not deleted (see the versioning note
-// above `loadSowDocs`) — so this is a read-only view over data already produced
-// by the scope selector (task 4); it does not generate anything new.
-//
-// Only scope-vs-scope (SOW version vs. SOW version) is genuinely comparable
-// today: every version shares the same sowPricingLines shape. A second
-// "free assessment result vs. paid upgrade" comparison was investigated and
-// found NOT buildable from real data — msp_diagnostic_findings (discrete
-// per-check severity rows) and insights_generated_documents.sowPricingLines
-// (priced workstream phases) share no common key or joinable field, so that
-// comparison is not implemented here rather than fabricated.
-router.get(
-  "/portal/assessment/sow/versions",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    if (userId == null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-    try {
-      const docs = await loadSowDocs(userId);
-      const real = docs.filter((d) => (SOW_REAL_STATUSES as readonly string[]).includes(d.status));
-      const versions = [...real]
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        .map((d) => ({
-          id: d.id,
-          title: d.title,
-          status: d.status,
-          createdAt: d.createdAt.toISOString(),
-          isActive: (SOW_ACTIVE_STATUSES as readonly string[]).includes(d.status),
-          totalPrice: d.sowTotalPrice != null ? Number(d.sowTotalPrice) : null,
-          workstreams: workstreamLinesOf(d).map((l) => ({
-            title: l.title,
-            scope: l.scope,
-            priceUsd: l.priceUsd,
-            weeks: l.weeks ?? null,
-            deliveryDate: l.deliveryDate ?? null,
-          })),
-          adjustments: adjustmentLinesOf(d).map((l) => ({
-            title: l.title,
-            scope: l.scope,
-            priceUsd: l.priceUsd,
-          })),
-        }));
-      res.json({ versions });
-    } catch (err) {
-      log.error({ err, userId }, "GET /portal/assessment/sow/versions failed");
-      res.status(500).json({ error: "Failed to load statement of work versions" });
-    }
-  },
-);
-
-// ════════════════════════════════════════════════════════════════════════════
-// Task 5 — Assessment payment plan: choice, signature, checkout
-// ════════════════════════════════════════════════════════════════════════════
-//
-// After the customer settles a scope in the interactive selector (Task 4), they
-// pick a payment plan, sign, and pay. Everything here reads the SAME active
-// consolidated_sow + pricing-window state built above — it never re-derives
-// pricing or re-opens the scope selector.
-//
-// Deliverable map:
-//   • Pay-in-full  — REAL, end-to-end. Discount applied via the live PAY-TODAY
-//     coupon (the platform's real coupon system, same one the CRM presentation
-//     flow uses) as an ephemeral Stripe coupon on a hosted Checkout Session,
-//     mirroring portal.ts's proven `discounts: [{ coupon }]` pattern. $0 scopes
-//     skip Stripe. CAPTCHA gated. Marked paid by the dedicated webhook below.
-//   • Phased       — presented with a real per-phase breakdown, but its
-//     "proceed" does NOT create a Stripe charge. See the blocker note below.
-//   • Signature    — drawn-signature PNG (same contract as customer-sow.tsx),
-//     tied to the exact doc + scope + price via assessment_sow_agreements.
-//
-// ── PHASED-PAYMENT BLOCKER (investigated, reported, NOT worked around) ─────────
-// The platform's automatic per-phase invoicing is genuinely unavailable to the
-// Assessment SOW:
-//   • create_phased_invoices (the ENABLED node that creates the per-phase Stripe
-//     invoices) sources its schedule EXCLUSIVELY from
-//     quick_win_presentations.paymentSchedule (workflow-executor.ts ~7159-7176),
-//     erroring "no phased payment schedule found for project" otherwise.
-//   • That paymentSchedule is written ONLY by the CRM presentation checkout
-//     (portal.ts ~13097) — a CustomerUser-gated flow in the presentation/project
-//     entity space. The Assessment consolidated_sow lives in
-//     insights_generated_documents (users.id space) and never populates it.
-//   • edit_stripe_invoice (the due-date sync node) sits in a triggerEnabled:false
-//     workflow and resolves invoices via projects.clientUserId → Stripe customer
-//     → draft invoice tagged metadata.projectId — drafts that only exist once
-//     create_phased_invoices has run, which it can't here.
-// Wiring real phased auto-collection would require either bridging every
-// Assessment SOW into the CRM quick_win_presentations/projects space (touching
-// the known-fragile projectId→mspId/customerId linkage) or inventing a new
-// recurring-charge mechanism — both out of scope for "mirror the proven pattern".
-// So per the task's stop-and-report rule, phased is captured as a SIGNED
-// agreement handed to the provider (status awaiting_provider_setup), never a
-// Stripe deposit that silently can't invoice the remainder.
-
-// The real, live coupon that carries the pay-in-full discount (shared with the
-// CRM presentation flow, so both surfaces show the same discounted number for
-// the same coupon). Assessment has no separate hardcoded discount.
-const PAY_IN_FULL_COUPON_CODE = "PAY-TODAY";
-
-type ReadySowState = Extract<ReturnType<typeof buildSowState>, { ready: true }>;
-
-/** Sum the currently-selected workstream phases + mandatory adjustments (USD). */
-function effectiveSowTotals(state: ReadySowState): {
-  workstreamTotal: number;
-  adjustmentsTotal: number;
-  total: number;
-} {
-  const selected = new Set(state.selectedWorkstreamTitles);
-  const workstreamTotal = state.allWorkstreams
-    .filter((w) => selected.has(w.title))
-    .reduce((s, w) => s + w.priceUsd, 0);
-  const adjustmentsTotal = state.adjustments.reduce((s, a) => s + a.priceUsd, 0);
-  return { workstreamTotal, adjustmentsTotal, total: workstreamTotal + adjustmentsTotal };
-}
-
-type CouponRow = typeof couponsTable.$inferSelect;
-
-interface PayInFullOffer {
-  active: boolean;
-  originalCents: number;
-  discountedCents: number;
-  savingsCents: number;
-  variant: "adjustments_waived" | "percentage_off" | null;
-  discountPct: number | null;
-}
-
-/**
- * Pay-in-full discount, computed exactly as the CRM presentation offer does
- * (portal.ts ~12190-12212) so the two flows agree to the cent: within the 72h
- * discount window, adjustments-waived when there are positive adjustment lines,
- * otherwise percentage-off from the coupon's discountValue.
- */
-function computePayInFullOffer(
-  totalDollars: number,
-  adjustmentsDollars: number,
-  windowState: "discount" | "standard" | "expired",
-  coupon: CouponRow | null,
-): PayInFullOffer {
-  const originalCents = Math.round(totalDollars * 100);
-  const inactive: PayInFullOffer = {
-    active: false, originalCents, discountedCents: originalCents, savingsCents: 0, variant: null, discountPct: null,
-  };
-  if (windowState !== "discount" || !coupon || !coupon.active) return inactive;
-  if (coupon.expiresAt && coupon.expiresAt < new Date()) return inactive;
-  if (originalCents <= 0) return inactive;
-
-  const adjustmentsCents = Math.round(adjustmentsDollars * 100);
-  if (adjustmentsCents > 0) {
-    const discountedCents = originalCents - adjustmentsCents;
-    return { active: true, originalCents, discountedCents, savingsCents: adjustmentsCents, variant: "adjustments_waived", discountPct: null };
-  }
-  const rawPct = parseFloat(String(coupon.discountValue));
-  const pct = rawPct / 100;
-  const discountedCents = Math.round(originalCents * (1 - pct));
-  return { active: true, originalCents, discountedCents, savingsCents: originalCents - discountedCents, variant: "percentage_off", discountPct: rawPct };
-}
-
-async function loadPayInFullCoupon(): Promise<CouponRow | null> {
-  const [coupon] = await db
-    .select()
-    .from(couponsTable)
-    .where(and(eq(couponsTable.code, PAY_IN_FULL_COUPON_CODE), eq(couponsTable.active, true)))
-    .limit(1);
-  return coupon ?? null;
-}
-
-// Git #613 (Pay-by-Phase billing) — Shane's own direction: reuse the existing
-// `coupons` mechanism rather than hardcoding a deposit percentage. An
-// unlimited-use (`max_uses` null), percentage-off, auto-applied-server-side
-// row — never customer-entered, exactly like PAY_IN_FULL_COUPON_CODE above.
-// `discountValue` is the percentage taken OFF, so a 30%-of-total deposit is
-// `discountValue = 70` (customer pays the remaining 30%) — tunable by editing
-// the coupon row alone, no code change, per Shane's explicit ask. Migration:
-// lib/db/migrations/manual/2026-08-09-phased-invoicing-checkout-sessions-613.sql.
-const PHASE_DEPOSIT_COUPON_CODE = "PHASE-DEPOSIT-30";
-
-async function loadPhaseDepositCoupon(): Promise<CouponRow | null> {
-  const [coupon] = await db
-    .select()
-    .from(couponsTable)
-    .where(and(eq(couponsTable.code, PHASE_DEPOSIT_COUPON_CODE), eq(couponsTable.active, true)))
-    .limit(1);
-  return coupon ?? null;
-}
-
-/** The deposit fraction (e.g. 0.3 for a 30% deposit) a phase-deposit coupon encodes. */
-function phaseDepositFraction(coupon: CouponRow): number {
-  const discountPct = parseFloat(String(coupon.discountValue));
-  return 1 - Math.max(0, Math.min(100, discountPct)) / 100;
-}
-
-/** Minimal Stripe-customer resolver (email match, else create) for a users.id. */
-async function resolveStripeCustomerForUser(
-  stripe: import("stripe").Stripe,
-  userId: number,
-): Promise<{ customerId: string | undefined; email: string | null }> {
-  const [profile] = await db
-    .select({
-      email: usersTable.email, name: usersTable.name, address: usersTable.address,
-      addressCity: usersTable.addressCity, addressState: usersTable.addressState, addressZip: usersTable.addressZip,
-    })
-    .from(usersTable)
-    .where(eq(usersTable.id, userId))
-    .limit(1);
-  if (!profile?.email) return { customerId: undefined, email: null };
-  try {
-    const existing = await stripe.customers.search({ query: `email:"${profile.email}"`, limit: 1 });
-    if (existing.data.length > 0 && existing.data[0]) return { customerId: existing.data[0].id, email: profile.email };
-    const hasAddress = !!(profile.address || profile.addressCity || profile.addressState || profile.addressZip);
-    const created = await stripe.customers.create({
-      email: profile.email,
-      name: profile.name ?? undefined,
-      ...(hasAddress
-        ? { address: { line1: profile.address ?? undefined, city: profile.addressCity ?? undefined, state: profile.addressState ?? undefined, postal_code: profile.addressZip ?? undefined, country: "US" } }
-        : {}),
-    });
-    return { customerId: created.id, email: profile.email };
-  } catch (err) {
-    billingLog.warn({ err, userId }, "assessment-checkout: stripe customer resolution failed (non-fatal)");
-    return { customerId: undefined, email: profile.email };
-  }
-}
-
-/** Resolve tenants.id + msp_id for tenant scoping on the agreement row. */
-async function resolveTenantForCustomer(customerId: number | null): Promise<{ customerId: number | null; mspId: number | null }> {
-  if (customerId === null) return { customerId: null, mspId: null };
-  const [row] = await db
-    .select({ mspId: tenantsTable.mspId })
-    .from(tenantsTable)
-    .where(eq(tenantsTable.id, customerId))
-    .limit(1);
-  return { customerId, mspId: row?.mspId ?? null };
-}
-
-// ── GET /portal/assessment/sow/payment-options ────────────────────────────────
-//
-// Everything the payment step needs: the effective total for the active scope,
-// the live pay-in-full discount (if inside the 72h window), the per-phase
-// breakdown for the phased option, and any existing agreement so a returning
-// customer sees their confirmed/paid state instead of re-paying.
-router.get(
-  "/portal/assessment/sow/payment-options",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    if (userId == null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-    try {
-      const docs = await loadSowDocs(userId);
-      const state = buildSowState(docs);
-      if (!state.ready) {
-        res.json({ ready: false, regenerating: state.regenerating });
-        return;
-      }
-
-      const totals = effectiveSowTotals(state);
-      const coupon = await loadPayInFullCoupon();
-      const offer = computePayInFullOffer(totals.total, totals.adjustmentsTotal, state.pricing.windowState, coupon);
-
-      // Per-phase breakdown for the phased option — each selected workstream is a
-      // milestone (same sowPricingLines the selector uses); adjustments are billed
-      // with the first milestone.
-      const selected = new Set(state.selectedWorkstreamTitles);
-      const phases = state.allWorkstreams
-        .filter((w) => selected.has(w.title))
-        .map((w) => ({ title: w.title, amount: w.priceUsd, deliveryDate: w.deliveryDate }));
-
-      // Existing agreement (most recent) so the UI can show a terminal state.
-      const [existing] = await db
-        .select({
-          status: assessmentSowAgreementsTable.status,
-          paymentPlan: assessmentSowAgreementsTable.paymentPlan,
-          signerName: assessmentSowAgreementsTable.signerName,
-          signedAt: assessmentSowAgreementsTable.signedAt,
-        })
-        .from(assessmentSowAgreementsTable)
-        .where(and(eq(assessmentSowAgreementsTable.docId, state.doc.id), eq(assessmentSowAgreementsTable.clientUserId, userId)))
-        .orderBy(desc(assessmentSowAgreementsTable.createdAt))
-        .limit(1);
-
-      res.json({
-        ready: true,
-        docId: state.doc.id,
-        currency: "usd",
-        total: totals.total,
-        adjustmentsTotal: totals.adjustmentsTotal,
-        selectedWorkstreamTitles: state.selectedWorkstreamTitles,
-        pricing: state.pricing,
-        payInFull: {
-          active: offer.active,
-          discountedTotal: offer.active ? offer.discountedCents / 100 : null,
-          savings: offer.active ? offer.savingsCents / 100 : null,
-          variant: offer.variant,
-          discountPct: offer.discountPct,
-          couponCode: offer.active ? PAY_IN_FULL_COUPON_CODE : null,
-        },
-        phased: {
-          // Milestone billing is provider-arranged for Assessment (see blocker note) —
-          // the breakdown is informational; there is no self-serve deposit charge.
-          selfServe: false,
-          phases,
-          total: totals.total,
-        },
-        existingAgreement: existing
-          ? { status: existing.status, paymentPlan: existing.paymentPlan, signerName: existing.signerName, signedAt: existing.signedAt }
-          : null,
-      });
-    } catch (err) {
-      billingLog.error({ err, userId }, "GET /portal/assessment/sow/payment-options failed");
-      res.status(500).json({ error: "Failed to load payment options" });
-    }
-  },
-);
-
-// ── POST /portal/assessment/sow/checkout ──────────────────────────────────────
-//
-// CAPTCHA-gated. Records the signed agreement (tied to the exact active scope +
-// price) and branches:
-//   • $0 scope         → free_activated, no Stripe.
-//   • paymentPlan full → hosted Stripe Checkout (real coupon discount in-window);
-//                        marked paid by the webhook below.
-//   • paymentPlan phased → awaiting_provider_setup, no Stripe (blocker above).
-router.post(
-  "/portal/assessment/sow/checkout",
-  requireRole("Assessment"),
-  async (req: Request, res: Response): Promise<void> => {
-    const userId = req.user?.id;
-    const claimCustomerId = resolveCustomerId(req);
-    if (userId == null) {
-      res.status(403).json({ error: "No customer identity on token" });
-      return;
-    }
-
-    const body = (req.body ?? {}) as {
-      captchaToken?: string;
-      paymentPlan?: string;
-      applyPayInFull?: boolean;
-      signatureData?: string;
-      signerName?: string;
-      selectedWorkstreamTitles?: unknown;
-    };
-
-    // CAPTCHA — same required-token → verify → 403 gate as portal-checkout.ts.
-    if (!body.captchaToken) {
-      res.status(400).json({ error: "CAPTCHA token is required" });
-      return;
-    }
-    const captcha = await verifyCaptchaToken(body.captchaToken);
-    if (!captcha.success) {
-      res.status(403).json({ error: "CAPTCHA verification failed" });
-      return;
-    }
-
-    const paymentPlan = body.paymentPlan;
-    if (paymentPlan !== "full" && paymentPlan !== "phased") {
-      res.status(400).json({ error: "paymentPlan must be 'full' or 'phased'" });
-      return;
-    }
-
-    // Signature — drawn PNG data URL + typed legal name (same contract enforced
-    // by the CRM sign route: data:image/ prefix, non-trivial length).
-    const signatureData = typeof body.signatureData === "string" ? body.signatureData : "";
-    const signerName = typeof body.signerName === "string" ? body.signerName.trim() : "";
-    if (!signatureData.startsWith("data:image/") || signatureData.length < 100) {
-      res.status(400).json({ error: "A drawn signature is required" });
-      return;
-    }
-    if (!signerName) {
-      res.status(400).json({ error: "Your full legal name is required to sign" });
-      return;
-    }
-
-    try {
-      const docs = await loadSowDocs(userId);
-      const state = buildSowState(docs);
-      if (!state.ready) {
-        res.status(409).json({ error: "No active statement of work to pay for yet" });
-        return;
-      }
-      if (state.regenerating) {
-        res.status(409).json({ error: "Your scope is still updating — please wait for it to finish before paying" });
-        return;
-      }
-      if (state.pricing.windowState === "expired") {
-        res.status(409).json({ error: "This statement of work has expired. A fresh scan is needed for current pricing." });
-        return;
-      }
-
-      // Integrity: the signature must bind to the exact scope the customer is
-      // looking at. Reject if the submitted scope no longer matches the active
-      // document (e.g. a concurrent re-scope), so no one signs a stale price.
-      const submitted = body.selectedWorkstreamTitles;
-      if (!Array.isArray(submitted) || !submitted.every((t) => typeof t === "string")) {
-        res.status(400).json({ error: "selectedWorkstreamTitles must be an array of strings" });
-        return;
-      }
-      const submittedKey = normalizeSet(submitted as string[]);
-      const activeKey = normalizeSet(state.selectedWorkstreamTitles);
-      if (submittedKey !== activeKey) {
-        res.status(409).json({ code: "scope_changed", error: "Your scope changed since you reviewed it. Please re-check your selection and sign again." });
-        return;
-      }
-
-      // Don't let a customer pay twice for the same signed document.
-      const [alreadyPaid] = await db
-        .select({ id: assessmentSowAgreementsTable.id })
-        .from(assessmentSowAgreementsTable)
-        .where(and(
-          eq(assessmentSowAgreementsTable.docId, state.doc.id),
-          eq(assessmentSowAgreementsTable.clientUserId, userId),
-          inArray(assessmentSowAgreementsTable.status, ["paid", "free_activated"]),
-        ))
-        .limit(1);
-      if (alreadyPaid) {
-        res.status(409).json({ error: "This statement of work has already been settled." });
-        return;
-      }
-
-      const totals = effectiveSowTotals(state);
-      const coupon = await loadPayInFullCoupon();
-      const offer = computePayInFullOffer(totals.total, totals.adjustmentsTotal, state.pricing.windowState, coupon);
-      const tenant = await resolveTenantForCustomer(claimCustomerId);
-      const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim() ?? req.socket.remoteAddress ?? null;
-
-      // Common agreement fields.
-      const baseAgreement = {
-        docId: state.doc.id,
-        clientUserId: userId,
-        customerId: tenant.customerId ?? undefined,
-        mspId: tenant.mspId ?? undefined,
-        selectedWorkstreamTitles: state.selectedWorkstreamTitles,
-        scopeKey: activeKey,
-        agreedTotalCents: offer.originalCents,
-        windowStateAtSigning: state.pricing.windowState,
-        signatureData,
-        signerName,
-        signatureIp: ip ?? undefined,
-      } as const;
-
-      // ── Branch: $0 scope → activate without Stripe ──────────────────────────
-      if (offer.originalCents <= 0) {
-        await db.insert(assessmentSowAgreementsTable).values({
-          ...baseAgreement,
-          paymentPlan,
-          status: "free_activated",
-          paidAt: new Date(),
-        });
-        billingLog.info({ userId, docId: state.doc.id }, "assessment-checkout: $0 scope activated without Stripe");
-        res.json({ outcome: "free_activated", message: "Your statement of work has been activated." });
-        return;
-      }
-
-      // ── Branch: phased → capture signed agreement, hand to provider ─────────
-      // No Stripe charge (see blocker note). Honest: we record the signed SOW and
-      // the plan preference; the provider arranges milestone billing.
-      if (paymentPlan === "phased") {
-        const [row] = await db.insert(assessmentSowAgreementsTable).values({
-          ...baseAgreement,
-          paymentPlan: "phased",
-          status: "awaiting_provider_setup",
-        }).returning({ id: assessmentSowAgreementsTable.id });
-        billingLog.info({ userId, docId: state.doc.id, agreementId: row?.id }, "assessment-checkout: phased plan signed — handed to provider for milestone billing");
-        res.json({
-          outcome: "provider_setup",
-          message: "You're all set. Your statement of work is signed — your provider will reach out to set up milestone billing for each phase.",
-        });
-        return;
-      }
-
-      // ── Branch: pay-in-full → hosted Stripe Checkout ────────────────────────
-      let stripeKey: string;
-      try {
-        stripeKey = getStripeKey();
-      } catch {
-        res.status(503).json({ error: "Payment service is not configured. Please contact support." });
-        return;
-      }
-      const { default: Stripe } = await import("stripe");
-      const stripe = new Stripe(stripeKey);
-
-      const { customerId: stripeCustomerId } = await resolveStripeCustomerForUser(stripe, userId);
-
-      // Apply the discount as a real, traceable Stripe coupon (Pattern B) — only
-      // when the customer opted in AND the offer is genuinely live server-side.
-      const applyDiscount = body.applyPayInFull === true && offer.active;
-      let stripeDiscounts: Array<{ coupon: string }> = [];
-      let couponCodeApplied: string | null = null;
-      let discountedTotalCents: number | null = null;
-      if (applyDiscount) {
-        const discountCents = offer.originalCents - offer.discountedCents;
-        if (discountCents > 0) {
-          const stripeCoupon = await stripe.coupons.create({
-            amount_off: discountCents,
-            currency: "usd",
-            duration: "once",
-            name: "Pay-in-Full Discount",
-            metadata: { docId: String(state.doc.id), couponCode: PAY_IN_FULL_COUPON_CODE, flow: "assessment" },
-          });
-          stripeDiscounts = [{ coupon: stripeCoupon.id }];
-          couponCodeApplied = PAY_IN_FULL_COUPON_CODE;
-          discountedTotalCents = offer.discountedCents;
-        }
-      }
-
-      // Insert the agreement first so the session metadata can reference it, and
-      // so an abandoned checkout still leaves a pending_payment audit trail.
-      const [agreement] = await db.insert(assessmentSowAgreementsTable).values({
-        ...baseAgreement,
-        paymentPlan: "full",
-        status: "pending_payment",
-        couponCode: couponCodeApplied ?? undefined,
-        discountedTotalCents: discountedTotalCents ?? undefined,
-      }).returning({ id: assessmentSowAgreementsTable.id });
-
-      if (!agreement) {
-        res.status(500).json({ error: "Failed to record agreement" });
-        return;
-      }
-
-      const portalBase = getMspPortalBaseUrl(); // ends in /portal
-      // Charge the full price and let Stripe apply the coupon on top, so the
-      // discount shows as a transparent line item (same as portal.ts:13029-13034).
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ["card"],
-        customer: stripeCustomerId,
-        billing_address_collection: "required",
-        ...(stripeDiscounts.length > 0 && { discounts: stripeDiscounts }),
-        line_items: [{
-          price_data: {
-            currency: "usd",
-            product_data: { name: `${state.doc.title} — Full Payment` },
-            unit_amount: offer.originalCents,
-          },
-          quantity: 1,
-        }],
-        mode: "payment",
-        success_url: `${portalBase}/assessment?payment=success`,
-        cancel_url: `${portalBase}/assessment?payment=cancelled`,
-        metadata: {
-          type: "assessment_checkout",
-          agreementId: String(agreement.id),
-          docId: String(state.doc.id),
-          userId: String(userId),
-          paymentPlan: "full",
-          totalPrice: String(totals.total),
-          ...(couponCodeApplied ? { couponCode: couponCodeApplied } : {}),
-          ...(discountedTotalCents !== null ? { discountedTotal: String(discountedTotalCents / 100) } : {}),
-        },
-      });
-
-      await db.update(assessmentSowAgreementsTable)
-        .set({ stripeSessionId: session.id, updatedAt: new Date() })
-        .where(eq(assessmentSowAgreementsTable.id, agreement.id));
-
-      billingLog.info(
-        { userId, docId: state.doc.id, agreementId: agreement.id, sessionId: session.id, discountApplied: couponCodeApplied != null },
-        "assessment-checkout: pay-in-full Stripe Checkout session created",
-      );
-      res.json({ outcome: "checkout", url: session.url });
-    } catch (err) {
-      billingLog.error({ err, userId }, "POST /portal/assessment/sow/checkout failed");
-      if (!res.headersSent) res.status(500).json({ error: "Failed to start checkout" });
-    }
-  },
-);
-
-// ── POST /portal/assessment/stripe/webhook ────────────────────────────────────
-//
-// Dedicated webhook for the Assessment pay-in-full checkout — separate event set
-// and fulfillment from the per-offer portal webhook (portal-checkout.ts). Marks
-// the agreement paid and records coupon redemption. It deliberately does NOT emit
-// agreement_signed: that event triggers create_phased_invoices, which is bound to
-// the CRM presentation/project space and would error for an Assessment SOW.
-//
-// Raw body for signature verification is registered in app.ts.
-router.post("/portal/assessment/stripe/webhook", async (req: Request, res: Response): Promise<void> => {
-  const sig = req.headers["stripe-signature"];
-  if (!sig) {
-    res.status(400).json({ error: "Missing stripe-signature header" });
-    return;
-  }
-  const webhookSecret =
-    process.env["PORTAL_STRIPE_WEBHOOK_SECRET"] ??
-    process.env["STRIPE_WEBHOOK_SECRET"] ??
-    "";
-
-  let stripeKey: string;
-  try {
-    stripeKey = getStripeKey();
-  } catch (err) {
-    billingLog.warn({ err }, "assessment-webhook: Stripe not configured, ignoring event");
-    res.status(200).json({ received: true });
-    return;
-  }
-  const { default: Stripe } = await import("stripe");
-  const stripe = new Stripe(stripeKey);
-
-  let event: import("stripe").Stripe.Event;
-  try {
-    if (webhookSecret) {
-      event = stripe.webhooks.constructEvent(req.body as Buffer, sig as string, webhookSecret);
-    } else {
-      billingLog.warn({}, "assessment-webhook: no webhook secret configured — skipping signature verification");
-      event = JSON.parse((req.body as Buffer).toString()) as import("stripe").Stripe.Event;
-    }
-  } catch (err) {
-    billingLog.warn({ err }, "assessment-webhook: signature verification failed");
-    res.status(400).json({ error: "Webhook signature verification failed" });
-    return;
-  }
-
-  // Acknowledge fast; Stripe requires a quick 2xx.
-  res.status(200).json({ received: true });
-
-  try {
-    if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") return;
-    const session = event.data.object as import("stripe").Stripe.Checkout.Session;
-    if (session.metadata?.["type"] !== "assessment_checkout") return;
-    if (session.payment_status !== "paid" && session.payment_status !== "no_payment_required") {
-      billingLog.info({ sessionId: session.id, paymentStatus: session.payment_status }, "assessment-webhook: session not paid — skipping");
-      return;
-    }
-
-    const agreementId = parseInt(session.metadata?.["agreementId"] ?? "", 10);
-    // Match on agreementId (primary) or stripe_session_id (belt-and-suspenders).
-    const [agreement] = await db
-      .select({
-        id: assessmentSowAgreementsTable.id,
-        status: assessmentSowAgreementsTable.status,
-        selectedWorkstreamTitles: assessmentSowAgreementsTable.selectedWorkstreamTitles,
-        agreedTotalCents: assessmentSowAgreementsTable.agreedTotalCents,
-        discountedTotalCents: assessmentSowAgreementsTable.discountedTotalCents,
-        signerName: assessmentSowAgreementsTable.signerName,
-      })
-      .from(assessmentSowAgreementsTable)
-      .where(
-        !isNaN(agreementId)
-          ? eq(assessmentSowAgreementsTable.id, agreementId)
-          : eq(assessmentSowAgreementsTable.stripeSessionId, session.id),
-      )
-      .limit(1);
-
-    if (!agreement) {
-      billingLog.warn({ sessionId: session.id, agreementId }, "assessment-webhook: no matching agreement — skipping");
-      return;
-    }
-    if (agreement.status !== "paid") {
-      await db.update(assessmentSowAgreementsTable)
-        .set({ status: "paid", paidAt: new Date(), stripeSessionId: session.id, updatedAt: new Date() })
-        .where(eq(assessmentSowAgreementsTable.id, agreement.id));
-      billingLog.info({ agreementId: agreement.id, sessionId: session.id }, "assessment-webhook: agreement marked paid");
-
-      const amountCents = session.amount_total ?? agreement.discountedTotalCents ?? agreement.agreedTotalCents ?? 0;
-      const amountDollars = (amountCents / 100).toFixed(2);
-      const productName = agreement.selectedWorkstreamTitles?.length
-        ? agreement.selectedWorkstreamTitles.join(", ")
-        : "Assessment SOW";
-      // Route the sale notification through the configurable msp_alert_rules
-      // system (#665) instead of a direct push — same amount/product/customer
-      // info as before, now with admin-tunable severity/cooldown/channel.
-      const saleSummary = `New assessment sale — $${amountDollars}: ${agreement.signerName} — ${productName}.`;
-      await fireEventRule("purchase_completed", saleSummary);
-    }
-
-    // Coupon redemption — idempotent by checkout_session_id, exactly as
-    // portal.ts:5386-5406.
-    const couponCodeUsed = session.metadata?.["couponCode"];
-    if (couponCodeUsed) {
-      const redemptionUserId = session.metadata?.["userId"] ? (parseInt(session.metadata["userId"], 10) || null) : null;
-      const purchaseAmount = session.amount_total != null ? String(session.amount_total / 100) : null;
-      const discountAmount = (session.total_details as { amount_discount?: number } | null)?.amount_discount != null
-        ? String((session.total_details as { amount_discount: number }).amount_discount / 100)
-        : null;
-      try {
-        const insertResult = await db.execute(
-          sql`INSERT INTO coupon_redemptions (coupon_code, checkout_session_id, coupon_id, user_id, purchase_amount, discount_amount)
-              VALUES (
-                ${couponCodeUsed},
-                ${session.id},
-                (SELECT id FROM coupons WHERE code = ${couponCodeUsed}),
-                ${redemptionUserId},
-                ${purchaseAmount},
-                ${discountAmount}
-              )
-              ON CONFLICT (checkout_session_id) DO NOTHING`,
-        );
-        if (((insertResult as { rowCount?: number }).rowCount ?? 0) > 0) {
-          await db.update(couponsTable)
-            .set({
-              usesCount: sql`${couponsTable.usesCount} + 1`,
-              active: sql`CASE WHEN ${couponsTable.maxUses} IS NOT NULL AND ${couponsTable.usesCount} + 1 >= ${couponsTable.maxUses} THEN false ELSE ${couponsTable.active} END`,
-            })
-            .where(eq(couponsTable.code, couponCodeUsed));
-        }
-      } catch (err) {
-        billingLog.warn({ err, couponCode: couponCodeUsed, sessionId: session.id }, "assessment-webhook: failed to record coupon redemption (non-fatal)");
-      }
-    }
-  } catch (err) {
-    billingLog.error({ err, eventType: event.type, eventId: event.id }, "assessment-webhook: handler failed");
-  }
-});
 
 export default router;

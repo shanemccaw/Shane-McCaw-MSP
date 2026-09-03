@@ -28,11 +28,13 @@
  * the same 7 narrative generators `portal-assessment.ts`'s own narrative
  * routes call). "purchasing" additionally returns the SOW's real priced
  * scope: `runSalesOfferEngineForTenant()` + the same monitoring/retainer
- * add-on resolvers `GET /portal/assessment/recommended-offers` already
- * calls, assembled into the SAME response shape that route returns. This is
- * a deliberate, minimal duplication of that route's ~15-line JSON assembly
- * (not its pricing) — the alternative was extracting/refactoring a shipped,
- * live authenticated endpoint this session cannot run against real data to
+ * add-on resolvers `GET /portal/assessment/recommended-offers` used to
+ * call (that route was retired with the SOW/checkout flow — #1674, #1753 —
+ * this shares logic with it, not the route itself), assembled into the SAME
+ * response shape that route used to return. This is a deliberate, minimal
+ * duplication of that former route's ~15-line JSON assembly (not its
+ * pricing) — the alternative was extracting/refactoring a shipped, live
+ * authenticated endpoint this session cannot run against real data to
  * verify, for a two-line risk/reward that isn't worth it. The actual pricing
  * authority, `runSalesOfferEngineForTenant()`, is called directly, unchanged
  * — "do not rebuild SOW pricing logic" per this issue's own text. The

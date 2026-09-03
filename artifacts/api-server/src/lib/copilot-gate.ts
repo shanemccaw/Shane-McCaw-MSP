@@ -7,7 +7,7 @@
  *   1. `copilot-readiness.ts` — a narrow three-indicator formula (SharePoint
  *      oversharing 50%, sensitivity labels 30%, DLP 20%), all Compliance-adjacent.
  *      No Security, Licensing, Adoption, Health or Governance-ownership signal
- *      anywhere in it. This is what `/portal/assessment/status` returned as
+ *      anywhere in it. This is what `/portal/diagnostics/status` returned as
  *      `copilotReadiness.overall.score`, and therefore what the Reveal's headline
  *      verdict number has been reading.
  *   2. The unified health engine — `health-engine.ts`'s `HEALTH_PILLARS`, which

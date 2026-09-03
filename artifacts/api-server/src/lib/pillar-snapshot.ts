@@ -19,7 +19,7 @@
  * the normalized 0-100 numbers the PillarGrid / HeroHealthScore / radar show.
  *
  * Honesty gate: only writes when the run reported `coverageSufficient` — the same
- * gate /api/portal/assessment/status applies before showing these scores live, so
+ * gate /api/portal/diagnostics/status applies before showing these scores live, so
  * a dark/partial run never writes a snapshot that looks like real history. No
  * backfill: absence of history renders "not enough history yet" downstream.
  */
@@ -51,7 +51,7 @@ export interface CapturePillarSnapshotInput {
 export async function capturePillarDisplaySnapshots(input: CapturePillarSnapshotInput): Promise<void> {
   const { runId, customerId, packageKey, coverageSufficient } = input;
   try {
-    // Same honesty gate /api/portal/assessment/status applies — a dark/partial
+    // Same honesty gate /api/portal/diagnostics/status applies — a dark/partial
     // run must not write a snapshot that looks like real history.
     if (!coverageSufficient) {
       log.info({ runId, customerId }, "pillar-snapshot: skipped — coverage insufficient (no history written)");

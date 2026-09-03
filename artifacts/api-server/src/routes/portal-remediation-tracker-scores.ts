@@ -107,7 +107,7 @@ router.get(
       // ── Rolling before/now + permanent day-one, from tenant_pillar_snapshots ──
       // Oldest→newest so each pillar's earliest row is its permanent day-one
       // baseline and its latest row is "now" — the exact ordering the reducer
-      // depends on. Same read shape as /portal/assessment/pillar-history.
+      // depends on. Same read shape as /portal/pillars/history.
       const snapshotRows = await db
         .select({
           pillarKey: tenantPillarSnapshotsTable.pillarKey,

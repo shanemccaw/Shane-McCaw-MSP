@@ -129,7 +129,7 @@ interface AssessmentResultsDataResult {
 
 /**
  * Fetches the real Assessment scan results for the current assessment-tier visitor
- * via the existing GET /api/portal/assessment-results/:serviceSlug route
+ * via the existing GET /api/portal/diagnostics/results/:serviceSlug route
  * (msp-diagnostics.ts) — the same data source msp-portal's Assessment Results Viewer
  * (assessment-dashboard.tsx) already reads, reused here rather than duplicated.
  * serviceSlug is caller-supplied (Stage 4b resolves the right slug per topic page).
@@ -152,7 +152,7 @@ export function useAssessmentResultsData(serviceSlug: string | null): Assessment
     setLoading(true);
     setError(null);
 
-    fetch(`/api/portal/assessment-results/${encodeURIComponent(serviceSlug)}`, {
+    fetch(`/api/portal/diagnostics/results/${encodeURIComponent(serviceSlug)}`, {
       headers: { Authorization: `Bearer ${assessment.accessToken}` },
     })
       .then(async (res) => {
