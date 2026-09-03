@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -66,50 +65,29 @@ namespace BuildConsole.Services
 
         public static async Task<List<GitHubIssueSummary>> ListOpenByLabelAsync(string label, int limit = 50)
         {
-            var psi = new ProcessStartInfo
+            // Git #2539 — through SubprocessRunner: shares BuildConsole's bounded git/gh
+            // concurrency gate (flattening the startup spawn burst the crash evidence correlates
+            // with) and retries a crash-class spawn before giving up. The exit-code/stderr
+            // handling below is preserved exactly.
+            var res = await SubprocessRunner.RunAsync("gh",
+                new[] { "issue", "list", "--repo", Repo, "--state", "open", "--label", label,
+                        "--json", "number,title,url,updatedAt,parent", "--limit", limit.ToString() },
+                logChannel: "github");
+            if (!res.Started)
             {
-                FileName = "gh",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("issue");
-            psi.ArgumentList.Add("list");
-            psi.ArgumentList.Add("--repo");
-            psi.ArgumentList.Add(Repo);
-            psi.ArgumentList.Add("--state");
-            psi.ArgumentList.Add("open");
-            psi.ArgumentList.Add("--label");
-            psi.ArgumentList.Add(label);
-            psi.ArgumentList.Add("--json");
-            psi.ArgumentList.Add("number,title,url,updatedAt,parent");
-            psi.ArgumentList.Add("--limit");
-            psi.ArgumentList.Add(limit.ToString());
-
-            using var proc = new Process { StartInfo = psi };
-            try
-            {
-                proc.Start();
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log("github", $"Couldn't start gh CLI (is it installed/on PATH?): {ex.Message}");
+                ActivityLog.Log("github", $"Couldn't start gh CLI (is it installed/on PATH?): {res.LaunchError}");
                 return new List<GitHubIssueSummary>();
             }
-            string stdout = await proc.StandardOutput.ReadToEndAsync();
-            string stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            if (proc.ExitCode != 0)
+            if (res.ExitCode != 0)
             {
-                ActivityLog.Log("github", $"gh issue list failed (exit {proc.ExitCode}): {stderr.Trim()}");
+                ActivityLog.Log("github", $"gh issue list failed (exit {res.ExitCode}): {res.StdErr.Trim()}");
                 return new List<GitHubIssueSummary>();
             }
 
             try
             {
                 var issues = System.Text.Json.JsonSerializer.Deserialize<List<GitHubIssueSummary>>(
-                    stdout, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    res.StdOut, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 return issues ?? new List<GitHubIssueSummary>();
             }
             catch (Exception ex)
@@ -151,48 +129,28 @@ namespace BuildConsole.Services
         /// </summary>
         public static async Task<LiveOpenIssuesResult> TryGetOpenIssueNumbersAsync(int limit = 500)
         {
-            var psi = new ProcessStartInfo
+            // Git #2539 — through SubprocessRunner (shared concurrency gate + crash retry). The
+            // fail-closed distinction this method exists for (unreachable gh ≠ "nothing open") is
+            // preserved: a spawn failure returns Failure, a non-zero exit returns Failure, only a
+            // clean parse returns Ok.
+            var res = await SubprocessRunner.RunAsync("gh",
+                new[] { "issue", "list", "--repo", Repo, "--state", "open", "--json", "number", "--limit", limit.ToString() },
+                logChannel: "github");
+            if (!res.Started)
             {
-                FileName = "gh",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("issue");
-            psi.ArgumentList.Add("list");
-            psi.ArgumentList.Add("--repo");
-            psi.ArgumentList.Add(Repo);
-            psi.ArgumentList.Add("--state");
-            psi.ArgumentList.Add("open");
-            psi.ArgumentList.Add("--json");
-            psi.ArgumentList.Add("number");
-            psi.ArgumentList.Add("--limit");
-            psi.ArgumentList.Add(limit.ToString());
-
-            using var proc = new Process { StartInfo = psi };
-            try
-            {
-                proc.Start();
+                ActivityLog.Log("github", $"Couldn't start gh CLI (is it installed/on PATH?): {res.LaunchError}");
+                return LiveOpenIssuesResult.Failure($"couldn't start gh CLI: {res.LaunchError}");
             }
-            catch (Exception ex)
+            if (res.ExitCode != 0)
             {
-                ActivityLog.Log("github", $"Couldn't start gh CLI (is it installed/on PATH?): {ex.Message}");
-                return LiveOpenIssuesResult.Failure($"couldn't start gh CLI: {ex.Message}");
-            }
-            string stdout = await proc.StandardOutput.ReadToEndAsync();
-            string stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            if (proc.ExitCode != 0)
-            {
-                ActivityLog.Log("github", $"gh issue list (open numbers) failed (exit {proc.ExitCode}): {stderr.Trim()}");
-                return LiveOpenIssuesResult.Failure($"gh issue list exited {proc.ExitCode}: {stderr.Trim()}");
+                ActivityLog.Log("github", $"gh issue list (open numbers) failed (exit {res.ExitCode}): {res.StdErr.Trim()}");
+                return LiveOpenIssuesResult.Failure($"gh issue list exited {res.ExitCode}: {res.StdErr.Trim()}");
             }
 
             try
             {
                 var rows = System.Text.Json.JsonSerializer.Deserialize<List<OpenIssueNumberRow>>(
-                    stdout, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    res.StdOut, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 return LiveOpenIssuesResult.Ok(rows == null ? new HashSet<int>() : new HashSet<int>(rows.Select(r => r.Number)));
             }
             catch (Exception ex)
@@ -226,68 +184,28 @@ namespace BuildConsole.Services
         {
             if (!IsQueryableIssueNumber(issueNumber, "edit")) return false;
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = "gh",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("issue");
-            psi.ArgumentList.Add("edit");
-            psi.ArgumentList.Add(issueNumber.ToString());
-            psi.ArgumentList.Add("--repo");
-            psi.ArgumentList.Add(Repo);
-            psi.ArgumentList.Add("--add-label");
-            psi.ArgumentList.Add(label);
-
-            using var proc = new Process { StartInfo = psi };
-            try
-            {
-                proc.Start();
-                await proc.WaitForExitAsync();
-                return proc.ExitCode == 0;
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log("github", $"gh issue edit --add-label failed for #{issueNumber}: {ex.Message}");
-                return false;
-            }
+            // Git #2539 — through SubprocessRunner (shared gate + crash retry, both streams
+            // drained). `--add-label` is idempotent, so a crash-class retry is safe.
+            var res = await SubprocessRunner.RunAsync("gh",
+                new[] { "issue", "edit", issueNumber.ToString(), "--repo", Repo, "--add-label", label },
+                logChannel: "github");
+            if (!res.Ok)
+                ActivityLog.Log("github", $"gh issue edit --add-label failed for #{issueNumber}: {res.ShortError()}");
+            return res.Ok;
         }
 
         public static async Task<bool> RemoveLabelAsync(int issueNumber, string label)
         {
             if (!IsQueryableIssueNumber(issueNumber, "edit")) return false;
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = "gh",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("issue");
-            psi.ArgumentList.Add("edit");
-            psi.ArgumentList.Add(issueNumber.ToString());
-            psi.ArgumentList.Add("--repo");
-            psi.ArgumentList.Add(Repo);
-            psi.ArgumentList.Add("--remove-label");
-            psi.ArgumentList.Add(label);
-
-            using var proc = new Process { StartInfo = psi };
-            try
-            {
-                proc.Start();
-                await proc.WaitForExitAsync();
-                return proc.ExitCode == 0;
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log("github", $"gh issue edit --remove-label failed for #{issueNumber}: {ex.Message}");
-                return false;
-            }
+            // Git #2539 — through SubprocessRunner (shared gate + crash retry, both streams
+            // drained). `--remove-label` is idempotent, so a crash-class retry is safe.
+            var res = await SubprocessRunner.RunAsync("gh",
+                new[] { "issue", "edit", issueNumber.ToString(), "--repo", Repo, "--remove-label", label },
+                logChannel: "github");
+            if (!res.Ok)
+                ActivityLog.Log("github", $"gh issue edit --remove-label failed for #{issueNumber}: {res.ShortError()}");
+            return res.Ok;
         }
 
         /// <summary>
@@ -313,46 +231,29 @@ namespace BuildConsole.Services
         {
             if (!IsQueryableIssueNumber(issueNumber, "view")) return new IssueTitleLookup(null, false);
 
-            var psi = new ProcessStartInfo
+            // Git #2539 — through SubprocessRunner (shared gate + crash retry). The transient-vs-
+            // permanent distinction Git #1979 depends on is preserved: only gh's own "Could not
+            // resolve to an issue" stderr sets NotFound=true; a spawn failure or any other non-zero
+            // exit leaves NotFound=false so a blip isn't cached as a dead number.
+            var res = await SubprocessRunner.RunAsync("gh",
+                new[] { "issue", "view", issueNumber.ToString(), "--repo", Repo, "--json", "title" },
+                logChannel: "github");
+            if (!res.Started)
             {
-                FileName = "gh",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("issue");
-            psi.ArgumentList.Add("view");
-            psi.ArgumentList.Add(issueNumber.ToString());
-            psi.ArgumentList.Add("--repo");
-            psi.ArgumentList.Add(Repo);
-            psi.ArgumentList.Add("--json");
-            psi.ArgumentList.Add("title");
-
-            using var proc = new Process { StartInfo = psi };
-            try
-            {
-                proc.Start();
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log("github", $"Couldn't start gh CLI for issue #{issueNumber}: {ex.Message}");
+                ActivityLog.Log("github", $"Couldn't start gh CLI for issue #{issueNumber}: {res.LaunchError}");
                 return new IssueTitleLookup(null, false);
             }
-            string stdout = await proc.StandardOutput.ReadToEndAsync();
-            string stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            if (proc.ExitCode != 0)
+            if (res.ExitCode != 0)
             {
-                var trimmedStderr = stderr.Trim();
-                ActivityLog.Log("github", $"gh issue view #{issueNumber} failed (exit {proc.ExitCode}): {trimmedStderr}");
+                var trimmedStderr = res.StdErr.Trim();
+                ActivityLog.Log("github", $"gh issue view #{issueNumber} failed (exit {res.ExitCode}): {trimmedStderr}");
                 bool notFound = trimmedStderr.Contains("Could not resolve to an issue", StringComparison.OrdinalIgnoreCase);
                 return new IssueTitleLookup(null, notFound);
             }
 
             try
             {
-                using var doc = System.Text.Json.JsonDocument.Parse(stdout);
+                using var doc = System.Text.Json.JsonDocument.Parse(res.StdOut);
                 if (doc.RootElement.TryGetProperty("title", out var titleProp))
                 {
                     return new IssueTitleLookup(titleProp.GetString(), false);
@@ -414,42 +315,26 @@ namespace BuildConsole.Services
     }}
   }}
 }}";
-            var psi = new ProcessStartInfo
+            // Git #2539 — through SubprocessRunner (shared gate + crash retry, both streams
+            // drained). A read-only graphql query, so a crash-class retry is safe.
+            var res = await SubprocessRunner.RunAsync("gh",
+                new[] { "api", "graphql", "-f", $"query={query}" },
+                logChannel: "github");
+            if (!res.Started)
             {
-                FileName = "gh",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            psi.ArgumentList.Add("api");
-            psi.ArgumentList.Add("graphql");
-            psi.ArgumentList.Add("-f");
-            psi.ArgumentList.Add($"query={query}");
-
-            using var proc = new Process { StartInfo = psi };
-            try
-            {
-                proc.Start();
-            }
-            catch (Exception ex)
-            {
-                ActivityLog.Log("github", $"Couldn't start gh CLI for #{issueNumber}'s board-status timeline: {ex.Message}");
+                ActivityLog.Log("github", $"Couldn't start gh CLI for #{issueNumber}'s board-status timeline: {res.LaunchError}");
                 return null;
             }
-            string stdout = await proc.StandardOutput.ReadToEndAsync();
-            string stderr = await proc.StandardError.ReadToEndAsync();
-            await proc.WaitForExitAsync();
-            if (proc.ExitCode != 0)
+            if (res.ExitCode != 0)
             {
-                ActivityLog.Log("github", $"gh api graphql (board-status timeline) failed for #{issueNumber} (exit {proc.ExitCode}): {stderr.Trim()}");
+                ActivityLog.Log("github", $"gh api graphql (board-status timeline) failed for #{issueNumber} (exit {res.ExitCode}): {res.StdErr.Trim()}");
                 return null;
             }
 
             try
             {
                 var body = System.Text.Json.JsonSerializer.Deserialize<DispatchTimelineResponse>(
-                    stdout, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                    res.StdOut, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 if (body?.Errors is { Count: > 0 } errs)
                 {
                     ActivityLog.Log("github", $"gh api graphql (board-status timeline) returned errors for #{issueNumber}: {string.Join("; ", errs.Select(e => e.Message))}");
