@@ -1,6 +1,7 @@
 <Window x:Class="BuildConsole.BuildChainMapWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:BuildConsole.Controls.BuildMap"
         Title="Build Chain Map"
         Icon="app.ico"
         Width="1440" Height="900"
@@ -176,38 +177,32 @@
             </DockPanel>
         </Border>
 
-        <!-- ── Body (placeholders — owned by #2477/#2478/#2479) ── -->
+        <!-- ── Body — canvas (#2477/#2478, mounted here) + Inspector (#2479, this issue) ── -->
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="312"/>
             </Grid.ColumnDefinitions>
 
-            <Border Grid.Column="0" Background="#0a0d12">
-                <Border.Resources>
-                    <DrawingBrush x:Key="DotGrid" TileMode="Tile" Viewport="0,0,22,22" ViewportUnits="Absolute" Stretch="None">
-                        <DrawingBrush.Drawing>
-                            <GeometryDrawing Brush="#141a22">
-                                <GeometryDrawing.Geometry>
-                                    <EllipseGeometry Center="1,1" RadiusX="1" RadiusY="1"/>
-                                </GeometryDrawing.Geometry>
-                            </GeometryDrawing>
-                        </DrawingBrush.Drawing>
-                    </DrawingBrush>
-                </Border.Resources>
-                <Grid Background="{StaticResource DotGrid}">
-                    <TextBlock x:Name="CanvasPlaceholderText"
-                               Text="Loading the chain from GitHub…"
-                               FontSize="12" Foreground="#576069"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                               TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"/>
-                </Grid>
-            </Border>
+            <Grid Grid.Column="0" Background="#0a0d12">
+                <local:ChainCanvasControl x:Name="Canvas"/>
+                <TextBlock x:Name="CanvasPlaceholderText"
+                           Text="Loading the chain from GitHub…"
+                           FontSize="12" Foreground="#576069"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
+                           IsHitTestVisible="False"/>
+            </Grid>
 
-            <Border Grid.Column="1" Background="#0d1117" BorderBrush="#21262d" BorderThickness="1,0,0,0"
-                    Padding="15,14,15,18">
-                <TextBlock Text="Nothing selected. The full inspector (node/edge legend, §5.2 in numbers, four selection views) lands in #2479."
-                           FontSize="11" Foreground="#576069" TextWrapping="Wrap"/>
+            <!-- Inspector — README.md "Inspector (right panel) — four views". Content is built in
+                 code (BuildChainMapWindow.Inspector.cs) into InspectorHost, same render-from-scratch
+                 pattern the canvas/edge layers already use, driven by Canvas.SelectionChanged /
+                 Canvas.EdgeSelectionChanged / Canvas.LinkModeChanged. -->
+            <Border Grid.Column="1" Background="#0d1117" BorderBrush="#21262d" BorderThickness="1,0,0,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                              Padding="15,14,15,18">
+                    <StackPanel x:Name="InspectorHost"/>
+                </ScrollViewer>
             </Border>
         </Grid>
 

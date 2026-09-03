@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using BuildConsole.Services;
 using BuildConsole.Services.BuildMap;
@@ -10,42 +11,36 @@ using BuildConsole.Services.BuildMap;
 namespace BuildConsole
 {
     /// <summary>
-    /// Git #2482 (Build Chain Map, item #8 of #2473's structured index) — the top bar + status
-    /// strip. Design source: <c>desktop/BuildConsole/BuildMap/README.md</c> ("Top bar contents",
-    /// "Status strip") + the real reference screenshots under <c>BuildMap/screenshots/</c>.
+    /// Git #2482 (top bar + status strip) + Git #2479 (Build Chain Map, item #5 of #2473's
+    /// structured index — the Inspector, all four views) together assemble the window body:
+    /// <see cref="ChainCanvasControl"/> (#2477 nodes + #2478 edges) is mounted as the canvas
+    /// (that plumbing — the control existed but nothing hosted it — is #2479's own doing, since
+    /// the Inspector needs real selection events to be anything but a placeholder), and the
+    /// Inspector itself lives in the <c>BuildChainMapWindow.Inspector.cs</c> partial.
     ///
-    /// This window is the first WPF UI built for the Build Chain Map feature — #2475 (real
-    /// GitHub read → <see cref="ChainDoc"/>) and #2476 (the pure §5 chain-rules engine,
-    /// <see cref="ChainRules"/>) already exist and are what this window reads from; there was no
-    /// prior UI shell to extend. Everything the top bar shows — the 7 stat chips, the
-    /// chain-integrity pill's exact/gap count, the status-strip edge counts — comes straight out
-    /// of <see cref="ChainRules.Derive"/>'s real <see cref="ChainDerived"/> snapshot of a real
-    /// <see cref="ChainDoc"/>; nothing here is invented.
+    /// Design source: <c>desktop/BuildConsole/BuildMap/README.md</c> ("Top bar contents", "Status
+    /// strip", "Inspector (right panel)") + the real reference screenshots under
+    /// <c>BuildMap/screenshots/</c>. Everything shown — the 7 stat chips, the chain-integrity
+    /// pill's exact/gap count, the status-strip edge counts, every Inspector field — comes
+    /// straight out of <see cref="ChainRules.Derive"/>'s real <see cref="ChainDerived"/> snapshot
+    /// of a real <see cref="ChainDoc"/>; nothing here is invented.
     ///
-    /// Scope is the top bar + status strip only. The canvas/graph (#2477), edge rendering
-    /// (#2478), inspector panel (#2479), interactions (#2480, drag/sentinel/gate/link-mode) and
-    /// real-write persistence (#2481) are separate, still-open sub-issues of #2473 — the two body
-    /// regions are honest placeholders naming those issues, not fixture content standing in for
-    /// them. The "Re-wire §5.2" button is real, though: it calls #2476's own
-    /// <see cref="ChainRules.RechainAll"/> directly (in-memory only — writing the result back to
-    /// GitHub as real `blocked_by` edges is #2481's job, per the README's own persistence note).
+    /// Interactions (#2480's own structured-index item) and real-write persistence (#2481) are
+    /// still separate, open sub-issues of #2473 — but the Inspector's own buttons/selects/switches
+    /// documented in the README's "Inspector" section (board status, sentinel, manual gate,
+    /// reorder, add/remove blocker) are real, in-memory `ChainDoc` writes here, following the same
+    /// "in-memory only, real write is #2481" precedent the top bar's own Re-wire §5.2 button
+    /// already established — see <c>BuildChainMapWindow.Inspector.cs</c>'s own class doc for why
+    /// that line is drawn where it is.
     /// </summary>
     public partial class BuildChainMapWindow : Window
     {
-        private const double ZoomMin = 0.35;
-        private const double ZoomMax = 1.6;
-        private const double ZoomStep = 0.1;
-
         private readonly int _epicNumber;
 
         private ChainDoc? _doc;
         private ChainDerived? _derived;
         private double _zoom = 1.0;
         private bool _busy;
-
-        // Real per-Feature expand/collapse state — nothing renders it yet (that's #2477's canvas),
-        // but Expand all / Collapse all need somewhere real to write, ready for #2477 to read.
-        private readonly Dictionary<string, bool> _expanded = new();
 
         private TextBlock _featuresValue = null!;
         private TextBlock _issuesValue = null!;
@@ -60,7 +55,41 @@ namespace BuildConsole
             _epicNumber = epicNumber;
             InitializeComponent();
             BuildStatsStrip();
+
+            // Git #2479 — the canvas (#2477/#2478) is mounted in XAML; wire it to the inspector and
+            // to keyboard shortcuts the README documents as part of selection/edge behavior.
+            Canvas.SelectionChanged += (_, __) => { RenderInspector(); RenderStatusStrip(); };
+            Canvas.EdgeSelectionChanged += (_, __) => { RenderInspector(); RenderStatusStrip(); };
+            Canvas.LinkModeChanged += (_, __) => { RenderInspector(); RenderStatusStrip(); };
+            Canvas.GatePillClicked += (_, fid) => ToggleManualGate(fid);
+            Canvas.ZoomChanged += (_, __) => { _zoom = Canvas.Zoom; RenderZoom(); };
+            Canvas.EdgeLinked += (_, args) => ShowConfirmation(args.WasNew
+                ? $"#{args.To} is now blocked_by #{args.From}."
+                : $"#{args.To} was already blocked_by #{args.From}.");
+            PreviewKeyDown += Window_PreviewKeyDown;
+
             Loaded += async (_, __) => await RefreshAsync();
+        }
+
+        /// <summary>README "Interactions": `Delete`/`Backspace` removes the selected edge bundle;
+        /// `Esc` first cancels link mode, then clears selection.</summary>
+        private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Escape)
+            {
+                if (Canvas.LinkModeTargetIssue != null) Canvas.CancelLinkMode();
+                else Canvas.ClearSelection();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Delete || e.Key == Key.Back)
+            {
+                var selected = Canvas.SelectedEdges;
+                if (selected.Count > 0)
+                {
+                    RemoveEdges(selected);
+                    e.Handled = true;
+                }
+            }
         }
 
         // ── Stats strip (README.md line 55-57: 7 chips, label over mono value) ──────────────
@@ -108,6 +137,7 @@ namespace BuildConsole
             {
                 StatusHintText.Text = $"Loading Epic #{_epicNumber} from GitHub…";
                 CanvasPlaceholderText.Text = "Loading the chain from GitHub…";
+                CanvasPlaceholderText.Visibility = Visibility.Visible;
 
                 var settings = BuildConsoleSettings.Load();
                 if (!settings.HasGitHubPat)
@@ -121,12 +151,11 @@ namespace BuildConsole
                 var client = new GitHubApiClient(settings.GitHubPat);
                 _doc = await BuildChainMapService.BuildAsync(client, _epicNumber);
 
-                _expanded.Clear();
-                foreach (var feature in _doc.Features)
-                    _expanded[feature.Id] = false;
-
                 _derived = ChainRules.Derive(_doc);
+                Canvas.SetDocument(_doc);
+                CanvasPlaceholderText.Visibility = Visibility.Collapsed;
                 Render();
+                RenderInspector();
                 ActivityLog.Log(Channel, $"Epic #{_epicNumber}: loaded {_doc.Features.Count} Features, "
                     + $"{_derived.Totals.Issues} issues, {_derived.Gaps} chain gap(s)");
             }
@@ -134,6 +163,7 @@ namespace BuildConsole
             {
                 StatusHintText.Text = $"Couldn't load Epic #{_epicNumber}: {ex.Message}";
                 CanvasPlaceholderText.Text = $"Couldn't load Epic #{_epicNumber} from GitHub.\n{ex.Message}";
+                CanvasPlaceholderText.Visibility = Visibility.Visible;
                 ActivityLog.Log(Channel, $"Epic #{_epicNumber}: load failed — {ex.Message}");
             }
             finally
@@ -164,10 +194,6 @@ namespace BuildConsole
             RenderChainPill();
             RenderStatusStrip();
             RenderZoom();
-
-            CanvasPlaceholderText.Text =
-                $"Canvas — Feature/Issue graph for Epic #{_doc.Epic.Num} lands in #2477.\n"
-                + $"{_doc.Features.Count} Features, {totals.Issues} issues, {_doc.Edges.Count} blocked_by edges read from GitHub.";
         }
 
         /// <summary>README.md line 58-61: exact (green check) vs. N gap(s) (amber warning +
@@ -203,13 +229,19 @@ namespace BuildConsole
         }
 
         /// <summary>README.md line 45-46: left = context hint, right = mono
-        /// "{fanin} fan-in · {gate} gate · {manual} added".</summary>
+        /// "{fanin} fan-in · {gate} gate · {manual} added". README "Status-strip hint": link mode
+        /// overrides the default hint in amber, per #2479's inspector "Add blocker…" flow.</summary>
         private void RenderStatusStrip()
         {
-            var d = _derived!;
-            StatusHintText.Text =
-                "Click a Feature to open its issues · drag a header to change priority · "
-                + "click an issue to see what holds it · click an edge to inspect or remove it";
+            if (_derived == null) return;
+            var d = _derived;
+            StatusHintText.Text = Canvas.LinkModeTargetIssue is int target
+                ? $"Pick a blocker for #{target}: click any issue node. Esc cancels."
+                : "Click a Feature to open its issues · drag a header to change priority · "
+                    + "click an issue to see what holds it · click an edge to inspect or remove it";
+            StatusHintText.Foreground = Canvas.LinkModeTargetIssue != null
+                ? (Brush)new BrushConverter().ConvertFromString("#e0a879")!
+                : (Brush)new BrushConverter().ConvertFromString("#8b949e")!;
             StatusCountsText.Text = $"{d.FanInCount} fan-in · {d.GateCount} gate · {d.ManualCount} added";
         }
 
@@ -221,49 +253,37 @@ namespace BuildConsole
             if (_doc == null) return;
             ChainRules.RechainAll(_doc);
             _derived = ChainRules.Derive(_doc);
+            Canvas.Rerender();
             Render();
-            StatusHintText.Text = "Priority order re-wired per §5.2 — fan-in and cross-feature gate edges regenerated; your added edges were kept.";
+            RenderInspector();
+            ShowConfirmation("Priority order re-wired per §5.2 — fan-in and cross-feature gate edges regenerated; your added edges were kept.");
             ActivityLog.Log(Channel, $"Epic #{_epicNumber}: Re-wire §5.2 — {_derived.Gaps} gap(s) remaining (in-memory only; real write is #2481)");
             await System.Threading.Tasks.Task.CompletedTask;
         }
 
         private void ExpandAllButton_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var id in _expanded.Keys.ToList()) _expanded[id] = true;
-            StatusHintText.Text = "All Features expanded.";
+            Canvas.ExpandAll();
+            ShowConfirmation("All Features expanded.");
         }
 
         private void CollapseAllButton_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var id in _expanded.Keys.ToList()) _expanded[id] = false;
-            StatusHintText.Text = "All Features collapsed.";
+            Canvas.CollapseAll();
+            ShowConfirmation("All Features collapsed.");
         }
 
-        private void ZoomOutButton_Click(object sender, RoutedEventArgs e)
-        {
-            _zoom = Math.Max(ZoomMin, Math.Round(_zoom - ZoomStep, 2));
-            RenderZoom();
-        }
+        private void ZoomOutButton_Click(object sender, RoutedEventArgs e) => Canvas.ZoomOut();
 
-        private void ZoomInButton_Click(object sender, RoutedEventArgs e)
-        {
-            _zoom = Math.Min(ZoomMax, Math.Round(_zoom + ZoomStep, 2));
-            RenderZoom();
-        }
+        private void ZoomInButton_Click(object sender, RoutedEventArgs e) => Canvas.ZoomIn();
 
-        /// <summary>README.md line 68: "Fit = min(1, (viewportWidth − 16) / W)" where W is the
-        /// stage width computed from the canvas layout. That layout doesn't exist until #2477, so
-        /// this can't do the real fit math yet — it falls back to 100%, which is at least never
-        /// wrong (never zooms past what the spec's own default is).</summary>
-        private void FitButton_Click(object sender, RoutedEventArgs e)
-        {
-            _zoom = 1.0;
-            RenderZoom();
-        }
+        /// <summary>README.md line 68: "Fit = min(1, (viewportWidth − 16) / W)" — now the real
+        /// calculation against the mounted canvas's own layout (<see cref="ChainLayout.FitZoom"/>).</summary>
+        private void FitButton_Click(object sender, RoutedEventArgs e) => Canvas.Fit();
 
         private async void ResetButton_Click(object sender, RoutedEventArgs e)
         {
-            StatusHintText.Text = "Discarding local edits, reloading from GitHub…";
+            ShowConfirmation("Discarding local edits, reloading from GitHub…");
             await RefreshAsync();
         }
     }

@@ -87,6 +87,7 @@ namespace BuildConsole.Controls.BuildMap
         private double _zoom = 1.0;
         private int? _selectedIssue;
         private string? _selectedFeatureId;
+        private int? _linkModeTarget;
 
         public ChainCanvasControl()
         {
@@ -109,11 +110,63 @@ namespace BuildConsole.Controls.BuildMap
         public string? SelectedFeatureId => _selectedFeatureId;
         public double Zoom => _zoom;
 
+        /// <summary>Non-null while "Add blocker…" link mode is active (README "Interactions"):
+        /// the issue a newly-picked blocker will be wired to. Set by #2479's inspector via
+        /// <see cref="EnterLinkMode"/>; cleared by <see cref="CancelLinkMode"/>, by picking a
+        /// blocker (a click on any other issue node), or by any selection-clearing action.</summary>
+        public int? LinkModeTargetIssue => _linkModeTarget;
+
         public event EventHandler? SelectionChanged;
         public event EventHandler? ZoomChanged;
         public event EventHandler? Rendered;
-        /// <summary>Gate pill clicked — the §5.3 manual-gate toggle itself is #2480's to perform.</summary>
+        /// <summary>Gate pill clicked — the §5.3 manual-gate toggle itself is #2479/#2480's to perform.</summary>
         public event EventHandler<string>? GatePillClicked;
+        /// <summary>Fires whenever link mode is entered, cancelled, or resolved by picking a blocker.</summary>
+        public event EventHandler? LinkModeChanged;
+        /// <summary>Fires when link mode resolves a real edge pick — <c>WasNew</c> is
+        /// <see cref="ChainRules.Push"/>'s own return (false when the pair was already wired), so
+        /// #2479's inspector can show the same "already blocked_by" vs. "is now blocked_by" note the
+        /// reference distinguishes.</summary>
+        public event EventHandler<(int From, int To, bool WasNew)>? EdgeLinked;
+
+        /// <summary>Enter "Add blocker…" link mode for <paramref name="targetIssueNum"/> (README:
+        /// "click any other issue node" adds `{from: clicked, to: selected, kind:'manual'}`).</summary>
+        public void EnterLinkMode(int targetIssueNum)
+        {
+            if (_linkModeTarget == targetIssueNum) return;
+            _linkModeTarget = targetIssueNum;
+            if (Stage != null) Stage.Cursor = Cursors.Cross;
+            LinkModeChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        public void CancelLinkMode()
+        {
+            if (_linkModeTarget == null) return;
+            _linkModeTarget = null;
+            if (Stage != null) Stage.Cursor = Cursors.Arrow;
+            LinkModeChanged?.Invoke(this, EventArgs.Empty);
+        }
+
+        /// <summary>Routes a click on an issue/sentinel node: while link mode is active, a click on
+        /// any node other than the link target adds a real `manual` blocked_by edge (README: "click
+        /// any other issue node"; duplicates are ignored by <see cref="ChainRules.Push"/>) and exits
+        /// link mode, re-selecting the target so its BLOCKED BY list refreshes. Clicking the target
+        /// itself is a no-op ("not-allowed"). Outside link mode this is a plain node select.</summary>
+        private void OnNodeClicked(int num)
+        {
+            if (_linkModeTarget is int target)
+            {
+                if (num == target || _doc == null) return;
+                bool wasNew = ChainRules.Push(_doc, new ChainEdge { From = num, To = target, Kind = ChainEdgeKind.Manual });
+                _linkModeTarget = null;
+                if (Stage != null) Stage.Cursor = Cursors.Arrow;
+                LinkModeChanged?.Invoke(this, EventArgs.Empty);
+                SelectIssue(target);
+                EdgeLinked?.Invoke(this, (num, target, wasNew));
+                return;
+            }
+            SelectIssue(num);
+        }
 
         /// <summary>Set (or replace) the real ChainDoc and render. Derived state is recomputed via
         /// <see cref="ChainRules.Derive"/> on every render, same as the prototype.</summary>
@@ -172,12 +225,16 @@ namespace BuildConsole.Controls.BuildMap
 
         public void ClearSelection()
         {
-            if (_selectedIssue == null && _selectedFeatureId == null && _selectedEdgePairs == null) return;
+            bool hadLinkMode = _linkModeTarget != null;
+            if (_selectedIssue == null && _selectedFeatureId == null && _selectedEdgePairs == null && !hadLinkMode) return;
             _selectedIssue = null;
             _selectedFeatureId = null;
+            _linkModeTarget = null;
+            if (hadLinkMode && Stage != null) Stage.Cursor = Cursors.Arrow;
             ClearEdgeSelectionSilently();
             Render();
             SelectionChanged?.Invoke(this, EventArgs.Empty);
+            if (hadLinkMode) LinkModeChanged?.Invoke(this, EventArgs.Empty);
         }
 
         public void ZoomIn() => SetZoom(_zoom + ChainLayout.ZoomStep);
@@ -475,9 +532,9 @@ namespace BuildConsole.Controls.BuildMap
                 ring: selected ? BlueSoft : isBlocker ? AmberRing : null,
                 dashedStroke: dashed);
             card.ToolTip = $"#{issue.Num} {issue.Title}\n{StatusLabel(issue.Status)} · {StateDescription(state)}";
-            card.Cursor = Cursors.Hand;
+            card.Cursor = _linkModeTarget != null && _linkModeTarget != issue.Num ? Cursors.Cross : Cursors.Hand;
             int numCopy = issue.Num;
-            card.MouseLeftButtonDown += (_, e) => { e.Handled = true; SelectIssue(numCopy); };
+            card.MouseLeftButtonDown += (_, e) => { e.Handled = true; OnNodeClicked(numCopy); };
 
             Place(card, rect.X, rect.Y);
         }
@@ -533,9 +590,9 @@ namespace BuildConsole.Controls.BuildMap
                 stroke: stroke, radius: 6, padding: new Thickness(9, 7, 9, 7), content: stack,
                 ring: selected ? BlueSoft : isBlocker ? AmberRing : null);
             card.ToolTip = $"#{issue.Num} {issue.Title}\n{StatusLabel(issue.Status)} · {StateDescription(state)}";
-            card.Cursor = Cursors.Hand;
+            card.Cursor = _linkModeTarget != null && _linkModeTarget != issue.Num ? Cursors.Cross : Cursors.Hand;
             int numCopy = issue.Num;
-            card.MouseLeftButtonDown += (_, e) => { e.Handled = true; SelectIssue(numCopy); };
+            card.MouseLeftButtonDown += (_, e) => { e.Handled = true; OnNodeClicked(numCopy); };
 
             Place(card, rect.X, rect.Y);
         }
