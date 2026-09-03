@@ -120,10 +120,32 @@ export type TenantComplianceGroupRecord = {
   confirmedAt?: string | null;
 };
 
+/**
+ * The Power Platform management-app enrolment record (Git #1972). NOT a
+ * Microsoft consent grant like the three keys above — no scope list, no
+ * OAuth round-trip of ours, no revocation semantics. It records the single
+ * fact `POWER_PLATFORM_MANAGEMENT_APP_REGISTRATION` requires: the customer's
+ * OWN tenant admin has, once, registered our service principal as a Power
+ * Platform management application (device-code onboarding flow — see
+ * power-platform-admin.ts). Structurally independent of `graph`/`sharepoint`/
+ * `writeBack` for the same reason power-platform-admin.ts's own header
+ * states: a Power Platform 403 must never be allowed to imply anything about
+ * Graph consent, and vice versa.
+ */
+export type TenantPowerPlatformEnrollmentRecord = {
+  /** ISO timestamp the PUT to adminApplications actually succeeded. */
+  enrolledAt: string;
+  /** Best-effort UPN of the admin who completed the device-code flow, if readable off their token. */
+  enrolledByUpn?: string | null;
+  /** The service-principal client id that was registered (MT_APP_CLIENT_ID at the time). */
+  clientId: string;
+};
+
 export type TenantConsentMap = Partial<
   Record<"graph" | "writeBack" | "sharepoint", TenantConsentRecord>
 > & {
   complianceGroup?: TenantComplianceGroupRecord;
+  powerPlatformEnrollment?: TenantPowerPlatformEnrollmentRecord;
 };
 
 // ── Copilot Assessment per-tenant state (epic #183 / #237) ────────────────────
@@ -2039,7 +2061,11 @@ export type MonitoringPackageCheck = typeof monitoringPackageChecksTable.$inferS
 //
 // A failure to acquire the ARM token at all stays "error" (or "consent_revoked"
 // on a documented consent signature) — the pre-existing "unreachable" bucket.
-export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap", "partial", "service_not_configured", "azure_no_rbac", "azure_no_subscriptions"] as const;
+// "power_platform_not_registered" (Git #1972) — the customer's tenant admin has
+// not yet run the one-time Power Platform management-app enrolment
+// (POWER_PLATFORM_MANAGEMENT_APP_REGISTRATION in power-platform-admin.ts).
+// Distinct from "error": known cause, known one-time remediation, not a fault.
+export const TENANT_MONITOR_PROFILE_STATUS = ["ok", "error", "consent_revoked", "requires_script", "license_gap", "partial", "service_not_configured", "azure_no_rbac", "azure_no_subscriptions", "power_platform_not_registered"] as const;
 export type TenantMonitorProfileStatus = typeof TENANT_MONITOR_PROFILE_STATUS[number];
 
 export const tenantMonitorProfilesTable = pgTable("tenant_monitor_profiles", {

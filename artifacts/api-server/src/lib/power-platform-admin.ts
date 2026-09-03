@@ -395,3 +395,198 @@ export async function probePowerPlatformReachability(aadTenantId: string): Promi
     return { state: "error", detail: err instanceof Error ? err.message : String(err) };
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Onboarding self-service enrolment (device-code flow)  [#1972]
+//
+// #1906 proved the fix by hand: a Global Administrator authenticated
+// interactively (az-cached user token) and PUT the SP onto
+// adminApplications/{clientId}. Microsoft's own docs make that interactivity
+// mandatory — "a service principal cannot register itself" — so every customer
+// tenant needs this exact one-time action performed by ITS OWN admin before any
+// of the reads above will stop 403ing. This section is the onboarding-flow
+// equivalent of what Shane did manually: get an interactive admin token for the
+// customer's tenant via OAuth2 device-code (no popup/redirect URI needed — the
+// admin visits a Microsoft page on their own and types a short code, which
+// mirrors what `Connect-PowerApps`/`New-PowerAppManagementApp` do under the
+// hood), then PUT the registration with that token.
+//
+// ── WHY THIS DOES NOT USE MT_APP_CLIENT_ID ─────────────────────────────────────
+// Device-code is a PUBLIC client flow — it requires "Allow public client flows"
+// enabled on the App Registration performing it. MT_APP_CLIENT_ID is our
+// confidential, secret-bearing multi-tenant registration used for every other
+// call in this file; flipping it to also allow public-client auth would be an
+// app-registration-level change to a registration real customer tenants already
+// have consented to, which is exactly the kind of write CLAUDE.md's production-
+// change gate reserves for a documented plan, not a same-session apply.
+//
+// So this deliberately borrows the SAME well-known first-party public client id
+// the actual PowerShell module (`Microsoft.PowerApps.Administration.PowerShell`)
+// uses internally for its own interactive/device-code sign-in — "Microsoft
+// Azure PowerShell". It needs no admin consent (it is Microsoft's own,
+// pre-consented across every tenant for exactly this kind of admin operation),
+// needs no change to our App Registration, and is the same client identity the
+// PowerShell cmdlet named in POWER_PLATFORM_MANAGEMENT_APP_REGISTRATION.powershell
+// would itself present. Only the FINAL PUT (registering MT_APP_CLIENT_ID as the
+// management app) is our own app id — the auth used to get there is not.
+// See: https://learn.microsoft.com/en-us/power-platform/admin/powershell-create-service-principal
+// ─────────────────────────────────────────────────────────────────────────────
+
+const DEVICE_CODE_PUBLIC_CLIENT_ID = "1950a258-227b-4e31-a9cf-717495945fc2";
+
+/** Scope requested for the device-code token — the same BAP admin resource, delegated (not app-only). */
+const DEVICE_CODE_SCOPE = "https://service.powerapps.com/.default";
+
+export interface PowerPlatformDeviceCodeChallenge {
+  /** Opaque code polled back on the /token endpoint — never shown to the admin. */
+  deviceCode: string;
+  /** The short code Microsoft's own page asks the admin to type. Safe to display. */
+  userCode: string;
+  /** The Microsoft page the admin visits (typically https://microsoft.com/devicelogin). */
+  verificationUri: string;
+  /** Seconds until this whole challenge expires. */
+  expiresIn: number;
+  /** Minimum seconds between polls — Microsoft's own throttle. */
+  interval: number;
+  /** Microsoft's own ready-to-display instruction string, includes the code. */
+  message: string;
+}
+
+/**
+ * Start a device-code challenge against the CUSTOMER's tenant (never ours) —
+ * only their own tenant admin can satisfy it, which is the entire point.
+ */
+export async function startPowerPlatformEnrollmentDeviceCode(
+  aadTenantId: string,
+): Promise<PowerPlatformDeviceCodeChallenge> {
+  const params = new URLSearchParams({
+    client_id: DEVICE_CODE_PUBLIC_CLIENT_ID,
+    scope: DEVICE_CODE_SCOPE,
+  });
+  const res = await fetch(`https://login.microsoftonline.com/${aadTenantId}/oauth2/v2.0/devicecode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    log.warn({ aadTenantId, status: res.status }, "Power Platform enrolment: devicecode request failed");
+    throw new PowerPlatformAuthError(aadTenantId, res.status, text);
+  }
+  const data = (await res.json()) as {
+    device_code: string;
+    user_code: string;
+    verification_uri: string;
+    expires_in: number;
+    interval: number;
+    message: string;
+  };
+  log.info({ aadTenantId }, "Power Platform enrolment: device-code challenge issued");
+  return {
+    deviceCode: data.device_code,
+    userCode: data.user_code,
+    verificationUri: data.verification_uri,
+    expiresIn: data.expires_in,
+    interval: data.interval,
+    message: data.message,
+  };
+}
+
+/** The three real states a poll can resolve to — never collapsed into a bare boolean. */
+export type PowerPlatformEnrollmentPollResult =
+  | { status: "pending" }
+  | { status: "enrolled"; enrolledByUpn: string | null; clientId: string }
+  | { status: "error"; message: string };
+
+/**
+ * PUT the registration itself, using an admin's own (delegated) access token —
+ * never the app-only token getPowerPlatformToken() issues, which is exactly the
+ * token BAP has always rejected here (that rejection is the whole reason this
+ * flow exists).
+ */
+async function registerManagementApp(adminAccessToken: string, clientId: string): Promise<void> {
+  const res = await fetch(
+    `https://${POWER_PLATFORM_BAP_HOST}/providers/Microsoft.BusinessAppPlatform/adminApplications/${clientId}?api-version=2020-10-01`,
+    {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${adminAccessToken}`, Accept: "application/json" },
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Power Platform management-app registration PUT failed (status ${res.status}): ${text.slice(0, 500)}`);
+  }
+}
+
+/**
+ * Best-effort read of the signed-in admin's UPN off the delegated access token,
+ * purely for the record we keep of WHO completed the enrolment — never used for
+ * authorization (the PUT above already succeeded or failed on its own). AAD v2
+ * access tokens for first-party Microsoft resources are ordinarily readable JWTs,
+ * but that is not a contract this module can rely on, so a decode failure is
+ * swallowed and the record simply carries no admin identity rather than fail
+ * a registration that already succeeded.
+ */
+function bestEffortUpnFromAccessToken(accessToken: string): string | null {
+  try {
+    const payloadB64 = accessToken.split(".")[1];
+    if (!payloadB64) return null;
+    const json = Buffer.from(payloadB64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const claims = JSON.parse(json) as { upn?: string; unique_name?: string; preferred_username?: string };
+    return claims.upn ?? claims.unique_name ?? claims.preferred_username ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Poll ONE time for whether the admin has completed the device-code challenge.
+ * Callers own their own poll loop/interval (this module holds no timers) — see
+ * the `/public/flow/power-platform-enrollment-poll` route, which is polled by
+ * the browser exactly like every other consent-status poll in this codebase.
+ *
+ * On success, immediately performs the actual enrolment PUT with the freshly
+ * acquired admin token before returning "enrolled" — a poll that reports
+ * "enrolled" always means the registration has already landed, never just that
+ * a token was obtained.
+ */
+export async function pollPowerPlatformEnrollmentDeviceCode(
+  aadTenantId: string,
+  deviceCode: string,
+  managementAppClientId: string,
+): Promise<PowerPlatformEnrollmentPollResult> {
+  const params = new URLSearchParams({
+    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    client_id: DEVICE_CODE_PUBLIC_CLIENT_ID,
+    device_code: deviceCode,
+  });
+  const res = await fetch(`https://login.microsoftonline.com/${aadTenantId}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    error?: string;
+    error_description?: string;
+    access_token?: string;
+  };
+
+  if (res.ok && data.access_token) {
+    await registerManagementApp(data.access_token, managementAppClientId);
+    const enrolledByUpn = bestEffortUpnFromAccessToken(data.access_token);
+    log.info({ aadTenantId, managementAppClientId, enrolledByUpn }, "Power Platform enrolment: management app registered via device code");
+    return { status: "enrolled", enrolledByUpn, clientId: managementAppClientId };
+  }
+
+  // authorization_pending / slow_down / — the admin has not finished (or hasn't
+  // started) the Microsoft-side step yet. Neither is an error; the caller polls again.
+  if (data.error === "authorization_pending" || data.error === "slow_down") {
+    return { status: "pending" };
+  }
+
+  log.warn({ aadTenantId, status: res.status, error: data.error }, "Power Platform enrolment: device-code poll failed");
+  return {
+    status: "error",
+    message: data.error_description ?? data.error ?? `Device-code poll failed (status ${res.status})`,
+  };
+}

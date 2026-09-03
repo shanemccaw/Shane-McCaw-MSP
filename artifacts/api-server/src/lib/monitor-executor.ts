@@ -49,6 +49,7 @@ import {
   listEnvironments,
   getTenantSettings,
   powerPlatformCredentialsPresent,
+  PowerPlatformNotRegisteredError,
   type PowerPlatformDlpPolicy,
 } from "./power-platform-admin";
 import {
@@ -349,7 +350,7 @@ const MALFORMED_PARAMS = "__malformedParams__";
 
 export interface CheckResult {
   checkKey: string;
-  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial" | "service_not_configured" | "azure_no_rbac" | "azure_no_subscriptions";
+  status: "ok" | "error" | "consent_revoked" | "requires_script" | "license_gap" | "partial" | "service_not_configured" | "azure_no_rbac" | "azure_no_subscriptions" | "power_platform_not_registered";
   extractedProperties: Record<string, unknown>;
   severityMatched: string | null;
   /**
@@ -3509,6 +3510,43 @@ export async function executeMonitorCheck(opts: {
         profileId,
         serviceKey: err.serviceKey,
         serviceState: err.state,
+      };
+    }
+
+    // Power Platform management-app not yet enrolled for this tenant (#1972).
+    // Known cause, known one-time remediation (the customer's own tenant admin
+    // runs the device-code enrolment — see power-platform-admin.ts), so this
+    // is persisted as its own status rather than falling into generic "error":
+    // an onboarding gap the portal can point the customer at, not a fault to
+    // retry. Never routes through markTenantConsentRevoked — Power Platform
+    // enrolment is entirely independent of Graph consent (see
+    // power-platform-admin.ts's file header for why the two must never mix).
+    if (err instanceof PowerPlatformNotRegisteredError) {
+      log.info(
+        { checkKey: check.key, tenantId, clientId: err.clientId },
+        "monitor-executor: check unavailable — Power Platform management app not yet enrolled for this tenant",
+      );
+      const profileId = await persistCheckProfile(persistProfile, {
+        tenantId,
+        checkKey: check.key,
+        checkSchemaVersion: check.schemaVersion,
+        triggerId,
+        idempotencyKey,
+        status: "power_platform_not_registered",
+        errorMessage: err.message,
+        itemCount: 0,
+        pageCount: 0,
+      });
+
+      return {
+        checkKey: check.key,
+        status: "power_platform_not_registered",
+        extractedProperties: {},
+        severityMatched: null,
+        errorMessage: err.message,
+        itemCount: 0,
+        pageCount: 0,
+        profileId,
       };
     }
 

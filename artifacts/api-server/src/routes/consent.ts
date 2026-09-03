@@ -76,6 +76,7 @@ import { emitWorkflowEvent } from "../lib/workflow-executor.ts";
 import { requireAdmin, requireRole } from "../middlewares/requireAuth.ts";
 import { buildAdminConsentUrl, mergeConsentKey, mtAppCredentialsPresent, getInitialDomainForTenant, REQUIRED_MT_SCOPES, REQUIRED_WRITE_APP_PERMISSIONS } from "../lib/graph.ts";
 import { REQUIRED_SHAREPOINT_APP_PERMISSIONS } from "../lib/sharepoint-admin.ts";
+import { startPowerPlatformEnrollmentDeviceCode, pollPowerPlatformEnrollmentDeviceCode } from "../lib/power-platform-admin.ts";
 import { createAuditLog } from "../lib/audit.ts";
 import { resolveOrCreateDirectTenant, provisionProspectAccount } from "../lib/direct-tenant-provisioning.ts";
 import { getReadConsentRequirementForProduct, buildSessionReadConsentUrl } from "../lib/read-consent-flow.ts";
@@ -2077,6 +2078,10 @@ router.get("/public/flow/consent-status", async (req: Request, res: Response) =>
     complianceGroup: consent.complianceGroup
       ? { path: consent.complianceGroup.path, confirmed: !!consent.complianceGroup.confirmedAt }
       : null,
+    // #1972: whether this tenant's admin has completed the Power Platform
+    // management-app device-code enrolment — see /public/flow/power-platform-
+    // enrollment-status above for the fuller record (enrolledByUpn included).
+    powerPlatformEnrolled: consent.powerPlatformEnrollment != null,
     // #1311: the buyer's explicit "skip the optional scan" decision (Retainer
     // purchases only — see /public/flow/read-consent-skip below). Additive;
     // pre-#1311 callers ignore it. Cleared server-side if consent later lands.
@@ -2417,6 +2422,149 @@ router.post("/public/flow/compliance-decision", async (req: Request, res: Respon
   );
 
   res.json({ ok: true, path, confirmed: confirmed === true });
+});
+
+// ── Power Platform management-app enrolment (Git #1972) ───────────────────────
+// The onboarding-flow equivalent of what #1906 did by hand: get the customer's
+// OWN tenant admin to interactively register our service principal
+// (MT_APP_CLIENT_ID) as a Power Platform management application — the one-time,
+// per-tenant action power-platform-admin.ts's PowerPlatformNotRegisteredError
+// names, which no amount of Graph/SharePoint consent can substitute for. Uses
+// OAuth2 device-code, not a redirect popup: there is no admin-consent screen
+// for this action (it isn't a scope grant at all), so the admin instead visits
+// a short Microsoft page and types a code — device-code is the flow that
+// matches that shape, and mirrors what New-PowerAppManagementApp does under the
+// hood. See power-platform-admin.ts's own header for why the device-code
+// client is deliberately NOT MT_APP_CLIENT_ID.
+//
+// Gated behind resolveConsentedTenant exactly like the SharePoint/write/
+// compliance-decision routes above: this step only makes sense for a tenant
+// that has already completed Graph read consent (there is no tenant row to
+// enrol otherwise), and it is offered from the SAME onboarding flow session.
+//
+// Three routes, matching the shape of every other /public/flow poll pair in
+// this file:
+//   POST .../power-platform-enrollment-start  — mint a device-code challenge
+//   POST .../power-platform-enrollment-poll   — poll it once; on success this
+//                                                ALSO performs the PUT and
+//                                                persists the enrolment record
+//   GET  .../power-platform-enrollment-status — current persisted state, for a
+//                                                page reload / step re-entry
+
+router.post("/public/flow/power-platform-enrollment-start", async (req: Request, res: Response) => {
+  if (!process.env.MT_APP_CLIENT_ID) {
+    res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
+    return;
+  }
+  const parsed = z.object({ sessionId: z.string() }).safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request" });
+    return;
+  }
+  const session = await resolveFlowSession(parsed.data.sessionId, res);
+  if (!session) return;
+  const tenant = await resolveConsentedTenant(session, res);
+  if (!tenant) return;
+
+  try {
+    const challenge = await startPowerPlatformEnrollmentDeviceCode(tenant.tenantId);
+    log.info({ customerId: tenant.id, tenantId: tenant.tenantId }, "public flow: Power Platform enrolment device-code challenge started");
+    res.json({
+      deviceCode: challenge.deviceCode,
+      userCode: challenge.userCode,
+      verificationUri: challenge.verificationUri,
+      expiresIn: challenge.expiresIn,
+      interval: challenge.interval,
+      message: challenge.message,
+    });
+  } catch (err) {
+    log.error({ err, customerId: tenant.id, tenantId: tenant.tenantId }, "public flow: Power Platform device-code challenge failed to start");
+    res.status(502).json({ error: err instanceof Error ? err.message : "Failed to start device-code challenge" });
+  }
+});
+
+const powerPlatformEnrollmentPollSchema = z.object({ sessionId: z.string(), deviceCode: z.string() });
+
+router.post("/public/flow/power-platform-enrollment-poll", async (req: Request, res: Response) => {
+  if (!process.env.MT_APP_CLIENT_ID) {
+    res.status(503).json({ error: "Multi-tenant app credentials not configured (MT_APP_CLIENT_ID)" });
+    return;
+  }
+  const parsed = powerPlatformEnrollmentPollSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid request" });
+    return;
+  }
+  const session = await resolveFlowSession(parsed.data.sessionId, res);
+  if (!session) return;
+  const tenant = await resolveConsentedTenant(session, res);
+  if (!tenant) return;
+
+  const result = await pollPowerPlatformEnrollmentDeviceCode(tenant.tenantId, parsed.data.deviceCode, process.env.MT_APP_CLIENT_ID);
+
+  if (result.status === "pending") {
+    res.json({ status: "pending" });
+    return;
+  }
+
+  if (result.status === "error") {
+    log.warn({ customerId: tenant.id, tenantId: tenant.tenantId, message: result.message }, "public flow: Power Platform enrolment poll returned an error");
+    res.json({ status: "error", message: result.message });
+    return;
+  }
+
+  // "enrolled" — the PUT already succeeded inside pollPowerPlatformEnrollmentDeviceCode;
+  // this only persists the record. `powerPlatformEnrollment` is its own key, never
+  // one of graph/writeBack/sharepoint — see TenantPowerPlatformEnrollmentRecord's doc.
+  const enrolledAt = new Date().toISOString();
+  await db
+    .update(tenantsTable)
+    .set({
+      consent: mergeConsentKey("powerPlatformEnrollment", {
+        enrolledAt,
+        enrolledByUpn: result.enrolledByUpn,
+        clientId: result.clientId,
+      }),
+      updatedAt: new Date(),
+    })
+    .where(eq(tenantsTable.id, tenant.id));
+
+  await createAuditLog({
+    actorUserId: null,
+    actorName: "public:assessment-flow",
+    actorRole: "client",
+    actionType: "power_platform_management_app_enrolled",
+    entityType: "tenant_power_platform_enrollment",
+    entityId: tenant.tenantId,
+    metadata: { customerId: tenant.id, enrolledByUpn: result.enrolledByUpn, clientId: result.clientId, checkoutSessionId: session.id },
+  });
+
+  log.info(
+    { customerId: tenant.id, tenantId: tenant.tenantId, enrolledByUpn: result.enrolledByUpn },
+    "public flow: Power Platform management app enrolled via device code",
+  );
+
+  res.json({ status: "enrolled", enrolledAt, enrolledByUpn: result.enrolledByUpn });
+});
+
+router.get("/public/flow/power-platform-enrollment-status", async (req: Request, res: Response) => {
+  const session = await resolveFlowSession(req.query.sessionId, res);
+  if (!session) return;
+  const tenant = await resolveConsentedTenant(session, res);
+  if (!tenant) return;
+
+  const [row] = await db
+    .select({ consent: tenantsTable.consent })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.id, tenant.id))
+    .limit(1);
+
+  const record = row?.consent?.powerPlatformEnrollment ?? null;
+  res.json({
+    enrolled: record != null,
+    enrolledAt: record?.enrolledAt ?? null,
+    enrolledByUpn: record?.enrolledByUpn ?? null,
+  });
 });
 
 export default router;
