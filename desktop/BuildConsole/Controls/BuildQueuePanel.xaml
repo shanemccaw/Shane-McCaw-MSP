@@ -40,6 +40,25 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Git #2693 — activity filter chip base look (All/Running/Verifying next to BUILD
+             SETS). Selected-state highlight is applied in code-behind
+             (UpdateRollupActivityFilterChipsVisual), same convention as the accent-tinted
+             selected-row background in BuildRollupRow, since which chip is selected is plain
+             code-behind state, not a bindable property here. -->
+        <Style x:Key="RollupFilterChipStyle" TargetType="{x:Type Border}">
+            <Setter Property="Background"      Value="{StaticResource Surface0Brush}"/>
+            <Setter Property="BorderBrush"     Value="{StaticResource Surface1Brush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius"    Value="4"/>
+            <Setter Property="Padding"         Value="7,2"/>
+            <Setter Property="Margin"          Value="0,0,4,0"/>
+            <Setter Property="Cursor"          Value="Hand"/>
+        </Style>
+        <Style x:Key="RollupFilterChipTextStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="FontSize"    Value="10.5"/>
+            <Setter Property="Foreground"  Value="{StaticResource Subtext1Brush}"/>
+        </Style>
     </UserControl.Resources>
 
     <Border Background="{StaticResource MantleBrush}"
@@ -225,6 +244,26 @@
                                    HorizontalAlignment="Right"
                                    Visibility="Collapsed"
                                    MouseLeftButtonDown="BuildSetRollupClear_Click"/>
+                        <!-- Git #2693 — activity filter chips: which rollup rows below show, by
+                             real running/verifying activity within each set. A SEPARATE concept
+                             from _buildSetFilter/BuildSetRollupClearText above (which drills the
+                             queue graph down to one chosen set) — this only narrows which of the
+                             existing rollup rows render, composing with the any-activity filter
+                             RenderBuildSetRollup already applies. -->
+                        <StackPanel x:Name="RollupActivityFilterChips"
+                                    Orientation="Horizontal"
+                                    Margin="10,0,0,0"
+                                    HorizontalAlignment="Left">
+                            <Border x:Name="RollupFilterChipAll" Style="{StaticResource RollupFilterChipStyle}" Tag="all" MouseLeftButtonDown="RollupActivityFilterChip_Click">
+                                <TextBlock Text="All" Style="{StaticResource RollupFilterChipTextStyle}"/>
+                            </Border>
+                            <Border x:Name="RollupFilterChipRunning" Style="{StaticResource RollupFilterChipStyle}" Tag="running" MouseLeftButtonDown="RollupActivityFilterChip_Click">
+                                <TextBlock Text="Running" Style="{StaticResource RollupFilterChipTextStyle}"/>
+                            </Border>
+                            <Border x:Name="RollupFilterChipVerifying" Style="{StaticResource RollupFilterChipStyle}" Tag="verifying" MouseLeftButtonDown="RollupActivityFilterChip_Click">
+                                <TextBlock Text="Verifying" Style="{StaticResource RollupFilterChipTextStyle}"/>
+                            </Border>
+                        </StackPanel>
                     </DockPanel>
                     <!-- Git #2179 — Shane: a wide/active queue can have 15-20+ concurrent build
                          sets, and this section was unbounded (Dock=Top, no MaxHeight), so it grew

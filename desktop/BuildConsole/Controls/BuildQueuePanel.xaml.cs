@@ -141,6 +141,12 @@ namespace BuildConsole.Controls
         /// call (same reason _knownQueueCardKeys exists for the card list), so this is what
         /// survives across rebuilds instead of relying on the discarded UI elements.</summary>
         private readonly HashSet<string> _expandedRollupSets = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Git #2693 — "All"/"Running"/"Verifying" activity filter chips next to the
+        /// BUILD SETS header. A SEPARATE concept from <see cref="_buildSetFilter"/> above (which
+        /// drills the queue graph below down to one chosen set): this only narrows which rollup
+        /// rows RenderBuildSetRollup renders, by real activity within each set, composing with
+        /// (not replacing) the existing any-activity filter already in orderedKeys.</summary>
+        private string _rollupActivityFilter = "all";
         /// <summary>Git #1932 — per-build-set memory of which Verifying issue numbers the rollup's
         /// send (✈) button has already sent, so the same already-reported items don't keep the
         /// button visible/re-sendable forever. In-memory only, deliberately not persisted across
@@ -2564,6 +2570,15 @@ namespace BuildConsole.Controls
 
             var orderedKeys = bucketOrder
                 .Where(k => buckets[k].upNext.Count + buckets[k].running.Count + buckets[k].verifying.Count > 0)
+                // Git #2693 — activity filter chips narrow the any-activity set above further:
+                // "running" keeps only sets with a real running item, "verifying" only sets with
+                // a real verifying item. "all" (default) leaves the any-activity filter as-is.
+                .Where(k => _rollupActivityFilter switch
+                {
+                    "running" => buckets[k].running.Count > 0,
+                    "verifying" => buckets[k].verifying.Count > 0,
+                    _ => true,
+                })
                 .OrderBy(k => string.Equals(k, UngroupedBuildSetKey, StringComparison.OrdinalIgnoreCase) ? 1 : 0)
                 .ThenBy(k => k, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -2572,12 +2587,46 @@ namespace BuildConsole.Controls
             BuildSetRollupSection.Visibility = orderedKeys.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
             BuildSetRollupClearText.Visibility = _buildSetFilter != null ? Visibility.Visible : Visibility.Collapsed;
             BuildSetRollupClearText.Text = _buildSetFilter != null ? $"Showing: {_buildSetFilter} ✕" : "";
+            UpdateRollupActivityFilterChipsVisual();
 
             foreach (var key in orderedKeys)
             {
                 var counts = buckets[key];
                 BuildSetRollupList.Children.Add(BuildRollupRow(key, counts.upNext, counts.running, counts.verifying, counts.members));
             }
+        }
+
+        /// <summary>Git #2693 — highlights whichever activity filter chip is currently selected,
+        /// same accent-tinted-background/border convention as the selected-row highlight in
+        /// BuildRollupRow above.</summary>
+        private void UpdateRollupActivityFilterChipsVisual()
+        {
+            if (RollupFilterChipAll == null || RollupFilterChipRunning == null || RollupFilterChipVerifying == null) return;
+
+            var blueBrush = (Brush)Application.Current.FindResource("BlueBrush");
+            var restBackground = (Brush)Application.Current.FindResource("Surface0Brush");
+            var restBorder = (Brush)Application.Current.FindResource("Surface1Brush");
+            var restForeground = (Brush)Application.Current.FindResource("Subtext1Brush");
+            var blueColor = blueBrush is SolidColorBrush bcb ? bcb.Color : Color.FromRgb(0x3B, 0x82, 0xF6);
+            var selectedBackground = new SolidColorBrush(Color.FromArgb(0x33, blueColor.R, blueColor.G, blueColor.B));
+
+            foreach (var chip in new[] { RollupFilterChipAll, RollupFilterChipRunning, RollupFilterChipVerifying })
+            {
+                bool isSelected = string.Equals((string)chip.Tag, _rollupActivityFilter, StringComparison.OrdinalIgnoreCase);
+                chip.Background = isSelected ? selectedBackground : restBackground;
+                chip.BorderBrush = isSelected ? blueBrush : restBorder;
+                if (chip.Child is TextBlock text) text.Foreground = isSelected ? blueBrush : restForeground;
+            }
+        }
+
+        /// <summary>Git #2693 — clicking a chip sets the activity filter and re-renders the
+        /// rollup live, off the same RenderBuildSetRollup call every other rollup refresh here
+        /// already uses.</summary>
+        private void RollupActivityFilterChip_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not Border { Tag: string filter } border) return;
+            _rollupActivityFilter = filter;
+            RenderBuildSetRollup(_lastItems);
         }
 
         /// <summary>One collapsed summary line per build set (Shane's own example format:
