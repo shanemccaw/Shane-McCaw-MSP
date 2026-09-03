@@ -333,6 +333,12 @@
                                        Margin="0,6,0,0" TextAlignment="Center" TextWrapping="Wrap"
                                        FontSize="10.5" Foreground="{StaticResource Warm.TextFaint}"/>
                         </StackPanel>
+                        <!-- Git #2769 — real tool internals host. First real occupant: Terminal, which
+                             embeds the existing Controls/TerminalView (a real, persistent local shell),
+                             cached per chat tab in code-behind so the live session survives rail
+                             close/reopen instead of restarting. Every other tool id still shows
+                             ToolStubBody above. -->
+                        <ContentControl x:Name="ToolHost" Visibility="Collapsed"/>
                     </Grid>
                 </DockPanel>
             </Border>

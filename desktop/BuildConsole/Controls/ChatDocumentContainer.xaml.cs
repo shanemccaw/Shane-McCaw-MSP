@@ -62,6 +62,12 @@ namespace BuildConsole.Controls
         private ChatDockPanel? _dockPanel;
         private bool _detectedLoadedOnce;
         private bool _hasUndismissed;
+        /// <summary>Git #2769 — the real Terminal tool's persistent instance for THIS chat tab.
+        /// Created lazily on first "terminal" OpenTool and reused after — one container per chat
+        /// tab means this field is the whole cache; closing/reopening the rail must not touch it,
+        /// so a live shell session (a running `npm install`, a long `git` op) survives rail
+        /// open/close instead of restarting on every reopen.</summary>
+        private TerminalView? _terminalView;
         /// <summary>Git #2682 — the last fetched dock snapshot, kept so a Dismiss click can
         /// re-render instantly against the same data (filtered by <see cref="_dismissed"/>)
         /// instead of forcing a fresh GitHub round-trip.</summary>
@@ -413,8 +419,25 @@ namespace BuildConsole.Controls
             RailRefresh.Visibility = Visibility.Collapsed;
             RailMaximize.Visibility = Visibility.Visible;
             DetectedScroller.Visibility = Visibility.Collapsed;
-            ToolStubBody.Visibility = Visibility.Visible;
-            ToolStubTitle.Text = label;
+
+            // Git #2769 — Terminal is the first real tool internal; every other id still gets the
+            // honest ToolStubBody. _terminalView is created once per chat tab and reused on every
+            // later open, so the shell (cwd, running command, output history) persists across
+            // rail close/reopen instead of a fresh terminal each time.
+            if (id == "terminal")
+            {
+                ToolStubBody.Visibility = Visibility.Collapsed;
+                _terminalView ??= new TerminalView();
+                ToolHost.Content = _terminalView;
+                ToolHost.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                ToolHost.Visibility = Visibility.Collapsed;
+                ToolStubBody.Visibility = Visibility.Visible;
+                ToolStubTitle.Text = label;
+            }
+
             SetRailOpen(true);
             UpdateDetectedGlyph();
         }
@@ -435,6 +458,7 @@ namespace BuildConsole.Controls
             RailMaximize.Visibility = Visibility.Collapsed;
             RailRefresh.Visibility = Visibility.Visible;
             ToolStubBody.Visibility = Visibility.Collapsed;
+            ToolHost.Visibility = Visibility.Collapsed;
             DetectedScroller.Visibility = Visibility.Visible;
             SetRailOpen(true);
             RenderCrossEpicCards();
