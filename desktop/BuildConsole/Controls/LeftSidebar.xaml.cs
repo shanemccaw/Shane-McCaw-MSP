@@ -5294,8 +5294,13 @@ namespace BuildConsole.Controls
                 .Select(m => m.GithubNumber!.Value)
                 .ToHashSet();
 
+            // Git #2544 — only the real top-level release gate (no parent) renders as its own
+            // card. A GATE:-titled issue that is itself a real sub-issue of another gate (e.g.
+            // #1269/#1918 under #1281) is not an independent release gate — it already counts
+            // toward its parent's own sub-issue rollup fraction, so showing it again as a peer
+            // card flattens a real parent/child relationship into false peers.
             var gates = _lastBoardIssues
-                .Where(i => !i.IsClosed && IsGateTitle(i.Title)
+                .Where(i => !i.IsClosed && IsGateTitle(i.Title) && i.ParentNumber == null
                             && i.MilestoneNumber.HasValue && shownMilestoneNumbers.Contains(i.MilestoneNumber.Value))
                 .OrderBy(i => i.Number)
                 .ToList();
