@@ -19,24 +19,29 @@ public sealed record ShotVaultDocSnapshot(IReadOnlyList<ShotVaultItem> Shots, Da
 
 /// <summary>
 /// Git #2372 (Feature #2367 item 5) — Shot Vault rail panel: the real per-shot Copy action.
+/// Git #2370 (Feature #2367 item 3) — real run grouping: newest-first runs, each with a real
+/// timestamp (or oldest–newest span) and shot count.
 ///
-/// Real audit before this build: Shot Vault (#2367) was entirely `notBuilt` — grouped into
+/// Real audit before #2372: Shot Vault (#2367) was entirely `notBuilt` — grouped into
 /// <c>MainWindow.xaml.cs</c>'s shared "not built" placeholder alongside Build Console / Build Watch /
 /// UI Testing, with no panel, no data source, and no index anywhere in ShaneBuilder. The only real
 /// shot-producing mechanism is <see cref="Services.DesktopScreenClipService"/>'s manual desktop clip,
 /// which drops loose timestamped PNGs into <c>%Pictures%\Screenshots\ShaneBuilder\</c> with no
 /// metadata, tags, or run grouping — there is no existing search/tag/run/thumbnail-diff indexed store
-/// to build the fuller panel spec against (that's #2368 search, #2369 tags, #2370 runs, #2371
-/// thumbnail-diff — separate, real sibling sub-issues).
+/// to build the fuller panel spec against (that's #2368 search, #2369 tags, #2371 thumbnail-diff —
+/// separate, real sibling sub-issues).
 ///
-/// This build stands up the minimum real scaffold #2372 itself needs to exist at all: a real,
-/// newest-first list of the actual shots on disk (<see cref="ShotVaultService.ListShots"/>), each row
-/// with a real thumbnail and a working Copy action that puts that exact shot back on the clipboard
+/// #2372 stood up the minimum real scaffold Shot Vault needed to exist at all: a real, newest-first
+/// list of the actual shots on disk (<see cref="ShotVaultService.ListShots"/>), each row with a real
+/// thumbnail and a working Copy action that puts that exact shot back on the clipboard
 /// (<see cref="ShotVaultService.CopyToClipboard"/>, itself reusing
 /// <see cref="Services.DesktopScreenClipService"/>'s own multi-format clipboard write rather than a
-/// second one). Search, tag chips, run grouping, and DIFF badges are deliberately NOT built here —
-/// sibling issues extend this same <c>ShotVaultPanelBody</c>/<see cref="RenderShotVaultPanel"/>
-/// surface rather than it being redone per issue.
+/// second one). This build (#2370) groups that same real list into runs
+/// (<see cref="ShotVaultService.ListRuns"/> — shots within <see cref="ShotVaultService.RunGap"/> of
+/// each other are the same capture session) and renders a real header per run above its nested shot
+/// rows. Search, tag chips, and DIFF badges are still deliberately NOT built here — sibling issues
+/// extend this same <c>ShotVaultPanelBody</c>/<see cref="RenderShotVaultPanel"/> surface rather than
+/// it being redone per issue.
 /// </summary>
 public partial class MainWindow
 {
@@ -71,10 +76,13 @@ public partial class MainWindow
     {
         ShotVaultRows.Children.Clear();
 
-        IReadOnlyList<ShotVaultItem> shots;
+        // Git #2370: runs newest-first, each with a real timestamp + shot count, grouping the same
+        // real shot list ListShots() reads. ListRuns() derives runs from ListShots() itself, so this
+        // stays the single real read of the shots folder for the whole panel.
+        IReadOnlyList<ShotVaultRun> runs;
         try
         {
-            shots = ShotVaultService.ListShots();
+            runs = ShotVaultService.ListRuns();
         }
         catch (Exception ex)
         {
@@ -83,20 +91,56 @@ public partial class MainWindow
             return;
         }
 
-        _shotVaultLastShots = shots; // real list, read by "Send to tab" (#2373)
+        _shotVaultLastShots = runs.SelectMany(r => r.Shots).ToList(); // real flat list, read by "Send to tab" (#2373)
 
-        if (shots.Count == 0)
+        if (runs.Count == 0)
         {
             ShotVaultPanelStatus.Text = $"No shots yet — captures land in {ShotVaultService.ShotsDirectory}.";
             ShotVaultPanelStatus.Visibility = Visibility.Visible;
             return;
         }
 
-        ShotVaultPanelStatus.Text = $"{shots.Count} shot{(shots.Count == 1 ? "" : "s")} — newest first.";
+        int totalShots = runs.Sum(r => r.Count);
+        ShotVaultPanelStatus.Text =
+            $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first.";
         ShotVaultPanelStatus.Visibility = Visibility.Visible;
 
-        foreach (var shot in shots)
-            ShotVaultRows.Children.Add(BuildShotVaultRow(shot));
+        foreach (var run in runs)
+        {
+            ShotVaultRows.Children.Add(BuildShotVaultRunHeader(run));
+            foreach (var shot in run.Shots)
+                ShotVaultRows.Children.Add(BuildShotVaultRow(shot));
+        }
+    }
+
+    private Border BuildShotVaultRunHeader(ShotVaultRun run)
+    {
+        // A single-shot run has nothing to range over — just show that one timestamp. A multi-shot
+        // run shows the real oldest→newest span so the count actually means something at a glance.
+        string when = run.Count == 1
+            ? run.NewestUtc.ToLocalTime().ToString("MMM d, h:mm tt")
+            : $"{run.OldestUtc.ToLocalTime():MMM d, h:mm tt} – {run.NewestUtc.ToLocalTime():h:mm tt}";
+
+        var label = new TextBlock
+        {
+            Text = when,
+            FontFamily = (FontFamily)FindResource("FontFamily.Sans"),
+            FontSize = (double)FindResource("FontSize.10.5"),
+            FontWeight = (FontWeight)FindResource("FontWeight.SemiBold"),
+            Foreground = (Brush)FindResource("Brush.Text.Primary"),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+
+        // Reuses the same small meta-chip style the Detected-in-this-chat cards already use for
+        // count/kind badges (DetectionMetaChip) rather than inventing a new chip style for this one.
+        var countChip = DetectionMetaChip(run.Count == 1 ? "1 shot" : $"{run.Count} shots");
+        countChip.Margin = new Thickness(8, 0, 0, 0);
+
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(2, 10, 2, 6) };
+        row.Children.Add(label);
+        row.Children.Add(countChip);
+
+        return new Border { Child = row };
     }
 
     private Border BuildShotVaultRow(ShotVaultItem shot)
