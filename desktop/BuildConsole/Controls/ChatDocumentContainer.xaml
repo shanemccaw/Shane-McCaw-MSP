@@ -123,8 +123,17 @@
                         <TextBlock x:Name="CtxGauge" Text="≈40k / 300k ctx" VerticalAlignment="Center"
                                    FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Warm.TextDim}"
                                    ToolTip="Estimated context used (40k overhead + conversation). Uses the real meter when available."/>
-                        <!-- Start New Chat — only appears at ≥75% used (§2). -->
-                        <Button x:Name="BtnStartNewChat" Margin="10,0,0,0" Padding="8,2" Height="22"
+                        <TextBlock x:Name="CtxMessages" Margin="12,0,0,0" VerticalAlignment="Center"
+                                   FontSize="10.5" Foreground="{StaticResource Warm.TextMuted}"/>
+                        <TextBlock x:Name="CtxActive" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   FontSize="10.5" Foreground="{StaticResource Warm.TextDim}"/>
+                    </WrapPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                        <!-- Start New Chat — Git #2727: moved out of the left WrapPanel to sit immediately
+                             left of the icon cluster. Real threshold (currently ported from the retired
+                             meterState banner's absolute-token tiers) lives in UpdateGauge(). -->
+                        <Button x:Name="BtnStartNewChat" Margin="0,0,10,0" Padding="8,2" Height="22"
                                 Visibility="Collapsed" Cursor="Hand" BorderThickness="0"
                                 ToolTip="Context is getting full — start a fresh chat on this epic"
                                 Click="BtnStartNewChat_Click">
@@ -137,13 +146,6 @@
                             </Button.Template>
                             <TextBlock Text="Start New Chat" FontSize="10" FontWeight="ExtraBold" Foreground="#1a0d0d"/>
                         </Button>
-                        <TextBlock x:Name="CtxMessages" Margin="12,0,0,0" VerticalAlignment="Center"
-                                   FontSize="10.5" Foreground="{StaticResource Warm.TextMuted}"/>
-                        <TextBlock x:Name="CtxActive" Margin="10,0,0,0" VerticalAlignment="Center"
-                                   FontSize="10.5" Foreground="{StaticResource Warm.TextDim}"/>
-                    </WrapPanel>
-
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                         <!-- ⌸ Detected-in-this-chat toggle (carries an accent dot when undismissed items exist and closed). -->
                         <Grid>
                             <Button x:Name="BtnDetected" Style="{StaticResource Ctx.IconBtn}"
