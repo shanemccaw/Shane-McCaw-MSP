@@ -2567,6 +2567,40 @@
                         </ScrollViewer>
                     </Grid>
 
+                    <!-- Git #2287 (Feature #2281 item 6) — "Tab" send-to-tab document surface for
+                         the Build Matrix drawer (#2286), same real "one data source, two hosts"
+                         precedent GitItemDock (#2312) and BatterUpItemDock (#2365) already set. A
+                         frozen snapshot of the 8 real slots at the moment "Tab" was clicked, not a
+                         live drill surface. -->
+                    <Grid x:Name="BuildMatrixItemDock" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Padding="16,10" Background="{StaticResource Brush.Bg.Window}"
+                                BorderThickness="0,0,0,1" BorderBrush="{StaticResource Brush.Border.Default}">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.LayoutGrid}"
+                                      Width="16" Height="16" Margin="0,0,10,0"
+                                      Fill="{StaticResource Brush.Accent.Primary}"/>
+                                <StackPanel>
+                                    <TextBlock x:Name="BuildMatrixItemDocTitleText" Text="Build Matrix" FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.14}"
+                                               FontWeight="{StaticResource FontWeight.ExtraBold}"
+                                               Foreground="{StaticResource Brush.Text.Heading}"/>
+                                    <TextBlock Text="Sent from the Build Matrix drawer — the same 8 real agent slots, frozen at send time."
+                                               Margin="0,2,0,0" TextWrapping="Wrap" MaxWidth="620"
+                                               FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.9.5}"
+                                               Foreground="{StaticResource Brush.Text.Dim}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="BuildMatrixItemDocHost" Margin="24,16" MaxWidth="640" HorizontalAlignment="Left"/>
+                        </ScrollViewer>
+                    </Grid>
+
                     <!-- Settings, redesigned — Step 15 (wpf-handoff/readme-phase2.md), the real
                          Settings screen markup/computeSettings() spec in
                          wpf-handoff/Shell Skeleton v2.dc.html (lines 1441-1630, 6003-6147). One
@@ -2752,10 +2786,30 @@
                                            FontWeight="{StaticResource FontWeight.Bold}"
                                            Foreground="{StaticResource Brush.Text.Dim}"/>
                                 <TextBlock x:Name="MatrixSlotSummary" DockPanel.Dock="Right"
+                                           Margin="8,0,0,0"
                                            FontFamily="{StaticResource FontFamily.Monospace}"
                                            FontSize="{StaticResource FontSize.10}"
                                            FontWeight="{StaticResource FontWeight.Bold}"
                                            Foreground="{StaticResource Brush.Text.Dim}"/>
+                                <!-- Git #2287 (Feature #2281 item 6) — sends this real drawer state
+                                     (the same slots RenderMatrixDrawer just rendered) to its own
+                                     document tab, via the exact "frozen snapshot on click, rendered
+                                     inert into a document" split Git #2312/#2365 already established
+                                     for the Git Panel peek and the Batter Up panel. -->
+                                <Border x:Name="BtnMatrixSendToTab" DockPanel.Dock="Right" Background="{StaticResource Brush.Bg.Chip}"
+                                        BorderBrush="{StaticResource Brush.Border.Default}" BorderThickness="1" CornerRadius="5"
+                                        Padding="7,2" Cursor="Hand" ToolTip="Send the matrix to its own tab"
+                                        MouseLeftButtonDown="BtnMatrixSendToTab_Click">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="&#x2197;" Margin="0,0,4,0" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="9"
+                                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                                        <TextBlock Text="Tab" VerticalAlignment="Center"
+                                                   FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.10.5}"
+                                                   FontWeight="{StaticResource FontWeight.Bold}"
+                                                   Foreground="{StaticResource Brush.Text.Muted}"/>
+                                    </StackPanel>
+                                </Border>
                             </DockPanel>
                             <WrapPanel x:Name="MatrixSlotsHost"/>
                         </StackPanel>

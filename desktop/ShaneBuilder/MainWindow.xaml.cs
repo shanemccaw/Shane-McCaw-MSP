@@ -1037,6 +1037,11 @@ public partial class MainWindow : Window
         // the same lane-chip/status builders the rail panel uses. Null for every other tab kind.
         public BatterUpDocSnapshot? BatterUpSnapshot { get; }
         public bool IsBatterUpDoc => BatterUpSnapshot != null;
+        // Git #2287 — set for the Build Matrix drawer sent to a tab via "Tab"; a frozen snapshot
+        // of the real 8 slots, rendered by RenderBuildMatrixDoc into BuildMatrixItemDock. Null for
+        // every other tab kind.
+        public BuildMatrixDocSnapshot? BuildMatrixSnapshot { get; }
+        public bool IsBuildMatrixDoc => BuildMatrixSnapshot != null;
         private readonly string? _workspaceIdOverride;
 
         public string? WorkspaceId => _workspaceIdOverride ?? (Kind.HasValue ? KindWorkspaceDefault[Kind.Value] : null);
@@ -1064,7 +1069,7 @@ public partial class MainWindow : Window
             bool isRepoHealth = false, bool isGitMap = false, bool isSettings = false,
             List<GitCrumb>? gitItemTrail = null, int? featureNumber = null, string? subtitle = null,
             TabKeepAliveClass? keepAliveClass = null, BrowserTabCategory? browserCategory = null,
-            BatterUpDocSnapshot? batterUpSnapshot = null)
+            BatterUpDocSnapshot? batterUpSnapshot = null, BuildMatrixDocSnapshot? buildMatrixSnapshot = null)
         {
             _keepAliveClassOverride = keepAliveClass;
             BrowserCategory = browserCategory;
@@ -1088,6 +1093,7 @@ public partial class MainWindow : Window
             FeatureNumber = featureNumber;
             Subtitle = subtitle;
             BatterUpSnapshot = batterUpSnapshot;
+            BuildMatrixSnapshot = buildMatrixSnapshot;
         }
     }
 
@@ -1557,8 +1563,9 @@ public partial class MainWindow : Window
         SettingsDock.Visibility = tab.IsSettings ? Visibility.Visible : Visibility.Collapsed;
         GitItemDock.Visibility = tab.IsGitItemDoc ? Visibility.Visible : Visibility.Collapsed;
         BatterUpItemDock.Visibility = tab.IsBatterUpDoc ? Visibility.Visible : Visibility.Collapsed;
+        BuildMatrixItemDock.Visibility = tab.IsBuildMatrixDoc ? Visibility.Visible : Visibility.Collapsed;
         if (tab.IsSettings) RenderSettings();
-        bool isStub = !tab.IsHome && !tab.IsChat && !isGenericBrowserTab && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc && !tab.IsBatterUpDoc;
+        bool isStub = !tab.IsHome && !tab.IsChat && !isGenericBrowserTab && !tab.IsGitDoctor && !tab.IsRepoHealth && !tab.IsLogViewer && !tab.IsMarkdownViewer && !tab.IsGitMap && !tab.IsSettings && !tab.IsGitItemDoc && !tab.IsBatterUpDoc && !tab.IsBuildMatrixDoc;
         StubTabContent.Visibility = isStub ? Visibility.Visible : Visibility.Collapsed;
         if (isStub)
             StubTabContent.Text = tab.Title + " — nothing here yet";
@@ -1588,6 +1595,11 @@ public partial class MainWindow : Window
         {
             BatterUpItemDocTitleText.Text = tab.Title;
             RenderBatterUpDoc(tab);
+        }
+        if (tab.IsBuildMatrixDoc)
+        {
+            BuildMatrixItemDocTitleText.Text = tab.Title;
+            RenderBuildMatrixDoc(tab);
         }
     }
 
