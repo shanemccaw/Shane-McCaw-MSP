@@ -20,12 +20,24 @@ function scoreLabel(entry: PillarShellScore): { text: string; ink: string } {
 }
 
 /**
- * The six-pillar tab strip (README "Layout" §3). Selecting a pillar routes
- * to its dashboard — none of the six pillar pages exist yet (out of scope
- * for #1819, see the README's own "Out of scope" list), so every tab
+ * The six-pillar tab strip — the shell-level pillar switcher (#1823; frame
+ * scaffolded by #1819, README "Layout" §3). Selecting a pillar routes to its
+ * dashboard — none of the six pillar pages exist yet (that surface is #1621's
+ * scope, not this issue's — see #1823's "boundary with #1621"), so every tab
  * currently routes through the same honest not-yet-built state the sidebar
  * uses (Git #1827's `/coming-soon`), tagged `group=pillar` so the shell can
  * keep the tab's selected state and the breadcrumb accurate.
+ *
+ * Design-token compliance confirmed against `docs/design-system.md` +
+ * `Design/portal/design_handoff_ui_shell/{README.md,Shell.dc.html}` (#1823):
+ * identity colours are fixed per pillar and never derived from score;
+ * severity (score band) is the only thing driving `scoreLabel`'s colour;
+ * a null/unscored score renders the em dash in `NEVER_SCANNED_INK`, never a
+ * red zero; Copilot is excluded as a tab (`usePillarSummary.ts` drops the
+ * `"copilot"` card — it's the roll-up, not a seventh pillar). The reference
+ * `Shell.dc.html` renders this exact shape (band + icon + label + score, no
+ * ambient glow) for its pillar tabs — the hand-tuned per-pillar glow table
+ * belongs to the pillar *pages* (#1621), not this switcher.
  */
 export function PillarTabStrip({
   scores,
@@ -56,7 +68,7 @@ export function PillarTabStrip({
             key={key}
             href={comingSoonHref(identity.label, "pillar")}
             data-testid={`pillar-tab-${key}`}
-            className="group flex min-w-0 flex-col border-r"
+            className="group flex min-w-0 flex-col border-r focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#0078D4]"
             style={{ flex: "1 0 130px", borderColor: "rgba(255,255,255,.06)" }}
           >
             <div style={{ height: 3, background: `linear-gradient(90deg,${identity.primary},${identity.accent})` }} />
