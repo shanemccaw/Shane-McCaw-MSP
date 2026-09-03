@@ -7157,12 +7157,19 @@ namespace BuildConsole.Controls
                 Dispatcher.Invoke(() => GitStatusSummaryText.Text = "REFRESHING GIT STATUS...");
             }, null, TimeSpan.FromSeconds(30), System.Threading.Timeout.InfiniteTimeSpan);
 
-            var (branch, stagedItems, unstagedItems, rawOutput) = await System.Threading.Tasks.Task.Run(() =>
+            // Git #2536 — same swallowed-stderr/exit-code pattern #2535 fixed on the
+            // mutation path (RunGitCommand): drain stderr and capture the real exit code
+            // instead of only reading stdout, so a genuine failure (not a repo,
+            // index.lock contention, permission) can be told apart from a clean/empty repo.
+            var (branch, stagedItems, unstagedItems, rawOutput, exitCode, stderrText, launchError) = await System.Threading.Tasks.Task.Run(() =>
             {
                 string b = "main";
                 var staged = new List<GitItem>();
                 var unstaged = new List<GitItem>();
                 string rawOut = "";
+                int code = -1;
+                string errText = "";
+                string? launchErr = null;
 
                 try
                 {
@@ -7178,12 +7185,22 @@ namespace BuildConsole.Controls
                     };
 
                     using var proc = System.Diagnostics.Process.Start(psi);
-                    if (proc != null)
+                    if (proc == null)
                     {
-                        string output = proc.StandardOutput.ReadToEnd();
-                        proc.WaitForExit();
-                        rawOut = output;
+                        launchErr = "git process failed to start";
+                        return (b, staged, unstaged, rawOut, code, errText, launchErr);
+                    }
 
+                    // Drain both streams before WaitForExit: a full stdout/stderr pipe
+                    // buffer would otherwise deadlock a process we're only WaitForExit-ing.
+                    string output = proc.StandardOutput.ReadToEnd();
+                    errText = proc.StandardError.ReadToEnd();
+                    proc.WaitForExit();
+                    code = proc.ExitCode;
+                    rawOut = output;
+
+                    if (code == 0)
+                    {
                         string[] lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
                         foreach (var line in lines)
                         {
@@ -7225,13 +7242,30 @@ namespace BuildConsole.Controls
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    launchErr = ex.Message;
+                }
 
-                return (b, staged, unstaged, rawOut);
+                return (b, staged, unstaged, rawOut, code, errText, launchErr);
             });
 
             _gitStatusLoadingTimer?.Dispose();
             _gitStatusLoadingTimer = null;
+
+            if (launchError != null || exitCode != 0)
+            {
+                string err = launchError ?? BestGitLine(stderrText, rawOutput);
+                if (string.IsNullOrEmpty(err)) err = $"exit code {exitCode}";
+                GitStatusSummaryText.Text = $"✗ git status failed — {err}";
+                GitStatusSummaryText.ToolTip = string.IsNullOrWhiteSpace(stderrText) ? null : stderrText;
+                try { ActivityLog.Log("git-panel.error", $"git status --porcelain -b failed: {err}"); } catch { }
+                // Graph/branches refresh independently and have their own error
+                // surfacing — still run them rather than leaving them stale.
+                PopulateGitGraph();
+                PopulateGitBranches();
+                return;
+            }
 
             // Git #1968 — genuine no-op: an unchanged porcelain status means the
             // Changes tree we already have on screen is still byte-for-byte
@@ -7323,9 +7357,16 @@ namespace BuildConsole.Controls
         /// </summary>
         public void PopulateGitBranches()
         {
+            // Git #2536 — same swallowed-stderr/exit-code pattern #2535 fixed on the
+            // mutation path: drain stderr and capture the real exit code so a genuine
+            // failure isn't indistinguishable from a repo with no branches.
             System.Threading.Tasks.Task.Run(() =>
             {
                 var branches = new List<(string Name, bool IsCurrent, bool IsRemote)>();
+                int code = -1;
+                string errText = "";
+                string outText = "";
+                string? launchErr = null;
                 try
                 {
                     var psi = new System.Diagnostics.ProcessStartInfo
@@ -7340,31 +7381,53 @@ namespace BuildConsole.Controls
                     };
 
                     using var proc = System.Diagnostics.Process.Start(psi);
-                    if (proc != null)
+                    if (proc == null)
                     {
-                        string output = proc.StandardOutput.ReadToEnd();
+                        launchErr = "git process failed to start";
+                    }
+                    else
+                    {
+                        outText = proc.StandardOutput.ReadToEnd();
+                        errText = proc.StandardError.ReadToEnd();
                         proc.WaitForExit();
+                        code = proc.ExitCode;
 
-                        foreach (var raw in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                        if (code == 0)
                         {
-                            string line = raw.TrimEnd('\r');
-                            bool isCurrent = line.StartsWith("*");
-                            string name = line.TrimStart('*', ' ').Trim();
-                            if (name.Length == 0 || name.Contains("->")) continue; // skip "origin/HEAD -> origin/main" alias rows
-                            bool isRemote = name.StartsWith("remotes/");
-                            if (isRemote) name = name.Substring("remotes/".Length);
-                            branches.Add((name, isCurrent, isRemote));
+                            foreach (var raw in outText.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                string line = raw.TrimEnd('\r');
+                                bool isCurrent = line.StartsWith("*");
+                                string name = line.TrimStart('*', ' ').Trim();
+                                if (name.Length == 0 || name.Contains("->")) continue; // skip "origin/HEAD -> origin/main" alias rows
+                                bool isRemote = name.StartsWith("remotes/");
+                                if (isRemote) name = name.Substring("remotes/".Length);
+                                branches.Add((name, isCurrent, isRemote));
+                            }
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    launchErr = ex.Message;
+                }
 
-                return branches;
+                return (branches, code, errText, outText, launchErr);
             }).ContinueWith(t =>
             {
-                var branches = t.Result;
+                var (branches, code, errText, outText, launchErr) = t.Result;
                 Dispatcher.Invoke(() =>
                 {
+                    if (launchErr != null || code != 0)
+                    {
+                        string err = launchErr ?? BestGitLine(errText, outText);
+                        if (string.IsNullOrEmpty(err)) err = $"exit code {code}";
+                        GitStatusSummaryText.Text = $"✗ git branch -a failed — {err}";
+                        GitStatusSummaryText.ToolTip = string.IsNullOrWhiteSpace(errText) ? null : errText;
+                        try { ActivityLog.Log("git-panel.error", $"git branch -a --no-color failed: {err}"); } catch { }
+                        return;
+                    }
+
                     GitBranchListHost.Children.Clear();
 
                     if (branches.Count == 0)
@@ -7813,9 +7876,15 @@ namespace BuildConsole.Controls
             string signature = ComputeGitGraphSignature();
             if (_lastGitGraphSignature != null && signature == _lastGitGraphSignature) return;
 
-            var (commits, maxLanes) = await System.Threading.Tasks.Task.Run(() =>
+            // Git #2536 — same swallowed-stderr/exit-code pattern #2535 fixed on the
+            // mutation path: drain stderr and capture the real exit code so a genuine
+            // `git log` failure isn't indistinguishable from a repo with no history.
+            var (commits, maxLanes, exitCode, stderrText, launchError) = await System.Threading.Tasks.Task.Run(() =>
             {
                 var parsed = new List<GitGraphCommit>();
+                int code = -1;
+                string errText = "";
+                string? launchErr = null;
                 try
                 {
                     var psi = new System.Diagnostics.ProcessStartInfo
@@ -7834,32 +7903,44 @@ namespace BuildConsole.Controls
                     };
 
                     using var proc = System.Diagnostics.Process.Start(psi);
-                    if (proc != null)
+                    if (proc == null)
+                    {
+                        launchErr = "git process failed to start";
+                    }
+                    else
                     {
                         string output = proc.StandardOutput.ReadToEnd();
+                        errText = proc.StandardError.ReadToEnd();
                         proc.WaitForExit();
+                        code = proc.ExitCode;
 
-                        foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                        if (code == 0)
                         {
-                            var parts = line.Split('\u001f');
-                            if (parts.Length < 5) continue;
-                            string hash = parts[0].Trim();
-                            if (hash.Length == 0) continue;
-                            parsed.Add(new GitGraphCommit
+                            foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
                             {
-                                Hash = hash,
-                                ShortHash = hash.Length >= 7 ? hash.Substring(0, 7) : hash,
-                                Parents = parts[1].Length == 0
-                                    ? Array.Empty<string>()
-                                    : parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries),
-                                Message = parts[2],
-                                Author = parts[3],
-                                Date = parts[4],
-                            });
+                                var parts = line.Split('\u001f');
+                                if (parts.Length < 5) continue;
+                                string hash = parts[0].Trim();
+                                if (hash.Length == 0) continue;
+                                parsed.Add(new GitGraphCommit
+                                {
+                                    Hash = hash,
+                                    ShortHash = hash.Length >= 7 ? hash.Substring(0, 7) : hash,
+                                    Parents = parts[1].Length == 0
+                                        ? Array.Empty<string>()
+                                        : parts[1].Split(' ', StringSplitOptions.RemoveEmptyEntries),
+                                    Message = parts[2],
+                                    Author = parts[3],
+                                    Date = parts[4],
+                                });
+                            }
                         }
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    launchErr = ex.Message;
+                }
 
                 // Swimlane layout. `lanes[c]` = the hash that lane c is currently
                 // routing toward (a parent some already-drawn child is waiting on),
@@ -7902,8 +7983,18 @@ namespace BuildConsole.Controls
                     maxLaneCount = Math.Max(maxLaneCount, Math.Max(lanes.Count, col + 1));
                 }
 
-                return (parsed, Math.Max(maxLaneCount, 1));
+                return (parsed, Math.Max(maxLaneCount, 1), code, errText, launchErr);
             });
+
+            if (launchError != null || exitCode != 0)
+            {
+                string err = launchError ?? BestGitLine(stderrText, "");
+                if (string.IsNullOrEmpty(err)) err = $"exit code {exitCode}";
+                GitStatusSummaryText.Text = $"✗ git log failed — {err}";
+                GitStatusSummaryText.ToolTip = string.IsNullOrWhiteSpace(stderrText) ? null : stderrText;
+                try { ActivityLog.Log("git-panel.error", $"git log failed: {err}"); } catch { }
+                return;
+            }
 
             // Git #1968 — re-sampled after the fetch (not reused from before it) so what's
             // stored reflects the git state actually captured, in case a commit landed in
