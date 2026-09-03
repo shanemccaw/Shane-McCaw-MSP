@@ -418,11 +418,10 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- Git #860 (Git panel Phase 2) — ONE scrollable panel: Changes on top,
-                         rendered commit Graph below. Both refresh together off #859's watcher.
-                         Git #1898 — the Graph section is now independently collapsible
-                         (BtnGitGraphToggle / GitGraphHost) so Changes can be viewed without it;
-                         both still refresh from the same trigger, only the Graph's visibility is gated. -->
+                    <!-- Git #860 (Git panel Phase 2) — ONE scrollable panel for Changes.
+                         Git #2637 — the rendered commit history section was removed entirely:
+                         real crash risk from a full ref walk (git log all-refs mode) against 100+
+                         stale agent worktree branches, and Shane never used it. -->
                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                         <StackPanel>
                             <!-- ── CHANGES section ── -->
@@ -454,21 +453,6 @@
                                     </Style>
                                 </TreeView.Resources>
                             </TreeView>
-
-                            <!-- ── GRAPH section (real rendered commit DAG — see PopulateGitGraph) ──
-                                 Git #1898 — collapsible, collapsed by default (Shane: "I never use
-                                 the commit graph, I want it out of the way"). Still built/refreshed
-                                 off the same trigger as Changes; only its visibility is gated. -->
-                            <Border Background="{StaticResource Surface0Brush}" Height="1" Margin="0,8,0,8"/>
-                            <DockPanel LastChildFill="False" Margin="2,0,0,4">
-                                <TextBlock x:Name="GitGraphHeaderText" DockPanel.Dock="Left" Text="COMMIT GRAPH" FontSize="10" FontWeight="Bold"
-                                           Foreground="{StaticResource Subtext0Brush}" VerticalAlignment="Center"/>
-                                <ToggleButton x:Name="BtnGitGraphToggle" DockPanel.Dock="Right"
-                                              Style="{StaticResource ExpandCollapseToggleStyle}"
-                                              IsChecked="True" Click="BtnGitGraphToggle_Click"
-                                              ToolTip="Show/hide commit graph"/>
-                            </DockPanel>
-                            <StackPanel x:Name="GitGraphHost" Visibility="Collapsed"/>
                         </StackPanel>
                     </ScrollViewer>
                 </DockPanel>
