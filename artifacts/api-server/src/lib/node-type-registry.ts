@@ -262,6 +262,12 @@ const NODE_TYPE_REGISTRY: NodeTypeMeta[] = [
     isAIDependent: false,
     description: "Issues a write against Microsoft Graph (POST/PATCH/PUT) — no AI",
   },
+  // ── Graph read (#1939) ────────────────────────────────────────────────────
+  {
+    nodeType: "graph_read_operation",
+    isAIDependent: false,
+    description: "Issues a read (GET) against Microsoft Graph — no AI",
+  },
 
   // ── Signal policy / engagement offer engines ───────────────────────────────
   {

@@ -2552,6 +2552,18 @@ const FLAT_NODES = [
     ["success", "insufficient_privilege", "conflict", "bad_request", "unexpected"],
   ),
   nodeDef(
+    "graph_read_operation",
+    "Graph Read Operation",
+    "MSP / Baseline Actions",
+    "Executes a Microsoft Graph API read (GET) call against a customer tenant, using the read app's own credentials (never the write app). Resolves the tenant's Graph tenantId from the customerId. Needs no CR gate and no write-back/write-consent gate — a GET is not a tenant write. On success routes via the 'success' handle; on failure routes via 'insufficient_privilege', 'bad_request', or 'unexpected' handles. dry-run is explicitly blocked.",
+    [
+      { key: "customerId", type: "string", required: true, description: "MSP customer ID used to resolve the Graph tenant. Supports templates." },
+      { key: "endpoint", type: "string", required: true, description: "Graph API path, including its query string (e.g. '/auditLogs/signIns?$filter=...'). May contain {{variable}} placeholders." },
+    ],
+    ["success", "status", "data", "errorType"],
+    ["success", "insufficient_privilege", "bad_request", "unexpected"],
+  ),
+  nodeDef(
     "execute_baseline_template",
     "Execute Baseline Template",
     "MSP / Baseline Actions",

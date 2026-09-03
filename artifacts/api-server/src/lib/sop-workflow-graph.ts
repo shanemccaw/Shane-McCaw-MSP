@@ -23,14 +23,22 @@
  * no second Graph-calling loop anywhere in this module.
  *
  * ── What gets materialized, and what does not ────────────────────────────────
- * Only a step whose `graphEndpoint` starts with a WRITE verb (`POST`, `PATCH`,
- * `PUT`, `DELETE`) becomes a node — that is the one thing `graph_write_operation`
- * can execute. A `GET` step (e.g. IAM-03's sign-in inventory) is a genuine read,
- * not a tenant write, and is deliberately left unmaterialized: it is not what
- * the CR gate exists to authorize, and stays a step the run record carries but
- * does not automate. A step with no `graphEndpoint` at all (a `manual`-type
- * step) is the same — always left for a human, closed out through the
+ * A step whose `graphEndpoint` starts with a WRITE verb (`POST`, `PATCH`,
+ * `PUT`, `DELETE`) becomes a `graph_write_operation` node. A step whose
+ * `graphEndpoint` starts with `GET` (e.g. IAM-03's sign-in inventory) becomes a
+ * `graph_read_operation` node (#1939) — a genuine read, not a tenant write, so
+ * it needs no CR gate (#1497) and no write-back/write-consent gate; it fires
+ * through `graphFetchForTenant`, the SAME read transport every other read in
+ * this codebase uses, and lands as evidence in `wf_run_node_outputs` exactly
+ * like a write step's result does. A step with no `graphEndpoint` at all (a
+ * `manual`-type step) is always left for a human, closed out through the
  * pre-existing `PATCH /api/msp/sop-runs/:runId`.
+ *
+ * `GET`'s query string routinely contains a bare space (e.g. `eq 'IMAP4'`), so
+ * unlike a write step a `GET` step's `graphEndpoint` is taken whole as the
+ * path — there is no trailing `{body}` to parse off a GET, and
+ * `parseGraphEndpointShape` intentionally does not try (see its own doc
+ * comment).
  *
  * ── Parsing `graphEndpoint` ───────────────────────────────────────────────────
  * The stored string is `"METHOD /path[ { loose object body }]"`. The trailing
@@ -74,8 +82,11 @@ export interface ParsedGraphEndpoint {
  * `"PATCH /v1.0/users/{id} { accountEnabled: false }"` → its three parts.
  * Returns null for anything that doesn't match the "METHOD /path [ {body} ]"
  * shape — including every GET (its query string routinely contains a bare
- * space, e.g. `eq 'IMAP4'`, which this intentionally does not try to parse,
- * since a GET is never materialized regardless — see the header).
+ * space, e.g. `eq 'IMAP4'`, which this intentionally does not try to parse). A
+ * GET step is materialized via a separate path in `buildSopWorkflowGraph` that
+ * takes everything after `GET ` verbatim as the path, precisely because this
+ * function's "one more `\S+` token" shape can't safely hold a query string
+ * with embedded spaces.
  */
 export function parseGraphEndpointShape(raw: string): ParsedGraphEndpoint | null {
   const match = /^(\S+)\s+(\S+)(?:\s+(\{[\s\S]*\}))?$/.exec(raw.trim());
@@ -162,6 +173,14 @@ export interface MaterializedSopStep {
   readonly stepIndex: number;
   readonly stepNumber: number;
   readonly label: string;
+  /**
+   * `"write"` (`graph_write_operation`) or `"read"` (`graph_read_operation`,
+   * #1939). `sop-execution.ts`'s CR-gate check reads this: the #1497 Change
+   * Control gate exists to authorize a tenant WRITE — a run whose materialized
+   * steps are entirely reads needs no CR, same as the header's "no CR gate is
+   * needed for a read" says.
+   */
+  readonly kind: "write" | "read";
 }
 
 export interface SopWorkflowGraphResult {
@@ -174,10 +193,10 @@ export interface SopWorkflowGraphResult {
 /**
  * Build the executable graph for an SOP's automated steps: a linear chain,
  * `start -> step -> step -> ... -> end`, over exactly the steps whose
- * `graphEndpoint` is a materializable write. Steps that are not automatable
- * (manual, GET, or an endpoint this module can't safely parse) are skipped —
- * they stay in the run's step list for a human to close out, never silently
- * dropped from the SOP itself.
+ * `graphEndpoint` is a materializable write or read (#1939). Steps that are
+ * not automatable (manual, or an endpoint this module can't safely parse) are
+ * skipped — they stay in the run's step list for a human to close out, never
+ * silently dropped from the SOP itself.
  */
 export function buildSopWorkflowGraph(steps: readonly StoredSopStep[]): SopWorkflowGraphResult {
   const nodes: WfNode[] = [];
@@ -211,7 +230,49 @@ export function buildSopWorkflowGraph(steps: readonly StoredSopStep[]): SopWorkf
     if (!raw) return;
 
     const firstWord = raw.split(/\s+/, 1)[0]?.toUpperCase() ?? "";
-    if (!WRITE_METHODS.has(firstWord)) return; // GET, or anything unrecognized — left manual.
+
+    // GET (#1939) — its own materialization path: the query string routinely
+    // contains a bare space (`eq 'IMAP4'`), so unlike a write step everything
+    // after "GET " is taken whole as the path rather than run through
+    // parseGraphEndpointShape (see that function's doc comment). No body to
+    // parse — a GET step never has one.
+    if (firstWord === "GET") {
+      const path = raw.slice(firstWord.length).trim();
+      if (!path) return; // "GET" with nothing after it — left manual.
+
+      const stepNumber = step.stepNumber ?? stepIndex + 1;
+      const nodeId = sopStepNodeId(stepNumber);
+      const endpoint = toInterpTemplate(path);
+      const label = (step.title ?? "").trim() || `Step ${stepNumber}`;
+
+      for (const name of extractPlaceholders(path)) {
+        if (!seenVars.has(name)) {
+          seenVars.add(name);
+          requiredVariables.push(name);
+        }
+      }
+
+      nodes.push({
+        id: nodeId,
+        type: "graph_read_operation",
+        position: nextPos(),
+        data: {
+          nodeType: "graph_read_operation",
+          label,
+          endpoint,
+          customerId: "{{customerId}}",
+        },
+      });
+      link(nodeId);
+      // graph_read_operation routes outgoing edges via switchChosenHandle —
+      // same "success" sourceHandle contract as graph_write_operation, above.
+      prev = { id: nodeId, sourceHandle: "success" };
+
+      materialized.push({ nodeId, stepIndex, stepNumber, label, kind: "read" });
+      return;
+    }
+
+    if (!WRITE_METHODS.has(firstWord)) return; // anything else unrecognized — left manual.
 
     const shape = parseGraphEndpointShape(raw);
     if (!shape) return;
@@ -254,7 +315,7 @@ export function buildSopWorkflowGraph(steps: readonly StoredSopStep[]): SopWorkf
     // (same contract execute_baseline_template's chain follows).
     prev = { id: nodeId, sourceHandle: "success" };
 
-    materialized.push({ nodeId, stepIndex, stepNumber, label });
+    materialized.push({ nodeId, stepIndex, stepNumber, label, kind: "write" });
   });
 
   nodes.push({ id: "end", type: "end", position: nextPos(), data: { nodeType: "end", label: "SOP Run Complete" } });

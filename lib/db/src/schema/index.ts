@@ -2982,7 +2982,7 @@ export interface WfNode {
     | "engagebay_get_contact" | "engagebay_get_contact_by_email"
     | "engagebay_search_contacts" | "engagebay_list_tags"
     // MSP Baseline Actions
-    | "graph_write_operation" | "execute_baseline_template" | "execute_monitor_check"
+    | "graph_write_operation" | "graph_read_operation" | "execute_baseline_template" | "execute_monitor_check"
     // Remediation Tracker — on-demand pointed verification (#1540)
     | "remediation_pointed_verify"
     // Utilities

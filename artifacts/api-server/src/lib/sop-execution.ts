@@ -13,15 +13,15 @@
  * explicit that this must never become a second execution path.
  *
  * ── What this does NOT do ────────────────────────────────────────────────────
- * A hybrid SOP mixes automated (write-verb `graphEndpoint`) steps with manual
- * ones. This module only fires the automated prefix through the Workflow
- * Engine; the pre-existing `PATCH /api/msp/sop-runs/:runId` remains how an
- * operator closes out the manual steps by hand — unchanged, already real, not
- * touched here. A run whose automated steps all complete but which still has
- * unclosed manual steps settles to `Blocked` (see `settleSopRuns`) rather than
- * `Completed` — "waiting on something rather than executing" is exactly what
- * that status already means on the read side (`portal-sops.ts`'s
- * `queueStateFor`/`runStateLabel`).
+ * A hybrid SOP mixes automated (write- or read-verb `graphEndpoint`, #1939)
+ * steps with manual ones. This module only fires the automated prefix through
+ * the Workflow Engine; the pre-existing `PATCH /api/msp/sop-runs/:runId`
+ * remains how an operator closes out the manual steps by hand — unchanged,
+ * already real, not touched here. A run whose automated steps all complete but
+ * which still has unclosed manual steps settles to `Blocked` (see
+ * `settleSopRuns`) rather than `Completed` — "waiting on something rather than
+ * executing" is exactly what that status already means on the read side
+ * (`portal-sops.ts`'s `queueStateFor`/`runStateLabel`).
  *
  * ── Policy enactment (#1548) ──────────────────────────────────────────────────
  * "Policy is enacted by an SOP; the engine does not execute." A caller may pass
@@ -205,9 +205,14 @@ export async function runSopForCustomer(opts: {
   if (materialized.length === 0) {
     throw new SopExecutionError(
       "sop_not_runnable",
-      `SOP '${sopId}' has no automatable step (a step whose graphEndpoint is a POST/PATCH/PUT/DELETE) — nothing for the platform to execute`,
+      `SOP '${sopId}' has no automatable step (a step whose graphEndpoint is a POST/PATCH/PUT/DELETE/GET) — nothing for the platform to execute`,
     );
   }
+  // #1939 — a read (`graph_read_operation`) is not a tenant write, so a run
+  // whose materialized steps are ENTIRELY reads needs neither the #1497 CR
+  // gate nor the testbed-only fallback below — both exist to authorize a
+  // write. `hasWrites` gates the whole Authorization block on that.
+  const hasWrites = materialized.some((m) => m.kind === "write");
 
   const [customer] = await db
     .select({
@@ -250,8 +255,14 @@ export async function runSopForCustomer(opts: {
   }
 
   // ── Authorization — fail-closed, same posture as runConfigPackForCustomer ──
+  // Skipped entirely when hasWrites is false (#1939): nothing in this run
+  // touches the tenant, so there is nothing for the CR gate to authorize.
   let claimedChangeRequestId: number | null = null;
-  if (opts.changeRequestAuthorization) {
+  if (!hasWrites) {
+    // fall through with claimedChangeRequestId left null — same as the
+    // testbed-with-no-explicit-CR case below, which the rest of this
+    // function already handles.
+  } else if (opts.changeRequestAuthorization) {
     const claim = await claimChangeRequestForWrite({
       changeRequestId: opts.changeRequestAuthorization.changeRequestId,
       mspId,

@@ -97,9 +97,9 @@ describe("buildSopWorkflowGraph", () => {
     const { graph, materialized, requiredVariables } = buildSopWorkflowGraph(steps);
 
     expect(materialized).toEqual([
-      { nodeId: sopStepNodeId(1), stepIndex: 0, stepNumber: 1, label: "Revoke all sign-in sessions" },
-      { nodeId: sopStepNodeId(2), stepIndex: 1, stepNumber: 2, label: "Disable the account" },
-      { nodeId: sopStepNodeId(3), stepIndex: 2, stepNumber: 3, label: "Remove assigned licences" },
+      { nodeId: sopStepNodeId(1), stepIndex: 0, stepNumber: 1, label: "Revoke all sign-in sessions", kind: "write" },
+      { nodeId: sopStepNodeId(2), stepIndex: 1, stepNumber: 2, label: "Disable the account", kind: "write" },
+      { nodeId: sopStepNodeId(3), stepIndex: 2, stepNumber: 3, label: "Remove assigned licences", kind: "write" },
     ]);
     expect(requiredVariables).toEqual(["id"]);
 
@@ -124,13 +124,36 @@ describe("buildSopWorkflowGraph", () => {
     for (const e of stepEdges) expect(e.sourceHandle).toBe("success");
   });
 
-  it("leaves GET steps unmaterialized", () => {
+  it("materializes a GET step as a graph_read_operation node (#1939)", () => {
     const steps: StoredSopStep[] = [
       step({ stepNumber: 1, graphEndpoint: "GET /v1.0/auditLogs/signIns?$filter=clientAppUsed eq 'IMAP4'" }),
       step({ stepNumber: 2, graphEndpoint: "POST /v1.0/identity/conditionalAccess/policies" }),
     ];
+    const { materialized, graph } = buildSopWorkflowGraph(steps);
+    expect(materialized).toEqual([
+      { nodeId: sopStepNodeId(1), stepIndex: 0, stepNumber: 1, label: "Step 1", kind: "read" },
+      { nodeId: sopStepNodeId(2), stepIndex: 1, stepNumber: 2, label: "Step 2", kind: "write" },
+    ]);
+
+    const readNode = graph.nodes.find((n) => n.id === sopStepNodeId(1));
+    expect(readNode?.type).toBe("graph_read_operation");
+    expect(readNode?.data).toMatchObject({
+      endpoint: "/v1.0/auditLogs/signIns?$filter=clientAppUsed eq 'IMAP4'",
+      customerId: "{{customerId}}",
+    });
+    // No trailing {body} field on a read node — a GET never has one.
+    expect(readNode?.data).not.toHaveProperty("body");
+    expect(readNode?.data).not.toHaveProperty("method");
+
+    // Both step nodes' outgoing edges carry the "success" handle.
+    const stepEdges = graph.edges.filter((e) => e.source.startsWith("sop-step-"));
+    for (const e of stepEdges) expect(e.sourceHandle).toBe("success");
+  });
+
+  it("leaves a bare 'GET' with nothing after it unmaterialized", () => {
+    const steps: StoredSopStep[] = [step({ stepNumber: 1, graphEndpoint: "GET" })];
     const { materialized } = buildSopWorkflowGraph(steps);
-    expect(materialized).toEqual([{ nodeId: sopStepNodeId(2), stepIndex: 1, stepNumber: 2, label: "Step 2" }]);
+    expect(materialized).toEqual([]);
   });
 
   it("leaves a step with no graphEndpoint unmaterialized", () => {

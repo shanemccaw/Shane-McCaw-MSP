@@ -2017,6 +2017,16 @@ function makeDryRunOutput(node: WfNode, payload: Record<string, unknown>): Recor
         reason: "graph_write_operation does not support dry-run execution",
       };
 
+    // ── Graph Read Operation (dry-run: explicitly blocked) ──────────────────
+    case "graph_read_operation":
+      // Same posture as graph_write_operation — no Graph call, mocked or real,
+      // fires during a dry-run preview.
+      return {
+        dryRun: true,
+        skipped: true,
+        reason: "graph_read_operation does not support dry-run execution",
+      };
+
     // ── Execute Baseline Template (dry-run: explicitly blocked) ─────────────
     case "execute_baseline_template":
       return {
@@ -9332,6 +9342,88 @@ Generate a landing page as JSON — output ONLY valid JSON, no prose, no markdow
         break;
       }
 
+      // ── Graph Read Operation (#1939) ────────────────────────────────────────
+      // The read counterpart to graph_write_operation, above — a GET step never
+      // needs the CR gate (#1497) or the write-back/write-consent gates: it is
+      // not a tenant write. Uses graphFetchForTenant (the read app's own
+      // credentials) rather than graphWriteForTenant. See sop-workflow-graph.ts's
+      // header for why this exists: an SOP's `automated`-typed GET step
+      // previously had no execution path at all and silently never ran.
+      case "graph_read_operation": {
+        if (dryRun) {
+          output = { dryRun: true, skipped: true, reason: "graph_read_operation does not support dry-run execution" };
+          break;
+        }
+
+        const groEndpointRaw = interp(node.data.endpoint as string | undefined, payload);
+        if (!groEndpointRaw) {
+          nodeError = true;
+          output = { error: "graph_read_operation requires an endpoint" };
+          break;
+        }
+
+        const groCustomerIdRaw = interp(node.data.customerId as string | undefined, payload);
+        const groCustomerId = groCustomerIdRaw ? parseInt(groCustomerIdRaw, 10) : NaN;
+        if (isNaN(groCustomerId)) {
+          nodeError = true;
+          output = { error: "graph_read_operation requires a valid customerId to resolve the Graph tenant" };
+          break;
+        }
+
+        const [groCustomerRow] = await db
+          .select({ tenantId: tenantsTable.tenantId })
+          .from(tenantsTable)
+          .where(eq(tenantsTable.id, groCustomerId))
+          .limit(1);
+
+        if (!groCustomerRow?.tenantId) {
+          nodeError = true;
+          output = { error: `graph_read_operation: no tenant found for customerId ${groCustomerId}` };
+          break;
+        }
+
+        try {
+          const { graphFetchForTenant } = await import("./graph");
+          const groRes = await graphFetchForTenant(groCustomerRow.tenantId, groEndpointRaw);
+          const groText = await groRes.text();
+          let groData: unknown = null;
+          if (groText) {
+            try { groData = JSON.parse(groText); } catch { groData = groText; }
+          }
+
+          if (groRes.ok) {
+            switchChosenHandle = "success";
+            output = { success: true, status: groRes.status, data: groData };
+          } else {
+            const groErrorType =
+              groRes.status === 401 || groRes.status === 403 ? "insufficient_privilege"
+              : groRes.status === 400 ? "bad_request"
+              : "unexpected";
+            switchChosenHandle = groErrorType;
+            output = { success: false, status: groRes.status, errorType: groErrorType, data: groData };
+            nodeError = true;
+          }
+          log.info({ runId, customerId: groCustomerId, tenantId: groCustomerRow.tenantId, endpoint: groEndpointRaw, status: groRes.status, success: groRes.ok }, "wf-executor: graph_read_operation completed");
+        } catch (groErr) {
+          nodeError = true;
+          const { ConsentRevokedError: GroConsentRevoked, LicenseGapError: GroLicenseGap } = await import("./graph");
+          if (groErr instanceof GroConsentRevoked) {
+            switchChosenHandle = "unexpected";
+            output = { success: false, blockedBy: "consent_revoked", error: groErr.message };
+            log.warn({ runId, customerId: groCustomerId }, "wf-executor: graph_read_operation blocked — consent revoked");
+          } else if (groErr instanceof GroLicenseGap) {
+            switchChosenHandle = "unexpected";
+            output = { success: false, blockedBy: "license_gap", error: groErr.message };
+            log.warn({ runId, customerId: groCustomerId }, "wf-executor: graph_read_operation blocked — license gap");
+          } else {
+            const errMsg = groErr instanceof Error ? groErr.message : String(groErr);
+            output = { error: errMsg, success: false };
+            log.error({ runId, groErr }, "wf-executor: graph_read_operation failed");
+          }
+        }
+        break;
+      }
+
       // ── Execute Monitor Check ───────────────────────────────────────────
       case "execute_monitor_check": {
         if (dryRun) {
@@ -9812,7 +9904,7 @@ async function executeItemSubgraph(
       continue;
     }
 
-    if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
+    if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "graph_read_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
       for (const e of subEdges.filter(e => e.source === nodeId)) {
         subResolveEdge(e.target, e.sourceHandle === switchChosenHandle);
       }
@@ -10131,7 +10223,7 @@ async function executeWorkflowRunInner(
       }
 
       // Switch/Case and named-handle write nodes: route only the matching handle
-      if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
+      if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "graph_read_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
         const outEdges = graph.edges.filter(e => e.source === nodeId);
         for (const e of outEdges) {
           resolveEdge(e.target, e.sourceHandle === switchChosenHandle);
@@ -10974,7 +11066,7 @@ export async function resumeWorkflowRun(
         continue;
       }
 
-      if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
+      if ((node.type === "switch_case" || node.type === "graph_write_operation" || node.type === "graph_read_operation" || node.type === "execute_baseline_template") && switchChosenHandle !== undefined) {
         const outEdgesNode = graph.edges.filter(e => e.source === nodeId);
         for (const e of outEdgesNode) {
           resolveEdge(e.target, e.sourceHandle === switchChosenHandle);
