@@ -215,6 +215,16 @@ export const tenantsTable = pgTable("tenants", {
   // orchestrator — per-tenant, deliberately independent of mspsTable.isTestbed.
   domain: text("domain"),
   industry: text("industry"),
+  /**
+   * Freeform business-unit label for this tenant (#2085). Nullable — nothing backfills
+   * it. Set by MSP/platform staff on the AdminV2 Customer canvas
+   * (`PATCH /admin/active-directory/customer/:id`), and read by the Security Plan
+   * assembly's `businessUnit` scope dimension the same way `pillar`/`framework` are
+   * read. No enum: #2085 was filed specifically because #1563's `business_unit`
+   * dimension had no real backing column, and inventing a vocabulary of business units
+   * would be the same fabrication the issue was written to avoid.
+   */
+  businessUnit: text("business_unit"),
   status: text("status", { enum: ["active", "inactive", "onboarding", "archived"] }).notNull().default("onboarding"),
   isTestbed: boolean("is_testbed").notNull().default(false),
   // The tenant's Stripe Customer (`cus_…`), created once and reused for every
@@ -6315,10 +6325,14 @@ export type InsertMspRbdNarrativeAudit = typeof mspRbdNarrativeAuditTable.$infer
 
 /** A legitimate scope dimension (#1563). SCOPE narrows which parts of the estate a
  * plan covers; it operates ONLY on these dimensions, never on an OUTCOME (severity,
- * accepted/open, pass/fail). `business_unit` from #1563's examples is intentionally
- * absent: no source table carries a business-unit column, and inventing one to filter
- * on would be fabricated data. Extend this union only when a real backing column exists. */
-export const SECURITY_PLAN_SCOPE_DIMENSIONS = ["pillar", "framework"] as const;
+ * accepted/open, pass/fail). `businessUnit` (#2085) is backed by the real, nullable
+ * `tenants.business_unit` column — unlike `pillar`/`framework`, which vary per row
+ * across the eight source modules, business unit is a single value on the tenant
+ * itself, so every item in one assembled plan carries the same value (the plan is
+ * always for one tenant). That makes it an all-or-nothing scope within a single plan,
+ * which is still a real, non-fabricated dimension — not a per-row classification.
+ * Extend this union only when a real backing column exists. */
+export const SECURITY_PLAN_SCOPE_DIMENSIONS = ["pillar", "framework", "businessUnit"] as const;
 export type SecurityPlanScopeDimension = (typeof SECURITY_PLAN_SCOPE_DIMENSIONS)[number];
 
 /** The scope selection applied to an assembled/sealed plan (#1563). A dimension maps
@@ -6373,8 +6387,9 @@ export interface SecurityPlanAssembledModule {
   readonly items: readonly SecurityPlanAssembledItem[];
 }
 
-/** A single assembled row in a uniform, honest shape. `pillar`/`framework` carry the
- * dimension values used for scope classification (null when the source row has none). */
+/** A single assembled row in a uniform, honest shape. `pillar`/`framework`/
+ * `businessUnit` carry the dimension values used for scope classification (null when
+ * the source row/tenant has none). */
 export interface SecurityPlanAssembledItem {
   readonly id: string;
   readonly title: string;
@@ -6382,6 +6397,7 @@ export interface SecurityPlanAssembledItem {
   readonly detail: string | null;
   readonly pillar: string | null;
   readonly framework: string | null;
+  readonly businessUnit: string | null;
 }
 
 // ── Authored prose (#1566, formalizing the #1561 stub) ──────────────────────────────

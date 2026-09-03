@@ -23,7 +23,7 @@ import {
 import type { SecurityPlanAssembledItem, SecurityPlanScope } from "@workspace/db";
 
 function item(id: string, over: Partial<SecurityPlanAssembledItem> = {}): SecurityPlanAssembledItem {
-  return { id, title: id, state: null, detail: null, pillar: null, framework: null, ...over };
+  return { id, title: id, state: null, detail: null, pillar: null, framework: null, businessUnit: null, ...over };
 }
 
 const modules: RawSecurityPlanModule[] = [
@@ -67,6 +67,13 @@ describe("Security Plan scope filtering (#1563)", () => {
     expect(isExcludedByScope(item("x"), scope)).toBe(false); // null pillar → retained
     expect(isExcludedByScope(item("x", { pillar: "data" }), scope)).toBe(true);
     expect(isExcludedByScope(item("x", { pillar: "identity" }), scope)).toBe(false);
+  });
+
+  it("businessUnit (#2085) excludes/retains exactly like pillar/framework", () => {
+    const scope: SecurityPlanScope = { dimensions: { businessUnit: ["Finance"] } };
+    expect(isExcludedByScope(item("x"), scope)).toBe(false); // null businessUnit → retained
+    expect(isExcludedByScope(item("x", { businessUnit: "Sales" }), scope)).toBe(true);
+    expect(isExcludedByScope(item("x", { businessUnit: "Finance" }), scope)).toBe(false);
   });
 
   it("intersects multiple dimensions (both must pass) but still retains on absence", () => {

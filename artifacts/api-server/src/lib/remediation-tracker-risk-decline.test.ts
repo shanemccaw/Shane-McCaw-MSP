@@ -67,7 +67,7 @@ vi.mock("./logger", () => {
 import { declineRemediationStepToRisk } from "./remediation-tracker-risk-decline";
 import type { TenantScope } from "./portal-customer-scope";
 
-const scope: TenantScope = { customerId: 42, mspId: 9, tenantId: "contoso.onmicrosoft.com", tenantName: "Contoso", primaryDomain: "contoso.com" };
+const scope: TenantScope = { customerId: 42, mspId: 9, tenantId: "contoso.onmicrosoft.com", tenantName: "Contoso", primaryDomain: "contoso.com", businessUnit: null };
 
 const baseInput = {
   stepId: "s10", // -> catalogue title "Disable legacy authentication", pillar "security", mapped check "identity:legacy-auth-usage"

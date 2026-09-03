@@ -544,6 +544,7 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
         name: tenantsTable.customerName,
         domain: tenantsTable.domain,
         industry: tenantsTable.industry,
+        businessUnit: tenantsTable.businessUnit,
         tenantId: tenantsTable.tenantId,
         tenantUrl: tenantsTable.tenantUrl,
         status: tenantsTable.status,
@@ -629,6 +630,46 @@ router.get("/admin/active-directory/customer/:id", requireAdmin, async (req: Req
   } catch (err) {
     log.error({ err, customerId }, "Failed to build Customer Object detail pane");
     res.status(500).json({ error: "Failed to load Customer detail" });
+  }
+});
+
+// ─── PATCH /admin/active-directory/customer/:id ───────────────────────────────
+// #2085 — the ONE editable field this pane offers today: `tenants.business_unit`,
+// the real backing column for the Security Plan assembly's `businessUnit` scope
+// dimension. Freeform text, nullable, no enum (see the migration/schema comments for
+// why). Trims to null on blank input rather than persisting an empty string.
+router.patch("/admin/active-directory/customer/:id", requireAdmin, async (req: Request, res: Response) => {
+  const customerId = Number(req.params.id);
+  if (!Number.isInteger(customerId)) {
+    res.status(400).json({ error: "Invalid customer id" });
+    return;
+  }
+  const { businessUnit } = req.body as { businessUnit?: string | null };
+  if (businessUnit !== undefined && businessUnit !== null && typeof businessUnit !== "string") {
+    res.status(400).json({ error: "businessUnit must be a string or null" });
+    return;
+  }
+
+  try {
+    const actor = req.user!;
+    const normalized = typeof businessUnit === "string" ? (businessUnit.trim() || null) : null;
+
+    const [updated] = await db
+      .update(tenantsTable)
+      .set({ businessUnit: normalized, updatedAt: new Date() })
+      .where(eq(tenantsTable.id, customerId))
+      .returning({ id: tenantsTable.id, businessUnit: tenantsTable.businessUnit });
+
+    if (!updated) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+
+    log.info({ actorUserId: actor.id, customerId, businessUnit: normalized }, "admin.active-directory: tenant business_unit updated");
+    res.json({ id: updated.id, businessUnit: updated.businessUnit });
+  } catch (err) {
+    log.error({ err, customerId }, "Failed to update tenant business unit");
+    res.status(500).json({ error: "Failed to update business unit" });
   }
 });
 

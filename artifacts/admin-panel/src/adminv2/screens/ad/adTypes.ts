@@ -193,6 +193,8 @@ export interface AdCustomerProfile {
   name: string;
   domain: string | null;
   industry: string | null;
+  /** `tenants.business_unit` (#2085), nullable freeform text. */
+  businessUnit: string | null;
   tenantId: string | null;
   tenantUrl: string | null;
   status: string;

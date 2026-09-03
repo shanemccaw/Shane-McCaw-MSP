@@ -80,6 +80,15 @@ export async function fetchAdCustomer(adminFetch: AdminFetch, id: number): Promi
   return json<AdCustomerDetail>(res);
 }
 
+export async function updateAdCustomerBusinessUnit(
+  adminFetch: AdminFetch,
+  id: number,
+  businessUnit: string | null,
+): Promise<{ id: number; businessUnit: string | null }> {
+  const res = await patchJson(adminFetch, `/api/admin/active-directory/customer/${id}`, { businessUnit });
+  return json(res);
+}
+
 export async function fetchAdCustomerDiagnosticRuns(
   adminFetch: AdminFetch,
   id: number,
