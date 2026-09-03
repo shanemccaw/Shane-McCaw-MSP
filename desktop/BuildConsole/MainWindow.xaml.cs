@@ -172,8 +172,9 @@ namespace BuildConsole
         // ── Git #980: floaty 8-slot Build Watch window ──────────────────────────
         private BuildWatchWindow? _buildWatch;
 
-        // ── Git #2110: floaty live Build Queue Map window ───────────────────────
-        private BuildQueueMapWindow? _buildQueueMap;
+        // ── Git #2483: maximized Build Chain Map window (replaces the old #2110
+        //    floaty Build Queue Map in the left-toolbar slot) ─────────────────────
+        private BuildChainMapWindow? _buildChainMap;
 
 
         // ── Git #1472: floaty Visual Test Tracker window (separate from Sticky Notes) ──
@@ -1033,7 +1034,7 @@ namespace BuildConsole
             // Git #1472 — floaty Visual Test Tracker window toggle.
             ActivityBar.VisualTestTrackerToggleRequested += (s, e) => ToggleVisualTestTracker();
             // Git #2110 — floaty live Build Queue Map window toggle.
-            ActivityBar.BuildQueueMapToggleRequested += (s, e) => ToggleBuildQueueMap();
+            ActivityBar.BuildChainMapRequested += (s, e) => OpenBuildChainMap();
             _activeEditorPane = EditorTabs;
             // Clicking into any pane's WebView2 to type moves WPF keyboard focus
             // there without changing tab selection — walk up from the newly
@@ -1608,28 +1609,78 @@ namespace BuildConsole
         }
 
         /// <summary>
-        /// Git #2110 — toggles the floaty live Build Queue Map window (Phase 2 of the
-        /// Dynamic Build Queue Map). Same open-or-close-on-toggle + Owner=this lifecycle
-        /// as Build Watch (#980) above, so it closes cleanly with the app and never
-        /// orphans. Passes the shared queue Postgres client so the map reads the exact
-        /// same live queue (via GetQueueMapAsync) every other panel reads.
+        /// Git #2483 — opens the maximized Build Chain Map window (replaces the old #2110
+        /// "Build Queue Map" toggle in this toolbar slot — that window/handler audited and
+        /// confirmed genuinely functional, but Shane's call in #2473/#2483 is to retire it
+        /// in favor of this richer Epic → Feature → Issue → blocked_by editor). Unlike the
+        /// old floaty, this is a single maximized top-level window scoped to one Epic — if
+        /// one is already open it's brought to front rather than opening a second, and if
+        /// none is open we default to whatever Epic Git Board currently has marked
+        /// "WORKING", falling back to a quick prompt when nothing is active.
         /// </summary>
-        private void ToggleBuildQueueMap()
+        private void OpenBuildChainMap()
         {
-            if (_buildQueueMap != null)
+            if (_buildChainMap != null)
             {
-                _buildQueueMap.Close(); // Closed handler nulls the ref and logs "close"
+                if (_buildChainMap.WindowState == WindowState.Minimized) _buildChainMap.WindowState = WindowState.Maximized;
+                _buildChainMap.Activate();
                 return;
             }
 
-            _buildQueueMap = new BuildQueueMapWindow(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb) { Owner = this };
-            _buildQueueMap.Closed += (s, e) =>
+            int? epicNumber = LeftSidebar.ActiveEpicGithubNumber ?? PromptForEpicNumber();
+            if (epicNumber == null) return; // Shane cancelled the prompt
+
+            _buildChainMap = new BuildChainMapWindow(epicNumber.Value) { Owner = this, WindowState = WindowState.Maximized };
+            _buildChainMap.Closed += (s, e) =>
             {
-                _buildQueueMap = null;
-                BuildConsole.Services.ActivityLog.Log("build-queue-map", "close");
+                _buildChainMap = null;
+                BuildConsole.Services.ActivityLog.Log("build-chain-map", "close");
             };
-            _buildQueueMap.Show();
-            BuildConsole.Services.ActivityLog.Log("build-queue-map", "open");
+            _buildChainMap.Show();
+            BuildConsole.Services.ActivityLog.Log("build-chain-map", $"open epic=#{epicNumber.Value}");
+        }
+
+        /// <summary>Git #2483 — minimal inline prompt for the Epic number when Build Chain Map
+        /// is opened with no "WORKING" Epic active in Git Board. No dedicated XAML file — just
+        /// a label, a numeric TextBox, and OK/Cancel, matching this app's other small ad-hoc dialogs.</summary>
+        private int? PromptForEpicNumber()
+        {
+            var dlg = new Window
+            {
+                Title = "Build Chain Map — which Epic?",
+                Width = 360,
+                Height = 150,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize,
+                Background = System.Windows.Media.Brushes.White
+            };
+
+            var stack = new StackPanel { Margin = new Thickness(16) };
+            stack.Children.Add(new TextBlock { Text = "GitHub Epic issue number:", Margin = new Thickness(0, 0, 0, 8) });
+            var input = new TextBox { Text = "", FontSize = 14 };
+            stack.Children.Add(input);
+
+            var buttonRow = new StackPanel { Orientation = System.Windows.Controls.Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
+            var ok = new Button { Content = "Open", Width = 80, Margin = new Thickness(0, 0, 8, 0), IsDefault = true };
+            var cancel = new Button { Content = "Cancel", Width = 80, IsCancel = true };
+            buttonRow.Children.Add(ok);
+            buttonRow.Children.Add(cancel);
+            stack.Children.Add(buttonRow);
+            dlg.Content = stack;
+
+            int? result = null;
+            ok.Click += (s, e) =>
+            {
+                if (int.TryParse(input.Text.Trim().TrimStart('#'), out var n) && n > 0)
+                {
+                    result = n;
+                    dlg.DialogResult = true;
+                }
+            };
+            input.Focus();
+            dlg.ShowDialog();
+            return result;
         }
 
         /// <summary>
