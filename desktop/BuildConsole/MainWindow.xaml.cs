@@ -633,7 +633,20 @@ namespace BuildConsole
 
                 // Git #2058 — alongside the existing best-effort refresh, warn if the item just
                 // dispatched may be hidden by an active Build Set filter on the queue panel below.
-                DispatchPanel.Dispatched += (_, _) => { try { _ = BuildQueuePanel.RefreshAsync(); BuildQueuePanel.NotifyBuildDispatched(); } catch { } };
+                // Git #2680 — also auto-search the Queue panel down to the just-dispatched issue
+                // number, so Shane doesn't have to retype it below to find the row and Run Now it.
+                // Awaits the refresh first so SearchAndFocus filters against the row that was just
+                // queued, not against whatever _lastItems held before the dispatch.
+                DispatchPanel.Dispatched += async issueNumber =>
+                {
+                    try
+                    {
+                        await BuildQueuePanel.RefreshAsync();
+                        BuildQueuePanel.NotifyBuildDispatched();
+                        BuildQueuePanel.SearchAndFocus(issueNumber);
+                    }
+                    catch { }
+                };
                 DispatchPanel.Initialize(BuildConsole.Services.AppMode.IsAgent ? null : _queueDb, _sessionLimitAutoRestart, _queueWatcher);
 
                 _aiBatterUpPanel.Initialize();

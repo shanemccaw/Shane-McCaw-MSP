@@ -1409,21 +1409,55 @@ namespace BuildConsole.Controls
         // "1234" does nothing until Enter is pressed, then it searches exactly once.
         // TextChanged only tracks the raw text (for the placeholder DataTrigger binding);
         // it never itself triggers ApplyFilter/RenderQueue.
+        // Git #2680 — the ✕ clear button (Behaviors/SearchTextBoxBehavior.cs) just calls
+        // TextBox.Clear(), which raises this handler like any other edit. Every other
+        // SearchTextBox site re-filters live on TextChanged, so the shared clear button
+        // "just works" there — but QueueSearchBox is deliberately Enter-only (#2028), and
+        // without this special case the ✕ (and a manual select-all-delete) left the last
+        // Enter-applied filter stuck on screen with an empty box. Only the transition TO
+        // empty re-runs the filter immediately; any non-empty text still waits for Enter,
+        // preserving #2028's real requirement untouched.
         private void QueueSearchBox_TextChanged(object sender, TextChangedEventArgs e)
         {
+            var wasEmpty = string.IsNullOrEmpty(_queueSearch);
             _queueSearch = QueueSearchBox.Text ?? "";
+            if (!wasEmpty && _queueSearch.Length == 0)
+                RunQueueSearch(showFilterWarning: false);
         }
 
         private void QueueSearchBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key != Key.Enter) return;
+            RunQueueSearch(showFilterWarning: true);
+            e.Handled = true;
+        }
+
+        /// <summary>Git #2680 — the one real "apply the queue search" path, shared by the
+        /// Enter key (KeyDown above), the ✕/select-all-delete empty transition (TextChanged
+        /// above), and a programmatic search from Dispatch (<see cref="SearchAndFocus"/>).</summary>
+        private void RunQueueSearch(bool showFilterWarning)
+        {
             if (QueueGraphContainer == null || _filter == "Tests") return;
             RenderQueue(ApplyFilter(_lastItems));
-            // Git #2058 — a search performed while a Build Set filter is active can come back
-            // empty (or short) not because no match exists, but because the real match is
-            // filtered out of view — same root cause as the dispatch trigger below.
-            ShowBuildSetFilterWarning("Search");
-            e.Handled = true;
+            if (showFilterWarning)
+                // Git #2058 — a search performed while a Build Set filter is active can come
+                // back empty (or short) not because no match exists, but because the real
+                // match is filtered out of view — same root cause as the dispatch trigger below.
+                ShowBuildSetFilterWarning("Search");
+        }
+
+        /// <summary>Git #2680 — called from MainWindow's DispatchPanel.Dispatched handler right
+        /// alongside the existing RefreshAsync()/NotifyBuildDispatched() calls, so a manual
+        /// Dispatch immediately filters the Queue down to the just-dispatched issue and brings
+        /// its row into view — no retyping the number Shane just typed above. This is a
+        /// programmatic trigger, not user typing, so running the search immediately (rather than
+        /// waiting for Enter) does not violate #2028's Enter-only intent for typed input.</summary>
+        public void SearchAndFocus(int issueNumber)
+        {
+            var text = issueNumber.ToString();
+            QueueSearchBox.Text = text;
+            _queueSearch = text;
+            RunQueueSearch(showFilterWarning: true);
         }
 
         private DispatcherTimer? _buildSetFilterWarningTimer;
