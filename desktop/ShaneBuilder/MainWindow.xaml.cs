@@ -663,18 +663,21 @@ public partial class MainWindow : Window
         BtnBatterUpSendToTab.Visibility = source == "BatterUp" ? Visibility.Visible : Visibility.Collapsed;
         if (source != "BatterUp" && _batterUpExpanded)
             SetBatterUpExpanded(false); // leaving the panel always returns the rail to its normal width
+        ShotVaultPanelBody.Visibility = source == "ShotVault" ? Visibility.Visible : Visibility.Collapsed;
         if (source == "Git")
             _ = EnsureGitPanelLoadedAsync(); // Git #2290 — first open fires the real GitHub reads
         if (source == "BatterUp")
             _ = EnsureBatterUpPanelLoadedAsync(); // Git #2356 — first open fires the real lane-count read
+        if (source == "ShotVault")
+            EnsureShotVaultPanelLoaded(); // Git #2372 — first open reads the real shots folder
         if (source == "Chat")
             RenderChatsPanel(); // Git #2325 — real rows + context badges + archive, not a placeholder
 
-        // Build Console / Build Watch / UI Testing / Shot Vault share one
-        // placeholder body — none of them have a real design or data source
-        // yet, so this is an honest "not built" state, not invented content
-        // per panel. Batter Up moved to its own real panel above (#2356).
-        bool notBuilt = source is "BuildConsole" or "BuildWatch" or "UiTesting" or "ShotVault";
+        // Build Console / Build Watch / UI Testing share one placeholder body — none of them
+        // have a real design or data source yet, so this is an honest "not built" state, not
+        // invented content per panel. Batter Up (#2356) and Shot Vault (#2372) moved to their
+        // own real panels above.
+        bool notBuilt = source is "BuildConsole" or "BuildWatch" or "UiTesting";
         NotBuiltPanelBody.Visibility = notBuilt ? Visibility.Visible : Visibility.Collapsed;
         if (notBuilt)
             NotBuiltPanelBody.Text = $"{RailPanelLabels[source]} isn't built yet — no design or data source wired up here.";
