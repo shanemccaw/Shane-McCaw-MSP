@@ -5,6 +5,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Shapes;
+using BuildConsole.Services;
 using BuildConsole.Services.BuildMap;
 
 namespace BuildConsole
@@ -23,12 +24,16 @@ namespace BuildConsole
     /// is fixture data; every number/edge/status comes from the real <see cref="ChainDoc"/>/
     /// <see cref="ChainDerived"/> #2475/#2476 already produce from GitHub.
     ///
-    /// Board status / sentinel / manual-gate / reorder / add-remove-blocker mutations are real,
-    /// in-memory writes to the same <see cref="ChainDoc"/> the canvas renders — the same
-    /// "in-memory only, real write is #2481" precedent the top bar's own Re-wire §5.2 button
-    /// already established (#2482), ported 1:1 from the reference's own <c>setStatus</c>/
-    /// <c>makeSentinel</c>/<c>toggleGate</c>/<c>moveFeature</c>/<c>removeEdges</c>/<c>clickIssue</c>
-    /// (link mode) methods. Real GitHub persistence is #2481's job, not this one's.
+    /// Board status / sentinel / manual-gate / reorder / add-remove-blocker mutations are ported 1:1
+    /// from the reference's own <c>setStatus</c>/<c>makeSentinel</c>/<c>toggleGate</c>/
+    /// <c>moveFeature</c>/<c>removeEdges</c>/<c>clickIssue</c> (link mode) methods, and — as of Git
+    /// #2481 — each one now writes back to GitHub for real: every mutation captures a
+    /// <see cref="ChainSnapshot"/> at entry, runs the in-memory <see cref="ChainDoc"/> edit, then hands
+    /// both snapshots to <see cref="PersistThenConfirm"/> → <see cref="ChainPersistence"/>, which
+    /// diffs and applies the real blocked_by/board writes and re-reads each to audit it. The
+    /// status-strip confirmation shows the real verified result. The one gap left is persisting the
+    /// sub-issue priority ORDER itself (no primitive in the three named write types — the gate edges a
+    /// reorder produces DO persist); see #2481's filed findings.
     /// </summary>
     public partial class BuildChainMapWindow
     {
@@ -148,8 +153,8 @@ namespace BuildConsole
 
             AddSection(InsCard(
                 InsText("Real GitHub data — issue numbers, titles and blocked_by edges are live, not seeded. "
-                    + "Sentinel, gate, board-status and blocked_by edits apply in this window only; real writes back "
-                    + "to GitHub land in #2481. Reset reloads fresh from GitHub.",
+                    + "Sentinel, gate, board-status and blocked_by edits write straight back to GitHub — each is "
+                    + "re-read to confirm it landed. Reset reloads fresh from GitHub.",
                     10.5, InsTextDim),
                 InsCardBg, InsBorder3, dashed: true));
         }
@@ -746,12 +751,99 @@ namespace BuildConsole
             StatusHintText.Foreground = InsTextDim;
         }
 
+        // ── Real GitHub persistence (Git #2481) ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// Git #2481 — the persistence choke point every mutation funnels through. Called on the UI
+        /// thread the instant after a mutation has re-derived + re-rendered: it captures the
+        /// <b>after</b> snapshot synchronously (before the first <c>await</c>, so a later click can't
+        /// race it), then diffs it against the <paramref name="before"/> the caller captured at its
+        /// own entry, applies exactly the real GitHub writes that account for the difference
+        /// (blocked_by edge add/remove + board-column moves), and re-reads each one back to audit it.
+        /// The status-strip confirmation shows the real verified result, not an optimistic claim.
+        /// </summary>
+        private async void PersistThenConfirm(ChainSnapshot before, string confirmText)
+        {
+            var after = _doc != null ? ChainSnapshot.Capture(_doc) : null; // sync, on UI thread
+            if (after == null || _client == null)
+            {
+                ShowConfirmation(confirmText + (_client == null ? "  (not saved — no GitHub client loaded)" : ""));
+                return;
+            }
+
+            ShowConfirmation(confirmText + "  · saving to GitHub…");
+
+            ChainPersistResult result;
+            await _persistLock.WaitAsync();
+            try
+            {
+                result = await ChainPersistence.PersistAndAuditAsync(_client, before, after);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"Epic #{_epicNumber}: persist failed — {ex.Message}");
+                ShowConfirmation(confirmText + $"  · ⚠ save failed: {ex.Message}");
+                return;
+            }
+            finally { _persistLock.Release(); }
+
+            ApplyPersistResult(confirmText, result);
+        }
+
+        /// <summary>The canvas "Add blocker…" link mode resolves inside <c>ChainCanvasControl</c> and
+        /// hands us the exact new <c>(from,to)</c> — persist just that one real edge and audit it,
+        /// no snapshot diff needed.</summary>
+        private async void PersistSingleEdgeAdd(int from, int to)
+        {
+            if (_client == null)
+            {
+                ShowConfirmation($"#{to} is now blocked_by #{from}.  (not saved — no GitHub client loaded)");
+                return;
+            }
+            ShowConfirmation($"#{to} is now blocked_by #{from}.  · saving to GitHub…");
+
+            ChainPersistResult result;
+            await _persistLock.WaitAsync();
+            try
+            {
+                result = await ChainPersistence.PersistSingleEdgeAddAsync(_client, from, to);
+            }
+            catch (Exception ex)
+            {
+                ActivityLog.Log(Channel, $"Epic #{_epicNumber}: persist failed — {ex.Message}");
+                ShowConfirmation($"#{to} is now blocked_by #{from}.  · ⚠ save failed: {ex.Message}");
+                return;
+            }
+            finally { _persistLock.Release(); }
+
+            ApplyPersistResult($"#{to} is now blocked_by #{from}.", result);
+        }
+
+        /// <summary>Folds a real persist+audit result back into the status-strip confirmation and the
+        /// ActivityLog. A no-op diff keeps the plain confirmation (some mutations are visual-only,
+        /// e.g. a reorder whose gate pairs didn't actually change).</summary>
+        private void ApplyPersistResult(string confirmText, ChainPersistResult result)
+        {
+            if (result.NothingToDo)
+            {
+                ShowConfirmation(confirmText);
+                return;
+            }
+
+            ActivityLog.Log(Channel, $"Epic #{_epicNumber}: {confirmText}");
+            foreach (var line in result.LogLines())
+                ActivityLog.Log(Channel, line);
+
+            ShowConfirmation($"{confirmText}  · {result.ShortSummary()}");
+        }
+
         /// <summary>§5.3 manual gate toggle — ported 1:1 from the reference's <c>toggleGate</c>.</summary>
         private void ToggleManualGate(string featureId)
         {
             if (_doc == null) return;
             var feature = ChainRules.FindFeature(_doc, featureId);
             if (feature == null) return;
+            var before = ChainSnapshot.Capture(_doc);
             bool on = !(_doc.Gates.TryGetValue(featureId, out var g) && g);
             _doc.Gates[featureId] = on;
             int moved = 0;
@@ -762,7 +854,7 @@ namespace BuildConsole
             }
             string n = $"{moved} issue{(moved == 1 ? "" : "s")}";
             AfterDocMutation();
-            ShowConfirmation(on
+            PersistThenConfirm(before, on
                 ? $"Manual gate before {feature.Name}: {n} moved to Backlog. The blocked_by edges stay as the technical floor."
                 : $"Gate before {feature.Name} is automatic: {n} moved to Batter Up.");
         }
@@ -783,13 +875,14 @@ namespace BuildConsole
             }
             if (feature.Sentinel == num) return;
 
+            var before = ChainSnapshot.Capture(_doc);
             bool wasIssueSelected = Canvas.SelectedIssueNum != null;
             feature.Sentinel = num;
             ChainRules.RechainFanin(_doc, feature);
             ChainRules.RechainGates(_doc);
             AfterDocMutation();
             if (wasIssueSelected) Canvas.SelectIssue(num, ensureExpanded: true);
-            ShowConfirmation($"#{num} is now the sentinel of {feature.Name}. Fan-in and the downstream gate were re-wired.");
+            PersistThenConfirm(before, $"#{num} is now the sentinel of {feature.Name}. Fan-in and the downstream gate were re-wired.");
         }
 
         /// <summary>Priority reorder — the reference's <c>reorder(from, to)</c> ported verbatim
@@ -808,12 +901,15 @@ namespace BuildConsole
             int fi = _doc.Order.IndexOf(fromId);
             int ti = _doc.Order.IndexOf(toId);
             if (fi < 0 || ti < 0) return;
+            var before = ChainSnapshot.Capture(_doc);
             _doc.Order.RemoveAt(fi);
             _doc.Order.Insert(ti, fromId);
             ChainRules.RechainGates(_doc);
             AfterDocMutation();
             Canvas.SelectFeature(fromId);
-            ShowConfirmation("Priority changed. Cross-feature gates re-wired per §5.2; your added edges were kept.");
+            // The gate blocked_by edges persist; the sub-issue priority ORDER itself has no write
+            // primitive in the three named write types (see #2481 findings) — flagged in the note.
+            PersistThenConfirm(before, "Priority changed. Cross-feature gates re-wired per §5.2 (blocked_by edges persist; the column order itself is local until GitHub sub-issue reordering lands).");
         }
 
         /// <summary>Reorder by one step — README "Inspector ← / →". Ported 1:1 from the reference's
@@ -839,6 +935,7 @@ namespace BuildConsole
             if (issue == null || feature == null) return;
             var was = issue.Status;
             if (was == newStatus) return;
+            var before = ChainSnapshot.Capture(_doc);
             issue.Status = newStatus;
             string note = $"#{num} → {InsStatusLabel(newStatus)}.";
             if ((was == ChainStatus.Ask) != (newStatus == ChainStatus.Ask))
@@ -854,7 +951,7 @@ namespace BuildConsole
                 note += " Sentinel cleared — the next Feature is released.";
             }
             AfterDocMutation();
-            ShowConfirmation(note);
+            PersistThenConfirm(before, note);
         }
 
         /// <summary>Removes real edges from the document — ported 1:1 from the reference's
@@ -864,6 +961,7 @@ namespace BuildConsole
         private void RemoveEdges(IReadOnlyList<ChainEdge> edgesToRemove)
         {
             if (_doc == null || edgesToRemove.Count == 0) return;
+            var before = ChainSnapshot.Capture(_doc);
             var pairs = new HashSet<(int From, int To)>(edgesToRemove.Select(e => (e.From, e.To)));
             _doc.Edges.RemoveAll(e => pairs.Contains((e.From, e.To)));
             AfterDocMutation();
@@ -874,7 +972,7 @@ namespace BuildConsole
             else
                 Canvas.ClearEdgeSelection();
 
-            ShowConfirmation(edgesToRemove.Count == 1
+            PersistThenConfirm(before, edgesToRemove.Count == 1
                 ? $"Removed: #{edgesToRemove[0].To} blocked_by #{edgesToRemove[0].From}."
                 : $"Removed {edgesToRemove.Count} blocked_by edges.");
         }

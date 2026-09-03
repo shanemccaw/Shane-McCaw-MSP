@@ -25,13 +25,13 @@ namespace BuildConsole
     /// straight out of <see cref="ChainRules.Derive"/>'s real <see cref="ChainDerived"/> snapshot
     /// of a real <see cref="ChainDoc"/>; nothing here is invented.
     ///
-    /// Interactions (#2480's own structured-index item) and real-write persistence (#2481) are
-    /// still separate, open sub-issues of #2473 — but the Inspector's own buttons/selects/switches
-    /// documented in the README's "Inspector" section (board status, sentinel, manual gate,
-    /// reorder, add/remove blocker) are real, in-memory `ChainDoc` writes here, following the same
-    /// "in-memory only, real write is #2481" precedent the top bar's own Re-wire §5.2 button
-    /// already established — see <c>BuildChainMapWindow.Inspector.cs</c>'s own class doc for why
-    /// that line is drawn where it is.
+    /// Interactions (#2480) and real-write persistence (Git #2481) are now both wired: the Inspector's
+    /// buttons/selects/switches from the README's "Inspector" section (board status, sentinel, manual
+    /// gate, reorder, add/remove blocker), the top bar's Re-wire §5.2 button, and the canvas link-mode
+    /// edge add all run an in-memory `ChainDoc` edit and then persist the resulting real blocked_by /
+    /// board-status changes to GitHub, auditing each by re-reading it back — see
+    /// <c>BuildChainMapWindow.Inspector.cs</c>'s <c>PersistThenConfirm</c> and
+    /// <see cref="BuildConsole.Services.BuildMap.ChainPersistence"/>.
     /// </summary>
     public partial class BuildChainMapWindow : Window
     {
@@ -41,6 +41,15 @@ namespace BuildConsole
         private ChainDerived? _derived;
         private double _zoom = 1.0;
         private bool _busy;
+
+        /// <summary>Git #2481 — the live GitHub client, cached from the most recent load so every
+        /// mutation can persist its diff without re-reading settings/rebuilding a client per click.</summary>
+        private GitHubApiClient? _client;
+
+        /// <summary>Git #2481 — serializes real GitHub persistence so overlapping mutations apply
+        /// their writes in order (each still diffs its own before/after snapshot captured on the UI
+        /// thread, so serialization only orders the network writes, never the snapshots).</summary>
+        private readonly System.Threading.SemaphoreSlim _persistLock = new(1, 1);
 
         private TextBlock _featuresValue = null!;
         private TextBlock _issuesValue = null!;
@@ -64,9 +73,11 @@ namespace BuildConsole
             Canvas.GatePillClicked += (_, fid) => ToggleManualGate(fid);
             Canvas.FeatureReordered += (_, args) => ReorderFeature(args.From, args.To);
             Canvas.ZoomChanged += (_, __) => { _zoom = Canvas.Zoom; RenderZoom(); };
-            Canvas.EdgeLinked += (_, args) => ShowConfirmation(args.WasNew
-                ? $"#{args.To} is now blocked_by #{args.From}."
-                : $"#{args.To} was already blocked_by #{args.From}.");
+            Canvas.EdgeLinked += (_, args) =>
+            {
+                if (args.WasNew) PersistSingleEdgeAdd(args.From, args.To);
+                else ShowConfirmation($"#{args.To} was already blocked_by #{args.From}.");
+            };
             PreviewKeyDown += Window_PreviewKeyDown;
 
             Loaded += async (_, __) => await RefreshAsync();
@@ -150,6 +161,7 @@ namespace BuildConsole
                 }
 
                 var client = new GitHubApiClient(settings.GitHubPat);
+                _client = client;
                 _doc = await BuildChainMapService.BuildAsync(client, _epicNumber);
 
                 _derived = ChainRules.Derive(_doc);
@@ -249,17 +261,17 @@ namespace BuildConsole
         private void RenderZoom() => ZoomPercentText.Text = $"{Math.Round(_zoom * 100)}%";
 
         // ── Controls ─────────────────────────────────────────────────────────────────────
-        private async void RewireButton_Click(object sender, RoutedEventArgs e)
+        private void RewireButton_Click(object sender, RoutedEventArgs e)
         {
             if (_doc == null) return;
+            var before = ChainSnapshot.Capture(_doc);
             ChainRules.RechainAll(_doc);
             _derived = ChainRules.Derive(_doc);
             Canvas.Rerender();
             Render();
             RenderInspector();
-            ShowConfirmation("Priority order re-wired per §5.2 — fan-in and cross-feature gate edges regenerated; your added edges were kept.");
-            ActivityLog.Log(Channel, $"Epic #{_epicNumber}: Re-wire §5.2 — {_derived.Gaps} gap(s) remaining (in-memory only; real write is #2481)");
-            await System.Threading.Tasks.Task.CompletedTask;
+            ActivityLog.Log(Channel, $"Epic #{_epicNumber}: Re-wire §5.2 — {_derived.Gaps} gap(s) remaining");
+            PersistThenConfirm(before, "Priority order re-wired per §5.2 — fan-in and cross-feature gate edges regenerated; your added edges were kept.");
         }
 
         private void ExpandAllButton_Click(object sender, RoutedEventArgs e)

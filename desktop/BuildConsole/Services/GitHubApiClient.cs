@@ -342,12 +342,12 @@ namespace BuildConsole.Services
         /// like every other launch path already does — not just the one this snapshot
         /// happened to see open first.
         /// </summary>
-        public async Task<List<GitHubIssueResult>> GetBlockedByAsync(int number)
+        public async Task<List<GitHubIssueResult>> GetBlockedByAsync(int number, bool bypassCache = false)
         {
             try
             {
                 var blockers = await GetConditionalAsync<List<GitHubIssueResult>>(
-                    $"repos/{Owner}/{Repo}/issues/{number}/dependencies/blocked_by");
+                    $"repos/{Owner}/{Repo}/issues/{number}/dependencies/blocked_by", bypassCache);
                 return blockers ?? new List<GitHubIssueResult>();
             }
             catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -403,6 +403,37 @@ namespace BuildConsole.Services
             }
         }
 
+        /// <summary>
+        /// Git #2481 — removes ONE real `blocked_by` dependency edge and nothing else, via
+        /// `DELETE /issues/{n}/dependencies/blocked_by` with the blocker's real internal `id`
+        /// (the mirror of <see cref="SetBlockedByAsync"/>). Unlike <see cref="RemoveBlockedAsync"/>,
+        /// it does NOT also strip the `blocked` label and does NOT swallow errors — the Build Chain
+        /// Map removes/rewires individual §5.2 edges as a normal edit and must be able to tell whether
+        /// each delete actually landed (it audits every write by re-reading), so a silent failure here
+        /// would defeat the whole point. Throws on any non-success response, same contract as
+        /// <see cref="SetBlockedByAsync"/>.
+        /// </summary>
+        public async Task RemoveBlockedByEdgeAsync(int issueNumber, int blockingIssueNumber)
+        {
+            var blocker = await _http.GetFromJsonAsync<GitHubIssueIdResult>(
+                $"repos/{Owner}/{Repo}/issues/{blockingIssueNumber}", JsonOpts);
+            if (blocker == null)
+                throw new Exception($"Issue #{blockingIssueNumber} not found on GitHub.");
+
+            // GitHub's remove-dependency endpoint takes the blocker's internal id in the PATH — a
+            // body-based DELETE (mirroring the POST) 404s. Confirmed live 2026-09-03: the path form
+            // deletes and re-reads clean; the body form returns 404. See #2481 finding on the
+            // pre-existing RemoveBlockedAsync, which had this same bug (and swallowed it silently).
+            using var req = new HttpRequestMessage(HttpMethod.Delete,
+                $"repos/{Owner}/{Repo}/issues/{issueNumber}/dependencies/blocked_by/{blocker.Id}");
+            var res = await _http.SendAsync(req);
+            if (!res.IsSuccessStatusCode)
+            {
+                var body = await res.Content.ReadAsStringAsync();
+                throw new Exception($"GitHub rejected blocked_by delete ({(int)res.StatusCode}): {body}");
+            }
+        }
+
         /// <summary>Removes the 'blocked' label and/or dependency link on GitHub to unblock the issue.</summary>
         public async Task RemoveBlockedAsync(int issueNumber, int? blockingIssueNumber = null)
         {
@@ -420,11 +451,10 @@ namespace BuildConsole.Services
                         $"repos/{Owner}/{Repo}/issues/{blockingIssueNumber.Value}", JsonOpts);
                     if (blocker != null)
                     {
+                        // #2481: blocker id goes in the PATH — the previous body-based DELETE 404'd
+                        // silently (this method swallows errors), so the dependency was never removed.
                         var req = new HttpRequestMessage(HttpMethod.Delete,
-                            $"repos/{Owner}/{Repo}/issues/{issueNumber}/dependencies/blocked_by")
-                        {
-                            Content = JsonContent.Create(new { issue_id = blocker.Id })
-                        };
+                            $"repos/{Owner}/{Repo}/issues/{issueNumber}/dependencies/blocked_by/{blocker.Id}");
                         await _http.SendAsync(req);
                     }
                 }
