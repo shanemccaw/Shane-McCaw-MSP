@@ -3,17 +3,20 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace ShaneBuilder.Services
 {
-    /// <summary>Git #2372 (Feature #2367 item 5) — one real shot on disk. There is no metadata/tag/run
-    /// store for Shot Vault yet (real audit: only <see cref="DesktopScreenClipService"/>'s manual clip
-    /// exists, and it writes loose PNGs with no sidecar data) — a shot is therefore exactly the file
-    /// itself, named/timestamped by <see cref="DesktopScreenClipService"/>'s own convention.</summary>
-    public sealed record ShotVaultItem(string FilePath, string FileName, DateTime CreatedAtUtc);
+    /// <summary>Git #2372 (Feature #2367 item 5) — one real shot on disk. There is no separate
+    /// metadata/tag/run store for Shot Vault (real audit: only <see cref="DesktopScreenClipService"/>'s
+    /// manual clip exists) — a shot is the file itself, named/timestamped by that service's own
+    /// convention. Git #2368 adds one real piece of capture-time metadata, <see cref="Screen"/>,
+    /// which <see cref="DesktopScreenClipService"/> now encodes into that same filename (see its
+    /// <c>SaveToDisk</c>) rather than a second sidecar file — still exactly one real source on disk.</summary>
+    public sealed record ShotVaultItem(string FilePath, string FileName, DateTime CreatedAtUtc, string Screen);
 
     /// <summary>Git #2370 (Feature #2367 item 3) — a "run": one or more shots captured close enough
     /// together in time that they're plainly the same capture session (e.g. a burst of PrintScreen/
@@ -44,15 +47,22 @@ namespace ShaneBuilder.Services
     /// <summary>Git #2372 (Feature #2367 item 5) — reads the real shots <see
     /// cref="DesktopScreenClipService"/> already saves to disk, and copies one back to the clipboard.
     /// Git #2370 (Feature #2367 item 3) adds real run grouping on top of that same list. Git #2371
-    /// (Feature #2367 item 4) adds the real DIFF computation below. Search (#2368) and tags (#2369)
-    /// are separate, real sibling sub-issues under Feature #2367, layered on top of this same list.</summary>
+    /// (Feature #2367 item 4) adds the real DIFF computation below. Git #2368 (Feature #2367 item 1)
+    /// adds real search by shot name or screen (<see cref="MatchesQuery"/>). Tags (#2369) remain a
+    /// separate, real sibling sub-issue under Feature #2367, layered on top of this same list.</summary>
     public static class ShotVaultService
     {
         /// <summary>Gap between two consecutive shots (by real file timestamp) beyond which they're
         /// no longer the same capture session and start a new run. There's no persisted "run" concept
         /// to read this from (real audit — see <see cref="ShotVaultRun"/>'s own doc-comment), so this
-        /// is a deliberate, named threshold rather than a magic number buried in <see cref="ListRuns"/>.</summary>
+        /// is a deliberate, named threshold rather than a magic number buried in <see cref="ListRuns()"/>.</summary>
         public static readonly TimeSpan RunGap = TimeSpan.FromMinutes(5);
+
+        /// <summary>Git #2368 — matches the <c>_screen&lt;N&gt;</c> tag <see
+        /// cref="DesktopScreenClipService"/> now writes into the filename at capture time (real
+        /// monitor identity, not a fabricated label), tolerating the existing collision-counter suffix
+        /// (e.g. <c>screenclip_..._screen2_1.png</c>).</summary>
+        private static readonly Regex ScreenTagPattern = new(@"_screen(\d+)(?:_\d+)?\.png$", RegexOptions.IgnoreCase);
 
         /// <summary>Same folder <see cref="DesktopScreenClipService.Capture"/> saves into — one real
         /// source, not a second path someone has to keep in sync.</summary>
@@ -68,7 +78,15 @@ namespace ShaneBuilder.Services
                 return Array.Empty<ShotVaultItem>();
 
             return Directory.EnumerateFiles(dir, "*.png", SearchOption.TopDirectoryOnly)
-                .Select(path => new ShotVaultItem(path, Path.GetFileName(path), File.GetLastWriteTimeUtc(path)))
+                .Select(path =>
+                {
+                    string name = Path.GetFileName(path);
+                    var m = ScreenTagPattern.Match(name);
+                    // A shot captured before Git #2368 (or one dropped in by hand) carries no screen
+                    // tag — "Unknown" is an honest label, not a guessed monitor number.
+                    string screen = m.Success ? $"Screen {m.Groups[1].Value}" : "Unknown";
+                    return new ShotVaultItem(path, name, File.GetLastWriteTimeUtc(path), screen);
+                })
                 .OrderByDescending(shot => shot.CreatedAtUtc)
                 .ToList();
         }
@@ -77,13 +95,17 @@ namespace ShaneBuilder.Services
         /// <see cref="ListShots"/>'s real, newest-first shots into runs by <see cref="RunGap"/>, then
         /// returns those runs newest-run-first. Each run carries its own real shot list (also
         /// newest-first) rather than a synthesized average or a fabricated label.</summary>
-        public static IReadOnlyList<ShotVaultRun> ListRuns()
+        public static IReadOnlyList<ShotVaultRun> ListRuns() => ListRuns(ListShots());
+
+        /// <summary>Git #2368 — same real run-grouping, over a caller-supplied shot list (already
+        /// newest-first) rather than always re-reading disk. Lets the search filter below re-group its
+        /// own already-filtered subset without duplicating the gap logic.</summary>
+        public static IReadOnlyList<ShotVaultRun> ListRuns(IReadOnlyList<ShotVaultItem> shotsNewestFirst)
         {
-            var shots = ListShots(); // already newest-first
             var runs = new List<ShotVaultRun>();
             var current = new List<ShotVaultItem>();
 
-            foreach (var shot in shots)
+            foreach (var shot in shotsNewestFirst)
             {
                 if (current.Count > 0 && current[^1].CreatedAtUtc - shot.CreatedAtUtc > RunGap)
                 {
@@ -97,6 +119,14 @@ namespace ShaneBuilder.Services
 
             return runs;
         }
+
+        /// <summary>Git #2368's real "search by shot name or screen": a case-insensitive substring
+        /// match against the shot's actual filename or its real, capture-time <see
+        /// cref="ShotVaultItem.Screen"/> label — never a fuzzy/ranked match invented for this, and
+        /// never against fabricated metadata.</summary>
+        public static bool MatchesQuery(ShotVaultItem shot, string query) =>
+            shot.FileName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            shot.Screen.Contains(query, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>The real per-shot Copy action this issue delivers: put that exact shot's PNG back
         /// on the clipboard.</summary>

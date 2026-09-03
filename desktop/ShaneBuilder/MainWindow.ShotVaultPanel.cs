@@ -23,30 +23,35 @@ public sealed record ShotVaultDocSnapshot(IReadOnlyList<ShotVaultItem> Shots, Da
 /// timestamp (or oldest–newest span) and shot count.
 /// Git #2371 (Feature #2367 item 4) — each run's shots render as a wrapped thumbnail grid, and
 /// each tile carries a real, computed DIFF badge.
+/// Git #2368 (Feature #2367 item 1) — a real search box filters the same real shot list by filename
+/// or by the shot's real capture-time screen (<see cref="Services.ShotVaultService.MatchesQuery"/>).
 ///
 /// Real audit before #2372: Shot Vault (#2367) was entirely `notBuilt` — grouped into
 /// <c>MainWindow.xaml.cs</c>'s shared "not built" placeholder alongside Build Console / Build Watch /
 /// UI Testing, with no panel, no data source, and no index anywhere in ShaneBuilder. The only real
 /// shot-producing mechanism is <see cref="Services.DesktopScreenClipService"/>'s manual desktop clip,
 /// which drops loose timestamped PNGs into <c>%Pictures%\Screenshots\ShaneBuilder\</c> with no
-/// metadata or tags — there is still no search/tag indexed store to build the fuller panel spec
-/// against (that's #2368 search, #2369 tags — separate, real sibling sub-issues, still open).
+/// metadata or tags — there was no search/tag indexed store to build the fuller panel spec against
+/// (tags are #2369, still a separate, real sibling sub-issue). Git #2368 closed that gap for search by
+/// having <c>DesktopScreenClipService</c> encode the real monitor a shot was captured from straight
+/// into the filename at save time — no second sidecar file, no fabricated screen name.
 ///
 /// #2372 stood up the minimum real scaffold Shot Vault needed to exist at all: a real, newest-first
 /// list of the actual shots on disk (<see cref="ShotVaultService.ListShots"/>), each with a real
 /// thumbnail and a working Copy action that puts that exact shot back on the clipboard
 /// (<see cref="ShotVaultService.CopyToClipboard"/>, itself reusing
 /// <see cref="Services.DesktopScreenClipService"/>'s own multi-format clipboard write rather than a
-/// second one). #2370 grouped that same real list into runs (<see cref="ShotVaultService.ListRuns"/>
+/// second one). #2370 grouped that same real list into runs (<see cref="ShotVaultService.ListRuns()"/>
 /// — shots within <see cref="ShotVaultService.RunGap"/> of each other are the same capture session)
-/// and renders a real header per run. This build (#2371) turns each run's shot rows into a wrapped
-/// thumbnail grid via <see cref="Services.ShotVaultService.BuildTiles"/>, which pairs every real shot
-/// on disk with a real DIFF flag computed from a downsampled MD5 of its actual pixels against the shot
-/// immediately before it in time (chronological, independent of which run it falls in — see the
-/// service for the honest reasoning). No fixture DIFF state, no random/rotating badge — a tile is only
-/// badged when its own bytes actually changed. Search and tag chips remain deliberately NOT built
-/// here; sibling issues extend this same <c>ShotVaultPanelBody</c>/<see cref="RenderShotVaultPanel"/>
-/// surface rather than it being redone per issue.
+/// and renders a real header per run. #2371 turned each run's shot rows into a wrapped thumbnail grid
+/// via <see cref="Services.ShotVaultService.BuildTiles"/>, which pairs every real shot on disk with a
+/// real DIFF flag computed from a downsampled MD5 of its actual pixels against the shot immediately
+/// before it in time (chronological, independent of which run it falls in — see the service for the
+/// honest reasoning). No fixture DIFF state, no random/rotating badge — a tile is only badged when its
+/// own bytes actually changed. #2368 filters the same runs/tiles by a real query against filename or
+/// screen, re-grouping only the matches into runs so a filtered view never shows a stale span. Tag
+/// chips remain deliberately NOT built here; #2369 extends this same
+/// <c>ShotVaultPanelBody</c>/<see cref="RenderShotVaultPanel"/> surface rather than it being redone.
 /// </summary>
 public partial class MainWindow
 {
@@ -65,6 +70,12 @@ public partial class MainWindow
     /// to tab" to build its frozen snapshot. Null until the panel has actually loaded at least once
     /// (never a guessed/empty stand-in for "not loaded yet").</summary>
     private IReadOnlyList<ShotVaultItem>? _shotVaultLastShots;
+
+    /// <summary>Git #2368 — the real "search by shot name or screen" filter text, live-applied in
+    /// <see cref="RenderShotVaultPanel"/> (never a separate search results list). Persists across a
+    /// close/reopen of the rail panel the same way <c>ApiExplorerSearchBox</c> already does, since the
+    /// TextBox itself stays in the visual tree.</summary>
+    private string _shotVaultSearchQuery = "";
 
     /// <summary>Fires the real folder read the first time the SHOT VAULT rail panel opens. A missing
     /// folder (nothing captured yet) renders an honest empty state, not a fixture row.</summary>
@@ -110,18 +121,42 @@ public partial class MainWindow
 
         // Git #2371: DIFF is computed once, across the real chronological order of every shot in the
         // vault (not per-run — a run boundary is a capture-session gap, not a reset of "did the pixels
-        // actually change"), then each tile is placed back under its own run's header/grid below.
+        // actually change"), then each tile is placed back under its own run's header/grid below. This
+        // stays computed over the FULL, unfiltered list even while searching (#2368) — a search only
+        // decides what's shown, it never changes what "changed from the shot before it" means.
         var tilesByPath = ShotVaultService.BuildTiles(_shotVaultLastShots!)
             .ToDictionary(t => t.Shot.FilePath, t => t);
         int diffCount = tilesByPath.Values.Count(t => t.HasDiffFromPrevious);
 
         int totalShots = runs.Sum(r => r.Count);
-        ShotVaultPanelStatus.Text = diffCount == 0
-            ? $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first."
-            : $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first, {diffCount} DIFF from the shot before it.";
+
+        // Git #2368 — real "search by shot name or screen": filter each run's own shot list down to
+        // matches, drop any run left with none, re-derive runs so a filtered-out gap doesn't leave a
+        // stale multi-shot header/span. Empty query renders every run untouched.
+        string query = _shotVaultSearchQuery.Trim();
+        IReadOnlyList<ShotVaultRun> visibleRuns = runs;
+        if (query.Length > 0)
+        {
+            var matches = _shotVaultLastShots!.Where(s => ShotVaultService.MatchesQuery(s, query)).ToList();
+            visibleRuns = ShotVaultService.ListRuns(matches);
+        }
+
+        if (query.Length == 0)
+        {
+            ShotVaultPanelStatus.Text = diffCount == 0
+                ? $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first."
+                : $"{totalShots} shot{(totalShots == 1 ? "" : "s")} in {runs.Count} run{(runs.Count == 1 ? "" : "s")} — newest first, {diffCount} DIFF from the shot before it.";
+        }
+        else
+        {
+            int matchCount = visibleRuns.Sum(r => r.Count);
+            ShotVaultPanelStatus.Text = matchCount == 0
+                ? $"No shots match \"{query}\" (of {totalShots} total)."
+                : $"{matchCount} of {totalShots} shot{(totalShots == 1 ? "" : "s")} match \"{query}\".";
+        }
         ShotVaultPanelStatus.Visibility = Visibility.Visible;
 
-        foreach (var run in runs)
+        foreach (var run in visibleRuns)
         {
             ShotVaultRows.Children.Add(BuildShotVaultRunHeader(run));
 
@@ -130,6 +165,15 @@ public partial class MainWindow
                 grid.Children.Add(BuildShotVaultTile(tilesByPath[shot.FilePath]));
             ShotVaultRows.Children.Add(grid);
         }
+    }
+
+    /// <summary>Git #2368 — live-filters as the panel's search box changes. Re-renders the whole panel
+    /// off the current query rather than diffing rows in place; the shot list is small enough (a rail
+    /// panel of loose PNGs, not a paginated table) that a full re-render stays cheap.</summary>
+    private void ShotVaultSearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _shotVaultSearchQuery = ShotVaultSearchBox.Text;
+        RenderShotVaultPanel();
     }
 
     private Border BuildShotVaultRunHeader(ShotVaultRun run)

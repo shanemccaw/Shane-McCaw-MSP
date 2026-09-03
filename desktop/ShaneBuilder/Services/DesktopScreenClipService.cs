@@ -7,6 +7,7 @@ using System.Windows.Threading;
 using WinFormsClipboard = System.Windows.Forms.Clipboard;
 using WinFormsDataFormats = System.Windows.Forms.DataFormats;
 using WinFormsDataObject = System.Windows.Forms.DataObject;
+using WinFormsScreen = System.Windows.Forms.Screen;
 using ShaneBuilder; // ToastEngine, RegionSelectOverlayWindow — root namespace
 
 namespace ShaneBuilder.Services
@@ -106,7 +107,7 @@ namespace ShaneBuilder.Services
                 string? savedPath = null, saveError = null, clipError = null;
                 bool clipboardOk = false;
 
-                try { savedPath = SaveToDisk(bmp); }
+                try { savedPath = SaveToDisk(bmp, rect); }
                 catch (Exception ex)
                 {
                     saveError = ex.Message;
@@ -142,7 +143,7 @@ namespace ShaneBuilder.Services
             disp?.Invoke(() => { }, DispatcherPriority.Render);
         }
 
-        private static string SaveToDisk(Bitmap bmp)
+        private static string SaveToDisk(Bitmap bmp, Int32Rect physicalRect)
         {
             // ShaneBuilder has no persisted settings store yet (real audit, Git #2210 — BuildConsole's
             // equivalent is BuildConsoleSettings.ScreenClipSaveDirectory), so this is a derived default
@@ -154,14 +155,38 @@ namespace ShaneBuilder.Services
             // Sortable + collision-free: yyyy-MM-dd_HH-mm-ss-fff already separates two clips in the
             // same second (millisecond precision); the counter is belt-and-suspenders for the same ms.
             var stamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss-fff");
-            string path = Path.Combine(dir, $"screenclip_{stamp}.png");
+            string screenTag = DetermineScreenTag(physicalRect);
+            string path = Path.Combine(dir, $"screenclip_{stamp}{screenTag}.png");
             int n = 1;
             while (File.Exists(path))
-                path = Path.Combine(dir, $"screenclip_{stamp}_{n++}.png");
+                path = Path.Combine(dir, $"screenclip_{stamp}{screenTag}_{n++}.png");
 
             bmp.Save(path, ImageFormat.Png);
             ConsoleOutputSink.Log(LogLevel.Info, $"Screen clip saved: {path} ({bmp.Width}x{bmp.Height}).");
             return path;
+        }
+
+        /// <summary>Git #2368 (Feature #2367 item 1) — Shot Vault's "search by shot name or screen"
+        /// needs a real screen identity to search on. There's no metadata sidecar for shots (see
+        /// <see cref="ShotVaultItem"/>'s own doc-comment), so the real monitor the capture rect actually
+        /// landed on — determined the same way Windows itself would via
+        /// <see cref="WinFormsScreen.FromRectangle"/> — is encoded straight into the filename
+        /// (<c>ShotVaultService</c> parses it back out). Returns "" (no tag) if the monitor can't be
+        /// resolved, rather than guessing a number.</summary>
+        private static string DetermineScreenTag(Int32Rect physicalRect)
+        {
+            try
+            {
+                var rect = new Rectangle(physicalRect.X, physicalRect.Y, physicalRect.Width, physicalRect.Height);
+                var screen = WinFormsScreen.FromRectangle(rect);
+                var screens = WinFormsScreen.AllScreens;
+                int index = Array.IndexOf(screens, screen); // Screen.Equals compares real DeviceName
+                return index >= 0 ? $"_screen{index + 1}" : "";
+            }
+            catch
+            {
+                return ""; // never let screen-identity lookup break the actual save
+            }
         }
 
         private static void CopyToClipboard(Bitmap bmp)

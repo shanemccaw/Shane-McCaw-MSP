@@ -643,12 +643,25 @@
 
                         <!-- Git #2372 (Feature #2367 item 5) — Shot Vault rail panel: a real,
                              newest-first list of the shots DesktopScreenClipService already
-                             saves to disk, each with a working per-shot Copy action. Search
-                             (#2368) and tag chips (#2369), run grouping (#2370) are separate
-                             sibling sub-issues layered on this same body. Git #2371 turned the
-                             row list into a wrapped thumbnail grid with real, computed DIFF
-                             badges. Built in code-behind (MainWindow.ShotVaultPanel.cs). -->
+                             saves to disk, each with a working per-shot Copy action. Tag chips
+                             (#2369) are a separate sibling sub-issue layered on this same body.
+                             Git #2370 added real run grouping; Git #2371 turned the row list into
+                             a wrapped thumbnail grid with real, computed DIFF badges; Git #2368
+                             added the real search box below, filtering by shot filename or the
+                             shot's real capture-time screen. Built in code-behind
+                             (MainWindow.ShotVaultPanel.cs). -->
                         <StackPanel x:Name="ShotVaultPanelBody" Margin="8,8,8,12" Visibility="Collapsed">
+                            <!-- Git #2368 (Feature #2367 item 1) — "search by shot name or screen",
+                                 same TextBox convention ApiExplorerSearchBox already established
+                                 rather than a new style. -->
+                            <TextBox x:Name="ShotVaultSearchBox" Height="26" Padding="6,0"
+                                     VerticalContentAlignment="Center" Margin="0,0,0,7"
+                                     Background="{StaticResource Brush.Claude.Bg.Button}"
+                                     BorderBrush="{StaticResource Brush.Claude.Border}"
+                                     Foreground="{StaticResource Brush.Claude.Text.Bright}"
+                                     FontFamily="{StaticResource FontFamily.Monospace}" FontSize="{StaticResource FontSize.10}"
+                                     Tag="Search by shot name or screen…"
+                                     TextChanged="ShotVaultSearchBox_TextChanged"/>
                             <TextBlock x:Name="ShotVaultPanelStatus" Margin="6,4,6,10"
                                        TextWrapping="Wrap"
                                        Foreground="{StaticResource Brush.Text.Dim}"
