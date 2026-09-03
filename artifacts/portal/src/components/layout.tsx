@@ -1,12 +1,12 @@
-import { cn } from "@/lib/utils";
+import { PortalShell } from "@/components/shell/PortalShell";
 
-// Minimal portal chrome. Pages are rebuilt one at a time under their own issues
-// (#1648-1671) against the designs in Design/portal/; this shell only provides
-// the outer frame they render into.
+/**
+ * The portal's real application chrome (Git #1819) — top bar, six-pillar tab
+ * strip, sidebar module nav, content slot and the frame-level severity wash.
+ * See `components/shell/PortalShell.tsx` for the implementation and
+ * build-journal/1819.md for what this issue deliberately left for #1820-#1824
+ * to build inside it.
+ */
 export function PortalLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className={cn("min-h-screen bg-background text-foreground")}>
-      <main className="mx-auto w-full max-w-6xl px-6 py-8">{children}</main>
-    </div>
-  );
+  return <PortalShell>{children}</PortalShell>;
 }
