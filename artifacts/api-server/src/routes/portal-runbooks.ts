@@ -96,6 +96,7 @@ import {
 import { cloneStepsForNextCycle, cycleProgress, isCycleComplete } from "../lib/portal-runbook-cycles";
 import { personIdForUser } from "../lib/portal-ownership";
 import { recordCrEvent } from "../lib/portal-change-timeline-store";
+import { loadApprovalPolicy, materializeApprovalsForChange } from "../lib/portal-change-approvals-store";
 
 const log = logger.child({ channel: "tenant.portal" });
 
@@ -889,7 +890,7 @@ async function raiseHoldChangeRequest(opts: {
       // casing of a database column.
       linkedFinding: `${titleCasePillar(opts.hold.pillar)} · ${opts.hold.title}`,
     })
-    .returning({ id: mspChangeRequestsTable.id });
+    .returning({ id: mspChangeRequestsTable.id, createdAt: mspChangeRequestsTable.createdAt });
 
   // #1503 — every CR-creation path emits the `raised` event that opens its timeline.
   await recordCrEvent({
@@ -904,6 +905,30 @@ async function raiseHoldChangeRequest(opts: {
     actorName: opts.req.user?.email ?? null,
     occurredAt: opts.now,
   });
+
+  // #1775 — the hold-window CR raise is the other door that never called
+  // `materializeApprovalsForChange` (#1496): a CR raised from a hold-window
+  // decision had zero `cr_approvals` rows, same gap as the MSP console door.
+  // Non-fatal: the CR already exists either way.
+  try {
+    const policy = await loadApprovalPolicy(opts.customerId);
+    await materializeApprovalsForChange(
+      {
+        id: inserted.id,
+        mspId: scope.mspId,
+        tenantId: scope.tenantId,
+        changeClass: storedChangeClass("Normal"),
+        riskLevel: storedRiskLevel(risk),
+        status: "pending_approval",
+        approvedBy: null,
+        requestedBy: opts.req.user?.email ?? "unknown",
+        createdAt: inserted.createdAt,
+      },
+      policy,
+    );
+  } catch (err) {
+    log.error({ err, crId: inserted.id }, "hold-window change request created but approval materialisation failed");
+  }
 
   return { id: inserted.id, code: formatChangeRequestCode(inserted.id) };
 }

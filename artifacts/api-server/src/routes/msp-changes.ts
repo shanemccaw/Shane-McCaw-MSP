@@ -9,6 +9,7 @@ import { logger } from "../lib/logger.ts";
 import { logRetainerWorkFromTracker, pillarHintForCategory } from "../lib/retainer-work-logger.ts";
 import { workloadForCategory } from "../lib/portal-change-control.ts";
 import { activeFreezeForSubmit, freezeForBookedWindow, recordFreezeException } from "../lib/portal-change-freeze-store.ts";
+import { loadApprovalPolicy, materializeApprovalsForChange } from "../lib/portal-change-approvals-store.ts";
 import { personIdForUser } from "../lib/portal-ownership.ts";
 import {
   addAttachment,
@@ -224,6 +225,33 @@ router.post(
         actorName: userEmail,
         occurredAt: inserted.createdAt,
       });
+
+      // #1775 — the MSP console is a second door into `mspChangeRequestsTable`,
+      // same table the customer wizard (`portal-change-control-raise.ts`) and
+      // the router (`m365-change-router.ts`) write, and both of those already
+      // call `materializeApprovalsForChange` (#1496) right after their own
+      // `raised` event. This door never did, so a CR raised here had zero
+      // `cr_approvals` rows and the register's approve/reject affordance never
+      // activated for it. Non-fatal: the CR already exists either way.
+      try {
+        const policy = tenantForPolicy ? await loadApprovalPolicy(tenantForPolicy.id) : undefined;
+        await materializeApprovalsForChange(
+          {
+            id: inserted.id,
+            mspId,
+            tenantId: parsedBody.data.tenantId,
+            changeClass: parsedBody.data.changeClass,
+            riskLevel: parsedBody.data.riskLevel,
+            status: "pending_approval",
+            approvedBy: null,
+            requestedBy: userEmail,
+            createdAt: inserted.createdAt,
+          },
+          policy,
+        );
+      } catch (err) {
+        log.error({ err, crId: inserted.id }, "change request created but approval materialisation failed");
+      }
 
       // #1500 — allowed through an active freeze ONLY because a justification
       // was given; that becomes its own higher-bar approval stage (MSP
