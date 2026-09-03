@@ -255,7 +255,17 @@ public sealed class TestPadImportCandidate
     public bool IsMergedAway { get; set; }
 
     /// <summary>Git #2353 — the candidates merged into this one via "Merge N up", in the order
-    /// they were merged. Drives a "+N merged" indicator on the row (#2354 extends this into a
-    /// clickable split-back-out); empty for a row nothing has been merged into.</summary>
+    /// they were merged. Drives a "+N merged" indicator on the row, clickable (#2354) to split
+    /// every one of them back out; empty for a row nothing has been merged into.</summary>
     public List<TestPadImportCandidate> MergedChildren { get; } = new();
+
+    /// <summary>Git #2354 — this row's own <see cref="Text"/> exactly as it was before the first
+    /// row ever got folded into it, captured once (on the first merge, never overwritten by a
+    /// later one) so "split back out" can restore it precisely rather than trying to reconstruct
+    /// it by stripping joined text back apart. Null for a row nothing has been merged into.</summary>
+    public string? TextBeforeMerge { get; set; }
+
+    /// <summary>Git #2354 — the <see cref="NeedsShot"/> counterpart to <see cref="TextBeforeMerge"/>,
+    /// since a merge can OR a child's needs-shot flag into the anchor the same way it joins text.</summary>
+    public bool? NeedsShotBeforeMerge { get; set; }
 }

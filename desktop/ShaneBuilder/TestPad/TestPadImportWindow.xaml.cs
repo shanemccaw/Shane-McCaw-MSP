@@ -30,8 +30,11 @@ namespace ShaneBuilder
     /// <see cref="NoteType"/> in place, via <see cref="NextType"/>. Merge-up (#2352-#2354)
     /// extends <see cref="PreviewHost"/> in place: multi-select "Merge N up" (#2353) plus the
     /// per-row single-click "↑ merge up" chip (#2352, via <see cref="TestPadImportMerger.MergeRowUp"/>)
-    /// both fold a row's text into whatever row precedes it; split-back-out/undo (#2354) is
-    /// still open.</summary>
+    /// both fold a row's text into whatever row precedes it; Git #2354 closes the loop — the
+    /// "+N merged" badge (<c>BuildPreviewRow</c>) is clickable to split that one row's merges back
+    /// out via <see cref="TestPadImportMerger.SplitBackOut"/>, and the header's "Undo merges"
+    /// button (visible whenever any row carries a merge) resets the whole preview via
+    /// <see cref="TestPadImportMerger.UndoAllMerges"/>.</summary>
     public partial class TestPadImportWindow : Window
     {
         private List<TestPadImportCandidate> _candidates = new();
@@ -107,6 +110,7 @@ namespace ShaneBuilder
                     : "Nothing came out of that paste — nothing to import.";
                 BtnImport.IsEnabled = false;
                 MergeBar.Visibility = Visibility.Collapsed;
+                BtnUndoMerges.Visibility = Visibility.Collapsed;
                 return;
             }
 
@@ -303,9 +307,9 @@ namespace ShaneBuilder
                 chips.Children.Add(mergeUpChip);
             }
 
-            // Git #2353 — "+N merged" indicator: honest trace that this row's Text now carries
-            // other rows' content folded in via "Merge N up". Full split-back-out/undo is #2354's
-            // scope; this is just the visible sign the merge happened at all.
+            // Git #2353/#2354 — "+N merged" indicator: honest trace that this row's Text now
+            // carries other rows' content folded in via "Merge N up", and (#2354) itself clickable
+            // to split every one of them back out via TestPadImportMerger.SplitBackOut.
             if (candidate.MergedChildren.Count > 0)
             {
                 var mergedBadge = new Border
@@ -314,8 +318,9 @@ namespace ShaneBuilder
                     Padding = new Thickness(5, 1, 5, 1),
                     Margin = new Thickness(6, 0, 0, 0),
                     VerticalAlignment = VerticalAlignment.Top,
+                    Cursor = Cursors.Hand,
                     Background = (Brush)FindResource("Brush.Bg.Card"),
-                    ToolTip = $"{candidate.MergedChildren.Count} row(s) merged up into this one.",
+                    ToolTip = $"{candidate.MergedChildren.Count} row(s) merged up into this one — click to split back out.",
                 };
                 mergedBadge.Child = new TextBlock
                 {
@@ -323,6 +328,11 @@ namespace ShaneBuilder
                     FontSize = 9,
                     FontWeight = FontWeights.SemiBold,
                     Foreground = (Brush)FindResource("Brush.Text.Muted"),
+                };
+                mergedBadge.MouseLeftButtonDown += (_, _) =>
+                {
+                    if (TestPadImportMerger.SplitBackOut(candidate))
+                        RenderPreview();
                 };
                 chips.Children.Add(mergedBadge);
             }
@@ -422,9 +432,15 @@ namespace ShaneBuilder
         }
 
         /// <summary>Git #2353 — keeps the "Merge N up" bar's visibility/text/enabled state in
-        /// sync with the live selection every time a select tick box changes.</summary>
+        /// sync with the live selection every time a select tick box changes. Git #2354 —
+        /// also keeps "Undo merges" visible exactly while at least one row actually carries a
+        /// merge (<see cref="TestPadImportMerger.UndoAllMerges"/> would have something to do).</summary>
         private void UpdateMergeBar()
         {
+            BtnUndoMerges.Visibility = _candidates.Any(c => c.MergedChildren.Count > 0)
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+
             var selectedCount = _candidates.Count(c => c.Selected && !c.IsMergedAway);
             if (selectedCount == 0)
             {
@@ -453,6 +469,14 @@ namespace ShaneBuilder
             if (merged == 0) return;
 
             RenderPreview();
+        }
+
+        /// <summary>Git #2354 — "Undo merges resets all." Splits every merged row back out to
+        /// what it looked like right after Parse, via <see cref="TestPadImportMerger.UndoAllMerges"/>.</summary>
+        private void BtnUndoMerges_Click(object sender, RoutedEventArgs e)
+        {
+            if (TestPadImportMerger.UndoAllMerges(_candidates))
+                RenderPreview();
         }
 
         private void BtnImport_Click(object sender, RoutedEventArgs e)
