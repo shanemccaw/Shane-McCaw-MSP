@@ -1967,6 +1967,19 @@ export const monitorChecksTable = pgTable("monitor_checks", {
   armOperation: text("arm_operation"),
   schemaVersion: integer("schema_version").notNull().default(1),
   status: text("status", { enum: MONITOR_CHECK_STATUS }).notNull().default("active"),
+  /**
+   * Whether this check's result is something a customer should ever see (a
+   * portal finding, a remediation-KB entry, a monitoring-package listing). Real
+   * `status = 'active'` checks split into two kinds that `status` alone cannot
+   * distinguish: customer governance findings, and platform-internal
+   * self-tests/diagnostics that happen to run against a customer's tenant
+   * (e.g. `appgov:enterprise-app-registration-list` checks for THIS platform's
+   * own multi-tenant app registration as a connectivity health check, not a
+   * customer finding; `diagnostics:ps-execution-test` is a PowerShell-path
+   * diagnostic). Defaults `true` — the common case — so every existing check
+   * except the two backfilled `false` below is unaffected. #2188.
+   */
+  isCustomerFacing: boolean("is_customer_facing").notNull().default(true),
   createdByAdminId: integer("created_by_admin_id"),
   updatedByAdminId: integer("updated_by_admin_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
