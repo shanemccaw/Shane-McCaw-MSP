@@ -58,6 +58,15 @@ namespace BuildConsole.Services
             public Action<string>? OnUrlClick { get; set; }
             public Action<int>? OnIssueClick { get; set; }
             public Action<string>? OnRunTest { get; set; }
+
+            /// <summary>#2706 — opt-in task-checkbox interactivity. Null (the default) means every
+            /// task item renders exactly as before #2706: a static, read-only glyph — so existing
+            /// consumers (<c>GitDetailView</c>, <c>IssueDetailView</c>) are unaffected. Set this to
+            /// get a real clickable checkbox; it fires with the toggled line's real index into the
+            /// original markdown text (per <see cref="Render"/>'s own line-by-line walk — see
+            /// <see cref="ToggleTaskLine"/>) and the new checked state.</summary>
+            public Action<int, bool>? OnTaskToggled { get; set; }
+
             public double BaseFontSize { get; set; } = 13;
         }
 
@@ -164,7 +173,7 @@ namespace BuildConsole.Services
                     int indentSpaces = taskMatch.Groups[1].Value.Length;
                     bool isChecked = taskMatch.Groups[2].Value.Trim().Equals("x", StringComparison.OrdinalIgnoreCase);
                     string itemText = taskMatch.Groups[3].Value.Trim();
-                    root.Children.Add(CreateTaskItem(itemText, isChecked, indentSpaces, options, getBrush));
+                    root.Children.Add(CreateTaskItem(itemText, isChecked, indentSpaces, i, options, getBrush));
                     i++;
                     continue;
                 }
@@ -351,7 +360,7 @@ namespace BuildConsole.Services
             return grid;
         }
 
-        private static FrameworkElement CreateTaskItem(string text, bool isChecked, int indentSpaces, RenderOptions options, Func<string, Brush> getBrush)
+        private static FrameworkElement CreateTaskItem(string text, bool isChecked, int indentSpaces, int lineIndex, RenderOptions options, Func<string, Brush> getBrush)
         {
             double indent = Math.Max(0, (indentSpaces / 2) * 16) + 4;
             var grid = new Grid
@@ -368,8 +377,32 @@ namespace BuildConsole.Services
                 Foreground = isChecked ? getBrush("GreenBrush") : getBrush("Subtext0Brush"),
                 HorizontalAlignment = HorizontalAlignment.Left
             };
-            Grid.SetColumn(iconBlock, 0);
-            grid.Children.Add(iconBlock);
+
+            // #2706 — opt-in interactivity. Default (OnTaskToggled == null) leaves iconElement as
+            // the plain static TextBlock above, byte-for-byte the same as before #2706, so
+            // GitDetailView/IssueDetailView (which never set OnTaskToggled) are unaffected. When a
+            // consumer (Test Pad's note pop-out) does set it, wrap the glyph in a real clickable
+            // element that fires the callback with this task item's real line index into the
+            // original markdown text plus the flipped checked state.
+            FrameworkElement iconElement = iconBlock;
+            if (options.OnTaskToggled != null)
+            {
+                var iconButton = new Border
+                {
+                    Background = Brushes.Transparent,
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    Child = iconBlock
+                };
+                bool wasChecked = isChecked;
+                iconButton.MouseLeftButtonDown += (s, e) =>
+                {
+                    e.Handled = true;
+                    options.OnTaskToggled?.Invoke(lineIndex, !wasChecked);
+                };
+                iconElement = iconButton;
+            }
+            Grid.SetColumn(iconElement, 0);
+            grid.Children.Add(iconElement);
 
             var textBlock = new TextBlock
             {
@@ -387,6 +420,33 @@ namespace BuildConsole.Services
             grid.Children.Add(textBlock);
 
             return grid;
+        }
+
+        /// <summary>Flips the `[ ]`/`[x]` marker on exactly one real line of the ORIGINAL markdown
+        /// text — #2706. <paramref name="lineIndex"/> is the same real index into
+        /// <c>markdown.Replace("\r\n", "\n").Split('\n')</c> that <see cref="Render"/>'s own
+        /// line-by-line walk uses (and that <see cref="RenderOptions.OnTaskToggled"/> carries back),
+        /// so this stays correct even with other content (headers, tables, ...) interleaved around
+        /// the task line. Returns null — a safe no-op signal for the caller — if the index is out
+        /// of range or that line no longer parses as a task-list item (e.g. the note changed out
+        /// from under a stale render).</summary>
+        public static string? ToggleTaskLine(string markdown, int lineIndex, bool newChecked)
+        {
+            if (string.IsNullOrEmpty(markdown)) return null;
+
+            string[] lines = markdown.Replace("\r\n", "\n").Split('\n');
+            if (lineIndex < 0 || lineIndex >= lines.Length) return null;
+
+            var match = TaskListRegex.Match(lines[lineIndex]);
+            if (!match.Success) return null;
+
+            var checkGroup = match.Groups[2];
+            string line = lines[lineIndex];
+            lines[lineIndex] = line.Substring(0, checkGroup.Index)
+                + (newChecked ? "x" : " ")
+                + line.Substring(checkGroup.Index + checkGroup.Length);
+
+            return string.Join("\n", lines);
         }
 
         private static FrameworkElement CreateBlockquote(string text, RenderOptions options, Func<string, Brush> getBrush)
