@@ -162,8 +162,13 @@ namespace BuildConsole.Services
         /// <summary>GraphQL databaseId — the numeric REST id GitHub's sub_issues endpoint wants as `sub_issue_id` (NOT the issue Number). Populated by ListBoardIssuesAsync for Git #844.</summary>
         public long DatabaseId { get; set; }
 
-        /// <summary>Any issue with at least one sub-issue IS an Epic (Git #839) — no title-text convention.</summary>
-        public bool IsEpic => SubIssueCount > 0 || ChildIssueNumbers.Count > 0;
+        /// <summary>Git #2677 — a real Epic is top-level (<see cref="ParentNumber"/> is null) AND has at
+        /// least one sub-issue (Git #839, no title-text convention). Post-restructure, a Feature also
+        /// carries its own child Issues as real GitHub sub-issues, so the old sub-issue-count-only check
+        /// misclassified every Feature-with-children as an Epic too (a Feature has an Epic parent, so
+        /// <see cref="ParentNumber"/> is set and the added check excludes it). Same fix shape as #2544's
+        /// GATE-card top-level check.</summary>
+        public bool IsEpic => ParentNumber == null && (SubIssueCount > 0 || ChildIssueNumbers.Count > 0);
         public bool IsClosed => string.Equals(State, "CLOSED", StringComparison.OrdinalIgnoreCase);
         public bool IsComplete => Labels.Any(l => string.Equals(l.Name, "complete", StringComparison.OrdinalIgnoreCase));
         public bool IsTodo => Labels.Any(l => string.Equals(l.Name, "Shane To-Do", StringComparison.OrdinalIgnoreCase));
