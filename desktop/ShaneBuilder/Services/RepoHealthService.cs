@@ -9,10 +9,13 @@ using System.Threading.Tasks;
 
 namespace ShaneBuilder.Services;
 
-/// <summary>Git #2214 §6.6 — the four real rule types, exactly as manually audited this session
-/// against this repo's own board (parent-chain depth, Feature:/Epic: naming, dead-path references,
-/// closed-parent/open-child orphans). No fifth rule is invented.</summary>
-public enum RepoHealthRule { Depth, Naming, Stale, Orphan }
+/// <summary>Git #2214 §6.6 — the real rule types, exactly as manually audited against this repo's
+/// own board (parent-chain depth, Feature:/Epic: naming, dead-path references, closed-parent/open-child
+/// orphans). Git #2401 added a fifth: leaf issues with no "Feature:" ancestor anywhere in their parent
+/// chain — the exact ShaneBuilder-FullFeature.md cross-cutting item ("they never appear in a burndown
+/// and go missing between builds"), the real reason Build Queue's Feature-band grouping has a
+/// "No feature assigned" band at all.</summary>
+public enum RepoHealthRule { Depth, Naming, Stale, Orphan, NoFeatureParent }
 
 /// <summary>One real finding. <see cref="Evidence"/> is always the concrete proof — the depth chain,
 /// the matched dead path, or the closed parent — never a generic "looks wrong" message, per this
@@ -25,10 +28,10 @@ public sealed class RepoHealthFinding
     public required string Title { get; init; }
     public required string Evidence { get; init; }
 
-    /// <summary>Depth/Naming findings may be fixed directly (retitle, re-parent); a Stale reference
-    /// must be reported, not silently closed out from under whoever relied on the dead path — the
-    /// issue body's own closing-instruction distinction for the work order footer.</summary>
-    public bool FixableDirectly => Rule is RepoHealthRule.Depth or RepoHealthRule.Naming;
+    /// <summary>Depth/Naming/NoFeatureParent findings may be fixed directly (retitle, re-parent); a
+    /// Stale reference must be reported, not silently closed out from under whoever relied on the
+    /// dead path — the issue body's own closing-instruction distinction for the work order footer.</summary>
+    public bool FixableDirectly => Rule is RepoHealthRule.Depth or RepoHealthRule.Naming or RepoHealthRule.NoFeatureParent;
 
     public string RuleLabel => Rule switch
     {
@@ -36,6 +39,7 @@ public sealed class RepoHealthFinding
         RepoHealthRule.Naming => "Naming",
         RepoHealthRule.Stale => "Stale",
         RepoHealthRule.Orphan => "Orphan",
+        RepoHealthRule.NoFeatureParent => "No Feature Parent",
         _ => Rule.ToString(),
     };
 }
@@ -107,6 +111,7 @@ public sealed class RepoHealthService
         findings.AddRange(issues.Where(EvaluateNaming).Select(NamingFinding));
         findings.AddRange(issues.SelectMany(EvaluateStale));
         findings.AddRange(issues.Where(EvaluateOrphan).Select(OrphanFinding));
+        findings.AddRange(issues.Where(EvaluateNoFeatureParent).Select(NoFeatureParentFinding));
 
         return new RepoHealthScan { Findings = findings };
     }
@@ -196,6 +201,42 @@ public sealed class RepoHealthService
         Title = issue.Title,
         Evidence = $"parent #{issue.Parent!.Number} ({issue.Parent.Title}) is CLOSED, but this issue is still OPEN",
     };
+
+    // ── NoFeatureParent — Git #2401. A real leaf work item (no sub-issues of its own — a container
+    // itself, e.g. an Epic/GATE/Feature, isn't "missing a Feature parent," it IS one) whose parent
+    // chain carries no "Feature: " ancestor. CLAUDE.md's own filing rule ("check for a Feature-tier
+    // parent first, before falling back to the area-epic table") makes a Feature-tier parent the
+    // normal home for real leaf work; an issue with none of those doesn't group into any Feature band
+    // in the Build Queue and doesn't show up in any Feature's burndown — exactly the ShaneBuilder-
+    // FullFeature.md cross-cutting complaint this rule exists to catch.
+    private static readonly string[] AllContainerPrefixes = { "epic:", "gate:", "feature:" };
+
+    private static bool EvaluateNoFeatureParent(RepoHealthIssueNode issue)
+    {
+        if (issue.SubIssueCount > 0) return false; // epic-shaped — Naming already covers container issues
+        if (AllContainerPrefixes.Any(p => issue.Title.TrimStart().StartsWith(p, StringComparison.OrdinalIgnoreCase)))
+            return false; // a container with no sub-issues yet is still a container, not a stray leaf
+
+        for (var cur = issue.Parent; cur != null; cur = cur.Parent)
+        {
+            if (cur.Title.TrimStart().StartsWith("feature:", StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        return true;
+    }
+
+    private static RepoHealthFinding NoFeatureParentFinding(RepoHealthIssueNode issue)
+    {
+        var nearest = issue.Parent == null ? "no parent at all" : $"nearest parent #{issue.Parent.Number} ({issue.Parent.Title})";
+        return new RepoHealthFinding
+        {
+            Id = $"nofeatureparent:{issue.Number}",
+            Rule = RepoHealthRule.NoFeatureParent,
+            Number = issue.Number,
+            Title = issue.Title,
+            Evidence = $"no \"Feature:\" ancestor in the parent chain — {nearest}",
+        };
+    }
 
     // ── GraphQL fetch — same subIssuesSummary/parent shape as GitHubApiClient.ListBoardIssuesInternalAsync,
     // shelled through `gh api graphql` per ChatGitHubFilter's established no-PAT convention ──────────

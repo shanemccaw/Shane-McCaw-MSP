@@ -1395,7 +1395,7 @@
                                                            Foreground="{StaticResource Brush.Claude.Text.Muted}"
                                                            MouseLeftButtonDown="RepoHealthRescan_Click"/>
                                             </DockPanel>
-                                            <UniformGrid x:Name="RepoHealthTiles" Rows="1" Columns="4"/>
+                                            <UniformGrid x:Name="RepoHealthTiles" Rows="1" Columns="5"/>
                                         </StackPanel>
                                     </Border>
 
@@ -2175,7 +2175,7 @@
                                         Click="RepoHealthDocRescan_Click"
                                         Foreground="{StaticResource Brush.Text.Primary}"
                                         FontFamily="{StaticResource FontFamily.Sans}" FontSize="{StaticResource FontSize.11.5}"/>
-                                <UniformGrid DockPanel.Dock="Right" x:Name="RepoHealthDocTiles" Rows="1" Columns="4" Margin="0,0,14,0" Width="440"/>
+                                <UniformGrid DockPanel.Dock="Right" x:Name="RepoHealthDocTiles" Rows="1" Columns="5" Margin="0,0,14,0" Width="550"/>
                                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <Path Style="{StaticResource RailIconPath}" Data="{StaticResource Icon.Git}"
                                           Stroke="{StaticResource Brush.Epic.Gate}" Width="18" Height="18" Margin="0,0,12,0"/>

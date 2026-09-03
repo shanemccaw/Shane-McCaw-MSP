@@ -8755,6 +8755,7 @@ public partial class MainWindow : Window
         (RepoHealthRule.Naming, "An issue with real sub-issues (epic-shaped) whose title isn't prefixed \"Epic: \" — this repo's own naming convention."),
         (RepoHealthRule.Stale, "An issue body references a backtick-quoted repo path that no longer exists in this checkout."),
         (RepoHealthRule.Orphan, "An open issue whose direct parent is CLOSED."),
+        (RepoHealthRule.NoFeatureParent, "A real leaf issue (no sub-issues) with no \"Feature: \" ancestor anywhere in its parent chain — it never lands in any Feature's burndown or Build Queue band."),
     };
 
     private void RenderRepoHealthDoc()
@@ -8771,7 +8772,7 @@ public partial class MainWindow : Window
         RepoHealthDocDetailPanel.Children.Clear();
         RepoHealthDocDetailPanel.Children.Add(new TextBlock
         {
-            Text = "THE FOUR RULES", Margin = new Thickness(0, 0, 0, 10),
+            Text = "THE FIVE RULES", Margin = new Thickness(0, 0, 0, 10),
             FontFamily = (FontFamily)FindResource("FontFamily.Sans"), FontSize = 10,
             FontWeight = FontWeights.ExtraBold,
             Foreground = (Brush)FindResource("Brush.Text.Dim"),
@@ -8799,7 +8800,7 @@ public partial class MainWindow : Window
     private void RenderRepoHealthTiles(UniformGrid target)
     {
         target.Children.Clear();
-        foreach (var rule in new[] { RepoHealthRule.Depth, RepoHealthRule.Naming, RepoHealthRule.Stale, RepoHealthRule.Orphan })
+        foreach (var rule in new[] { RepoHealthRule.Depth, RepoHealthRule.Naming, RepoHealthRule.Stale, RepoHealthRule.Orphan, RepoHealthRule.NoFeatureParent })
         {
             int count = _rhScan?.Count(rule) ?? 0;
             var tile = new Border
@@ -8834,6 +8835,7 @@ public partial class MainWindow : Window
         RepoHealthRule.Naming => "NAMING",
         RepoHealthRule.Stale => "STALE",
         RepoHealthRule.Orphan => "ORPHAN",
+        RepoHealthRule.NoFeatureParent => "NO FEATURE",
         _ => rule.ToString().ToUpperInvariant(),
     };
 
