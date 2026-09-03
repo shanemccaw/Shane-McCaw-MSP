@@ -32,8 +32,10 @@ router.get("/msp/message-center", requireRole("MSPOperator"), async (req: Reques
     const categoryFilter = req.query["category"] ? String(req.query["category"]) : undefined;
     const customerIdParam = req.query["customerId"] ? Number(req.query["customerId"]) : undefined;
     const customerIdFilter = typeof customerIdParam === "number" && !isNaN(customerIdParam) ? customerIdParam : undefined;
-    const limit = Math.min(Number(req.query["limit"] ?? 50), 200);
-    const offset = Math.max(Number(req.query["offset"] ?? 0), 0);
+    const limitParam = Number(req.query["limit"] ?? 50);
+    const limit = Math.min(!isNaN(limitParam) ? limitParam : 50, 200);
+    const offsetParam = Number(req.query["offset"] ?? 0);
+    const offset = Math.max(!isNaN(offsetParam) ? offsetParam : 0, 0);
 
     const conditions = [eq(mspMessageCenterItemsTable.mspId, mspId)];
     if (categoryFilter) conditions.push(eq(mspMessageCenterItemsTable.category, categoryFilter));
