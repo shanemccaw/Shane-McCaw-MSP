@@ -148,6 +148,7 @@ namespace BuildConsole.Controls
                 InputBox.Text = btn.Tag?.ToString() ?? string.Empty;
                 InputBox.CaretIndex = InputBox.Text.Length;
                 InputBox.Focus();
+                Send_Click(sender, e);
             }
         }
 
