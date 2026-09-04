@@ -53,6 +53,69 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const EXECUTOR_BACKED = new Set(["graph", "powershell", "sharepoint-admin", "dns"]);
 
 /**
+ * Git #2841 — `powershell` transport being in EXECUTOR_BACKED means the platform has
+ * *an* executor for the transport in general; it does not mean any given row's own
+ * `read_cmdlets` is actually invokable through it. `collectPowerShellResource()` in
+ * config-snapshot-collector.ts only calls a cmdlet the ps-execution container has an
+ * unfiltered catalog entry for (`PS_CATALOG_BY_CMDLET`) — everything else returns
+ * `skipReason: "no_executor"` at run time, forever, no matter how many snapshots run.
+ * Mirrors PS_CATALOG_BY_CMDLET's KEYS (same convention as EXECUTOR_BACKED mirroring
+ * EXECUTOR_BACKED_TRANSPORTS above) so the registry can make the same call the
+ * collector makes, without this plain Node script importing api-server's TS. Keep in
+ * sync by hand when that catalog changes; only membership matters here, not the
+ * catalog's own (cmdlet -> container key) values.
+ */
+const PS_CATALOG_CMDLETS = new Set([
+  "Get-AcceptedDomain", "Get-ActiveSyncDeviceAccessRule", "Get-AddressBookPolicy",
+  "Get-AdminAuditLogConfig", "Get-AntiPhishPolicy", "Get-AntiphishRule", "Get-AntiPhishRule",
+  "Get-ArcConfig", "Get-ATPBuiltInProtectionRule", "Get-AtpPolicyForO365",
+  "Get-ATPProtectionPolicyRule", "Get-AuthenticationPolicy", "Get-CASMailboxPlan",
+  "Get-ComplianceRetentionEventType", "Get-ComplianceTag", "Get-CsTeamsMeetingPolicy",
+  "Get-DataClassification", "Get-DeviceConditionalAccessPolicy", "Get-DeviceConditionalAccessRule",
+  "Get-DeviceConfigurationPolicy", "Get-DeviceConfigurationRule", "Get-DkimSigningConfig",
+  "Get-DlpCompliancePolicy", "Get-DLPCompliancePolicy", "Get-DlpComplianceRule",
+  "Get-DLPComplianceRule", "Get-DlpSensitiveInformationType", "Get-DLPSensitiveInformationType",
+  "Get-DlpSensitiveInformationTypeRulePackage", "Get-DLPSensitiveInformationTypeRulePackage",
+  "Get-EmailTenantSettings", "Get-EOPProtectionPolicyRule", "Get-FilePlanPropertyAuthority",
+  "Get-FilePlanPropertyCategory", "Get-FilePlanPropertyCitation", "Get-FilePlanPropertyDepartment",
+  "Get-FilePlanPropertyReferenceId", "Get-FilePlanPropertySubCategory",
+  "Get-HostedConnectionFilterPolicy", "Get-HostedContentFilterPolicy", "Get-HostedContentFilterRule",
+  "Get-HostedOutboundSpamFilterPolicy", "Get-HostedOutboundSpamFilterRule", "Get-InboundConnector",
+  "Get-IntraOrganizationConnector", "Get-IRMConfiguration", "Get-JournalRule", "Get-Label",
+  "Get-LabelPolicy", "Get-MailboxPlan", "Get-MalwareFilterPolicy", "Get-MalwareFilterRule",
+  "Get-ManagementScope", "Get-MigrationEndpoint", "Get-MobileDeviceMailboxPolicy",
+  "Get-OnPremisesOrganization", "Get-OrganizationConfig", "Get-OrganizationRelationship",
+  "Get-OutboundConnector", "Get-OutBoundConnector", "Get-OwaMailboxPolicy", "Get-PartnerApplication",
+  "Get-PerimeterConfig", "Get-PolicyConfig", "Get-PolicyTipConfig", "Get-ProtectionAlert",
+  "Get-QuarantinePolicy", "Get-RemoteDomain", "Get-ReportSubmissionPolicy",
+  "Get-ReportSubmissionRule", "Get-RetentionCompliancePolicy", "Get-RetentionComplianceRule",
+  "Get-RetentionPolicy", "Get-RetentionPolicyTag", "Get-RoleAssignmentPolicy", "Get-RoleGroup",
+  "Get-SafeAttachmentPolicy", "Get-SafeAttachmentRule", "Get-SafeLinksPolicy", "Get-SafeLinksRule",
+  "Get-SharingPolicy", "Get-SupervisoryReviewPolicyV2", "Get-SupervisoryReviewRule",
+  "Get-TenantAllowBlockListSpoofItems", "Get-TransportConfig", "Get-TransportRule",
+  "Get-UnifiedAuditLogRetentionPolicy",
+]);
+
+/** Mirrors PS_NON_READ_HELPER_CMDLETS in config-snapshot-collector.ts (Git #2841). */
+const PS_NON_READ_HELPER_CMDLETS = new Set([
+  "Get-CompareParameters",
+  "Get-MSCloudLoginConnectionProfile",
+  "Get-MgGroup",
+  "Get-MgUser",
+]);
+
+/**
+ * Whether at least one of this row's `read_cmdlets` is actually reachable through the
+ * ps-execution container, mirroring `collectPowerShellResource()`'s own filter+lookup.
+ */
+function hasCatalogedPsCmdlet(readCmdlets) {
+  const cmdlets = (Array.isArray(readCmdlets) ? readCmdlets : []).filter(
+    (c) => !PS_NON_READ_HELPER_CMDLETS.has(c),
+  );
+  return cmdlets.some((c) => PS_CATALOG_CMDLETS.has(c));
+}
+
+/**
  * Collection order. Cheap and certainly-readable resources run first so that a run
  * which exhausts its budget has already banked the resources most likely to succeed,
  * rather than having spent the budget on ones that were going to 403 anyway.
@@ -216,10 +279,37 @@ async function main() {
       // config-state.ts: a resource no code path can reach is not merely missing an
       // identity strategy, and conflating the two is what Git #1849 asked to end.
       let reason = null;
-      if (!hasExecutor) reason = "no_executor";
-      else if (identity.strategy === "unresolved") reason = "identity_unresolved";
-      else if (res.graph_container_kind === "function") reason = "not_collectable";
-      else if (res.availability === "unavailable") reason = "not_collectable";
+      let notes = null;
+      if (!hasExecutor) {
+        reason = "no_executor";
+        notes = `no executor exists for the ${res.read_transport} transport (Git #1849)`;
+      } else if (res.read_transport === "powershell" && !hasCatalogedPsCmdlet(res.read_cmdlets)) {
+        // Git #2841: the transport being executor-backed in general doesn't mean THIS
+        // row's own cmdlet has a ps-execution catalog entry. Same reason string the
+        // runtime collector already uses for this exact case (skipReason: "no_executor"
+        // in collectPowerShellResource()) — this just stops the registry claiming
+        // collectable ahead of a call that can never succeed.
+        reason = "no_executor";
+        const named = (Array.isArray(res.read_cmdlets) ? res.read_cmdlets : [])
+          .filter((c) => !PS_NON_READ_HELPER_CMDLETS.has(c));
+        notes = `No ps-execution catalog entry invokes this resource's read cmdlet unfiltered — needs ` +
+          `${named.length > 0 ? named.join(", ") : "(no read cmdlet recorded)"} (Git #2841)`;
+      } else if (identity.strategy === "unresolved") {
+        reason = "identity_unresolved";
+      } else if (res.graph_container_kind === "function") {
+        reason = "not_collectable";
+        // A bound Function is an OPERATION, not persistent configuration state:
+        // /reports/getApiUsage and /deviceManagement/getEffectivePermissions compute
+        // an answer on demand, many require parameters, and re-invoking one yields a
+        // different result with no object to pair across snapshots. Snapshotting them
+        // would put report output into a configuration store and manufacture diff
+        // churn. Registered and reasoned rather than dropped — see the finding filed
+        // against the resource model for whether they belong in it at all.
+        notes = "Graph bound Function: an operation, not configuration state, so there is nothing stable to snapshot or diff";
+      } else if (res.availability === "unavailable") {
+        reason = "not_collectable";
+        notes = "published sources state no app-only read path exists for this resource";
+      }
 
       const isCollectable = reason === null;
       if (isCollectable) stats.collectable += 1;
@@ -228,21 +318,6 @@ async function main() {
 
       const provenance = resolveShapeProvenance(res, observedCmdlets, graphShaped);
       bump(stats.byProvenance, provenance);
-
-      const notes = reason === "no_executor"
-        ? `no executor exists for the ${res.read_transport} transport (Git #1849)`
-        : reason === "not_collectable" && res.graph_container_kind === "function"
-          // A bound Function is an OPERATION, not persistent configuration state:
-          // /reports/getApiUsage and /deviceManagement/getEffectivePermissions compute
-          // an answer on demand, many require parameters, and re-invoking one yields a
-          // different result with no object to pair across snapshots. Snapshotting them
-          // would put report output into a configuration store and manufacture diff
-          // churn. Registered and reasoned rather than dropped — see the finding filed
-          // against the resource model for whether they belong in it at all.
-          ? "Graph bound Function: an operation, not configuration state, so there is nothing stable to snapshot or diff"
-          : reason === "not_collectable"
-            ? "published sources state no app-only read path exists for this resource"
-            : null;
 
       if (DRY_RUN) continue;
 
