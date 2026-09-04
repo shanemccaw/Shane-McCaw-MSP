@@ -7,6 +7,14 @@
 
 import { describe, it, expect, vi, beforeEach, type MockedFunction } from "vitest";
 
+// #2865 — the getActivityApiToken test below imports the real (largely
+// unmocked) "../graph" module, whose transform can lose the race against
+// ~300 other files' cold transforms under the full-suite parallel run and
+// blow the default 5000ms per-test budget, even though it resolves in well
+// under 100ms in isolation. Scoped to this file only — not a global config
+// change.
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
+
 // ── Mock @workspace/db ────────────────────────────────────────────────────────
 
 const mockSelect = vi.fn();

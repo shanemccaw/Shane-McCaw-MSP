@@ -21,6 +21,17 @@ import request from "supertest";
 process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL = "https://anthropic.test";
 process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY = "test-anthropic-key";
 
+// #2865 — ./portal-assessment pulls in a heavy transitive import graph (the
+// whole copilot-readiness-narrative-generator chain) via the dynamic
+// `await import("./portal-assessment")` below. It can't be hoisted to a
+// static top-level import — that would run before the env vars above are
+// set and reintroduce the module-load throw the comment above exists to
+// avoid — so under the full-suite parallel run its transform can lose the
+// race against ~300 other files' cold transforms and blow the default
+// 5000ms per-test budget, even though it resolves in well under 100ms in
+// isolation. Scoped to this file only — not a global config change.
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
+
 let insertedPackageKey: string | null = null;
 let runDiagnosticsPackageKey: string | null = null;
 
