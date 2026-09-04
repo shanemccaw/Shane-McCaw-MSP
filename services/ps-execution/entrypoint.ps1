@@ -395,7 +395,17 @@ function Invoke-ChildRequest {
     }
 
     try {
-        $parsed = $stdout | ConvertFrom-Json -ErrorAction Stop
+        # -AsHashtable (#2851): a PSCustomObject can't represent an object with
+        # both "value" and "Value" keys — PSCustomObject property names are
+        # case-INsensitive, so ConvertFrom-Json throws
+        # ("...contains keys with different casing...") the moment real
+        # Graph/EXO output (Get-OrganizationConfig, Get-MailboxPlan, etc.)
+        # carries such a pair, even though the child wrote perfectly valid
+        # JSON. -AsHashtable is case-sensitive-key-tolerant and parses it
+        # cleanly; downstream property-style access ($parsed.ok etc.) and the
+        # ConvertTo-Json re-serialization at :558 both work unchanged against
+        # a hashtable.
+        $parsed = $stdout | ConvertFrom-Json -AsHashtable -ErrorAction Stop
     }
     catch {
         # #1482 diagnostic: the child wrote SOMETHING to stdout but it did not
@@ -431,7 +441,7 @@ function Invoke-ChildRequest {
         foreach ($line in ($stdout -split "`n")) {
             $candidateText = $line.Trim()
             if (-not $candidateText) { continue }
-            try { $recovered = $candidateText | ConvertFrom-Json -ErrorAction Stop } catch { }
+            try { $recovered = $candidateText | ConvertFrom-Json -AsHashtable -ErrorAction Stop } catch { }
         }
         if ($null -ne $recovered) {
             Write-Log -Level "warn" -Message "recovered child result from the last JSON line after stdout contamination" -Extra @{ cmdletKey = $CmdletKey; ok = [bool]$recovered.ok }
