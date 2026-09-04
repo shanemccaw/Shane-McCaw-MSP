@@ -21,12 +21,44 @@ import jwt from "jsonwebtoken";
 const mockExecute = vi.fn();
 
 vi.mock("@workspace/db", () => ({
-  db: { execute: mockExecute },
+  db: {
+    execute: mockExecute,
+    // resolveStaffScopedCustomerIds()/isCustomerBlockedByStaffScope() use the
+    // drizzle query-builder chain (not db.execute) — default to "no scope rows"
+    // (unrestricted) unless a test overrides this.
+    select: vi.fn(() => ({
+      from: vi.fn(() => ({
+        where: vi.fn(() => Promise.resolve([])),
+      })),
+    })),
+  },
   sql: vi.fn(),
+  // Table refs resolveStaffScopedCustomerIds() reads column names off of —
+  // stub shape only, values are irrelevant since db.select() above is mocked.
+  mspStaffCustomerScopesTable: { customerId: "customerId", staffUserId: "staffUserId" },
+  tenantsTable: { id: "id", mspId: "mspId" },
+}));
+
+const mockRunScopeCreepEngineForTenant = vi.fn();
+const mockFireScopeCreepViolation = vi.fn();
+const mockEvaluatePolicyEscalations = vi.fn();
+
+vi.mock("../lib/scope-creep-engine", () => ({
+  runScopeCreepEngineForTenant: mockRunScopeCreepEngineForTenant,
+  fireScopeCreepViolation: mockFireScopeCreepViolation,
+  evaluatePolicyEscalations: mockEvaluatePolicyEscalations,
+  escalateScopeCreep: vi.fn(),
+  resolveScopeCreepViolation: vi.fn(),
 }));
 
 vi.mock("../lib/logger.ts", () => ({
-  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    child: vi.fn(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() })),
+  },
 }));
 
 vi.mock("../lib/sla-engine", () => ({
@@ -48,6 +80,7 @@ vi.mock("drizzle-orm", () => ({
       raw: (s: string) => s,
     },
   ),
+  eq: vi.fn((a: unknown, b: unknown) => ({ a, b })),
 }));
 
 // ── Auth helpers ───────────────────────────────────────────────────────────────
@@ -402,6 +435,110 @@ describe("MSP Scope Creep routes — auth enforcement (sampled)", () => {
     // Either 200 (records empty) or 500 (mocked engine missing) — just confirm not 401/403
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);
+  });
+});
+
+// ── POST /api/msp/scope-creep/evaluate — Git #2726 ──────────────────────────────
+// customerId is required and never falls back to mspId; the engine + any fired
+// violation are scoped to that one customer, never the whole MSP portfolio.
+
+describe("POST /api/msp/scope-creep/evaluate", () => {
+  beforeEach(() => {
+    mockExecute.mockReset();
+    mockRunScopeCreepEngineForTenant.mockReset();
+    mockFireScopeCreepViolation.mockReset();
+    mockEvaluatePolicyEscalations.mockReset();
+  });
+
+  it("400s when customerId is missing from the body", async () => {
+    const { default: router } = await import("./msp-scope-creep.ts");
+    const app = PatternApp(router);
+
+    const token = makeToken({ mspId: 7 });
+    const res = await request(app)
+      .post("/api/msp/scope-creep/evaluate")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ autoFireViolations: true });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/customerId/i);
+    expect(mockRunScopeCreepEngineForTenant).not.toHaveBeenCalled();
+  });
+
+  it("404s when the customer does not belong to the calling MSP", async () => {
+    mockExecute.mockResolvedValueOnce({ rows: [] }); // tenants ownership check: no match
+
+    const { default: router } = await import("./msp-scope-creep.ts");
+    const app = PatternApp(router);
+
+    const token = makeToken({ mspId: 7 });
+    const res = await request(app)
+      .post("/api/msp/scope-creep/evaluate")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ customerId: 999 });
+
+    expect(res.status).toBe(404);
+    expect(mockRunScopeCreepEngineForTenant).not.toHaveBeenCalled();
+  });
+
+  it("evaluates the SPECIFIC customer, and any fired violation carries that real customerId — never mspId as a fallback", async () => {
+    const MSP_ID = 7;
+    const CUSTOMER_ID = 555;
+
+    mockExecute
+      .mockResolvedValueOnce({ rows: [{ id: CUSTOMER_ID }] }) // tenants ownership check: real match
+      .mockResolvedValueOnce({
+        rows: [{ id: 1, escalationRules: [], violationScoreThreshold: 60 }],
+      }); // policy threshold lookup
+
+    mockRunScopeCreepEngineForTenant.mockResolvedValue({
+      engine: "scope_creep",
+      score: {
+        compositeScore: 78,
+        driftScore: 78,
+        expansionScore: 0,
+        timelineSlipScore: 0,
+        openDetections: 1,
+        openViolations: 0,
+        compliancePct: 22,
+      },
+      breakdown: [],
+      policies: [{ id: 1, name: "Default Scope Policy" }],
+      rawSignals: ["scope_creep:high_risk"],
+      timestamp: new Date().toISOString(),
+    });
+    mockFireScopeCreepViolation.mockResolvedValue({
+      violationId: "viol-abc",
+      severity: "high",
+      alreadyExisted: false,
+      belowThreshold: false,
+    });
+    mockEvaluatePolicyEscalations.mockResolvedValue([]);
+
+    const { default: router } = await import("./msp-scope-creep.ts");
+    const app = PatternApp(router);
+
+    const token = makeToken({ mspId: MSP_ID });
+    const res = await request(app)
+      .post("/api/msp/scope-creep/evaluate")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ customerId: CUSTOMER_ID, autoFireViolations: true });
+
+    expect(res.status).toBe(200);
+
+    // The engine ran for the specific customer — not runScopeCreepEngineForMsp's
+    // whole-portfolio aggregate.
+    expect(mockRunScopeCreepEngineForTenant).toHaveBeenCalledWith(CUSTOMER_ID);
+
+    // The fired violation's customerId is the REAL customer supplied, never the
+    // mspId fallback the old code silently wrote into a tenants.id column.
+    expect(mockFireScopeCreepViolation).toHaveBeenCalledTimes(1);
+    const violationOpts = mockFireScopeCreepViolation.mock.calls[0][0];
+    expect(violationOpts.customerId).toBe(CUSTOMER_ID);
+    expect(violationOpts.customerId).not.toBe(MSP_ID);
+    expect(violationOpts.mspId).toBe(MSP_ID);
+
+    expect(res.body.autoFired[0].violationId).toBe("viol-abc");
   });
 });
 

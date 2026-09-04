@@ -13,11 +13,11 @@
 import { Router, Request, Response } from "express";
 import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { requireRole, resolveStaffScopedCustomerIds } from "../middlewares/requireAuth";
+import { requireRole, resolveStaffScopedCustomerIds, isCustomerBlockedByStaffScope } from "../middlewares/requireAuth";
 import { logger } from "../lib/logger";
 const log = logger.child({ channel: "engine.scope-creep" });
 import {
-  runScopeCreepEngineForMsp,
+  runScopeCreepEngineForTenant,
   fireScopeCreepViolation,
   escalateScopeCreep,
   resolveScopeCreepViolation,
@@ -416,19 +416,51 @@ router.get("/msp/scope-creep/compliance", requireRole("MSPOperator"), async (req
 });
 
 // ── POST /api/msp/scope-creep/evaluate ────────────────────────────────────────
-// Run the engine for this MSP's portfolio. Returns composite score, breakdown,
-// raw signals, and fired policy escalations.
-// Optionally fires violations for customers whose score exceeds threshold.
+// Run the engine for ONE specific customer of this MSP. Returns composite score,
+// breakdown, raw signals, and fired policy escalations for that customer alone.
+// Optionally fires a violation for that customer if their own score exceeds
+// threshold.
+//
+// customerId is REQUIRED (Git #2726). It used to be optional, with the engine
+// falling back to `runScopeCreepEngineForMsp(mspId)` — the whole MSP portfolio's
+// aggregate composite score across every customer's open detections — and, when
+// autoFireViolations fired a violation off that portfolio score, defaulting the
+// violation's customerId to mspId itself when the caller omitted one. Both were
+// wrong: a customer with zero open detections of their own could have a
+// violation fired against them purely because a different customer of the same
+// MSP was driving the portfolio score up, and an omitted customerId silently
+// wrote an msps.id value into a column the rest of the codebase treats as a
+// tenants.id/customer id.
 
 router.post("/msp/scope-creep/evaluate", requireRole("MSPOperator"), async (req: Request, res: Response) => {
   const mspId = req.user!.mspId;
   if (!mspId) { res.status(400).json({ error: "mspId required" }); return; }
   const b = req.body as Record<string, unknown>;
+  const customerId = b.customerId != null ? Number(b.customerId) : NaN;
+  if (!Number.isFinite(customerId)) {
+    res.status(400).json({ error: "customerId required" });
+    return;
+  }
   const autoFire = b.autoFireViolations === true;
   try {
-    const output = await runScopeCreepEngineForMsp(mspId);
+    // Confirm the customer actually belongs to the calling MSP before scoring or
+    // firing anything against them — customerId is caller-supplied.
+    const ownership = await db.execute(sql`
+      SELECT id FROM tenants WHERE id = ${customerId} AND msp_id = ${mspId} LIMIT 1
+    `);
+    if (ownership.rows.length === 0) {
+      res.status(404).json({ error: "Customer not found" });
+      return;
+    }
+    if (await isCustomerBlockedByStaffScope(req.user!, customerId)) {
+      res.status(403).json({ error: "Not authorized for this customer" });
+      return;
+    }
 
-    // Optionally auto-fire violations + escalations for threshold breaches
+    const output = await runScopeCreepEngineForTenant(customerId);
+
+    // Optionally auto-fire a violation + escalations for this customer if their
+    // own score breaches a policy's threshold.
     const autoFired: Array<{
       policyId: number;
       violationId: string | null;
@@ -452,7 +484,7 @@ router.post("/msp/scope-creep/evaluate", requireRole("MSPOperator"), async (req:
         const vResult = await fireScopeCreepViolation(
           {
             mspId,
-            customerId: b.customerId != null ? Number(b.customerId) : mspId,
+            customerId,
             policyId: policy.id,
             compositeScore: output.score.compositeScore,
             threshold,
@@ -467,7 +499,7 @@ router.post("/msp/scope-creep/evaluate", requireRole("MSPOperator"), async (req:
                 vResult.violationId,
                 output.score.compositeScore,
                 mspId,
-                b.customerId != null ? Number(b.customerId) : mspId,
+                customerId,
               )
             : [];
 
@@ -477,7 +509,7 @@ router.post("/msp/scope-creep/evaluate", requireRole("MSPOperator"), async (req:
 
     res.json({ ...output, autoFired: autoFire ? autoFired : undefined });
   } catch (err) {
-    log.error({ err, mspId }, "msp-scope-creep: evaluate failed");
+    log.error({ err, mspId, customerId }, "msp-scope-creep: evaluate failed");
     res.status(500).json({ error: "Scope creep engine evaluation failed" });
   }
 });
