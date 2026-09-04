@@ -18,7 +18,7 @@ namespace BuildConsole.Controls
     /// streams back into the output pane, so shell state (cwd, env vars) persists between
     /// commands the same way an interactive terminal would.
     /// </summary>
-    public partial class TerminalView : UserControl
+    public partial class TerminalView : UserControl, IChatSendableTool
     {
         private Services.BuildTrackerApiClient? _api;
         private Services.PausableTextBoxLog? _pausableLog;
@@ -116,6 +116,20 @@ namespace BuildConsole.Controls
         {
             _pausableLog?.Toggle();
             PauseButton.Content = _pausableLog is { IsPaused: true } ? "▶ Resume" : "⏸ Pause";
+        }
+
+        /// <summary>
+        /// Git #2783 — <see cref="IChatSendableTool"/>. Real judgement call on which content to
+        /// send: a real, non-empty selection in the output pane wins (Shane deliberately selected
+        /// that text), otherwise falls back to the pane's full real output history so far. Never
+        /// fabricated — both paths read straight out of <see cref="OutputBox"/>'s actual text.
+        /// </summary>
+        public string? GetSendableContent()
+        {
+            string selected = OutputBox.SelectedText;
+            if (!string.IsNullOrWhiteSpace(selected)) return selected;
+            string all = OutputBox.Text;
+            return string.IsNullOrWhiteSpace(all) ? null : all;
         }
 
         /// <summary>Set the command input text (called from MainWindow menu actions).</summary>

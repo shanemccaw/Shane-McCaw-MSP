@@ -104,7 +104,7 @@ namespace BuildConsole.Controls
             CrumbChat.Text = string.IsNullOrWhiteSpace(_chat.Title) ? "New Chat" : _chat.Title;
 
             _activeTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-            _activeTimer.Tick += (_, _) => UpdateActiveTime();
+            _activeTimer.Tick += (_, _) => { UpdateActiveTime(); UpdateSendToChatAffordance(); };
             Loaded += (_, _) => _activeTimer.Start();
             Unloaded += (_, _) => _activeTimer.Stop();
 
@@ -440,6 +440,49 @@ namespace BuildConsole.Controls
 
             SetRailOpen(true);
             UpdateDetectedGlyph();
+            UpdateSendToChatAffordance();
+        }
+
+        /// <summary>Git #2783 — recomputes the rail-header "Send to Chat" icon's visibility from
+        /// whatever's actually hosted in <c>ToolHost</c> right now: visible only when the current
+        /// tool implements <see cref="IChatSendableTool"/> AND has real, non-empty content to send.
+        /// Called on every rail-state transition (open/close/switch tool) and on the same 30s tick
+        /// that already refreshes the active-time label, so a tool whose output changes while the
+        /// rail sits open (e.g. Terminal mid-command) doesn't leave the icon stuck stale for long.</summary>
+        private void UpdateSendToChatAffordance()
+        {
+            bool show = ToolHost.Visibility == Visibility.Visible
+                        && ToolHost.Content is IChatSendableTool sendable
+                        && !string.IsNullOrEmpty(sendable.GetSendableContent());
+            RailSendToChat.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        /// <summary>Git #2783 — routes the rail-header "Send to Chat" click through the exact same
+        /// shared active-chat composer-injection path as the SQL Runner (#940) and Log Viewer
+        /// (#2786): <see cref="MainWindow.SendTextToActiveClaudeChatAsync"/>. Re-reads
+        /// <see cref="IChatSendableTool.GetSendableContent"/> fresh at click time rather than trusting
+        /// the icon's last-known visible state, since content can change between the 30s refresh and
+        /// the actual click.</summary>
+        private async void RailSendToChat_Click(object sender, MouseButtonEventArgs e)
+        {
+            if (ToolHost.Content is not IChatSendableTool sendable)
+            {
+                UpdateSendToChatAffordance();
+                return;
+            }
+            string? content = sendable.GetSendableContent();
+            if (string.IsNullOrEmpty(content))
+            {
+                UpdateSendToChatAffordance();
+                ToastEngine.Warning("Send to Chat", "Nothing to send yet.");
+                return;
+            }
+            await _owner.SendTextToActiveClaudeChatAsync(
+                content,
+                showMessage: (msg, isError) => ToastEngine.Show("Send to Chat", msg, isError ? ToastKind.Warning : ToastKind.Success),
+                onInserted: null,
+                logChannel: "tool-rail.send-to-chat",
+                whatSingular: $"{RailTitle.Text} output");
         }
 
         /// <summary>Git #2774 — public entry for MainWindow's <c>BT_SEND_TO_TOOL</c> handler (the shell-block
@@ -484,6 +527,7 @@ namespace BuildConsole.Controls
             SetRailOpen(true);
             RenderCrossEpicCards();
             UpdateDetectedGlyph();
+            UpdateSendToChatAffordance();
             if (!_detectedLoadedOnce) { _detectedLoadedOnce = true; await RefreshDetectedAsync(); }
         }
 
@@ -495,6 +539,7 @@ namespace BuildConsole.Controls
             _detectedOpen = false;
             SetRailOpen(false);
             UpdateDetectedGlyph();
+            UpdateSendToChatAffordance();
         }
 
         private void SetRailOpen(bool open)

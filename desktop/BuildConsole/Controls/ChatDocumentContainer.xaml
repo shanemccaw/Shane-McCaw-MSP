@@ -292,6 +292,15 @@
                                        FontFamily="Segoe MDL2 Assets" FontSize="12"
                                        Foreground="{StaticResource Warm.TextDim}"
                                        MouseLeftButtonDown="RailRefresh_Click"/>
+                            <!-- Git #2783 — generic "Send to Chat" rail-header affordance. Shown/enabled for
+                                 ANY tool hosted in ToolHost that implements IChatSendableTool with real
+                                 sendable content right now — no per-tool rail-header wiring needed. -->
+                            <TextBlock DockPanel.Dock="Right" x:Name="RailSendToChat" Text="&#xE72A;" Cursor="Hand"
+                                       Margin="0,0,12,0" Visibility="Collapsed"
+                                       ToolTip="Send this tool's current output to the active Claude chat"
+                                       FontFamily="Segoe MDL2 Assets" FontSize="12"
+                                       Foreground="{StaticResource Warm.Accent}"
+                                       MouseLeftButtonDown="RailSendToChat_Click"/>
                             <TextBlock x:Name="RailGlyph" DockPanel.Dock="Left" Text="&#xE9D2;" Margin="0,0,8,0"
                                        VerticalAlignment="Center" FontFamily="Segoe MDL2 Assets" FontSize="13"
                                        Foreground="{StaticResource Warm.TextMuted}"/>
