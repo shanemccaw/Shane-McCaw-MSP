@@ -817,6 +817,63 @@ async function runForceMfaReregistrationAgainstTenant(
   };
 }
 
+/**
+ * `action.remove-auth-method`'s real Graph mechanism (#2875, same class of gap #1899
+ * fixed for `action.require-security-info-reregistration`): there is no v1.0
+ * collection-level DELETE on the generic `/users/{id}/authentication/methods/{id}`
+ * path. A method can only be deleted through its real TYPED collection
+ * (phoneMethods, microsoftAuthenticatorMethods, softwareOathMethods). Unlike the MFA
+ * reregistration fan-out — which deletes ALL of a user's re-registerable methods —
+ * this template targets exactly one already-known {{methodId}}, so the real
+ * mechanism is: GET the specific method (a real generic-path v1.0 GET that returns
+ * the polymorphic `@odata.type`) to learn its type, then DELETE through that type's
+ * real collection. Two calls that `baseline_action_templates`' single-row model
+ * can't express, so this gets its own code path the same way runForceMfaReregistration
+ * AgainstTenant() does.
+ */
+const REMOVE_AUTH_METHOD_TEMPLATE_ID = "action.remove-auth-method";
+
+async function runRemoveAuthMethodAgainstTenant(
+  tenantId: string,
+  customerId: number,
+  userId: string,
+  methodId: string,
+  label: string,
+): Promise<BaselineTemplateExecutionResult & { methodType?: string }> {
+  const { graphReadForTenantWithWriteToken, graphWriteForTenant } = await import("./graph");
+  const getEndpoint = `/users/${userId}/authentication/methods/${methodId}`;
+
+  let method: { id: string; "@odata.type"?: string } | undefined;
+  try {
+    method = await graphReadForTenantWithWriteToken(tenantId, getEndpoint);
+  } catch (err) {
+    log.warn({ err, tenantId, userId, methodId }, "runRemoveAuthMethodAgainstTenant: GET authentication method failed");
+    return {
+      success: false, status: 0, errorType: "unexpected", data: err instanceof Error ? err.message : String(err),
+      endpoint: getEndpoint, method: "GET", label,
+    };
+  }
+
+  const collection = DELETABLE_AUTH_METHOD_COLLECTIONS[method?.["@odata.type"] ?? ""];
+  if (!collection) {
+    return {
+      success: false, status: 400, errorType: "bad_request",
+      data: `Authentication method ${methodId} has @odata.type '${method?.["@odata.type"] ?? "unknown"}', which has no supported typed DELETE collection (only phone, Microsoft Authenticator and software OATH methods are removable through this action).`,
+      endpoint: getEndpoint, method: "GET", label,
+      methodType: method?.["@odata.type"],
+    };
+  }
+
+  const deleteEndpoint = `/users/${userId}/authentication/${collection}/${methodId}`;
+  const result = await graphWriteForTenant(tenantId, customerId, deleteEndpoint, "DELETE", {}, [200, 204]);
+
+  return {
+    success: result.success, status: result.status, data: result.data, errorType: result.errorType,
+    endpoint: deleteEndpoint, method: "DELETE", label,
+    methodType: method?.["@odata.type"],
+  };
+}
+
 export async function runBaselineTemplateAgainstTenant(
   templateId: string,
   tenantId: string,
@@ -872,6 +929,44 @@ export async function runBaselineTemplateAgainstTenant(
       success: fanoutResult.success, status: fanoutResult.status, data: fanoutResult.data,
       errorType: fanoutResult.errorType, endpoint: fanoutResult.endpoint, method: fanoutResult.method,
       label: fanoutResult.label, auditLogId: fanoutAuditLogId,
+    };
+  }
+
+  // Fan-out special case (#2875) — see runRemoveAuthMethodAgainstTenant's own
+  // comment for why this template can't be a single {endpoint,method,body} row.
+  if (templateId === REMOVE_AUTH_METHOD_TEMPLATE_ID) {
+    const userId = String(payload.userId ?? "");
+    const methodId = String(payload.methodId ?? "");
+    const removeResult = await runRemoveAuthMethodAgainstTenant(tenantId, customerId, userId, methodId, resolved.label);
+
+    let removeAuditLogId: number | undefined;
+    try {
+      const [inserted] = await db.insert(baselineActionTemplateAuditLogTable).values({
+        action: removeResult.success ? "executed" : "failed",
+        templateId,
+        requestVariables: payload,
+        afterSnapshot: {
+          success: removeResult.success,
+          status: removeResult.status,
+          errorType: removeResult.errorType ?? null,
+          endpoint: removeResult.endpoint,
+          method: removeResult.method,
+          customerId,
+          tenantId,
+          executedAt: new Date().toISOString(),
+          methodType: removeResult.methodType ?? null,
+          ...(source !== undefined ? { source } : {}),
+        },
+      }).returning({ id: baselineActionTemplateAuditLogTable.id });
+      removeAuditLogId = inserted?.id;
+    } catch (auditErr) {
+      log.warn({ auditErr, templateId }, "runBaselineTemplateAgainstTenant: audit log insert failed (non-fatal)");
+    }
+
+    return {
+      success: removeResult.success, status: removeResult.status, data: removeResult.data,
+      errorType: removeResult.errorType, endpoint: removeResult.endpoint, method: removeResult.method,
+      label: removeResult.label, auditLogId: removeAuditLogId,
     };
   }
 
