@@ -49,6 +49,12 @@ const IIS_503 =
 // AndroidSync/StatelessAndroidSyncFEService instead of DeviceFE/StatelessDeviceFEService.
 const FORBIDDEN_ENVELOPE_401 =
   '{"error":{"code":"UnknownError","message":"{\\"ErrorCode\\":\\"Forbidden\\",\\"Message\\":\\"{\\r\\n  \\"_version\\": 3,\\r\\n  \\"Message\\": \\"An error has occurred - Operation ID (for customer support): 00000000-0000-0000-0000-000000000000 - Activity ID: 55e53ed1-be1f-48e9-9282-39d88e6fcb54 - Url: https://proxy.msua01.manage.microsoft.com/AndroidSync/StatelessAndroidSyncFEService/deviceManagement/androidManagedStoreAccountEnterpriseSettings?api-version=5026-05-21';
+// Real body from Git #2843's live evidence (same snapshot, row 8) — the 2 remaining
+// unmatched rows on graph:beta:/deviceManagement/autopilotEvents and
+// graph:v1.0:/deviceManagement/troubleshootingEvents. Same "_version": 3 envelope as
+// FORBIDDEN_ENVELOPE_401, but WITHOUT an "ErrorCode" field — just a bare "Message".
+const BARE_MESSAGE_401 =
+  '{"error":{"code":"UnknownError","message":"{\\"Message\\":\\"{\\r\\n  \\"_version\\": 3,\\r\\n  \\"Message\\": \\"An error has occurred - Operation ID (for customer support): 00000000-0000-0000-0000-000000000000 - Activity ID: 935b8c4f-98a0-4f24-9c10-338d75f22ac5 - Url: https://proxy.msua01.manage.microsoft.com/DeviceEnrollmentFE/StatelessDeviceEnrollmentFEService/deviceManagement/autopilotEvents?api-version=5026-05-21';
 
 function entitlement(partial: Partial<IntuneEntitlement>): IntuneEntitlement {
   return {
@@ -79,7 +85,7 @@ describe("serviceKeyForGraphPath", () => {
 });
 
 describe("matchIntuneWireSignature", () => {
-  it("recognises the four documented signatures on Intune paths", () => {
+  it("recognises the five documented signatures on Intune paths", () => {
     expect(matchIntuneWireSignature("/deviceManagement/managedDevices", 401, DEVICE_FE_401))
       .toBe("intune-legacy-devicefe-401");
     expect(matchIntuneWireSignature("/deviceManagement/windowsAutopilotDeploymentProfiles", 400, AUTOPILOT_400))
@@ -88,6 +94,24 @@ describe("matchIntuneWireSignature", () => {
       .toBe("intune-backend-iis-503");
     // Git #1963: same envelope as DEVICE_FE_401, different Intune backend proxy —
     // was falling through unmatched to permission_denied.
+    expect(
+      matchIntuneWireSignature(
+        "/deviceManagement/androidManagedStoreAccountEnterpriseSettings",
+        401,
+        FORBIDDEN_ENVELOPE_401,
+      ),
+    ).toBe("intune-forbidden-envelope-401");
+    // Git #2843: same _version envelope, but no ErrorCode field at all — was
+    // falling through unmatched to permission_denied on autopilotEvents/
+    // troubleshootingEvents.
+    expect(
+      matchIntuneWireSignature("/deviceManagement/autopilotEvents", 401, BARE_MESSAGE_401),
+    ).toBe("intune-bare-message-401");
+  });
+
+  it("does not mismatch the ErrorCode envelope as the bare-message one", () => {
+    // FORBIDDEN_ENVELOPE_401 carries "ErrorCode" — must keep matching its own
+    // signature, not fall through to intune-bare-message-401.
     expect(
       matchIntuneWireSignature(
         "/deviceManagement/androidManagedStoreAccountEnterpriseSettings",

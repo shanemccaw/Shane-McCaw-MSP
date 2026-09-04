@@ -129,7 +129,7 @@ export function serviceKeyForGraphPath(graphPath: string | null | undefined): Te
 // ── Wire signatures ──────────────────────────────────────────────────────────
 
 /**
- * The four documented wire signatures a never-stood-up Intune backend produces.
+ * The five documented wire signatures a never-stood-up Intune backend produces.
  * Each is a real, reproduced observation, not a guess:
  *
  *   intune-legacy-devicefe-401
@@ -168,12 +168,29 @@ export function serviceKeyForGraphPath(graphPath: string | null | undefined): Te
  *     returns). `resolveIntuneServiceState` still requires the tenant's own
  *     `/subscribedSkus` entitlement to actually resolve this to `not_licensed`; the
  *     signature only proves Intune is not answering, same as the other three.
+ *
+ *   intune-bare-message-401
+ *     401 wearing the same `"_version": 3` Intune envelope as
+ *     `intune-forbidden-envelope-401`, but WITHOUT the `"ErrorCode":"Forbidden"`
+ *     wrapper that signature keys off — just a bare `"Message"` field. Reproduced
+ *     live on the testbed (snapshot `30433ced-b0e5-4161-8270-97bf360ff931`, row 8,
+ *     2026-08-30) on `graph:beta:/deviceManagement/autopilotEvents` and
+ *     `graph:v1.0:/deviceManagement/troubleshootingEvents` — the 2 rows of that
+ *     snapshot's 41 `permission_denied`/401 `/deviceManagement*` rows that
+ *     `intune-forbidden-envelope-401` (#1963) did not catch, because they lack the
+ *     `ErrorCode` field entirely rather than carrying it at a different escape
+ *     depth. Git #2843. Gated on the bare envelope alone, same discipline as
+ *     `intune-forbidden-envelope-401`: a genuine Graph permission denial does not
+ *     wear this wrapper. `resolveIntuneServiceState` still requires the tenant's
+ *     own `/subscribedSkus` entitlement to resolve this to `not_licensed`; the
+ *     signature only proves Intune is not answering.
  */
 export const INTUNE_WIRE_SIGNATURES = [
   "intune-legacy-devicefe-401",
   "intune-segment-unresolved-400",
   "intune-backend-iis-503",
   "intune-forbidden-envelope-401",
+  "intune-bare-message-401",
 ] as const;
 export type IntuneWireSignature = typeof INTUNE_WIRE_SIGNATURES[number];
 
@@ -204,6 +221,14 @@ export function matchIntuneWireSignature(
   if (status === 401 && INTUNE_FORBIDDEN_ENVELOPE_RE.test(body) && body.includes("_version")) {
     return "intune-forbidden-envelope-401";
   }
+  if (
+    status === 401 &&
+    body.includes("_version") &&
+    INTUNE_BARE_MESSAGE_RE.test(body) &&
+    !INTUNE_ERROR_CODE_RE.test(body)
+  ) {
+    return "intune-bare-message-401";
+  }
   return null;
 }
 
@@ -215,6 +240,19 @@ export function matchIntuneWireSignature(
  * a fixed-count literal match would itself reproduce this issue's failure mode.
  */
 const INTUNE_FORBIDDEN_ENVELOPE_RE = /\\*"ErrorCode\\*"\s*:\s*\\*"Forbidden\\*"/;
+
+/**
+ * Matches a bare `"Message"` field regardless of backslash-escape depth — same
+ * tolerant-depth reasoning as `INTUNE_FORBIDDEN_ENVELOPE_RE` (Git #1963), applied to
+ * the `intune-bare-message-401` envelope (Git #2843), which carries `"Message"` but
+ * no `"ErrorCode"` at all.
+ */
+const INTUNE_BARE_MESSAGE_RE = /\\*"Message\\*"\s*:\s*\\*"/;
+
+/** Any escape-depth form of `"ErrorCode"` — used to keep `intune-bare-message-401`
+ * from also matching the `intune-forbidden-envelope-401` envelope it is genuinely
+ * missing the field from. */
+const INTUNE_ERROR_CODE_RE = /\\*"ErrorCode\\*"/;
 
 // ── Service-plan entitlement ─────────────────────────────────────────────────
 
