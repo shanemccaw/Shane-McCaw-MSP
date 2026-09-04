@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BuildConsole.Services
@@ -104,6 +105,16 @@ namespace BuildConsole.Services
         /// hundreds of sequential GitHub calls.</summary>
         private const int MaxEnrichedItems = 40;
 
+        /// <summary>Git #2889 — real cap on how many mentioned issues' <see cref="BuildItemAsync"/>
+        /// fetches run simultaneously. #2686 correctly fanned this out via unbounded
+        /// <c>Task.WhenAll</c> to fix the panel's own real sequential-load slowness, but with zero
+        /// concurrency cap a chat mentioning N issues fired N simultaneous real GitHub calls (gh CLI +
+        /// API) at once — Shane's live log showed 7 real <c>gh issue view</c> calls within a 20ms
+        /// window, a direct contributor to that night's rate-limit exhaustion (#2815/#2867). Bounding
+        /// to a small number keeps #2686's real concurrency win (still not fully sequential) while
+        /// staggering the real GitHub calls instead of bursting them.</summary>
+        private const int MaxConcurrentItemFetches = 3;
+
         public static Task<ChatDockData> BuildAsync(BuildQueuePostgresClient db, string chatUrl, int chatId) =>
             BuildAsync(db, chatUrl, chatId, null);
 
@@ -164,8 +175,14 @@ namespace BuildConsole.Services
             // chain-depth) sequential round trips. Fan every item's own fetch out concurrently instead;
             // each still fails closed on its own (a single item's fetch failure never aborts the batch,
             // it just lands with less metadata — same behavior as before, just not serialized).
+            //
+            // Git #2889 — that fan-out was unbounded: N mentioned issues meant N simultaneous real
+            // GitHub calls fired at once. Gate it through a small SemaphoreSlim instead of reverting to
+            // fully sequential — still concurrent (keeps #2686's real load-time fix), but real GitHub
+            // calls are now capped/staggered rather than bursting.
+            using var gate = new SemaphoreSlim(MaxConcurrentItemFetches);
             var itemTasks = mentioned
-                .Select(number => BuildItemAsync(number, reachedGitHub, openResult, gh, liveQueueItems))
+                .Select(number => BuildItemThrottledAsync(gate, number, reachedGitHub, openResult, gh, liveQueueItems))
                 .ToList();
             var built = await Task.WhenAll(itemTasks);
             var items = built.Where(i => i != null).Select(i => i!).ToList();
@@ -179,12 +196,36 @@ namespace BuildConsole.Services
             };
         }
 
+        /// <summary>Git #2889 — acquires <see cref="MaxConcurrentItemFetches"/>'s real gate before
+        /// starting this mentioned issue's real GitHub work, so <see cref="BuildAsync"/>'s
+        /// <c>Task.WhenAll</c> fan-out only ever has a small, bounded number of items actually
+        /// in-flight at once instead of firing all of them simultaneously.</summary>
+        private static async Task<ChatDockItem?> BuildItemThrottledAsync(
+            SemaphoreSlim gate,
+            int number,
+            bool reachedGitHub,
+            LiveOpenIssuesResult openResult,
+            GitHubApiClient? gh,
+            IReadOnlyList<QueueItem>? liveQueueItems)
+        {
+            await gate.WaitAsync();
+            try
+            {
+                return await BuildItemAsync(number, reachedGitHub, openResult, gh, liveQueueItems);
+            }
+            finally
+            {
+                gate.Release();
+            }
+        }
+
         /// <summary>Git #2686 — one mentioned issue's full fetch (title, board-status, both chain
         /// walks, live-queue cross-reference), extracted so <see cref="BuildAsync"/> can run every
         /// mentioned number's fetch concurrently via <c>Task.WhenAll</c> instead of a blocking
         /// sequential loop. Returns null only for a confirmed-closed issue (dropped from the dock);
         /// every other outcome — including every kind of per-field fetch failure — still returns a
-        /// real item, same fail-closed shape the original sequential loop had.</summary>
+        /// real item, same fail-closed shape the original sequential loop had. Git #2889 — its real
+        /// concurrency is now bounded by <see cref="BuildItemThrottledAsync"/>, its own caller.</summary>
         private static async Task<ChatDockItem?> BuildItemAsync(
             int number,
             bool reachedGitHub,
